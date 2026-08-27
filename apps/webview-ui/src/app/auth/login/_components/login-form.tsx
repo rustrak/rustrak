@@ -1,14 +1,14 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { RustrakError } from '@rustrak/client';
+import type { RustrakError, SsoConfig } from '@rustrak/client';
 import { Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { login } from '@/features/user/api/mutations';
+import { login, startSso } from '@/features/user/api/mutations';
 import { SERVER_ERROR_PATH } from '@/shared/lib/form-errors';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import {
@@ -61,11 +61,19 @@ function formatWait(seconds: number, t: LoginTranslator): string {
   return t('form.waitHours', { count: hours });
 }
 
-export function LoginForm() {
+export function LoginForm({
+  ssoConfig,
+  ssoFailed,
+}: {
+  ssoConfig: SsoConfig | null;
+  ssoFailed: boolean;
+}) {
   const t = useTranslations('auth');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isSsoPending, startSsoTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
+  const [hasSsoError, setHasSsoError] = useState(ssoFailed);
 
   const loginSchema = z.object({
     email: z.email(t('form.emailInvalid')),
@@ -131,12 +139,58 @@ export function LoginForm() {
     });
   };
 
+  const onSsoLogin = () => {
+    setHasSsoError(false);
+    startSsoTransition(async () => {
+      const result = await startSso();
+      if (!result.success) {
+        setHasSsoError(true);
+        return;
+      }
+
+      window.location.assign(result.data);
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">{t('form.title')}</h1>
         <p className="text-muted-foreground">{t('form.subtitle')}</p>
       </div>
+
+      {ssoConfig?.enabled && (
+        <>
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full font-extrabold uppercase tracking-widest text-xs py-6"
+              disabled={isSsoPending || isPending}
+              onClick={onSsoLogin}
+            >
+              {isSsoPending
+                ? t('form.ssoRedirecting')
+                : t('form.continueWithSso', {
+                    provider: ssoConfig.provider_name ?? 'SSO',
+                  })}
+            </Button>
+            {hasSsoError && (
+              <p className="text-sm font-medium text-destructive" role="alert">
+                {t('form.ssoFailure')}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3" aria-hidden="true">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase tracking-widest text-muted-foreground">
+              {t('form.or')}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

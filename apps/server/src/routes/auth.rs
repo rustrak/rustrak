@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use chrono::{DateTime, Utc};
 
-use crate::auth::{self, AuthenticatedUser};
+use crate::auth::{self, AuthenticatedUser, OidcService};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{AcceptInvitation, CreateUserRequest, LoginRequest, User};
@@ -31,6 +31,31 @@ struct UserResponse {
     language: Option<String>,
     /// Chosen IANA timezone, or `null` when the user never chose one.
     timezone: Option<String>,
+}
+
+const OIDC_STATE_KEY: &str = "oidc_state";
+const OIDC_NONCE_KEY: &str = "oidc_nonce";
+const OIDC_PKCE_KEY: &str = "oidc_pkce_verifier";
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+struct SsoConfigResponse {
+    enabled: bool,
+    provider_name: Option<String>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+struct SsoStartResponse {
+    authorization_url: String,
+}
+
+#[derive(Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct SsoCallbackQuery {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
 }
 
 impl From<User> for UserResponse {
@@ -224,6 +249,143 @@ pub async fn login(
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/auth/sso/config",
+    tag = "Auth",
+    responses((status = 200, description = "Public SSO configuration", body = SsoConfigResponse)),
+    security(()),
+))]
+/// GET /auth/sso/config
+/// Public, non-sensitive information used to render the login page.
+pub async fn sso_config(oidc: web::Data<Option<OidcService>>) -> impl Responder {
+    HttpResponse::Ok().json(SsoConfigResponse {
+        enabled: oidc.is_some(),
+        provider_name: oidc
+            .as_ref()
+            .as_ref()
+            .map(|service| service.provider_name().to_string()),
+    })
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/auth/sso/start",
+    tag = "Auth",
+    responses(
+        (status = 200, description = "OIDC authorization URL", body = SsoStartResponse),
+        (status = 404, description = "SSO is disabled", body = crate::error::ErrorResponse),
+    ),
+    security(()),
+))]
+/// POST /auth/sso/start
+/// Create a one-time OIDC authorization request and retain its protections in
+/// the encrypted session cookie.
+pub async fn sso_start(
+    oidc: web::Data<Option<OidcService>>,
+    session: Session,
+) -> AppResult<impl Responder> {
+    let service = oidc
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::NotFound("SSO is not configured".to_string()))?;
+    let authorization = service.authorization_url()?;
+
+    session.renew();
+    session
+        .insert(OIDC_STATE_KEY, authorization.state)
+        .map_err(|e| AppError::Internal(format!("Failed to store SSO state: {e}")))?;
+    session
+        .insert(OIDC_NONCE_KEY, authorization.nonce)
+        .map_err(|e| AppError::Internal(format!("Failed to store SSO nonce: {e}")))?;
+    session
+        .insert(OIDC_PKCE_KEY, authorization.pkce_verifier)
+        .map_err(|e| AppError::Internal(format!("Failed to store SSO verifier: {e}")))?;
+
+    Ok(HttpResponse::Ok().json(SsoStartResponse {
+        authorization_url: authorization.url,
+    }))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/auth/sso/callback",
+    tag = "Auth",
+    params(SsoCallbackQuery),
+    responses(
+        (status = 200, description = "SSO login completed", body = AuthResponse),
+        (status = 401, description = "Invalid or expired callback", body = crate::error::ErrorResponse),
+        (status = 403, description = "Identity is not permitted", body = crate::error::ErrorResponse),
+    ),
+    security(()),
+))]
+/// GET /auth/sso/callback
+/// Validate the provider response, resolve or provision the local account, and
+/// establish the normal Rustrak session.
+pub async fn sso_callback(
+    pool: web::Data<DbPool>,
+    oidc: web::Data<Option<OidcService>>,
+    session: Session,
+    query: web::Query<SsoCallbackQuery>,
+) -> AppResult<impl Responder> {
+    let service = oidc
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::NotFound("SSO is not configured".to_string()))?;
+
+    // Remove all one-time values before validation/exchange so a callback can
+    // never be replayed, including after a failed attempt.
+    let expected_state = take_session_value(&session, OIDC_STATE_KEY)?;
+    let nonce = take_session_value(&session, OIDC_NONCE_KEY)?;
+    let pkce_verifier = take_session_value(&session, OIDC_PKCE_KEY)?;
+    let returned_state = query
+        .state
+        .as_deref()
+        .ok_or_else(|| AppError::Unauthorized("SSO callback is missing state".to_string()))?;
+    if returned_state != expected_state {
+        return Err(AppError::Unauthorized(
+            "SSO callback state did not match".to_string(),
+        ));
+    }
+    if let Some(provider_error) = &query.error {
+        log::warn!("OIDC provider returned an authorization error: {provider_error}");
+        return Err(AppError::Unauthorized(
+            "SSO authorization was denied".to_string(),
+        ));
+    }
+    let code = query
+        .code
+        .clone()
+        .ok_or_else(|| AppError::Unauthorized("SSO callback is missing a code".to_string()))?;
+
+    let identity = service.exchange_code(code, pkce_verifier, nonce).await?;
+    if !is_valid_email(&identity.email) {
+        return Err(AppError::Forbidden(
+            "SSO provider returned an invalid email address".to_string(),
+        ));
+    }
+    let user = UsersService::find_or_provision_oidc(
+        pool.get_ref(),
+        &identity.issuer,
+        &identity.subject,
+        &identity.email,
+        service.auto_provision(),
+    )
+    .await?;
+
+    session.renew();
+    auth::set_user_session(&session, user.id)?;
+    Ok(HttpResponse::Ok().json(AuthResponse { user: user.into() }))
+}
+
+fn take_session_value(session: &Session, key: &str) -> AppResult<String> {
+    let value = session
+        .get::<String>(key)
+        .map_err(|e| AppError::Internal(format!("Failed to read SSO session: {e}")))?;
+    session.remove(key);
+    value.ok_or_else(|| AppError::Unauthorized("SSO session expired; please try again".to_string()))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/auth/logout",
     tag = "Auth",
@@ -361,6 +523,9 @@ pub async fn update_current_user(
         accept_invitation,
         get_invitation,
         login,
+        sso_config,
+        sso_start,
+        sso_callback,
         logout,
         get_current_user,
         update_current_user
@@ -371,6 +536,8 @@ pub async fn update_current_user(
         crate::models::AcceptInvitation,
         AuthResponse,
         UserResponse,
+        SsoConfigResponse,
+        SsoStartResponse,
         UpdatePreferencesRequest,
         InvitationInfoResponse,
     ))
@@ -385,6 +552,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/accept-invitation", web::post().to(accept_invitation))
             .route("/invitation/{token}", web::get().to(get_invitation))
             .route("/login", web::post().to(login))
+            .route("/sso/config", web::get().to(sso_config))
+            .route("/sso/start", web::post().to(sso_start))
+            .route("/sso/callback", web::get().to(sso_callback))
             .route("/logout", web::post().to(logout))
             .route("/me", web::get().to(get_current_user))
             .route("/me", web::patch().to(update_current_user)),

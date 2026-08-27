@@ -73,6 +73,24 @@ async fn main() -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
     })?;
 
+    let oidc_config = rustrak::config::OidcConfig::from_env().map_err(|e| {
+        log::error!("OIDC configuration error: {e}");
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
+    })?;
+    let oidc_service = match oidc_config {
+        Some(oidc_config) => {
+            let service = rustrak::auth::OidcService::discover(oidc_config)
+                .await
+                .map_err(|e| {
+                    log::error!("OIDC configuration error: {e}");
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
+                })?;
+            log::info!("OpenID Connect SSO enabled ({})", service.provider_name());
+            Some(service)
+        }
+        None => None,
+    };
+
     let ingest_dir = rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref());
     rustrak::ingest::prepare_ingest_dir(&ingest_dir)
         .await
@@ -205,6 +223,7 @@ async fn main() -> std::io::Result<()> {
             // Share database pool and config with all handlers
             .app_data(web::Data::new(db_pool.clone()))
             .app_data(web::Data::new(config.clone()))
+            .app_data(web::Data::new(oidc_service.clone()))
             .app_data(sourcemap_provider_data)
             .app_data(sourcemap_store_data)
             .app_data(session_aggregator_data.clone())

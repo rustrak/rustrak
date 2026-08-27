@@ -51,6 +51,17 @@ export async function login(
   return { success: true, data: result.data.user };
 }
 
+/** Start OIDC login, persisting the encrypted state/PKCE session cookie. */
+export async function startSso(): Promise<Result<string, RustrakError>> {
+  const client = await createClient();
+  const result = await client.auth.startSso();
+
+  if (!result.success) return result;
+
+  await applySetCookies(result.data.cookies);
+  return Ok(result.data.authorizationUrl);
+}
+
 /**
  * Logout the current user.
  * Clears the session cookie.

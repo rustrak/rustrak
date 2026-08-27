@@ -1189,3 +1189,86 @@ async fn test_patch_me_unauthenticated_is_rejected() {
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 401);
 }
+
+// =============================================================================
+// OpenID Connect provisioning tests
+// =============================================================================
+
+#[actix_web::test]
+async fn test_oidc_first_login_provisions_admin_and_reuses_subject() {
+    let db = TestDb::new().await;
+
+    let first = UsersService::find_or_provision_oidc(
+        &db.pool,
+        "https://id.example.com",
+        "pocket-id-subject",
+        "Owner@Example.com",
+        true,
+    )
+    .await
+    .expect("first OIDC login should provision a user");
+
+    assert_eq!(first.email, "owner@example.com");
+    assert!(
+        first.is_admin(),
+        "the first account must bootstrap as admin"
+    );
+
+    let returning = UsersService::find_or_provision_oidc(
+        &db.pool,
+        "https://id.example.com",
+        "pocket-id-subject",
+        "new-address@example.com",
+        true,
+    )
+    .await
+    .expect("returning OIDC login should resolve its linked account");
+
+    assert_eq!(returning.id, first.id);
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 1);
+}
+
+#[actix_web::test]
+async fn test_oidc_links_existing_verified_email_account() {
+    let db = TestDb::new().await;
+    let existing = create_test_user(
+        &db.pool,
+        "existing@example.com",
+        "still-usable-password",
+        true,
+    )
+    .await;
+
+    let linked = UsersService::find_or_provision_oidc(
+        &db.pool,
+        "https://id.example.com",
+        "existing-subject",
+        "EXISTING@example.com",
+        true,
+    )
+    .await
+    .expect("verified email should link to the existing account");
+
+    assert_eq!(linked.id, existing.id);
+    assert!(linked.verify_password("still-usable-password").unwrap());
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 1);
+}
+
+#[actix_web::test]
+async fn test_oidc_auto_provision_can_be_disabled() {
+    let db = TestDb::new().await;
+    let result = UsersService::find_or_provision_oidc(
+        &db.pool,
+        "https://id.example.com",
+        "unknown-subject",
+        "unknown@example.com",
+        false,
+    )
+    .await;
+
+    assert!(matches!(
+        result,
+        Err(rustrak::error::AppError::Forbidden(_))
+    ));
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}

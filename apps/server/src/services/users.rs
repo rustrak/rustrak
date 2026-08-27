@@ -58,6 +58,153 @@ impl UsersService {
         Ok(user)
     }
 
+    /// Resolve an immutable OIDC identity to a local user. On first login the
+    /// identity is linked to an existing account with the same verified email,
+    /// or a password-inaccessible local account is provisioned when enabled.
+    pub async fn find_or_provision_oidc(
+        pool: &DbPool,
+        issuer: &str,
+        subject: &str,
+        email: &str,
+        auto_provision: bool,
+    ) -> AppResult<User> {
+        if let Some(user) = Self::get_by_oidc_identity(pool, issuer, subject).await? {
+            if !user.is_active {
+                return Err(AppError::Unauthorized("Account is disabled".to_string()));
+            }
+            Self::touch_oidc_login(pool, issuer, subject, user.id).await?;
+            return Ok(user);
+        }
+
+        if !auto_provision {
+            return Err(AppError::Forbidden(
+                "No Rustrak account is linked to this SSO identity".to_string(),
+            ));
+        }
+
+        let normalized_email = email.trim().to_ascii_lowercase();
+        let mut tx = crate::db::begin_write(pool).await?;
+
+        // SQLite's BEGIN IMMEDIATE already serializes this read-then-write
+        // sequence. PostgreSQL needs an explicit lock so two simultaneous
+        // first logins cannot both observe an empty users table and become
+        // administrators.
+        #[cfg(feature = "postgres")]
+        sqlx::query("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE")
+            .execute(&mut *tx)
+            .await?;
+
+        let mut user = sqlx::query_as::<_, User>(
+            r#"
+            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone
+            FROM users
+            WHERE LOWER(email) = LOWER($1)
+            "#,
+        )
+        .bind(&normalized_email)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if let Some(existing) = &user {
+            if !existing.is_active {
+                return Err(AppError::Unauthorized("Account is disabled".to_string()));
+            }
+        } else {
+            // An OIDC-only user receives an unguessable password hash. This
+            // preserves the existing NOT NULL schema without enabling password
+            // login for the account.
+            let random_password = uuid::Uuid::new_v4().to_string();
+            let request = CreateUserRequest {
+                email: normalized_email.clone(),
+                password: random_password,
+            };
+            let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+                .fetch_one(&mut *tx)
+                .await?;
+            let role = if count.0 == 0 {
+                UserRole::Admin
+            } else {
+                UserRole::Member
+            };
+            user = Some(Self::create_user(&mut *tx, &request, role).await?);
+        }
+
+        let user = user.expect("user is selected or created");
+        let inserted = sqlx::query(
+            r#"
+            INSERT INTO oidc_identities (user_id, issuer, subject, email_at_link)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (issuer, subject) DO NOTHING
+            "#,
+        )
+        .bind(user.id)
+        .bind(issuer)
+        .bind(subject)
+        .bind(&normalized_email)
+        .execute(&mut *tx)
+        .await?;
+
+        if inserted.rows_affected() == 0 {
+            // Another callback linked the same identity concurrently. Avoid
+            // committing a now-unreferenced user and resolve the winner.
+            tx.rollback().await?;
+            return Self::get_by_oidc_identity(pool, issuer, subject)
+                .await?
+                .ok_or_else(|| AppError::Internal("Failed to resolve SSO identity".to_string()));
+        }
+
+        sqlx::query("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1")
+            .bind(user.id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        Ok(user)
+    }
+
+    async fn get_by_oidc_identity(
+        pool: &DbPool,
+        issuer: &str,
+        subject: &str,
+    ) -> AppResult<Option<User>> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            SELECT u.id, u.email, u.password_hash, u.is_active, u.role,
+                   u.created_at, u.last_login, u.language, u.timezone
+            FROM users u
+            INNER JOIN oidc_identities oi ON oi.user_id = u.id
+            WHERE oi.issuer = $1 AND oi.subject = $2
+            "#,
+        )
+        .bind(issuer)
+        .bind(subject)
+        .fetch_optional(pool)
+        .await?;
+        Ok(user)
+    }
+
+    async fn touch_oidc_login(
+        pool: &DbPool,
+        issuer: &str,
+        subject: &str,
+        user_id: i32,
+    ) -> AppResult<()> {
+        let mut tx = crate::db::begin_write(pool).await?;
+        sqlx::query(
+            "UPDATE oidc_identities SET last_login = CURRENT_TIMESTAMP WHERE issuer = $1 AND subject = $2",
+        )
+        .bind(issuer)
+        .bind(subject)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Gets a user by ID
     pub async fn get_by_id(pool: &DbPool, user_id: i32) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(

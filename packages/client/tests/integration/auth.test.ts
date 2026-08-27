@@ -15,6 +15,39 @@ describe('AuthResource Integration', () => {
     });
   });
 
+  describe('OpenID Connect SSO', () => {
+    it('reads the public provider configuration', async () => {
+      const result = await client.auth.getSsoConfig();
+      expect(expectOk(result)).toEqual({
+        enabled: true,
+        provider_name: 'Pocket ID',
+      });
+    });
+
+    it('starts SSO and returns the state cookie', async () => {
+      const result = expectOk(await client.auth.startSso());
+      expect(result.authorizationUrl).toContain('id.example.com/authorize');
+      expect(result.cookies[0]).toContain('oidc-state');
+    });
+
+    it('completes SSO and returns the authenticated session', async () => {
+      const result = expectOk(
+        await client.auth.completeSso({
+          code: 'authorization-code',
+          state: 'test',
+        }),
+      );
+      expect(result.user.email).toBe('test@example.com');
+      expect(result.cookies[0]).toContain('authenticated');
+    });
+
+    it('returns an authentication failure for an incomplete callback', async () => {
+      const result = await client.auth.completeSso({ state: 'test' });
+      expect(result.success).toBe(false);
+      expect(expectErr(result).kind).toBe('unauthenticated');
+    });
+  });
+
   // `POST /auth/register` is invite-only: `routes/auth.rs:106-115` returns
   // `AppError::Forbidden("Registration is invite-only")` for every input,
   // regardless of body. There is no success path and no server-side validation
