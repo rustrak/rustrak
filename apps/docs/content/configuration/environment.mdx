@@ -127,6 +127,11 @@ Pocket ID. SSO is disabled unless `OIDC_ISSUER_URL` is set.
 | `OIDC_REQUIRE_EMAIL_VERIFIED` | `true` | Reject identities whose provider has not verified the email |
 | `OIDC_ALLOWED_DOMAINS` | *(all)* | Optional comma-separated email-domain allowlist |
 
+Both booleans accept `true/false`, `1/0`, `yes/no` and `on/off` in any case; an
+empty value means unset. Any other value refuses to start rather than falling
+back to the default, so a mistyped `OIDC_AUTO_PROVISION` cannot leave account
+creation enabled when it was meant to be off.
+
 ### Pocket ID example
 
 Create an OIDC client in Pocket ID and register this callback URL exactly:

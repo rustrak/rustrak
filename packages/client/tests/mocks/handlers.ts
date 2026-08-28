@@ -1040,6 +1040,12 @@ export const handlers = [
 
   http.get(`${BASE_URL}/auth/sso/callback`, ({ request }) => {
     const url = new URL(request.url);
+    if (!url.searchParams.get('state')) {
+      return appErrorResponse(
+        'Unauthorized',
+        'Unauthorized: SSO callback is missing state',
+      );
+    }
     if (!url.searchParams.get('code')) {
       return appErrorResponse(
         'Unauthorized',

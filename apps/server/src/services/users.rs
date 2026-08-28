@@ -19,7 +19,23 @@ impl UsersService {
         E: sqlx::Executor<'e, Database = crate::db::Db>,
     {
         let password_hash = User::hash_password(&req.password)?;
+        Self::create_user_with_password_hash(executor, &req.email, &password_hash, role).await
+    }
 
+    /// Creates a user from an already-computed password hash.
+    ///
+    /// Separate from [`Self::create_user`] so a caller that must not run Argon2
+    /// itself — the OIDC provisioning path, which holds the `users` lock — can
+    /// pay for the hash before it opens its transaction.
+    pub async fn create_user_with_password_hash<'e, E>(
+        executor: E,
+        email: &str,
+        password_hash: &str,
+        role: UserRole,
+    ) -> AppResult<User>
+    where
+        E: sqlx::Executor<'e, Database = crate::db::Db>,
+    {
         let user = sqlx::query_as::<_, User>(
             r#"
             INSERT INTO users (email, password_hash, role)
@@ -27,8 +43,8 @@ impl UsersService {
             RETURNING id, email, password_hash, is_active, role, created_at, last_login, language, timezone
             "#,
         )
-        .bind(&req.email)
-        .bind(&password_hash)
+        .bind(email)
+        .bind(password_hash)
         .bind(role.as_str())
         .fetch_one(executor)
         .await
@@ -83,6 +99,18 @@ impl UsersService {
         }
 
         let normalized_email = email.trim().to_ascii_lowercase();
+
+        // A provisioned account is OIDC-only: this password exists because the
+        // column is NOT NULL, and nothing ever learns it. Hash it here, off the
+        // Actix worker, instead of inside `create_user` below — Argon2 takes
+        // ~100ms and must not run once the transaction holds the `users` lock,
+        // where it would stall every other writer to that table (including
+        // last-login updates from users who are already provisioned).
+        let password_hash =
+            tokio::task::spawn_blocking(|| User::hash_password(&uuid::Uuid::new_v4().to_string()))
+                .await
+                .map_err(|e| AppError::Internal(format!("Password hashing task failed: {e}")))??;
+
         let mut tx = crate::db::begin_write(pool).await?;
 
         // SQLite's BEGIN IMMEDIATE already serializes this read-then-write
@@ -110,14 +138,6 @@ impl UsersService {
                 return Err(AppError::Unauthorized("Account is disabled".to_string()));
             }
         } else {
-            // An OIDC-only user receives an unguessable password hash. This
-            // preserves the existing NOT NULL schema without enabling password
-            // login for the account.
-            let random_password = uuid::Uuid::new_v4().to_string();
-            let request = CreateUserRequest {
-                email: normalized_email.clone(),
-                password: random_password,
-            };
             let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
                 .fetch_one(&mut *tx)
                 .await?;
@@ -126,10 +146,20 @@ impl UsersService {
             } else {
                 UserRole::Member
             };
-            user = Some(Self::create_user(&mut *tx, &request, role).await?);
+            user = Some(
+                Self::create_user_with_password_hash(
+                    &mut *tx,
+                    &normalized_email,
+                    &password_hash,
+                    role,
+                )
+                .await?,
+            );
         }
 
-        let user = user.expect("user is selected or created");
+        let user = user.ok_or_else(|| {
+            AppError::Internal("Failed to resolve or create SSO account".to_string())
+        })?;
         let inserted = sqlx::query(
             r#"
             INSERT INTO oidc_identities (user_id, issuer, subject, email_at_link)
@@ -162,6 +192,9 @@ impl UsersService {
         Ok(user)
     }
 
+    /// Look up the local account already linked to an `(issuer, subject)` pair.
+    /// The pair is immutable, so a provider-side email change does not move the
+    /// account; only an explicit new link does.
     async fn get_by_oidc_identity(
         pool: &DbPool,
         issuer: &str,
@@ -183,6 +216,9 @@ impl UsersService {
         Ok(user)
     }
 
+    /// Stamp a successful SSO login on both the identity and the local account,
+    /// in one transaction so the two cannot disagree about when the user last
+    /// signed in.
     async fn touch_oidc_login(
         pool: &DbPool,
         issuer: &str,

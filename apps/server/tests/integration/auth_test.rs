@@ -1213,6 +1213,12 @@ async fn test_oidc_first_login_provisions_admin_and_reuses_subject() {
         first.is_admin(),
         "the first account must bootstrap as admin"
     );
+    assert!(
+        !first
+            .verify_password("anything")
+            .expect("the account must carry a well-formed hash for the NOT NULL column"),
+        "an OIDC-provisioned account must not accept a password"
+    );
 
     let returning = UsersService::find_or_provision_oidc(
         &db.pool,

@@ -225,6 +225,7 @@ pub enum ConfigError {
     MissingSessionSecret,
     SessionSecretTooShort { len: usize },
     IncompleteOidcConfig(String),
+    InvalidBoolean { name: String, value: String },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -251,21 +252,43 @@ impl std::fmt::Display for ConfigError {
             ConfigError::IncompleteOidcConfig(name) => {
                 write!(f, "{name} is required when OIDC_ISSUER_URL is configured")
             }
+            ConfigError::InvalidBoolean { name, value } => write!(
+                f,
+                "{name} must be true or false (also accepted: 1/0, yes/no, on/off), got \"{value}\""
+            ),
         }
     }
 }
 
-fn env_bool(name: &str, default: bool) -> bool {
-    env::var(name)
-        .map(|value| match value.trim().to_ascii_lowercase().as_str() {
-            "true" | "1" | "yes" | "on" => true,
-            "false" | "0" | "no" | "off" => false,
-            _ => default,
-        })
-        .unwrap_or(default)
+/// Parse a boolean environment variable.
+///
+/// Unset, or set to an empty/whitespace value, yields `default`; that is the
+/// same "empty means unset" rule `OIDC_ISSUER_URL` follows, so a Compose file
+/// that forwards an empty variable does not have to special-case these.
+/// Anything else must be one of the spellings below. An unrecognized value is
+/// an error rather than the default, because the default of a security switch
+/// such as `OIDC_AUTO_PROVISION` is the permissive one: `flase` must stop the
+/// process, not quietly keep provisioning accounts.
+fn env_bool(name: &str, default: bool) -> Result<bool, ConfigError> {
+    let Ok(value) = env::var(name) else {
+        return Ok(default);
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" => Ok(default),
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(ConfigError::InvalidBoolean {
+            name: name.to_string(),
+            value: value.trim().to_string(),
+        }),
+    }
 }
 
 impl OidcConfig {
+    /// Load OIDC settings from the environment, or `None` when SSO is not
+    /// configured. The four connection settings are all-or-nothing: setting
+    /// `OIDC_ISSUER_URL` without the rest is a startup error, not a silently
+    /// disabled provider.
     pub fn from_env() -> Result<Option<Self>, ConfigError> {
         let Some(issuer_url) = env::var("OIDC_ISSUER_URL")
             .ok()
@@ -304,8 +327,8 @@ impl OidcConfig {
                 .unwrap_or_else(|| "SSO".to_string()),
             scopes,
             allowed_domains,
-            auto_provision: env_bool("OIDC_AUTO_PROVISION", true),
-            require_email_verified: env_bool("OIDC_REQUIRE_EMAIL_VERIFIED", true),
+            auto_provision: env_bool("OIDC_AUTO_PROVISION", true)?,
+            require_email_verified: env_bool("OIDC_REQUIRE_EMAIL_VERIFIED", true)?,
         }))
     }
 }

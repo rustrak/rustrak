@@ -1,8 +1,11 @@
 use openidconnect::core::{CoreClient, CoreProviderMetadata, CoreResponseType};
 use openidconnect::{
-    reqwest, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl,
-    Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope,
+    reqwest, AsyncHttpClient, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret,
+    CsrfToken, HttpClientError, HttpRequest, HttpResponse, IssuerUrl, Nonce, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, Scope,
 };
+use std::future::Future;
+use std::pin::Pin;
 
 use crate::config::OidcConfig;
 use crate::error::{AppError, AppResult};
@@ -23,11 +26,54 @@ pub struct OidcIdentity {
     pub email: String,
 }
 
+/// OIDC provider metadata and the client used for authorization and token exchange.
 #[derive(Clone)]
 pub struct OidcService {
     metadata: CoreProviderMetadata,
-    http_client: reqwest::Client,
+    http_client: HttpsClient,
     config: OidcConfig,
+}
+
+/// HTTP client that rejects cleartext requests before any OIDC data is sent.
+#[derive(Clone)]
+struct HttpsClient(reqwest::Client);
+
+#[derive(Debug, thiserror::Error)]
+enum OidcHttpError {
+    #[error("OIDC endpoint must use HTTPS: {0}")]
+    InsecureEndpoint(String),
+    #[error(transparent)]
+    Request(#[from] HttpClientError<reqwest::Error>),
+}
+
+impl<'c> AsyncHttpClient<'c> for HttpsClient {
+    type Error = OidcHttpError;
+    type Future =
+        Pin<Box<dyn Future<Output = Result<HttpResponse, Self::Error>> + Send + Sync + 'c>>;
+
+    /// Execute an OIDC request only when its destination uses HTTPS.
+    fn call(&'c self, request: HttpRequest) -> Self::Future {
+        Box::pin(async move {
+            if request.uri().scheme_str() != Some("https") {
+                return Err(OidcHttpError::InsecureEndpoint(request.uri().to_string()));
+            }
+
+            AsyncHttpClient::call(&self.0, request)
+                .await
+                .map_err(OidcHttpError::from)
+        })
+    }
+}
+
+/// Reject an endpoint advertised by the provider unless it uses HTTPS.
+fn require_https(url: &openidconnect::url::Url, endpoint: &str) -> AppResult<()> {
+    if url.scheme() == "https" {
+        Ok(())
+    } else {
+        Err(AppError::Internal(format!(
+            "OIDC {endpoint} must use HTTPS"
+        )))
+    }
 }
 
 impl OidcService {
@@ -37,13 +83,25 @@ impl OidcService {
     pub async fn discover(config: OidcConfig) -> AppResult<Self> {
         let issuer = IssuerUrl::new(config.issuer_url.clone())
             .map_err(|e| AppError::Internal(format!("Invalid OIDC issuer URL: {e}")))?;
-        let http_client = reqwest::ClientBuilder::new()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|e| AppError::Internal(format!("Failed to create OIDC HTTP client: {e}")))?;
+        require_https(issuer.url(), "issuer URL")?;
+        let http_client = HttpsClient(
+            reqwest::ClientBuilder::new()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|e| {
+                    AppError::Internal(format!("Failed to create OIDC HTTP client: {e}"))
+                })?,
+        );
         let metadata = CoreProviderMetadata::discover_async(issuer, &http_client)
             .await
             .map_err(|e| AppError::Internal(format!("OIDC discovery failed: {e}")))?;
+        require_https(
+            metadata.authorization_endpoint().url(),
+            "authorization endpoint",
+        )?;
+        if let Some(token_endpoint) = metadata.token_endpoint() {
+            require_https(token_endpoint.url(), "token endpoint")?;
+        }
 
         Ok(Self {
             metadata,
@@ -52,14 +110,17 @@ impl OidcService {
         })
     }
 
+    /// Return the administrator-defined provider label shown on the login page.
     pub fn provider_name(&self) -> &str {
         &self.config.provider_name
     }
 
+    /// Whether a verified, previously unseen identity may create a local account.
     pub fn auto_provision(&self) -> bool {
         self.config.auto_provision
     }
 
+    /// Build an authorization URL and fresh state, nonce, and PKCE protections.
     pub fn authorization_url(&self) -> AppResult<OidcAuthorization> {
         let client = CoreClient::from_provider_metadata(
             self.metadata.clone(),
@@ -94,6 +155,7 @@ impl OidcService {
         })
     }
 
+    /// Exchange an authorization code and return identity claims after validation.
     pub async fn exchange_code(
         &self,
         code: String,
@@ -163,5 +225,32 @@ impl OidcService {
             subject: claims.subject().as_str().to_string(),
             email,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{require_https, HttpsClient, OidcHttpError};
+    use openidconnect::{http, reqwest, url::Url, AsyncHttpClient};
+
+    #[test]
+    fn oidc_endpoints_require_https() {
+        let secure = Url::parse("https://id.example.com/authorize").unwrap();
+        let insecure = Url::parse("http://id.example.com/authorize").unwrap();
+
+        assert!(require_https(&secure, "authorization endpoint").is_ok());
+        assert!(require_https(&insecure, "authorization endpoint").is_err());
+    }
+
+    #[actix_rt::test]
+    async fn oidc_http_client_rejects_cleartext_requests() {
+        let client = HttpsClient(reqwest::Client::new());
+        let request = http::Request::builder()
+            .uri("http://id.example.com/.well-known/openid-configuration")
+            .body(Vec::new())
+            .unwrap();
+
+        let error = AsyncHttpClient::call(&client, request).await.unwrap_err();
+        assert!(matches!(error, OidcHttpError::InsecureEndpoint(_)));
     }
 }

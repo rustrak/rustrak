@@ -24,10 +24,50 @@ describe('AuthResource Integration', () => {
       });
     });
 
+    it('returns an error when the provider configuration request fails', async () => {
+      server.use(
+        http.get('http://localhost:8080/auth/sso/config', () =>
+          HttpResponse.json(
+            {
+              error: {
+                type: 'Internal',
+                message: 'Internal server error',
+              },
+            },
+            { status: 500 },
+          ),
+        ),
+      );
+
+      const error = expectErr(await client.auth.getSsoConfig());
+      expect(error.kind).toBe('server_error');
+      expect(error.message).toBe(SERVER_ERROR_MESSAGE);
+    });
+
     it('starts SSO and returns the state cookie', async () => {
       const result = expectOk(await client.auth.startSso());
       expect(result.authorizationUrl).toContain('id.example.com/authorize');
       expect(result.cookies[0]).toContain('oidc-state');
+    });
+
+    it('returns an error when starting SSO fails', async () => {
+      server.use(
+        http.post('http://localhost:8080/auth/sso/start', () =>
+          HttpResponse.json(
+            {
+              error: {
+                type: 'NotFound',
+                message: 'Resource not found: SSO is not configured',
+              },
+            },
+            { status: 404 },
+          ),
+        ),
+      );
+
+      const error = expectErr(await client.auth.startSso());
+      expect(error.kind).toBe('not_found');
+      expect(error.message).toBe('Resource not found: SSO is not configured');
     });
 
     it('completes SSO and returns the authenticated session', async () => {
@@ -43,6 +83,14 @@ describe('AuthResource Integration', () => {
 
     it('returns an authentication failure for an incomplete callback', async () => {
       const result = await client.auth.completeSso({ state: 'test' });
+      expect(result.success).toBe(false);
+      expect(expectErr(result).kind).toBe('unauthenticated');
+    });
+
+    it('returns an authentication failure when callback state is missing', async () => {
+      const result = await client.auth.completeSso({
+        code: 'authorization-code',
+      });
       expect(result.success).toBe(false);
       expect(expectErr(result).kind).toBe('unauthenticated');
     });

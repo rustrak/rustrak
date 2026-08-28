@@ -7531,6 +7531,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "SSO is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [

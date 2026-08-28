@@ -315,6 +315,7 @@ pub async fn sso_start(
         (status = 200, description = "SSO login completed", body = AuthResponse),
         (status = 401, description = "Invalid or expired callback", body = crate::error::ErrorResponse),
         (status = 403, description = "Identity is not permitted", body = crate::error::ErrorResponse),
+        (status = 404, description = "SSO is not configured", body = crate::error::ErrorResponse),
     ),
     security(()),
 ))]
@@ -347,7 +348,10 @@ pub async fn sso_callback(
         ));
     }
     if let Some(provider_error) = &query.error {
-        log::warn!("OIDC provider returned an authorization error: {provider_error}");
+        // Debug formatting: the provider error arrives as a query parameter
+        // from an unauthenticated caller, and a raw newline in it would forge
+        // extra lines in the log stream. `{:?}` escapes them.
+        log::warn!("OIDC provider returned an authorization error: {provider_error:?}");
         return Err(AppError::Unauthorized(
             "SSO authorization was denied".to_string(),
         ));
@@ -377,6 +381,9 @@ pub async fn sso_callback(
     Ok(HttpResponse::Ok().json(AuthResponse { user: user.into() }))
 }
 
+/// Read a one-time SSO value and remove it in the same step, so a callback
+/// cannot replay a state, nonce or PKCE verifier even when validation fails
+/// afterwards.
 fn take_session_value(session: &Session, key: &str) -> AppResult<String> {
     let value = session
         .get::<String>(key)
