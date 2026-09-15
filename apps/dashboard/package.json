@@ -1,6 +1,6 @@
 {
   "name": "@rustrak/dashboard",
-  "version": "0.14.14",
+  "version": "0.15.0-rc.0",
   "private": true,
   "type": "module",
   "scripts": {

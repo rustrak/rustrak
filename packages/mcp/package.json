@@ -1,6 +1,6 @@
 {
   "name": "@rustrak/mcp",
-  "version": "0.14.14",
+  "version": "0.15.0-rc.0",
   "description": "MCP server that gives AI assistants (Claude, Cursor, Continue) full control of your Rustrak error tracking",
   "homepage": "https://rustrak.github.io/rustrak/sdks/mcp",
   "repository": {
