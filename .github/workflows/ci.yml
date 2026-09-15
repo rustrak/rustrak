@@ -39,8 +39,17 @@ concurrency:
   # is left to finish: it is the run that writes the shared caches.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
+  # The Rust the release binaries are compiled with: docker-publish.yml runs
+  # in `rust:1.94-bookworm` and apps/server/Dockerfile builds from
+  # `rust:1.94-slim-bookworm`. CI used the runner's floating `stable`, which
+  # is newer, so code needing a later compiler passed CI and failed at
+  # release. Bump the three together.
+  RUST_TOOLCHAIN: "1.94"
   # Incremental compilation trades a slower first build for faster rebuilds
   # of the same tree. CI never rebuilds the same tree.
   CARGO_INCREMENTAL: "0"
@@ -110,6 +119,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
 
       # One cache, not two. sccache was layered on top of this before, with
@@ -124,7 +134,9 @@ jobs:
       # repository's 10GB of cache space and evicted the caches worth having.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: apps/server -> target
+          workspaces: |
+            apps/server -> target
+            packages/benchmarks -> target
           save-if: ${{ github.event_name == 'push' }}
 
       - run: cargo fmt --all --check
@@ -141,6 +153,15 @@ jobs:
           cargo run --bin gen_openapi --features openapi --locked
           git diff --exit-code -- openapi.json || \
             (echo "::error::openapi.json is out of date. Run: cd apps/server && cargo run --bin gen_openapi --features openapi" && exit 1)
+
+      # The benchmark CLI is its own crate with its own lockfile (see CLAUDE.md
+      # for why it cannot join the server's workspace). It used to be compiled
+      # in release with LTO on every PR; a type check is what keeps it
+      # building. No clippy or rustfmt yet: the crate has never been held to
+      # either, and bringing it in line is its own change.
+      - name: Check the benchmark crate still compiles
+        working-directory: packages/benchmarks
+        run: cargo check --all-targets --locked
 
   # The default build is SQLite, which happily masks Postgres-only breakage
   # (e.g. sqlx type_name/column-type mismatches only fail at decode time on
@@ -160,6 +181,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

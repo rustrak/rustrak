@@ -53,9 +53,12 @@ pnpm run ci                       # what CI runs: ci:web (turbo) then ci:rust (c
 Two toolchains, two runners. `.github/workflows/ci.yml` runs `pnpm run ci:web`
 (turbo over every JavaScript package) and, on a separate runner, `cargo fmt`,
 `cargo clippy --all-targets --features openapi` and
-`cargo test --features openapi` for the server, plus the Postgres e2e suite on a
-third. The `openapi` feature is on so the OpenAPI drift check reuses the test
-build instead of compiling the crate again with a different feature set.
+`cargo test --features openapi` for the server and `cargo check` for the
+benchmark crate, plus the Postgres e2e suite on a third. The `openapi` feature
+is on so the OpenAPI drift check reuses the test build instead of compiling the
+crate again with a different feature set. CI pins the same Rust the release
+binaries are built with (`RUST_TOOLCHAIN` in `ci.yml`, `rust:1.94` in
+`docker-publish.yml` and the Dockerfile); bump the three together.
 
 - **Nothing in CI builds a release binary.** `cargo build --release` with fat
   LTO and one codegen unit is ten minutes of single-threaded work that no PR

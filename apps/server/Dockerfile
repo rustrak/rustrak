@@ -72,11 +72,15 @@ RUN mkdir -p /data/sourcemaps /rootfs/app/static \
     && chown -R 65532:65532 /data /rootfs/app
 
 # ── runtime: minimal distroless ───────────────────────────────────────────────
+# `--chown` on the directories even though `layout` already owns them: COPY
+# copies a directory's *contents*, and creates the destination directory itself
+# as root. Without it `/data` would be root's, and the SQLite default of
+# `/data/rustrak.db` could not be created by `nonroot`.
 FROM gcr.io/distroless/cc-debian12:nonroot
 WORKDIR /app
 COPY --from=binary /out/rustrak /app/rustrak
-COPY --from=layout /rootfs/app/static /app/static
-COPY --from=layout /data /data
+COPY --chown=65532:65532 --from=layout /rootfs/app/static /app/static
+COPY --chown=65532:65532 --from=layout /data /data
 VOLUME /data
 VOLUME /data/sourcemaps
 EXPOSE 8080

@@ -15,6 +15,7 @@
     "docker:up": "docker compose -f docker-compose.benchmark.yml up -d && pnpm prepare-env",
     "docker:down": "docker compose -f docker-compose.benchmark.yml down -v",
     "docker:logs": "docker compose -f docker-compose.benchmark.yml logs -f",
-    "clean": "cargo clean && rm -rf results/*.json .bench-credentials"
+    "clean": "cargo clean && rm -rf results/*.json .bench-credentials",
+    "check-types": "cargo check --all-targets"
   }
 }

@@ -75,6 +75,9 @@
     "@rustrak/benchmarks#build:dev": {
       "cache": false
     },
+    "@rustrak/benchmarks#check-types": {
+      "cache": false
+    },
 
     "bench": {
       "dependsOn": ["build"],
