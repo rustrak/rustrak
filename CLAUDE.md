@@ -45,8 +45,46 @@ pnpm dev                          # dashboard and docs
 
 pnpm test                         # everything except the Rust side
 (cd apps/server && cargo test)    # unit, integration and e2e
-pnpm run ci                       # what CI runs: test, build, lint, types
+pnpm run ci                       # what CI runs: ci:web (turbo) then ci:rust (cargo)
 ```
+
+## CI and releases
+
+Two toolchains, two runners. `.github/workflows/ci.yml` runs `pnpm run ci:web`
+(turbo over every JavaScript package) and, on a separate runner, `cargo fmt`,
+`cargo clippy --all-targets --features openapi` and
+`cargo test --features openapi` for the server, plus the Postgres e2e suite on a
+third. The `openapi` feature is on so the OpenAPI drift check reuses the test
+build instead of compiling the crate again with a different feature set.
+
+- **Nothing in CI builds a release binary.** `cargo build --release` with fat
+  LTO and one codegen unit is ten minutes of single-threaded work that no PR
+  check reads. It runs only in `docker-publish.yml`.
+- **Cargo is the cache.** Turbo never caches a cargo task (`cache: false` in
+  `turbo.json`): `target/` carries per-crate fingerprints turbo cannot see,
+  and `Swatinem/rust-cache` restores it in CI. Turbo's own experimental Cargo
+  support takes the same position.
+- **Cargo tasks do not parallelise under turbo.** They queue on the target
+  directory lock, so a turbo run mixing `cargo test`, `cargo clippy` and
+  `cargo build` executes them one after another however the graph looks.
+- **The two crates stay separate.** `apps/server` and `packages/benchmarks`
+  cannot share a Cargo workspace: `testcontainers` pins `bollard 0.20` and the
+  benchmarks need `bollard 0.21`, and their `bollard-stubs` `=` pins conflict
+  in one lockfile.
+- **Release images are assembled, not compiled.** `docker-publish.yml` builds
+  the dashboard once and the server once per backend and architecture on
+  native runners inside `rust:1.94-bookworm` (the runtime image is Debian 12,
+  so the glibc has to match), then the Dockerfiles take the finished files
+  from the build context (`BINARY_SOURCE=prebuilt`, `DIST_SOURCE=prebuilt`).
+  `release.yml` calls it as a reusable workflow so the run stays on `main` or
+  `next`, where the Actions cache from the previous release is readable; a
+  run on the tag itself would see none.
+- **pnpm does not manage the crates.** pnpm 12.4 can (`cargo.enabled`), but
+  it is marked early, needs a two-major pnpm upgrade, makes every
+  `pnpm install` require a Rust toolchain (npm publish, the docs deploy, the
+  UI image would all need one) and writes a machine-local
+  `.cargo/config.toml`. `cargo fetch` here takes five seconds; there is
+  nothing to win yet.
 
 First run needs a superuser and a session key:
 

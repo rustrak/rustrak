@@ -28,6 +28,10 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      # The tag this run created, empty when it created none. `publish` below
+      # keys off it.
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,6 +119,7 @@ jobs:
       # carries its own version - it is private, never published, and nothing
       # reads its version, so it must not gate the release.
       - name: Create release
+        id: release
         if: steps.check.outputs.has_changesets == 'false'
         run: |
           set -euo pipefail
@@ -244,5 +249,29 @@ jobs:
           fi
 
           gh release create "${GH_ARGS[@]}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+  # Build and publish the images and the npm packages for the release just
+  # created, in this run rather than in one triggered by the `release:
+  # published` event. The difference is the git ref: this run is on `main` or
+  # `next`, and the Actions cache only serves a run the entries its own ref or
+  # the default branch saved. A run triggered by the release event is on the
+  # tag, a ref no earlier run was ever on, so every release compiled the
+  # server from nothing. Here the compile jobs read and write the caches of
+  # the branch, and the second release from a branch finds the first one's
+  # dependency artifacts waiting.
+  #
+  # deploy-docs.yml still listens for `release: published`; it needs no cache.
+  publish:
+    needs: release
+    if: needs.release.outputs.tag != ''
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit
