@@ -16,9 +16,9 @@ Thank you for your interest in contributing to Rustrak! This guide will help you
 
 Before you begin, ensure you have the following installed:
 
-- **Rust** (1.80+) - For the server component
-- **Node.js** (20.x+) - For the UI and build tools
-- **pnpm** (9.x+) - Package manager
+- **Rust** (1.94+) - For the server component
+- **Node.js** (22.x+) - For the UI and build tools
+- **pnpm** (10.x) - Package manager; `corepack enable` picks the version pinned in `package.json`
 - **Docker** - For local development and testing
 
 ### Local Development Setup
@@ -96,6 +96,9 @@ pnpm format
 
 # Run linter
 pnpm lint
+
+# Everything CI runs: turbo over the JavaScript packages, then cargo for the server
+pnpm run ci
 ```
 
 ## Development Workflow

@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # The standalone dashboard image: the SPA compiled by Vite, served by nginx,
 # with the API proxied to the server named by RUSTRAK_API_URL at start.
 #
@@ -10,8 +12,15 @@
 #
 # Build context is the repository root, because the dashboard depends on
 # `@rustrak/client` from the workspace.
+#
+# Two ways in. `DIST_SOURCE=source` (the default) prunes the workspace and
+# builds the bundle here. `DIST_SOURCE=prebuilt` takes `apps/dashboard/dist`
+# from the context as it is; docker-publish.yml builds the bundle once, on the
+# runner, and feeds the same files to this image and to the server image.
 
-# ── Stage 1: prune the workspace to what the dashboard needs ────────────────
+ARG DIST_SOURCE=source
+
+# ── source: prune the workspace to what the dashboard needs, then build ──────
 FROM node:24-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -22,8 +31,7 @@ WORKDIR /app
 COPY . .
 RUN pnpm dlx turbo prune @rustrak/dashboard --docker
 
-# ── Stage 2: install and build ───────────────────────────────────────────────
-FROM base AS builder
+FROM base AS source
 WORKDIR /app
 COPY --from=pruner /app/out/json/ .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
@@ -31,7 +39,14 @@ COPY --from=pruner /app/out/full/ .
 # `@rustrak/client` is a workspace dependency compiled by its own build.
 RUN pnpm --filter @rustrak/client build && pnpm --filter @rustrak/dashboard build
 
-# ── Stage 3: nginx ───────────────────────────────────────────────────────────
+# ── prebuilt: take the bundle from the context ───────────────────────────────
+FROM scratch AS prebuilt
+COPY apps/dashboard/dist /app/apps/dashboard/dist
+
+# ── the switch ────────────────────────────────────────────────────────────────
+FROM ${DIST_SOURCE} AS dist
+
+# ── nginx ────────────────────────────────────────────────────────────────────
 # `nginx-unprivileged` runs as uid 101 from the first instruction and listens
 # on a port above 1024, so there is no root at any point of the container's
 # life and nothing to drop.
@@ -56,4 +71,4 @@ COPY apps/dashboard/docker/nginx.conf.template /etc/nginx/templates/rustrak.conf
 # a variable `proxy_pass` either would send every API request to the wrong URI.
 COPY apps/dashboard/docker/15-rustrak-api-url.envsh /docker-entrypoint.d/15-rustrak-api-url.envsh
 
-COPY --from=builder /app/apps/dashboard/dist /usr/share/nginx/html
+COPY --from=dist /app/apps/dashboard/dist /usr/share/nginx/html

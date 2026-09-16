@@ -7,6 +7,9 @@ node_modules
 **/.next
 dist
 **/dist
+# ...except the dashboard bundle: apps/dashboard/Dockerfile takes it from the
+# context when built with DIST_SOURCE=prebuilt (see docker-publish.yml).
+!apps/dashboard/dist
 .turbo
 **/.turbo
 target
