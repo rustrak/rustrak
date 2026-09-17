@@ -26,6 +26,13 @@ describe('parseEpochSeconds', () => {
     );
   });
 
+  it('reads the lowercase separator and zulu marker chrono accepts', () => {
+    expect(parseEpochSeconds('1970-01-01t00:16:42z')).toBe(1002);
+    expect(parseEpochSeconds('2016-04-20t20:55:53.845Z')).toBe(
+      1461185753 + 0.845,
+    );
+  });
+
   it('treats a missing offset as UTC, as Relay does', () => {
     expect(parseEpochSeconds('1970-01-01T00:16:42')).toBe(1002);
     expect(parseEpochSeconds('1970-01-01 00:16:42.5')).toBe(1002.5);

@@ -1,11 +1,14 @@
 /**
  * The grammar Relay accepts for a timestamp string, and no more.
  *
- * The hour is bounded because `Date.parse` treats `24:00:00` as midnight the
- * next day, a whole day of drift on a value chrono rejects outright.
+ * Relay parses a string with chrono, which takes `T`, `t` or a space between
+ * the date and the time and `Z` or `z` for UTC (`parse_rfc3339_relaxed` and
+ * `scan::timezone_offset` in chrono). The hour is bounded because `Date.parse`
+ * treats `24:00:00` as midnight the next day, a whole day of drift on a value
+ * chrono rejects outright.
  */
 const ISO_DATE_TIME =
-  /^(\d{4})-(\d{2})-(\d{2})[T ]((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/;
+  /^(\d{4})-(\d{2})-(\d{2})[Tt ]((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d+))?([Zz]|[+-]\d{2}:?\d{2})?$/;
 
 /** February 30th is a date `Date.parse` rolls into March and chrono rejects. */
 function isRealCalendarDate(year: number, month: number, day: number): boolean {
@@ -53,8 +56,10 @@ export function parseEpochSeconds(raw: unknown): number | undefined {
     return undefined;
   }
 
+  // Rebuilt in the one shape ECMAScript guarantees `Date.parse` reads: an
+  // uppercase `T`, and an uppercase `Z` where chrono also took a lowercase one.
   const milliseconds = Date.parse(
-    `${year}-${month}-${day}T${time}${offset ?? 'Z'}`,
+    `${year}-${month}-${day}T${time}${offset?.toUpperCase() ?? 'Z'}`,
   );
   if (!Number.isFinite(milliseconds)) return undefined;
 
