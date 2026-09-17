@@ -7,7 +7,12 @@
     "ro": "Română",
     "label": "Langue",
     "storedOnAccount": "Enregistré sur votre compte.",
-    "saveFailed": "Impossible d’enregistrer votre langue."
+    "saveFailed": "Impossible d’enregistrer votre langue.",
+    "timeZoneLabel": "Fuseau horaire",
+    "timeZonePlaceholder": "Rechercher un fuseau horaire...",
+    "timeZoneNoResults": "Aucun fuseau horaire trouvé.",
+    "timeZoneHint": "Toutes les dates et heures sont affichées dans ce fuseau. Choisissez UTC pour lire la même horloge que vos journaux serveur.",
+    "timeZoneSaveFailed": "Impossible d’enregistrer votre fuseau horaire."
   },
   "app": {
     "title": "Rustrak - Système de suivi d’erreurs",
