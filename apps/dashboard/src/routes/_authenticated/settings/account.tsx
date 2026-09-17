@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { LanguageSelector } from '@/features/user/ui/components/language-selector';
+import { TimeZoneSelector } from '@/features/user/ui/components/time-zone-selector';
 import { translator } from '@/shared/i18n/intl';
 import {
   Card,
@@ -68,8 +69,8 @@ function AccountPage() {
         </Card>
 
         {/* The home for everything that is "how I want this read to me" rather
-            than "who I am". Language today; the timezone preference in
-            rustrak/rustrak#258 belongs in this card, not in a second one. */}
+            than "who I am": the language, and the zone every timestamp is
+            shown in. One card, not two. */}
         <Card>
           <CardHeader>
             <CardTitle>{t('account.regional')}</CardTitle>
@@ -77,8 +78,9 @@ function AccountPage() {
               {t('account.regionalDescription')}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
             <LanguageSelector />
+            <TimeZoneSelector />
           </CardContent>
         </Card>
       </div>

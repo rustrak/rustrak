@@ -7,7 +7,12 @@
     "ro": "Română",
     "label": "Limbă",
     "storedOnAccount": "Salvat în contul tău.",
-    "saveFailed": "Nu s-a putut salva limba."
+    "saveFailed": "Nu s-a putut salva limba.",
+    "timeZoneLabel": "Fus orar",
+    "timeZonePlaceholder": "Caută fusuri orare...",
+    "timeZoneNoResults": "Niciun fus orar găsit.",
+    "timeZoneHint": "Toate datele și orele sunt afișate în acest fus. Alege UTC pentru a citi același ceas ca jurnalele serverului tău.",
+    "timeZoneSaveFailed": "Nu s-a putut salva fusul orar."
   },
   "app": {
     "title": "Rustrak - Sistem de urmărire a erorilor",
