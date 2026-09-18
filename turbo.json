@@ -63,6 +63,10 @@
     "@rustrak/server#test": {
       "cache": false
     },
+    "@rustrak/server#openapi:check": {
+      "dependsOn": ["@rustrak/server#test"],
+      "cache": false
+    },
     "@rustrak/server#lint": {
       "cache": false
     },

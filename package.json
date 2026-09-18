@@ -4,7 +4,7 @@
   "scripts": {
     "ci": "pnpm run ci:web && pnpm run ci:rust",
     "ci:web": "turbo run build test lint format:check check-types doctor --filter=!@rustrak/server --filter=!@rustrak/benchmarks",
-    "ci:rust": "turbo run format:check lint test check-types --filter=@rustrak/server --filter=@rustrak/benchmarks",
+    "ci:rust": "turbo run format:check lint test openapi:check check-types --filter=@rustrak/server --filter=@rustrak/benchmarks",
     "build": "turbo run build",
     "build:dev": "turbo run build:dev",
     "build:docs": "turbo run build --filter=docs",

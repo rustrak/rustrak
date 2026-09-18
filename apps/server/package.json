@@ -10,6 +10,7 @@
     "test": "cargo test --features openapi --locked",
     "lint": "cargo clippy --all-targets --features openapi --locked -- -D warnings",
     "openapi": "cargo run --bin gen_openapi --features openapi --locked",
+    "openapi:check": "pnpm run openapi && git diff --exit-code -- openapi.json",
     "clean": "cargo clean && rm -rf static",
     "format": "cargo fmt",
     "format:check": "cargo fmt -- --check"
