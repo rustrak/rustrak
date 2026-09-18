@@ -7,9 +7,9 @@
     "build:dev": "bash ../../scripts/bundle-dashboard.sh && cargo build",
     "dev": "cargo watch -x run",
     "start": "cargo run --release",
-    "test": "cargo test --features openapi",
-    "lint": "cargo clippy --all-targets --features openapi -- -D warnings",
-    "openapi": "cargo run --bin gen_openapi --features openapi",
+    "test": "cargo test --features openapi --locked",
+    "lint": "cargo clippy --all-targets --features openapi --locked -- -D warnings",
+    "openapi": "cargo run --bin gen_openapi --features openapi --locked",
     "clean": "cargo clean && rm -rf static",
     "format": "cargo fmt",
     "format:check": "cargo fmt -- --check"

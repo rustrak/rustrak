@@ -4,9 +4,12 @@ ARG FEATURES=sqlite
 # The prebuilt cargo-chef image is the rust:<version>-slim-bookworm image plus
 # the chef binary. Installing chef with `cargo install` instead compiled it
 # from source on every release build, two minutes before a line of Rustrak
-# was compiled; the same two minutes on each of the four release images. Bump
-# the Rust version here together with `RUST_TOOLCHAIN` in ci.yml.
-FROM lukemathwalker/cargo-chef:0.1.77-rust-1.94-slim-bookworm AS chef
+# was compiled; the same two minutes on each of the four release images. The
+# digest is the multi-platform index the tag pointed at when it was reviewed
+# (`docker buildx imagetools inspect`), so a retargeted tag cannot change the
+# toolchain silently. Bump the tag, the digest and `RUST_TOOLCHAIN` in ci.yml
+# together.
+FROM lukemathwalker/cargo-chef:0.1.77-rust-1.94-slim-bookworm@sha256:4787c365155bfff657a58c89e6ce05b99e60d343ee57fd4a0fdcbb2547a8e017 AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
