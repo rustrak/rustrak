@@ -16,6 +16,6 @@
     "docker:down": "docker compose -f docker-compose.benchmark.yml down -v",
     "docker:logs": "docker compose -f docker-compose.benchmark.yml logs -f",
     "clean": "cargo clean && rm -rf results/*.json .bench-credentials",
-    "check-types": "echo 'Rust project - no TypeScript types to check'"
+    "check-types": "cargo check --all-targets"
   }
 }

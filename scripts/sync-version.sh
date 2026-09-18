@@ -31,7 +31,12 @@ if ! grep -Eq "^version = \"$VERSION\"$" "$CARGO_TOML"; then
   exit 1
 fi
 
-cd "$SERVER_DIR" && cargo generate-lockfile
+# Refresh the crate's own entry in Cargo.lock and nothing else. This used to be
+# `cargo generate-lockfile`, which throws the lockfile away and resolves every
+# dependency to its newest compatible version: each version PR silently
+# upgraded the whole dependency tree, in the one PR CI does not run on.
+cd "$SERVER_DIR" && cargo update --workspace
+# The spec carries the version in `info.version`.
 cd "$SERVER_DIR" && cargo run --bin gen_openapi --features openapi
 
 echo "Synced version $VERSION to Cargo.toml"

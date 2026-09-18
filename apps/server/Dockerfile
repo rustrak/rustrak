@@ -1,11 +1,15 @@
 ARG FEATURES=sqlite
 
-# ── Stage 1: base image with cargo-chef installed ────────────────────────────
-FROM rust:1.94-slim-bookworm AS chef
+# ── Stage 1: the toolchain, with cargo-chef already installed ────────────────
+# The prebuilt cargo-chef image is the rust:<version>-slim-bookworm image plus
+# the chef binary. Installing chef with `cargo install` instead compiled it
+# from source on every release build, two minutes before a line of Rustrak
+# was compiled; the same two minutes on each of the four release images. Bump
+# the Rust version here together with `RUST_TOOLCHAIN` in ci.yml.
+FROM lukemathwalker/cargo-chef:0.1.77-rust-1.94-slim-bookworm AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-    && rm -rf /var/lib/apt/lists/* \
-    && cargo install cargo-chef --locked
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # ── Stage 2: compute dependency recipe from manifest ─────────────────────────
@@ -14,10 +18,14 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ── Stage 3: compile dependencies (Docker-cached layer) ──────────────────────
+# The layer cache is what makes a second local `docker build` fast: a change
+# under src/ invalidates the build below, never the cook above. A release
+# build in CI starts from nothing, and there the cook is simply the first half
+# of the compile.
 FROM chef AS builder
 ARG FEATURES
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --no-default-features --features ${FEATURES} --recipe-path recipe.json
+RUN cargo chef cook --release --locked --no-default-features --features ${FEATURES} --recipe-path recipe.json
 
 # Build the application binary.
 #
@@ -27,7 +35,7 @@ RUN cargo chef cook --release --no-default-features --features ${FEATURES} --rec
 COPY . .
 RUN --mount=type=secret,id=rustrak_telemetry_key \
     RUSTRAK_TELEMETRY_KEY="$(cat /run/secrets/rustrak_telemetry_key 2>/dev/null || true)" \
-    cargo build --release --no-default-features --features ${FEATURES}
+    cargo build --release --locked --no-default-features --features ${FEATURES}
 
 # Create /data directories for SQLite storage and source map storage
 RUN mkdir -p /data /data/sourcemaps && chown -R 65532:65532 /data
