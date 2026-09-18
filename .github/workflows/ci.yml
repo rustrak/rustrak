@@ -99,12 +99,11 @@ jobs:
   # the wall-clock.
   rust-lint:
     if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
-    # TEMPORARY: both runners, to measure amd64 against arm64 on one commit.
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
+    # The arm64 runner: the same 4 vCPUs, free for a public repository, and
+    # measured on one commit against ubuntu-latest: clippy 1m27s against 1m57s,
+    # the whole job 2m36s against 3m24s. The arm64 image ships too, so this is
+    # one of the two architectures released, not an exotic one.
+    runs-on: ubuntu-24.04-arm
     defaults:
       run:
         working-directory: apps/server
@@ -137,12 +136,10 @@ jobs:
   # ── Rust: the test suites on SQLite, and the OpenAPI drift check ───────────
   rust-test:
     if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
-    # TEMPORARY: both runners, to measure amd64 against arm64 on one commit.
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
+    # arm64 for the same reason as rust-lint: 3m40s against 4m08s on one
+    # commit. postgres-e2e below stays on amd64, so both shipped architectures
+    # run the test suite on every PR.
+    runs-on: ubuntu-24.04-arm
     defaults:
       run:
         working-directory: apps/server
