@@ -99,10 +99,12 @@ jobs:
   # the wall-clock.
   rust-lint:
     if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
-    # The arm64 runner: same 4 vCPUs, free for a public repository, and the
-    # faster of the two for a cold compile. The arm64 image ships too, so this
-    # is one of the two architectures released, not an exotic one.
-    runs-on: ubuntu-24.04-arm
+    # TEMPORARY: both runners, to measure amd64 against arm64 on one commit.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
         working-directory: apps/server
@@ -135,7 +137,12 @@ jobs:
   # ── Rust: the test suites on SQLite, and the OpenAPI drift check ───────────
   rust-test:
     if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: ubuntu-24.04-arm
+    # TEMPORARY: both runners, to measure amd64 against arm64 on one commit.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
     defaults:
       run:
         working-directory: apps/server
