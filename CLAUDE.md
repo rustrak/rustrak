@@ -45,8 +45,34 @@ pnpm dev                          # dashboard and docs
 
 pnpm test                         # everything except the Rust side
 (cd apps/server && cargo test)    # unit, integration and e2e
-pnpm run ci                       # what CI runs: test, build, lint, types
+pnpm run ci                       # what CI runs: ci:web (turbo) then ci:rust (cargo)
 ```
+
+## CI and releases
+
+Nothing in `.github/workflows/` caches anything: every job compiles from
+scratch, and the time of a cold run is the time. Speed comes from one runner
+per concern instead. `ci.yml` runs `pnpm run ci:web` (turbo over the
+JavaScript packages), `rust-lint` (rustfmt, clippy for both backends, a type
+check of the benchmark crate), `rust-test` (the SQLite suites and the OpenAPI
+drift check) and `postgres-e2e`, four runners in parallel. `docker-publish.yml`
+builds each image once per architecture on a native runner and merges the
+digests into one manifest list.
+
+- **Nothing in CI builds a release binary.** `cargo build --release` with fat
+  LTO and one codegen unit is ten minutes of single-threaded work that no PR
+  check reads. It runs only inside `docker build`, once per image and
+  architecture, at release time.
+- **CI pins the Rust the images are built with.** `RUST_TOOLCHAIN` in
+  `ci.yml` and `release.yml`, and the `cargo-chef` image tag in
+  `apps/server/Dockerfile`; bump them together.
+- **Turbo never caches a cargo task** (`cache: false` in `turbo.json`), and
+  cargo tasks do not run in parallel under turbo: they queue on the target
+  directory lock. CI calls cargo directly for that reason.
+- **The two crates stay separate.** `apps/server` and `packages/benchmarks`
+  cannot share a Cargo workspace: `testcontainers` pins `bollard 0.20` and the
+  benchmarks need `bollard 0.21`, and their `bollard-stubs` `=` pins conflict
+  in one lockfile.
 
 First run needs a superuser and a session key:
 

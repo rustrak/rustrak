@@ -1,5 +1,14 @@
 name: "Rust Security"
 
+# One tool. cargo-deny checks the RustSec advisory database and the licence
+# allow-list in deny.toml, from a prebuilt binary, in about ten seconds.
+#
+# Two more jobs used to run here. `cargo audit` read the same RustSec database
+# cargo-deny does, and spent three minutes compiling itself from source on
+# every PR first. A clippy job linted the postgres and sqlite feature sets with
+# its own target directory, a third copy of the one CI already builds; those
+# lints now run in ci.yml's `rust-lint` job.
+
 on:
   push:
     branches: ["main"]
@@ -13,8 +22,11 @@ on:
       - "apps/server/**"
       - "deny.toml"
   schedule:
-    - cron: "0 4 * * 1" # Weekly Monday 04:00 UTC — catches new advisories
+    - cron: "0 4 * * 1" # Weekly Monday 04:00 UTC. Catches new advisories.
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   cargo-deny:
@@ -23,41 +35,11 @@ jobs:
     if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check advisories licenses
           arguments: --all-features
           manifest-path: apps/server/Cargo.toml
-
-  cargo-audit:
-    name: "cargo audit (RustSec)"
-    if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked --quiet
-      - name: Run cargo audit
-        run: cargo audit
-        working-directory: apps/server
-
-  clippy:
-    name: "clippy (security + correctness lints)"
-    if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: "apps/server -> target"
-      - name: Run clippy (postgres + openapi)
-        run: cargo clippy --all-targets --no-default-features --features postgres,openapi -- -D warnings -W clippy::suspicious -W clippy::correctness
-        working-directory: apps/server
-      - name: Run clippy (sqlite)
-        run: cargo clippy --all-targets --features sqlite,openapi -- -D warnings -W clippy::suspicious -W clippy::correctness
-        working-directory: apps/server
