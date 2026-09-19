@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
+import { getSsoConfig } from '@/features/user/api/queries';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { LoginForm } from './_components/login-form';
 
@@ -12,8 +13,13 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const t = await getTranslations('auth');
+  const [ssoConfig, params] = await Promise.all([getSsoConfig(), searchParams]);
 
   return (
     <div className="min-h-screen flex">
@@ -80,7 +86,10 @@ export default async function LoginPage() {
           </div>
 
           {/* Form */}
-          <LoginForm />
+          <LoginForm
+            ssoConfig={ssoConfig.success ? ssoConfig.data : null}
+            ssoFailed={params.error === 'sso'}
+          />
         </div>
       </div>
     </div>

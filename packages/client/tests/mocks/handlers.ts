@@ -1021,6 +1021,48 @@ export const handlers = [
   }),
 
   // Authentication
+  http.get(`${BASE_URL}/auth/sso/config`, () =>
+    HttpResponse.json({ enabled: true, provider_name: 'Pocket ID' }),
+  ),
+
+  http.post(`${BASE_URL}/auth/sso/start`, () =>
+    HttpResponse.json(
+      {
+        authorization_url: 'https://id.example.com/authorize?client_id=rustrak',
+      },
+      {
+        headers: {
+          'Set-Cookie': 'rustrak_session=oidc-state; HttpOnly; SameSite=Lax',
+        },
+      },
+    ),
+  ),
+
+  http.get(`${BASE_URL}/auth/sso/callback`, ({ request }) => {
+    const url = new URL(request.url);
+    if (!url.searchParams.get('state')) {
+      return appErrorResponse(
+        'Unauthorized',
+        'Unauthorized: SSO callback is missing state',
+      );
+    }
+    if (!url.searchParams.get('code')) {
+      return appErrorResponse(
+        'Unauthorized',
+        'Unauthorized: SSO callback is missing a code',
+      );
+    }
+
+    return HttpResponse.json(
+      { user: mockUser },
+      {
+        headers: {
+          'Set-Cookie': 'rustrak_session=authenticated; HttpOnly; SameSite=Lax',
+        },
+      },
+    );
+  }),
+
   //
   // `POST /auth/register` is live (`routes/auth.rs:277`) but
   // `routes/auth.rs:106-115` ignores its body entirely and always returns
@@ -2236,7 +2278,13 @@ export const handlers = [
   // AI Agent Monitoring — per-tool table
   http.get(`${BASE_URL}/api/projects/:projectId/agents/tools/stats`, () => {
     return HttpResponse.json([
-      { tool: 'web_search', calls: 14, errors: 1, avg_ms: 320.0, p95_ms: 910.0 },
+      {
+        tool: 'web_search',
+        calls: 14,
+        errors: 1,
+        avg_ms: 320.0,
+        p95_ms: 910.0,
+      },
     ]);
   }),
 

@@ -13,10 +13,17 @@ import type {
   ProjectMember,
   Result,
   RustrakError,
+  SsoConfig,
   TeamMember,
   User,
 } from '@rustrak/client';
 import { createClient } from '@/shared/api/rustrak';
+
+/** Public SSO configuration for the unauthenticated login page. */
+export async function getSsoConfig(): Promise<Result<SsoConfig, RustrakError>> {
+  const client = await createClient();
+  return client.auth.getSsoConfig();
+}
 
 /**
  * Whether there is a session, and if not, why not.

@@ -30,6 +30,15 @@ services:
       # The host your SDKs will send events to, e.g. https://rustrak.example.com.
       # Without it the DSN carries the bind address, which nothing can reach.
       - PUBLIC_URL=${PUBLIC_URL:-}
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URL=${OIDC_REDIRECT_URL:-}
+      - OIDC_PROVIDER_NAME=${OIDC_PROVIDER_NAME:-SSO}
+      - OIDC_SCOPES=${OIDC_SCOPES:-openid email profile}
+      - OIDC_AUTO_PROVISION=${OIDC_AUTO_PROVISION:-true}
+      - OIDC_REQUIRE_EMAIL_VERIFIED=${OIDC_REQUIRE_EMAIL_VERIFIED:-true}
+      - OIDC_ALLOWED_DOMAINS=${OIDC_ALLOWED_DOMAINS:-}
       - SOURCEMAP_STORAGE_PATH=/data/sourcemaps
     volumes:
       - sourcemap_data:/data/sourcemaps

@@ -1,14 +1,14 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { RustrakError } from '@rustrak/client';
+import type { RustrakError, SsoConfig } from '@rustrak/client';
 import { Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { login } from '@/features/user/api/mutations';
+import { login, startSso } from '@/features/user/api/mutations';
 import { SERVER_ERROR_PATH } from '@/shared/lib/form-errors';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import {
@@ -61,11 +61,25 @@ function formatWait(seconds: number, t: LoginTranslator): string {
   return t('form.waitHours', { count: hours });
 }
 
-export function LoginForm() {
+export function LoginForm({
+  ssoConfig,
+  ssoFailed,
+}: {
+  ssoConfig: SsoConfig | null;
+  ssoFailed: boolean;
+}) {
   const t = useTranslations('auth');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isSsoPending, startSsoTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
+  // Not `useState(ssoFailed)`: a callback failure arrives as `?error=sso`, so
+  // the prop is the source of truth and copying it into state would freeze it
+  // at the value the first render saw. These two flags only record what the
+  // reader did about it -- retried, or hit a failure while starting.
+  const [ssoErrorDismissed, setSsoErrorDismissed] = useState(false);
+  const [ssoStartFailed, setSsoStartFailed] = useState(false);
+  const hasSsoError = ssoStartFailed || (ssoFailed && !ssoErrorDismissed);
 
   const loginSchema = z.object({
     email: z.email(t('form.emailInvalid')),
@@ -81,6 +95,8 @@ export function LoginForm() {
   });
 
   const onSubmit = (data: LoginFormData) => {
+    if (isPending || isSsoPending) return;
+
     form.clearErrors();
 
     startTransition(async () => {
@@ -131,12 +147,59 @@ export function LoginForm() {
     });
   };
 
+  const onSsoLogin = () => {
+    setSsoErrorDismissed(true);
+    setSsoStartFailed(false);
+    startSsoTransition(async () => {
+      const result = await startSso();
+      if (!result.success) {
+        setSsoStartFailed(true);
+        return;
+      }
+
+      window.location.assign(result.data);
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">{t('form.title')}</h1>
         <p className="text-muted-foreground">{t('form.subtitle')}</p>
       </div>
+
+      {ssoConfig?.enabled && (
+        <>
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full font-extrabold uppercase tracking-widest text-xs py-6"
+              disabled={isSsoPending || isPending}
+              onClick={onSsoLogin}
+            >
+              {isSsoPending
+                ? t('form.ssoRedirecting')
+                : t('form.continueWithSso', {
+                    provider: ssoConfig.provider_name ?? 'SSO',
+                  })}
+            </Button>
+            {hasSsoError && (
+              <p className="text-sm font-medium text-destructive" role="alert">
+                {t('form.ssoFailure')}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3" aria-hidden="true">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase tracking-widest text-muted-foreground">
+              {t('form.or')}
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -153,7 +216,7 @@ export function LoginForm() {
                     type="email"
                     placeholder={t('form.emailPlaceholder')}
                     autoComplete="email"
-                    disabled={isPending}
+                    disabled={isPending || isSsoPending}
                     className="bg-background border-border px-4 py-3.5 text-sm placeholder:text-muted-foreground/30"
                     {...field}
                   />
@@ -179,14 +242,14 @@ export function LoginForm() {
                       type={showPassword ? 'text' : 'password'}
                       placeholder={t('form.passwordPlaceholder')}
                       autoComplete="current-password"
-                      disabled={isPending}
+                      disabled={isPending || isSsoPending}
                       className="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-4 py-3.5 pr-10 text-sm shadow-xs outline-none placeholder:text-muted-foreground/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
                       {...field}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((prev) => !prev)}
-                      disabled={isPending}
+                      disabled={isPending || isSsoPending}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                       tabIndex={-1}
                       aria-label={
@@ -214,7 +277,7 @@ export function LoginForm() {
           <Button
             type="submit"
             className="w-full font-extrabold uppercase tracking-widest text-xs py-6 mt-2"
-            disabled={isPending}
+            disabled={isPending || isSsoPending}
           >
             {isPending ? t('form.signingIn') : t('form.login')}
           </Button>

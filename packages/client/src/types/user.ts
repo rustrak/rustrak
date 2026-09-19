@@ -4,6 +4,8 @@ import type {
   loginRequestSchema,
   loginResultSchema,
   registerRequestSchema,
+  ssoConfigSchema,
+  ssoStartSchema,
   updatePreferencesRequestSchema,
   userSchema,
 } from '../schemas/user.js';
@@ -42,3 +44,9 @@ export type LoginRequest = z.infer<typeof loginRequestSchema>;
  * RegisterRequest - data needed to create a new user account
  */
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;
+
+/** Public configuration used to decide whether to show SSO on the login page. */
+export type SsoConfig = z.infer<typeof ssoConfigSchema>;
+
+/** One-time authorization URL returned when starting SSO. */
+export type SsoStart = z.infer<typeof ssoStartSchema>;
