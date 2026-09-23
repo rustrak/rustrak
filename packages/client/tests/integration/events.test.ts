@@ -71,6 +71,41 @@ describe('EventsResource Integration', () => {
     });
   });
 
+  describe('getBySentryId()', () => {
+    it('resolves the SDK ID to full detail and the owning issue', async () => {
+      const detail = expectOk(
+        await client.events.get(
+          1,
+          '323e4567-e89b-12d3-a456-426614174000',
+          '523e4567-e89b-12d3-a456-426614174000',
+        ),
+      );
+      for (const id of [detail.event_id, detail.event_id.replaceAll('-', '')]) {
+        expect(expectOk(await client.events.getBySentryId(1, id))).toEqual(
+          detail,
+        );
+      }
+    });
+    it('returns not_found for an inaccessible project or unknown SDK ID', async () => {
+      expect(
+        expectErr(
+          await client.events.getBySentryId(
+            2,
+            '523e4567-e89b-12d3-a456-426614174000',
+          ),
+        ).kind,
+      ).toBe('not_found');
+      expect(
+        expectErr(
+          await client.events.getBySentryId(
+            1,
+            '00000000000000000000000000000000',
+          ),
+        ).kind,
+      ).toBe('not_found');
+    });
+  });
+
   describe('get()', () => {
     it('should fetch event detail with full data', async () => {
       const event = expectOk(
