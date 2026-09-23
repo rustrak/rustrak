@@ -130,22 +130,16 @@ impl ErrorProcessor {
             read_event_with_location(&self.ingest_dir, metadata.project_id, &metadata.event_id)
                 .await?;
 
-        // 1. Double-check rate limits (for backlog scenarios)
-        if let Some(_exceeded) =
+        // Ingest already fsynced this payload and acknowledged it. A later quota
+        // change may defer digest, but cannot revoke that delivery acknowledgement.
+        // Internal errors retain the pending file for the existing recovery worker.
+        if let Some(exceeded) =
             RateLimitService::check_quota(pool, &project, &self.rate_limit_config).await?
         {
-            log::warn!(
-                "Event {} discarded due to quota exceeded (backlog)",
-                metadata.event_id
-            );
-            delete_event_at(
-                &self.ingest_dir,
-                metadata.project_id,
-                &metadata.event_id,
-                storage_location,
-            )
-            .await?;
-            return Ok(());
+            return Err(AppError::Internal(format!(
+                "Accepted event {} remains queued: quota unavailable for {} seconds",
+                metadata.event_id, exceeded.retry_after
+            )));
         }
 
         // 2. Parse event from filesystem
