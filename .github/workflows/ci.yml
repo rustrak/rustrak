@@ -31,6 +31,8 @@ on:
   # otherwise never checked.
   push:
     branches: [main, next]
+  # By hand, for a branch: the same jobs as a push, `rust-release` included.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -172,16 +174,16 @@ jobs:
   # a `cfg(debug_assertions)` branch, a link-time failure, a warning that only
   # optimisation raises. It is what docker-publish.yml compiles at release
   # time, and it was the ten-minute step that left the PR gate. So it runs on
-  # every push to main and next instead, where nobody waits for it, and a
-  # release never finds out first. One runner per backend: the crate itself
-  # is the slow part under LTO and it does not parallelise.
+  # every push to main and next instead (and on a manual dispatch), where
+  # nobody waits for it, and a release never finds out first. One runner per
+  # backend: the crate itself is the slow part under LTO and it does not
+  # parallelise.
   rust-release:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
         features: [sqlite, postgres]
-    name: rust-release (${{ matrix.features }})
     runs-on: ubuntu-24.04-arm
     defaults:
       run:
