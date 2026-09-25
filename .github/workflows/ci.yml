@@ -167,6 +167,36 @@ jobs:
           git diff --exit-code -- openapi.json || \
             (echo "::error::openapi.json is out of date. Run: cd apps/server && cargo run --bin gen_openapi --features openapi" && exit 1)
 
+  # ── Rust: the release profile, on the release lines only ───────────────────
+  # Fat LTO with one codegen unit is a different compile from the test profile:
+  # a `cfg(debug_assertions)` branch, a link-time failure, a warning that only
+  # optimisation raises. It is what docker-publish.yml compiles at release
+  # time, and it was the ten-minute step that left the PR gate. So it runs on
+  # every push to main and next instead, where nobody waits for it, and a
+  # release never finds out first. One runner per backend: the crate itself
+  # is the slow part under LTO and it does not parallelise.
+  rust-release:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [sqlite, postgres]
+    name: rust-release (${{ matrix.features }})
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - run: cargo build --release --locked --no-default-features --features ${{ matrix.features }}
+
   # ── Rust: the e2e suite on a real PostgreSQL ───────────────────────────────
   # The default build is SQLite, which happily masks Postgres-only breakage
   # (e.g. sqlx type_name/column-type mismatches only fail at decode time on

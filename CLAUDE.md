@@ -59,10 +59,12 @@ drift check) and `postgres-e2e`, four runners in parallel. `docker-publish.yml`
 builds each image once per architecture on a native runner and merges the
 digests into one manifest list.
 
-- **Nothing in CI builds a release binary.** `cargo build --release` with fat
+- **No PR check builds a release binary.** `cargo build --release` with fat
   LTO and one codegen unit is ten minutes of single-threaded work that no PR
-  check reads. It runs only inside `docker build`, once per image and
-  architecture, at release time.
+  check reads. `rust-release` compiles both backends in that profile on every
+  push to `main` and `next`, where nobody waits for it, so a release-only
+  failure shows up before a release is cut; `docker build` compiles it again
+  per image and architecture at release time.
 - **CI pins the Rust the images are built with.** `RUST_TOOLCHAIN` in
   `ci.yml` and `release.yml`, and the `cargo-chef` image tag in
   `apps/server/Dockerfile`; bump them together.
