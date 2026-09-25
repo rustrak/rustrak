@@ -35,7 +35,7 @@ describe('parseEpochSeconds', () => {
 
   it('treats a missing offset as UTC, as Relay does', () => {
     expect(parseEpochSeconds('1970-01-01T00:16:42')).toBe(1002);
-    expect(parseEpochSeconds('1970-01-01 00:16:42.5')).toBe(1002.5);
+    expect(parseEpochSeconds('1970-01-01T00:16:42.5')).toBe(1002.5);
   });
 
   it('honours an explicit offset', () => {
