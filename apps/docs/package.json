@@ -1,6 +1,6 @@
 {
   "name": "docs",
-  "version": "0.15.10-rc.2",
+  "version": "0.15.10",
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",

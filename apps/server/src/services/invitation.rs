@@ -22,21 +22,20 @@ impl InvitationService {
         let role = UserRole::parse(&input.role)
             .ok_or_else(|| AppError::Validation(format!("Invalid role: {}", input.role)))?;
 
-        if !crate::routes::auth::is_valid_email(&input.email) {
+        let email = User::normalize_email(&input.email);
+
+        if !crate::routes::auth::is_valid_email(&email) {
             return Err(AppError::Validation("Invalid email format".to_string()));
         }
 
-        if UsersService::get_by_email(pool, &input.email)
-            .await?
-            .is_some()
-        {
+        if UsersService::get_by_email(pool, &email).await?.is_some() {
             return Err(
                 AppError::Conflict("A user with that email already exists".to_string())
                     .with_field("email", FieldErrorCode::AlreadyExists),
             );
         }
 
-        if Self::pending_for_email(pool, &input.email).await?.is_some() {
+        if Self::pending_for_email(pool, &email).await?.is_some() {
             return Err(AppError::Conflict(
                 "A pending invitation for that email already exists".to_string(),
             )
@@ -54,7 +53,7 @@ impl InvitationService {
             "#,
         )
         .bind(&token)
-        .bind(&input.email)
+        .bind(&email)
         .bind(role.as_str())
         .bind(expires_at)
         .bind(invited_by)
@@ -97,7 +96,7 @@ impl InvitationService {
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
             SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at
-            FROM invitations WHERE email = $1 AND status = 'pending'
+            FROM invitations WHERE LOWER(email) = LOWER($1) AND status = 'pending'
             "#,
         )
         .bind(email)
@@ -125,6 +124,17 @@ impl InvitationService {
         // login (password is simply required, not length-restricted).
         if password.is_empty() {
             return Err(AppError::Validation("Password is required".to_string()));
+        }
+
+        // An invitation from before email normalization can name a case
+        // variant of an existing account.
+        if UsersService::get_by_email(pool, &invitation.email)
+            .await?
+            .is_some()
+        {
+            return Err(AppError::Conflict(
+                "A user with that email already exists".to_string(),
+            ));
         }
 
         let role = UserRole::from_db(&invitation.role);

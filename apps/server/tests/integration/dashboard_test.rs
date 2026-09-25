@@ -315,12 +315,14 @@ async fn the_switch_keeps_a_present_build_unmounted() {
     let off = DashboardConfig {
         dir: root.clone(),
         enabled: false,
+        url: None,
     };
     assert!(Dashboard::from_config(&off).is_none());
 
     let on = DashboardConfig {
         dir: root,
         enabled: true,
+        url: None,
     };
     assert!(Dashboard::from_config(&on).is_some());
 }

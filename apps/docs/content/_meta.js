@@ -47,6 +47,7 @@ export default {
   },
   'getting-started': 'Getting Started',
   configuration: 'Configuration',
+  upgrading: 'Upgrading',
   usage: 'Usage',
   sdks: 'SDKs & Integrations',
   troubleshooting: 'Troubleshooting',

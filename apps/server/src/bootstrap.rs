@@ -33,7 +33,7 @@ pub async fn create_superuser_if_needed(pool: &DbPool) -> AppResult<()> {
         ));
     }
 
-    let email = parts[0].trim();
+    let email = crate::models::User::normalize_email(parts[0]);
     let password = parts[1];
 
     if password.is_empty() {
@@ -44,7 +44,7 @@ pub async fn create_superuser_if_needed(pool: &DbPool) -> AppResult<()> {
 
     // Create superuser
     let req = CreateUserRequest {
-        email: email.to_string(),
+        email: email.clone(),
         password: password.to_string(),
     };
 

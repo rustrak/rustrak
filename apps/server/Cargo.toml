@@ -1,6 +1,6 @@
 [package]
 name = "rustrak"
-version = "0.15.0-rc.2"
+version = "0.15.0"
 edition = "2021"
 authors = ["Rustrak Team"]
 description = "Ultra-lightweight error tracking server compatible with Sentry SDKs"

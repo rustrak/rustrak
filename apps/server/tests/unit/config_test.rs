@@ -549,3 +549,76 @@ fn do_not_track_is_read_from_the_conventional_variable() {
         });
     }
 }
+
+// =============================================================================
+// Where alert notifications link to
+// =============================================================================
+
+/// Runs `body` with `DASHBOARD_URL`, `PUBLIC_URL`, `HOST` and `PORT` as given,
+/// restoring all of them and `DATABASE_URL` afterwards.
+fn with_link_env<T>(
+    dashboard_url: Option<&str>,
+    public_url: Option<&str>,
+    body: impl FnOnce() -> T,
+) -> T {
+    const VARS: [&str; 5] = [
+        "DATABASE_URL",
+        "DASHBOARD_URL",
+        "PUBLIC_URL",
+        "HOST",
+        "PORT",
+    ];
+    let saved: Vec<_> = VARS.iter().map(|v| std::env::var(v).ok()).collect();
+    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
+    std::env::set_var("HOST", "0.0.0.0");
+    std::env::set_var("PORT", "8080");
+    for (var, value) in [("DASHBOARD_URL", dashboard_url), ("PUBLIC_URL", public_url)] {
+        match value {
+            Some(v) => std::env::set_var(var, v),
+            None => std::env::remove_var(var),
+        }
+    }
+
+    let out = body();
+
+    for (var, value) in VARS.iter().zip(saved) {
+        match value {
+            Some(v) => std::env::set_var(var, v),
+            None => std::env::remove_var(var),
+        }
+    }
+    out
+}
+
+/// The server serves the dashboard, so the address SDKs reach is also the one
+/// people open: without `DASHBOARD_URL`, alert links follow `PUBLIC_URL`.
+#[test]
+#[serial]
+fn alert_links_follow_public_url_when_dashboard_url_is_unset() {
+    with_link_env(None, Some("https://rustrak.example.com/"), || {
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert_eq!(config.dashboard_url(), "https://rustrak.example.com");
+    });
+}
+
+#[test]
+#[serial]
+fn dashboard_url_wins_for_a_dashboard_on_its_own_host() {
+    with_link_env(
+        Some("https://ui.example.com/"),
+        Some("https://api.example.com"),
+        || {
+            let config = Config::from_env().expect("Config::from_env() should succeed");
+            assert_eq!(config.dashboard_url(), "https://ui.example.com");
+        },
+    );
+}
+
+#[test]
+#[serial]
+fn alert_links_fall_back_to_the_bind_address() {
+    with_link_env(Some("  "), None, || {
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert_eq!(config.dashboard_url(), "http://0.0.0.0:8080");
+    });
+}

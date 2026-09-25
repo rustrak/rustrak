@@ -1088,13 +1088,3 @@ body:has(.landing-root) {
      wanted in both cases. */
   margin: 0 auto;
 }
-
-/* The 0.15 release candidate announcement: the brand's lime rather than the
-   theme's grey, so it reads as news and not as chrome. Unlayered on purpose,
-   which is what lets it win over the theme's `@layer utilities` classes
-   without `!important`; `background` as the shorthand also clears the dark
-   theme's gradient. Remove with the banner in `(docs)/layout.tsx`. */
-.nextra-banner {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}

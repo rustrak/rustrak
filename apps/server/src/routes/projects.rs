@@ -275,6 +275,7 @@ mod tests {
             dashboard: DashboardConfig {
                 dir: "./static".to_string(),
                 enabled: true,
+                url: None,
             },
             telemetry: crate::config::TelemetryConfig {
                 enabled: false,

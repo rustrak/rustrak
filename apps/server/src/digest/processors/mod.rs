@@ -140,6 +140,12 @@ impl Processors {
         }
     }
 
+    /// Where alert notifications link to; see [`crate::config::Config::dashboard_url`].
+    pub fn with_dashboard_url(mut self, url: impl Into<String>) -> Self {
+        self.errors.dashboard_url = url.into();
+        self
+    }
+
     pub fn with_counters(mut self, counters: &'static crate::telemetry::Counters) -> Self {
         self.counters = counters;
         self

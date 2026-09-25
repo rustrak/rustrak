@@ -46,6 +46,7 @@ fn create_test_config() -> Config {
         dashboard: DashboardConfig {
             dir: "./static".to_string(),
             enabled: true,
+            url: None,
         },
         telemetry: rustrak::config::TelemetryConfig {
             enabled: false,
@@ -580,4 +581,95 @@ async fn malformed_log_item_is_dropped_and_sibling_event_still_ingests() {
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+}
+
+/// A new issue's alert links into the dashboard at the address the processors
+/// were given, which `main` resolves from `DASHBOARD_URL` or `PUBLIC_URL`.
+/// Before 0.15 the digest read `DASHBOARD_URL` itself and fell back to
+/// `http://localhost:3000`, the port of a dashboard container that no longer
+/// exists.
+#[actix_web::test]
+async fn new_issue_alert_links_to_the_dashboard_the_processors_were_given() {
+    use rustrak::digest::processors::{Processor, ProcessorCtx};
+    use rustrak::models::{
+        AlertRuleChannelInput, AlertType, ChannelType, CreateAlertRule, CreateNotificationChannel,
+    };
+    use rustrak::services::AlertService;
+
+    let db = TestDb::new().await;
+    let (project, _) = create_test_project(&db.pool, "Alert Links").await;
+    let channel = AlertService::create_channel(
+        &db.pool,
+        CreateNotificationChannel {
+            name: "Links Webhook".to_string(),
+            provider_type: ChannelType::Webhook,
+            credentials: json!({ "url": "https://example.com/webhook" }),
+            is_enabled: true,
+        },
+    )
+    .await
+    .unwrap();
+    let rule = AlertService::create_rule(
+        &db.pool,
+        project,
+        CreateAlertRule {
+            name: "New issues".to_string(),
+            alert_type: AlertType::NewIssue,
+            channels: vec![AlertRuleChannelInput {
+                integration_id: channel.id,
+                routing_override: json!({}),
+            }],
+            conditions: json!({}),
+            cooldown_minutes: 60,
+        },
+    )
+    .await
+    .unwrap();
+    // In cooldown the alert is recorded with its payload but never delivered,
+    // so this test adds no failed delivery to the process-wide telemetry
+    // counters other tests read.
+    sqlx::query("UPDATE alert_rules SET last_triggered_at = $1 WHERE id = $2")
+        .bind(chrono::Utc::now())
+        .bind(rule.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config();
+    let processors = rustrak::digest::processors::Processors::new(
+        temp_dir.path().to_path_buf(),
+        config.rate_limit,
+        crate::common::null_sourcemap_provider(),
+        None,
+    )
+    .with_dashboard_url("https://rustrak.example.com");
+
+    let metadata = store_scoped_event(temp_dir.path(), project).await;
+    let ctx = ProcessorCtx {
+        pool: db.pool.clone(),
+        project_id: project,
+        event_id: Uuid::parse_str(&metadata.event_id).unwrap(),
+        ingested_at: metadata.ingested_at,
+        remote_addr: None,
+    };
+    processors
+        .errors
+        .process(metadata, &ctx)
+        .await
+        .expect("digest must succeed");
+
+    let payload: serde_json::Value =
+        sqlx::query_scalar("SELECT payload FROM alert_history WHERE project_id = $1")
+            .bind(project)
+            .fetch_one(&db.pool)
+            .await
+            .expect("the new issue must have queued an alert");
+    let issue_url = payload["issue_url"].as_str().unwrap();
+    assert!(
+        issue_url.starts_with(&format!(
+            "https://rustrak.example.com/projects/{project}/issues/"
+        )),
+        "issue_url was {issue_url}"
+    );
 }

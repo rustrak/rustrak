@@ -166,7 +166,9 @@ jobs:
           # Release body: prefer the curated changelog entry written for the docs
           # site, fall back to the changesets-generated server CHANGELOG section.
           NOTES_FILE=$(mktemp)
-          ENTRY=$(ls apps/docs/content/changelog/*-v${VERSION//./-}-*.mdx 2>/dev/null | head -1 || true)
+          # Matched on the frontmatter `version:` line, not the file name: the
+          # name `*-v0-15-0-*` also matches `57-v0-15-0-rc-0-...`.
+          ENTRY=$(grep -lxF "version: v$VERSION" apps/docs/content/changelog/*.mdx 2>/dev/null | head -1 || true)
 
           if [[ -n "$ENTRY" ]]; then
             echo "Using changelog entry: $ENTRY"

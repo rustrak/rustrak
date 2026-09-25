@@ -1,0 +1,273 @@
+---
+title: Upgrade to 0.15
+description: Moving a Rustrak 0.14 installation to 0.15. What changes, what to do about it, how to check it worked, and how to go back.
+---
+
+# Upgrade to 0.15
+
+In 0.15 **the server serves the dashboard**. The page and the API come from one
+container on one address, and the separate `rustrak-ui` container is no longer
+needed. Your data, DSNs and API tokens carry over untouched.
+
+## At a glance
+
+| | |
+|---|---|
+| **Upgrade from** | Any 0.14.x |
+| **Downtime** | One server restart |
+| **Database** | One migration: adds the nullable column `installation.telemetry_id`. It runs in milliseconds |
+| **Going back** | Needs the backup you take before upgrading, or one manual SQL step. See [Going back](#going-back) |
+| **Needs a decision** | Whether to keep the `ui` container, and whether to keep anonymous telemetry on |
+
+## Before you upgrade
+
+**Take a backup.** Once 0.15 has started on your database, a 0.14 server
+refuses to start on it until the backup is restored. These are the commands
+for the setups the installation guide describes.
+
+**SQLite** (the default `rustrak-server` image, data in the `rustrak_data`
+volume). Stop the server first, so the copy is consistent:
+
+```bash
+docker stop rustrak
+docker run --rm -v rustrak_data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/rustrak-data-0.14.tgz -C /data .
+```
+
+**PostgreSQL** (the Compose file, with a `postgres` service). Back up the
+database and the source map volume:
+
+```bash
+docker compose exec -T postgres pg_dump -U rustrak --format=custom rustrak > rustrak-0.14.dump
+docker run --rm -v <project>_sourcemap_data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/rustrak-sourcemaps-0.14.tgz -C /data .
+```
+
+`<project>` is your Compose project name, usually the name of the directory
+that holds `docker-compose.yml`. `docker volume ls` lists the exact name.
+
+## What changes
+
+### The server serves the dashboard
+
+**What changed.** The dashboard is compiled to static files that the server
+hands out at `/`. Open the server's own address, `:8080` by default, and sign
+in there. The browser calls the API on the same origin, so the session cookie
+is first-party and no CORS applies.
+
+**Who is affected.** Everyone who runs the `ui` service from the 0.14
+`docker-compose.yml`.
+
+**What to do.** Remove the `ui` service and its `RUSTRAK_API_URL`, and make sure
+the server's port is the one people reach. Behind a reverse proxy, point the
+name your team opens at the server container. See
+[Reverse proxy](/configuration/production#reverse-proxy).
+
+Leaving the `ui` service in place also works: `rustrak/rustrak-ui` 0.15 is
+nginx serving the same dashboard and passing the API through to the server.
+On the same host it only adds a container, so remove it unless you want the
+dashboard on a different host from your data
+([Dashboard on its own host](/configuration/production#dashboard-on-its-own-host)).
+
+### Source maps are kept in the data volume
+
+**What changed.** Uploaded source maps are stored in `/data/sourcemaps`, inside
+the `/data` volume, so they persist with the rest of the data and nothing needs
+to be set. In 0.14, a server started with only `-v rustrak_data:/data` kept
+them in a separate unnamed volume that a new container did not reuse.
+
+**What to do.** Nothing, if you mount a volume at `/data/sourcemaps` or set
+[`SOURCEMAP_STORAGE_PATH`](/usage/source-maps#storage) to a mounted path, as
+the Compose file does. If you ran the server with only
+`-v rustrak_data:/data`, source maps uploaded before the upgrade are not
+carried over. Upload them again for the releases you still need symbolicated;
+your application's next deploy uploads the maps for its new release.
+
+### The dashboard is reachable wherever the server is
+
+**What changed.** Any address that reaches the server now also shows the
+sign-in page.
+
+**Who is affected.** Installations that expose the server publicly only for
+SDKs to send events, and keep the dashboard somewhere private.
+
+**What to do.** Set `RUSTRAK_DASHBOARD=off` on that server. It then serves the
+API and nothing else, as in 0.14.
+
+### The sign-in page moves to `/login`
+
+**What changed.** It was `/auth/login`. `/auth` belongs to the API, and now
+that the page and the API share an address, it cannot also be a page.
+`GET /auth/login` answers a JSON 404. Every other page keeps its address, so
+links to projects and issues keep working.
+
+**What to do.** Update bookmarks, password manager entries and documentation
+that point at `/auth/login`. Opening any page while signed out also takes you
+to the sign-in page.
+
+### Anonymous telemetry is on by default
+
+**What changed.** The server sends one anonymous report every six hours:
+version, platform, database backend, memory use, rounded counts, and health
+counters. Never IPs, hostnames, URLs, names, DSNs, event payloads or messages.
+The first report leaves ten minutes after startup, and the startup log says
+whether telemetry is on. [Telemetry](/configuration/telemetry) lists every
+field.
+
+**What to do.** Nothing, if you are fine with it. To turn it off, set
+`RUSTRAK_TELEMETRY=off` or `DO_NOT_TRACK=1` before starting 0.15. To see
+exactly what would be sent, call `GET /api/telemetry/preview` as an admin.
+
+### Links in alert notifications follow `PUBLIC_URL`
+
+**What changed.** The issue links in Slack, email and webhook alerts are built
+from `DASHBOARD_URL` if it is set, and from `PUBLIC_URL` if it is not. In 0.14
+the fallback was `http://localhost:3000`.
+
+**What to do.** If you set `DASHBOARD_URL` to the address of your old `ui`
+container, change it to the server's public address or remove it. Keep it
+only if the dashboard is served from a different host than `PUBLIC_URL`.
+
+### The update check runs in the browser
+
+**What changed.** The notice about a new Rustrak version is now checked by
+the dashboard in your browser instead of by the `ui` container, and it always
+runs. `RUSTRAK_VERSION_CHECK_ENABLED` no longer exists.
+
+**What to do.** Remove `RUSTRAK_VERSION_CHECK_ENABLED` from your configuration
+if you set it.
+
+## What stays the same
+
+- **Data.** Projects, issues, events, releases, alerts and users are untouched.
+- **SDKs.** DSNs do not change, and SDKs keep sending to the same address.
+- **API tokens and the API.** Every endpoint is where it was.
+  `@rustrak/client` and `@rustrak/mcp` 0.15 have no breaking changes.
+- **Sessions.** People signed in on the server's address stay signed in.
+  People who used a separate dashboard address sign in once on the new one.
+
+## New settings
+
+All optional.
+
+| Variable | Default | What it does |
+|---|---|---|
+| [`RUSTRAK_DASHBOARD`](/configuration/environment#rustrak_dashboard) | `on` | `off` keeps the server API-only |
+| [`RUSTRAK_DASHBOARD_DIR`](/configuration/environment#rustrak_dashboard_dir) | `./static` | Where the compiled dashboard is |
+| [`RUSTRAK_TELEMETRY`](/configuration/telemetry) | `on` | `off` sends nothing |
+| [`DO_NOT_TRACK`](/configuration/telemetry) | unset | `1` sends nothing |
+| [`SOURCEMAP_CACHE_MB`](/configuration/environment#sourcemap_cache_mb) | `64` | Memory kept for parsed source maps |
+
+## Upgrade
+
+### Docker Compose
+
+Change the image tags, remove the `ui` service, and start again. If your file
+still uses the `latest` and `postgres` tags from the 0.14 installation guide,
+`docker compose pull` alone moves the server to 0.15 once it is released;
+pinning a version as below makes the upgrade a change you choose.
+
+```diff
+ services:
+   server:
+-    image: rustrak/rustrak-server:v0.14.14-postgres
++    image: rustrak/rustrak-server:v0.15.0-postgres
+     ports:
+       - "8080:8080"
+     environment:
+       - PUBLIC_URL=https://rustrak.example.com
++      # Optional: anonymous telemetry is on unless you say otherwise.
++      # - RUSTRAK_TELEMETRY=off
+-
+-  ui:
+-    image: rustrak/rustrak-ui:v0.14.14
+-    ports:
+-      - "3000:3000"
+-    environment:
+-      - RUSTRAK_API_URL=http://server:8080
+```
+
+```bash
+docker compose pull
+docker compose up -d --remove-orphans
+```
+
+`--remove-orphans` stops the old `ui` container now that the file no longer
+lists it.
+
+### Docker, SQLite
+
+```bash
+docker stop rustrak && docker rm rustrak
+docker run -d \
+  --name rustrak \
+  -p 8080:8080 \
+  -v rustrak_data:/data \
+  -e SESSION_SECRET_KEY=<the same key as before> \
+  -e PUBLIC_URL=https://rustrak.example.com \
+  rustrak/rustrak-server:v0.15.0
+```
+
+Keep the same `SESSION_SECRET_KEY`, or everyone is signed out.
+
+## Check it worked
+
+1. The server log shows, in this order:
+   ```
+   Database migrations completed successfully
+   Serving the dashboard from /app/static
+   Anonymous telemetry is on (...)        # or: Telemetry is off: ...
+   ```
+2. `https://rustrak.example.com/login` shows the sign-in page, and you can
+   sign in with your usual account.
+3. Settings, About shows version 0.15.0.
+4. New errors from your applications appear in their projects.
+
+## Going back
+
+Stop the 0.15 server and restore the backup you took before upgrading, then
+start your previous image.
+
+**SQLite:**
+
+```bash
+docker stop rustrak && docker rm rustrak
+docker run --rm -v rustrak_data:/data -v "$PWD":/backup alpine \
+  sh -c 'rm -rf /data/* && tar xzf /backup/rustrak-data-0.14.tgz -C /data'
+```
+
+**PostgreSQL:**
+
+```bash
+docker compose stop server
+docker compose exec -T postgres pg_restore -U rustrak -d rustrak --clean --if-exists < rustrak-0.14.dump
+docker run --rm -v <project>_sourcemap_data:/data -v "$PWD":/backup alpine \
+  sh -c 'rm -rf /data/* && tar xzf /backup/rustrak-sourcemaps-0.14.tgz -C /data'
+```
+
+Restoring discards everything received after the backup. If you would rather
+keep that data, undo the one migration by hand instead: stop the server, run
+the SQL below against the database, and start your previous image.
+
+```sql
+ALTER TABLE installation DROP COLUMN telemetry_id;
+DELETE FROM _sqlx_migrations WHERE version = 20260916000000;
+```
+
+**SQLite:**
+
+```bash
+docker run --rm -v rustrak_data:/data alpine sh -c 'apk add -q sqlite && sqlite3 /data/rustrak.db \
+  "ALTER TABLE installation DROP COLUMN telemetry_id; DELETE FROM _sqlx_migrations WHERE version = 20260916000000;"'
+```
+
+**PostgreSQL:**
+
+```bash
+docker compose exec -T postgres psql -U rustrak -c \
+  "ALTER TABLE installation DROP COLUMN telemetry_id; DELETE FROM _sqlx_migrations WHERE version = 20260916000000;"
+```
+
+The commands above use `rustrak` as the PostgreSQL user and database, as the
+installation guide does. Use your `POSTGRES_USER` and `POSTGRES_DB` if they
+differ.

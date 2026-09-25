@@ -78,6 +78,14 @@ pub struct LoginRequest {
 }
 
 impl User {
+    /// Canonical form for storage: trimmed, ASCII letters lowercased.
+    ///
+    /// ASCII-only so it agrees with SQLite's `LOWER()`, which the lookup in
+    /// `UsersService::get_by_email` relies on.
+    pub fn normalize_email(email: &str) -> String {
+        email.trim().to_ascii_lowercase()
+    }
+
     /// Hash a password using Argon2id
     pub fn hash_password(password: &str) -> Result<String, AppError> {
         let hash = Argon2::default()
@@ -123,6 +131,27 @@ mod tests {
     fn unknown_role_falls_back_to_member() {
         assert_eq!(UserRole::from_db("superuser"), UserRole::Member);
         assert_eq!(UserRole::from_db(""), UserRole::Member);
+    }
+
+    #[test]
+    fn email_normalizes_to_trimmed_lowercase() {
+        assert_eq!(
+            User::normalize_email("User@Example.com"),
+            "user@example.com"
+        );
+        assert_eq!(
+            User::normalize_email("  USER@EXAMPLE.COM  "),
+            "user@example.com"
+        );
+    }
+
+    #[test]
+    fn email_normalization_folds_ascii_only() {
+        // Matches SQLite's LOWER(), which leaves non-ASCII letters untouched.
+        assert_eq!(
+            User::normalize_email("Üser@Example.com"),
+            "Üser@example.com"
+        );
     }
 
     fn user_with_hash(password_hash: &str) -> User {

@@ -59,8 +59,9 @@ WORKDIR /app
 COPY --from=builder /app/target/release/rustrak /app/rustrak
 COPY --chown=65532:65532 --from=builder /app/static /app/static
 COPY --chown=65532:65532 --from=builder /data /data
+# One volume. Source maps live under it, so the `-v rustrak_data:/data` the
+# installation guide gives keeps them across container upgrades.
 VOLUME /data
-VOLUME /data/sourcemaps
 EXPOSE 8080
 USER nonroot
 CMD ["/app/rustrak"]

@@ -1,0 +1,69 @@
+---
+version: v0.15.0
+title: One Container
+description: The server serves the dashboard, so one container and one address answer both the page and the API. Memory comes back down after a burst, parsed source maps are kept across events, and the server sends an anonymous heartbeat that one variable turns off
+date: 2026-09-25
+tags: [server, dashboard, deployment, docker, performance, telemetry]
+---
+
+> **Before you upgrade.** Read [Upgrade to 0.15](https://rustrak.github.io/rustrak/upgrading/0-15). Take a
+> backup first: 0.15 adds one migration, and going back to 0.14 means
+> restoring it. The `ui` container is no longer needed, the sign-in page moves
+> to `/login`, anonymous telemetry is on unless `RUSTRAK_TELEMETRY=off` is set,
+> and `RUSTRAK_VERSION_CHECK_ENABLED` no longer exists.
+
+## One container does everything
+
+The dashboard is compiled to static files that the server hands out at `/`, so
+the same process answers the page and the API. Open the server's own address,
+`:8080` by default, and sign in there.
+
+- **One origin.** The browser calls the API where it loaded the page from, so
+  the session cookie is first-party and no CORS applies. Behind a reverse
+  proxy there is one upstream, and `PUBLIC_URL` is the only address to get
+  right
+- **The sign-in page is at `/login`**, where it was `/auth/login`. Every other
+  address is unchanged
+- **Still optional.** `RUSTRAK_DASHBOARD=off` keeps the server API-only, and an
+  image built without a dashboard serves the API as before
+- **`rustrak/rustrak-ui` stays** for a dashboard hosted away from its data: nginx
+  serving the same bundle and proxying the API to `RUSTRAK_API_URL`, about
+  30 MB on disk and under 15 MB of memory idle
+- The dashboard is rebuilt on Vite and TanStack Router. It looks and behaves
+  the same
+
+## Memory that comes back down
+
+The server uses mimalloc as its allocator. With glibc, resident memory climbed
+with every burst and stayed there: 700 MB at one event per second in
+production, 2 GB under a burst heavy on source maps. The same load now peaks
+around 520 MB and returns to 150 MB when idle.
+
+Source maps are parsed once per event instead of once per frame, and the
+parsed form is kept across events in a cache bounded by `SOURCEMAP_CACHE_MB`
+(default 64). A burst that took about five minutes to digest now takes under
+ten seconds.
+
+## Anonymous telemetry
+
+The server sends one anonymous report every six hours: version, platform,
+database backend, memory use, rounded counts and health counters. Never IPs,
+hostnames, URLs, names, DSNs, payloads or messages. The first report leaves
+ten minutes after startup, the startup log says whether telemetry is on, and
+`GET /api/telemetry/preview` shows the exact document as an admin.
+`RUSTRAK_TELEMETRY=off` or `DO_NOT_TRACK=1` sends nothing. The
+[telemetry page](https://rustrak.github.io/rustrak/configuration/telemetry) lists every field.
+
+## Improvements
+
+- Issue links in alert notifications follow `PUBLIC_URL` when `DASHBOARD_URL`
+  is not set. They used to point at `http://localhost:3000`
+- Sign-in treats the email address case-insensitively, and accounts created
+  before with capitals in their address still sign in
+  ([@edideaur](https://github.com/edideaur))
+- Accepting an invitation for an address that already has an account, in any
+  casing, is refused instead of creating a second account
+- The server image declares a single volume, `/data`. Source maps live in it
+  by default, so `-v rustrak_data:/data` keeps them across upgrades
+- The docs gain an [Upgrading](https://rustrak.github.io/rustrak/upgrading) section with a guide per release
+  that needs steps from you

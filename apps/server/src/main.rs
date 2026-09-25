@@ -222,12 +222,15 @@ async fn main() -> std::io::Result<()> {
 
     // Processor registry — single dispatch surface for the ingest pipeline.
     // Built once; each processor owns the deps it needs.
-    let processors_data = web::Data::new(rustrak::digest::processors::Processors::new(
-        ingest_dir.clone(),
-        config.rate_limit.clone(),
-        Arc::clone(&sourcemap_provider),
-        Some(session_aggregator.clone()),
-    ));
+    let processors_data = web::Data::new(
+        rustrak::digest::processors::Processors::new(
+            ingest_dir.clone(),
+            config.rate_limit.clone(),
+            Arc::clone(&sourcemap_provider),
+            Some(session_aggregator.clone()),
+        )
+        .with_dashboard_url(config.dashboard_url()),
+    );
 
     // Recovery is a background worker: a large backlog or a temporarily
     // unavailable database must not prevent the HTTP listener from binding.

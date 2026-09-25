@@ -4,7 +4,6 @@ import * as m from 'motion/react-m';
 import Link from 'next/link';
 import { GithubIcon } from '@/components/icons/github';
 import { RustrakWordmark } from '@/components/icons/rustrak-wordmark';
-import { ReleaseCandidateBanner } from '@/components/release-candidate/landing-banner';
 import { cn } from '@/lib/utils';
 import { DUR, EASE, STAGGER } from '../motion';
 import { HANDHELD, useMediaQuery } from '../use-media-query';
@@ -74,10 +73,6 @@ export function LandingNav() {
            kinder than `inert`: reaching for it brings it back. */
         onFocusCapture={untuck}
       >
-        {/* Above the bar, inside the fixed box: it takes its own height and
-            the bar sits under it, instead of the two sharing `top-0`. Not part
-            of the tuck, so it stays while the bar goes. */}
-        <ReleaseCandidateBanner />
         <m.div
           animate={{ y: away ? '-102%' : '0%' }}
           /* Just past 100%, so the border under the bar clears the top edge

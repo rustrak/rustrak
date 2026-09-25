@@ -195,17 +195,29 @@ the upload is silently skipped.
 
 ## Storage
 
-Source map chunks are stored on disk in `SOURCEMAP_STORAGE_PATH` (default: `/data/sourcemaps`).
+Source maps are stored on disk in `/data/sourcemaps` by default. That is inside
+the image's `/data` volume, so with the volume the installation guide mounts
+(`-v rustrak_data:/data`) they persist across restarts and upgrades with no
+configuration.
 
-**Sizing estimate:** Each source map chunk is ~2MB. A typical app with 50 source files uses ~100MB. Scale as needed.
+To keep them somewhere else, such as a separate volume or a network share,
+mount it and point `SOURCEMAP_STORAGE_PATH` at it:
 
-Set a persistent path for production:
+```yaml
+services:
+  server:
+    volumes:
+      - sourcemap_data:/data/sourcemaps
+    environment:
+      - SOURCEMAP_STORAGE_PATH=/data/sourcemaps
 
-```bash
-SOURCEMAP_STORAGE_PATH=/var/lib/rustrak/sourcemaps
+volumes:
+  sourcemap_data:
 ```
 
-Make sure the directory is writable by the Rustrak process.
+The directory must be writable by the Rustrak process.
+
+**Sizing estimate:** Each source map chunk is ~2MB. A typical app with 50 source files uses ~100MB. Scale as needed.
 
 ## Production: shared volume required
 
@@ -266,7 +278,7 @@ An empty `data` array means no source maps were ever uploaded for that project.
 
 **3. Is `SOURCEMAP_STORAGE_PATH` writable and persistent?**
 
-The default path (`/data/sourcemaps`) is cleared on restart on some systems. Set a persistent path in production.
+The default path, `/data/sourcemaps`, persists as long as `/data` is a volume. If you set `SOURCEMAP_STORAGE_PATH`, make sure that path is a mounted volume too, or its contents go when the container is recreated.
 
 **4. Are `debug_meta` entries present in the event?**
 

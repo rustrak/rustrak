@@ -61,6 +61,10 @@ pub struct DashboardConfig {
     /// RUSTRAK_DASHBOARD=off, for the deployment that has a build in the image
     /// and runs the dashboard from another host anyway.
     pub enabled: bool,
+    /// Where people open it, when that is not the server's own `PUBLIC_URL`:
+    /// a dashboard on its own host. Set with DASHBOARD_URL. Read through
+    /// [`Config::dashboard_url`], which applies the fallbacks.
+    pub url: Option<String>,
 }
 
 /// Database connection pool configuration
@@ -135,18 +139,7 @@ impl Config {
                 .unwrap_or_else(|_| (10 * 1024 * 1024).to_string())
                 .parse()
                 .unwrap_or(10 * 1024 * 1024),
-            public_url: env::var("PUBLIC_URL")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-                .map(|s| {
-                    let trimmed = s.trim().trim_end_matches('/');
-                    // Normalize scheme to lowercase (RFC 3986: scheme is case-insensitive)
-                    if let Some(pos) = trimmed.find("://") {
-                        format!("{}{}", trimmed[..pos].to_lowercase(), &trimmed[pos..])
-                    } else {
-                        trimmed.to_string()
-                    }
-                }),
+            public_url: url_from_env("PUBLIC_URL"),
             session_flush_interval_secs: env::var("SESSION_FLUSH_INTERVAL_SECS")
                 .unwrap_or_else(|_| "30".to_string())
                 .parse()
@@ -158,6 +151,20 @@ impl Config {
             dashboard: DashboardConfig::from_env()?,
             telemetry: TelemetryConfig::from_env()?,
         })
+    }
+}
+
+impl Config {
+    /// Where people open the dashboard, for the links in alert notifications:
+    /// `DASHBOARD_URL`, else `PUBLIC_URL` (the server serves the dashboard, so
+    /// the address SDKs reach is also the one people open), else the bind
+    /// address.
+    pub fn dashboard_url(&self) -> String {
+        self.dashboard
+            .url
+            .clone()
+            .or_else(|| self.public_url.clone())
+            .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
     }
 }
 
@@ -256,6 +263,7 @@ impl DashboardConfig {
                 .filter(|s| !s.trim().is_empty())
                 .unwrap_or_else(|| "./static".to_string()),
             enabled: Self::switch(env::var("RUSTRAK_DASHBOARD").ok())?,
+            url: url_from_env("DASHBOARD_URL"),
         })
     }
 
@@ -275,6 +283,23 @@ impl DashboardConfig {
             _ => Err(ConfigError::InvalidDashboardSwitch { value }),
         }
     }
+}
+
+/// An address from the environment: unset or blank is `None`, surrounding
+/// whitespace and trailing slashes go, and the scheme is lowercased (RFC 3986:
+/// it is case-insensitive).
+fn url_from_env(var: &str) -> Option<String> {
+    env::var(var)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| {
+            let trimmed = s.trim().trim_end_matches('/');
+            if let Some(pos) = trimmed.find("://") {
+                format!("{}{}", trimmed[..pos].to_lowercase(), &trimmed[pos..])
+            } else {
+                trimmed.to_string()
+            }
+        })
 }
 
 #[derive(Debug)]

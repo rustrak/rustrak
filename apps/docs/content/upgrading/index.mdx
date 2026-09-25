@@ -1,0 +1,63 @@
+---
+title: Upgrading
+description: How Rustrak versions work, how to move between them, and where to find the steps each release needs.
+---
+
+# Upgrading
+
+Most Rustrak releases need nothing from you: pull the new image and restart.
+The ones that do need something get a guide of their own, listed below. Read
+every guide between the version you run and the one you are moving to, in
+order.
+
+## Upgrade guides
+
+| From | To | What needs your attention | Guide |
+|---|---|---|---|
+| 0.14.x | 0.15.x | The dashboard container goes away, telemetry arrives, going back needs a backup | [Upgrade to 0.15](/upgrading/0-15) |
+
+## Versions you cannot skip
+
+None so far. Any 0.x release can be upgraded to any later one directly, as
+long as you follow each guide in between. If that ever changes, the version
+you have to stop at will be listed here and in its release notes.
+
+## How versions work
+
+Rustrak is on `0.x`, and follows the usual reading of semver for it:
+
+- **A patch release (`0.15.1`)** fixes things. It never needs a step from you
+  and never has a guide.
+- **A minor release (`0.16.0`)** can change behaviour, configuration or
+  deployment. If it does, it has a guide here, and its release notes open
+  with what needs your attention.
+
+The server, the dashboard, `@rustrak/client` and `@rustrak/mcp` always share
+one version number. A client and a server with the same number are known to
+work together.
+
+## Before any upgrade
+
+1. **Back up.** Database migrations only run forward, so the backup is what
+   lets you go back. See [Backups](/configuration/production#backups).
+2. **Pin the version.** Use a versioned image tag such as
+   `rustrak/rustrak-server:v0.15.0` in production rather than `latest`, so a
+   restart never upgrades you by surprise.
+3. **Read the guides** between your version and the target.
+4. **Upgrade, then check** that the server started, that you can sign in, and
+   that events still arrive. Settings, About shows the running version.
+
+## Going back
+
+Rustrak checks at startup that it knows every migration the database has
+applied. A release that added one refuses to be replaced by an older one, with
+an error like this:
+
+```
+Migration error: migration 20260916000000 was previously applied but is missing in the resolved migrations
+```
+
+This protects your data from a server that does not understand its schema.
+To go back, restore the backup you took before upgrading and start the older
+image. Each guide says whether its release adds migrations and, where it is
+safe, how to undo them by hand.

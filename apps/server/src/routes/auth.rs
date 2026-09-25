@@ -199,8 +199,8 @@ pub async fn login(
     session: Session,
     req: web::Json<LoginRequest>,
 ) -> AppResult<impl Responder> {
-    // Get user by email
-    let user = UsersService::get_by_email(pool.get_ref(), &req.email)
+    // Not normalized: the exact casing picks between legacy case-variant accounts
+    let user = UsersService::get_by_email(pool.get_ref(), req.email.trim())
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
 

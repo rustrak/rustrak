@@ -31,6 +31,8 @@ pub struct ErrorProcessor {
     rate_limit_config: RateLimitConfig,
     sourcemap_provider: Arc<dyn SourceMapProvider>,
     in_flight: Arc<InFlightDigests>,
+    /// The base of the issue links in alert notifications.
+    pub(super) dashboard_url: String,
     /// SQLite has one writer at a time. Digests queue for it here, in process,
     /// rather than in SQLite's busy handler: that handler polls with sleeps
     /// that grow to 100ms, so with several digests waiting the lock sat idle
@@ -61,6 +63,7 @@ impl ErrorProcessor {
             rate_limit_config,
             sourcemap_provider,
             in_flight: Arc::new(InFlightDigests::default()),
+            dashboard_url: "http://localhost:8080".to_string(),
             #[cfg(feature = "sqlite")]
             write_slot,
         }
@@ -205,8 +208,7 @@ impl ErrorProcessor {
                         &issue,
                         alert_type,
                         event_id,
-                        &std::env::var("DASHBOARD_URL")
-                            .unwrap_or_else(|_| "http://localhost:3000".to_string()),
+                        &self.dashboard_url,
                     )
                     .await?;
                 }
@@ -329,8 +331,7 @@ impl ErrorProcessor {
                 &issue,
                 alert_type,
                 event_id,
-                &std::env::var("DASHBOARD_URL")
-                    .unwrap_or_else(|_| "http://localhost:3000".to_string()),
+                &self.dashboard_url,
             )
             .await?;
         }

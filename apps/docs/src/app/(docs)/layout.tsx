@@ -1,15 +1,6 @@
-import Link from 'next/link';
-import { Banner } from 'nextra/components';
 import { getPageMap } from 'nextra/page-map';
 import { Footer, Layout, Navbar } from 'nextra-theme-docs';
 import { RustrakWordmark } from '@/components/icons/rustrak-wordmark';
-import {
-  RC_CALL,
-  RC_HREF,
-  RC_LABEL,
-  RC_STORAGE_KEY,
-  RC_TEXT,
-} from '@/components/release-candidate/copy';
 
 /**
  * The documentation shell: navbar, sidebar, search, table of contents, footer.
@@ -36,34 +27,6 @@ import {
    browser resolved. 20px is the brand's floor for a product header. */
 const logo = <RustrakWordmark className="h-5 w-auto" />;
 
-/*
-  The 0.15 release candidate, while it lasts.
-
-  Everything on this site describes the stable line, 0.14, because the site is
-  deployed from `main` and 0.15 is being cut from `next`. The one page that
-  describes 0.15 is the one this links to, and this banner is how a reader
-  finds out it exists. The landing shows the same announcement through
-  `release-candidate/landing-banner.tsx`. Remove all three together, with the
-  `.nextra-banner` block in `globals.css`, when 0.15 ships and the rest of the
-  site catches up.
-
-  Nextra's `Banner` rather than our own here because the theme's navbar reads
-  its height to stay below it. The copy and the storage key are shared, so one
-  dismissal covers both surfaces. `next/link` rather than `<a>`, because the
-  site carries a `basePath` on GitHub Pages and a bare `href` would miss it.
-*/
-const banner = (
-  <Banner storageKey={RC_STORAGE_KEY}>
-    <span className="mr-3 rounded-md border border-current/25 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider">
-      {RC_LABEL}
-    </span>
-    <span className="max-sm:hidden">{RC_TEXT} </span>
-    <Link href={RC_HREF} className="underline underline-offset-2">
-      {RC_CALL} →
-    </Link>
-  </Banner>
-);
-
 export default async function DocsLayout({
   children,
 }: {
@@ -73,7 +36,6 @@ export default async function DocsLayout({
 
   return (
     <Layout
-      banner={banner}
       pageMap={pageMap}
       docsRepositoryBase="https://github.com/AbianS/rustrak/tree/main/apps/docs"
       navbar={

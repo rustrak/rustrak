@@ -47,6 +47,7 @@ fn create_test_config() -> Config {
         dashboard: DashboardConfig {
             dir: "./static".to_string(),
             enabled: true,
+            url: None,
         },
         telemetry: rustrak::config::TelemetryConfig {
             enabled: false,
@@ -793,12 +794,19 @@ async fn test_register_with_very_long_email() {
 }
 
 #[actix_web::test]
-async fn test_login_case_sensitive_email() {
+async fn test_login_case_insensitive_email() {
     let db = TestDb::new().await;
     let config = create_test_config();
     let session_key = Key::from(&[0u8; 64]);
 
     create_test_user(&db.pool, "CaseSensitive@example.com", "password123", false).await;
+
+    // Stored addresses are normalized to lowercase.
+    let stored = UsersService::get_by_email(&db.pool, "casesensitive@example.com")
+        .await
+        .unwrap()
+        .expect("user exists");
+    assert_eq!(stored.email, "casesensitive@example.com");
 
     let app = test::init_service(
         App::new()
@@ -813,19 +821,133 @@ async fn test_login_case_sensitive_email() {
     )
     .await;
 
-    // Try login with different case
+    // Login works with any casing of the same address
+    for email in [
+        "casesensitive@example.com",
+        "CaseSensitive@example.com",
+        "CASESENSITIVE@EXAMPLE.COM",
+        "  CaseSensitive@Example.com  ",
+    ] {
+        let req = test::TestRequest::post()
+            .uri("/auth/login")
+            .insert_header(("Content-Type", "application/json"))
+            .set_json(json!({
+                "email": email,
+                "password": "password123"
+            }))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 200, "login with {email:?} should succeed");
+    }
+}
+
+/// Inserts a user as rows were written before email normalization existed.
+async fn insert_legacy_user(pool: &rustrak::db::DbPool, email: &str, password: &str) {
+    sqlx::query(
+        "INSERT INTO users (email, password_hash, is_active, role) VALUES ($1, $2, true, 'member')",
+    )
+    .bind(email)
+    .bind(User::hash_password(password).unwrap())
+    .execute(pool)
+    .await
+    .expect("Failed to insert legacy user");
+}
+
+/// Logs in and returns the status and the email of the account signed into.
+async fn login_as(pool: &rustrak::db::DbPool, email: &str, password: &str) -> (u16, String) {
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(create_test_config()))
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
+                    .cookie_secure(false)
+                    .build(),
+            )
+            .configure(routes::auth::configure),
+    )
+    .await;
+
     let req = test::TestRequest::post()
         .uri("/auth/login")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "casesensitive@example.com",
-            "password": "password123"
-        }))
+        .set_json(json!({ "email": email, "password": password }))
         .to_request();
-
     let resp = test::call_service(&app, req).await;
-    // Email lookup is case-sensitive in PostgreSQL
-    assert_eq!(resp.status(), 401);
+    let status = resp.status().as_u16();
+    let body: Value = test::read_body_json(resp).await;
+    let signed_in = body["user"]["email"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    (status, signed_in)
+}
+
+#[actix_web::test]
+async fn test_login_legacy_case_variant_accounts_stay_reachable() {
+    let db = TestDb::new().await;
+    insert_legacy_user(&db.pool, "user@example.com", "lower-pass").await;
+    insert_legacy_user(&db.pool, "User@Example.com", "upper-pass").await;
+
+    // Each historical account is reached by its exact stored casing.
+    assert_eq!(
+        login_as(&db.pool, "user@example.com", "lower-pass").await,
+        (200, "user@example.com".to_string())
+    );
+    assert_eq!(
+        login_as(&db.pool, "User@Example.com", "upper-pass").await,
+        (200, "User@Example.com".to_string())
+    );
+
+    // Any other casing resolves deterministically to the oldest account.
+    assert_eq!(
+        login_as(&db.pool, "USER@EXAMPLE.COM", "lower-pass").await,
+        (200, "user@example.com".to_string())
+    );
+}
+
+/// An invitation created before emails were normalized can name a case
+/// variant of an account that already exists. Accepting it must not create a
+/// second account that `get_by_email` then treats as the same person.
+#[actix_web::test]
+async fn test_accepting_an_invitation_for_an_existing_case_variant_is_refused() {
+    let db = TestDb::new().await;
+    insert_legacy_user(&db.pool, "Bob@Example.com", "password123").await;
+    sqlx::query(
+        "INSERT INTO invitations (token, email, role, status, expires_at) VALUES ($1, $2, 'member', 'pending', $3)",
+    )
+    .bind("legacy-invite")
+    .bind("bob@example.com")
+    .bind(chrono::Utc::now() + chrono::Duration::days(1))
+    .execute(&db.pool)
+    .await
+    .expect("Failed to insert legacy invitation");
+
+    let result =
+        rustrak::services::InvitationService::accept(&db.pool, "legacy-invite", "new-pass").await;
+
+    assert!(
+        matches!(result, Err(rustrak::error::AppError::Conflict(_))),
+        "expected a conflict, got {:?}",
+        result.map(|user| user.email)
+    );
+    let accounts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE LOWER(email) = 'bob@example.com'")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(accounts, 1);
+}
+
+// Postgres' email_format constraint rejects non-ASCII addresses.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn test_login_legacy_non_ascii_email_with_exact_casing() {
+    let db = TestDb::new().await;
+    insert_legacy_user(&db.pool, "Üser@Example.com", "password123").await;
+
+    let (status, _) = login_as(&db.pool, "Üser@Example.com", "password123").await;
+    assert_eq!(status, 200);
 }
 
 #[actix_web::test]

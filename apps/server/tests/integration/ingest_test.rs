@@ -47,6 +47,7 @@ fn create_test_config() -> Config {
         dashboard: DashboardConfig {
             dir: "./static".to_string(),
             enabled: true,
+            url: None,
         },
         telemetry: rustrak::config::TelemetryConfig {
             enabled: false,

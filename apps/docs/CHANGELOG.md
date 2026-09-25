@@ -1,5 +1,23 @@
 # docs
 
+## 0.15.10
+
+### Patch Changes
+
+- [#333](https://github.com/rustrak/rustrak/pull/333) [`ba439b8`](https://github.com/rustrak/rustrak/commit/ba439b8493bd60c67d48a7105deb4c035ae5ecd4) Thanks [@AbianS](https://github.com/AbianS)! - A release candidate banner and a "Try 0.15" page on what changes, how to run the candidate and how to move a 0.14 installation to it and back. `SOURCEMAP_CACHE_MB` joins the environment reference.
+
+- [#341](https://github.com/rustrak/rustrak/pull/341) [`6ed27b3`](https://github.com/rustrak/rustrak/commit/6ed27b3cdba2ea4f2760e972b09b0e56337c70e2) Thanks [@AbianS](https://github.com/AbianS)! - An Upgrading section: an overview of how versions work, what to do before any upgrade and how to go back, and an "Upgrade to 0.15" guide covering each change that needs a step, the backup and restore commands for SQLite and PostgreSQL, how to check the upgrade worked and how to return to 0.14. The "Try 0.15" page and the release candidate banner go, and Telemetry drops its release candidate label. `DASHBOARD_URL` is documented as following `PUBLIC_URL` by default.
+
+- [#327](https://github.com/rustrak/rustrak/pull/327) [`46163c8`](https://github.com/rustrak/rustrak/commit/46163c87ca9d0c0364c4c8bc302e313955560a27) Thanks [@AbianS](https://github.com/AbianS)! - Installation, production, environment and troubleshooting rewritten for the single-container deployment: one port, one upstream behind a reverse proxy, `RUSTRAK_DASHBOARD` and `RUSTRAK_DASHBOARD_DIR`, and a "Dashboard on its own host" section for `rustrak-ui` with `RUSTRAK_API_URL`.
+
+- [#333](https://github.com/rustrak/rustrak/pull/333) [`036c0f0`](https://github.com/rustrak/rustrak/commit/036c0f02bc977f5e152d688d3817a2b152d43754) Thanks [@AbianS](https://github.com/AbianS)! - A Telemetry page under Configuration listing every field the anonymous heartbeat carries, what is never sent, how to preview it and how to turn it off. `RUSTRAK_TELEMETRY` and `DO_NOT_TRACK` join the environment reference.
+
+## 0.15.10-rc.3
+
+### Patch Changes
+
+- [#341](https://github.com/rustrak/rustrak/pull/341) [`6ed27b3`](https://github.com/rustrak/rustrak/commit/6ed27b3cdba2ea4f2760e972b09b0e56337c70e2) Thanks [@AbianS](https://github.com/AbianS)! - An Upgrading section: an overview of how versions work, what to do before any upgrade and how to go back, and an "Upgrade to 0.15" guide covering each change that needs a step, the backup and restore commands for SQLite and PostgreSQL, how to check the upgrade worked and how to return to 0.14. The "Try 0.15" page and the release candidate banner go, and Telemetry drops its release candidate label. `DASHBOARD_URL` is documented as following `PUBLIC_URL` by default.
+
 ## 0.15.10-rc.2
 
 ### Patch Changes
