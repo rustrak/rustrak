@@ -43,6 +43,16 @@ describe('parseEpochSeconds', () => {
     expect(parseEpochSeconds('1970-01-01T02:00:00+0200')).toBe(0);
   });
 
+  // RFC 3339 allows a 60th second at the end of a leap-second day. chrono
+  // reads it as 59 plus one whole second, and Relay's `datetime_to_timestamp`
+  // adds it back, so it is the same instant as midnight.
+  it('reads a leap second as the instant chrono and Relay resolve it to', () => {
+    expect(parseEpochSeconds('2016-12-31T23:59:60Z')).toBe(1483228800);
+    expect(parseEpochSeconds('2016-12-31T23:59:60.5Z')).toBe(1483228800.5);
+    // Only 60 is a leap second; 61 and up are not RFC 3339.
+    expect(parseEpochSeconds('2016-12-31T23:59:61Z')).toBeUndefined();
+  });
+
   it('rejects what chrono rejects rather than letting Date.parse guess', () => {
     expect(parseEpochSeconds('not-a-timestamp')).toBeUndefined();
     // A calendar date that does not exist rolls into March under Date.parse.

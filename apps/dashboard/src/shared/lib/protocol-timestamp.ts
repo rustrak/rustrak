@@ -5,10 +5,13 @@
  * the date and the time and `Z` or `z` for UTC (`parse_rfc3339_relaxed` and
  * `scan::timezone_offset` in chrono). The hour is bounded because `Date.parse`
  * treats `24:00:00` as midnight the next day, a whole day of drift on a value
- * chrono rejects outright.
+ * chrono rejects outright. The second may be `60`, the leap second RFC 3339
+ * allows: chrono reads it as `59` plus a full second of nanoseconds, and
+ * Relay's `datetime_to_timestamp` adds those back, so it lands on the same
+ * instant as the next minute's `00`.
  */
 const ISO_DATE_TIME =
-  /^(\d{4})-(\d{2})-(\d{2})[Tt ]((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.(\d+))?([Zz]|[+-]\d{2}:?\d{2})?$/;
+  /^(\d{4})-(\d{2})-(\d{2})[Tt ]((?:[01]\d|2[0-3]):[0-5]\d):([0-5]\d|60)(?:\.(\d+))?([Zz]|[+-]\d{2}:?\d{2})?$/;
 
 /** February 30th is a date `Date.parse` rolls into March and chrono rejects. */
 function isRealCalendarDate(year: number, month: number, day: number): boolean {
@@ -51,17 +54,25 @@ export function parseEpochSeconds(raw: unknown): number | undefined {
   const match = ISO_DATE_TIME.exec(raw);
   if (!match) return undefined;
 
-  const [, year, month, day, time, fraction, offset] = match;
+  const [, year, month, day, hourMinute, second, fraction, offset] = match;
   if (!isRealCalendarDate(Number(year), Number(month), Number(day))) {
     return undefined;
   }
 
+  // A leap second is one `Date.parse` rejects, so it is read as `59` and the
+  // second it stands for is added back below, the way chrono and Relay do.
+  const leap = second === '60';
+
   // Rebuilt in the one shape ECMAScript guarantees `Date.parse` reads: an
   // uppercase `T`, and an uppercase `Z` where chrono also took a lowercase one.
   const milliseconds = Date.parse(
-    `${year}-${month}-${day}T${time}${offset?.toUpperCase() ?? 'Z'}`,
+    `${year}-${month}-${day}T${hourMinute}:${leap ? '59' : second}${offset?.toUpperCase() ?? 'Z'}`,
   );
   if (!Number.isFinite(milliseconds)) return undefined;
 
-  return milliseconds / 1000 + (fraction ? Number(`0.${fraction}`) : 0);
+  return (
+    milliseconds / 1000 +
+    (leap ? 1 : 0) +
+    (fraction ? Number(`0.${fraction}`) : 0)
+  );
 }
