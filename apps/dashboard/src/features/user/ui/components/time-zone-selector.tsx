@@ -6,25 +6,12 @@ import { useTimeZone, useTranslations } from 'use-intl';
 import { updatePreferences } from '@/features/user/api/mutations';
 import {
   listTimeZones,
+  matchesTimeZone,
   type TimeZoneOption,
 } from '@/features/user/lib/time-zones';
 import { intl } from '@/shared/i18n/intl';
 import { cn } from '@/shared/lib/utils';
 import { Label } from '@/shared/ui/components/shadcn/label';
-
-/**
- * Whether a typed query finds a zone: by name, with `_` read as a space so
- * "new york" reaches `America/New_York`, or by offset so "+02" lists every
- * zone two hours east of Greenwich right now.
- */
-function matchesTimeZone(option: TimeZoneOption, query: string): boolean {
-  const needle = query.trim().toLowerCase().replace(/_/g, ' ');
-  if (!needle) return true;
-  return (
-    option.value.toLowerCase().replace(/_/g, ' ').includes(needle) ||
-    option.offset.toLowerCase().includes(needle)
-  );
-}
 
 /**
  * The timezone control.
@@ -105,7 +92,10 @@ export function TimeZoneSelector() {
         <Combobox.Portal>
           <Combobox.Positioner className="isolate z-50" sideOffset={4}>
             <Combobox.Popup className="max-h-72 w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-md bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10">
-              <Combobox.Empty className="px-2 py-3 text-center text-sm text-muted-foreground">
+              {/* `empty:p-0`, not `hidden`: Base UI keeps this mounted as the live
+                  region that announces "no results", and its padding would
+                  otherwise sit as a blank strip above every non-empty list. */}
+              <Combobox.Empty className="px-2 py-3 text-center text-sm text-muted-foreground empty:p-0">
                 {t('timeZoneNoResults')}
               </Combobox.Empty>
               <Combobox.List>

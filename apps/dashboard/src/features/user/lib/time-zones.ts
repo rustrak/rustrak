@@ -49,14 +49,19 @@ export function timeZoneOffsetMinutes(timeZone: string, now: Date): number {
   return Math.round((asUtc - truncated) / 60_000);
 }
 
-/** `UTC+02:00`, `UTC-03:30`, or plain `UTC` for zero, the way Sentry labels a zone. */
-export function formatOffset(offsetMinutes: number): string {
-  if (offsetMinutes === 0) return 'UTC';
+/** `+02:00`, `-03:30`, `+00:00`: the offset alone, zero included. */
+function signedOffset(offsetMinutes: number): string {
   const sign = offsetMinutes < 0 ? '-' : '+';
   const absolute = Math.abs(offsetMinutes);
   const hours = String(Math.floor(absolute / 60)).padStart(2, '0');
   const minutes = String(absolute % 60).padStart(2, '0');
-  return `UTC${sign}${hours}:${minutes}`;
+  return `${sign}${hours}:${minutes}`;
+}
+
+/** `UTC+02:00`, `UTC-03:30`, or plain `UTC` for zero, the way Sentry labels a zone. */
+export function formatOffset(offsetMinutes: number): string {
+  if (offsetMinutes === 0) return 'UTC';
+  return `UTC${signedOffset(offsetMinutes)}`;
 }
 
 /**
@@ -96,4 +101,24 @@ export function listTimeZones(now: Date = new Date()): TimeZoneOption[] {
       (a, b) =>
         a.offsetMinutes - b.offsetMinutes || a.value.localeCompare(b.value),
     );
+}
+
+/**
+ * Whether a typed query finds a zone: by name, with `_` read as a space so
+ * "new york" reaches `America/New_York`, or by offset so "+02" lists every
+ * zone two hours east of Greenwich right now.
+ *
+ * The offset is matched as its signed number, not as the `UTC+02:00` label:
+ * every label starts with `UTC`, so "utc" would list every zone.
+ */
+export function matchesTimeZone(
+  option: TimeZoneOption,
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase().replace(/_/g, ' ');
+  if (!needle) return true;
+  return (
+    option.value.toLowerCase().replace(/_/g, ' ').includes(needle) ||
+    signedOffset(option.offsetMinutes).includes(needle)
+  );
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatOffset,
   listTimeZones,
+  matchesTimeZone,
   timeZoneOffsetMinutes,
 } from './time-zones';
 
@@ -78,5 +79,42 @@ describe('listTimeZones', () => {
       offsetMinutes: 60,
       offset: 'UTC+01:00',
     });
+  });
+});
+
+describe('matchesTimeZone', () => {
+  const options = listTimeZones(january);
+  const search = (query: string) =>
+    options.filter((option) => matchesTimeZone(option, query));
+
+  // Every offset label starts with "UTC", so matching the label as a whole
+  // made "utc" list all ~420 zones and bury UTC itself in the middle.
+  it('finds UTC by name without listing every other zone', () => {
+    expect(search('utc').map((option) => option.value)).toEqual(['UTC']);
+  });
+
+  it('reads an underscore as a space', () => {
+    expect(search('new york').map((option) => option.value)).toEqual([
+      'America/New_York',
+    ]);
+  });
+
+  it('finds zones by the signed number of their offset', () => {
+    const plusNine = search('+09:00');
+    expect(plusNine.length).toBeGreaterThan(0);
+    expect(plusNine.every((option) => option.offsetMinutes === 540)).toBe(true);
+    expect(search('-03:30').map((option) => option.value)).toContain(
+      'America/St_Johns',
+    );
+  });
+
+  it('finds the zero offset, UTC included, by number too', () => {
+    const zero = search('+00:00');
+    expect(zero.map((option) => option.value)).toContain('UTC');
+    expect(zero.every((option) => option.offsetMinutes === 0)).toBe(true);
+  });
+
+  it('lists everything for an empty query', () => {
+    expect(search('  ')).toHaveLength(options.length);
   });
 });
