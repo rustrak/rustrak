@@ -9,9 +9,18 @@ import {
   matchesTimeZone,
   type TimeZoneOption,
 } from '@/features/user/lib/time-zones';
+import { session } from '@/shared/api/session';
 import { intl } from '@/shared/i18n/intl';
 import { cn } from '@/shared/lib/utils';
 import { Label } from '@/shared/ui/components/shadcn/label';
+
+/** The zone on the account row right now, or `null` when it holds none. */
+function storedTimeZone(): string | null {
+  const current = session.peek();
+  return current?.state === 'authenticated'
+    ? (current.user.timezone ?? null)
+    : null;
+}
 
 /**
  * The timezone control.
@@ -20,10 +29,11 @@ import { Label } from '@/shared/ui/components/shadcn/label';
  * time a reader arrives without one, which covers almost everyone. What it
  * cannot do is let a reader *disagree* with their browser, and the one
  * disagreement that matters is "show me UTC on purpose": the zone events
- * arrive in and the one server logs are written in, so someone correlating a
- * stack trace against a log line wants both clocks to read the same. Sentry
- * stores the same preference as `user.options.timezone` and offers it as a
- * select on the account page; this is that select.
+ * record their timestamps in, and the one server logs use too unless
+ * `RUSTRAK_LOG_TIMEZONE` moves them, so someone correlating a stack trace
+ * against a log line wants both clocks to read the same. Sentry stores the
+ * same preference as `user.options.timezone` and offers it as a select on
+ * the account page; this is that select.
  *
  * Searchable rather than a plain `Select`, for the same reason the platform
  * picker is: there are ~420 zones, and typing `mad` or `+02` is the only
@@ -51,7 +61,12 @@ export function TimeZoneSelector() {
   );
 
   const switchTo = (next: TimeZoneOption | null) => {
-    if (!next || next.value === timeZone) return;
+    // Compared against the zone the account *stores*, not the one the
+    // dashboard *resolved*: an account with no zone (or one this runtime does
+    // not know) resolves to UTC, and a reader picking UTC there is choosing
+    // it on purpose, so the pick has to reach the row. `peek()` rather than
+    // the route context, which `updatePreferences` does not refresh.
+    if (!next || next.value === storedTimeZone()) return;
 
     startTransition(async () => {
       const result = await updatePreferences({ timezone: next.value });

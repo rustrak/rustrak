@@ -11,7 +11,7 @@
     "timeZoneLabel": "Fuseau horaire",
     "timeZonePlaceholder": "Rechercher un fuseau horaire...",
     "timeZoneNoResults": "Aucun fuseau horaire trouvé.",
-    "timeZoneHint": "Toutes les dates et heures sont affichées dans ce fuseau. Choisissez UTC pour lire la même horloge que vos journaux serveur.",
+    "timeZoneHint": "Toutes les dates et heures sont affichées dans ce fuseau. Choisissez UTC pour les lire telles que les événements les enregistrent.",
     "timeZoneSaveFailed": "Impossible d’enregistrer votre fuseau horaire."
   },
   "app": {

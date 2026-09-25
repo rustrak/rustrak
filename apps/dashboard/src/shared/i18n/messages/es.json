@@ -11,7 +11,7 @@
     "timeZoneLabel": "Zona horaria",
     "timeZonePlaceholder": "Buscar zonas horarias...",
     "timeZoneNoResults": "No se encontró ninguna zona horaria.",
-    "timeZoneHint": "Todas las fechas y horas se muestran en esta zona. Elige UTC para leer el mismo reloj que los registros de tu servidor.",
+    "timeZoneHint": "Todas las fechas y horas se muestran en esta zona. Elige UTC para leerlas tal como las registran los eventos.",
     "timeZoneSaveFailed": "No se pudo guardar tu zona horaria."
   },
   "app": {

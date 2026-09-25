@@ -11,7 +11,7 @@
     "timeZoneLabel": "Timezone",
     "timeZonePlaceholder": "Search timezones...",
     "timeZoneNoResults": "No timezone found.",
-    "timeZoneHint": "Every date and time is shown in this zone. Pick UTC to read the same clock as your server logs.",
+    "timeZoneHint": "Every date and time is shown in this zone. Pick UTC to read them the way events record them.",
     "timeZoneSaveFailed": "Could not save your timezone."
   },
   "app": {

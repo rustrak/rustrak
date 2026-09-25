@@ -11,7 +11,7 @@
     "timeZoneLabel": "时区",
     "timeZonePlaceholder": "搜索时区...",
     "timeZoneNoResults": "未找到时区。",
-    "timeZoneHint": "所有日期和时间都按此时区显示。选择 UTC 可与服务器日志使用同一时钟。",
+    "timeZoneHint": "所有日期和时间都按此时区显示。选择 UTC 可按事件记录的原始时间查看。",
     "timeZoneSaveFailed": "无法保存您的时区设置。"
   },
   "app": {

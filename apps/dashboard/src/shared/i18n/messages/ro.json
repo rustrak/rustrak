@@ -11,7 +11,7 @@
     "timeZoneLabel": "Fus orar",
     "timeZonePlaceholder": "Caută fusuri orare...",
     "timeZoneNoResults": "Niciun fus orar găsit.",
-    "timeZoneHint": "Toate datele și orele sunt afișate în acest fus. Alege UTC pentru a citi același ceas ca jurnalele serverului tău.",
+    "timeZoneHint": "Toate datele și orele sunt afișate în acest fus. Alege UTC pentru a le citi așa cum le înregistrează evenimentele.",
     "timeZoneSaveFailed": "Nu s-a putut salva fusul orar."
   },
   "app": {
