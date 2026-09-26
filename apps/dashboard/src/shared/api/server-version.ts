@@ -2,6 +2,7 @@
  * The instance version, read by the About page and by the update check.
  */
 import type { Result, RustrakError, ServerVersion } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
 import { createClient } from '@/shared/api/rustrak';
 
 /**
@@ -26,3 +27,14 @@ export async function getServerVersion(): Promise<
   const client = await createClient();
   return client.health.getVersion();
 }
+
+/**
+ * The server's version, read once per session: the About page and the update
+ * check both need it, and it cannot change without a restart that ends the
+ * session anyway.
+ */
+export const serverVersionQuery = queryOptions({
+  queryKey: ['server-version'],
+  queryFn: getServerVersion,
+  staleTime: Number.POSITIVE_INFINITY,
+});

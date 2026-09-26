@@ -1,3 +1,4 @@
+import { useRouter } from '@tanstack/react-router';
 import { useId, useTransition } from 'react';
 import { toast } from 'sonner';
 import { useLocale, useTranslations } from 'use-intl';
@@ -11,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/shadcn/select';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
  * The language control.
@@ -22,10 +22,10 @@ import { useRouter } from '@/shared/ui/hooks/use-router';
  * a link to an issue is a link to that issue, not to that issue in Spanish.
  *
  * The choice is written to `users.language`, so it follows the reader to any
- * browser they log in from. `router.refresh()` rather than
- * `location.reload()`: it re-runs the Server Components against the new row
- * and reconciles, so scroll position, open dialogs and client state survive
- * the change.
+ * browser they log in from. `router.invalidate()` rather than
+ * `location.reload()`: it re-runs the loaders and the route `head` titles
+ * against the new row and reconciles, so scroll position, open dialogs and
+ * client state survive the change.
  *
  * **Each language names itself.** `简体中文`, not "Chinese" -- a reader who
  * needs this control is by definition not reading the current language well,
@@ -48,7 +48,7 @@ export function LanguageSelector() {
         toast.error(t('saveFailed'));
         return;
       }
-      router.refresh();
+      router.invalidate();
     });
   };
 

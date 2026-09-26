@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { createInvitation } from '@/features/user/api/mutations';
+import { invalidate, scope } from '@/shared/api/query-client';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
 import { Button } from '@/shared/ui/components/shadcn/button';
@@ -34,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/shadcn/select';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 const inviteSchema = z.object({
   email: z.email('Please enter a valid email address'),
@@ -44,7 +44,6 @@ const inviteSchema = z.object({
 type InviteFormData = z.infer<typeof inviteSchema>;
 
 export function InviteForm() {
-  const router = useRouter();
   const t = useTranslations('user');
 
   const globalT = useTranslations();
@@ -79,7 +78,7 @@ export function InviteForm() {
 
       const link = `${window.location.origin}/invite/${result.data.token}`;
       form.reset({ email: '', role: 'member' });
-      router.refresh();
+      void invalidate(scope.team);
 
       const copied = await copyToClipboard(link);
       if (copied) {

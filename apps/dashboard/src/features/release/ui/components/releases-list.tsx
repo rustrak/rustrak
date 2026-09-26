@@ -2,6 +2,7 @@ import type {
   OffsetPaginatedResponse,
   ReleaseHealthRow,
 } from '@rustrak/client';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Rocket } from 'lucide-react';
 import { useTransition } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -9,20 +10,19 @@ import {
   crashFreeClass,
   pct,
   RELEASE_PERIODS,
+  type ReleasePeriod,
 } from '@/features/release/model/session-health';
 import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { TablePagination } from '@/shared/ui/components/table-pagination';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface ReleasesListProps {
   projectId: number;
   initialHealth: OffsetPaginatedResponse<ReleaseHealthRow>;
   currentPage: number;
   /** Active period filter, if any (omitted = all time). */
-  activePeriod?: string;
+  activePeriod?: ReleasePeriod;
 }
 
 /**
@@ -39,18 +39,14 @@ export function ReleasesList({
 }: ReleasesListProps) {
   const format = useFormatter();
   const t = useTranslations('releases');
-  const router = useRouter();
+  const navigate = useNavigate({ from: '/projects/$id/releases/' });
   const [isPending, startTransition] = useTransition();
 
-  const path = `/projects/${projectId}/releases`;
   const { items: rows, total_count, total_pages, per_page } = initialHealth;
 
-  const navigate = (page: number, period?: string) => {
-    const params = new URLSearchParams();
-    params.set('page', String(page));
-    if (period) params.set('period', period);
+  const go = (page: number, period?: ReleasePeriod) => {
     startTransition(() => {
-      router.push(`${path}?${params.toString()}`);
+      navigate({ search: { page, period } });
     });
   };
 
@@ -63,7 +59,7 @@ export function ReleasesList({
             variant={!activePeriod ? 'secondary' : 'ghost'}
             size="sm"
             className="h-7 px-3"
-            onClick={() => navigate(1)}
+            onClick={() => go(1)}
             disabled={isPending}
           >
             {t('all')}
@@ -74,7 +70,7 @@ export function ReleasesList({
               variant={activePeriod === period ? 'secondary' : 'ghost'}
               size="sm"
               className="h-7 px-3"
-              onClick={() => navigate(1, period)}
+              onClick={() => go(1, period)}
               disabled={isPending}
             >
               {period}
@@ -110,7 +106,9 @@ export function ReleasesList({
             {rows.map((row) => (
               <Link
                 key={`${row.release}-${row.environment}`}
-                href={`${path}/${encodeURIComponent(row.release)}?environment=${encodeURIComponent(row.environment)}`}
+                to="/projects/$id/releases/$release"
+                params={{ id: projectId, release: row.release }}
+                search={{ environment: row.environment }}
                 className="flex items-center gap-4 px-4 py-3 text-sm hover:bg-muted/30 transition-colors group"
               >
                 <div className="flex-1 min-w-0">
@@ -162,7 +160,7 @@ export function ReleasesList({
         totalCount={total_count}
         perPage={per_page}
         disabled={isPending}
-        onPageChange={(page) => navigate(page, activePeriod)}
+        onPageChange={(page) => go(page, activePeriod)}
       />
     </div>
   );

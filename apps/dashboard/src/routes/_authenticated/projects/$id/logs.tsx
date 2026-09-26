@@ -1,33 +1,33 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { ScrollText } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { listLogs } from '@/features/log/api/queries';
+import { logQueries } from '@/features/log/api/queries';
 import { LogsList } from '@/features/log/ui/components/logs-list';
-import { getProject } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { searchPage, searchString } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
+function logsQuery(projectId: number, page: number, level?: string) {
+  return logQueries.list(projectId, { page, per_page: 50, level });
+}
+
 export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { page?: number; level?: string } => ({
     page: searchPage(search.page),
     level: searchString(search.level),
   }),
   loaderDeps: ({ search }) => ({ page: search.page ?? 1, level: search.level }),
-  loader: async ({ params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    const project = await getProject(projectId);
-
-    if (!project.success) return { project, logs: null };
-
+  loader: async ({ params: { id }, deps, context: { queryClient } }) => {
     // Nothing is swallowed: a fetch/auth failure renders an outage surface
     // rather than the "no logs yet" onboarding state.
-    const logs = await listLogs(projectId, {
-      page: deps.page,
-      per_page: 50,
-      level: deps.level,
-    });
-
+    const [project, logs] = await Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(logsQuery(id, deps.page, deps.level)),
+    ]);
     return { project, logs };
   },
   head: ({ loaderData }) => {
@@ -53,12 +53,12 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
 
 function LogsPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const { page, level } = Route.useSearch({
     select: (search) => ({ page: search.page ?? 1, level: search.level }),
   });
-  const { project: projectResult, logs: logsResult } = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const projectResult = useSuspenseQuery(projectQueries.detail(projectId)).data;
+  const logsResult = useSuspenseQuery(logsQuery(projectId, page, level)).data;
 
   if (!projectResult.success) {
     return (
@@ -67,10 +67,6 @@ function LogsPage() {
   }
 
   const project = projectResult.data;
-
-  // `null` only where the project read already failed, and that branch
-  // returned above — so this one is a real failure of its own request.
-  if (logsResult === null) return null;
 
   if (!logsResult.success) {
     return (
@@ -107,12 +103,7 @@ function LogsPage() {
             </p>
           </div>
         ) : (
-          <LogsList
-            projectId={projectId}
-            initialLogs={logs}
-            currentPage={page}
-            activeLevel={level}
-          />
+          <LogsList initialLogs={logs} currentPage={page} activeLevel={level} />
         )}
       </div>
     </div>

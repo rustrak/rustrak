@@ -1219,6 +1219,10 @@
     "main": {
       "headline": "Această pagină nu a putut fi încărcată",
       "description": "Defectul s-a produs în timpul randării, nu în datele tale. Tot restul panoului rămâne accesibil din antetul de mai sus."
+    },
+    "app": {
+      "headline": "Ceva nu a funcționat",
+      "description": "Panoul a eșuat la afișarea acestei pagini. Datele tale nu sunt afectate, iar reîncărcarea rezolvă de obicei problema."
     }
   },
   "auth": {

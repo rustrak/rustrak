@@ -1,10 +1,7 @@
 /**
- * Reads for the log feature, called straight from Server Components.
- *
- * `import 'server-only'` is a build-time poison pill rather than a directive:
- * if this module reaches the client bundle the build fails, instead of shipping
- * a browser bundle that holds the session cookie.
+ * Reads for the log feature.
  */
+
 import type {
   ListLogsOptions,
   Log,
@@ -12,6 +9,8 @@ import type {
   Result,
   RustrakError,
 } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
+import { scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
 
 export async function listLogs(
@@ -21,3 +20,11 @@ export async function listLogs(
   const client = await createClient();
   return client.logs.list(projectId, options);
 }
+
+export const logQueries = {
+  list: (projectId: number, options?: ListLogsOptions) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'logs', options],
+      queryFn: () => listLogs(projectId, options),
+    }),
+};

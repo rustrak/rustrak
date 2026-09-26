@@ -1,8 +1,8 @@
+import { useNavigate } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import type { EventNavigation } from '@/features/event/api/queries';
 import { Button } from '@/shared/ui/components/shadcn/button';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface EventNavigationBarProps {
   projectId: number;
@@ -16,7 +16,7 @@ export function EventNavigationBar({
   navigation,
 }: EventNavigationBarProps) {
   const t = useTranslations('events');
-  const router = useRouter();
+  const navigate = useNavigate();
   const {
     currentIndex,
     totalCount,
@@ -26,10 +26,12 @@ export function EventNavigationBar({
     nextEventId,
   } = navigation;
 
-  const baseUrl = `/projects/${projectId}/issues/${issueId}/events`;
   const go = (eventId?: string | null) => {
     if (eventId) {
-      router.push(`${baseUrl}/${eventId}`);
+      navigate({
+        to: '/projects/$id/issues/$issueId/events/$eventId',
+        params: { id: projectId, issueId, eventId },
+      });
     }
   };
 

@@ -1,7 +1,15 @@
 import type { IssueAggregates, IssueStats } from '@rustrak/client';
+import { lazy, Suspense } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { TagDistribution } from '@/features/issue/ui/components/tag-distribution';
-import { EventChart } from '@/shared/ui/components/event-chart';
+
+// recharts is most of this route's weight, and the chart is the least of what
+// the page is for: the stack trace below it renders without waiting for it.
+const EventChart = lazy(() =>
+  import('@/shared/ui/components/event-chart').then((m) => ({
+    default: m.EventChart,
+  })),
+);
 
 /**
  * The issue's last thirty days above the event: its counts and chart, and the
@@ -38,7 +46,9 @@ export function EventTrends({
         </div>
         <div className="flex-1 min-w-0">
           {buckets.length > 0 ? (
-            <EventChart data={buckets} />
+            <Suspense fallback={<div className="h-[130px]" />}>
+              <EventChart data={buckets} />
+            </Suspense>
           ) : (
             <div className="h-[130px] flex items-center justify-center text-xs text-muted-foreground">
               {t('event.noEventData')}

@@ -70,26 +70,24 @@ export function resolveAgentFilters(params: {
 }
 
 /**
- * Rebuilds the dashboard's query string with one filter changed.
+ * The dashboard's search with one filter changed.
  *
  * Omitting a filter rather than writing an empty value keeps the URL honest:
  * `?period=7d` and `?period=7d&environment=` mean the same thing, and only
  * one of them should exist.
  */
-export function agentDashboardQuery(
+export function agentDashboardSearch(
   current: { period?: string; environment?: string },
   change: { period?: string | null; environment?: string | null },
-): string {
-  const next = new URLSearchParams();
+): { period?: string; environment?: string } {
   const period = change.period !== undefined ? change.period : current.period;
   const environment =
     change.environment !== undefined ? change.environment : current.environment;
 
-  if (period) next.set('period', period);
-  if (environment) next.set('environment', environment);
-
-  const query = next.toString();
-  return query ? `?${query}` : '';
+  return {
+    ...(period ? { period } : {}),
+    ...(environment ? { environment } : {}),
+  };
 }
 
 /**

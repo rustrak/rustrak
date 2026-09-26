@@ -1,14 +1,12 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { IssueListCard } from '@/features/issue/ui/components/issue-list-card';
-import { getProject } from '@/features/project/api/queries';
-import {
-  getAllReleaseHealthRows,
-  getNewIssuesForRelease,
-} from '@/features/release/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
+import { releaseQueries } from '@/features/release/api/queries';
 import { ReleaseEnvironmentCards } from '@/features/release/ui/components/release-environment-cards';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
+import { combine, loadAll } from '@/shared/lib/results';
 import { searchString } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import {
@@ -30,11 +28,12 @@ function decodeRelease(raw: string): string | null {
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/releases/$release',
 )({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { environment?: string } => ({
     environment: searchString(search.environment),
   }),
-  loader: async ({ params }) => {
-    const projectId = Number.parseInt(params.id, 10);
+  loader: async ({ params, context: { queryClient } }) => {
     const releaseVersion = decodeRelease(params.release);
 
     // A malformed escape is not a release this instance has ever seen, so it
@@ -43,47 +42,26 @@ export const Route = createFileRoute(
     // wrong address into the application-error screen.
     if (releaseVersion === null) throw notFound();
 
-    // Started here, awaited below. It is kept *out* of `loadAll` because the
-    // page does not need it: the environment cards are the release's real
-    // content and stand on their own, so its failure degrades this one panel
-    // instead of the page -- and it degrades to a failure, never to "no new
-    // issues introduced in this release", which is a statement about the
-    // release we did not obtain.
-    //
-    // Kept out of `loadAll` but not out of the same round-trip: awaiting it
-    // after `loadAll` resolved would isolate the failure and serialise the
-    // request, when only the first was wanted.
-    const newIssuesPromise = getNewIssuesForRelease(
-      projectId,
-      releaseVersion,
-      10,
-    );
-
-    const loaded = await loadAll([
-      getProject(projectId),
-      getAllReleaseHealthRows(projectId, releaseVersion),
+    // The new issues are kept *out* of `loadAll` because the page does not
+    // need them: the environment cards are the release's real content and
+    // stand on their own, so their failure degrades this one panel instead of
+    // the page. Same round trip all the same.
+    const [loaded] = await Promise.all([
+      loadAll([
+        queryClient.ensureQueryData(projectQueries.detail(params.id)),
+        queryClient.ensureQueryData(
+          releaseQueries.rows(params.id, releaseVersion),
+        ),
+      ]),
+      queryClient.ensureQueryData(
+        releaseQueries.newIssues(params.id, releaseVersion, 10),
+      ),
     ]);
 
-    // Both early exits drain the in-flight request above, so a transport-level
-    // failure on a promise nothing is waiting for cannot surface as an
-    // unhandled rejection.
-    if (!loaded.success) {
-      void newIssuesPromise.catch(() => undefined);
-      return { loaded, newIssues: null, releaseVersion };
-    }
-
     // No health rows at all means the release in the URL was never reported.
-    // Distinct from the failure above, which is why the check stays after it —
-    // and before the second await, so a wrong address does not wait on a
-    // request whose answer it will not use.
-    if (loaded.data[1].length === 0) {
-      void newIssuesPromise.catch(() => undefined);
-      throw notFound();
-    }
+    if (loaded.success && loaded.data[1].length === 0) throw notFound();
 
-    const newIssues = await newIssuesPromise;
-
-    return { loaded, newIssues, releaseVersion };
+    return { loaded, releaseVersion };
   },
   head: ({ loaderData }) => {
     const t = translator('projectPages');
@@ -115,10 +93,16 @@ export const Route = createFileRoute(
 
 function ReleaseDetailPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const { environment } = Route.useSearch();
-  const { loaded, newIssues, releaseVersion } = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const { releaseVersion } = Route.useLoaderData();
+  const loaded = combine([
+    useSuspenseQuery(projectQueries.detail(projectId)).data,
+    useSuspenseQuery(releaseQueries.rows(projectId, releaseVersion)).data,
+  ]);
+  const newIssues = useSuspenseQuery(
+    releaseQueries.newIssues(projectId, releaseVersion, 10),
+  ).data;
 
   if (!loaded.success) {
     return (
@@ -152,24 +136,22 @@ function ReleaseDetailPage() {
             emptyMessage={t('releaseDetail.newIssuesEmpty')}
           />
         ) : (
-          newIssues && (
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  {t('releaseDetail.newIssues')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* A 404 from this endpoint alone is not grounds for replacing
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                {t('releaseDetail.newIssues')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* A 404 from this endpoint alone is not grounds for replacing
                     a release page that already rendered its health cards. */}
-                <LoadFailure
-                  error={newIssues.error}
-                  title={t('releaseDetail.loadNewIssuesFailed')}
-                  notFoundOnMissing={false}
-                />
-              </CardContent>
-            </Card>
-          )
+              <LoadFailure
+                error={newIssues.error}
+                title={t('releaseDetail.loadNewIssuesFailed')}
+                notFoundOnMissing={false}
+              />
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

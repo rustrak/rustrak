@@ -1,6 +1,7 @@
 import type { RustrakError } from '@rustrak/client';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { getInvitation } from '@/features/user/api/queries';
+import { userQueries } from '@/features/user/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
@@ -39,13 +40,14 @@ export const Route = createFileRoute('/invite/$token')({
       ],
     };
   },
-  loader: ({ params }) => getInvitation(params.token),
+  loader: ({ params, context: { queryClient } }) =>
+    queryClient.ensureQueryData(userQueries.invitation(params.token)),
   component: InvitePage,
 });
 
 function InvitePage() {
   const { token } = Route.useParams();
-  const result = Route.useLoaderData();
+  const { data: result } = useSuspenseQuery(userQueries.invitation(token));
 
   // Three outcomes, where there used to be two. `!result.success` alone folded
   // a transient outage into "this invitation link is invalid ... ask an

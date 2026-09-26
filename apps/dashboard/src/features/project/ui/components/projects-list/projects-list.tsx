@@ -1,16 +1,16 @@
 import type { OffsetPaginatedResponse, Project } from '@rustrak/client';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { FolderOpen, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useOptimistic, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { deleteProject } from '@/features/project/api/mutations';
 import { PROJECT_COLUMNS } from '@/features/project/model/columns';
+import { invalidate, scope } from '@/shared/api/query-client';
 import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { Checkbox } from '@/shared/ui/components/shadcn/checkbox';
 import { TablePagination } from '@/shared/ui/components/table-pagination';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useRowSelection } from '@/shared/ui/hooks/use-row-selection';
 import { DeleteProjectsDialog } from './delete-projects-dialog';
 import { ProjectRow } from './project-row';
@@ -29,7 +29,7 @@ export function ProjectsList({
   currentPage,
 }: ProjectsListProps) {
   const t = useTranslations('projects');
-  const router = useRouter();
+  const navigate = useNavigate({ from: '/projects/' });
   const [isPending, startTransition] = useTransition();
   const {
     items: serverProjects,
@@ -78,7 +78,7 @@ export function ProjectsList({
           toast.error(t('toasts.deleteFailed'), {
             description: result.error.message,
           });
-          router.refresh();
+          void invalidate(scope.projects);
           return;
         }
       }
@@ -87,7 +87,7 @@ export function ProjectsList({
 
       if (!pendingDelete) selection.clear();
       setPendingDelete(null);
-      router.refresh();
+      void invalidate(scope.projects);
     });
   };
 
@@ -121,7 +121,7 @@ export function ProjectsList({
           <Button
             className="mt-4"
             nativeButton={false}
-            render={<Link href="/projects/new" />}
+            render={<Link to="/projects/new" />}
           >
             <Plus className="mr-2 size-4" />
             {t('newProject')}
@@ -185,7 +185,9 @@ export function ProjectsList({
         totalCount={total_count}
         perPage={per_page}
         disabled={isPending}
-        onPageChange={(page) => router.push(`/projects?page=${page}`)}
+        onPageChange={(page) =>
+          navigate({ search: (prev) => ({ ...prev, page }) })
+        }
       />
 
       {isPending && (

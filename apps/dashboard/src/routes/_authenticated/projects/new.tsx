@@ -1,10 +1,10 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { getProjects } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { CreateProjectForm } from '@/features/project/ui/components/create-project-form/create-project-form';
 import { translator } from '@/shared/i18n/intl';
-import { Link } from '@/shared/ui/components/link';
 
 /**
  * Create-project page: platform picker plus name, in one form.
@@ -30,21 +30,22 @@ export const Route = createFileRoute('/_authenticated/projects/new')({
   // project creation: this is one of the few places where discarding the
   // failure is the right answer, and it is written out rather than swallowed by
   // a `catch`.
-  loader: async () => {
-    const existing = await getProjects({ page: 1, per_page: 100 });
-    return existing.success ? existing.data.items.map((p) => p.name) : [];
-  },
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(projectQueries.all()),
   component: NewProjectPage,
 });
 
 function NewProjectPage() {
   const t = useTranslations('projectPages');
-  const existingNames = Route.useLoaderData();
+  const { data: existing } = useSuspenseQuery(projectQueries.all());
+  const existingNames = existing.success
+    ? existing.data.items.map((p) => p.name)
+    : [];
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 md:py-8">
       <Link
-        href="/projects"
+        to="/projects"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />

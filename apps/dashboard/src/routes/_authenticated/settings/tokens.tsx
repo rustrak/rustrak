@@ -1,10 +1,10 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { BookOpen, ExternalLink } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { listTokens } from '@/features/token/api/queries';
+import { tokenQueries } from '@/features/token/api/queries';
 import { TokensList } from '@/features/token/ui/components/tokens-list/tokens-list';
 import { translator } from '@/shared/i18n/intl';
-import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 export const Route = createFileRoute('/_authenticated/settings/tokens')({
@@ -17,13 +17,14 @@ export const Route = createFileRoute('/_authenticated/settings/tokens')({
       ],
     };
   },
-  loader: () => listTokens(),
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(tokenQueries.list()),
   component: TokensPage,
 });
 
 function TokensPage() {
   const t = useTranslations('settings');
-  const tokens = Route.useLoaderData();
+  const { data: tokens } = useSuspenseQuery(tokenQueries.list());
 
   if (!tokens.success) {
     return (
@@ -44,7 +45,7 @@ function TokensPage() {
         <p className="text-muted-foreground mt-1">{t('tokens.subtitle')}</p>
       </div>
 
-      <Link
+      <a
         href="https://rustrak.github.io/rustrak/api-reference"
         target="_blank"
         rel="noopener noreferrer"
@@ -62,7 +63,7 @@ function TokensPage() {
           </p>
         </div>
         <ExternalLink className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-      </Link>
+      </a>
 
       <TokensList initialTokens={tokens.data} />
     </>

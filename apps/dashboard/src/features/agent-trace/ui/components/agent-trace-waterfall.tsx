@@ -1,10 +1,10 @@
 import type { Span } from '@rustrak/client';
+import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '@/shared/lib/utils';
 import { barGeometry } from '@/shared/lib/waterfall-geometry';
-import { Link } from '@/shared/ui/components/link';
 
 interface AgentTraceWaterfallProps {
   spans: Span[];
@@ -284,11 +284,6 @@ function AgentTraceRow({
     total,
   );
 
-  // Selecting toggles: clicking the open row closes the panel.
-  const href = isSelected
-    ? `/projects/${projectId}/agents/${traceId}`
-    : `/projects/${projectId}/agents/${traceId}?span=${span.id}`;
-
   return (
     <div
       className={cn(
@@ -308,9 +303,13 @@ function AgentTraceRow({
         onToggle={() => onToggle(span.span_id)}
       />
 
+      {/* Selecting toggles: clicking the open row closes the panel. The list
+          keeps its scroll, or every selection would jump back to the top. */}
       <Link
-        href={href}
-        scroll={false}
+        to="/projects/$id/agents/$traceId"
+        params={{ id: projectId, traceId }}
+        search={isSelected ? {} : { span: span.id }}
+        resetScroll={false}
         aria-current={isSelected ? 'true' : undefined}
         className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left"
       >

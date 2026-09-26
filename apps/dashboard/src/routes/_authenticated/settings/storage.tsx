@@ -1,9 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ShieldX } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { projectQueries } from '@/features/project/api/queries';
+import { storageQueries } from '@/features/storage/api/queries';
 import { SourceMapGc } from '@/features/storage/ui/components/source-map-gc';
 import { StorageProjectsTable } from '@/features/storage/ui/components/storage-projects-table';
 import { StorageSummaryCards } from '@/features/storage/ui/components/storage-summary-cards';
+import { session } from '@/shared/api/session';
 import { translator } from '@/shared/i18n/intl';
 import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
@@ -18,6 +21,17 @@ export const Route = createFileRoute('/_authenticated/settings/storage')({
         { name: 'description', content: t('storage.meta.description') },
       ],
     };
+  },
+  // Started here rather than when each panel mounts, and not awaited: every
+  // panel still appears when its own answer lands.
+  loader: ({ context: { queryClient } }) => {
+    const answer = session.peek();
+    if (answer?.state !== 'authenticated' || answer.user.role !== 'admin') {
+      return;
+    }
+    void queryClient.prefetchQuery(storageQueries.summary());
+    void queryClient.prefetchQuery(storageQueries.projects());
+    void queryClient.prefetchQuery(projectQueries.list({ per_page: 10000 }));
   },
   component: StoragePage,
 });

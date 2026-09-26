@@ -1,18 +1,15 @@
 import type { RustrakError } from '@rustrak/client';
-import { useEffect } from 'react';
-import { session } from '@/shared/api/session';
 import { NotFoundScreen } from '@/shared/ui/components/not-found-screen';
 import { ServiceUnavailable } from '@/shared/ui/components/service-unavailable';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
  * What a screen renders when a `Result` it needed came back a failure.
  *
  * Three outcomes, and which one you get is decided by `kind` alone:
  *
- * - `unauthenticated` is the *only* kind that sends the visitor to login. The
- *   `_authenticated` guard already gated the route, so reaching this means the
- *   session expired between the guard and the fetch.
+ * - `unauthenticated` renders nothing. The guard already gated the route, so
+ *   it means the session expired since; `router.tsx` watches every read for
+ *   that answer and sends the visitor to sign in, once, from outside React.
  * - `not_found` renders the app's 404. A project-scoped endpoint answering 404
  *   means the project, issue or event in the URL is gone, which is a wrong
  *   address rather than an outage.
@@ -23,15 +20,6 @@ import { useRouter } from '@/shared/ui/hooks/use-router';
  * `title` says which fetch failed, so a page that loads several things does not
  * leave the reader guessing which one is missing.
  *
- * **The two navigating branches moved into the render, and they had to.**
- * Under Next this was a Server Component calling `redirect()` and
- * `notFound()`, which throw and are caught by the framework before anything
- * paints. A router redirect thrown from a component is not: the tree is
- * already rendering. So the sign-out case navigates from an effect and paints
- * nothing in the meantime, and the missing-record case renders the same 404
- * screen the route-level handler renders rather than routing to it — the
- * reader sees the same thing either way, and the address stays on the record
- * they asked for rather than being rewritten to a 404 URL they cannot share.
  */
 export function LoadFailure({
   error,
@@ -46,18 +34,7 @@ export function LoadFailure({
    */
   notFoundOnMissing?: boolean;
 }) {
-  const router = useRouter();
-  const expired = error.kind === 'unauthenticated';
-
-  useEffect(() => {
-    if (!expired) return;
-    // Cleared first: the guard on the way back in must not read the session
-    // this very response just disproved and wave the visitor through.
-    session.clear();
-    router.replace('/login');
-  }, [expired, router]);
-
-  if (expired) return null;
+  if (error.kind === 'unauthenticated') return null;
 
   if (error.kind === 'not_found' && notFoundOnMissing) {
     return <NotFoundScreen />;

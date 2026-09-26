@@ -1,8 +1,8 @@
 import type { Issue } from '@rustrak/client';
+import { Link } from '@tanstack/react-router';
 import { AlertCircle, Users } from 'lucide-react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { LevelBadge } from '@/features/issue/ui/components/issue-indicators';
-import { Link } from '@/shared/ui/components/link';
 import {
   Card,
   CardContent,
@@ -51,7 +51,8 @@ export function IssueListCard({
             {issues.map((issue) => (
               <Link
                 key={issue.id}
-                href={`/projects/${projectId}/issues/${issue.id}`}
+                to="/projects/$id/issues/$issueId"
+                params={{ id: projectId, issueId: issue.id }}
                 className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0 hover:text-primary transition-colors"
               >
                 <div className="min-w-0 flex-1">

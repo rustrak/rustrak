@@ -1,10 +1,10 @@
 import type { Issue } from '@rustrak/client';
+import { Link } from '@tanstack/react-router';
 import { CircleAlert } from 'lucide-react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { IssueActions } from '@/features/issue/ui/components/issue-actions';
 import { StatusIndicator } from '@/features/issue/ui/components/issue-indicators';
 import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
 
 /**
  * The band an event opens with: what broke, where, and what can be done
@@ -37,7 +37,8 @@ export function EventHeader({
       <div className="w-full px-4 md:px-8 py-3 space-y-1.5">
         <nav className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-0">
           <Link
-            href={`/projects/${projectId}/issues`}
+            to="/projects/$id/issues"
+            params={{ id: projectId }}
             className="hover:text-foreground transition-colors"
           >
             {t('issues.title')}

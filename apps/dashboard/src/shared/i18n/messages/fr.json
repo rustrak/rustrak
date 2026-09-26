@@ -1219,6 +1219,10 @@
     "main": {
       "headline": "Cette page n’a pas pu être chargée",
       "description": "La panne s’est produite pendant l’affichage, pas dans vos données. Tout le reste du tableau de bord reste accessible depuis l’en-tête ci-dessus."
+    },
+    "app": {
+      "headline": "Une erreur est survenue",
+      "description": "Le tableau de bord a échoué en affichant cette page. Vos données ne sont pas touchées, et recharger règle généralement le problème."
     }
   },
   "auth": {

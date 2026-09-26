@@ -1,14 +1,18 @@
+import { Link } from '@tanstack/react-router';
 import { Bell, KeyRound, SlidersHorizontal, Users } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
-import { usePathname } from '@/shared/ui/hooks/use-pathname';
+
+type ProjectSettingsPath =
+  | '/projects/$id/settings/general'
+  | '/projects/$id/settings/alerts'
+  | '/projects/$id/settings/members'
+  | '/projects/$id/settings/client-keys';
 
 interface NavGroup {
   /** Rendered above the group. Omit for a single ungrouped list. */
   labelKey?: string;
   items: {
-    segment: string;
+    to: ProjectSettingsPath;
     labelKey: string;
     icon: React.ElementType;
   }[];
@@ -23,18 +27,37 @@ const navGroups: NavGroup[] = [
   {
     labelKey: 'nav.groupProject',
     items: [
-      { segment: 'general', labelKey: 'nav.general', icon: SlidersHorizontal },
-      { segment: 'alerts', labelKey: 'nav.alerts', icon: Bell },
-      { segment: 'members', labelKey: 'nav.members', icon: Users },
+      {
+        to: '/projects/$id/settings/general',
+        labelKey: 'nav.general',
+        icon: SlidersHorizontal,
+      },
+      {
+        to: '/projects/$id/settings/alerts',
+        labelKey: 'nav.alerts',
+        icon: Bell,
+      },
+      {
+        to: '/projects/$id/settings/members',
+        labelKey: 'nav.members',
+        icon: Users,
+      },
     ],
   },
   {
     labelKey: 'nav.groupSdkSetup',
     items: [
-      { segment: 'client-keys', labelKey: 'nav.clientKeys', icon: KeyRound },
+      {
+        to: '/projects/$id/settings/client-keys',
+        labelKey: 'nav.clientKeys',
+        icon: KeyRound,
+      },
     ],
   },
 ];
+
+/** Only the page itself is active, whatever its query string holds. */
+const NAV_ACTIVE = { exact: true, includeSearch: false };
 
 interface ProjectSettingsNavProps {
   projectId: number;
@@ -46,8 +69,6 @@ export function ProjectSettingsNav({
   onNavigate,
 }: ProjectSettingsNavProps) {
   const t = useTranslations('settings');
-  const pathname = usePathname();
-  const base = `/projects/${projectId}/settings`;
   const showLabels = navGroups.length > 1;
 
   return (
@@ -64,21 +85,23 @@ export function ProjectSettingsNav({
             </span>
           )}
           {group.items.map((item) => {
-            const href = `${base}/${item.segment}`;
             const Icon = item.icon;
-            const isActive = pathname === href;
 
             return (
               <Link
-                key={href}
-                href={href}
+                key={item.to}
+                to={item.to}
+                params={{ id: projectId }}
                 onClick={onNavigate}
-                className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary font-bold text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                )}
+                className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors"
+                activeOptions={NAV_ACTIVE}
+                activeProps={{
+                  className: 'bg-primary font-bold text-primary-foreground',
+                }}
+                inactiveProps={{
+                  className:
+                    'font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                }}
               >
                 <Icon className="size-4" />
                 {t(item.labelKey)}

@@ -1219,6 +1219,10 @@
     "main": {
       "headline": "This page could not be loaded",
       "description": "The failure happened while rendering, not in your data. Everything else in the dashboard is still reachable from the header above."
+    },
+    "app": {
+      "headline": "Something went wrong",
+      "description": "The dashboard failed while showing this page. Your data is not affected, and reloading usually fixes it."
     }
   },
   "auth": {

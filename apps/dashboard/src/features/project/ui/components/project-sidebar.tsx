@@ -1,3 +1,4 @@
+import { Link, useMatchRoute } from '@tanstack/react-router';
 import {
   AlertCircle,
   Bot,
@@ -13,7 +14,6 @@ import {
 import { PlatformIcon } from 'platformicons';
 import { useTranslations } from 'use-intl';
 import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,7 +38,6 @@ import {
   useSidebar,
 } from '@/shared/ui/components/shadcn/sidebar';
 import { TooltipProvider } from '@/shared/ui/components/shadcn/tooltip';
-import { usePathname } from '@/shared/ui/hooks/use-pathname';
 
 interface ProjectOption {
   id: number;
@@ -119,7 +118,7 @@ function ProjectSwitcher({
           {projects.map((p) => (
             <DropdownMenuItem
               key={p.id}
-              render={<Link href={`/projects/${p.id}`} />}
+              render={<Link to="/projects/$id" params={{ id: p.id }} />}
               className="gap-2"
             >
               <ProjectAvatar platform={p.platform} size={24} />
@@ -164,46 +163,45 @@ function CollapseButton() {
 
 export function ProjectSidebar({ projectId, projects }: ProjectSidebarProps) {
   const t = useTranslations('projects');
-  const pathname = usePathname();
+  const matchRoute = useMatchRoute();
 
   const navItems = [
     {
-      href: `/projects/${projectId}`,
+      to: '/projects/$id',
       label: t('nav.overview'),
       icon: LayoutDashboard,
-      exact: true,
     },
     {
-      href: `/projects/${projectId}/issues`,
+      to: '/projects/$id/issues',
       label: t('nav.issues'),
       icon: AlertCircle,
     },
     {
-      href: `/projects/${projectId}/releases`,
+      to: '/projects/$id/releases',
       label: t('nav.releases'),
       icon: Rocket,
     },
     {
-      href: `/projects/${projectId}/performance`,
+      to: '/projects/$id/performance',
       label: t('nav.performance'),
       icon: Zap,
     },
     {
-      href: `/projects/${projectId}/agents`,
+      to: '/projects/$id/agents',
       label: t('nav.agents'),
       icon: Bot,
     },
     {
-      href: `/projects/${projectId}/logs`,
+      to: '/projects/$id/logs',
       label: t('nav.logs'),
       icon: ScrollText,
     },
     {
-      href: `/projects/${projectId}/settings`,
+      to: '/projects/$id/settings',
       label: t('nav.settings'),
       icon: Settings,
     },
-  ];
+  ] as const;
 
   return (
     <TooltipProvider delay={0}>
@@ -219,17 +217,25 @@ export function ProjectSidebar({ projectId, projects }: ProjectSidebarProps) {
               <SidebarMenu className="gap-1.5">
                 {navItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = item.exact
-                    ? pathname === item.href
-                    : pathname.startsWith(item.href);
+                  const isActive = Boolean(
+                    matchRoute({
+                      to: item.to,
+                      params: { id: projectId },
+                      // The overview prefixes every other page, so it alone
+                      // has to match exactly.
+                      fuzzy: item.to !== '/projects/$id',
+                    }),
+                  );
 
                   return (
-                    <SidebarMenuItem key={item.href}>
+                    <SidebarMenuItem key={item.to}>
                       <SidebarMenuButton
                         // Drive active styling ourselves for the brand-green fill.
                         isActive={false}
                         tooltip={item.label}
-                        render={<Link href={item.href} />}
+                        render={
+                          <Link to={item.to} params={{ id: projectId }} />
+                        }
                         className={cn(
                           'h-10 gap-3 rounded-lg text-[0.925rem] font-medium group-data-[collapsible=icon]:justify-center',
                           isActive

@@ -2,17 +2,20 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import './styles.css';
 
+import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { queryClient } from '@/shared/api/query-client';
 import { session } from '@/shared/api/session';
 import { intl } from '@/shared/i18n/intl';
 import { Messages } from '@/shared/i18n/provider';
 import { ThemeProvider } from '@/shared/ui/components/theme-provider';
 import { Toaster } from '@/shared/ui/components/toaster';
-import { createAppRouter } from './router';
+import { connectRouter, createAppRouter } from './router';
 
 const router = createAppRouter();
+connectRouter(router);
 
 /**
  * Nothing renders until we know who is asking and in what language.
@@ -45,10 +48,12 @@ async function bootstrap() {
         enableSystem
         disableTransitionOnChange
       >
-        <Messages>
-          <RouterProvider router={router} />
-          <Toaster />
-        </Messages>
+        <QueryClientProvider client={queryClient}>
+          <Messages>
+            <RouterProvider router={router} />
+            <Toaster />
+          </Messages>
+        </QueryClientProvider>
       </ThemeProvider>
     </StrictMode>,
   );

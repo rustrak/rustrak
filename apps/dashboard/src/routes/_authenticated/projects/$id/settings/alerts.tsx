@@ -1,10 +1,11 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { listAlertRules, listIntegrations } from '@/features/alert/api/queries';
+import { alertQueries } from '@/features/alert/api/queries';
 import { AlertsSettings } from '@/features/alert/ui/components/alerts-settings';
-import { getProject } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
+import { combine, loadAll } from '@/shared/lib/results';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 export const Route = createFileRoute(
@@ -15,20 +16,23 @@ export const Route = createFileRoute(
   }),
   // The two lists used to fall back to `[]`, which drew "no alert rules yet"
   // over an outage and invited the admin to recreate rules that already exist.
-  loader: ({ params }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    return loadAll([
-      getProject(projectId),
-      listAlertRules(projectId),
-      listIntegrations(),
-    ]);
-  },
+  loader: ({ params: { id }, context: { queryClient } }) =>
+    loadAll([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(alertQueries.rules(id)),
+      queryClient.ensureQueryData(alertQueries.integrations()),
+    ]),
   component: AlertsSettingsPage,
 });
 
 function AlertsSettingsPage() {
   const t = useTranslations('settings');
-  const loaded = Route.useLoaderData();
+  const { id } = Route.useParams();
+  const loaded = combine([
+    useSuspenseQuery(projectQueries.detail(id)).data,
+    useSuspenseQuery(alertQueries.rules(id)).data,
+    useSuspenseQuery(alertQueries.integrations()).data,
+  ]);
 
   if (!loaded.success) {
     return <LoadFailure error={loaded.error} title={t('alerts.loadFailed')} />;

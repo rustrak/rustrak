@@ -1,27 +1,29 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { Rocket } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { getProject } from '@/features/project/api/queries';
-import { getReleaseHealth } from '@/features/release/api/queries';
-import { parseReleasePeriod } from '@/features/release/model/session-health';
+import { projectQueries } from '@/features/project/api/queries';
+import { releaseQueries } from '@/features/release/api/queries';
+import {
+  parseReleasePeriod,
+  type ReleasePeriod,
+} from '@/features/release/model/session-health';
 import { ReleasesList } from '@/features/release/ui/components/releases-list';
 import { translator } from '@/shared/i18n/intl';
 import { searchPage, searchString } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
-/** Canonical URL for a page of the releases list, keeping the active window. */
-function releasesHref(
-  projectId: number,
-  page: number,
-  period?: string,
-): string {
-  const params = new URLSearchParams({ page: String(page) });
-  if (period) params.set('period', period);
-  return `/projects/${projectId}/releases?${params.toString()}`;
+function healthQuery(projectId: number, page: number, period?: string) {
+  return releaseQueries.health(projectId, { page, per_page: 20, period });
 }
 
 export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    page?: number;
+    period?: ReleasePeriod;
+  } => ({
     page: searchPage(search.page),
     // An unrecognized window would otherwise reach the API, which ignores what
     // it cannot parse and answers with all-time data while no filter button
@@ -32,19 +34,13 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
     page: search.page ?? 1,
     period: search.period,
   }),
-  loader: async ({ params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    const project = await getProject(projectId);
-
-    if (!project.success) return { project, health: null };
-
+  loader: async ({ params: { id }, deps, context: { queryClient } }) => {
     // Nothing is swallowed: a fetch/auth failure renders an outage surface
     // rather than the "no releases yet" onboarding state.
-    const health = await getReleaseHealth(projectId, {
-      page: deps.page,
-      per_page: 20,
-      period: deps.period,
-    });
+    const [project, health] = await Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(healthQuery(id, deps.page, deps.period)),
+    ]);
 
     // A page past the end still carries a positive total, which would render a
     // nonsensical range ("19961-27 of 27", "Page 999 of 2"). Send the browser
@@ -52,13 +48,13 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
     // in one hop.
     if (health.success) {
       const { total_pages } = health.data;
-      if (total_pages > 0 && deps.page > total_pages) {
+      const last = Math.max(total_pages, 1);
+      if (deps.page > last) {
         throw redirect({
-          href: releasesHref(projectId, total_pages, deps.period),
+          to: '/projects/$id/releases',
+          params: { id },
+          search: { page: last, period: deps.period },
         });
-      }
-      if (total_pages === 0 && deps.page > 1) {
-        throw redirect({ href: releasesHref(projectId, 1, deps.period) });
       }
     }
 
@@ -87,23 +83,20 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
 
 function ReleasesPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const { page, period } = Route.useSearch({
     select: (search) => ({ page: search.page ?? 1, period: search.period }),
   });
-  const { project: projectResult, health: healthResult } =
-    Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const projectResult = useSuspenseQuery(projectQueries.detail(projectId)).data;
+  const healthResult = useSuspenseQuery(
+    healthQuery(projectId, page, period),
+  ).data;
 
   if (!projectResult.success) {
     return (
       <LoadFailure error={projectResult.error} title={t('loadProjectFailed')} />
     );
   }
-
-  // `null` only where the project read already failed, and that branch
-  // returned above — so this one is a real failure of its own request.
-  if (healthResult === null) return null;
 
   if (!healthResult.success) {
     return (

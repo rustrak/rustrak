@@ -1,4 +1,5 @@
 import type { Issue } from '@rustrak/client';
+import { Link } from '@tanstack/react-router';
 import {
   AlertCircle,
   Bookmark,
@@ -18,7 +19,6 @@ import {
 } from '@/features/issue/ui/components/issue-indicators';
 import { selectionColumn } from '@/shared/ui/components/data-table/columns';
 import { createAppColumnHelper } from '@/shared/ui/components/data-table/use-app-table';
-import { Link } from '@/shared/ui/components/link';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import {
   DropdownMenu,
@@ -93,7 +93,8 @@ export function issueColumns(
           // reader comparing event counts can select a number without being
           // navigated away from the page they are reading.
           <Link
-            href={`/projects/${projectId}/issues/${issue.id}`}
+            to="/projects/$id/issues/$issueId"
+            params={{ id: projectId, issueId: issue.id }}
             className="block py-0.5 transition-colors hover:text-primary"
           >
             <div className="mb-1 flex items-center gap-2">

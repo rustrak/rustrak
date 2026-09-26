@@ -1,17 +1,34 @@
+import type { IssueFilter } from '@rustrak/client';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { listIssues } from '@/features/issue/api/queries';
+import { issueQueries } from '@/features/issue/api/queries';
 import { IssuesList } from '@/features/issue/ui/components/issues-list/issues-list';
-import { getProject } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
+import { combine, loadAll } from '@/shared/lib/results';
 import { searchOneOf, searchPage } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 const FILTERS = ['open', 'resolved', 'muted', 'all'] as const;
 
+function issuesQuery(projectId: number, filter: IssueFilter, page: number) {
+  return issueQueries.list(projectId, {
+    filter,
+    page,
+    per_page: 20,
+    sort: 'last_seen',
+    order: 'desc',
+  });
+}
+
 export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    filter?: IssueFilter;
+    page?: number;
+  } => ({
     filter: searchOneOf(search.filter, FILTERS),
     page: searchPage(search.page),
   }),
@@ -19,19 +36,11 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
     filter: search.filter ?? 'open',
     page: search.page ?? 1,
   }),
-  loader: ({ params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    return loadAll([
-      getProject(projectId),
-      listIssues(projectId, {
-        filter: deps.filter,
-        page: deps.page,
-        per_page: 20,
-        sort: 'last_seen',
-        order: 'desc',
-      }),
-    ]);
-  },
+  loader: ({ params: { id }, deps, context: { queryClient } }) =>
+    loadAll([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(issuesQuery(id, deps.filter, deps.page)),
+    ]),
   head: ({ loaderData }) => {
     const t = translator('projectPages');
 
@@ -55,15 +64,17 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
 
 function IssuesPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const { filter, page } = Route.useSearch({
     select: (search) => ({
       filter: search.filter ?? 'open',
       page: search.page ?? 1,
     }),
   });
-  const loaded = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const loaded = combine([
+    useSuspenseQuery(projectQueries.detail(projectId)).data,
+    useSuspenseQuery(issuesQuery(projectId, filter, page)).data,
+  ]);
 
   if (!loaded.success) {
     return <LoadFailure error={loaded.error} title={t('issues.loadFailed')} />;
@@ -83,7 +94,7 @@ function IssuesPage() {
       <div className="flex-1 overflow-hidden w-full px-4 md:px-8 py-4 md:py-6">
         <IssuesList
           projectId={projectId}
-          initialIssues={issuesResponse}
+          issues={issuesResponse}
           currentFilter={filter}
           currentPage={page}
         />

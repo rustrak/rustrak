@@ -5,6 +5,7 @@
  * answer the same question from different angles: who is this, who is on the
  * instance, who is on this project, and who has been asked to join.
  */
+
 import type {
   Invitation,
   InvitationInfo,
@@ -13,6 +14,8 @@ import type {
   RustrakError,
   TeamMember,
 } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
+import { scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
 
 /**
@@ -66,3 +69,23 @@ export async function listInvitations(): Promise<
   const client = await createClient();
   return client.invitations.list();
 }
+
+export const userQueries = {
+  invitation: (token: string) =>
+    queryOptions({
+      queryKey: [...scope.invitation, token],
+      queryFn: () => getInvitation(token),
+    }),
+  team: () =>
+    queryOptions({ queryKey: [...scope.team, 'members'], queryFn: listTeam }),
+  invitations: () =>
+    queryOptions({
+      queryKey: [...scope.team, 'invitations'],
+      queryFn: listInvitations,
+    }),
+  projectMembers: (projectId: number) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'members'],
+      queryFn: () => listProjectMembers(projectId),
+    }),
+};

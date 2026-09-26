@@ -4,6 +4,7 @@ import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { revokeInvitation } from '@/features/user/api/mutations';
+import { invalidate, scope } from '@/shared/api/query-client';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import { type Translate } from '@/shared/lib/error-copy';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
@@ -15,7 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/shared/ui/components/shadcn/card';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface PendingInvitationsProps {
   invitations: Invitation[];
@@ -37,7 +37,6 @@ async function handleCopy(invitation: Invitation, t: Translate) {
 }
 
 export function PendingInvitations({ invitations }: PendingInvitationsProps) {
-  const router = useRouter();
   const t = useTranslations('user');
   const format = useFormatter();
   const [isPending, startTransition] = useTransition();
@@ -47,7 +46,7 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
       const result = await revokeInvitation(invitation.token);
       if (result.success) {
         toast.success(t('toast.revoked'));
-        router.refresh();
+        void invalidate(scope.team);
       } else {
         // No form here, so there is no input to attach a `fields` entry to;
         // the message is what the row can show.

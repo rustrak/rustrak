@@ -1,14 +1,8 @@
-import type {
-  OffsetPaginatedResponse,
-  Result,
-  RustrakError,
-  Span,
-} from '@rustrak/client';
-import { Ok } from '@rustrak/client';
-import { createFileRoute, notFound } from '@tanstack/react-router';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, Link, notFound } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { getSpan, listSpans } from '@/features/agent-trace/api/queries';
+import { agentQueries } from '@/features/agent-trace/api/queries';
 import {
   resolveSelectedSpan,
   summarizeTrace,
@@ -16,52 +10,11 @@ import {
 import { AgentTraceWaterfall } from '@/features/agent-trace/ui/components/agent-trace-waterfall';
 import { SpanDetailPane } from '@/features/agent-trace/ui/components/span-detail-pane';
 import { TraceSummaryBadges } from '@/features/agent-trace/ui/components/trace-summary-badges';
-import { getProject } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
+import { combine, loadAll } from '@/shared/lib/results';
 import { searchString } from '@/shared/lib/search-params';
-import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
-
-const PER_PAGE = 100;
-
-/**
- * A trace can hold more spans than one page: the totals and the waterfall are
- * only correct over the whole trace, so pull the remaining pages too.
- */
-async function collectAllSpans(
-  projectId: number,
-  traceId: string,
-  firstPage: OffsetPaginatedResponse<Span>,
-): Promise<Result<Span[], RustrakError>> {
-  if (firstPage.total_pages <= 1) {
-    return Ok(firstPage.items);
-  }
-
-  const rest = await Promise.all(
-    Array.from({ length: firstPage.total_pages - 1 }, (_, i) =>
-      listSpans(projectId, {
-        trace_id: traceId,
-        per_page: PER_PAGE,
-        page: i + 2,
-      }),
-    ),
-  );
-
-  const spans = [...firstPage.items];
-
-  for (const page of rest) {
-    // A missing page is not an empty page: the waterfall's timings are only
-    // correct over the whole trace, so a partial set would draw a plausible
-    // and wrong picture.
-    if (!page.success) {
-      return page;
-    }
-    spans.push(...page.data.items);
-  }
-
-  return Ok(spans);
-}
 
 function _formatDuration(ms: number | null): string {
   if (ms == null) return '—';
@@ -72,49 +25,32 @@ function _formatDuration(ms: number | null): string {
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/agents/$traceId',
 )({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { span?: string } => ({
     span: searchString(search.span),
   }),
   loaderDeps: ({ search }) => ({ span: search.span }),
-  loader: async ({ params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    const { traceId } = params;
-
+  loader: async ({
+    params: { id, traceId },
+    deps,
+    context: { queryClient },
+  }) => {
     const loaded = await loadAll([
-      getProject(projectId),
-      listSpans(projectId, { trace_id: traceId, per_page: PER_PAGE }),
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(agentQueries.traceSpans(id, traceId)),
     ]);
 
-    if (!loaded.success) return { failure: loaded.error, trace: null };
+    if (!loaded.success) return;
 
-    const collected = await collectAllSpans(projectId, traceId, loaded.data[1]);
-
-    if (!collected.success) return { failure: collected.error, trace: null };
-
-    const spans = collected.data;
-
+    const spans = loaded.data[1];
     if (spans.length === 0) throw notFound();
 
-    const { selectedSpanId, requestedMissing } = resolveSelectedSpan(
-      spans,
-      deps.span,
-    );
-
     // Only the selected span: attributes are the one part of a span that is
-    // never trimmed server-side, so they are pulled one at a time.
-    const selected =
-      selectedSpanId != null ? await getSpan(projectId, selectedSpanId) : null;
-
-    return {
-      failure: null,
-      trace: {
-        spans,
-        summary: summarizeTrace(spans),
-        selectedSpanId,
-        requestedMissing,
-        selected,
-      },
-    };
+    // never trimmed server-side, so they are pulled one at a time. Choosing
+    // another span fetches that span and nothing else.
+    const { selectedSpanId } = resolveSelectedSpan(spans, deps.span);
+    if (selectedSpanId != null) {
+      await queryClient.ensureQueryData(agentQueries.span(id, selectedSpanId));
+    }
   },
   head: ({ params }) => {
     const t = translator('projectPages');
@@ -127,31 +63,34 @@ export const Route = createFileRoute(
 
 function AgentTraceDetailPage() {
   const t = useTranslations('projectPages');
-  const { id, traceId } = Route.useParams();
-  const { failure, trace } = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, traceId } = Route.useParams();
+  const requestedSpan = Route.useSearch({ select: (search) => search.span });
+  const loaded = combine([
+    useSuspenseQuery(projectQueries.detail(projectId)).data,
+    useSuspenseQuery(agentQueries.traceSpans(projectId, traceId)).data,
+  ]);
+  const spans = loaded.success ? loaded.data[1] : [];
+  const { selectedSpanId, requestedMissing } = resolveSelectedSpan(
+    spans,
+    requestedSpan,
+  );
+  const { data: selected = null } = useQuery({
+    ...agentQueries.span(projectId, selectedSpanId ?? ''),
+    enabled: selectedSpanId != null,
+  });
 
-  if (failure !== null || trace === null) {
-    return (
-      <LoadFailure
-        error={
-          failure ?? {
-            kind: 'unknown',
-            message: t('trace.loadFailed'),
-          }
-        }
-        title={t('trace.loadFailed')}
-      />
-    );
+  if (!loaded.success) {
+    return <LoadFailure error={loaded.error} title={t('trace.loadFailed')} />;
   }
 
-  const { spans, summary, selectedSpanId, requestedMissing, selected } = trace;
+  const summary = summarizeTrace(spans);
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)]">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <Link
-          href={`/projects/${projectId}/agents`}
+          to="/projects/$id/agents"
+          params={{ id: projectId }}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
           <ArrowLeft className="size-4" />

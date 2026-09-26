@@ -1,18 +1,8 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { Bot } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import {
-  getAgentDuration,
-  getAgentEnvironments,
-  getAgentModelsByCalls,
-  getAgentModelsByTokens,
-  getAgentModelsTable,
-  getAgentRuns,
-  getAgentSummary,
-  getAgentTools,
-  getAgentToolsTable,
-  getAgentTraces,
-} from '@/features/agent-trace/api/queries';
+import { agentQueries } from '@/features/agent-trace/api/queries';
 import { resolveAgentFilters } from '@/features/agent-trace/model/filters';
 import { AgentBreakdownChart } from '@/features/agent-trace/ui/components/agent-breakdown-chart';
 import { AgentDashboardFilters } from '@/features/agent-trace/ui/components/agent-dashboard-filters';
@@ -22,9 +12,8 @@ import { AgentSummaryTiles } from '@/features/agent-trace/ui/components/agent-su
 import { AgentTimeseriesChart } from '@/features/agent-trace/ui/components/agent-timeseries-chart';
 import { AgentToolsTable } from '@/features/agent-trace/ui/components/agent-tools-table';
 import { AgentTracesTable } from '@/features/agent-trace/ui/components/agent-traces-table';
-import { getProject } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
 import { searchPage, searchString } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import {
@@ -35,8 +24,30 @@ import {
   CardTitle,
 } from '@/shared/ui/components/shadcn/card';
 
+// One window for every widget on the page: a chart on 24h beside a table on
+// all-time is a reader's trap, not a feature.
+function dashboardQuery(
+  projectId: number,
+  search: { page: number; period?: string; environment?: string },
+) {
+  return agentQueries.dashboard(
+    projectId,
+    resolveAgentFilters({
+      period: search.period,
+      environment: search.environment,
+    }),
+    search.page,
+  );
+}
+
 export const Route = createFileRoute('/_authenticated/projects/$id/agents/')({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    page?: number;
+    period?: string;
+    environment?: string;
+  } => ({
     page: searchPage(search.page),
     period: searchString(search.period),
     environment: searchString(search.environment),
@@ -46,54 +57,16 @@ export const Route = createFileRoute('/_authenticated/projects/$id/agents/')({
     period: search.period,
     environment: search.environment,
   }),
-  loader: async ({ params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-
-    // One window for every widget on the page: a chart on 24h beside a table
-    // on all-time is a reader's trap, not a feature.
-    const filters = resolveAgentFilters({
-      period: deps.period,
-      environment: deps.environment,
-    });
-    const series = {
-      period_hours: filters.periodHours,
-      interval_hours: filters.intervalHours,
-      environment: filters.environment,
-    };
-    const breakdown = {
-      period_hours: filters.periodHours,
-      environment: filters.environment,
-    };
-
-    const project = await getProject(projectId);
-
-    if (!project.success) return { project, loaded: null };
-
+  loader: async ({ params: { id }, deps, context: { queryClient } }) => {
     // Nothing is swallowed: a fetch/auth failure renders an outage surface
     // rather than the "no agent activity yet" onboarding state, which would
     // tell a team whose agents are running that they never instrumented
     // anything.
-    const loaded = await loadAll([
-      getAgentRuns(projectId, series),
-      getAgentDuration(projectId, series),
-      getAgentModelsByCalls(projectId, breakdown),
-      getAgentModelsByTokens(projectId, breakdown),
-      getAgentTools(projectId, breakdown),
-      getAgentTraces(projectId, {
-        page: deps.page,
-        per_page: 20,
-        period_hours: filters.periodHours,
-        environment: filters.environment,
-      }),
-      getAgentSummary(projectId, breakdown),
-      getAgentModelsTable(projectId, breakdown),
-      getAgentToolsTable(projectId, breakdown),
-      // Not filtered by the current environment: the picker has to keep
-      // offering the option you would switch back to.
-      getAgentEnvironments(projectId),
+    const [project] = await Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(dashboardQuery(id, deps)),
     ]);
-
-    return { project, loaded };
+    return { project };
   },
   head: ({ loaderData }) => {
     const t = translator('projectPages');
@@ -118,7 +91,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/agents/')({
 
 function AgentsPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const { currentPage, period, environment } = Route.useSearch({
     select: (search) => ({
       currentPage: search.page ?? 1,
@@ -126,8 +99,10 @@ function AgentsPage() {
       environment: search.environment,
     }),
   });
-  const { project: projectResult, loaded } = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const projectResult = useSuspenseQuery(projectQueries.detail(projectId)).data;
+  const loaded = useSuspenseQuery(
+    dashboardQuery(projectId, { page: currentPage, period, environment }),
+  ).data;
 
   if (!projectResult.success) {
     return (
@@ -136,10 +111,6 @@ function AgentsPage() {
   }
 
   const project = projectResult.data;
-
-  // `null` only where the project read already failed, and that branch
-  // returned above — so this one is a real failure of its own request.
-  if (loaded === null) return null;
 
   if (!loaded.success) {
     return (
@@ -303,7 +274,6 @@ function AgentsPage() {
                   totalPages={traces.total_pages}
                   totalCount={traces.total_count}
                   perPage={traces.per_page}
-                  filters={{ period, environment }}
                 />
               </CardContent>
             </Card>

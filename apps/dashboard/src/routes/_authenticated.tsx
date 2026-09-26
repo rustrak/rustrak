@@ -1,12 +1,16 @@
 import type { ErrorComponentProps } from '@tanstack/react-router';
-import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  redirect,
+} from '@tanstack/react-router';
 import { AlertTriangle, Home, RefreshCw } from 'lucide-react';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { Header } from '@/features/user/ui/components/header';
 import { TimeZoneSync } from '@/features/user/ui/components/time-zone-sync';
 import { session } from '@/shared/api/session';
-import { Link } from '@/shared/ui/components/link';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { UpdateBannerSlot } from '@/shared/ui/components/update-banner-slot';
@@ -31,15 +35,12 @@ import { CommandBarSlot } from './_authenticated/-components/command-bar-slot';
  * user.
  */
 export const Route = createFileRoute('/_authenticated')({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     const answer = await session.ensure();
 
     if (answer.state === 'anonymous') {
-      // No `?redirect=` on the way out, and that is the existing behaviour
-      // rather than an omission: signing in lands on `/`, which sends the
-      // reader to `/projects`. Carrying the intended destination through the
-      // login page is a feature this port is not the place to add.
-      throw redirect({ to: '/login' });
+      // Signing in comes back here, not to the project list.
+      throw redirect({ to: '/login', search: { redirect: location.href } });
     }
 
     return answer;
@@ -118,7 +119,7 @@ function MainError({ error, reset }: ErrorComponentProps) {
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link href="/projects" />}
+            render={<Link to="/projects" />}
           >
             <Home className="mr-2 size-4" />
             {t('goToProjects')}

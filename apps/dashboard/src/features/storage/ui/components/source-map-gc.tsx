@@ -7,6 +7,7 @@ import {
   gcStorageSourceMaps,
   previewStorageSourceMapGc,
 } from '@/features/storage/api/mutations';
+import { invalidateAll } from '@/shared/api/query-client';
 import { formatBytes } from '@/shared/lib/utils';
 import {
   AlertDialog,
@@ -27,11 +28,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/shared/ui/components/shadcn/card';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 export function SourceMapGc() {
   const t = useTranslations('storage');
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [preview, setPreview] = useState<SourceMapGcResult | null>(null);
 
@@ -68,7 +67,7 @@ export function SourceMapGc() {
         }),
       );
       setPreview(null);
-      router.refresh();
+      void invalidateAll();
     });
   };
 

@@ -4,11 +4,8 @@
  * Releases and sessions are one slice because "release health" *is* sessions
  * grouped by release: the two were never separate concepts, only separate
  * endpoints.
- *
- * `import 'server-only'` is a build-time poison pill rather than a directive:
- * if this module reaches the client bundle the build fails, instead of shipping
- * a browser bundle that holds the session cookie.
  */
+
 import type {
   Issue,
   OffsetPaginatedResponse,
@@ -20,6 +17,8 @@ import type {
   SessionTimeseries,
 } from '@rustrak/client';
 import { Ok } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
+import { scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
 
 /**
@@ -157,3 +156,43 @@ export async function getSessionTimeseries(
   const client = await createClient();
   return client.sessions.timeseries(projectId, period, interval);
 }
+
+export const releaseQueries = {
+  newIssues: (projectId: number, release: string, limit?: number) =>
+    queryOptions({
+      queryKey: [
+        ...scope.project(projectId),
+        'releases',
+        release,
+        'new-issues',
+        limit,
+      ],
+      queryFn: () => getNewIssuesForRelease(projectId, release, limit),
+    }),
+  health: (projectId: number, options?: ReleaseHealthStatsOptions) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'releases', 'health', options],
+      queryFn: () => getReleaseHealth(projectId, options),
+    }),
+  rows: (projectId: number, release: string) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'releases', release, 'rows'],
+      queryFn: () => getAllReleaseHealthRows(projectId, release),
+    }),
+  sessionSummary: (projectId: number, period?: string) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'sessions', 'summary', period],
+      queryFn: () => getSessionSummary(projectId, period),
+    }),
+  sessionTimeseries: (projectId: number, period?: string, interval?: number) =>
+    queryOptions({
+      queryKey: [
+        ...scope.project(projectId),
+        'sessions',
+        'timeseries',
+        period,
+        interval,
+      ],
+      queryFn: () => getSessionTimeseries(projectId, period, interval),
+    }),
+};

@@ -11,12 +11,12 @@ import {
   createIntegration,
   updateIntegration,
 } from '@/features/alert/api/mutations';
+import { invalidate, scope } from '@/shared/api/query-client';
 import type { Translate } from '@/shared/lib/error-copy';
 import {
   applyServerFieldErrors,
   type ServerFieldMap,
 } from '@/shared/lib/form-errors';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
  * The two fields every integration dialog collects, whatever the provider.
@@ -79,7 +79,6 @@ export interface IntegrationSubmit<T extends IntegrationFormBase> {
 export function useIntegrationSubmit<T extends IntegrationFormBase>(
   options: UseIntegrationSubmitOptions<T>,
 ): IntegrationSubmit<T> {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const submit = (data: T) => {
@@ -94,7 +93,7 @@ export function useIntegrationSubmit<T extends IntegrationFormBase>(
       const { existingIntegration, messages, onSaved } = options;
       toast.success(existingIntegration ? messages.updated : messages.created);
       onSaved();
-      router.refresh();
+      void invalidate(scope.integrations);
     });
   };
 

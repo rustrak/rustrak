@@ -50,7 +50,7 @@ export function TimeZoneSync({ hasTimeZone }: { hasTimeZone: boolean }) {
       // noise, and the only cost of failing is that timestamps stay in UTC
       // until the next page load tries again.
       //
-      // `intl.reload()` rather than `router.refresh()`: nothing a loader
+      // `intl.reload()` rather than `router.invalidate()`: nothing a loader
       // fetched depends on the zone, only the formatters do, and they read it
       // from the snapshot this republishes.
       if (result.success) void intl.reload();

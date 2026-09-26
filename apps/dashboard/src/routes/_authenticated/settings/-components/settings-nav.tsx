@@ -1,28 +1,43 @@
+import { Link } from '@tanstack/react-router';
 import { Database, Info, Key, Palette, Plug, User, Users } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
-import { usePathname } from '@/shared/ui/hooks/use-pathname';
 
-const navItems = [
-  { href: '/settings/tokens', labelKey: 'nav.apiTokens', icon: Key },
-  { href: '/settings/integrations', labelKey: 'nav.integrations', icon: Plug },
+interface NavItem {
+  to:
+    | '/settings/tokens'
+    | '/settings/integrations'
+    | '/settings/team'
+    | '/settings/storage'
+    | '/settings/account'
+    | '/settings/appearance'
+    | '/settings/about';
+  labelKey: string;
+  icon: React.ElementType;
+  adminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
+  { to: '/settings/tokens', labelKey: 'nav.apiTokens', icon: Key },
+  { to: '/settings/integrations', labelKey: 'nav.integrations', icon: Plug },
   {
-    href: '/settings/team',
+    to: '/settings/team',
     labelKey: 'nav.team',
     icon: Users,
     adminOnly: true,
   },
   {
-    href: '/settings/storage',
+    to: '/settings/storage',
     labelKey: 'nav.storage',
     icon: Database,
     adminOnly: true,
   },
-  { href: '/settings/account', labelKey: 'nav.account', icon: User },
-  { href: '/settings/appearance', labelKey: 'nav.appearance', icon: Palette },
-  { href: '/settings/about', labelKey: 'nav.about', icon: Info },
+  { to: '/settings/account', labelKey: 'nav.account', icon: User },
+  { to: '/settings/appearance', labelKey: 'nav.appearance', icon: Palette },
+  { to: '/settings/about', labelKey: 'nav.about', icon: Info },
 ];
+
+/** Only the page itself is active, whatever its query string holds. */
+const NAV_ACTIVE = { exact: true, includeSearch: false };
 
 interface SettingsNavProps {
   onNavigate?: () => void;
@@ -31,27 +46,27 @@ interface SettingsNavProps {
 
 export function SettingsNav({ onNavigate, isAdmin = false }: SettingsNavProps) {
   const t = useTranslations('settings');
-  const pathname = usePathname();
-
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <nav className="flex flex-col gap-1">
       {visibleItems.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname === item.href;
 
         return (
           <Link
-            key={item.href}
-            href={item.href}
+            key={item.to}
+            to={item.to}
             onClick={onNavigate}
-            className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors',
-              isActive
-                ? 'bg-primary text-primary-foreground font-bold'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-            )}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors"
+            activeOptions={NAV_ACTIVE}
+            activeProps={{
+              className: 'bg-primary text-primary-foreground font-bold',
+            }}
+            inactiveProps={{
+              className:
+                'font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+            }}
           >
             <Icon className="size-4" />
             {t(item.labelKey)}

@@ -1,6 +1,6 @@
 import type { TransactionStats } from '@rustrak/client';
+import { Link } from '@tanstack/react-router';
 import { useFormatter, useTranslations } from 'use-intl';
-import { Link } from '@/shared/ui/components/link';
 
 interface TransactionP95BarsProps {
   projectId: number;
@@ -27,19 +27,6 @@ function formatMs(ms: number): string {
  */
 function routeLabel(name: string): string {
   return name.replace(/^[A-Z]+\s+/, '') || name;
-}
-
-/**
- * Link to the group's samples, the same drill-down the performance table uses
- * (`summaryHref` in performance/transaction-stats-table.tsx): a row should land
- * on the transaction it names, not on the unfiltered list.
- */
-function summaryHref(projectId: number, row: TransactionStats): string {
-  const params = new URLSearchParams({ name: row.transaction_name });
-  if (row.op) {
-    params.set('op', row.op);
-  }
-  return `/projects/${projectId}/performance/summary?${params.toString()}`;
 }
 
 /**
@@ -79,8 +66,12 @@ export function TransactionP95Bars({
 
         return (
           <li key={`${row.transaction_name}-${row.op ?? ''}`}>
+            {/* The same drill-down the performance table uses: a row lands on
+                the transaction it names, not on the unfiltered list. */}
             <Link
-              href={summaryHref(projectId, row)}
+              to="/projects/$id/performance/summary"
+              params={{ id: projectId }}
+              search={{ name: row.transaction_name, op: row.op || undefined }}
               title={t('p95.barTitle', {
                 name: row.transaction_name,
                 count: row.count,
