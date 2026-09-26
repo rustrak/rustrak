@@ -50,14 +50,12 @@ pnpm run ci                       # what CI runs: ci:web (turbo) then ci:rust (c
 
 ## CI and releases
 
-Nothing in `.github/workflows/` caches anything: every job compiles from
-scratch, and the time of a cold run is the time. Speed comes from one runner
-per concern instead. `ci.yml` runs `pnpm run ci:web` (turbo over the
-JavaScript packages), `rust-lint` (rustfmt, clippy for both backends, a type
-check of the benchmark crate), `rust-test` (the SQLite suites and the OpenAPI
-drift check) and `postgres-e2e`, four runners in parallel. `docker-publish.yml`
-builds each image once per architecture on a native runner and merges the
-digests into one manifest list.
+Speed comes from one runner per concern. `ci.yml` runs `pnpm run ci:web`
+(turbo over the JavaScript packages), `rust-lint` (rustfmt, clippy for both
+backends and for the benchmark crate), `rust-test` (the SQLite suites and the
+OpenAPI drift check) and `postgres-e2e`, four runners in parallel.
+`docker-publish.yml` builds each image once per architecture on a native
+runner and merges the digests into one manifest list.
 
 - **No PR check builds a release binary.** `cargo build --release` with fat
   LTO and one codegen unit is ten minutes of single-threaded work that no PR
@@ -65,9 +63,13 @@ digests into one manifest list.
   push to `main` and `next`, where nobody waits for it, so a release-only
   failure shows up before a release is cut; `docker build` compiles it again
   per image and architecture at release time.
-- **CI pins the Rust the images are built with.** `RUST_TOOLCHAIN` in
-  `ci.yml` and `release.yml`, and the `cargo-chef` image tag in
-  `apps/server/Dockerfile`; bump them together.
+- **Only compiled dependencies are cached.** The Rust jobs use rust-cache
+  (through `setup-rust-toolchain`), and only pushes to `main` and `next` save
+  it, so every PR reads its base's and no branch writes a cache nothing else
+  can read. Docker builds and turbo cargo tasks cache nothing.
+- **One Rust version, in `rust-toolchain.toml`.** CI, `release.yml` and local
+  builds read it. The server image takes its Rust from the `cargo-chef` tag in
+  `apps/server/Dockerfile`, and `rust-lint` fails when the two disagree.
 - **Turbo never caches a cargo task** (`cache: false` in `turbo.json`), and
   cargo tasks do not run in parallel under turbo: they queue on the target
   directory lock. CI calls cargo directly for that reason.

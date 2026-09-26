@@ -1,6 +1,6 @@
 name: CI
 
-# One runner per toolchain, nothing shared, nothing cached.
+# One runner per concern, and only dependencies cached.
 #
 # The whole gate used to be one `turbo run` on one 4-core runner: Vitest, Vite
 # and Next next to `cargo build --release`, `cargo clippy`, `cargo check` and
@@ -10,15 +10,14 @@ name: CI
 # release build, which no check ever read, was 10m50s of a 12m56s run: fat LTO
 # with one codegen unit is a single-threaded tail no runner can shorten.
 #
-# Layered on top were sccache, rust-cache and a Playwright cache. The Actions
-# cache is scoped to the branch that wrote it plus the PR's base, and nothing
-# ever ran on the base, so the first push of every branch was cold; and a run
-# with a 98% sccache hit rate still took twelve minutes, because the release
-# build and the lock queue were the cost and neither is cacheable.
+# So: four jobs, each doing one thing, each on its own runner. The wall-clock
+# is the slowest job, not the sum.
 #
-# So: four jobs, each doing one thing, each on its own runner, and every one of
-# them compiles from scratch. The wall-clock is the slowest job, not the sum,
-# and a cold run is the only kind there is, so its time is the time.
+# The Rust jobs restore compiled dependencies (rust-cache, through
+# setup-rust-toolchain) and never the workspace crates. A cache is scoped to
+# the branch that wrote it plus the PR's base, so only pushes to main and next
+# save one: every PR reads its base's, and a branch never writes a cache that
+# nothing else can read. A miss is a cold compile, which is correct, just slower.
 
 on:
   # Every pull request, whatever it targets. Deliberately unfiltered: a
@@ -45,11 +44,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # The Rust the release binaries are compiled with (apps/server/Dockerfile
-  # builds from a rust:1.94 image). CI used the runner's floating `stable`,
-  # which is newer, so code needing a later compiler passed CI and failed at
-  # release. Bump the two together.
-  RUST_TOOLCHAIN: "1.94"
   # Incremental compilation trades a slower first build for faster rebuilds of
   # the same tree. CI never rebuilds the same tree.
   CARGO_INCREMENTAL: "0"
@@ -116,12 +110,24 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      # Rust from rust-toolchain.toml, the same the release images use.
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          components: rustfmt, clippy
+          cache-save-if: ${{ github.event_name == 'push' }}
+          cache-workspaces: |
+            apps/server -> target
+            packages/benchmarks -> target
 
       - run: cargo fmt --all --check
+
+      # The image's Rust comes from its cargo-chef tag, which cannot read
+      # rust-toolchain.toml. This keeps the two from drifting apart.
+      - name: The server image compiles with the Rust in rust-toolchain.toml
+        working-directory: .
+        run: |
+          channel=$(sed -nE 's/^channel = "(.*)"/\1/p' rust-toolchain.toml)
+          grep -Eq "^FROM lukemathwalker/cargo-chef:[^ ]*-rust-${channel//./\\.}-" apps/server/Dockerfile \
+            || { echo "::error file=apps/server/Dockerfile::the cargo-chef image is not Rust ${channel}"; exit 1; }
 
       # The default backend, plus `openapi` so the spec-generating binary is
       # linted too.
@@ -133,11 +139,13 @@ jobs:
       - run: cargo clippy --all-targets --no-default-features --features postgres,openapi --locked -- -D warnings
 
       # The benchmark CLI is its own crate with its own lockfile (see CLAUDE.md
-      # for why it cannot join the server's workspace). It used to be compiled
-      # in release with LTO on every PR; a type check is what keeps it building.
-      - name: Check the benchmark crate still compiles
+      # for why it cannot join the server's workspace), held to the same
+      # rustfmt and clippy bar.
+      - name: Lint the benchmark crate
         working-directory: packages/benchmarks
-        run: cargo check --all-targets --locked
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --locked -- -D warnings
 
   # ── Rust: the test suites on SQLite, and the OpenAPI drift check ───────────
   rust-test:
@@ -154,9 +162,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-save-if: ${{ github.event_name == 'push' }}
+          cache-workspaces: apps/server -> target
 
       # `openapi` on, so `gen_openapi` is compiled here, in this profile, and
       # the check below is a run rather than a second compile with a different
@@ -193,9 +202,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-save-if: ${{ github.event_name == 'push' }}
+          cache-workspaces: apps/server -> target
+          cache-key: ${{ matrix.features }}
 
       - run: cargo build --release --locked --no-default-features --features ${{ matrix.features }}
 
@@ -216,8 +227,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          cache-save-if: ${{ github.event_name == 'push' }}
+          cache-workspaces: apps/server -> target
 
       - run: cargo test --no-default-features --features postgres --locked --test e2e_tests

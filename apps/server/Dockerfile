@@ -7,9 +7,9 @@ ARG FEATURES=sqlite
 # was compiled; the same two minutes on each of the four release images. The
 # digest is the multi-platform index the tag pointed at when it was reviewed
 # (`docker buildx imagetools inspect`), so a retargeted tag cannot change the
-# toolchain silently. Bump the tag, the digest and `RUST_TOOLCHAIN` in ci.yml
-# together.
-FROM lukemathwalker/cargo-chef:0.1.77-rust-1.94-slim-bookworm@sha256:4787c365155bfff657a58c89e6ce05b99e60d343ee57fd4a0fdcbb2547a8e017 AS chef
+# toolchain silently. Bump the tag, the digest and the channel in
+# /rust-toolchain.toml together; CI fails when they disagree.
+FROM lukemathwalker/cargo-chef:0.1.78-rust-1.98-slim-bookworm@sha256:9a2089c084b6f8b85b7cbc6dac81f38afcdcd87708fe5a5a1697da254d21c147 AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
     && rm -rf /var/lib/apt/lists/*

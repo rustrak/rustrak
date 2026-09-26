@@ -1,0 +1,7 @@
+# The Rust CI and the release images compile with. The server image takes its
+# toolchain from the cargo-chef tag in apps/server/Dockerfile, which CI checks
+# against this channel; bump both together.
+[toolchain]
+channel = "1.98"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

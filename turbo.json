@@ -79,7 +79,10 @@
     "@rustrak/benchmarks#build:dev": {
       "cache": false
     },
-    "@rustrak/benchmarks#check-types": {
+    "@rustrak/benchmarks#lint": {
+      "cache": false
+    },
+    "@rustrak/benchmarks#format:check": {
       "cache": false
     },
 
