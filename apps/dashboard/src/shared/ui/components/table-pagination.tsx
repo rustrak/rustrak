@@ -5,8 +5,8 @@ import { Button } from '@/shared/ui/components/shadcn/button';
 /**
  * The footer of a paginated table: what is on screen, and the way to the rest.
  *
- * Takes the raw counts rather than a pre-built range because the two lists
- * that use it derived `startIndex`/`endIndex` identically and one of them
+ * Takes the raw counts rather than a pre-built range because the lists that
+ * use it derived `startIndex`/`endIndex` identically and one of them
  * getting the arithmetic wrong would be silent.
  *
  * Renders nothing when there is no page to move to. `total_pages` of 0 is an
@@ -54,7 +54,7 @@ export function TablePagination({
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1 || disabled}
         >
-          <ChevronLeft className="size-4" />
+          <ChevronLeft className="size-4" aria-hidden="true" />
         </Button>
 
         <span className="text-sm px-2">
@@ -68,7 +68,7 @@ export function TablePagination({
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages || disabled}
         >
-          <ChevronRight className="size-4" />
+          <ChevronRight className="size-4" aria-hidden="true" />
         </Button>
       </div>
     </div>

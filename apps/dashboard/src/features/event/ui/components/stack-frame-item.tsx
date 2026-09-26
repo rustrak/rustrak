@@ -5,51 +5,53 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTranslations } from 'use-intl';
 import {
   buildFrameContextLines,
+  type FrameContextLine,
   type StackFrame,
 } from '@/features/event/lib/format-stack-trace';
 import { cn } from '@/shared/lib/utils';
 
-/**
- * Detect programming language from filename extension
- */
+const LANGUAGE_BY_EXTENSION: Record<string, string> = {
+  js: 'javascript',
+  jsx: 'jsx',
+  ts: 'typescript',
+  tsx: 'tsx',
+  py: 'python',
+  rb: 'ruby',
+  go: 'go',
+  rs: 'rust',
+  java: 'java',
+  kt: 'kotlin',
+  swift: 'swift',
+  cs: 'csharp',
+  cpp: 'cpp',
+  c: 'c',
+  h: 'c',
+  hpp: 'cpp',
+  php: 'php',
+  sh: 'bash',
+  bash: 'bash',
+  zsh: 'bash',
+  sql: 'sql',
+  json: 'json',
+  yaml: 'yaml',
+  yml: 'yaml',
+  xml: 'xml',
+  html: 'html',
+  css: 'css',
+  scss: 'scss',
+  less: 'less',
+  md: 'markdown',
+};
+
+/** The highlighter's language for a file, from its extension. */
 function detectLanguage(filename?: string): string {
-  if (!filename) return 'text';
+  const ext = filename?.split('.').pop()?.toLowerCase() ?? '';
+  return LANGUAGE_BY_EXTENSION[ext] ?? 'text';
+}
 
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const langMap: Record<string, string> = {
-    js: 'javascript',
-    jsx: 'jsx',
-    ts: 'typescript',
-    tsx: 'tsx',
-    py: 'python',
-    rb: 'ruby',
-    go: 'go',
-    rs: 'rust',
-    java: 'java',
-    kt: 'kotlin',
-    swift: 'swift',
-    cs: 'csharp',
-    cpp: 'cpp',
-    c: 'c',
-    h: 'c',
-    hpp: 'cpp',
-    php: 'php',
-    sh: 'bash',
-    bash: 'bash',
-    zsh: 'bash',
-    sql: 'sql',
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    xml: 'xml',
-    html: 'html',
-    css: 'css',
-    scss: 'scss',
-    less: 'less',
-    md: 'markdown',
-  };
-
-  return langMap[ext ?? ''] ?? 'text';
+/** The frame's local variables, or `null` when it captured none. */
+function frameVariables(frame: StackFrame): Record<string, unknown> | null {
+  return frame.vars && Object.keys(frame.vars).length > 0 ? frame.vars : null;
 }
 
 /** Best-effort label for a frame's origin — `filename` first, falling back
@@ -68,10 +70,9 @@ export function StackFrameItem({
 }) {
   const [isExpanded, setIsExpanded] = useState(frame.in_app ?? false);
   const contextLines = buildFrameContextLines(frame);
-  const hasVars = frame.vars && Object.keys(frame.vars).length > 0;
-  const hasContext = contextLines.length > 0 || hasVars;
-
-  const language = detectLanguage(frame.filename);
+  const vars = frameVariables(frame);
+  const hasContext = contextLines.length > 0 || vars !== null;
+  const Chevron = isExpanded ? ChevronDown : ChevronRight;
 
   return (
     <div
@@ -82,69 +83,89 @@ export function StackFrameItem({
           : 'border-border bg-card/50 opacity-60',
       )}
     >
-      {/* Frame Header */}
       <button
         type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => setIsExpanded((expanded) => !expanded)}
         className="w-full px-4 py-3 flex items-center gap-4 text-left hover:bg-muted/30 transition-colors"
       >
-        <span
-          className={cn(
-            'text-xs font-mono',
-            frame.in_app ? 'text-primary' : 'text-muted-foreground',
-          )}
-        >
-          {String(index).padStart(2, '0')}
-        </span>
-
-        <div className="flex-1 min-w-0">
-          <p className="font-mono text-sm font-semibold truncate">
-            {frame.function || frame.raw_function || '<anonymous>'}
-          </p>
-          <p className="text-xs text-muted-foreground font-mono truncate">
-            {frameLocationLabel(frame)}
-            {frame.lineno != null && `:${frame.lineno}`}
-            {frame.colno != null && `:${frame.colno}`}
-          </p>
-        </div>
-
+        <FrameSignature frame={frame} index={index} />
         {hasContext && (
           <span className="text-muted-foreground">
-            {isExpanded ? (
-              <ChevronDown className="size-4" />
-            ) : (
-              <ChevronRight className="size-4" />
-            )}
+            <Chevron className="size-4" />
           </span>
         )}
       </button>
 
-      {/* Frame Context with Syntax Highlighting */}
-      {isExpanded && hasContext && (
-        <>
-          {contextLines.length > 0 && (
-            <div className="bg-zinc-900 font-mono text-xs leading-relaxed overflow-x-auto">
-              {contextLines.map((line, i) => (
-                // Deliberately not `line.lineNumber`. `buildFrameContextLines`
-                // clamps its start at 0 when `pre_context` is longer than
-                // `lineno`, so a malformed payload yields repeated line numbers
-                // (0,1,2,3,4,2,3,4) and a stable-looking key would collide on
-                // exactly the input the clamp exists to survive. The list is
-                // built once per frame and never reorders.
-                // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-                <CodeLine
-                  key={i}
-                  lineNumber={line.lineNumber}
-                  code={line.code}
-                  language={language}
-                  isHighlighted={line.isHighlighted}
-                />
-              ))}
-            </div>
-          )}
-          {hasVars && <FrameVariables vars={frame.vars!} />}
-        </>
+      {isExpanded && contextLines.length > 0 && (
+        <FrameSource
+          lines={contextLines}
+          language={detectLanguage(frame.filename)}
+        />
       )}
+      {isExpanded && vars && <FrameVariables vars={vars} />}
+    </div>
+  );
+}
+
+/** The frame's position, function and location, as the header reads them. */
+function FrameSignature({
+  frame,
+  index,
+}: {
+  frame: StackFrame;
+  index: number;
+}) {
+  return (
+    <>
+      <span
+        className={cn(
+          'text-xs font-mono',
+          frame.in_app ? 'text-primary' : 'text-muted-foreground',
+        )}
+      >
+        {String(index).padStart(2, '0')}
+      </span>
+
+      <div className="flex-1 min-w-0">
+        <p className="font-mono text-sm font-semibold truncate">
+          {frame.function || frame.raw_function || '<anonymous>'}
+        </p>
+        <p className="text-xs text-muted-foreground font-mono truncate">
+          {frameLocationLabel(frame)}
+          {frame.lineno != null && `:${frame.lineno}`}
+          {frame.colno != null && `:${frame.colno}`}
+        </p>
+      </div>
+    </>
+  );
+}
+
+/** The source around the frame's line, syntax highlighted. */
+function FrameSource({
+  lines,
+  language,
+}: {
+  lines: FrameContextLine[];
+  language: string;
+}) {
+  return (
+    <div className="bg-zinc-900 font-mono text-xs leading-relaxed overflow-x-auto">
+      {lines.map((line, i) => (
+        // Deliberately not `line.lineNumber`. `buildFrameContextLines`
+        // clamps its start at 0 when `pre_context` is longer than
+        // `lineno`, so a malformed payload yields repeated line numbers
+        // (0,1,2,3,4,2,3,4) and a stable-looking key would collide on
+        // exactly the input the clamp exists to survive. The list is
+        // built once per frame and never reorders.
+        // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+        <CodeLine
+          key={i}
+          lineNumber={line.lineNumber}
+          code={line.code}
+          language={language}
+          isHighlighted={line.isHighlighted}
+        />
+      ))}
     </div>
   );
 }

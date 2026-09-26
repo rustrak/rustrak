@@ -1,8 +1,8 @@
 'use client';
 
-import { useScroll, useTransform } from 'motion/react';
+import { type MotionValue, useScroll, useTransform } from 'motion/react';
 import * as m from 'motion/react-m';
-import { type ReactNode, useRef } from 'react';
+import { type CSSProperties, type ReactNode, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import {
   COMPACT_WIDTH,
@@ -70,6 +70,69 @@ function maskFor(fade: Fade): string | undefined {
   return parts.length ? parts.join(', ') : undefined;
 }
 
+/**
+ * The window keeps the surface's proportions on a phone, where nothing is
+ * cropped, and holds an exact pixel height on a desktop, where the crop is the
+ * layout.
+ */
+function windowStyle(
+  compact: boolean,
+  visible: number,
+  fade: Fade | undefined,
+): CSSProperties {
+  if (compact) return { aspectRatio: `${COMPACT_WIDTH} / ${visible}` };
+  const mask = maskFor(fade ?? {});
+  if (!mask) return { height: visible };
+  return {
+    height: visible,
+    maskImage: mask,
+    WebkitMaskImage: mask,
+    maskComposite: 'intersect',
+    WebkitMaskComposite: 'source-in',
+  };
+}
+
+/**
+ * Centring is done here rather than with `left-1/2` and a utility class,
+ * because the vertical offset has to share the same `transform` and the two
+ * would otherwise overwrite each other.
+ */
+function surfaceStyle({
+  box,
+  width,
+  height,
+  align,
+  offsetY,
+}: {
+  box: { compact: boolean; scale: number };
+  width: number;
+  height: number;
+  align: 'left' | 'center';
+  offsetY: number;
+}): CSSProperties {
+  if (box.compact) {
+    return {
+      width: COMPACT_WIDTH,
+      height,
+      left: 0,
+      transform: `scale(${box.scale})`,
+    };
+  }
+  const centred = align === 'center';
+  const transform = [
+    centred ? 'translateX(-50%)' : null,
+    offsetY ? `translateY(${-offsetY}px)` : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return {
+    width,
+    height,
+    left: centred ? '50%' : 0,
+    transform: transform || undefined,
+  };
+}
+
 export function Bleed({
   children,
   width,
@@ -131,7 +194,6 @@ export function Bleed({
   const box = useDesignScale(ref, null);
 
   const visible = view ?? height;
-  const mask = box.compact ? undefined : maskFor(fade ?? {});
 
   /*
     The clock the surface inside runs on. Measured on the *window*, because the
@@ -144,6 +206,37 @@ export function Bleed({
     offset: ['start end', 'center center'],
   });
 
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      className={cn(
+        'relative w-full overflow-hidden',
+        // The radius stays on the container because it is what clips the
+        // content into the corner. Only the *stroke* moves to the overlay
+        // below, so it can be drawn rather than switched on.
+        framed && 'rounded-tl-xl',
+        className,
+      )}
+      style={windowStyle(box.compact, visible, fade)}
+    >
+      <div
+        className="absolute top-0 origin-top-left"
+        style={surfaceStyle({ box, width, height, align, offsetY })}
+      >
+        <CompactContext.Provider value={box.compact}>
+          <WindowProgressContext.Provider value={scrollYProgress}>
+            {children}
+          </WindowProgressContext.Provider>
+        </CompactContext.Provider>
+      </div>
+
+      {framed ? <FrameStroke progress={scrollYProgress} /> : null}
+    </div>
+  );
+}
+
+function FrameStroke({ progress }: { progress: MotionValue<number> }) {
   /*
     The frame, drawn rather than switched on.
 
@@ -160,71 +253,15 @@ export function Bleed({
     and it is the part that says the edge was drawn on purpose.
   */
   const strokeClip = useTransform(
-    scrollYProgress,
+    progress,
     [0, 0.2],
     ['inset(0 100% 0 0)', 'inset(0 0% 0 0)'],
   );
 
   return (
-    <div
-      ref={ref}
-      aria-hidden
-      className={cn(
-        'relative w-full overflow-hidden',
-        // The radius stays on the container because it is what clips the
-        // content into the corner. Only the *stroke* moves to the overlay
-        // below, so it can be drawn rather than switched on.
-        framed && 'rounded-tl-xl',
-        className,
-      )}
-      style={{
-        // The window keeps the surface's proportions on a phone, where nothing
-        // is cropped, and holds an exact pixel height on a desktop, where the
-        // crop is the layout.
-        height: box.compact ? undefined : visible,
-        aspectRatio: box.compact ? `${COMPACT_WIDTH} / ${visible}` : undefined,
-        ...(mask
-          ? {
-              maskImage: mask,
-              WebkitMaskImage: mask,
-              maskComposite: 'intersect',
-              WebkitMaskComposite: 'source-in',
-            }
-          : null),
-      }}
-    >
-      <div
-        className="absolute top-0 origin-top-left"
-        style={{
-          width: box.compact ? COMPACT_WIDTH : width,
-          height,
-          // Centring is done here rather than with `left-1/2` and a utility
-          // class, because the vertical offset has to share the same
-          // `transform` and the two would otherwise overwrite each other.
-          left: !box.compact && align === 'center' ? '50%' : 0,
-          transform: box.compact
-            ? `scale(${box.scale})`
-            : [
-                align === 'center' ? 'translateX(-50%)' : null,
-                offsetY ? `translateY(${-offsetY}px)` : null,
-              ]
-                .filter(Boolean)
-                .join(' ') || undefined,
-        }}
-      >
-        <CompactContext.Provider value={box.compact}>
-          <WindowProgressContext.Provider value={scrollYProgress}>
-            {children}
-          </WindowProgressContext.Provider>
-        </CompactContext.Provider>
-      </div>
-
-      {framed ? (
-        <m.span
-          className="pointer-events-none absolute inset-0 z-10 rounded-tl-xl border-l border-t border-white/10"
-          style={{ clipPath: strokeClip }}
-        />
-      ) : null}
-    </div>
+    <m.span
+      className="pointer-events-none absolute inset-0 z-10 rounded-tl-xl border-l border-t border-white/10"
+      style={{ clipPath: strokeClip }}
+    />
   );
 }

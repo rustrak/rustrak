@@ -1,11 +1,10 @@
 import type { TransactionStats } from '@rustrak/client';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTransition } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { cn } from '@/shared/lib/utils';
 import { Link } from '@/shared/ui/components/link';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
-import { Button } from '@/shared/ui/components/shadcn/button';
+import { TablePagination } from '@/shared/ui/components/table-pagination';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface TransactionStatsTableProps {
@@ -58,7 +57,6 @@ export function TransactionStatsTable({
 }: TransactionStatsTableProps) {
   const format = useFormatter();
   const t = useTranslations('transactions');
-  const tableT = useTranslations('table');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -67,9 +65,6 @@ export function TransactionStatsTable({
       router.push(`/projects/${projectId}/performance?page=${page}`);
     });
   };
-
-  const startIndex = (currentPage - 1) * perPage + 1;
-  const endIndex = Math.min(currentPage * perPage, totalCount);
 
   return (
     <div className="flex flex-col h-full">
@@ -144,43 +139,14 @@ export function TransactionStatsTable({
         </div>
       </div>
 
-      {totalPages > 0 && (
-        <div className="shrink-0 flex flex-col sm:flex-row items-center justify-between gap-2 pt-4">
-          <span className="text-sm text-muted-foreground">
-            {tableT('showingRange', {
-              start: startIndex,
-              end: endIndex,
-              total: totalCount,
-            })}
-          </span>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={tableT('previousPage')}
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage <= 1 || isPending}
-            >
-              <ChevronLeft className="size-4" aria-hidden="true" />
-            </Button>
-
-            <span className="text-sm px-2">
-              {tableT('pageOf', { current: currentPage, total: totalPages })}
-            </span>
-
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={tableT('nextPage')}
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage >= totalPages || isPending}
-            >
-              <ChevronRight className="size-4" aria-hidden="true" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <TablePagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalCount={totalCount}
+        perPage={perPage}
+        disabled={isPending}
+        onPageChange={handlePageChange}
+      />
     </div>
   );
 }

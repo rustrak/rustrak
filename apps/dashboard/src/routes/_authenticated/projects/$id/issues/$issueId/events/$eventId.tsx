@@ -1,6 +1,14 @@
+import type {
+  ActivityEntry,
+  EventDetail,
+  Issue,
+  IssueAggregates,
+  IssueStats,
+} from '@rustrak/client';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import {
+  type EventNavigation,
   getEventDetail,
   getEventNavigation,
 } from '@/features/event/api/queries';
@@ -18,17 +26,16 @@ import {
   getIssueAggregates,
   getIssueStats,
 } from '@/features/issue/api/queries';
-import { TagDistribution } from '@/features/issue/ui/components/tag-distribution';
 import { getProject } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { CollapsibleRail } from '@/shared/ui/components/collapsible-rail';
-import { EventChart } from '@/shared/ui/components/event-chart';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { EventHeader } from './$eventId/-components/event-header';
 import { EventIdentityBar } from './$eventId/-components/event-identity-bar';
 import { EventLoading } from './$eventId/-components/event-loading';
 import { EventRail } from './$eventId/-components/event-rail';
 import { EventSections } from './$eventId/-components/event-sections';
+import { EventTrends } from './$eventId/-components/event-trends';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/events/$eventId',
@@ -82,12 +89,6 @@ const LEVEL_TEXT: Record<string, string> = {
   debug: 'text-muted-foreground',
 };
 
-const compact = (n: number) =>
-  Intl.NumberFormat('en', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(n);
-
 function EventPage() {
   const t = useTranslations('projectPages');
   const { id, issueId } = Route.useParams();
@@ -127,19 +128,45 @@ function EventPage() {
     );
   }
 
-  const issue = issueResult.data;
-  const event = eventResult.data;
-  const navigation = navigationResult.data;
-
   // The three that decorate the page. Each already degraded on failure before
   // the Result conversion; the degradation is now written out rather than
   // hidden behind a `.catch()`, and it stays deliberate: an issue with no tags
   // and an aggregates endpoint that failed genuinely render the same panel, and
   // neither is worth taking the event view down for.
-  const aggregates = aggregatesResult.success ? aggregatesResult.data : null;
-  const stats30d = statsResult.success ? statsResult.data : null;
-  const activity = activityResult.success ? activityResult.data : [];
+  return (
+    <EventView
+      projectId={projectId}
+      issueId={issueId}
+      issue={issueResult.data}
+      event={eventResult.data}
+      navigation={navigationResult.data}
+      aggregates={aggregatesResult.success ? aggregatesResult.data : null}
+      stats30d={statsResult.success ? statsResult.data : null}
+      activity={activityResult.success ? activityResult.data : []}
+    />
+  );
+}
 
+function EventView({
+  projectId,
+  issueId,
+  issue,
+  event,
+  navigation,
+  aggregates,
+  stats30d,
+  activity,
+}: {
+  projectId: number;
+  issueId: string;
+  issue: Issue;
+  event: EventDetail;
+  navigation: EventNavigation;
+  aggregates: IssueAggregates | null;
+  stats30d: IssueStats | null;
+  activity: ActivityEntry[];
+}) {
+  const t = useTranslations('projectPages');
   const eventData = event.data as Record<string, unknown>;
   const payload = readEventPayload(eventData);
   const { has } = payload;
@@ -151,7 +178,6 @@ function EventPage() {
     LEVEL_TEXT[(event.level ?? '').toLowerCase()] ?? 'text-muted-foreground';
 
   const userCount = aggregates?.user_count ?? 0;
-  const total30d = stats30d?.data.reduce((s, [, c]) => s + c, 0) ?? 0;
 
   // One entry per section the event actually has. Labelled here rather than
   // in `eventJumpTargets` so every message key stays a literal the
@@ -192,51 +218,7 @@ function EventPage() {
       <div className="flex-1 min-h-0 flex">
         <main className="flex-1 min-w-0 overflow-y-auto">
           <div className="w-full px-4 md:px-8 py-5 space-y-5">
-            {/* Trends */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
-              <div className="rounded-lg border bg-card p-4 flex gap-5">
-                <div className="shrink-0 space-y-3">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t('event.events')}
-                    </p>
-                    <p className="text-xl font-semibold tabular-nums">
-                      {compact(total30d)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {t('event.users')}
-                    </p>
-                    <p className="text-xl font-semibold tabular-nums">
-                      {compact(userCount)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  {stats30d && stats30d.data.length > 0 ? (
-                    <EventChart data={stats30d.data} />
-                  ) : (
-                    <div className="h-[130px] flex items-center justify-center text-xs text-muted-foreground">
-                      {t('event.noEventData')}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-lg border bg-card p-4">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                  {t('event.tags')}
-                </h3>
-                {aggregates && aggregates.tags.length > 0 ? (
-                  <TagDistribution tags={aggregates.tags.slice(0, 5)} />
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {t('event.noTags')}
-                  </p>
-                )}
-              </div>
-            </div>
+            <EventTrends stats={stats30d} aggregates={aggregates} />
 
             <EventIdentityBar
               projectId={projectId}

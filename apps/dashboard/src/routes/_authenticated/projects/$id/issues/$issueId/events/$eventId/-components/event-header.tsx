@@ -1,17 +1,10 @@
 import type { Issue } from '@rustrak/client';
 import { CircleAlert } from 'lucide-react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { IssueActions } from '@/features/issue/ui/components/issue-actions';
 import { StatusIndicator } from '@/features/issue/ui/components/issue-indicators';
 import { cn } from '@/shared/lib/utils';
 import { Link } from '@/shared/ui/components/link';
-
-/** Shorthand for the counters in the header strip. */
-const compact = (n: number) =>
-  Intl.NumberFormat('en', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(n);
 
 /**
  * The band an event opens with: what broke, where, and what can be done
@@ -37,6 +30,7 @@ export function EventHeader({
   userCount: number;
 }) {
   const t = useTranslations('projectPages');
+  const format = useFormatter();
 
   return (
     <header className="shrink-0 bg-card border-b">
@@ -64,7 +58,7 @@ export function EventHeader({
                 {t('event.eventsTotal')}
               </p>
               <p className="text-xl font-semibold tabular-nums leading-tight">
-                {compact(issue.event_count)}
+                {format.number(issue.event_count, 'compact')}
               </p>
             </div>
             <div className="text-right">
@@ -72,7 +66,7 @@ export function EventHeader({
                 {t('event.users')}
               </p>
               <p className="text-xl font-semibold tabular-nums leading-tight">
-                {compact(userCount)}
+                {format.number(userCount, 'compact')}
               </p>
             </div>
           </div>

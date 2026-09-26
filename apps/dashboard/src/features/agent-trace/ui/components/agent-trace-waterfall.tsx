@@ -274,8 +274,7 @@ function AgentTraceRow({
   isSelected,
   onToggle,
 }: AgentTraceRowProps) {
-  const t = useTranslations('agents');
-  const { span, depth, hasChildren, collapsed: isCol, selfMs } = row;
+  const { span, depth, hasChildren, collapsed, selfMs } = row;
 
   const dur = span.duration_ms;
   const { offsetPct, widthPct } = barGeometry(
@@ -284,13 +283,6 @@ function AgentTraceRow({
     traceStart,
     total,
   );
-
-  const failed = span.status && span.status !== 'ok';
-  const label =
-    span.gen_ai_agent_name ||
-    span.gen_ai_tool_name ||
-    span.gen_ai_response_model ||
-    span.description;
 
   // Selecting toggles: clicking the open row closes the panel.
   const href = isSelected
@@ -309,27 +301,12 @@ function AgentTraceRow({
           interactive element inside another and a stopPropagation to keep them
           apart; as siblings both are plain, valid, and independently reachable
           by keyboard. */}
-      <div
-        className="flex shrink-0 items-center"
-        style={{ paddingLeft: `${Math.min(depth, 8) * 12 + 8}px` }}
-      >
-        {hasChildren ? (
-          <button
-            type="button"
-            aria-label={isCol ? t('waterfall.expand') : t('waterfall.collapse')}
-            onClick={() => onToggle(span.span_id)}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            {isCol ? (
-              <ChevronRight className="size-3" />
-            ) : (
-              <ChevronDown className="size-3" />
-            )}
-          </button>
-        ) : (
-          <span className="inline-block size-3" />
-        )}
-      </div>
+      <CollapseControl
+        depth={depth}
+        hasChildren={hasChildren}
+        collapsed={collapsed}
+        onToggle={() => onToggle(span.span_id)}
+      />
 
       <Link
         href={href}
@@ -337,24 +314,7 @@ function AgentTraceRow({
         aria-current={isSelected ? 'true' : undefined}
         className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left"
       >
-        <div className="flex w-[38%] min-w-0 items-center gap-1">
-          <span
-            className={cn(
-              'shrink-0 rounded px-1 py-px text-[10px] font-medium text-white',
-              opColor(span),
-            )}
-          >
-            {span.gen_ai_operation_type ||
-              span.op ||
-              t('waterfall.spanFallback')}
-          </span>
-          <span className="truncate text-muted-foreground">{label || '—'}</span>
-          {failed && (
-            <span className="shrink-0 rounded bg-destructive/15 px-1 text-[10px] text-destructive">
-              {span.status}
-            </span>
-          )}
-        </div>
+        <SpanLabel span={span} />
         <div className="relative h-4 flex-1">
           <div
             className={cn('absolute inset-y-0 rounded-sm', opColor(span))}
@@ -368,6 +328,77 @@ function AgentTraceRow({
           {formatDuration(dur)}
         </span>
       </Link>
+    </div>
+  );
+}
+
+/**
+ * Indents the row to its depth and, for a span with children, holds the
+ * control that folds them away.
+ */
+function CollapseControl({
+  depth,
+  hasChildren,
+  collapsed,
+  onToggle,
+}: {
+  depth: number;
+  hasChildren: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const t = useTranslations('agents');
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+
+  return (
+    <div
+      className="flex shrink-0 items-center"
+      style={{ paddingLeft: `${Math.min(depth, 8) * 12 + 8}px` }}
+    >
+      {hasChildren ? (
+        <button
+          type="button"
+          aria-label={
+            collapsed ? t('waterfall.expand') : t('waterfall.collapse')
+          }
+          onClick={onToggle}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <Chevron className="size-3" />
+        </button>
+      ) : (
+        <span className="inline-block size-3" />
+      )}
+    </div>
+  );
+}
+
+/** The span's operation, the name it goes by, and its status when it failed. */
+function SpanLabel({ span }: { span: Span }) {
+  const t = useTranslations('agents');
+  const failed = span.status && span.status !== 'ok';
+  const label =
+    span.gen_ai_agent_name ||
+    span.gen_ai_tool_name ||
+    span.gen_ai_response_model ||
+    span.description;
+
+  return (
+    <div className="flex w-[38%] min-w-0 items-center gap-1">
+      <span
+        className={cn(
+          'shrink-0 rounded px-1 py-px text-[10px] font-medium text-white',
+          opColor(span),
+        )}
+      >
+        {span.gen_ai_operation_type || span.op || t('waterfall.spanFallback')}
+      </span>
+      <span className="truncate text-muted-foreground">{label || '—'}</span>
+      {failed && (
+        <span className="shrink-0 rounded bg-destructive/15 px-1 text-[10px] text-destructive">
+          {span.status}
+        </span>
+      )}
     </div>
   );
 }

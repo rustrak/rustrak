@@ -35,10 +35,10 @@ import {
   FormMessage,
   FormRootError,
 } from '@/shared/ui/components/shadcn/form';
-import { Input } from '@/shared/ui/components/shadcn/input';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
 import { NameField } from '../fields/name-field';
+import { TextInputField } from '../fields/text-input-field';
 import type { ConfigFormProps } from '../integration-config-dialog';
 
 /**
@@ -174,52 +174,22 @@ export function CustomWebhookForm({
                   disabled={isLoading}
                 />
 
-                <FormField
-                  control={form.control}
+                <TextInputField<CustomWebhookFormData>
                   name="url"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        {t('customWebhook.urlLabel')}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="url"
-                          placeholder={t('customWebhook.urlPlaceholder')}
-                          disabled={isLoading}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('customWebhook.urlDescription')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  label={t('customWebhook.urlLabel')}
+                  placeholder={t('customWebhook.urlPlaceholder')}
+                  description={t('customWebhook.urlDescription')}
+                  type="url"
+                  disabled={isLoading}
                 />
 
-                <FormField
-                  control={form.control}
+                <TextInputField<CustomWebhookFormData>
                   name="secret"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        {t('customWebhook.secretLabel')}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="password"
-                          placeholder={t('webhook.secretPlaceholder')}
-                          disabled={isLoading}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('customWebhook.secretDescription')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  label={t('customWebhook.secretLabel')}
+                  placeholder={t('webhook.secretPlaceholder')}
+                  description={t('customWebhook.secretDescription')}
+                  type="password"
+                  disabled={isLoading}
                 />
 
                 <EnabledField<CustomWebhookFormData> disabled={isLoading} />

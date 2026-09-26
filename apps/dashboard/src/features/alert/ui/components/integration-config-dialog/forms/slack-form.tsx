@@ -38,6 +38,7 @@ import {
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
 import { NameField } from '../fields/name-field';
+import { TextInputField } from '../fields/text-input-field';
 import type { ConfigFormProps } from '../integration-config-dialog';
 
 export function SlackForm({
@@ -129,28 +130,13 @@ export function SlackForm({
                   </TabsList>
 
                   <TabsContent value="webhook" className="mt-3">
-                    <FormField
-                      control={form.control}
+                    <TextInputField<SlackFormData>
                       name="webhook_url"
-                      render={({ field: urlField }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                            {t('slack.webhookUrlLabel')}
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type="url"
-                              placeholder={t('slack.webhookUrlPlaceholder')}
-                              disabled={isLoading}
-                              {...urlField}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            {t('slack.webhookUrlDescription')}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      label={t('slack.webhookUrlLabel')}
+                      placeholder={t('slack.webhookUrlPlaceholder')}
+                      description={t('slack.webhookUrlDescription')}
+                      type="url"
+                      disabled={isLoading}
                     />
                   </TabsContent>
 
