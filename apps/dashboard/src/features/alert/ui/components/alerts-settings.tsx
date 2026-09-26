@@ -1,4 +1,5 @@
 import type { AlertIntegration, AlertRule, Project } from '@rustrak/client';
+import { Link } from '@tanstack/react-router';
 import { Bell, Plus } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -10,9 +11,8 @@ import {
 import { AlertRuleFormDialog } from '@/features/alert/ui/components/alert-rule-dialog/alert-rule-dialog';
 import { AlertRulesTable } from '@/features/alert/ui/components/alert-rules-table';
 import { ConfirmDeleteDialog } from '@/features/alert/ui/components/confirm-delete-dialog';
-import { Link } from '@/shared/ui/components/link';
+import { invalidateProject } from '@/shared/api/query-client';
 import { Button } from '@/shared/ui/components/shadcn/button';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface AlertsSettingsProps {
   project: Project;
@@ -26,7 +26,6 @@ export function AlertsSettings({
   channels,
 }: AlertsSettingsProps) {
   const t = useTranslations('alerts');
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [deletingRule, setDeletingRule] = useState<AlertRule | null>(null);
@@ -51,7 +50,7 @@ export function AlertsSettings({
         return;
       }
 
-      router.refresh();
+      void invalidateProject(project.id);
     });
   };
 
@@ -69,7 +68,7 @@ export function AlertsSettings({
 
       toast.success(t('settings.deleted'));
       setDeletingRule(null);
-      router.refresh();
+      void invalidateProject(project.id);
     });
   };
 
@@ -104,7 +103,7 @@ export function AlertsSettings({
             {t.rich('settings.noIntegrationsHint', {
               link: (chunks) => (
                 <Link
-                  href="/settings/integrations"
+                  to="/settings/integrations"
                   className="text-primary underline"
                 >
                   {chunks}
@@ -144,7 +143,7 @@ export function AlertsSettings({
         existingRuleTypes={alertRules.map((r) => r.alert_type)}
         onSuccess={() => {
           setShowAddForm(false);
-          router.refresh();
+          void invalidateProject(project.id);
         }}
       />
 
@@ -158,7 +157,7 @@ export function AlertsSettings({
         existingRuleTypes={alertRules.map((r) => r.alert_type)}
         onSuccess={() => {
           setEditingRule(null);
-          router.refresh();
+          void invalidateProject(project.id);
         }}
       />
 

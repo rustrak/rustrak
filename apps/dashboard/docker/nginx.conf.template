@@ -20,6 +20,15 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # The stock image leaves compression commented out, which served the
+    # bundle at about four times its size. `text/html` is always compressed
+    # once `gzip` is on, so it is not listed.
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
     # The upstream, from the environment. Because it is a variable, nginx
     # resolves its host per request rather than at config load, which needs a
     # resolver; the entrypoint exports the container's own as

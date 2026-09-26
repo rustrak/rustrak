@@ -4,6 +4,7 @@
  * `stats` lives here rather than in a slice of its own: the aggregates are
  * *of a project*, not a concept a user manipulates.
  */
+
 import type {
   EventTimeseries,
   ListProjectsOptions,
@@ -13,7 +14,10 @@ import type {
   Result,
   RustrakError,
 } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
+import { scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
+import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
 
 /**
  * Get projects with pagination.
@@ -78,3 +82,32 @@ export async function getProjectStatsSummary(
   const client = await createClient();
   return client.stats.summary(projectId, period);
 }
+
+export const projectQueries = {
+  list: (options?: ListProjectsOptions) =>
+    queryOptions({
+      queryKey: [...scope.projects, options],
+      queryFn: () => getProjects(options),
+    }),
+  /**
+   * The first page of every project, by name. The command bar, the sidebar's
+   * switcher and the new-project form all read this one, so it is fetched
+   * once however many of them are on screen.
+   */
+  all: () => projectQueries.list({ per_page: COMMAND_BAR_PROJECT_LIMIT }),
+  detail: (id: number) =>
+    queryOptions({
+      queryKey: [...scope.project(id), 'detail'],
+      queryFn: () => getProject(id),
+    }),
+  timeseries: (projectId: number, period?: string, interval?: number) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'timeseries', period, interval],
+      queryFn: () => getProjectEventTimeseries(projectId, period, interval),
+    }),
+  summary: (projectId: number, period?: string) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'summary', period],
+      queryFn: () => getProjectStatsSummary(projectId, period),
+    }),
+};

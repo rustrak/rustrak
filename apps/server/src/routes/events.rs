@@ -137,11 +137,59 @@ pub async fn get_event(
     Ok(HttpResponse::Ok().json(event.to_detail_response()))
 }
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/projects/{project_id}/issues/{issue_id}/events/{event_id}/navigation",
+    tag = "Events",
+    params(
+        ("project_id" = i32, Path, description = "Project ID"),
+        ("issue_id" = uuid::Uuid, Path, description = "Issue ID"),
+        ("event_id" = uuid::Uuid, Path, description = "Event ID"),
+    ),
+    responses(
+        (status = 200, description = "The event's position among its issue's events", body = crate::models::EventNavigation),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// GET /api/projects/{project_id}/issues/{issue_id}/events/{event_id}/navigation
+/// Where the event sits among its issue's events, oldest first, and its
+/// neighbours. One query, so the dashboard need not page through the issue.
+pub async fn get_event_navigation(
+    pool: web::Data<DbPool>,
+    path: web::Path<(i32, Uuid, Uuid)>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    let (project_id, issue_id, event_id) = path.into_inner();
+
+    access::require(
+        pool.get_ref(),
+        actor.is_admin(),
+        actor.user_id(),
+        project_id,
+        Action::ViewProject,
+    )
+    .await?;
+
+    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
+    if issue.project_id != project_id {
+        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
+    }
+
+    let navigation = EventService::navigation(pool.get_ref(), issue_id, event_id).await?;
+    Ok(HttpResponse::Ok().json(navigation))
+}
+
 #[cfg(feature = "openapi")]
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_events, get_event),
-    components(schemas(crate::models::EventResponse, crate::models::EventDetailResponse,))
+    paths(list_events, get_event, get_event_navigation),
+    components(schemas(
+        crate::models::EventResponse,
+        crate::models::EventDetailResponse,
+        crate::models::EventNavigation,
+    ))
 )]
 pub struct EventsApi;
 
@@ -150,6 +198,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/projects/{project_id}/issues/{issue_id}/events")
             .route("", web::get().to(list_events))
-            .route("/{event_id}", web::get().to(get_event)),
+            .route("/{event_id}", web::get().to(get_event))
+            .route(
+                "/{event_id}/navigation",
+                web::get().to(get_event_navigation),
+            ),
     );
 }

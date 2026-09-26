@@ -9,8 +9,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/settings')({
 
 function ProjectSettingsLayout() {
   const t = useTranslations('settings');
-  const { id } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId } = Route.useParams();
 
   return (
     <div className="w-full">

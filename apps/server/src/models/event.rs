@@ -209,3 +209,16 @@ impl Event {
         }
     }
 }
+
+/// Where one event sits among its issue's events, oldest first.
+#[derive(Debug, Serialize, FromRow)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EventNavigation {
+    /// 1-based position of the event, oldest first.
+    pub current_index: i64,
+    pub total_count: i64,
+    pub first_event_id: Option<Uuid>,
+    pub last_event_id: Option<Uuid>,
+    pub prev_event_id: Option<Uuid>,
+    pub next_event_id: Option<Uuid>,
+}

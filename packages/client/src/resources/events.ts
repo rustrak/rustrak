@@ -2,12 +2,14 @@ import type { RustrakError } from '../errors.js';
 import type { Result } from '../result.js';
 import {
   eventDetailSchema,
+  eventNavigationSchema,
   eventSchema,
   paginatedResponseSchema,
 } from '../schemas/index.js';
 import type {
   Event,
   EventDetail,
+  EventNavigation,
   ListEventsOptions,
   PaginatedResponse,
 } from '../types/index.js';
@@ -57,6 +59,24 @@ export class EventsResource extends BaseResource {
           `api/projects/${projectId}/issues/${issueId}/events/${eventId}`,
         ),
       eventDetailSchema,
+    );
+  }
+
+  /**
+   * An event's position among its issue's events, oldest first, and the ids
+   * of its first, last, previous and next siblings
+   */
+  async navigation(
+    projectId: number,
+    issueId: string,
+    eventId: string,
+  ): Promise<Result<EventNavigation, RustrakError>> {
+    return this.request(
+      () =>
+        this.http.get(
+          `api/projects/${projectId}/issues/${issueId}/events/${eventId}/navigation`,
+        ),
+      eventNavigationSchema,
     );
   }
 }

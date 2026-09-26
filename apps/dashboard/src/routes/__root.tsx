@@ -1,4 +1,10 @@
-import { createRootRoute, HeadContent, Outlet } from '@tanstack/react-router';
+import type { QueryClient } from '@tanstack/react-query';
+import {
+  createRootRouteWithContext,
+  HeadContent,
+  Outlet,
+} from '@tanstack/react-router';
+import { NavigationProgress } from '@/shared/ui/components/navigation-progress';
 
 /**
  * Everything above routing.
@@ -14,7 +20,11 @@ import { createRootRoute, HeadContent, Outlet } from '@tanstack/react-router';
  * the browser tab's title and nothing else here: there is no crawler to serve,
  * because there is no page in this application that is not behind a login.
  */
-export const Route = createRootRoute({
+export interface RouterContext {
+  queryClient: QueryClient;
+}
+
+export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 });
 
@@ -22,6 +32,7 @@ function RootLayout() {
   return (
     <>
       <HeadContent />
+      <NavigationProgress />
       <Outlet />
     </>
   );

@@ -1219,6 +1219,10 @@
     "main": {
       "headline": "No se pudo cargar esta página",
       "description": "El fallo ocurrió durante el renderizado, no en tus datos. Todo lo demás del panel sigue accesible desde la cabecera de arriba."
+    },
+    "app": {
+      "headline": "Algo ha fallado",
+      "description": "El panel falló al mostrar esta página. Tus datos no se ven afectados y recargar suele solucionarlo."
     }
   },
   "auth": {

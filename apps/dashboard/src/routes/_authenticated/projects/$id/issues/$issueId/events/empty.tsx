@@ -1,11 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { AlertCircle, ChevronLeft } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { getIssue } from '@/features/issue/api/queries';
-import { getProject } from '@/features/project/api/queries';
+import { issueQueries } from '@/features/issue/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
-import { Link } from '@/shared/ui/components/link';
+import { combine, loadAll } from '@/shared/lib/results';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
@@ -13,13 +13,11 @@ import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/events/empty',
 )({
-  loader: ({ params }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    return loadAll([
-      getProject(projectId),
-      getIssue(projectId, params.issueId),
-    ]);
-  },
+  loader: ({ params: { id, issueId }, context: { queryClient } }) =>
+    loadAll([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(issueQueries.detail(id, issueId)),
+    ]),
   head: ({ loaderData }) => {
     const t = translator('projectPages');
 
@@ -37,9 +35,11 @@ export const Route = createFileRoute(
 
 function EmptyEventsPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
-  const loaded = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, issueId } = Route.useParams();
+  const loaded = combine([
+    useSuspenseQuery(projectQueries.detail(projectId)).data,
+    useSuspenseQuery(issueQueries.detail(projectId, issueId)).data,
+  ]);
 
   if (!loaded.success) {
     return <LoadFailure error={loaded.error} title={t('loadIssueFailed')} />;
@@ -55,7 +55,7 @@ function EmptyEventsPage() {
           variant="ghost"
           size="sm"
           nativeButton={false}
-          render={<Link href={`/projects/${projectId}`} />}
+          render={<Link to="/projects/$id" params={{ id: projectId }} />}
         >
           <ChevronLeft className="mr-1 size-4" />
           {project.name}

@@ -96,7 +96,7 @@ pub use alert::{
     WebhookRoutingOverride,
 };
 pub use auth_token::{AuthToken, AuthTokenCreatedResponse, AuthTokenResponse, CreateAuthToken};
-pub use event::{Event, EventDetailResponse, EventResponse, EventSummary};
+pub use event::{Event, EventDetailResponse, EventNavigation, EventResponse, EventSummary};
 pub use gen_ai::{
     AgentDurationPoint, AgentModelRow, AgentSummary, AgentTimeseriesPoint, AgentToolRow,
     AgentTraceSummary, GenAiBreakdownRow,

@@ -129,4 +129,40 @@ describe('createIntlStore', () => {
     await expect(store.ensure()).rejects.toThrow('offline');
     expect((await store.ensure()).locale).toBe('es');
   });
+
+  // The first paint waits on both, so the catalogue must not wait on the
+  // session: the browser's language is the likely answer, and the account
+  // only changes it for a reader whose preference differs.
+  it('starts loading the browser catalogue before the session answers', async () => {
+    let answer: (session: CurrentUser) => void = () => {};
+    const loadMessages = vi.fn(async () => messages);
+    const store = createIntlStore(
+      deps({
+        readSession: () => new Promise((resolve) => (answer = resolve)),
+        browserLanguages: () => ['fr-FR'],
+        loadMessages,
+      }),
+    );
+
+    const pending = store.ensure();
+    expect(loadMessages).toHaveBeenCalledWith('fr');
+
+    answer(user({ language: 'fr' }));
+    expect((await pending).locale).toBe('fr');
+    expect(loadMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads the account language when it differs from the browser', async () => {
+    const loadMessages = vi.fn(async () => messages);
+    const store = createIntlStore(
+      deps({
+        readSession: async () => user({ language: 'es' }),
+        browserLanguages: () => ['fr-FR'],
+        loadMessages,
+      }),
+    );
+
+    expect((await store.ensure()).locale).toBe('es');
+    expect(loadMessages).toHaveBeenLastCalledWith('es');
+  });
 });

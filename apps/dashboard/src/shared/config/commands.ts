@@ -32,14 +32,42 @@ import {
  */
 export type CommandLink = {
   labelKey: string;
-  href: string;
+  to: CommandPath;
   descriptionKey: string;
   icon: LucideIcon;
   keywords?: string[];
 };
 
 /** The same, for a page that only exists relative to some project. */
-export type ProjectPage = Omit<CommandLink, 'href'> & { segment: string };
+export type ProjectPage = Omit<CommandLink, 'to'> & { to: ProjectPagePath };
+
+/**
+ * Route paths, not built URLs. Plain strings here, because config does not
+ * import the router; the bar's `navigate` call is what checks them.
+ */
+export type CommandPath =
+  | '/projects'
+  | '/projects/new'
+  | '/settings/tokens'
+  | '/settings/integrations'
+  | '/settings/team'
+  | '/settings/storage'
+  | '/settings/account'
+  | '/settings/appearance'
+  | '/settings/about';
+
+/** A project's own pages, each taking that project's `id` as its param. */
+export type ProjectPagePath =
+  | '/projects/$id'
+  | '/projects/$id/issues'
+  | '/projects/$id/releases'
+  | '/projects/$id/performance'
+  | '/projects/$id/agents'
+  | '/projects/$id/logs'
+  | '/projects/$id/settings/general'
+  | '/projects/$id/settings/alerts'
+  | '/projects/$id/settings/members'
+  | '/projects/$id/settings/client-keys';
 
 /**
  * The projects the viewer can reach, reduced to what the command bar renders.
@@ -71,42 +99,42 @@ export const COMMAND_BAR_PROJECT_LIMIT = 100;
 const PROJECT_PAGES: ProjectPage[] = [
   {
     labelKey: 'commands.overview',
-    segment: '',
+    to: '/projects/$id',
     descriptionKey: 'commands.overviewDescription',
     icon: LayoutDashboardIcon,
     keywords: ['dashboard', 'home'],
   },
   {
     labelKey: 'commands.issues',
-    segment: '/issues',
+    to: '/projects/$id/issues',
     descriptionKey: 'commands.issuesDescription',
     icon: BugIcon,
     keywords: ['errors', 'exceptions', 'crashes'],
   },
   {
     labelKey: 'commands.releases',
-    segment: '/releases',
+    to: '/projects/$id/releases',
     descriptionKey: 'commands.releasesDescription',
     icon: RocketIcon,
     keywords: ['deploys', 'versions', 'health', 'sessions'],
   },
   {
     labelKey: 'commands.performance',
-    segment: '/performance',
+    to: '/projects/$id/performance',
     descriptionKey: 'commands.performanceDescription',
     icon: GaugeIcon,
     keywords: ['apm', 'transactions', 'spans', 'traces', 'latency'],
   },
   {
     labelKey: 'commands.agents',
-    segment: '/agents',
+    to: '/projects/$id/agents',
     descriptionKey: 'commands.agentsDescription',
     icon: BotIcon,
     keywords: ['ai', 'llm', 'traces'],
   },
   {
     labelKey: 'commands.logs',
-    segment: '/logs',
+    to: '/projects/$id/logs',
     descriptionKey: 'commands.logsDescription',
     icon: ScrollTextIcon,
     keywords: ['stream'],
@@ -121,28 +149,28 @@ const PROJECT_PAGES: ProjectPage[] = [
 const PROJECT_SETTINGS_PAGES: ProjectPage[] = [
   {
     labelKey: 'commands.general',
-    segment: '/settings/general',
+    to: '/projects/$id/settings/general',
     descriptionKey: 'commands.generalDescription',
     icon: SettingsIcon,
     keywords: ['rename', 'slug', 'delete'],
   },
   {
     labelKey: 'commands.alerts',
-    segment: '/settings/alerts',
+    to: '/projects/$id/settings/alerts',
     descriptionKey: 'commands.alertsDescription',
     icon: BellIcon,
     keywords: ['rules', 'notifications'],
   },
   {
     labelKey: 'commands.members',
-    segment: '/settings/members',
+    to: '/projects/$id/settings/members',
     descriptionKey: 'commands.membersDescription',
     icon: UsersIcon,
     keywords: ['access', 'roles', 'permissions'],
   },
   {
     labelKey: 'commands.clientKeys',
-    segment: '/settings/client-keys',
+    to: '/projects/$id/settings/client-keys',
     descriptionKey: 'commands.clientKeysDescription',
     icon: KeyRoundIcon,
     keywords: ['dsn', 'sdk', 'setup', 'install'],
@@ -162,14 +190,14 @@ export const PROJECT_PAGE_COUNT = ALL_PROJECT_PAGES.length;
 export const PROJECT_COMMANDS: CommandLink[] = [
   {
     labelKey: 'commands.allProjects',
-    href: '/projects',
+    to: '/projects',
     descriptionKey: 'commands.allProjectsDescription',
     icon: FolderIcon,
     keywords: ['list', 'browse'],
   },
   {
     labelKey: 'commands.newProject',
-    href: '/projects/new',
+    to: '/projects/new',
     descriptionKey: 'commands.newProjectDescription',
     icon: PlusIcon,
     keywords: ['create', 'add'],
@@ -180,49 +208,49 @@ export const PROJECT_COMMANDS: CommandLink[] = [
 export const SETTINGS_COMMANDS: CommandLink[] = [
   {
     labelKey: 'commands.apiTokens',
-    href: '/settings/tokens',
+    to: '/settings/tokens',
     descriptionKey: 'commands.apiTokensDescription',
     icon: KeyIcon,
     keywords: ['auth', 'bearer', 'secret'],
   },
   {
     labelKey: 'commands.integrations',
-    href: '/settings/integrations',
+    to: '/settings/integrations',
     descriptionKey: 'commands.integrationsDescription',
     icon: PlugIcon,
     keywords: ['slack', 'webhook', 'custom webhook', 'email'],
   },
   {
     labelKey: 'commands.team',
-    href: '/settings/team',
+    to: '/settings/team',
     descriptionKey: 'commands.teamDescription',
     icon: UsersIcon,
     keywords: ['invite', 'people'],
   },
   {
     labelKey: 'commands.storage',
-    href: '/settings/storage',
+    to: '/settings/storage',
     descriptionKey: 'commands.storageDescription',
     icon: DatabaseIcon,
     keywords: ['retention', 'cleanup', 'source maps', 'disk'],
   },
   {
     labelKey: 'commands.account',
-    href: '/settings/account',
+    to: '/settings/account',
     descriptionKey: 'commands.accountDescription',
     icon: UserIcon,
     keywords: ['profile', 'password', 'me', 'logout'],
   },
   {
     labelKey: 'commands.appearance',
-    href: '/settings/appearance',
+    to: '/settings/appearance',
     descriptionKey: 'commands.appearanceDescription',
     icon: PaletteIcon,
     keywords: ['theme', 'dark', 'light'],
   },
   {
     labelKey: 'commands.about',
-    href: '/settings/about',
+    to: '/settings/about',
     descriptionKey: 'commands.aboutDescription',
     icon: InfoIcon,
     keywords: ['version', 'build'],

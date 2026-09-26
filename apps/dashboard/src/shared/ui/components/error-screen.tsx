@@ -1,6 +1,6 @@
+import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import { Link } from '@/shared/ui/components/link';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 
 /**
@@ -56,7 +56,7 @@ export function ErrorScreen({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_hsl(var(--card)),_transparent_50%)]" />
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent z-10" />
 
-        <Link href="/" className="relative z-20 flex items-center w-fit">
+        <Link to="/" className="relative z-20 flex items-center w-fit">
           <RustrakWordmark className="h-[22px] w-auto" />
         </Link>
 

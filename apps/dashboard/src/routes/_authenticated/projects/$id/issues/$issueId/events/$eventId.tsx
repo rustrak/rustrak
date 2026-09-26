@@ -5,12 +5,12 @@ import type {
   IssueAggregates,
   IssueStats,
 } from '@rustrak/client';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import {
   type EventNavigation,
-  getEventDetail,
-  getEventNavigation,
+  eventQueries,
 } from '@/features/event/api/queries';
 import {
   type EventJumpTarget,
@@ -20,13 +20,8 @@ import {
   readEventPayload,
   splitIssueTitle,
 } from '@/features/event/lib/event-payload';
-import {
-  getIssue,
-  getIssueActivity,
-  getIssueAggregates,
-  getIssueStats,
-} from '@/features/issue/api/queries';
-import { getProject } from '@/features/project/api/queries';
+import { issueQueries } from '@/features/issue/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { CollapsibleRail } from '@/shared/ui/components/collapsible-rail';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
@@ -40,22 +35,22 @@ import { EventTrends } from './$eventId/-components/event-trends';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/events/$eventId',
 )({
-  loader: async ({ params }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    const { issueId, eventId } = params;
-
-    const [project, issue, event, navigation, aggregates, stats, activity] =
-      await Promise.all([
-        getProject(projectId),
-        getIssue(projectId, issueId),
-        getEventDetail(projectId, issueId, eventId),
-        getEventNavigation(projectId, issueId, eventId),
-        getIssueAggregates(projectId, issueId),
-        getIssueStats(projectId, issueId, '30d'),
-        getIssueActivity(projectId, issueId),
-      ]);
-
-    return { project, issue, event, navigation, aggregates, stats, activity };
+  loader: async ({
+    params: { id, issueId, eventId },
+    context: { queryClient },
+  }) => {
+    const [project, event] = await Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(eventQueries.detail(id, issueId, eventId)),
+      queryClient.ensureQueryData(issueQueries.detail(id, issueId)),
+      queryClient.ensureQueryData(
+        eventQueries.navigation(id, issueId, eventId),
+      ),
+      queryClient.ensureQueryData(issueQueries.aggregates(id, issueId)),
+      queryClient.ensureQueryData(issueQueries.stats(id, issueId, '30d')),
+      queryClient.ensureQueryData(issueQueries.activity(id, issueId)),
+    ]);
+    return { project, event };
   },
   head: ({ loaderData }) => {
     const t = translator('projectPages');
@@ -91,17 +86,26 @@ const LEVEL_TEXT: Record<string, string> = {
 
 function EventPage() {
   const t = useTranslations('projectPages');
-  const { id, issueId } = Route.useParams();
-  const {
-    project: projectResult,
-    issue: issueResult,
-    event: eventResult,
-    navigation: navigationResult,
-    aggregates: aggregatesResult,
-    stats: statsResult,
-    activity: activityResult,
-  } = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, issueId, eventId } = Route.useParams();
+  const projectResult = useSuspenseQuery(projectQueries.detail(projectId)).data;
+  const issueResult = useSuspenseQuery(
+    issueQueries.detail(projectId, issueId),
+  ).data;
+  const eventResult = useSuspenseQuery(
+    eventQueries.detail(projectId, issueId, eventId),
+  ).data;
+  const navigationResult = useSuspenseQuery(
+    eventQueries.navigation(projectId, issueId, eventId),
+  ).data;
+  const aggregatesResult = useSuspenseQuery(
+    issueQueries.aggregates(projectId, issueId),
+  ).data;
+  const statsResult = useSuspenseQuery(
+    issueQueries.stats(projectId, issueId, '30d'),
+  ).data;
+  const activityResult = useSuspenseQuery(
+    issueQueries.activity(projectId, issueId),
+  ).data;
 
   // The four the page cannot render without.
   if (!projectResult.success) {

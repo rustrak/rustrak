@@ -1,26 +1,16 @@
 import type { OffsetPaginatedResponse, Transaction } from '@rustrak/client';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Zap } from 'lucide-react';
 import { useTransition } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
 import { TablePagination } from '@/shared/ui/components/table-pagination';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface TransactionsListProps {
   projectId: number;
   initialTransactions: OffsetPaginatedResponse<Transaction>;
   currentPage: number;
-  /** Base path for pagination links (defaults to the performance landing). */
-  basePath?: string;
-  filters?: {
-    name?: string;
-    op?: string;
-    status?: string;
-    environment?: string;
-    release?: string;
-  };
 }
 
 function formatDuration(ms: number | null): string {
@@ -55,15 +45,12 @@ export function TransactionsList({
   projectId,
   initialTransactions,
   currentPage,
-  basePath,
-  filters,
 }: TransactionsListProps) {
   const format = useFormatter();
   const t = useTranslations('transactions');
-  const router = useRouter();
+  // The samples of one group, on its summary page.
+  const navigate = useNavigate({ from: '/projects/$id/performance/summary' });
   const [isPending, startTransition] = useTransition();
-
-  const path = basePath ?? `/projects/${projectId}/performance`;
 
   const {
     items: transactions,
@@ -73,16 +60,9 @@ export function TransactionsList({
   } = initialTransactions;
 
   const handlePageChange = (page: number) => {
-    const params = new URLSearchParams();
-    params.set('page', String(page));
-    // Preserve active filters across pagination so the page stays in context.
-    if (filters?.name) params.set('name', filters.name);
-    if (filters?.op) params.set('op', filters.op);
-    if (filters?.status) params.set('status', filters.status);
-    if (filters?.environment) params.set('environment', filters.environment);
-    if (filters?.release) params.set('release', filters.release);
+    // `prev` keeps the group's name and op, so paging stays in context.
     startTransition(() => {
-      router.push(`${path}?${params.toString()}`);
+      navigate({ search: (prev) => ({ ...prev, page }) });
     });
   };
 
@@ -121,7 +101,8 @@ export function TransactionsList({
             return (
               <Link
                 key={txn.id}
-                href={`/projects/${projectId}/performance/${txn.id}`}
+                to="/projects/$id/performance/$txnId"
+                params={{ id: projectId, txnId: txn.id }}
                 className="flex items-center gap-4 px-4 py-3 border-b last:border-b-0 hover:bg-muted/30 transition-colors group"
               >
                 <div className="flex-1 min-w-0">

@@ -84,7 +84,7 @@ describe('the locale reaches the data, not just the chrome', () => {
    *
    * Forbidding a locale-aware navigation import means nothing if nobody
    * navigates. This counts the files that use the application's own navigation
-   * — the router's `Link` and the two shims over it — so a refactor that
+   * (the router's `Link` and hooks), so a refactor that
    * empties them fails here rather than making the ban below trivially
    * satisfiable.
    */
@@ -95,13 +95,13 @@ describe('the locale reaches the data, not just the chrome', () => {
       .adhereTo(
         (file) =>
           judged(file.path) &&
-          /(?:from|import)\s+['"][^'"]*(?:components\/link|hooks\/use-(?:router|pathname)|@tanstack\/react-router)['"]/.test(
+          /(?:from|import)\s+['"]@tanstack\/react-router['"]/.test(
             withoutComments(file.content),
           ),
         'counted',
       );
 
-    // 55 files navigated before the migration; the shims kept every one.
+    // 55 files navigated before the migration; the typed router kept them all.
     expect((await users.check()).length).toBeGreaterThanOrEqual(50);
   });
 

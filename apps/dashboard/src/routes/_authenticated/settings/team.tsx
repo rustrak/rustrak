@@ -1,14 +1,14 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { ShieldX } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { listTeam } from '@/features/user/api/mutations';
-import { listInvitations } from '@/features/user/api/queries';
+import { userQueries } from '@/features/user/api/queries';
 import { InviteForm } from '@/features/user/ui/components/invite-form';
 import { PendingInvitations } from '@/features/user/ui/components/pending-invitations';
 import { TeamMembersList } from '@/features/user/ui/components/team-members-list';
 import { session } from '@/shared/api/session';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
+import { combine, loadAll } from '@/shared/lib/results';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
@@ -30,12 +30,15 @@ export const Route = createFileRoute('/_authenticated/settings/team')({
    * loading them anyway would put "we could not load the team" underneath the
    * "you are not authorised" panel that already explains why.
    */
-  loader: async () => {
+  loader: async ({ context: { queryClient } }) => {
     const answer = session.peek();
     if (answer?.state !== 'authenticated' || answer.user.role !== 'admin') {
-      return null;
+      return;
     }
-    return loadAll([listTeam(), listInvitations()]);
+    await loadAll([
+      queryClient.ensureQueryData(userQueries.team()),
+      queryClient.ensureQueryData(userQueries.invitations()),
+    ]);
   },
   component: TeamPage,
 });
@@ -43,7 +46,6 @@ export const Route = createFileRoute('/_authenticated/settings/team')({
 function TeamPage() {
   const t = useTranslations('settings');
   const user = useSessionUser();
-  const loaded = Route.useLoaderData();
 
   const heading = (
     <div className="mb-6 md:mb-8">
@@ -58,7 +60,7 @@ function TeamPage() {
   // branch that used to sit above this one belongs to `_authenticated` now —
   // an outage is not a permission verdict, and reporting one as the other is
   // the bug that branch exists to prevent.
-  if (user.role !== 'admin' || loaded === null) {
+  if (user.role !== 'admin') {
     return (
       <>
         {heading}
@@ -74,6 +76,21 @@ function TeamPage() {
       </>
     );
   }
+
+  return (
+    <>
+      {heading}
+      <TeamRoster currentUserId={user.id} />
+    </>
+  );
+}
+
+function TeamRoster({ currentUserId }: { currentUserId: number }) {
+  const t = useTranslations('settings');
+  const loaded = combine([
+    useSuspenseQuery(userQueries.team()).data,
+    useSuspenseQuery(userQueries.invitations()).data,
+  ]);
 
   if (!loaded.success) {
     return (
@@ -92,14 +109,10 @@ function TeamPage() {
   );
 
   return (
-    <>
-      {heading}
-
-      <div className="space-y-6">
-        <InviteForm />
-        <TeamMembersList members={members} currentUserId={user.id} />
-        <PendingInvitations invitations={pendingInvitations} />
-      </div>
-    </>
+    <div className="space-y-6">
+      <InviteForm />
+      <TeamMembersList members={members} currentUserId={currentUserId} />
+      <PendingInvitations invitations={pendingInvitations} />
+    </div>
   );
 }

@@ -1,12 +1,12 @@
+import { useNavigate } from '@tanstack/react-router';
 import { useTransition } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   AGENT_PERIODS,
-  agentDashboardQuery,
+  agentDashboardSearch,
 } from '@/features/agent-trace/model/filters';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/components/shadcn/button';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface AgentDashboardFiltersProps {
   projectId: number;
@@ -25,18 +25,20 @@ export function AgentDashboardFilters({
   current,
   environments,
 }: AgentDashboardFiltersProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const t = useTranslations('agents.filters');
   const [isPending, startTransition] = useTransition();
 
-  const navigate = (change: {
+  const go = (change: {
     period?: string | null;
     environment?: string | null;
   }) => {
     startTransition(() => {
-      router.push(
-        `/projects/${projectId}/agents${agentDashboardQuery(current, change)}`,
-      );
+      navigate({
+        to: '/projects/$id/agents',
+        params: { id: projectId },
+        search: agentDashboardSearch(current, change),
+      });
     });
   };
 
@@ -52,7 +54,7 @@ export function AgentDashboardFilters({
             variant={current.period === period ? 'secondary' : 'ghost'}
             size="sm"
             className="h-7 px-3"
-            onClick={() => navigate({ period })}
+            onClick={() => go({ period })}
             disabled={isPending}
           >
             {period}
@@ -62,7 +64,7 @@ export function AgentDashboardFilters({
           variant={!current.period ? 'secondary' : 'ghost'}
           size="sm"
           className="h-7 px-3"
-          onClick={() => navigate({ period: null })}
+          onClick={() => go({ period: null })}
           disabled={isPending}
         >
           {t('allTime')}
@@ -77,7 +79,7 @@ export function AgentDashboardFilters({
             variant={!current.environment ? 'secondary' : 'ghost'}
             size="sm"
             className="h-7 px-3"
-            onClick={() => navigate({ environment: null })}
+            onClick={() => go({ environment: null })}
             disabled={isPending}
           >
             {t('allEnvironments')}
@@ -90,7 +92,7 @@ export function AgentDashboardFilters({
               }
               size="sm"
               className={cn('h-7 px-3 font-mono')}
-              onClick={() => navigate({ environment })}
+              onClick={() => go({ environment })}
               disabled={isPending}
             >
               {environment}

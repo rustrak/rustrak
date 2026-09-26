@@ -1,10 +1,7 @@
 /**
- * Reads for the transaction feature, called straight from Server Components.
- *
- * `import 'server-only'` is a build-time poison pill rather than a directive:
- * if this module reaches the client bundle the build fails, instead of shipping
- * a browser bundle that holds the session cookie.
+ * Reads for the transaction feature.
  */
+
 import type {
   ListTransactionsOptions,
   OffsetPaginatedResponse,
@@ -15,6 +12,8 @@ import type {
   TransactionStats,
 } from '@rustrak/client';
 import { Ok } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
+import { scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
 
 export async function listTransactions(
@@ -64,3 +63,32 @@ export async function getTransactionStatForGroup(
 
   return result;
 }
+
+export const transactionQueries = {
+  list: (projectId: number, options?: ListTransactionsOptions) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'transactions', 'list', options],
+      queryFn: () => listTransactions(projectId, options),
+    }),
+  detail: (projectId: number, transactionId: string) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'transactions', transactionId],
+      queryFn: () => getTransaction(projectId, transactionId),
+    }),
+  stats: (projectId: number, options?: { page?: number; per_page?: number }) =>
+    queryOptions({
+      queryKey: [...scope.project(projectId), 'transactions', 'stats', options],
+      queryFn: () => getTransactionStats(projectId, options),
+    }),
+  groupStat: (projectId: number, name: string, op?: string) =>
+    queryOptions({
+      queryKey: [
+        ...scope.project(projectId),
+        'transactions',
+        'group-stat',
+        name,
+        op,
+      ],
+      queryFn: () => getTransactionStatForGroup(projectId, name, op),
+    }),
+};

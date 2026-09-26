@@ -1,6 +1,6 @@
+import { Link } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { Link } from '@/shared/ui/components/link';
 import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
@@ -28,7 +28,7 @@ export function ProjectsHeader() {
         </p>
       </div>
 
-      <Button nativeButton={false} render={<Link href="/projects/new" />}>
+      <Button nativeButton={false} render={<Link to="/projects/new" />}>
         <Plus className="mr-2 size-4" />
         {t('projectsList.newProject')}
       </Button>

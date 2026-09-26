@@ -3999,6 +3999,84 @@
         ]
       }
     },
+    "/api/projects/{project_id}/issues/{issue_id}/events/{event_id}/navigation": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/events/{event_id}/navigation\nWhere the event sits among its issue's events, oldest first, and its\nneighbours. One query, so the dashboard need not page through the issue.",
+        "operationId": "get_event_navigation",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Issue ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "description": "Event ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The event's position among its issue's events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventNavigation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/projects/{project_id}/issues/{issue_id}/hashes": {
       "get": {
         "tags": [
@@ -8689,6 +8767,53 @@
           },
           "title": {
             "type": "string"
+          }
+        }
+      },
+      "EventNavigation": {
+        "type": "object",
+        "description": "Where one event sits among its issue's events, oldest first.",
+        "required": [
+          "current_index",
+          "total_count"
+        ],
+        "properties": {
+          "current_index": {
+            "type": "integer",
+            "format": "int64",
+            "description": "1-based position of the event, oldest first."
+          },
+          "first_event_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "last_event_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "next_event_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "prev_event_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "total_count": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

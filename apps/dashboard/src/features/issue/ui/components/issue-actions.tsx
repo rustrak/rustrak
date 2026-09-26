@@ -4,6 +4,7 @@ import type {
   Result,
   RustrakError,
 } from '@rustrak/client';
+import { useNavigate } from '@tanstack/react-router';
 import {
   Archive,
   ArchiveRestore,
@@ -29,6 +30,7 @@ import {
   setIssueSubscription,
   updateIssueState,
 } from '@/features/issue/api/mutations';
+import { invalidateIssues } from '@/features/issue/api/queries';
 import { priorityDisplay } from '@/features/issue/model/status';
 import { cn } from '@/shared/lib/utils';
 import {
@@ -49,7 +51,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/shared/ui/components/shadcn/dropdown-menu';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface IssueActionsProps {
   issue: Issue;
@@ -60,7 +61,7 @@ const PRIORITIES: IssuePriority[] = ['high', 'medium', 'low'];
 
 export function IssueActions({ issue, projectId }: IssueActionsProps) {
   const t = useTranslations('issues');
-  const router = useRouter();
+  const navigate = useNavigate();
   const [, startTransition] = useTransition();
   const [pending, setPending] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -91,7 +92,7 @@ export function IssueActions({ issue, projectId }: IssueActionsProps) {
       if (!result.success) {
         toast.error(label, { description: result.error.message });
       } else {
-        router.refresh();
+        void invalidateIssues(projectId);
       }
 
       setPending(null);
@@ -112,7 +113,7 @@ export function IssueActions({ issue, projectId }: IssueActionsProps) {
       }
 
       setDeleteDialogOpen(false);
-      router.push(`/projects/${projectId}`);
+      navigate({ to: '/projects/$id', params: { id: projectId } });
       setPending(null);
     });
   };

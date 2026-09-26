@@ -8,6 +8,7 @@ import {
   updateUserRole,
 } from '@/features/user/api/mutations';
 import { TeamMembersTable } from '@/features/user/ui/components/team-members-table';
+import { invalidate, scope } from '@/shared/api/query-client';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/shadcn/select';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface TeamMembersListProps {
   members: TeamMember[];
@@ -91,7 +91,6 @@ export function TeamMembersList({
   members,
   currentUserId,
 }: TeamMembersListProps) {
-  const router = useRouter();
   const t = useTranslations('user');
   const format = useFormatter();
   const [isPending, startTransition] = useTransition();
@@ -107,7 +106,7 @@ export function TeamMembersList({
             role: t(role === 'admin' ? 'roles.admin' : 'roles.member'),
           }),
         });
-        router.refresh();
+        void invalidate(scope.team);
       } else {
         // `error.message` rather than copy built from `error.fields`: the
         // server does name `role` here, but there is no react-hook-form on
@@ -129,7 +128,7 @@ export function TeamMembersList({
       if (result.success) {
         toast.success(t('toast.removed'), { description: member.email });
         setMemberToDelete(null);
-        router.refresh();
+        void invalidate(scope.team);
       } else {
         toast.error(t('toast.removeFailed'), {
           description: result.error.message,

@@ -1,15 +1,17 @@
 import type { ProjectMember, ProjectRole, TeamMember } from '@rustrak/client';
+import { useQuery } from '@tanstack/react-query';
 import { Loader2, UserPlus, Users } from 'lucide-react';
-import { useEffect, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import {
-  listTeam,
   removeProjectMember,
   upsertProjectMember,
 } from '@/features/user/api/mutations';
+import { userQueries } from '@/features/user/api/queries';
 import { PROJECT_ROLES, roleLabel } from '@/features/user/model/roles';
 import { ProjectMembersTable } from '@/features/user/ui/components/project-members-table';
+import { invalidateProject } from '@/shared/api/query-client';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +38,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/shadcn/select';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface MembersSettingsProps {
   projectId: number;
@@ -51,14 +52,20 @@ export function MembersSettings({
   currentUserId,
   canManage,
 }: MembersSettingsProps) {
-  const router = useRouter();
   const t = useTranslations('user');
   const [isPending, startTransition] = useTransition();
-  const [team, setTeam] = useState<TeamMember[] | null>(null);
+  // The roster fills the add-member dropdown, and only a manager sees it.
+  const { data: teamResult } = useQuery({
+    ...userQueries.team(),
+    enabled: canManage,
+  });
+  const team: TeamMember[] | null = teamResult?.success
+    ? teamResult.data
+    : null;
   // Distinct from `team === null`, which only means "not loaded yet". An empty
   // dropdown reading "No users available" is a claim about the team; if the
   // fetch failed we have no basis to make it.
-  const [teamFailed, setTeamFailed] = useState(false);
+  const teamFailed = teamResult?.success === false;
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [removingMember, setRemovingMember] = useState<ProjectMember | null>(
     null,
@@ -71,31 +78,6 @@ export function MembersSettings({
   const availableUsers = (team ?? []).filter(
     (user) => !memberIds.has(user.id) && user.role !== 'admin',
   );
-
-  // Lazily load the team list (to populate the add-member dropdown) the first
-  // time a manager visits this page.
-  useEffect(() => {
-    if (!canManage) return;
-    let cancelled = false;
-    listTeam()
-      .then((result) => {
-        if (cancelled) return;
-        if (result.success) setTeam(result.data);
-        else setTeamFailed(true);
-      })
-      // The client no longer throws, but the Server Action *call* still can:
-      // an offline tab, a 500 from the Next server, or a stale action id after
-      // a redeploy all reject here. This `.then()` runs inside an effect, so
-      // there is no route boundary above it to catch that -- without this
-      // handler it is a bare unhandled rejection and the dropdown silently
-      // stays empty forever.
-      .catch(() => {
-        if (!cancelled) setTeamFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [canManage]);
 
   const handleRoleChange = (member: ProjectMember, role: ProjectRole) => {
     if (role === member.role) return;
@@ -111,7 +93,7 @@ export function MembersSettings({
             role: t(roleLabel(role)),
           }),
         });
-        router.refresh();
+        await invalidateProject(projectId);
       } else {
         // `error.message` rather than copy built from `error.fields`: the
         // server names `role`, but these are table row selects, not a
@@ -134,7 +116,7 @@ export function MembersSettings({
       if (result.success) {
         toast.success(t('toast.removed'));
         setRemovingMember(null);
-        router.refresh();
+        await invalidateProject(projectId);
       } else {
         toast.error(t('toast.removeFailed'), {
           description: result.error.message,
@@ -188,7 +170,7 @@ export function MembersSettings({
         teamFailed={teamFailed}
         onSuccess={() => {
           setShowAddDialog(false);
-          router.refresh();
+          void invalidateProject(projectId);
         }}
       />
 

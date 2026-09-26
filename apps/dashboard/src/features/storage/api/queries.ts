@@ -4,16 +4,9 @@ import type {
   RustrakError,
   StorageSummary,
 } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
+import { scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
-
-/**
- * The two reads the storage page makes, and the only two callers are Server
- * Components.
- *
- * They used to sit in `storage.ts` under a single `'use server'` covering the
- * whole slice, which made both of them public POST endpoints. Nothing called
- * them from the browser, so that bought nothing and cost two endpoints.
- */
 
 /** Instance-wide storage summary (counts + DB size + source-map weight). */
 export async function getStorageSummary(): Promise<
@@ -30,3 +23,16 @@ export async function getStorageProjects(): Promise<
   const client = await createClient();
   return client.storage.getProjects();
 }
+
+export const storageQueries = {
+  summary: () =>
+    queryOptions({
+      queryKey: [...scope.storage, 'summary'],
+      queryFn: getStorageSummary,
+    }),
+  projects: () =>
+    queryOptions({
+      queryKey: [...scope.storage, 'projects'],
+      queryFn: getStorageProjects,
+    }),
+};

@@ -967,3 +967,187 @@ async fn test_event_detail_response_format() {
     assert!(body.get("data").is_some());
     assert!(body["data"].is_object());
 }
+
+// =============================================================================
+// Event Navigation Tests
+// =============================================================================
+
+/// An issue with `count` events one minute apart, oldest first.
+async fn create_issue_with_events(
+    pool: &rustrak::db::DbPool,
+    project_id: i32,
+    count: i64,
+) -> (Uuid, Vec<Uuid>) {
+    let issue = create_test_issue(pool, project_id, "TypeError", "nav").await;
+    // Not `create_test_grouping`: its fixed hash collides on a second issue.
+    let grouping = sqlx::query_as::<_, Grouping>(
+        "INSERT INTO groupings (project_id, issue_id, grouping_key, grouping_key_hash) \
+         VALUES ($1, $2, $3, $4) RETURNING *",
+    )
+    .bind(project_id)
+    .bind(issue.id)
+    .bind(issue.id.to_string())
+    .bind(format!("{:064x}", issue.id.as_u128()))
+    .fetch_one(pool)
+    .await
+    .expect("grouping");
+    let start = Utc::now() - chrono::Duration::hours(1);
+    let mut ids = Vec::new();
+    for i in 0..count {
+        let event = create_test_event(
+            pool,
+            project_id,
+            issue.id,
+            grouping.id,
+            &create_event_data(),
+            start + chrono::Duration::minutes(i),
+        )
+        .await;
+        ids.push(event.id);
+    }
+    (issue.id, ids)
+}
+
+#[actix_web::test]
+async fn test_event_navigation_places_an_event_among_its_issue() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Navigation").await;
+    let (issue_id, ids) = create_issue_with_events(&db.pool, project.id, 5).await;
+    // Another issue's events must not count.
+    create_issue_with_events(&db.pool, project.id, 3).await;
+
+    let nav = EventService::navigation(&db.pool, issue_id, ids[2])
+        .await
+        .expect("navigation");
+
+    assert_eq!(nav.current_index, 3);
+    assert_eq!(nav.total_count, 5);
+    assert_eq!(nav.first_event_id, Some(ids[0]));
+    assert_eq!(nav.last_event_id, Some(ids[4]));
+    assert_eq!(nav.prev_event_id, Some(ids[1]));
+    assert_eq!(nav.next_event_id, Some(ids[3]));
+}
+
+#[actix_web::test]
+async fn test_event_navigation_ends_have_no_neighbour() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Navigation ends").await;
+    let (issue_id, ids) = create_issue_with_events(&db.pool, project.id, 2).await;
+
+    let first = EventService::navigation(&db.pool, issue_id, ids[0])
+        .await
+        .expect("navigation");
+    let last = EventService::navigation(&db.pool, issue_id, ids[1])
+        .await
+        .expect("navigation");
+
+    assert_eq!((first.current_index, first.prev_event_id), (1, None));
+    assert_eq!(first.next_event_id, Some(ids[1]));
+    assert_eq!((last.current_index, last.next_event_id), (2, None));
+    assert_eq!(last.prev_event_id, Some(ids[0]));
+}
+
+/// Events sharing a timestamp are ordered by `id`, exactly as the list pages
+/// them, so stepping with prev/next visits every event once.
+#[actix_web::test]
+async fn test_event_navigation_agrees_with_the_list_on_ties() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Navigation ties").await;
+    let (issue_id, _) = create_issue_with_events(&db.pool, project.id, 0).await;
+    let grouping_id: i32 = sqlx::query_scalar("SELECT id FROM groupings WHERE issue_id = $1")
+        .bind(issue_id)
+        .fetch_one(&db.pool)
+        .await
+        .expect("grouping");
+    let at = Utc::now();
+    for _ in 0..4 {
+        create_test_event(
+            &db.pool,
+            project.id,
+            issue_id,
+            grouping_id,
+            &create_event_data(),
+            at,
+        )
+        .await;
+    }
+
+    let (listed, _) = EventService::list_paginated(
+        &db.pool,
+        issue_id,
+        rustrak::pagination::SortOrder::Asc,
+        None,
+        10,
+    )
+    .await
+    .expect("list");
+    let listed: Vec<Uuid> = listed.iter().map(|e| e.id).collect();
+
+    let mut walked = vec![listed[0]];
+    while let Some(next) = EventService::navigation(&db.pool, issue_id, *walked.last().unwrap())
+        .await
+        .expect("navigation")
+        .next_event_id
+    {
+        walked.push(next);
+    }
+    assert_eq!(walked, listed);
+}
+
+#[actix_web::test]
+async fn test_event_navigation_rejects_an_event_of_another_issue() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Navigation foreign").await;
+    let (issue_id, _) = create_issue_with_events(&db.pool, project.id, 1).await;
+    let (_, foreign) = create_issue_with_events(&db.pool, project.id, 1).await;
+
+    let result = EventService::navigation(&db.pool, issue_id, foreign[0]).await;
+
+    assert!(matches!(result, Err(rustrak::error::AppError::NotFound(_))));
+}
+
+#[actix_web::test]
+async fn test_event_navigation_endpoint() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Navigation HTTP").await;
+    let other = create_test_project(&db.pool, "Navigation HTTP other").await;
+    let (issue_id, ids) = create_issue_with_events(&db.pool, project.id, 3).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.pool.clone()))
+            .app_data(web::Data::new(create_test_config()))
+            .configure(routes::events::configure),
+    )
+    .await;
+
+    let get = |project_id: i32| {
+        test::TestRequest::get()
+            .uri(&format!(
+                "/api/projects/{}/issues/{}/events/{}/navigation",
+                project_id, issue_id, ids[1]
+            ))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request()
+    };
+
+    let resp = test::call_service(&app, get(project.id)).await;
+    assert_eq!(resp.status(), 200);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(
+        body,
+        json!({
+            "current_index": 2,
+            "total_count": 3,
+            "first_event_id": ids[0],
+            "last_event_id": ids[2],
+            "prev_event_id": ids[0],
+            "next_event_id": ids[2],
+        })
+    );
+
+    // The issue belongs to another project than the one in the path.
+    let resp = test::call_service(&app, get(other.id)).await;
+    assert_eq!(resp.status(), 404);
+}

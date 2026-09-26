@@ -1,12 +1,17 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { getProject } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { ProjectHeader } from '@/features/project/ui/components/project-header';
-import { parseOverviewPeriod } from '@/features/release/model/session-health';
+import {
+  type OverviewPeriod,
+  parseOverviewPeriod,
+} from '@/features/release/model/session-health';
 import { translator } from '@/shared/i18n/intl';
 import { searchString } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { OverviewPeriodFilter } from './-components/overview-period-filter';
+import { prefetchOverviewTiles } from './-components/overview-queries';
 import {
   CounterTiles,
   CrashFreeTile,
@@ -17,13 +22,21 @@ import {
 } from './-components/overview-tiles';
 
 export const Route = createFileRoute('/_authenticated/projects/$id/')({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    period?: OverviewPeriod;
+  } => ({
     // An unrecognized window would otherwise reach the API, which ignores what
     // it cannot parse and answers with all-time data while no filter button
     // reads as selected. Drop it instead, so the URL and the UI always agree.
     period: parseOverviewPeriod(searchString(search.period)),
   }),
-  loader: ({ params }) => getProject(Number.parseInt(params.id, 10)),
+  loaderDeps: ({ search }) => ({ period: search.period }),
+  loader: ({ params: { id }, deps: { period }, context: { queryClient } }) => {
+    prefetchOverviewTiles(queryClient, { projectId: id, period });
+    return queryClient.ensureQueryData(projectQueries.detail(id));
+  },
   head: ({ loaderData }) => {
     const t = translator('projectPages');
 
@@ -48,10 +61,11 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
 
 function ProjectPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const { period } = Route.useSearch();
-  const projectResult = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const { data: projectResult } = useSuspenseQuery(
+    projectQueries.detail(projectId),
+  );
 
   if (!projectResult.success) {
     return (

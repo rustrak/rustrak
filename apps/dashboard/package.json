@@ -9,7 +9,6 @@
     "preview": "vite preview --port 3000",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate-routes": "tsr generate",
     "lint": "biome check --formatter-enabled=false --error-on-warnings .",
     "format": "biome format --write .",
     "format:check": "biome format .",
@@ -30,6 +29,7 @@
     "@hookform/resolvers": "5.9.1",
     "@lezer/highlight": "1.2.4",
     "@rustrak/client": "workspace:*",
+    "@tanstack/react-query": "5.103.2",
     "@tanstack/react-router": "1.170.39",
     "@tanstack/react-table": "9.2.4",
     "class-variance-authority": "0.7.1",
@@ -50,7 +50,6 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
-    "@tanstack/router-cli": "1.167.38",
     "@tanstack/router-plugin": "1.168.40",
     "@types/node": "26.6.2",
     "@types/react": "19.3.0",

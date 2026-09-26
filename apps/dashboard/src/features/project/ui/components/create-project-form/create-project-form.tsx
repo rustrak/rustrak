@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useNavigate } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
 import { PlatformIcon } from 'platformicons';
 import { useMemo, useTransition } from 'react';
@@ -26,7 +27,6 @@ import {
   FormMessage,
   FormRootError,
 } from '@/shared/ui/components/shadcn/form';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { IdentityFields } from './identity-fields';
 
 function buildCreateProjectFormSchema(t: Translate) {
@@ -78,7 +78,7 @@ function suggestName(platformId: string, taken: Set<string>): string {
 export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
   const t = useTranslations('projects');
   const formT = useTranslations();
-  const router = useRouter();
+  const navigate = useNavigate();
   const [isPending, startTransition] = useTransition();
 
   const createProjectFormSchema = useMemo(
@@ -158,7 +158,10 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
 
       // Straight into Client Keys: the DSN and the platform's setup snippet
       // are the only thing left to do, and that page owns them.
-      router.push(`/projects/${result.data.id}/settings/client-keys`);
+      navigate({
+        to: '/projects/$id/settings/client-keys',
+        params: { id: result.data.id },
+      });
     });
   };
 

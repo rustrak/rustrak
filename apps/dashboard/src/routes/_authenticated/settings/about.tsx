@@ -1,7 +1,8 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { PlugZap } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { getServerVersion } from '@/shared/api/server-version';
+import { serverVersionQuery } from '@/shared/api/server-version';
 import { APP_VERSION } from '@/shared/config/constants';
 import { translator } from '@/shared/i18n/intl';
 import { describeError } from '@/shared/lib/error-copy';
@@ -24,7 +25,8 @@ export const Route = createFileRoute('/_authenticated/settings/about')({
       ],
     };
   },
-  loader: () => getServerVersion(),
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(serverVersionQuery),
   component: AboutPage,
 });
 
@@ -49,7 +51,7 @@ export const Route = createFileRoute('/_authenticated/settings/about')({
 function AboutPage() {
   const t = useTranslations('settings');
   const rootT = useTranslations();
-  const serverVersion = Route.useLoaderData();
+  const { data: serverVersion } = useSuspenseQuery(serverVersionQuery);
 
   return (
     <>

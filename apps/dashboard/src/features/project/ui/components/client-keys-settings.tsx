@@ -1,14 +1,11 @@
 import type { Project } from '@rustrak/client';
-import { Check, Copy, Loader2 } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useTranslations } from 'use-intl';
 import { resolveSetupSnippet } from '@/features/project/lib/setup-snippet';
 import { useCopyFlags } from '@/features/project/ui/hooks/use-copy-flags';
-import {
-  type SyntaxHighlighter,
-  useSyntaxHighlighter,
-} from '@/features/project/ui/hooks/use-syntax-highlighter';
 import { platformLabel } from '@/shared/config/platforms';
+import { CodeHighlighter } from '@/shared/ui/components/code-highlighter';
 import { SettingSection } from '@/shared/ui/components/setting-row';
 import { Button } from '@/shared/ui/components/shadcn/button';
 
@@ -20,8 +17,6 @@ export function ClientKeysSettings({ project }: ClientKeysSettingsProps) {
   const t = useTranslations('projects');
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-
-  const highlighter = useSyntaxHighlighter(isDark);
   const { isCopied, copy } = useCopyFlags({
     unavailable: t('copyUnavailable'),
     hint: (label) => t('copyUnavailableHint', { label }),
@@ -102,7 +97,7 @@ export function ClientKeysSettings({ project }: ClientKeysSettingsProps) {
         codeLanguage={codeLanguage}
         docsUrl={docsUrl}
         platform={project.platform}
-        highlighter={highlighter}
+        isDark={isDark}
         onCopy={() =>
           codeExample && copy('code', codeExample, t('clientKeys.exampleLabel'))
         }
@@ -119,7 +114,7 @@ interface SetupSectionProps {
   codeLanguage: string;
   docsUrl: string | undefined;
   platform: string | null;
-  highlighter: SyntaxHighlighter;
+  isDark: boolean;
   onCopy: () => void;
   copied: boolean;
 }
@@ -137,7 +132,7 @@ function SetupSection({
   codeLanguage,
   docsUrl,
   platform,
-  highlighter,
+  isDark,
   onCopy,
   copied,
 }: SetupSectionProps) {
@@ -174,10 +169,16 @@ function SetupSection({
               </Button>
             </div>
             <div className="overflow-hidden overflow-x-auto rounded-lg border">
-              <CodeBlock
+              <CodeHighlighter
                 code={codeExample}
                 language={codeLanguage}
-                highlighter={highlighter}
+                dark={isDark}
+                customStyle={{
+                  margin: 0,
+                  padding: '1rem',
+                  fontSize: '0.75rem',
+                  background: isDark ? '#1e1e1e' : '#ffffff',
+                }}
               />
             </div>
           </>
@@ -205,48 +206,5 @@ function SetupSection({
         </p>
       </div>
     </SettingSection>
-  );
-}
-
-/**
- * The example, highlighted where the highlighter arrived.
- *
- * Three states, and the third is why `failed` exists: a chunk that never
- * loaded must fall back to readable plain text, not shimmer forever.
- */
-function CodeBlock({
-  code,
-  language,
-  highlighter: { Highlighter, style, failed, background },
-}: {
-  code: string;
-  language: string;
-  highlighter: SyntaxHighlighter;
-}) {
-  if (Highlighter && style) {
-    return (
-      <Highlighter
-        language={language}
-        style={style}
-        customStyle={{
-          margin: 0,
-          padding: '1rem',
-          fontSize: '0.75rem',
-          background,
-        }}
-      >
-        {code}
-      </Highlighter>
-    );
-  }
-
-  if (failed) {
-    return <pre className="overflow-x-auto p-4 font-mono text-xs">{code}</pre>;
-  }
-
-  return (
-    <div className="flex h-24 animate-pulse items-center justify-center bg-muted p-4">
-      <Loader2 className="size-4 animate-spin text-muted-foreground" />
-    </div>
   );
 }

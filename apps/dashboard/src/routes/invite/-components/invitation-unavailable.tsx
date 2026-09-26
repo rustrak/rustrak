@@ -1,6 +1,6 @@
+import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { ErrorScreen } from '@/shared/ui/components/error-screen';
-import { Link } from '@/shared/ui/components/link';
 import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
@@ -33,7 +33,7 @@ export function InvitationUnavailable() {
       description={t('unavailable.description')}
       guidance={t('unavailable.guidance')}
       actions={
-        <Button nativeButton={false} render={<Link href="/login" />}>
+        <Button nativeButton={false} render={<Link to="/login" />}>
           {t('unavailable.goToLogin')}
         </Button>
       }
