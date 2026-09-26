@@ -400,3 +400,41 @@ async fn a_drop_during_recovery_is_reported_as_rate_limited() {
 
     assert_eq!(counters.snapshot().digest.rate_limited, 1);
 }
+
+/// Like Relay's `CombinedRateLimiter`, the cheap cached check runs first: an
+/// event the counters already show has no room is dropped before the digest
+/// takes the write lock and writes rows only to roll them back.
+#[cfg(feature = "sqlite")]
+#[tokio::test]
+async fn a_drop_known_from_the_counters_never_reaches_the_write_path() {
+    let db = TestDb::new().await;
+    let project = create_project(&db.pool).await;
+    let ingest_dir = tempfile::tempdir().unwrap();
+    let quotas = project_minute_quota(1);
+    wait_clear_of_minute_rollover().await;
+    digest(&db.pool, ingest_dir.path(), project.id, &quotas).await;
+    // Any write the digest attempts from here on fails.
+    sqlx::query(
+        "CREATE TRIGGER no_more_events BEFORE INSERT ON events \
+         BEGIN SELECT RAISE(ABORT, 'the write path was taken'); END",
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let metadata = accept_event(ingest_dir.path(), project.id).await;
+    let result = process_error_event(
+        &db.pool,
+        &metadata,
+        ingest_dir.path(),
+        &quotas,
+        null_sourcemap_provider(),
+    )
+    .await;
+
+    assert!(result.is_ok(), "{result:?}");
+    let project = ProjectService::get_by_id(&db.pool, project.id)
+        .await
+        .unwrap();
+    assert_eq!(project.rate_limited_event_count, 1);
+}

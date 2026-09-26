@@ -210,6 +210,20 @@ impl ErrorProcessor {
             return Ok(Digested::Stored);
         }
 
+        // 4b. The cached check, as Relay's `CombinedRateLimiter` runs first: the
+        // counters this project row was loaded with already show whether the
+        // window is full. Dropping here skips the write lock and the rows a
+        // rollback would undo; `try_consume` in the transaction stays the one
+        // that decides a race.
+        if RateLimitService::check_quota(pool, &project, &self.rate_limit_config)
+            .await?
+            .is_some()
+        {
+            return self
+                .drop_rate_limited(pool, metadata, storage_location)
+                .await;
+        }
+
         // 5. Calculate grouping key and hash
         let grouping_key = calculate_grouping_key(&event_data);
         let grouping_key_hash = hash_grouping_key(&grouping_key);
@@ -250,16 +264,9 @@ impl ErrorProcessor {
         let (issue, issue_created, regressed) = match landed {
             DigestOutcome::Written(issue, created, regressed) => (*issue, created, regressed),
             DigestOutcome::RateLimited(_) => {
-                log::debug!("Event {} dropped: quota exceeded", metadata.event_id);
-                RateLimitService::record_rate_limited(pool, metadata.project_id).await?;
-                delete_event_at(
-                    &self.ingest_dir,
-                    metadata.project_id,
-                    &metadata.event_id,
-                    storage_location,
-                )
-                .await?;
-                return Ok(Digested::RateLimited);
+                return self
+                    .drop_rate_limited(pool, metadata, storage_location)
+                    .await;
             }
         };
 
@@ -323,6 +330,26 @@ impl ErrorProcessor {
         );
 
         Ok(Digested::Stored)
+    }
+
+    /// Drops an accepted event the quota has no room for: counted on its
+    /// project, then its durable copy removed.
+    async fn drop_rate_limited(
+        &self,
+        pool: &DbPool,
+        metadata: &EventMetadata,
+        storage_location: EventStorageLocation,
+    ) -> AppResult<Digested> {
+        log::debug!("Event {} dropped: quota exceeded", metadata.event_id);
+        RateLimitService::record_rate_limited(pool, metadata.project_id).await?;
+        delete_event_at(
+            &self.ingest_dir,
+            metadata.project_id,
+            &metadata.event_id,
+            storage_location,
+        )
+        .await?;
+        Ok(Digested::RateLimited)
     }
 
     /// Removes the durable copy of an event whose digest has committed.
