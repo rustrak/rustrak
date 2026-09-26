@@ -7,7 +7,12 @@
     "ro": "Română",
     "label": "Idioma",
     "storedOnAccount": "Guardado en tu cuenta.",
-    "saveFailed": "No se pudo guardar tu idioma."
+    "saveFailed": "No se pudo guardar tu idioma.",
+    "timeZoneLabel": "Zona horaria",
+    "timeZonePlaceholder": "Buscar zonas horarias...",
+    "timeZoneNoResults": "No se encontró ninguna zona horaria.",
+    "timeZoneHint": "Todas las fechas y horas se muestran en esta zona. Elige UTC para leerlas tal como las registran los eventos.",
+    "timeZoneSaveFailed": "No se pudo guardar tu zona horaria."
   },
   "app": {
     "title": "Rustrak - Sistema de seguimiento de errores",

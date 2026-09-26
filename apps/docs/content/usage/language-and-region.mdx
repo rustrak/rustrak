@@ -21,6 +21,7 @@ Clearing the preference is not the same as choosing English. It returns to follo
 The timezone sits in the same card and decides how every date and time in the dashboard is displayed.
 
 - The first time someone loads the dashboard, their browser's timezone is saved to their account, but **only if they have not set one**. A zone chosen deliberately is never overwritten
+- The picker is searchable and lists every zone with its current UTC offset, so you can type a city or an offset such as `+02`. Choosing **UTC** on purpose shows every time the way events record it, which is also what the server's own logs use unless `RUSTRAK_LOG_TIMEZONE` moves them
 - A time shown in UTC is labelled as such. A time in your own zone is not, because a UTC time looks exactly like a local one and can be silently hours out
 - Until a zone is known, times are shown in UTC, which is the zone events arrive in
 

@@ -7,7 +7,12 @@
     "ro": "Română",
     "label": "语言",
     "storedOnAccount": "已保存到您的账户。",
-    "saveFailed": "无法保存您的语言设置。"
+    "saveFailed": "无法保存您的语言设置。",
+    "timeZoneLabel": "时区",
+    "timeZonePlaceholder": "搜索时区...",
+    "timeZoneNoResults": "未找到时区。",
+    "timeZoneHint": "所有日期和时间都按此时区显示。选择 UTC 可按事件记录的原始时间查看。",
+    "timeZoneSaveFailed": "无法保存您的时区设置。"
   },
   "app": {
     "title": "Rustrak - 错误跟踪系统",
