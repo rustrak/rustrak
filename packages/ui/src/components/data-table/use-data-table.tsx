@@ -8,7 +8,7 @@ import {
   type Updater,
   useTable,
 } from '@tanstack/react-table';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '../button/button';
 import { Checkbox } from '../checkbox/checkbox';
 import { OverflowIcon } from '../icon/icon-catalog';
@@ -50,6 +50,9 @@ export interface UseDataTableOptions<TData extends RowData> {
    * one control every row ends with: the ⋯ menu. Actions as `MenuAction[]`
    * rather than JSX, for the same reason `Menu` takes them that way -- the
    * list is data, and data does not drift between rows.
+   *
+   * Like `columns`, give it a stable identity (module scope or `useCallback`):
+   * a new function every render rebuilds the table's column model with it.
    */
   rowMenu?: (row: Row<DataTableFeatures, TData>) => MenuAction[];
 }
@@ -97,11 +100,14 @@ export function useDataTable<TData extends RowData>({
   const [columnVisibility, setColumnVisibility] =
     useState<ColumnVisibilityState>({});
 
-  const allColumns = [
-    ...(enableSelection ? [selectionColumn<TData>()] : []),
-    ...columns,
-    ...(rowMenu ? [menuColumn<TData>(rowMenu)] : []),
-  ];
+  const allColumns = useMemo(
+    () => [
+      ...(enableSelection ? [selectionColumn<TData>()] : []),
+      ...columns,
+      ...(rowMenu ? [menuColumn<TData>(rowMenu)] : []),
+    ],
+    [enableSelection, columns, rowMenu],
+  );
 
   function applyQuery<TSlice extends 'sorting' | 'filters' | 'search'>(
     slice: TSlice,

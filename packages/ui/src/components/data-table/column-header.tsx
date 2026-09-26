@@ -70,6 +70,8 @@ const columnHeader = tv({
       'group-data-popup-open/header:opacity-100',
       chevronFlip,
     ],
+    // A rule between each pair of sections present, whichever those are.
+    sections: 'flex flex-col divide-y divide-border',
     section: 'flex flex-col p-1.25',
     item: [
       'flex h-menu-item shrink-0 cursor-default items-center gap-2.5',
@@ -80,7 +82,6 @@ const columnHeader = tv({
       'aria-pressed:text-fg',
     ],
     check: 'ms-auto shrink-0 text-fg-brand',
-    separator: 'h-px shrink-0 bg-border',
   },
 });
 
@@ -116,8 +117,6 @@ export function DataTableColumnHeader<TData extends RowData>({
   const sorted = column.getIsSorted();
   const filtered = column.getIsFiltered();
 
-  const hasActions = filtered || canHide;
-
   if (!canSort && !filterSpec && !canHide) {
     return (
       <span
@@ -151,30 +150,24 @@ export function DataTableColumnHeader<TData extends RowData>({
         </button>
       }
     >
-      {canSort ? (
-        <SortSection header={header} sorted={sorted} onDone={close} />
-      ) : null}
-
-      {canSort && filterSpec ? <Separator /> : null}
-
-      <FilterSection column={column} spec={filterSpec} />
-
-      {hasActions && (canSort || filterSpec) ? <Separator /> : null}
-
-      {hasActions ? (
-        <ActionsSection
-          column={column}
-          canClearFilter={filtered}
-          canHide={canHide}
-        />
-      ) : null}
+      <div className={styles.sections()}>
+        {canSort ? (
+          <SortSection header={header} sorted={sorted} onDone={close} />
+        ) : null}
+        {filterSpec ? (
+          <FilterSection column={column} spec={filterSpec} />
+        ) : null}
+        {filtered || canHide ? (
+          <ActionsSection
+            column={column}
+            canClearFilter={filtered}
+            canHide={canHide}
+          />
+        ) : null}
+      </div>
     </Popover>
   );
 }
-
-const Separator = () => (
-  <div aria-hidden="true" className={styles.separator()} />
-);
 
 /**
  * What the header says about itself: its label, its sort, its filter.
@@ -277,9 +270,8 @@ function FilterSection<TData extends RowData>({
   spec,
 }: {
   column: Column<DataTableFeatures, TData, unknown>;
-  spec: ColumnFilterSpec | undefined;
+  spec: ColumnFilterSpec;
 }) {
-  if (!spec) return null;
   const Panel = FILTER_PANELS[spec.variant];
   return <Panel column={column} />;
 }
