@@ -7505,6 +7505,153 @@
         ]
       }
     },
+    "/auth/sso/callback": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "GET /auth/sso/callback\nValidate the provider response, resolve or provision the local account, and\nestablish the normal Rustrak session.",
+        "operationId": "sso_callback",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSO login completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired callback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Identity is not permitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SSO is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/auth/sso/config": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "GET /auth/sso/config\nPublic, non-sensitive information used to render the login page.",
+        "operationId": "sso_config",
+        "responses": {
+          "200": {
+            "description": "Public SSO configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/auth/sso/start": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "POST /auth/sso/start\nCreate a one-time OIDC authorization request and retain its protections in\nthe encrypted session cookie.",
+        "operationId": "sso_start",
+        "responses": {
+          "200": {
+            "description": "OIDC authorization URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoStartResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SSO is disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -9952,6 +10099,34 @@
             ],
             "format": "uuid",
             "description": "The parent transaction, if this span was extracted from one.\n`None` for a standalone span."
+          }
+        }
+      },
+      "SsoConfigResponse": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "provider_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SsoStartResponse": {
+        "type": "object",
+        "required": [
+          "authorization_url"
+        ],
+        "properties": {
+          "authorization_url": {
+            "type": "string"
           }
         }
       },

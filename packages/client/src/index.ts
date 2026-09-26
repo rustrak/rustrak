@@ -34,15 +34,15 @@ export {
 } from './result.js';
 // Types
 export type {
-  AgentModelRow,
-  AgentSummary,
-  AgentToolRow,
   AcceptInvitation,
   ActivityEntry,
   AgentBreakdownOptions,
   AgentDurationPoint,
+  AgentModelRow,
+  AgentSummary,
   AgentTimeseriesOptions,
   AgentTimeseriesPoint,
+  AgentToolRow,
   AgentTraceSummary,
   AgentTracesOptions,
   AlertHistory,
@@ -122,6 +122,8 @@ export type {
   SourceMapStorage,
   Span,
   SpanDetail,
+  SsoConfig,
+  SsoStart,
   StorageSummary,
   TagSummary,
   TagValueCount,

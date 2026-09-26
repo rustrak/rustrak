@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
+import { getSsoConfig } from '@/features/user/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { Link } from '@/shared/ui/components/link';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
@@ -20,6 +21,13 @@ import { LoginForm } from './-components/login-form';
  * project route are the addresses they were.
  */
 export const Route = createFileRoute('/login')({
+  validateSearch: (search: Record<string, unknown>): { error?: string } => ({
+    error: typeof search.error === 'string' ? search.error : undefined,
+  }),
+  loader: async () => {
+    const result = await getSsoConfig();
+    return result.success ? result.data : null;
+  },
   head: () => {
     const t = translator('auth');
     return {
@@ -34,6 +42,9 @@ export const Route = createFileRoute('/login')({
 
 function LoginPage() {
   const t = useTranslations('auth');
+  const ssoConfig = Route.useLoaderData();
+  const search = Route.useSearch();
+  const ssoFailed = search.error === 'sso';
 
   return (
     <div className="min-h-screen flex">
@@ -100,7 +111,7 @@ function LoginPage() {
           </div>
 
           {/* Form */}
-          <LoginForm />
+          <LoginForm ssoConfig={ssoConfig} ssoFailed={ssoFailed} />
         </div>
       </div>
     </div>

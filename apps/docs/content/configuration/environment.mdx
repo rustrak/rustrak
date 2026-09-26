@@ -122,6 +122,54 @@ openssl rand -hex 32
 
 The key must be at least 64 characters, which is what `openssl rand -hex 32` produces: the cookie key is a 256-bit signing key followed by a 256-bit encryption key. Anything shorter is refused at startup with the length it received, so `openssl rand -base64 32` (44 characters) will not do. Changing the key invalidates every existing session.
 
+## OpenID Connect SSO
+
+Rustrak supports any standards-compliant OpenID Connect provider, including
+Pocket ID. SSO is disabled unless `OIDC_ISSUER_URL` is set.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OIDC_ISSUER_URL` | *(disabled)* | Provider issuer URL used for OIDC discovery |
+| `OIDC_CLIENT_ID` | — | Client ID issued to Rustrak |
+| `OIDC_CLIENT_SECRET` | — | Client secret issued to Rustrak |
+| `OIDC_REDIRECT_URL` | — | Exact public dashboard callback URL |
+| `OIDC_PROVIDER_NAME` | `SSO` | Label shown on the login button |
+| `OIDC_SCOPES` | `openid email profile` | Space-separated scopes |
+| `OIDC_AUTO_PROVISION` | `true` | Create local users on their first successful login |
+| `OIDC_REQUIRE_EMAIL_VERIFIED` | `true` | Reject identities whose provider has not verified the email |
+| `OIDC_ALLOWED_DOMAINS` | *(all)* | Optional comma-separated email-domain allowlist |
+
+Both booleans accept `true/false`, `1/0`, `yes/no` and `on/off` in any case; an
+empty value means unset. Any other value refuses to start rather than falling
+back to the default, so a mistyped `OIDC_AUTO_PROVISION` cannot leave account
+creation enabled when it was meant to be off.
+
+### Pocket ID example
+
+Create an OIDC client in Pocket ID and register this callback URL exactly:
+
+```text
+https://rustrak.example.com/auth/sso/callback
+```
+
+Then configure the Rustrak container:
+
+```bash
+OIDC_ISSUER_URL=https://id.example.com
+OIDC_CLIENT_ID=<client-id-from-pocket-id>
+OIDC_CLIENT_SECRET=<client-secret-from-pocket-id>
+OIDC_REDIRECT_URL=https://rustrak.example.com/auth/sso/callback
+OIDC_PROVIDER_NAME=Pocket ID
+```
+
+On first login, Rustrak links the provider's immutable issuer/subject identity
+to an existing account with the same verified email, or creates a new account.
+The first account on an empty installation becomes an admin; later accounts are
+members. Set `OIDC_AUTO_PROVISION=false` to permit only identities already
+linked to local accounts. Keep `OIDC_REQUIRE_EMAIL_VERIFIED=true` unless your
+provider cannot emit the standard `email_verified` claim and you accept the
+account-linking risk.
+
 ## Database
 
 | Variable | Default | Description |

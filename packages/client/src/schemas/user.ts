@@ -61,3 +61,12 @@ export const registerRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+export const ssoConfigSchema = z.object({
+  enabled: z.boolean(),
+  provider_name: z.string().nullable(),
+});
+
+export const ssoStartSchema = z.object({
+  authorization_url: z.string().url(),
+});

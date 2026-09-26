@@ -53,6 +53,16 @@ export async function login(
   return { success: true, data: result.data.user };
 }
 
+/** Start OIDC login. */
+export async function startSso(): Promise<Result<string, RustrakError>> {
+  const client = await createClient();
+  const result = await client.auth.startSso();
+
+  if (!result.success) return result;
+
+  return Ok(result.data.authorizationUrl);
+}
+
 /**
  * Logout the current user.
  *

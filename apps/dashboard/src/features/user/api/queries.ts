@@ -11,9 +11,16 @@ import type {
   ProjectMember,
   Result,
   RustrakError,
+  SsoConfig,
   TeamMember,
 } from '@rustrak/client';
 import { createClient } from '@/shared/api/rustrak';
+
+/** Public SSO configuration for the unauthenticated login page. */
+export async function getSsoConfig(): Promise<Result<SsoConfig, RustrakError>> {
+  const client = await createClient();
+  return client.auth.getSsoConfig();
+}
 
 /**
  * Fetch public information about an invitation by its token.

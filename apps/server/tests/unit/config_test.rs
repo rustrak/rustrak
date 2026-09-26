@@ -5,7 +5,7 @@
 //! Note: These tests modify global environment variables and must run serially.
 
 use actix_web::cookie::Key;
-use rustrak::config::{Config, RateLimitConfig, SecurityConfig};
+use rustrak::config::{Config, OidcConfig, RateLimitConfig, SecurityConfig};
 use serial_test::serial;
 
 // =============================================================================
@@ -621,4 +621,116 @@ fn alert_links_fall_back_to_the_bind_address() {
         let config = Config::from_env().expect("Config::from_env() should succeed");
         assert_eq!(config.dashboard_url(), "http://0.0.0.0:8080");
     });
+}
+
+// =============================================================================
+// OpenID Connect Config Tests
+// =============================================================================
+
+fn clear_oidc_env() {
+    for name in [
+        "OIDC_ISSUER_URL",
+        "OIDC_CLIENT_ID",
+        "OIDC_CLIENT_SECRET",
+        "OIDC_REDIRECT_URL",
+        "OIDC_PROVIDER_NAME",
+        "OIDC_SCOPES",
+        "OIDC_ALLOWED_DOMAINS",
+        "OIDC_AUTO_PROVISION",
+        "OIDC_REQUIRE_EMAIL_VERIFIED",
+    ] {
+        std::env::remove_var(name);
+    }
+}
+
+#[test]
+#[serial]
+fn test_oidc_is_disabled_without_issuer() {
+    clear_oidc_env();
+    assert!(OidcConfig::from_env().unwrap().is_none());
+}
+
+#[test]
+#[serial]
+fn test_oidc_config_defaults_and_domain_allowlist() {
+    clear_oidc_env();
+    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
+    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
+    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
+    std::env::set_var(
+        "OIDC_REDIRECT_URL",
+        "https://rustrak.example.com/auth/sso/callback",
+    );
+    std::env::set_var("OIDC_ALLOWED_DOMAINS", "Example.com, staff.example.org ");
+
+    let config = OidcConfig::from_env().unwrap().unwrap();
+    assert_eq!(config.provider_name, "SSO");
+    assert_eq!(config.scopes, ["openid", "email", "profile"]);
+    assert_eq!(config.allowed_domains, ["example.com", "staff.example.org"]);
+    assert!(config.auto_provision);
+    assert!(config.require_email_verified);
+    clear_oidc_env();
+}
+
+#[test]
+#[serial]
+fn test_oidc_rejects_partial_configuration() {
+    clear_oidc_env();
+    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
+    let error = OidcConfig::from_env().unwrap_err().to_string();
+    assert!(error.contains("OIDC_CLIENT_ID"));
+    clear_oidc_env();
+}
+
+#[test]
+#[serial]
+fn test_oidc_rejects_an_unrecognized_boolean_instead_of_using_the_default() {
+    clear_oidc_env();
+    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
+    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
+    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
+    std::env::set_var(
+        "OIDC_REDIRECT_URL",
+        "https://rustrak.example.com/auth/sso/callback",
+    );
+
+    // `OIDC_AUTO_PROVISION` defaults to true, so falling back to the default on
+    // a typo would leave account creation on when the operator meant to turn it
+    // off. The typo has to stop startup.
+    std::env::set_var("OIDC_AUTO_PROVISION", "flase");
+    let message = OidcConfig::from_env()
+        .expect_err("an unrecognized boolean must be refused")
+        .to_string();
+    assert!(
+        message.contains("OIDC_AUTO_PROVISION") && message.contains("flase"),
+        "the operator must be told which variable is wrong and what it held, got: {message}"
+    );
+
+    std::env::set_var("OIDC_AUTO_PROVISION", "false");
+    std::env::set_var("OIDC_REQUIRE_EMAIL_VERIFIED", "typo");
+    let message = OidcConfig::from_env()
+        .expect_err("an unrecognized boolean must be refused on either switch")
+        .to_string();
+    assert!(
+        message.contains("OIDC_REQUIRE_EMAIL_VERIFIED"),
+        "the operator must be told which variable is wrong, got: {message}"
+    );
+
+    // An empty value means "unset", like OIDC_ISSUER_URL, and unset keeps the
+    // documented defaults.
+    std::env::set_var("OIDC_AUTO_PROVISION", "");
+    std::env::remove_var("OIDC_REQUIRE_EMAIL_VERIFIED");
+    let config = OidcConfig::from_env().unwrap().unwrap();
+    assert!(
+        config.auto_provision,
+        "an empty value is unset, and unset keeps the documented default"
+    );
+    assert!(config.require_email_verified);
+
+    std::env::set_var("OIDC_AUTO_PROVISION", "off");
+    std::env::set_var("OIDC_REQUIRE_EMAIL_VERIFIED", "no");
+    let config = OidcConfig::from_env().unwrap().unwrap();
+    assert!(!config.auto_provision);
+    assert!(!config.require_email_verified);
+    clear_oidc_env();
 }
