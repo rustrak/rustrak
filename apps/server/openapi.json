@@ -1116,11 +1116,11 @@
                           "stats": {
                             "oneOf": [
                               {
-                                "type": "null"
-                              },
-                              {
                                 "$ref": "#/components/schemas/ProjectListStats",
                                 "description": "Present only when the request asked for `?stats_period=`.\n\nAbsent rather than zeroed when unrequested: a caller that did not ask\nmust be able to tell \"no stats were computed\" from \"this project is\nquiet\", and only one of those should render an empty sparkline."
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
@@ -9397,11 +9397,11 @@
           "stats": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ProjectListStats",
                 "description": "Present only when the request asked for `?stats_period=`.\n\nAbsent rather than zeroed when unrequested: a caller that did not ask\nmust be able to tell \"no stats were computed\" from \"this project is\nquiet\", and only one of those should render an empty sparkline."
+              },
+              {
+                "type": "null"
               }
             ]
           },

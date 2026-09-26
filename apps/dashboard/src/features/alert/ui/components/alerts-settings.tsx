@@ -9,17 +9,8 @@ import {
 } from '@/features/alert/api/mutations';
 import { AlertRuleFormDialog } from '@/features/alert/ui/components/alert-rule-dialog/alert-rule-dialog';
 import { AlertRulesTable } from '@/features/alert/ui/components/alert-rules-table';
+import { ConfirmDeleteDialog } from '@/features/alert/ui/components/confirm-delete-dialog';
 import { Link } from '@/shared/ui/components/link';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
@@ -171,34 +162,16 @@ export function AlertsSettings({
         }}
       />
 
-      {/* Delete confirmation */}
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={!!deletingRule}
-        onOpenChange={(open) => !open && setDeletingRule(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('settings.deleteRuleTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.deleteRuleDescription', {
-                name: deletingRule?.name ?? '',
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isPending ? t('common.deleting') : t('common.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t('settings.deleteRuleTitle')}
+        description={t('settings.deleteRuleDescription', {
+          name: deletingRule?.name ?? '',
+        })}
+        isPending={isPending}
+        onConfirm={handleDelete}
+        onClose={() => setDeletingRule(null)}
+      />
     </>
   );
 }

@@ -30,6 +30,7 @@ import { Input } from '@/shared/ui/components/shadcn/input';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
 import { NameField } from '../fields/name-field';
+import { TextInputField } from '../fields/text-input-field';
 import type { ConfigFormProps } from '../integration-config-dialog';
 
 export function EmailForm({
@@ -201,25 +202,12 @@ export function EmailForm({
             />
           </div>
 
-          <FormField
-            control={form.control}
+          <TextInputField<EmailFormData>
             name="from_address"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                  {t('email.fromLabel')}
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    type="email"
-                    placeholder={t('email.fromPlaceholder')}
-                    disabled={isLoading}
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+            label={t('email.fromLabel')}
+            placeholder={t('email.fromPlaceholder')}
+            type="email"
+            disabled={isLoading}
           />
 
           <EnabledField<EmailFormData> disabled={isLoading} />

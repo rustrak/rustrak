@@ -64,17 +64,17 @@ uuid = { version = "1.26.1", features = ["v4", "serde"] }
 slug = "0.1.6"
 
 # Error handling
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 
 # Random number generation for tokens
-rand = "0.10.2"
+rand = "0.10.3"
 
 # Hex encoding
 hex = "0.4.3"
 
 # Compression (for decompressing gzip/deflate/brotli/zstd payloads)
 flate2 = "1.1.10"
-# brotli and zstd held at the versions actix-http 3.13 depends on; going past
+# brotli and zstd held at the versions actix-http 3.18 depends on; going past
 # them compiles a second copy of each. Bump together with actix-http.
 brotli = "8.0.4"
 zstd = "0.13.3"
@@ -135,8 +135,8 @@ lettre = { version = "0.11.23", default-features = false, features = ["tokio1", 
 mimalloc = "0.1.52"
 
 # OpenAPI spec generation (optional, behind `openapi` feature flag)
-utoipa = { version = "5.5.0", features = ["actix_extras", "uuid", "chrono"], optional = true }
-utoipa-scalar = { version = "0.3.0", features = ["actix-web"], optional = true }
+utoipa = { version = "6.0.0", features = ["actix_extras", "uuid", "chrono"], optional = true }
+utoipa-scalar = { version = "0.4.0", features = ["actix-web"], optional = true }
 
 [dev-dependencies]
 # The crate depends on itself so the integration tests, which are separate
@@ -158,7 +158,7 @@ testcontainers = "0.27.3"
 testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
 
 # Sentry SDK for E2E tests
-sentry = { version = "0.49.2", features = ["test"] }
+sentry = { version = "0.49.3", features = ["test"] }
 
 # Property-based testing
 proptest = "1.11.0"

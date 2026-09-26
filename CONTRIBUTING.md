@@ -18,7 +18,7 @@ Before you begin, ensure you have the following installed:
 
 - **Rust** - For the server component; `rustup` installs the version pinned in `rust-toolchain.toml`
 - **Node.js** (22.x+) - For the UI and build tools; CI and the images use 24
-- **pnpm** (10.x) - Package manager; `corepack enable` picks the version pinned in `package.json`
+- **pnpm** (12.x) - Package manager; `corepack enable` picks the version pinned in `package.json`
 - **Docker** - For local development and testing
 
 ### Local Development Setup

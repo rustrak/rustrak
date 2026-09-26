@@ -2,8 +2,16 @@ packages:
   - apps/*
   - packages/*
 
-onlyBuiltDependencies:
-  - esbuild
-  - lightningcss
-  - msw
-  - sharp
+allowBuilds:
+  esbuild: true
+  lightningcss: true
+  msw: true
+  sharp: true
+  '@sentry/cli': false
+  '@swc/core': false
+  vue-demi: false
+
+overrides:
+  nextra>zod: 4.3.5
+  nextra-theme-docs>zod: 4.3.5
+  next>@swc/helpers: 0.5.15

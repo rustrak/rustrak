@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { Row } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 import { Button } from '../button/button';
@@ -8,6 +9,7 @@ import {
   MuteIcon,
   ResolveIcon,
 } from '../icon/icon-catalog';
+import type { MenuAction } from '../menu/menu-parts';
 import { QueryBar } from '../query-bar/query-bar';
 import { queryFieldsFromColumns } from '../query-bar/query-bar-parts';
 import { Tag, type TagTone } from '../tag/tag';
@@ -15,7 +17,11 @@ import { Text } from '../text/text';
 import { TooltipProvider } from '../tooltip/tooltip';
 import { DataTableColumnsButton } from './columns-menu';
 import { DataTable } from './data-table';
-import { createDataTableColumnHelper, type FilterOption } from './features';
+import {
+  createDataTableColumnHelper,
+  type DataTableFeatures,
+  type FilterOption,
+} from './features';
 import { type DataTableQuery, emptyTableQuery } from './query';
 import { useDataTable } from './use-data-table';
 
@@ -290,6 +296,36 @@ const columns = columnHelper.columns([
 
 const fields = queryFieldsFromColumns(columns);
 
+const issueRowMenu = (row: Row<DataTableFeatures, Issue>): MenuAction[] => [
+  {
+    id: 'resolve',
+    label: 'Resolve',
+    icon: ResolveIcon,
+    shortcut: 'R',
+    onSelect: () => console.info('resolve', row.id),
+  },
+  {
+    id: 'mute',
+    label: 'Mute',
+    icon: MuteIcon,
+    onSelect: () => console.info('mute', row.id),
+  },
+  {
+    id: 'assign',
+    label: 'Assign',
+    icon: AssignIcon,
+    onSelect: () => console.info('assign', row.id),
+  },
+  {
+    id: 'delete',
+    label: 'Delete',
+    icon: DeleteIcon,
+    tone: 'danger',
+    separated: true,
+    onSelect: () => console.info('delete', row.id),
+  },
+];
+
 function IssuesTable({
   loading = false,
   data = undefined as Issue[] | undefined,
@@ -313,35 +349,7 @@ function IssuesTable({
     onQueryChange: (updater) => setQuery((previous) => updater(previous)),
     getRowId: (issue) => issue.id,
     enableSelection: true,
-    rowMenu: (row) => [
-      {
-        id: 'resolve',
-        label: 'Resolve',
-        icon: ResolveIcon,
-        shortcut: 'R',
-        onSelect: () => console.info('resolve', row.id),
-      },
-      {
-        id: 'mute',
-        label: 'Mute',
-        icon: MuteIcon,
-        onSelect: () => console.info('mute', row.id),
-      },
-      {
-        id: 'assign',
-        label: 'Assign',
-        icon: AssignIcon,
-        onSelect: () => console.info('assign', row.id),
-      },
-      {
-        id: 'delete',
-        label: 'Delete',
-        icon: DeleteIcon,
-        tone: 'danger',
-        separated: true,
-        onSelect: () => console.info('delete', row.id),
-      },
-    ],
+    rowMenu: issueRowMenu,
   });
 
   return (

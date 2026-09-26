@@ -63,28 +63,79 @@ function Section({
  */
 export function AiSpanDetail({ span }: AiSpanDetailProps) {
   const t = useTranslations('agents.spanDetail');
-  const format = useFormatter();
-
   const attributes = span.attributes;
   const tokens = tokenBreakdown(attributes);
-  const tokensLookWrong = hasTokenMismatch(attributes);
   const input = aiInput(attributes);
   const output = aiOutput(attributes);
   const tools = availableTools(attributes);
 
-  const model = span.gen_ai_response_model ?? span.gen_ai_request_model;
+  return (
+    <div className="space-y-4">
+      <SpanHeader span={span} />
+      <Highlights span={span} />
+      {tokens && (
+        <TokensSection
+          tokens={tokens}
+          looksWrong={hasTokenMismatch(attributes)}
+        />
+      )}
+      {tools && <ToolsSection tools={tools} />}
+      {input && <InputSection input={input} />}
+      {output && <OutputSection output={output} />}
+      <Section title={t('allAttributes')}>
+        <AttributesTable attributes={attributes} />
+      </Section>
+    </div>
+  );
+}
+
+/** What the span is, how it ended and how long it took. */
+function SpanHeader({ span }: { span: SpanDetail }) {
+  const format = useFormatter();
   const failed = span.status != null && span.status !== 'ok';
+
+  return (
+    <header className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {span.gen_ai_operation_type && (
+          <Badge variant="secondary">{span.gen_ai_operation_type}</Badge>
+        )}
+        {span.status && (
+          <Badge variant={failed ? 'destructive' : 'outline'}>
+            {span.status}
+          </Badge>
+        )}
+        {span.duration_ms != null && (
+          <span className="font-mono text-xs text-muted-foreground">
+            {format.number(Math.round(span.duration_ms))} ms
+          </span>
+        )}
+      </div>
+      <p className="break-all font-mono text-sm">
+        {span.description ?? span.op ?? span.span_id}
+      </p>
+    </header>
+  );
+}
+
+/** The identity rows a reader compares across spans, whichever are present. */
+function Highlights({ span }: { span: SpanDetail }) {
+  const t = useTranslations('agents.spanDetail');
 
   // Declarative rather than five conditional pushes: the order of these rows
   // is a design decision, and in a list it is visible as one.
-  const highlights = [
+  const rows = [
     { key: 'agent', label: t('agentName'), value: span.gen_ai_agent_name },
-    { key: 'model', label: t('model'), value: model },
+    {
+      key: 'model',
+      label: t('model'),
+      value: span.gen_ai_response_model ?? span.gen_ai_request_model,
+    },
     { key: 'tool', label: t('toolName'), value: span.gen_ai_tool_name },
     {
       key: 'reasoningEffort',
       label: t('reasoningEffort'),
-      value: attributes['gen_ai.request.reasoning_effort'],
+      value: span.attributes['gen_ai.request.reasoning_effort'],
     },
     {
       key: 'conversation',
@@ -96,85 +147,89 @@ export function AiSpanDetail({ span }: AiSpanDetailProps) {
     return value ? [{ ...row, value }] : [];
   });
 
+  if (rows.length === 0) return null;
+
   return (
-    <div className="space-y-4">
-      <header className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {span.gen_ai_operation_type && (
-            <Badge variant="secondary">{span.gen_ai_operation_type}</Badge>
-          )}
-          {span.status && (
-            <Badge variant={failed ? 'destructive' : 'outline'}>
-              {span.status}
-            </Badge>
-          )}
-          {span.duration_ms != null && (
-            <span className="font-mono text-xs text-muted-foreground">
-              {format.number(Math.round(span.duration_ms))} ms
-            </span>
-          )}
+    <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1 text-xs">
+      {rows.map((row) => (
+        <div key={row.key} className="contents">
+          <dt className="text-muted-foreground">{row.label}</dt>
+          <dd className="break-all font-mono">{row.value}</dd>
         </div>
-        <p className="break-all font-mono text-sm">
-          {span.description ?? span.op ?? span.span_id}
+      ))}
+    </dl>
+  );
+}
+
+function TokensSection({
+  tokens,
+  looksWrong,
+}: {
+  tokens: NonNullable<ReturnType<typeof tokenBreakdown>>;
+  looksWrong: boolean;
+}) {
+  const t = useTranslations('agents.spanDetail');
+
+  return (
+    <Section title={t('tokens')}>
+      {looksWrong && (
+        // Said out loud rather than hidden: a reader comparing token counts
+        // across spans would otherwise trust a number nothing in the span
+        // supports.
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs">
+          {t('tokenMismatch')}
         </p>
-      </header>
-
-      {highlights.length > 0 && (
-        <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1 text-xs">
-          {highlights.map((row) => (
-            <div key={row.key} className="contents">
-              <dt className="text-muted-foreground">{row.label}</dt>
-              <dd className="break-all font-mono">{row.value}</dd>
-            </div>
-          ))}
-        </dl>
       )}
+      <TokenBreakdownList tokens={tokens} />
+    </Section>
+  );
+}
 
-      {tokens && (
-        <Section title={t('tokens')}>
-          {tokensLookWrong && (
-            // Said out loud rather than hidden: a reader comparing token
-            // counts across spans would otherwise trust a number nothing in
-            // the span supports.
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs">
-              {t('tokenMismatch')}
-            </p>
-          )}
-          <TokenBreakdownList tokens={tokens} />
-        </Section>
+function ToolsSection({ tools }: { tools: string[] }) {
+  const t = useTranslations('agents.spanDetail');
+
+  return (
+    <Section title={t('availableTools')}>
+      <div className="flex flex-wrap gap-1">
+        {tools.map((tool) => (
+          <Badge key={tool} variant="outline" className="font-mono">
+            {tool}
+          </Badge>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/** What the model was given: its system instructions and the messages. */
+function InputSection({
+  input,
+}: {
+  input: NonNullable<ReturnType<typeof aiInput>>;
+}) {
+  const t = useTranslations('agents.spanDetail');
+
+  return (
+    <Section title={t('input')}>
+      {input.systemInstructions && (
+        <LabelledPayload
+          label={t('systemInstructions')}
+          value={input.systemInstructions}
+        />
       )}
+      <Payload value={input.messages} />
+    </Section>
+  );
+}
 
-      {tools && (
-        <Section title={t('availableTools')}>
-          <div className="flex flex-wrap gap-1">
-            {tools.map((tool) => (
-              <Badge key={tool} variant="outline" className="font-mono">
-                {tool}
-              </Badge>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {input && (
-        <Section title={t('input')}>
-          {input.systemInstructions && (
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                {t('systemInstructions')}
-              </p>
-              <Payload value={input.systemInstructions} />
-            </div>
-          )}
-          <Payload value={input.messages} />
-        </Section>
-      )}
-
-      {output && <OutputSection output={output} />}
-
-      <Section title={t('allAttributes')}>
-        <AttributesTable attributes={attributes} />
-      </Section>
+/** A payload under its own small caption, inside a section. */
+function LabelledPayload({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <Payload value={value} />
     </div>
   );
 }
@@ -234,20 +289,13 @@ function OutputSection({
     <Section title={t('output')}>
       {output.text && <Payload value={output.text} />}
       {output.object && (
-        <div className="space-y-1">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {t('responseObject')}
-          </p>
-          <Payload value={output.object} />
-        </div>
+        <LabelledPayload label={t('responseObject')} value={output.object} />
       )}
       {output.toolCalls && (
-        <div className="space-y-1">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {t('requestedToolCalls')}
-          </p>
-          <Payload value={output.toolCalls} />
-        </div>
+        <LabelledPayload
+          label={t('requestedToolCalls')}
+          value={output.toolCalls}
+        />
       )}
     </Section>
   );

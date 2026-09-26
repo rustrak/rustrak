@@ -8,20 +8,11 @@ import {
   testIntegration,
 } from '@/features/alert/api/mutations';
 import { alertProviders } from '@/features/alert/model/providers';
+import { ConfirmDeleteDialog } from '@/features/alert/ui/components/confirm-delete-dialog';
 import { IntegrationConfigDialog } from '@/features/alert/ui/components/integration-config-dialog/integration-config-dialog';
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
 import type { Translate } from '@/shared/lib/error-copy';
 import { cn } from '@/shared/lib/utils';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import {
@@ -223,33 +214,16 @@ export function IntegrationsList({
         isPending={isPending}
       />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={!!deleteIntegrationItem}
-        onOpenChange={(open) => !open && setDeleteIntegrationItem(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('integrations.deleteTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('integrations.deleteDescription', {
-                name: deleteIntegrationItem?.name ?? '',
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isPending ? t('common.deleting') : t('common.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t('integrations.deleteTitle')}
+        description={t('integrations.deleteDescription', {
+          name: deleteIntegrationItem?.name ?? '',
+        })}
+        isPending={isPending}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteIntegrationItem(null)}
+      />
     </div>
   );
 }
