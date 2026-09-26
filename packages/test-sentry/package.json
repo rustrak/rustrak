@@ -30,15 +30,15 @@
     "demo:ai-agent": "tsx --import demo/src/ai-agent-instrument.ts demo/src/ai-agent.ts"
   },
   "dependencies": {
-    "@sentry/node": "10.74.0"
+    "@sentry/node": "11.0.0"
   },
   "devDependencies": {
     "@sentry/esbuild-plugin": "5.4.0",
-    "@types/node": "26.5.1",
-    "ai": "7.0.99",
+    "@types/node": "26.6.2",
+    "ai": "7.0.114",
     "esbuild": "0.28.2",
     "tsup": "8.5.1",
-    "tsx": "4.23.13",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "zod": "4.6.5"
   }
