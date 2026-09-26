@@ -159,10 +159,17 @@ DATABASE_URL=postgres://user:pass@host:5432/rustrak?sslmode=require  # With SSL
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MAX_EVENTS_PER_MINUTE` | `1000` | Max events/minute (global) |
-| `MAX_EVENTS_PER_HOUR` | `10000` | Max events/hour (global) |
-| `MAX_EVENTS_PER_PROJECT_PER_MINUTE` | `500` | Max events/minute per project |
-| `MAX_EVENTS_PER_PROJECT_PER_HOUR` | `5000` | Max events/hour per project |
+| `MAX_EVENTS_PER_MINUTE` | `60000` | Max events/minute (global) |
+| `MAX_EVENTS_PER_HOUR` | `1000000` | Max events/hour (global) |
+| `MAX_EVENTS_PER_PROJECT_PER_MINUTE` | `20000` | Max events/minute per project |
+| `MAX_EVENTS_PER_PROJECT_PER_HOUR` | `300000` | Max events/hour per project |
+
+The defaults are a brake for a runaway loop that would fill the disk, not a cap
+on ordinary spikes. Windows are fixed minutes and hours, and the limit is
+exact: once a window is full, ingest answers `429` with `Retry-After` and
+`X-Sentry-Rate-Limits`, and the SDK waits before sending again. An event that
+was already accepted when its window filled is dropped rather than stored, and
+counted in the project's `rate_limited_event_count`.
 
 ## Storage
 
@@ -255,9 +262,9 @@ RUST_LOG=info
 # Database Pool
 DATABASE_MAX_CONNECTIONS=20
 
-# Rate Limiting
-MAX_EVENTS_PER_MINUTE=1000
-MAX_EVENTS_PER_HOUR=10000
+# Rate Limiting (only to lower the defaults on small hardware)
+MAX_EVENTS_PER_MINUTE=10000
+MAX_EVENTS_PER_HOUR=200000
 
 # Email Alerts (optional, can also be set per channel)
 SMTP_HOST=smtp.example.com

@@ -22,29 +22,34 @@ export function SettingRow({
   children: React.ReactNode;
   className?: string;
 }) {
+  // The two-column layout follows the row's own width, not the window's:
+  // beside the app and settings sidebars a wide window still leaves a narrow
+  // row, and a fixed-width control would crush the text into a tall sliver.
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-b border-border py-5 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-8',
+        '@container border-b border-border py-5 last:border-b-0',
         className,
       )}
     >
-      <div className="sm:max-w-xs">
-        {htmlFor ? (
-          <label
-            htmlFor={htmlFor}
-            className="text-sm font-medium cursor-pointer"
-          >
-            {title}
-          </label>
-        ) : (
-          <p className="text-sm font-medium">{title}</p>
-        )}
-        {description && (
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-        )}
+      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between @xl:gap-8">
+        <div className="min-w-0 @xl:max-w-xs">
+          {htmlFor ? (
+            <label
+              htmlFor={htmlFor}
+              className="text-sm font-medium cursor-pointer"
+            >
+              {title}
+            </label>
+          ) : (
+            <p className="text-sm font-medium">{title}</p>
+          )}
+          {description && (
+            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+          )}
+        </div>
+        <div className="shrink-0 @xl:w-72">{children}</div>
       </div>
-      <div className="shrink-0 sm:w-72">{children}</div>
     </div>
   );
 }

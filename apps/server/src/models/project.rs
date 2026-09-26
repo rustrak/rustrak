@@ -185,6 +185,11 @@ pub struct Project {
     pub sentry_key: Uuid,
     pub stored_event_count: i32,
     pub digested_event_count: i32,
+    /// Events the quota dropped after ingest had accepted them.
+    pub rate_limited_event_count: i64,
+    /// The project's own limits; they can only tighten the operator's.
+    pub rate_limit_per_minute: Option<i64>,
+    pub rate_limit_per_hour: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// Auto-detected from the first ingested event whose `platform` field is
@@ -201,6 +206,9 @@ pub struct Project {
     pub quota_exceeded_reason: Option<String>,
     #[serde(skip_serializing)]
     pub next_quota_check: i64,
+    #[serde(skip_serializing)]
+    #[sqlx(flatten)]
+    pub quota: super::QuotaWindows,
 }
 
 /// DTO for creating a new project
@@ -222,7 +230,7 @@ pub struct CreateProject {
 }
 
 /// DTO for updating a project
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateProject {
     pub name: Option<String>,
@@ -244,6 +252,23 @@ pub struct UpdateProject {
     /// Sending `null` leaves the current value untouched rather than clearing
     /// it.
     pub platform: Option<String>,
+    /// The project's own events-per-minute limit. It can only tighten the
+    /// operator's `MAX_EVENTS_PER_PROJECT_PER_MINUTE`, never raise it.
+    /// Absent leaves it as it is; `null` removes it.
+    #[serde(default, deserialize_with = "deserialize_optional_limit")]
+    pub rate_limit_per_minute: Option<Option<i64>>,
+    /// The same for the hour, against `MAX_EVENTS_PER_PROJECT_PER_HOUR`.
+    #[serde(default, deserialize_with = "deserialize_optional_limit")]
+    pub rate_limit_per_hour: Option<Option<i64>>,
+}
+
+/// Keeps a missing key (`None`) apart from an explicit `null` (`Some(None)`),
+/// which plain `Option<Option<T>>` collapses.
+fn deserialize_optional_limit<'de, D>(deserializer: D) -> Result<Option<Option<i64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<i64>::deserialize(deserializer).map(Some)
 }
 
 /// Response with DSN included
@@ -257,6 +282,11 @@ pub struct ProjectResponse {
     pub dsn: String,
     pub stored_event_count: i32,
     pub digested_event_count: i32,
+    /// Events the quota dropped after ingest had accepted them.
+    pub rate_limited_event_count: i64,
+    /// The project's own limits, or `null` when it follows the operator's.
+    pub rate_limit_per_minute: Option<i64>,
+    pub rate_limit_per_hour: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub platform: Option<String>,
@@ -294,6 +324,9 @@ impl Project {
             dsn: self.dsn(base_url),
             stored_event_count: self.stored_event_count,
             digested_event_count: self.digested_event_count,
+            rate_limited_event_count: self.rate_limited_event_count,
+            rate_limit_per_minute: self.rate_limit_per_minute,
+            rate_limit_per_hour: self.rate_limit_per_hour,
             created_at: self.created_at,
             updated_at: self.updated_at,
             platform: self.platform.clone(),
@@ -316,12 +349,16 @@ mod tests {
             sentry_key: key,
             stored_event_count: 0,
             digested_event_count: 0,
+            rate_limited_event_count: 0,
+            rate_limit_per_minute: None,
+            rate_limit_per_hour: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             platform: None,
             quota_exceeded_until: None,
             quota_exceeded_reason: None,
             next_quota_check: 0,
+            quota: Default::default(),
         }
     }
 

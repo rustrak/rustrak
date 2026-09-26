@@ -7,7 +7,7 @@ use crate::ingest::storage::{delete_event_at, read_event_with_location, EventSto
 use crate::ingest::storage::{delete_paths, event_paths_at};
 use crate::ingest::EventMetadata;
 use crate::models::{AlertType, Grouping, Issue};
-use crate::services::rate_limit::QuotaCounters;
+use crate::services::rate_limit::QuotaScope;
 use crate::services::sourcemap::SourceMapProvider;
 use crate::services::{
     calculate_grouping_key, get_denormalized_fields, hash_grouping_key, AlertService,
@@ -82,7 +82,7 @@ impl ErrorProcessor {
         &self,
         metadata: &EventMetadata,
         ctx: &ProcessorCtx,
-    ) -> AppResult<()> {
+    ) -> AppResult<Digested> {
         let result = self.process_impl(metadata, ctx).await;
         if let Err(e) = &result {
             if should_retain_event(e) {
@@ -122,7 +122,11 @@ impl ErrorProcessor {
     }
 
     /// Runs the digest pipeline; retryable contention leaves the durable event queued.
-    async fn process_impl(&self, metadata: &EventMetadata, ctx: &ProcessorCtx) -> AppResult<()> {
+    async fn process_impl(
+        &self,
+        metadata: &EventMetadata,
+        ctx: &ProcessorCtx,
+    ) -> AppResult<Digested> {
         let pool = &ctx.pool;
 
         // 0. Read the event before quota checks so cleanup can target the exact
@@ -132,24 +136,6 @@ impl ErrorProcessor {
         let (event_bytes, storage_location) =
             read_event_with_location(&self.ingest_dir, metadata.project_id, &metadata.event_id)
                 .await?;
-
-        // 1. Double-check rate limits (for backlog scenarios)
-        if let Some(_exceeded) =
-            RateLimitService::check_quota(pool, &project, &self.rate_limit_config).await?
-        {
-            log::warn!(
-                "Event {} discarded due to quota exceeded (backlog)",
-                metadata.event_id
-            );
-            delete_event_at(
-                &self.ingest_dir,
-                metadata.project_id,
-                &metadata.event_id,
-                storage_location,
-            )
-            .await?;
-            return Ok(());
-        }
 
         // 2. Parse event from filesystem
         let mut event_data: serde_json::Value = serde_json::from_slice(&event_bytes)
@@ -221,7 +207,7 @@ impl ErrorProcessor {
                 storage_location,
             )
             .await?;
-            return Ok(());
+            return Ok(Digested::Stored);
         }
 
         // 5. Calculate grouping key and hash
@@ -239,7 +225,7 @@ impl ErrorProcessor {
         // take turns at the write here, in process (see `write_slot`).
         #[cfg(feature = "sqlite")]
         let write_slot = self.write_slot.lock().await;
-        let (issue, issue_created, regressed, counters) = write_digest(
+        let landed = write_digest(
             pool,
             &DigestWrite {
                 event_id,
@@ -254,11 +240,28 @@ impl ErrorProcessor {
                 platform: event_data.get("platform").and_then(|p| p.as_str()),
                 event_data: &event_data,
                 remote_addr: metadata.remote_addr.as_deref(),
+                rate_limit_config: &self.rate_limit_config,
+                project: &project,
             },
         )
         .await?;
         #[cfg(feature = "sqlite")]
         drop(write_slot);
+        let (issue, issue_created, regressed) = match landed {
+            DigestOutcome::Written(issue, created, regressed) => (*issue, created, regressed),
+            DigestOutcome::RateLimited(_) => {
+                log::debug!("Event {} dropped: quota exceeded", metadata.event_id);
+                RateLimitService::record_rate_limited(pool, metadata.project_id).await?;
+                delete_event_at(
+                    &self.ingest_dir,
+                    metadata.project_id,
+                    &metadata.event_id,
+                    storage_location,
+                )
+                .await?;
+                return Ok(Digested::RateLimited);
+            }
+        };
 
         // 9b. Sentry-parity platform auto-detection (set once, never overwritten).
         // Best-effort: the digest transaction already committed the event, so
@@ -279,41 +282,6 @@ impl ErrorProcessor {
                         metadata.project_id,
                         e
                     );
-                }
-            }
-        }
-
-        // Update rate limiting quotas (handles digested_event_count).
-        // Best-effort: counters already committed with the event; a failed
-        // quota-state refresh self-heals on the next digest and must not
-        // fail an event that is already durable. One retry on contention
-        // absorbs a collision with the next digest's transaction.
-        let mut quota_attempt = 0;
-        loop {
-            match RateLimitService::update_quota_state(
-                pool,
-                metadata.project_id,
-                &self.rate_limit_config,
-                &counters,
-            )
-            .await
-            {
-                Ok(()) => break,
-                Err(e)
-                    if should_retry_quota_state(
-                        quota_attempt,
-                        is_retryable_write_contention(&e),
-                    ) =>
-                {
-                    tokio::time::sleep(sqlite_retry_delay(quota_attempt)).await;
-                    quota_attempt += 1;
-                }
-                Err(e) => {
-                    log::warn!(
-                        "quota state update failed for project {} (best-effort, will self-heal): {:?}",
-                        metadata.project_id, e
-                    );
-                    break;
                 }
             }
         }
@@ -354,7 +322,7 @@ impl ErrorProcessor {
             if issue_created { "new" } else { "existing" }
         );
 
-        Ok(())
+        Ok(Digested::Stored)
     }
 
     /// Removes the durable copy of an event whose digest has committed.
@@ -552,7 +520,7 @@ impl Processor for ErrorProcessor {
     type Input = EventMetadata;
 
     async fn process(&self, metadata: EventMetadata, ctx: &ProcessorCtx) -> AppResult<()> {
-        self.process_ref(&metadata, ctx).await
+        self.process_ref(&metadata, ctx).await.map(|_| ())
     }
 }
 
@@ -569,16 +537,6 @@ fn should_retain_event(err: &AppError) -> bool {
 /// Write attempts per digest on SQLite. Bounded: sustained contention
 /// fails fast instead of piling up more waiters.
 const MAX_SQLITE_WRITE_ATTEMPTS: usize = 3;
-
-/// Attempts for the post-commit quota-state check: one 50ms retry absorbs
-/// a collision with the next digest's transaction, then warn and self-heal.
-const QUOTA_STATE_ATTEMPTS: usize = 2;
-
-/// Whether to retry the quota-state check: transient contention only,
-/// at most [`QUOTA_STATE_ATTEMPTS`] times.
-fn should_retry_quota_state(attempt: usize, contention: bool) -> bool {
-    attempt + 1 < QUOTA_STATE_ATTEMPTS && contention
-}
 
 /// Backoff before retry `attempt` (0-based): 50ms, then 100ms — brief,
 /// so writers that timed out together don't retry in lockstep.
@@ -623,6 +581,25 @@ struct DigestWrite<'a> {
     platform: Option<&'a str>,
     event_data: &'a serde_json::Value,
     remote_addr: Option<&'a str>,
+    rate_limit_config: &'a RateLimitConfig,
+    /// The row loaded at the start of the digest, for its own quota limits.
+    project: &'a crate::models::Project,
+}
+
+/// How an accepted event left the digest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Digested {
+    /// Stored, or already stored under the same id.
+    Stored,
+    /// Dropped by the quota: nothing was written.
+    RateLimited,
+}
+
+/// What one digest attempt left behind.
+enum DigestOutcome {
+    Written(Box<Issue>, bool, bool),
+    /// Nothing was written: the quota had no room for this event.
+    RateLimited(QuotaScope),
 }
 
 /// Writes the digest, retrying the whole transaction when the database is
@@ -633,11 +610,8 @@ struct DigestWrite<'a> {
 /// triggers: a per-project advisory lock serializes issue creation and no busy
 /// code is ever reported.
 ///
-/// Returns the issue, lifecycle flags, and committed quota-counter values.
-async fn write_digest(
-    pool: &DbPool,
-    write: &DigestWrite<'_>,
-) -> AppResult<(Issue, bool, bool, QuotaCounters)> {
+/// Returns the issue and its lifecycle flags, or that the quota had no room.
+async fn write_digest(pool: &DbPool, write: &DigestWrite<'_>) -> AppResult<DigestOutcome> {
     let mut attempt = 0usize;
     let event_id = write.raw_event_id;
     loop {
@@ -674,10 +648,7 @@ async fn write_digest(
 /// Runs in a write transaction: `BEGIN IMMEDIATE` on SQLite (write lock
 /// up front, so `busy_timeout` can wait on it), plus a per-project
 /// advisory lock on Postgres.
-async fn write_digest_once(
-    pool: &DbPool,
-    write: &DigestWrite<'_>,
-) -> AppResult<(Issue, bool, bool, QuotaCounters)> {
+async fn write_digest_once(pool: &DbPool, write: &DigestWrite<'_>) -> AppResult<DigestOutcome> {
     // Start a write transaction. On SQLite this is `BEGIN IMMEDIATE` so the
     // read-then-write below (SELECT MAX(digest_order) → INSERT) takes the write
     // lock up front instead of failing with "database is locked" on upgrade.
@@ -694,6 +665,10 @@ async fn write_digest_once(
     let result = write_digest_rows(&mut tx, write).await;
 
     match result {
+        Ok(DigestOutcome::RateLimited(scope)) => {
+            tx.rollback().await?;
+            Ok(DigestOutcome::RateLimited(scope))
+        }
         Ok(landed) => {
             // Commit the transaction (releases the advisory lock)
             tx.commit().await?;
@@ -718,7 +693,14 @@ async fn write_digest_once(
 async fn write_digest_rows(
     tx: &mut sqlx::Transaction<'_, DbBackend>,
     write: &DigestWrite<'_>,
-) -> AppResult<(Issue, bool, bool, QuotaCounters)> {
+) -> AppResult<DigestOutcome> {
+    if let Some(scope) =
+        RateLimitService::try_consume(tx, write.project, write.rate_limit_config, Utc::now())
+            .await?
+    {
+        return Ok(DigestOutcome::RateLimited(scope));
+    }
+
     let (issue, grouping, created, regressed) = find_or_create_issue_and_grouping_inner(
         tx,
         write.project_id,
@@ -760,9 +742,9 @@ async fn write_digest_rows(
     )
     .await?;
 
-    let counters = RateLimitService::increment_quota_counters(tx, write.project_id).await?;
+    RateLimitService::increment_event_counters(tx, write.project_id).await?;
 
-    Ok((issue, created, regressed, counters))
+    Ok(DigestOutcome::Written(Box::new(issue), created, regressed))
 }
 
 /// Inner function that performs the actual find-or-create logic within a transaction
@@ -1115,9 +1097,6 @@ mod tests {
     fn only_lock_contention_is_retryable() {
         // A busy database is a wait; everything else is a decision the retry
         // loop cannot change by trying again.
-        assert!(should_retry_quota_state(0, true));
-        assert!(!should_retry_quota_state(1, true));
-        assert!(!should_retry_quota_state(0, false));
         assert!(!is_retryable_write_contention(&AppError::Database(
             sqlx::Error::RowNotFound
         )));

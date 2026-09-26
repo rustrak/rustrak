@@ -531,6 +531,19 @@
       "compatSteps": "pour les étapes de configuration de cette plateforme.",
       "commandLabel": "commande",
       "exampleLabel": "exemple"
+    },
+    "rateLimits": {
+      "title": "Limites d’événements",
+      "description": "Combien d’événements ce projet peut enregistrer. Au-delà d’une limite, la réponse est 429 et le SDK attend avant d’en envoyer d’autres.",
+      "perMinute": "Événements par minute",
+      "perHour": "Événements par heure",
+      "limitDescription": "Laissez vide pour utiliser la limite du serveur. Une valeur ici ne peut qu’être inférieure à celle du serveur, jamais supérieure.",
+      "save": "Enregistrer",
+      "saved": "Limite enregistrée",
+      "saveFailed": "Impossible d’enregistrer la limite",
+      "invalid": "Saisissez un nombre entier supérieur ou égal à 1, ou laissez vide.",
+      "dropped": "Écartés par la limite",
+      "droppedDescription": "Événements acceptés mais non enregistrés, car une limite était déjà atteinte."
     }
   },
   "alerts": {

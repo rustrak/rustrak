@@ -1273,7 +1273,7 @@ impl IssueService {
         // truncate older buckets to zero for high-volume issues. Filtering by
         // `ingested_at` needs a dialect-specific comparison — SQLite stores
         // it as TEXT, so `datetime(...)` normalizes both sides before
-        // comparing (same pattern as `rate_limit::count_project_events_since`).
+        // comparing.
         #[cfg(feature = "postgres")]
         let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
             "SELECT ingested_at FROM events WHERE issue_id = $1 AND ingested_at >= $2 ORDER BY ingested_at DESC",

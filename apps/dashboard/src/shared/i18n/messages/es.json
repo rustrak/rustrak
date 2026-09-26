@@ -531,6 +531,19 @@
       "compatSteps": "para ver los pasos de configuración de esta plataforma.",
       "commandLabel": "comando",
       "exampleLabel": "ejemplo"
+    },
+    "rateLimits": {
+      "title": "Límites de eventos",
+      "description": "Cuántos eventos puede guardar este proyecto. A los que superan un límite se les responde con 429, así que el SDK espera antes de enviar más.",
+      "perMinute": "Eventos por minuto",
+      "perHour": "Eventos por hora",
+      "limitDescription": "Déjalo vacío para usar el límite del servidor. Aquí solo puedes poner un valor más bajo que el del servidor, nunca más alto.",
+      "save": "Guardar",
+      "saved": "Límite guardado",
+      "saveFailed": "No se pudo guardar el límite",
+      "invalid": "Escribe un número entero de al menos 1, o déjalo vacío.",
+      "dropped": "Descartados por el límite",
+      "droppedDescription": "Eventos que se aceptaron pero no se guardaron porque ya se había alcanzado un límite."
     }
   },
   "alerts": {

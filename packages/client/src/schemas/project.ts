@@ -41,6 +41,14 @@ export const projectSchema = z.object({
   dsn: z.string(),
   stored_event_count: z.number().int(),
   digested_event_count: z.number().int(),
+  /** Accepted events the quota dropped instead of storing. */
+  rate_limited_event_count: z.number().int(),
+  /**
+   * The project's own limits, or null where it follows the server's. They can
+   * only tighten `MAX_EVENTS_PER_PROJECT_*`, never raise it.
+   */
+  rate_limit_per_minute: z.number().int().nullable(),
+  rate_limit_per_hour: z.number().int().nullable(),
   created_at: dateTimeSchema,
   updated_at: dateTimeSchema,
   platform: z.string().nullable(),
@@ -76,4 +84,16 @@ export const updateProjectSchema = z.object({
    * being silently de-duplicated.
    */
   slug: z.string().min(1).optional(),
+  /** A number sets the project's own limit; null removes it. */
+  rate_limit_per_minute: z.number().int().min(1).nullable().optional(),
+  rate_limit_per_hour: z.number().int().min(1).nullable().optional(),
+});
+
+/**
+ * The server's per-project limits (`MAX_EVENTS_PER_PROJECT_*`): what a project
+ * with no limits of its own follows.
+ */
+export const rateLimitsSchema = z.object({
+  project_per_minute: z.number().int(),
+  project_per_hour: z.number().int(),
 });
