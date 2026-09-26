@@ -10,20 +10,15 @@ use std::io::Write;
 use uuid::Uuid;
 
 /// Sentry event level
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
     Fatal,
+    #[default]
     Error,
     Warning,
     Info,
     Debug,
-}
-
-impl Default for Level {
-    fn default() -> Self {
-        Self::Error
-    }
 }
 
 /// Stack frame in a stack trace
@@ -257,7 +252,9 @@ fn build_envelope(header: &EnvelopeHeader, items: &[(ItemHeader, Vec<u8>)]) -> V
 /// Gzip a payload with the same settings the ingest path expects.
 fn gzip(data: &[u8]) -> Vec<u8> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
-    encoder.write_all(data).expect("Failed to compress envelope");
+    encoder
+        .write_all(data)
+        .expect("Failed to compress envelope");
     encoder.finish().expect("Failed to finish compression")
 }
 
@@ -308,7 +305,7 @@ impl EnvelopeGenerator {
                 ]),
                 post_context: Some(vec![
                     "    log::info!(\"Step completed\");".to_string(),
-                    format!("    return result;"),
+                    "    return result;".to_string(),
                 ]),
             });
         }
@@ -634,11 +631,6 @@ impl EnvelopeGenerator {
             .expect("Failed to compress envelope");
         encoder.finish().expect("Failed to finish compression")
     }
-
-    /// Get the current counter value (number of events generated)
-    pub fn events_generated(&self) -> u64 {
-        self.counter
-    }
 }
 
 #[cfg(test)]
@@ -857,10 +849,10 @@ mod tests {
         let config = EventConfig::default();
         let mut generator = EnvelopeGenerator::new(config);
 
-        assert_eq!(generator.events_generated(), 0);
+        assert_eq!(generator.counter, 0);
         generator.generate_event();
-        assert_eq!(generator.events_generated(), 1);
+        assert_eq!(generator.counter, 1);
         generator.generate_event();
-        assert_eq!(generator.events_generated(), 2);
+        assert_eq!(generator.counter, 2);
     }
 }

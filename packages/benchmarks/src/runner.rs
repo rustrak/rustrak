@@ -87,8 +87,6 @@ pub struct SendOutcome {
     pub elapsed: Duration,
     /// Successfully accepted error events (these become `events` rows)
     pub errors_ok: u64,
-    /// Successfully accepted transactions (these become `transactions` rows)
-    pub transactions_ok: u64,
 }
 
 /// Snapshot of statistics at a point in time
@@ -216,7 +214,7 @@ impl BenchmarkRunner {
 
         let result = self
             .client
-            .post(&self.envelope_url())
+            .post(self.envelope_url())
             .header("Content-Type", "application/x-sentry-envelope")
             .header("Content-Encoding", "gzip")
             .body(envelope)
@@ -278,11 +276,10 @@ impl BenchmarkRunner {
         ));
 
         let duration = Duration::from_secs(self.config.duration_secs);
-        let interval_ns = if self.config.target_rps > 0 {
-            1_000_000_000 / self.config.target_rps
-        } else {
-            1_000_000_000 // Default to 1 RPS if misconfigured
-        };
+        // 1 RPS if misconfigured with zero.
+        let interval_ns = 1_000_000_000u64
+            .checked_div(self.config.target_rps)
+            .unwrap_or(1_000_000_000);
 
         let pb = ProgressBar::new(self.config.duration_secs);
         pb.set_style(
@@ -713,10 +710,9 @@ impl BenchmarkRunner {
         let histogram = Arc::new(Mutex::new(
             Histogram::<u64>::new_with_bounds(1, 60_000_000, 3).unwrap(),
         ));
-        // Counted separately by kind: the drain wait needs to know how many rows
-        // to expect in `events` specifically, and transactions do not land there.
+        // Only error events: the drain wait needs to know how many rows to
+        // expect in `events`, and transactions do not land there.
         let errors_ok = Arc::new(AtomicU64::new(0));
-        let transactions_ok = Arc::new(AtomicU64::new(0));
 
         let pb = ProgressBar::new(count);
         pb.set_style(
@@ -740,7 +736,6 @@ impl BenchmarkRunner {
                 let histogram = histogram.clone();
                 let pb = pb.clone();
                 let errors_ok = errors_ok.clone();
-                let transactions_ok = transactions_ok.clone();
 
                 async move {
                     let (kind, envelope) = {
@@ -776,13 +771,8 @@ impl BenchmarkRunner {
                     };
 
                     stats.record(&request_result);
-                    if request_result.success {
-                        match kind {
-                            PayloadKind::Error => errors_ok.fetch_add(1, Ordering::Relaxed),
-                            PayloadKind::Transaction => {
-                                transactions_ok.fetch_add(1, Ordering::Relaxed)
-                            }
-                        };
+                    if request_result.success && matches!(kind, PayloadKind::Error) {
+                        errors_ok.fetch_add(1, Ordering::Relaxed);
                     }
                     if let Ok(mut hist) = histogram.try_lock() {
                         let _ = hist.record(latency_us);
@@ -808,7 +798,6 @@ impl BenchmarkRunner {
             histogram: hist,
             elapsed,
             errors_ok: errors_ok.load(Ordering::Relaxed),
-            transactions_ok: transactions_ok.load(Ordering::Relaxed),
         }
     }
 
@@ -841,7 +830,9 @@ impl BenchmarkRunner {
         let pb = ProgressBar::new(expected);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.magenta} Draining backlog [{bar:40.magenta}] {pos}/{len} | {msg}")
+                .template(
+                    "{spinner:.magenta} Draining backlog [{bar:40.magenta}] {pos}/{len} | {msg}",
+                )
                 .unwrap()
                 .progress_chars("=> "),
         );
@@ -909,7 +900,10 @@ impl BenchmarkRunner {
             drain_config.send_concurrency.to_string().cyan()
         );
 
-        let baseline = pg.count_rows("events", Some(self.project_id)).await.unwrap_or(0);
+        let baseline = pg
+            .count_rows("events", Some(self.project_id))
+            .await
+            .unwrap_or(0);
 
         let overall_start = Instant::now();
         let outcome = self
@@ -977,7 +971,10 @@ impl BenchmarkRunner {
             read_config.distinct_groups.to_string().cyan()
         );
 
-        let baseline = pg.count_rows("events", Some(self.project_id)).await.unwrap_or(0);
+        let baseline = pg
+            .count_rows("events", Some(self.project_id))
+            .await
+            .unwrap_or(0);
         let seed = self
             .send_events(
                 generator,
@@ -1026,7 +1023,9 @@ impl BenchmarkRunner {
         // tables it was meant to exercise, so leaving it in would quietly pull
         // the aggregate latency down and make the database look faster than it
         // is. Better to measure fewer queries than to measure error pages.
-        let endpoints = self.validate_endpoints(self.read_endpoints(&issue_ids)).await;
+        let endpoints = self
+            .validate_endpoints(self.read_endpoints(&issue_ids))
+            .await;
         if endpoints.is_empty() {
             // Returning early rather than continuing: the worker loop selects an
             // endpoint with `index % endpoints.len()`, which would divide by
@@ -1175,14 +1174,8 @@ impl BenchmarkRunner {
 
         let combined_hist = combined.lock().await;
 
-        BenchmarkResults::new(
-            &self.config,
-            snapshot,
-            &combined_hist,
-            total_duration,
-            None,
-        )
-        .with_endpoint_metrics(endpoint_metrics)
+        BenchmarkResults::new(&self.config, snapshot, &combined_hist, total_duration, None)
+            .with_endpoint_metrics(endpoint_metrics)
     }
 
     /// Fetch issue IDs to query during the read scenario.
@@ -1224,10 +1217,7 @@ impl BenchmarkRunner {
     }
 
     /// Probe each endpoint once, keeping only those that return 2xx.
-    async fn validate_endpoints(
-        &self,
-        endpoints: Vec<(String, String)>,
-    ) -> Vec<(String, String)> {
+    async fn validate_endpoints(&self, endpoints: Vec<(String, String)>) -> Vec<(String, String)> {
         let mut valid = Vec::new();
 
         for (name, url) in endpoints {
@@ -1379,7 +1369,9 @@ impl BenchmarkRunner {
         }
 
         // Start container metrics collection
-        let server_metrics = self.start_container_metrics(self.container_name.as_deref()).await;
+        let server_metrics = self
+            .start_container_metrics(self.container_name.as_deref())
+            .await;
         let postgres_metrics = self
             .start_container_metrics(self.postgres_container.as_deref())
             .await;
@@ -1448,7 +1440,7 @@ impl BenchmarkRunner {
 
 /// Convert an HDR histogram of microsecond samples into millisecond percentiles.
 fn histogram_to_latency(histogram: &Histogram<u64>) -> LatencyMetrics {
-    if histogram.len() == 0 {
+    if histogram.is_empty() {
         return LatencyMetrics {
             p50: 0.0,
             p95: 0.0,

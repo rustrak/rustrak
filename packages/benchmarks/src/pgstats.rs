@@ -354,10 +354,7 @@ impl PgStatsCollector {
     pub async fn database_size(&self) -> Result<i64, PgStatsError> {
         let row = self
             .client
-            .query_one(
-                "SELECT pg_database_size(current_database())::bigint",
-                &[],
-            )
+            .query_one("SELECT pg_database_size(current_database())::bigint", &[])
             .await?;
         Ok(row.get(0))
     }
@@ -367,7 +364,11 @@ impl PgStatsCollector {
     /// This is an exact `count(*)`, not a `reltuples` estimate: the drain
     /// scenario needs to know precisely when the backlog reaches zero, and
     /// `reltuples` is only refreshed by vacuum/analyze.
-    pub async fn count_rows(&self, table: &str, project_id: Option<u32>) -> Result<i64, PgStatsError> {
+    pub async fn count_rows(
+        &self,
+        table: &str,
+        project_id: Option<u32>,
+    ) -> Result<i64, PgStatsError> {
         // `table` is not user input — it comes from a fixed set in the runner —
         // but it is still validated rather than interpolated blindly.
         let sql = match project_id {
@@ -480,10 +481,7 @@ fn derive_ratios(views: &BTreeMap<String, BTreeMap<String, f64>>) -> BTreeMap<St
 
     // Shared-buffer hit ratio: the single most telling number for whether extra
     // work reached the disk.
-    if let (Some(hit), Some(read)) = (
-        get("database", "blks_hit"),
-        get("database", "blks_read"),
-    ) {
+    if let (Some(hit), Some(read)) = (get("database", "blks_hit"), get("database", "blks_read")) {
         let total = hit + read;
         if total > 0.0 {
             derived.insert("cache_hit_ratio".to_string(), hit / total * 100.0);
@@ -624,7 +622,10 @@ mod tests {
     #[test]
     fn sanitize_ident_strips_injection_attempts() {
         assert_eq!(sanitize_ident("events"), "events");
-        assert_eq!(sanitize_ident("events; DROP TABLE users"), "eventsDROPTABLEusers");
+        assert_eq!(
+            sanitize_ident("events; DROP TABLE users"),
+            "eventsDROPTABLEusers"
+        );
         assert_eq!(sanitize_ident("issue_activity"), "issue_activity");
     }
 

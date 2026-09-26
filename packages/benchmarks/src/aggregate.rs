@@ -198,7 +198,7 @@ fn median(values: &mut [f64]) -> f64 {
     }
     values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         (values[mid - 1] + values[mid]) / 2.0
     } else {
         values[mid]
@@ -225,10 +225,7 @@ pub fn load_results(dir: &Path) -> std::io::Result<Vec<BenchmarkResults>> {
         let json = fs::read_to_string(&path)?;
         match serde_json::from_str::<BenchmarkResults>(&json) {
             Ok(result) => results.push(result),
-            Err(e) => eprintln!(
-                "{}",
-                format!("Skipping {}: {}", path.display(), e).yellow()
-            ),
+            Err(e) => eprintln!("{}", format!("Skipping {}: {}", path.display(), e).yellow()),
         }
     }
 
@@ -384,11 +381,7 @@ pub fn print_matrix(results: &[BenchmarkResults], baseline_label: &str, candidat
             "\n{} {} {}",
             "Scenario:".yellow().bold(),
             scenario.cyan().bold(),
-            format!(
-                "({} vs {} runs)",
-                baseline.runs, candidate.runs
-            )
-            .dimmed()
+            format!("({} vs {} runs)", baseline.runs, candidate.runs).dimmed()
         );
         println!(
             "  {:<28} {:>12} {:>12} {:>10} {:>10}",
