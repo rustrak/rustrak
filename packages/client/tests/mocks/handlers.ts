@@ -945,6 +945,22 @@ export const handlers = [
   ),
 
   // Events
+  http.get(
+    `${BASE_URL}/api/projects/:projectId/events/sentry/:eventId`,
+    ({ params }) => {
+      if (
+        params.projectId !== '1' ||
+        String(params.eventId).replaceAll('-', '') !==
+          mockEventDetail.event_id.replaceAll('-', '')
+      ) {
+        return appErrorResponse(
+          'NotFound',
+          'Resource not found: Event not found',
+        );
+      }
+      return HttpResponse.json(mockEventDetail);
+    },
+  ),
   http.get(`${BASE_URL}/api/projects/:projectId/issues/:issueId/events`, () => {
     return HttpResponse.json({
       items: mockEvents,

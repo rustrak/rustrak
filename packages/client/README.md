@@ -135,6 +135,8 @@ await client.issues.delete(projectId, issueId);
 ```typescript
 const { items } = await client.events.list(projectId, issueId, { order: 'desc' });
 const event     = await client.events.get(projectId, issueId, eventId);
+// Resolve the ID returned by a Sentry SDK without knowing its issue first.
+const captured  = await client.events.getBySentryId(projectId, sentryEventId);
 console.log(event.data); // Full Sentry event payload
 ```
 

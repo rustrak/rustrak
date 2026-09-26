@@ -59,4 +59,18 @@ export class EventsResource extends BaseResource {
       eventDetailSchema,
     );
   }
+
+  /** Resolve the client-supplied Sentry event ID, including its owning issue. */
+  async getBySentryId(
+    projectId: number,
+    eventId: string,
+  ): Promise<Result<EventDetail, RustrakError>> {
+    return this.request(
+      () =>
+        this.http.get(
+          `api/projects/${projectId}/events/sentry/${encodeURIComponent(eventId)}`,
+        ),
+      eventDetailSchema,
+    );
+  }
 }

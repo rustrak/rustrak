@@ -137,16 +137,56 @@ pub async fn get_event(
     Ok(HttpResponse::Ok().json(event.to_detail_response()))
 }
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/projects/{project_id}/events/sentry/{event_id}",
+    tag = "Events",
+    params(
+        ("project_id" = i32, Path, description = "Project ID"),
+        ("event_id" = uuid::Uuid, Path, description = "Client-supplied Sentry event ID (compact or hyphenated UUID)"),
+    ),
+    responses(
+        (status = 200, description = "Full event detail, including its issue ID", body = EventDetailResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Event or accessible project not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Resolve the ID returned by a Sentry SDK without already knowing the issue.
+pub async fn get_event_by_sentry_id(
+    pool: web::Data<DbPool>,
+    path: web::Path<(i32, Uuid)>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    let (project_id, event_id) = path.into_inner();
+    // Apply the same Viewer boundary as issue-scoped detail before reading data.
+    access::require(
+        pool.get_ref(),
+        actor.is_admin(),
+        actor.user_id(),
+        project_id,
+        Action::ViewProject,
+    )
+    .await?;
+    // The existing unique (project_id, event_id) index also serves this lookup.
+    let event = EventService::get_by_event_id(pool.get_ref(), project_id, event_id).await?;
+    Ok(HttpResponse::Ok().json(event.to_detail_response()))
+}
+
 #[cfg(feature = "openapi")]
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_events, get_event),
+    paths(list_events, get_event, get_event_by_sentry_id),
     components(schemas(crate::models::EventResponse, crate::models::EventDetailResponse,))
 )]
 pub struct EventsApi;
 
 /// Configure event routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.route(
+        "/api/projects/{project_id}/events/sentry/{event_id}",
+        web::get().to(get_event_by_sentry_id),
+    );
     cfg.service(
         web::scope("/api/projects/{project_id}/issues/{issue_id}/events")
             .route("", web::get().to(list_events))
