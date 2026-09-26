@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use config::ScenarioConfig;
 use runner::BenchmarkRunner;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Rustrak Server Benchmark Tool
 #[derive(Parser)]
@@ -148,10 +148,22 @@ fn list_scenarios() {
     println!();
 
     let scenarios = [
-        ("baseline", "Measure baseline latency with minimal load (1 req/s)"),
-        ("burst", "Test handling of traffic spikes (10k events, pause, repeat)"),
-        ("sustained", "Sustained load for memory stability testing (1k req/s)"),
-        ("stress", "Find server limits by ramping up load until errors"),
+        (
+            "baseline",
+            "Measure baseline latency with minimal load (1 req/s)",
+        ),
+        (
+            "burst",
+            "Test handling of traffic spikes (10k events, pause, repeat)",
+        ),
+        (
+            "sustained",
+            "Sustained load for memory stability testing (1k req/s)",
+        ),
+        (
+            "stress",
+            "Find server limits by ramping up load until errors",
+        ),
         (
             "drain",
             "Measure asynchronous digest throughput (needs --postgres-url)",
@@ -238,11 +250,7 @@ async fn run_benchmark(cli: &Cli) -> anyhow::Result<()> {
 
     // Save results
     let filepath = results.save(&cli.output)?;
-    println!(
-        "\n{} {}",
-        "Results saved to:".green(),
-        filepath.cyan()
-    );
+    println!("\n{} {}", "Results saved to:".green(), filepath.cyan());
 
     Ok(())
 }
@@ -259,7 +267,7 @@ async fn compare_results(old_path: &PathBuf, new_path: &PathBuf) -> anyhow::Resu
     Ok(())
 }
 
-async fn show_results(path: Option<PathBuf>, output_dir: &PathBuf) -> anyhow::Result<()> {
+async fn show_results(path: Option<PathBuf>, output_dir: &Path) -> anyhow::Result<()> {
     let filepath = path.unwrap_or_else(|| output_dir.join("latest.json"));
 
     if !filepath.exists() {

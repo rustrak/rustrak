@@ -1,34 +1,17 @@
 {
   "$schema": "https://v2-9-14.turborepo.dev/schema.json",
   "ui": "tui",
+  "//": "The two Rust crates are turbo packages so that `pnpm build`, `pnpm test` and `pnpm run ci` reach them, but turbo never caches a cargo task: target/ carries per-crate fingerprints turbo cannot see, and a restored `target/` from a different toolchain is worse than none. Cargo tasks also do not run in parallel however the graph looks; they queue on the target directory lock. CI (.github/workflows/ci.yml) calls cargo directly for that reason; `ci:rust` here is the local equivalent.",
   "globalDependencies": ["biome.json", "scripts/bundle-dashboard.sh"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [
-        ".next/**",
-        "!.next/cache/**",
-        "!.next/dev/**",
-        "out/**",
-        "target/release/**",
-        "!target/release/.fingerprint/**",
-        "!target/release/deps/**",
-        "!target/release/build/**",
-        "!target/release/.cargo-lock",
-        "dist/**"
-      ]
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "out/**", "dist/**"]
     },
     "build:dev": {
       "dependsOn": ["^build:dev"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [
-        "target/debug/**",
-        "!target/debug/.fingerprint/**",
-        "!target/debug/deps/**",
-        "!target/debug/build/**",
-        "!target/debug/.cargo-lock"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", ".env*"]
     },
     "lint": {
       "dependsOn": ["^lint"]
@@ -45,30 +28,6 @@
     },
     "check-types": {
       "dependsOn": ["^check-types", "^build"]
-    },
-    "@rustrak/server#build": {
-      "dependsOn": ["^build", "@rustrak/dashboard#build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [
-        "static/**",
-        "target/release/**",
-        "!target/release/.fingerprint/**",
-        "!target/release/deps/**",
-        "!target/release/build/**",
-        "!target/release/.cargo-lock"
-      ]
-    },
-    "@rustrak/server#build:dev": {
-      "dependsOn": ["^build:dev", "@rustrak/dashboard#build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [
-        "static/**",
-        "target/debug/**",
-        "!target/debug/.fingerprint/**",
-        "!target/debug/deps/**",
-        "!target/debug/build/**",
-        "!target/debug/.cargo-lock"
-      ]
     },
     "test": {
       "dependsOn": ["^build"],
@@ -92,6 +51,41 @@
     "clean": {
       "cache": false
     },
+
+    "@rustrak/server#build": {
+      "dependsOn": ["@rustrak/dashboard#build"],
+      "cache": false
+    },
+    "@rustrak/server#build:dev": {
+      "dependsOn": ["@rustrak/dashboard#build"],
+      "cache": false
+    },
+    "@rustrak/server#test": {
+      "cache": false
+    },
+    "@rustrak/server#openapi:check": {
+      "dependsOn": ["@rustrak/server#test"],
+      "cache": false
+    },
+    "@rustrak/server#lint": {
+      "cache": false
+    },
+    "@rustrak/server#format:check": {
+      "cache": false
+    },
+    "@rustrak/benchmarks#build": {
+      "cache": false
+    },
+    "@rustrak/benchmarks#build:dev": {
+      "cache": false
+    },
+    "@rustrak/benchmarks#lint": {
+      "cache": false
+    },
+    "@rustrak/benchmarks#format:check": {
+      "cache": false
+    },
+
     "bench": {
       "dependsOn": ["build"],
       "cache": false,

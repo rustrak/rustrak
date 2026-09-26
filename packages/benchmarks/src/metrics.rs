@@ -15,8 +15,6 @@ use tokio::time::Duration;
 pub enum MetricsError {
     #[error("Docker connection failed: {0}")]
     DockerError(#[from] bollard::errors::Error),
-    #[error("Container not found: {0}")]
-    ContainerNotFound(String),
 }
 
 /// CPU metrics
@@ -161,7 +159,10 @@ impl MetricsAccumulator {
         // Network metrics
         if let Some(ref networks) = stats.networks {
             let (rx, tx) = networks.values().fold((0u64, 0u64), |(rx, tx), net| {
-                (rx + net.rx_bytes.unwrap_or(0), tx + net.tx_bytes.unwrap_or(0))
+                (
+                    rx + net.rx_bytes.unwrap_or(0),
+                    tx + net.tx_bytes.unwrap_or(0),
+                )
             });
             self.network_rx = rx;
             self.network_tx = tx;
@@ -270,61 +271,6 @@ impl MetricsCollector {
         let acc = self.accumulator.lock().await;
         acc.finalize(&self.container_name)
     }
-
-    /// Get current metrics without stopping collection
-    pub async fn current(&self) -> ContainerMetrics {
-        let acc = self.accumulator.lock().await;
-        acc.finalize(&self.container_name)
-    }
-
-    /// Check if collection is running
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::SeqCst)
-    }
-}
-
-/// Collect metrics from a container for a fixed duration
-pub async fn collect_for_duration(
-    container_name: &str,
-    duration: Duration,
-) -> Result<ContainerMetrics, MetricsError> {
-    let collector = MetricsCollector::new(container_name).await?;
-    let handle = collector.start();
-
-    tokio::time::sleep(duration).await;
-
-    let metrics = collector.stop().await;
-    handle.abort();
-
-    Ok(metrics)
-}
-
-/// Simple one-shot metrics snapshot
-pub async fn snapshot(container_name: &str) -> Result<ContainerMetrics, MetricsError> {
-    let docker = Docker::connect_with_socket_defaults()?;
-
-    let options = StatsOptions {
-        stream: false,
-        one_shot: true,
-    };
-
-    let mut stream = docker.stats(container_name, Some(options.clone()));
-
-    if let Some(Ok(stats)) = stream.next().await {
-        let mut acc = MetricsAccumulator::default();
-        acc.add_sample(&stats);
-        // Take a second sample for accurate CPU calculation
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let mut stream2 = docker.stats(container_name, Some(options));
-        if let Some(Ok(stats2)) = stream2.next().await {
-            acc.add_sample(&stats2);
-        }
-
-        return Ok(acc.finalize(container_name));
-    }
-
-    Err(MetricsError::ContainerNotFound(container_name.to_string()))
 }
 
 #[cfg(test)]
@@ -340,14 +286,16 @@ mod tests {
 
     #[test]
     fn test_metrics_finalize() {
-        let mut acc = MetricsAccumulator::default();
-        acc.cpu_total = 150.0;
-        acc.cpu_peak = 80.0;
-        acc.cpu_samples = 3;
-        acc.memory_total = 300.0;
-        acc.memory_peak = 120.0;
-        acc.memory_idle = Some(90.0);
-        acc.memory_samples = 3;
+        let acc = MetricsAccumulator {
+            cpu_total: 150.0,
+            cpu_peak: 80.0,
+            cpu_samples: 3,
+            memory_total: 300.0,
+            memory_peak: 120.0,
+            memory_idle: Some(90.0),
+            memory_samples: 3,
+            ..Default::default()
+        };
 
         let metrics = acc.finalize("test-container");
 

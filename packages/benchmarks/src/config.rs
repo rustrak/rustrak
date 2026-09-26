@@ -14,7 +14,7 @@ pub enum ConfigError {
 }
 
 /// Scenario type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ScenarioType {
     /// Single request baseline measurement
@@ -22,6 +22,7 @@ pub enum ScenarioType {
     /// Burst traffic pattern
     Burst,
     /// Sustained constant load
+    #[default]
     Sustained,
     /// Stress test to find limits
     Stress,
@@ -29,12 +30,6 @@ pub enum ScenarioType {
     Drain,
     /// Measure the read path (dashboard queries) against a populated database
     Read,
-}
-
-impl Default for ScenarioType {
-    fn default() -> Self {
-        Self::Sustained
-    }
 }
 
 impl std::fmt::Display for ScenarioType {

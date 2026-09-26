@@ -1,5 +1,10 @@
 name: "Rustrak CodeQL Config"
 
+# What is analysed is what ships. Build output, dependencies and test code are
+# left out: a security query over a test fixture or a load generator is noise.
+# The Rust rules below mirror the `*.test.ts` rule the JavaScript side already
+# had. They buy about a minute of the Rust analysis, not more: the extractor's
+# time goes to resolving and expanding the server crate itself.
 paths-ignore:
   - "**/node_modules"
   - "**/dist"
@@ -9,4 +14,8 @@ paths-ignore:
   - "**/*.test.ts"
   - "**/*.spec.ts"
   - "**/test-data"
+  # The server's unit, integration and e2e suites.
+  - "apps/server/tests"
+  # Tooling that drives a server, never shipped.
   - "packages/test-sentry/**"
+  - "packages/benchmarks/**"

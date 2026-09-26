@@ -1,5 +1,21 @@
 name: Docker Publish
 
+# Three images, two architectures, one job definition.
+#
+# Every image is built once per architecture on a native runner (no QEMU) and
+# pushed by digest; a second job per image then stitches the digests into one
+# multi-platform manifest list and gives it its tags. That is Docker's own
+# recipe for distributing a multi-platform build across runners, and it is
+# what ran before too, as six hand-copied jobs. The `build` matrix below is the
+# same six builds, and `manifest` the same three merges, written once.
+#
+# No layer cache. A release runs on its tag, a ref no earlier run was ever on,
+# so the `type=gha` cache-from never hit; each run still paid to export six
+# `mode=max` caches into the repository's 10 GB and evict whatever else was
+# there. The compile is the same compile either way, and it starts from
+# nothing: the dependency layer took about two minutes less once cargo-chef
+# stopped being compiled from source first (apps/server/Dockerfile).
+
 on:
   release:
     types: [published]
@@ -28,11 +44,6 @@ jobs:
   # ships together. So there is nothing to detect, we only need the version off
   # the tag. `docs` is outside the group, versioned on its own and deployed by
   # deploy-docs.yml, which listens for the same `release: published` event.
-  #
-  # The dashboard ships twice: compiled into the server image, which is the
-  # default deployment, and as `rustrak/rustrak-ui`, nginx serving the same
-  # bundle and proxying the API, for an installation that keeps the dashboard
-  # on a different host from its server.
   version:
     runs-on: ubuntu-latest
     outputs:
@@ -47,8 +58,9 @@ jobs:
       # `npm install @rustrak/client` picks up a release candidate by accident.
       - name: Extract version from release tag
         id: check
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
-          TAG="${{ inputs.tag || github.event.release.tag_name }}"
           echo "Release tag: $TAG"
 
           VERSION=$(echo "$TAG" | grep -oE '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' | sed 's/^v//')
@@ -65,320 +77,183 @@ jobs:
             CHANNEL=latest
           fi
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "Version $VERSION on channel $CHANNEL"
 
-  # ── SQLite image (default: latest) ───────────────────────────────────────────
-  # Build on native runners (no QEMU). Each platform pushes by digest only.
-
-  docker-server-sqlite-build:
+  # ── Build: one image, one architecture, one native runner ────────────────────
+  # `image` and `platform` are the matrix axes. The `include` entries only
+  # attach data to the combinations those axes already produce: a runner to
+  # each platform, and a Dockerfile, a context and a repository to each image.
+  # An `include` that introduced a new key on its own would be merged into
+  # every combination in turn.
+  #
+  # The dashboard ships twice: compiled into the server image, which is the
+  # default deployment, and as `rustrak/rustrak-ui`, nginx serving the same
+  # bundle and proxying the API, for an installation that keeps the dashboard
+  # on a different host from its server. The UI Dockerfile builds its own copy
+  # from the workspace; the server image takes it from `apps/server/static`,
+  # which only the JavaScript build writes. Without those steps the published
+  # server image would be API-only: correct, silent, and the worst kind of
+  # missing UI.
+  build:
     needs: version
     strategy:
       fail-fast: false
       matrix:
+        image: [server-sqlite, server-postgres, ui]
+        platform: [linux/amd64, linux/arm64]
         include:
           - platform: linux/amd64
             runner: ubuntu-latest
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
+          - image: server-sqlite
+            repository: rustrak/rustrak-server
+            context: ./apps/server
+            file: ./apps/server/Dockerfile
+            build-args: FEATURES=sqlite
+            dashboard: bundle
+          - image: server-postgres
+            repository: rustrak/rustrak-server
+            context: ./apps/server
+            file: ./apps/server/Dockerfile
+            build-args: FEATURES=postgres
+            dashboard: bundle
+          - image: ui
+            repository: rustrak/rustrak-ui
+            context: .
+            file: ./apps/dashboard/Dockerfile
+            build-args: ""
+            dashboard: in-image
+    name: build (${{ matrix.image }}, ${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.tag || github.ref }}
 
-      - name: Prepare platform pair
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
-
-      # The image serves `apps/server/static` at `/`, and that directory is
-      # written by `scripts/bundle-dashboard.sh`, which only the JavaScript
-      # build runs. Without these steps the published image would be API-only:
-      # correct, silent, and the worst kind of missing UI.
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: matrix.dashboard == 'bundle'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.dashboard == 'bundle'
         with:
-          node-version: "latest"
-          cache: pnpm
+          node-version: 24
       - run: pnpm install --frozen-lockfile
+        if: matrix.dashboard == 'bundle'
       # Through turbo, not `pnpm --filter`: the dashboard imports
       # `@rustrak/client` from the workspace, and turbo's `^build` compiles it
       # first. A bare `--filter` build finds no `dist/` there and Vite fails to
       # resolve the import.
       - name: Build the dashboard into the server's build context
+        if: matrix.dashboard == 'bundle'
         run: |
           pnpm turbo run build --filter=@rustrak/dashboard
           bash scripts/bundle-dashboard.sh
 
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push by digest (SQLite)
-        id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: ./apps/server
-          platforms: ${{ matrix.platform }}
-          build-args: FEATURES=sqlite
-          secrets: rustrak_telemetry_key=${{ secrets.RUSTRAK_TELEMETRY_KEY }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          tags: rustrak/rustrak-server
-          cache-from: type=gha,scope=server-sqlite-${{ matrix.runner }}
-          cache-to: type=gha,mode=max,scope=server-sqlite-${{ matrix.runner }}
-
-      - name: Export digest
-        run: |
-          mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: digests-server-sqlite-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  docker-server-sqlite-manifest:
-    needs: [version, docker-server-sqlite-build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digests-server-sqlite-*
-          merge-multiple: true
-
-      - name: Create manifest list and push (SQLite)
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          CHANNEL="${{ needs.version.outputs.channel }}"
-          docker buildx imagetools create \
-            -t rustrak/rustrak-server:v${VERSION} \
-            -t rustrak/rustrak-server:${CHANNEL} \
-            $(printf 'rustrak/rustrak-server@sha256:%s ' *)
-
-      - name: Inspect image
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          docker buildx imagetools inspect rustrak/rustrak-server:v${VERSION}
-
-  # ── PostgreSQL image ──────────────────────────────────────────────────────────
-
-  docker-server-postgres-build:
-    needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-
-      - name: Prepare platform pair
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
-
-      # The image serves `apps/server/static` at `/`, and that directory is
-      # written by `scripts/bundle-dashboard.sh`, which only the JavaScript
-      # build runs. Without these steps the published image would be API-only:
-      # correct, silent, and the worst kind of missing UI.
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "latest"
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Through turbo, not `pnpm --filter`: the dashboard imports
-      # `@rustrak/client` from the workspace, and turbo's `^build` compiles it
-      # first. A bare `--filter` build finds no `dist/` there and Vite fails to
-      # resolve the import.
-      - name: Build the dashboard into the server's build context
-        run: |
-          pnpm turbo run build --filter=@rustrak/dashboard
-          bash scripts/bundle-dashboard.sh
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push by digest (PostgreSQL)
-        id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: ./apps/server
-          platforms: ${{ matrix.platform }}
-          build-args: FEATURES=postgres
-          secrets: rustrak_telemetry_key=${{ secrets.RUSTRAK_TELEMETRY_KEY }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          tags: rustrak/rustrak-server
-          cache-from: type=gha,scope=server-postgres-${{ matrix.runner }}
-          cache-to: type=gha,mode=max,scope=server-postgres-${{ matrix.runner }}
-
-      - name: Export digest
-        run: |
-          mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: digests-server-postgres-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  docker-server-postgres-manifest:
-    needs: [version, docker-server-postgres-build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digests-server-postgres-*
-          merge-multiple: true
-
-      - name: Create manifest list and push (PostgreSQL)
-        working-directory: ${{ runner.temp }}/digests
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          CHANNEL="${{ needs.version.outputs.channel }}"
-          # The stable moving tag is `postgres`, not `latest-postgres`.
-          if [[ "$CHANNEL" == "latest" ]]; then
-            MOVING=postgres
-          else
-            MOVING="${CHANNEL}-postgres"
-          fi
-          docker buildx imagetools create \
-            -t rustrak/rustrak-server:v${VERSION}-postgres \
-            -t rustrak/rustrak-server:${MOVING} \
-            $(printf 'rustrak/rustrak-server@sha256:%s ' *)
-
-      - name: Inspect image
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          docker buildx imagetools inspect rustrak/rustrak-server:v${VERSION}-postgres
-
-  # ── UI image ──────────────────────────────────────────────────────────────────
-  # The same bundle the server image carries, behind nginx. Build context is
-  # the repository root: the dashboard depends on `@rustrak/client` from the
-  # workspace, and the Dockerfile prunes to what it needs.
-
-  docker-ui-build:
-    needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-
-      - name: Prepare platform pair
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+      # The telemetry key is a BuildKit secret the server Dockerfile mounts at
+      # compile time (see there); the UI image has no use for it and is not
+      # handed it.
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: .
-          file: ./apps/dashboard/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: ${{ matrix.platform }}
+          build-args: ${{ matrix.build-args }}
+          secrets: ${{ matrix.dashboard == 'bundle' && format('rustrak_telemetry_key={0}', secrets.RUSTRAK_TELEMETRY_KEY) || '' }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          tags: rustrak/rustrak-ui
-          cache-from: type=gha,scope=ui-${{ matrix.runner }}
-          cache-to: type=gha,mode=max,scope=ui-${{ matrix.runner }}
+          tags: ${{ matrix.repository }}
 
+      # One empty file named after the digest, so the manifest job can list a
+      # directory and get its arguments.
       - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Name the artifact after the platform
+        id: artifact
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "name=digests-${{ matrix.image }}-${PLATFORM//\//-}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: digests-ui-${{ env.PLATFORM_PAIR }}
+          name: ${{ steps.artifact.outputs.name }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  docker-ui-manifest:
-    needs: [version, docker-ui-build]
+  # ── Manifest: the two digests of an image become one tagged manifest list ──
+  manifest:
+    needs: [version, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [server-sqlite, server-postgres, ui]
+    name: manifest (${{ matrix.image }})
     runs-on: ubuntu-latest
     steps:
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digests-ui-*
+          pattern: digests-${{ matrix.image }}-*
           merge-multiple: true
 
+      # The version tag is immutable; the second tag is the moving one for the
+      # channel. The stable moving tag for postgres is `postgres`, not
+      # `latest-postgres`.
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ matrix.image }}
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          CHANNEL="${{ needs.version.outputs.channel }}"
+          set -euo pipefail
+          case "$IMAGE" in
+            server-sqlite)
+              REPO=rustrak/rustrak-server
+              PINNED="v${VERSION}"
+              MOVING="${CHANNEL}"
+              ;;
+            server-postgres)
+              REPO=rustrak/rustrak-server
+              PINNED="v${VERSION}-postgres"
+              if [[ "$CHANNEL" == "latest" ]]; then MOVING=postgres; else MOVING="${CHANNEL}-postgres"; fi
+              ;;
+            ui)
+              REPO=rustrak/rustrak-ui
+              PINNED="v${VERSION}"
+              MOVING="${CHANNEL}"
+              ;;
+            *)
+              echo "::error::unknown image '$IMAGE'"; exit 1 ;;
+          esac
           docker buildx imagetools create \
-            -t rustrak/rustrak-ui:v${VERSION} \
-            -t rustrak/rustrak-ui:${CHANNEL} \
-            $(printf 'rustrak/rustrak-ui@sha256:%s ' *)
-
-      - name: Inspect image
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          docker buildx imagetools inspect rustrak/rustrak-ui:v${VERSION}
+            -t "${REPO}:${PINNED}" \
+            -t "${REPO}:${MOVING}" \
+            $(printf "${REPO}@sha256:%s " *)
+          docker buildx imagetools inspect "${REPO}:${PINNED}"
 
   # ── npm publish ───────────────────────────────────────────────────────────────
 
@@ -386,15 +261,15 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "latest"
-          cache: pnpm
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
 
       - run: pnpm install --frozen-lockfile
@@ -409,23 +284,25 @@ jobs:
       # A version already on the registry is skipped rather than failed, so a
       # re-run of a half-published release gets past the half that worked.
       - name: Publish @rustrak/client
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
           if npm view "@rustrak/client@$VERSION" version >/dev/null 2>&1; then
             echo "@rustrak/client@$VERSION is already published, skipping"
           else
-            pnpm --filter @rustrak/client publish --no-git-checks --access public --tag "${{ needs.version.outputs.channel }}"
+            pnpm --filter @rustrak/client publish --no-git-checks --access public --tag "$CHANNEL"
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @rustrak/mcp
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          CHANNEL: ${{ needs.version.outputs.channel }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
           if npm view "@rustrak/mcp@$VERSION" version >/dev/null 2>&1; then
             echo "@rustrak/mcp@$VERSION is already published, skipping"
           else
-            pnpm --filter @rustrak/mcp publish --no-git-checks --access public --tag "${{ needs.version.outputs.channel }}"
+            pnpm --filter @rustrak/mcp publish --no-git-checks --access public --tag "$CHANNEL"
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

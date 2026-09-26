@@ -48,8 +48,38 @@ cd apps/server && cargo run --no-default-features --features postgres
 
 pnpm test                         # everything except the Rust side
 (cd apps/server && cargo test)    # unit, integration and e2e
-pnpm run ci                       # what CI runs: test, build, lint, types
+pnpm run ci                       # what CI runs: ci:web (turbo) then ci:rust (cargo)
 ```
+
+## CI and releases
+
+Speed comes from one runner per concern. `ci.yml` runs `pnpm run ci:web`
+(turbo over the JavaScript packages), `rust-lint` (rustfmt, clippy for both
+backends and for the benchmark crate), `rust-test` (the SQLite suites and the
+OpenAPI drift check) and `postgres-e2e`, four runners in parallel.
+`docker-publish.yml` builds each image once per architecture on a native
+runner and merges the digests into one manifest list.
+
+- **No PR check builds a release binary.** `cargo build --release` with fat
+  LTO and one codegen unit is ten minutes of single-threaded work that no PR
+  check reads. `rust-release` compiles both backends in that profile on every
+  push to `main` and `next`, where nobody waits for it, so a release-only
+  failure shows up before a release is cut; `docker build` compiles it again
+  per image and architecture at release time.
+- **Only compiled dependencies are cached.** The Rust jobs use rust-cache
+  (through `setup-rust-toolchain`), and only pushes to `main` and `next` save
+  it, so every PR reads its base's and no branch writes a cache nothing else
+  can read. Docker builds and turbo cargo tasks cache nothing.
+- **One Rust version, in `rust-toolchain.toml`.** CI, `release.yml` and local
+  builds read it. The server image takes its Rust from the `cargo-chef` tag in
+  `apps/server/Dockerfile`, and `rust-lint` fails when the two disagree.
+- **Turbo never caches a cargo task** (`cache: false` in `turbo.json`), and
+  cargo tasks do not run in parallel under turbo: they queue on the target
+  directory lock. CI calls cargo directly for that reason.
+- **The two crates stay separate.** `apps/server` and `packages/benchmarks`
+  cannot share a Cargo workspace: `testcontainers` pins `bollard 0.20` and the
+  benchmarks need `bollard 0.21`, and their `bollard-stubs` `=` pins conflict
+  in one lockfile.
 
 First run needs a superuser and a session key:
 

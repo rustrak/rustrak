@@ -155,9 +155,6 @@ pub struct BenchmarkResults {
     pub timestamp: DateTime<Utc>,
     /// Scenario name
     pub scenario: String,
-    /// Server version (if available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub server_version: Option<String>,
     /// What was under test
     #[serde(skip_serializing_if = "Option::is_none")]
     pub environment: Option<EnvironmentInfo>,
@@ -225,7 +222,7 @@ impl BenchmarkResults {
         };
 
         // Convert histogram values from microseconds to milliseconds
-        let latency = if histogram.len() > 0 {
+        let latency = if !histogram.is_empty() {
             LatencyMetrics {
                 p50: histogram.value_at_percentile(50.0) as f64 / 1000.0,
                 p95: histogram.value_at_percentile(95.0) as f64 / 1000.0,
@@ -266,7 +263,6 @@ impl BenchmarkResults {
             run_id,
             timestamp: Utc::now(),
             scenario: config.name.clone(),
-            server_version: None,
             environment: None,
             config: ConfigSummary {
                 duration_secs: config.duration_secs,
@@ -378,12 +374,6 @@ impl BenchmarkResults {
             peak_percent: metrics.cpu.peak_percent,
             average_percent: metrics.cpu.average_percent,
         });
-        self
-    }
-
-    /// Set server version
-    pub fn with_server_version(mut self, version: &str) -> Self {
-        self.server_version = Some(version.to_string());
         self
     }
 
