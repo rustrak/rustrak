@@ -11,7 +11,7 @@ pub struct RateLimitService;
 /// unless either is already full. A row whose stored window is older starts
 /// over at one. `$1`/`$2` are the window numbers, `$3`/`$4` the limits.
 macro_rules! consume_sql {
-    ($table:literal, $row:literal) => {
+    ($table:literal, $row:literal, $minute_limit:literal, $hour_limit:literal) => {
         concat!(
             "UPDATE ", $table, " SET ",
             "quota_minute_count = CASE WHEN quota_minute_window = $1 THEN quota_minute_count + 1 ELSE 1 END, ",
@@ -19,8 +19,8 @@ macro_rules! consume_sql {
             "quota_hour_count = CASE WHEN quota_hour_window = $2 THEN quota_hour_count + 1 ELSE 1 END, ",
             "quota_hour_window = $2 ",
             "WHERE ", $row, " ",
-            "AND (quota_minute_window <> $1 OR quota_minute_count < $3) ",
-            "AND (quota_hour_window <> $2 OR quota_hour_count < $4)"
+            "AND (quota_minute_window <> $1 OR quota_minute_count < ", $minute_limit, ") ",
+            "AND (quota_hour_window <> $2 OR quota_hour_count < ", $hour_limit, ")"
         )
     };
 }
@@ -152,11 +152,10 @@ impl RateLimitService {
         config: &RateLimitConfig,
         now: chrono::DateTime<Utc>,
     ) -> AppResult<Option<QuotaScope>> {
-        let (project_minute, project_hour) = project_limits(config, project);
         let minute = now.timestamp().div_euclid(60);
         let hour = now.timestamp().div_euclid(3600);
 
-        let installation = sqlx::query(consume_sql!("installation", "id = 1"))
+        let installation = sqlx::query(consume_sql!("installation", "id = 1", "$3", "$4"))
             .bind(minute)
             .bind(hour)
             .bind(config.max_events_per_minute)
@@ -167,14 +166,23 @@ impl RateLimitService {
             return Ok(Some(QuotaScope::Installation));
         }
 
-        let consumed = sqlx::query(consume_sql!("projects", "id = $5"))
-            .bind(minute)
-            .bind(hour)
-            .bind(project_minute)
-            .bind(project_hour)
-            .bind(project.id)
-            .execute(&mut *executor)
-            .await?;
+        // The project's own limits are read from the row inside the UPDATE, not
+        // from `project`: a limit lowered after the digest loaded the row must
+        // still hold. A NULL own limit compares false and leaves the
+        // operator's.
+        let consumed = sqlx::query(consume_sql!(
+            "projects",
+            "id = $5",
+            "CASE WHEN rate_limit_per_minute < $3 THEN rate_limit_per_minute ELSE $3 END",
+            "CASE WHEN rate_limit_per_hour < $4 THEN rate_limit_per_hour ELSE $4 END"
+        ))
+        .bind(minute)
+        .bind(hour)
+        .bind(config.max_events_per_project_per_minute)
+        .bind(config.max_events_per_project_per_hour)
+        .bind(project.id)
+        .execute(&mut *executor)
+        .await?;
         if consumed.rows_affected() == 0 {
             return Ok(Some(QuotaScope::Project));
         }

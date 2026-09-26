@@ -694,13 +694,6 @@ async fn write_digest_rows(
     tx: &mut sqlx::Transaction<'_, DbBackend>,
     write: &DigestWrite<'_>,
 ) -> AppResult<DigestOutcome> {
-    if let Some(scope) =
-        RateLimitService::try_consume(tx, write.project, write.rate_limit_config, Utc::now())
-            .await?
-    {
-        return Ok(DigestOutcome::RateLimited(scope));
-    }
-
     let (issue, grouping, created, regressed) = find_or_create_issue_and_grouping_inner(
         tx,
         write.project_id,
@@ -742,6 +735,15 @@ async fn write_digest_rows(
     )
     .await?;
 
+    // Last, so the installation row every digest shares is locked only from
+    // here to the commit, as its counter bump always was. A full quota rolls
+    // back everything above with it.
+    if let Some(scope) =
+        RateLimitService::try_consume(tx, write.project, write.rate_limit_config, Utc::now())
+            .await?
+    {
+        return Ok(DigestOutcome::RateLimited(scope));
+    }
     RateLimitService::increment_event_counters(tx, write.project_id).await?;
 
     Ok(DigestOutcome::Written(Box::new(issue), created, regressed))

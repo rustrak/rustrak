@@ -420,7 +420,11 @@ async fn recover_pending_events_once_with_status(
             ingested_at: metadata.ingested_at,
             remote_addr: None,
         };
-        if let Err(e) = processors.errors.process_ref(&metadata, &ctx).await {
+        let result = processors.errors.process_ref(&metadata, &ctx).await;
+        if let Ok(Digested::RateLimited) = result {
+            processors.counters().digest_rate_limited();
+        }
+        if let Err(e) = result {
             if is_missing_event_file(&e) {
                 // Listed a moment ago, finished and deleted by its owner
                 // since: nothing left to replay.

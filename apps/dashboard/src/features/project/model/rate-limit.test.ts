@@ -13,7 +13,8 @@ describe('parseRateLimit', () => {
   });
 
   it('rejects what the server would reject', () => {
-    for (const raw of ['0', '-5', '2.5', 'abc', '1e3']) {
+    // 9007199254740993 would round to ...992 and save a different limit.
+    for (const raw of ['0', '-5', '2.5', 'abc', '1e3', '9007199254740993']) {
       expect(parseRateLimit(raw).ok).toBe(false);
     }
   });

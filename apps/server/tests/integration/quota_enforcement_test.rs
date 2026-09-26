@@ -34,6 +34,14 @@ async fn create_project(pool: &rustrak::db::DbPool) -> Project {
 
 /// Persists an accepted event the way ingest does and returns its metadata.
 async fn accept_event(ingest_dir: &Path, project_id: i32) -> EventMetadata {
+    accept_event_with_message(ingest_dir, project_id, "quota proof").await
+}
+
+async fn accept_event_with_message(
+    ingest_dir: &Path,
+    project_id: i32,
+    message: &str,
+) -> EventMetadata {
     let metadata = EventMetadata {
         event_id: Uuid::new_v4().simple().to_string(),
         project_id,
@@ -44,7 +52,7 @@ async fn accept_event(ingest_dir: &Path, project_id: i32) -> EventMetadata {
         "event_id": metadata.event_id,
         "platform": "javascript",
         "level": "error",
-        "message": "quota proof",
+        "message": message,
     });
     store_event_with_metadata(
         ingest_dir,
@@ -295,4 +303,100 @@ async fn a_project_limit_cannot_raise_the_operators() {
     }
 
     assert_eq!(stored_events(&db.pool, project.id).await, 3);
+}
+
+/// The digest loads the project row before its transaction. A limit lowered
+/// in between must still hold: the count is checked against the limit the
+/// row has now, not the one the digest read.
+#[tokio::test]
+async fn a_limit_lowered_during_a_digest_still_holds() {
+    let db = TestDb::new().await;
+    let stale = create_project(&db.pool).await;
+    let quotas = project_minute_quota(10);
+    wait_clear_of_minute_rollover().await;
+    ProjectService::update(
+        &db.pool,
+        stale.id,
+        rustrak::models::UpdateProject {
+            rate_limit_per_minute: Some(Some(1)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let mut conn = db.pool.acquire().await.unwrap();
+    let mut consume =
+        async || RateLimitService::try_consume(&mut conn, &stale, &quotas, Utc::now()).await;
+    assert!(consume().await.unwrap().is_none(), "the first event fits");
+    assert!(
+        consume().await.unwrap().is_some(),
+        "the second is past the limit set after the row was read"
+    );
+}
+
+/// The quota is counted at the end of the digest transaction, so the rows
+/// written before it (a new issue, its grouping) have to go with the rollback.
+#[tokio::test]
+async fn a_dropped_event_leaves_no_issue_behind() {
+    let db = TestDb::new().await;
+    let project = create_project(&db.pool).await;
+    let ingest_dir = tempfile::tempdir().unwrap();
+    let quotas = project_minute_quota(1);
+    wait_clear_of_minute_rollover().await;
+
+    for message in ["first error", "a different error"] {
+        let metadata = accept_event_with_message(ingest_dir.path(), project.id, message).await;
+        process_error_event(
+            &db.pool,
+            &metadata,
+            ingest_dir.path(),
+            &quotas,
+            null_sourcemap_provider(),
+        )
+        .await
+        .unwrap();
+    }
+
+    let issues: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM issues WHERE project_id = $1")
+        .bind(project.id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(issues, 1);
+}
+
+/// The recovery worker replays pending events on its own path; a drop there
+/// has to reach telemetry as well, or the count understates exactly the
+/// backlog case.
+#[tokio::test]
+async fn a_drop_during_recovery_is_reported_as_rate_limited() {
+    let db = TestDb::new().await;
+    let project = create_project(&db.pool).await;
+    let ingest_dir = tempfile::tempdir().unwrap();
+    let quotas = project_minute_quota(1);
+    wait_clear_of_minute_rollover().await;
+    let counters: &'static rustrak::telemetry::Counters =
+        Box::leak(Box::new(rustrak::telemetry::Counters::new()));
+    let processors = actix_web::web::Data::new(
+        rustrak::digest::processors::Processors::new(
+            ingest_dir.path().to_path_buf(),
+            quotas,
+            null_sourcemap_provider(),
+            None,
+        )
+        .with_counters(counters),
+    );
+    for _ in 0..2 {
+        accept_event(ingest_dir.path(), project.id).await;
+    }
+
+    rustrak::routes::ingest::recover_pending_events_once(
+        db.pool.clone(),
+        processors,
+        ingest_dir.path().to_path_buf(),
+    )
+    .await;
+
+    assert_eq!(counters.snapshot().digest.rate_limited, 1);
 }
