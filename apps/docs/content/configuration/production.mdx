@@ -201,17 +201,17 @@ once at startup and hands out from memory. The whole process idles under
 
 ### Rate limiting
 
-Adjust based on your expected volume:
+The defaults stop a runaway loop without cutting off ordinary spikes, so most
+installs never touch them. Lower them when the hardware is small:
 
 ```bash
-# High volume
-MAX_EVENTS_PER_MINUTE=5000
-MAX_EVENTS_PER_HOUR=50000
-
-# Low volume / constrained resources
-MAX_EVENTS_PER_MINUTE=100
-MAX_EVENTS_PER_HOUR=1000
+# Constrained resources
+MAX_EVENTS_PER_MINUTE=1000
+MAX_EVENTS_PER_HOUR=20000
 ```
+
+See [Rate Limiting](/configuration/environment#rate-limiting) for how the
+windows work.
 
 ## Reliability
 

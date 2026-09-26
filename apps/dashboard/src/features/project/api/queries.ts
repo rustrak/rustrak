@@ -10,6 +10,7 @@ import type {
   OffsetPaginatedResponse,
   Project,
   ProjectStatsSummary,
+  RateLimits,
   Result,
   RustrakError,
 } from '@rustrak/client';
@@ -39,6 +40,14 @@ export async function getProject(
 ): Promise<Result<Project, RustrakError>> {
   const client = await createClient();
   return client.projects.get(id);
+}
+
+/** The server's per-project limits, which a project without its own follows. */
+export async function getRateLimits(): Promise<
+  Result<RateLimits, RustrakError>
+> {
+  const client = await createClient();
+  return client.projects.rateLimits();
 }
 
 /**

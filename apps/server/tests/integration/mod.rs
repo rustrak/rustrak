@@ -18,6 +18,7 @@ mod ingest_test;
 mod issues_api_test;
 mod logs_api_test;
 mod projects_api_test;
+mod quota_enforcement_test;
 mod rate_limit_test;
 mod releases_api_test;
 mod sessions_api_test;

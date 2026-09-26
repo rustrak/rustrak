@@ -338,6 +338,8 @@ mod posthog {
         assert_eq!(p["volume"]["events_24h"], 4500);
         assert_eq!(p["health"]["ingest"]["accepted"], 0);
         assert_eq!(p["config"]["alert_providers"][0], "slack");
+        assert_eq!(p["config"]["quota_customized"], true);
+        assert_eq!(p["health"]["digest"]["rate_limited"], 0);
         assert!(
             p.get("instance_id").is_none(),
             "distinct_id already carries it"

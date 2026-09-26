@@ -28,6 +28,7 @@ pub struct Counters {
     latency: [AtomicU64; LATENCY_BOUNDS_MS.len()],
     digest_ok: AtomicU64,
     digest_failed: AtomicU64,
+    digest_rate_limited: AtomicU64,
     http_5xx_by_route: Mutex<BTreeMap<String, u64>>,
     alerts_failed_by_provider: Mutex<BTreeMap<String, u64>>,
     panics: Mutex<BTreeMap<String, u64>>,
@@ -47,6 +48,7 @@ impl Counters {
             latency: [const { AtomicU64::new(0) }; LATENCY_BOUNDS_MS.len()],
             digest_ok: AtomicU64::new(0),
             digest_failed: AtomicU64::new(0),
+            digest_rate_limited: AtomicU64::new(0),
             http_5xx_by_route: Mutex::new(BTreeMap::new()),
             alerts_failed_by_provider: Mutex::new(BTreeMap::new()),
             panics: Mutex::new(BTreeMap::new()),
@@ -79,6 +81,11 @@ impl Counters {
 
     pub fn digest_failed(&self) {
         self.digest_failed.fetch_add(1, Relaxed);
+    }
+
+    /// An accepted event the quota dropped at digest.
+    pub fn digest_rate_limited(&self) {
+        self.digest_rate_limited.fetch_add(1, Relaxed);
     }
 
     /// `route` is the matched pattern (`/api/issues/{id}`), never the path.
@@ -133,6 +140,7 @@ impl Counters {
             digest: Digest {
                 ok: counter(&self.digest_ok),
                 failed: counter(&self.digest_failed),
+                rate_limited: counter(&self.digest_rate_limited),
             },
             http_5xx_by_route: take(&self.http_5xx_by_route),
             alerts_failed_by_provider: take(&self.alerts_failed_by_provider),
@@ -199,4 +207,6 @@ pub struct Latency {
 pub struct Digest {
     pub ok: u64,
     pub failed: u64,
+    /// Accepted events the quota dropped instead of storing.
+    pub rate_limited: u64,
 }

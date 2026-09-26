@@ -7,7 +7,7 @@ use crate::auth::SentryAuth;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::digest::processors::{
-    is_retryable_write_contention, Processor, ProcessorCtx, Processors, SessionItem,
+    is_retryable_write_contention, Digested, Processor, ProcessorCtx, Processors, SessionItem,
 };
 use crate::error::{AppError, AppResult};
 use crate::ingest::storage::{is_missing_event_file, list_pending_event_metadata_except};
@@ -56,6 +56,7 @@ pub async fn ingest_envelope(
         );
         return Ok(HttpResponse::TooManyRequests()
             .insert_header(("Retry-After", exceeded.retry_after.to_string()))
+            .insert_header(("X-Sentry-Rate-Limits", exceeded.sentry_rate_limits_header()))
             .json(serde_json::json!({
                 "error": "rate_limit_exceeded",
                 "retry_after": exceeded.retry_after
@@ -320,8 +321,12 @@ pub async fn digest_stored_event(processors: &Processors, pool: &DbPool, metadat
     };
     for attempt in 0..4 {
         match processors.errors.process_ref(metadata, &ctx).await {
-            Ok(()) => {
+            Ok(Digested::Stored) => {
                 processors.counters().digest_ok();
+                break;
+            }
+            Ok(Digested::RateLimited) => {
+                processors.counters().digest_rate_limited();
                 break;
             }
             Err(e) if is_retryable_write_contention(&e) && attempt < 3 => {
@@ -415,7 +420,11 @@ async fn recover_pending_events_once_with_status(
             ingested_at: metadata.ingested_at,
             remote_addr: None,
         };
-        if let Err(e) = processors.errors.process_ref(&metadata, &ctx).await {
+        let result = processors.errors.process_ref(&metadata, &ctx).await;
+        if let Ok(Digested::RateLimited) = result {
+            processors.counters().digest_rate_limited();
+        }
+        if let Err(e) = result {
             if is_missing_event_file(&e) {
                 // Listed a moment ago, finished and deleted by its owner
                 // since: nothing left to replay.

@@ -1,4 +1,3 @@
-use actix_cors::Cors;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{middleware, web, App, HttpServer};
 
@@ -195,6 +194,7 @@ async fn main() -> std::io::Result<()> {
                 smtp_configured: std::env::var("SMTP_HOST").is_ok_and(|h| !h.trim().is_empty()),
                 session_secret_set: config.security.session_secret_key.is_some(),
                 alert_providers: Vec::new(),
+                quota_customized: config.rate_limit.is_customized(),
             },
             sqlite_path: rustrak::telemetry::sqlite_path_from_url(&config.database.url),
             ingest_dir: ingest_dir.clone(),
@@ -256,24 +256,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     let server = HttpServer::new(move || {
-        // CORS configuration - permissive for event ingestion
-        // Sentry SDKs can send from any origin. CORS protects the user from
-        // site A sending to site B, but in error tracking the app intentionally
-        // sends data to Rustrak. There's nothing to protect.
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-            .allowed_headers(vec![
-                actix_web::http::header::AUTHORIZATION,
-                actix_web::http::header::ACCEPT,
-                actix_web::http::header::CONTENT_TYPE,
-                actix_web::http::header::CONTENT_ENCODING,
-                // Headers used by Sentry SDKs
-                actix_web::http::header::HeaderName::from_static("x-sentry-auth"),
-                actix_web::http::header::HeaderName::from_static("sentry-trace"),
-                actix_web::http::header::HeaderName::from_static("baggage"),
-            ])
-            .max_age(3600);
+        let cors = rustrak::middleware::cors::cors();
 
         let sourcemap_provider_data = web::Data::new(Arc::clone(&sourcemap_provider));
         let sourcemap_store_data = web::Data::new(Arc::clone(&sourcemap_store));

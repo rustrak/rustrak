@@ -4,6 +4,7 @@ import {
   createProjectSchema,
   offsetPaginatedResponseSchema,
   projectSchema,
+  rateLimitsSchema,
   updateProjectSchema,
 } from '../schemas/index.js';
 import type {
@@ -11,6 +12,7 @@ import type {
   ListProjectsOptions,
   OffsetPaginatedResponse,
   Project,
+  RateLimits,
   UpdateProject,
 } from '../types/index.js';
 import { BaseResource } from './base.js';
@@ -46,6 +48,16 @@ export class ProjectsResource extends BaseResource {
     return this.request(
       () => this.http.get(url),
       offsetPaginatedResponseSchema(projectSchema),
+    );
+  }
+
+  /**
+   * The server's per-project limits, which a project without its own follows
+   */
+  async rateLimits(): Promise<Result<RateLimits, RustrakError>> {
+    return this.request(
+      () => this.http.get('api/rate-limits'),
+      rateLimitsSchema,
     );
   }
 

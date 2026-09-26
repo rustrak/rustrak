@@ -41,6 +41,7 @@ pub fn sample_report() -> Report {
             smtp_configured: false,
             session_secret_set: true,
             alert_providers: vec!["slack".to_string()],
+            quota_customized: true,
         },
     }
 }

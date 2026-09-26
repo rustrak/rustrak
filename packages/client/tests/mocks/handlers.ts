@@ -179,6 +179,9 @@ export const mockProjects = [
     dsn: 'http://123e4567-e89b-12d3-a456-426614174000@localhost:8080/1',
     stored_event_count: 100,
     digested_event_count: 95,
+    rate_limited_event_count: 0,
+    rate_limit_per_minute: null,
+    rate_limit_per_hour: null,
     created_at: '2026-01-20T10:00:00.000Z',
     updated_at: '2026-01-20T10:00:00.000Z',
     platform: 'javascript',
@@ -191,6 +194,9 @@ export const mockProjects = [
     dsn: 'http://223e4567-e89b-12d3-a456-426614174000@localhost:8080/2',
     stored_event_count: 50,
     digested_event_count: 48,
+    rate_limited_event_count: 0,
+    rate_limit_per_minute: null,
+    rate_limit_per_hour: null,
     created_at: '2026-01-19T10:00:00.000Z',
     updated_at: '2026-01-19T10:00:00.000Z',
     platform: null,
@@ -586,6 +592,9 @@ export const handlers = [
       dsn: 'http://923e4567-e89b-12d3-a456-426614174000@localhost:8080/3',
       stored_event_count: 0,
       digested_event_count: 0,
+      rate_limited_event_count: 0,
+      rate_limit_per_minute: null,
+      rate_limit_per_hour: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       // Mirrors the server: an omitted platform stays NULL, a supplied one is
@@ -2252,7 +2261,13 @@ export const handlers = [
   // AI Agent Monitoring — per-tool table
   http.get(`${BASE_URL}/api/projects/:projectId/agents/tools/stats`, () => {
     return HttpResponse.json([
-      { tool: 'web_search', calls: 14, errors: 1, avg_ms: 320.0, p95_ms: 910.0 },
+      {
+        tool: 'web_search',
+        calls: 14,
+        errors: 1,
+        avg_ms: 320.0,
+        p95_ms: 910.0,
+      },
     ]);
   }),
 

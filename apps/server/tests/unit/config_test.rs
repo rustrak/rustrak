@@ -23,10 +23,25 @@ fn test_rate_limit_config_defaults() {
 
     let config = RateLimitConfig::from_env();
 
-    assert_eq!(config.max_events_per_minute, 1000);
-    assert_eq!(config.max_events_per_hour, 10000);
-    assert_eq!(config.max_events_per_project_per_minute, 500);
-    assert_eq!(config.max_events_per_project_per_hour, 5000);
+    // A brake for a runaway loop, not a cap on ordinary spikes.
+    assert_eq!(config.max_events_per_minute, 60_000);
+    assert_eq!(config.max_events_per_hour, 1_000_000);
+    assert_eq!(config.max_events_per_project_per_minute, 20_000);
+    assert_eq!(config.max_events_per_project_per_hour, 300_000);
+}
+
+/// Telemetry reports whether an operator moved any limit, never the numbers:
+/// that is what tells "hits the defaults" from "lowered them on purpose".
+#[test]
+fn rate_limit_config_knows_whether_it_was_customized() {
+    assert!(!RateLimitConfig::default().is_customized());
+
+    let raised = RateLimitConfig {
+        max_events_per_project_per_hour: RateLimitConfig::default().max_events_per_project_per_hour
+            + 1,
+        ..RateLimitConfig::default()
+    };
+    assert!(raised.is_customized());
 }
 
 #[test]
@@ -62,8 +77,9 @@ fn test_rate_limit_config_invalid_values_use_defaults() {
     let config = RateLimitConfig::from_env();
 
     // Should fall back to defaults
-    assert_eq!(config.max_events_per_minute, 1000);
-    assert_eq!(config.max_events_per_hour, 10000);
+    let defaults = RateLimitConfig::default();
+    assert_eq!(config.max_events_per_minute, defaults.max_events_per_minute);
+    assert_eq!(config.max_events_per_hour, defaults.max_events_per_hour);
 
     // Clean up
     std::env::remove_var("MAX_EVENTS_PER_MINUTE");

@@ -264,6 +264,7 @@ async fn update_with_taken_slug_blames_slug() {
             name: None,
             platform: None,
             slug: Some("taken-slug-project".to_string()),
+            ..Default::default()
         },
     )
     .await;
@@ -286,6 +287,7 @@ async fn update_losing_the_slug_race_blames_slug() {
             name: None,
             platform: None,
             slug: Some("raced-slug".to_string()),
+            ..Default::default()
         },
     )
     .await;
@@ -307,6 +309,7 @@ async fn update_with_taken_name_blames_name() {
             name: Some("Taken Name".to_string()),
             platform: None,
             slug: None,
+            ..Default::default()
         },
     )
     .await;

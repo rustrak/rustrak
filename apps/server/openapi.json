@@ -1078,6 +1078,7 @@
                           "dsn",
                           "stored_event_count",
                           "digested_event_count",
+                          "rate_limited_event_count",
                           "created_at",
                           "updated_at"
                         ],
@@ -1105,6 +1106,26 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "rate_limit_per_hour": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64"
+                          },
+                          "rate_limit_per_minute": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64",
+                            "description": "The project's own limits, or `null` when it follows the operator's."
+                          },
+                          "rate_limited_event_count": {
+                            "type": "integer",
+                            "format": "int64",
+                            "description": "Events the quota dropped after ingest had accepted them."
                           },
                           "sentry_key": {
                             "type": "string",
@@ -9359,6 +9380,7 @@
           "dsn",
           "stored_event_count",
           "digested_event_count",
+          "rate_limited_event_count",
           "created_at",
           "updated_at"
         ],
@@ -9386,6 +9408,26 @@
               "string",
               "null"
             ]
+          },
+          "rate_limit_per_hour": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "rate_limit_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The project's own limits, or `null` when it follows the operator's."
+          },
+          "rate_limited_event_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Events the quota dropped after ingest had accepted them."
           },
           "sentry_key": {
             "type": "string",
@@ -10452,6 +10494,22 @@
               "null"
             ],
             "description": "Manual override of the project's platform, such as `python-django` or\n`javascript-nextjs`. Rejected with a 400 if it is not one of the\nsupported values.\n\nThe supported set is wider than the platforms an event may declare, so\nframework-specific identifiers are accepted here. An update overwrites\nany auto-assigned value, which is how a wrong detection is corrected.\nSending `null` leaves the current value untouched rather than clearing\nit."
+          },
+          "rate_limit_per_hour": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The same for the hour, against `MAX_EVENTS_PER_PROJECT_PER_HOUR`."
+          },
+          "rate_limit_per_minute": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The project's own events-per-minute limit. It can only tighten the\noperator's `MAX_EVENTS_PER_PROJECT_PER_MINUTE`, never raise it.\nAbsent leaves it as it is; `null` removes it."
           },
           "slug": {
             "type": [
