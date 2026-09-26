@@ -968,6 +968,19 @@ export const handlers = [
     },
   ),
 
+  http.get(
+    `${BASE_URL}/api/projects/:projectId/issues/:issueId/events/:eventId/navigation`,
+    () =>
+      HttpResponse.json({
+        current_index: 1,
+        total_count: 1206,
+        first_event_id: '523e4567-e89b-12d3-a456-426614174000',
+        last_event_id: '623e4567-e89b-12d3-a456-426614174000',
+        prev_event_id: null,
+        next_event_id: '723e4567-e89b-12d3-a456-426614174000',
+      }),
+  ),
+
   // Auth Tokens
   http.get(`${BASE_URL}/api/tokens`, () => {
     return HttpResponse.json(mockTokens);

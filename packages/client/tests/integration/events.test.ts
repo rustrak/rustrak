@@ -131,4 +131,21 @@ describe('EventsResource Integration', () => {
       expect(new Date(event.ingested_at).toISOString()).toBe(event.ingested_at);
     });
   });
+
+  describe('navigation()', () => {
+    it("places the event among its issue's events", async () => {
+      const nav = expectOk(
+        await client.events.navigation(
+          1,
+          '323e4567-e89b-12d3-a456-426614174000',
+          '523e4567-e89b-12d3-a456-426614174000',
+        ),
+      );
+
+      expect(nav.current_index).toBe(1);
+      expect(nav.total_count).toBe(1206);
+      expect(nav.prev_event_id).toBeNull();
+      expect(nav.next_event_id).toBe('723e4567-e89b-12d3-a456-426614174000');
+    });
+  });
 });
