@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::models::{AlertType, Event, EventSummary};
+use crate::models::{AlertType, Event, EventNavigation, EventSummary};
 use crate::pagination::{EventCursor, SortOrder};
 use crate::services::grouping::DenormalizedFields;
 
@@ -115,6 +115,50 @@ impl EventService {
     }
 
     /// Gets an event by ID
+    /// Where `event_id` sits among its issue's events, ordered like the
+    /// ascending list: `(timestamp, id)`.
+    pub async fn navigation(
+        pool: &DbPool,
+        issue_id: Uuid,
+        event_id: Uuid,
+    ) -> AppResult<EventNavigation> {
+        let timestamp: DateTime<Utc> =
+            sqlx::query_scalar("SELECT timestamp FROM events WHERE issue_id = $1 AND id = $2")
+                .bind(issue_id)
+                .bind(event_id)
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))?;
+
+        // Each subquery is an index range on `(issue_id, timestamp)`, so the
+        // cost does not grow with the page the reader is on.
+        let navigation = sqlx::query_as::<_, EventNavigation>(
+            r#"
+            SELECT
+                (SELECT COUNT(*) FROM events
+                  WHERE issue_id = $1 AND (timestamp, id) <= ($2, $3)) AS current_index,
+                (SELECT COUNT(*) FROM events WHERE issue_id = $1) AS total_count,
+                (SELECT id FROM events WHERE issue_id = $1
+                  ORDER BY timestamp ASC, id ASC LIMIT 1) AS first_event_id,
+                (SELECT id FROM events WHERE issue_id = $1
+                  ORDER BY timestamp DESC, id DESC LIMIT 1) AS last_event_id,
+                (SELECT id FROM events
+                  WHERE issue_id = $1 AND (timestamp, id) < ($2, $3)
+                  ORDER BY timestamp DESC, id DESC LIMIT 1) AS prev_event_id,
+                (SELECT id FROM events
+                  WHERE issue_id = $1 AND (timestamp, id) > ($2, $3)
+                  ORDER BY timestamp ASC, id ASC LIMIT 1) AS next_event_id
+            "#,
+        )
+        .bind(issue_id)
+        .bind(timestamp)
+        .bind(event_id)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(navigation)
+    }
+
     pub async fn get_by_id(pool: &DbPool, id: Uuid) -> AppResult<Event> {
         let event = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = $1")
             .bind(id)
