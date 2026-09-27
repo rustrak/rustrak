@@ -47,7 +47,7 @@ RUN mkdir -p /data /data/sourcemaps && chown -R 65532:65532 /data
 #
 # `apps/dashboard` builds to `apps/server/static` via
 # `scripts/bundle-dashboard.sh`, which is what `pnpm build --filter=@rustrak/server`
-# runs — so `static/` is already inside this context when the JavaScript side
+# runs, so `static/` is already inside this context when the JavaScript side
 # was built first, and absent when it was not. `mkdir -p` makes the next stage's
 # COPY unconditional either way, and an empty directory is exactly what the
 # server reads as "no dashboard, serve the API only".

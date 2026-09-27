@@ -108,6 +108,7 @@ export type {
   ProjectStatsSummary,
   ProjectStorage,
   ProviderType,
+  RateLimits,
   RegisterRequest,
   ReleaseHealthRow,
   ReleaseHealthStatsOptions,

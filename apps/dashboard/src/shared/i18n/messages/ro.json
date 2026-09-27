@@ -7,7 +7,12 @@
     "ro": "Română",
     "label": "Limbă",
     "storedOnAccount": "Salvat în contul tău.",
-    "saveFailed": "Nu s-a putut salva limba."
+    "saveFailed": "Nu s-a putut salva limba.",
+    "timeZoneLabel": "Fus orar",
+    "timeZonePlaceholder": "Caută fusuri orare...",
+    "timeZoneNoResults": "Niciun fus orar găsit.",
+    "timeZoneHint": "Toate datele și orele sunt afișate în acest fus. Alege UTC pentru a le citi așa cum le înregistrează evenimentele.",
+    "timeZoneSaveFailed": "Nu s-a putut salva fusul orar."
   },
   "app": {
     "title": "Rustrak - Sistem de urmărire a erorilor",
@@ -531,6 +536,19 @@
       "compatSteps": "pentru pașii de configurare ai acestei platforme.",
       "commandLabel": "comandă",
       "exampleLabel": "exemplu"
+    },
+    "rateLimits": {
+      "title": "Limite de evenimente",
+      "description": "Câte evenimente poate stoca acest proiect. Peste o limită, răspunsul este 429, iar SDK-ul așteaptă înainte să trimită altele.",
+      "perMinute": "Evenimente pe minut",
+      "perHour": "Evenimente pe oră",
+      "limitDescription": "Lasă gol pentru a folosi limita serverului. O valoare aici poate fi doar mai mică decât a serverului, niciodată mai mare.",
+      "save": "Salvează",
+      "saved": "Limită salvată",
+      "saveFailed": "Limita nu a putut fi salvată",
+      "invalid": "Introdu un număr întreg de cel puțin 1 sau lasă gol.",
+      "dropped": "Eliminate de limită",
+      "droppedDescription": "Evenimente acceptate, dar nestocate, pentru că o limită fusese deja atinsă."
     }
   },
   "alerts": {

@@ -27,7 +27,9 @@ impl ProjectService {
             r#"
             SELECT id, name, slug, sentry_key, stored_event_count,
                    digested_event_count, created_at, updated_at, platform,
-                   quota_exceeded_until, quota_exceeded_reason, next_quota_check
+                   quota_exceeded_until, quota_exceeded_reason, next_quota_check,
+                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
+                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour
             FROM projects
             ORDER BY created_at DESC
             "#,
@@ -62,7 +64,9 @@ impl ProjectService {
             r#"
             SELECT id, name, slug, sentry_key, stored_event_count,
                    digested_event_count, created_at, updated_at, platform,
-                   quota_exceeded_until, quota_exceeded_reason, next_quota_check
+                   quota_exceeded_until, quota_exceeded_reason, next_quota_check,
+                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
+                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour
             FROM projects
             {}
             LIMIT $1 OFFSET $2
@@ -120,7 +124,9 @@ impl ProjectService {
             r#"
             SELECT id, name, slug, sentry_key, stored_event_count,
                    digested_event_count, created_at, updated_at, platform,
-                   quota_exceeded_until, quota_exceeded_reason, next_quota_check
+                   quota_exceeded_until, quota_exceeded_reason, next_quota_check,
+                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
+                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour
             FROM projects
             WHERE id IN ({})
             {}
@@ -144,7 +150,9 @@ impl ProjectService {
             r#"
             SELECT id, name, slug, sentry_key, stored_event_count,
                    digested_event_count, created_at, updated_at, platform,
-                   quota_exceeded_until, quota_exceeded_reason, next_quota_check
+                   quota_exceeded_until, quota_exceeded_reason, next_quota_check,
+                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
+                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour
             FROM projects
             WHERE id = $1
             "#,
@@ -167,7 +175,9 @@ impl ProjectService {
             r#"
             SELECT id, name, slug, sentry_key, stored_event_count,
                    digested_event_count, created_at, updated_at, platform,
-                   quota_exceeded_until, quota_exceeded_reason, next_quota_check
+                   quota_exceeded_until, quota_exceeded_reason, next_quota_check,
+                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
+                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour
             FROM projects
             WHERE sentry_key = $1
             "#,
@@ -322,6 +332,15 @@ impl ProjectService {
         };
 
         let platform = Self::validate_platform(input.platform.as_deref())?;
+        for (field, limit) in [
+            ("rate_limit_per_minute", input.rate_limit_per_minute),
+            ("rate_limit_per_hour", input.rate_limit_per_hour),
+        ] {
+            if matches!(limit, Some(Some(value)) if value < 1) {
+                return Err(AppError::Validation(format!("{field} must be at least 1"))
+                    .with_field(field, FieldErrorCode::Invalid));
+            }
+        }
 
         let slug = match input.slug {
             Some(ref slug) => {
@@ -357,7 +376,12 @@ impl ProjectService {
             None => None,
         };
 
-        if name.is_none() && platform.is_none() && slug.is_none() {
+        if name.is_none()
+            && platform.is_none()
+            && slug.is_none()
+            && input.rate_limit_per_minute.is_none()
+            && input.rate_limit_per_hour.is_none()
+        {
             // If no fields to update, return project unchanged
             return Self::get_by_id(pool, id).await;
         }
@@ -370,17 +394,25 @@ impl ProjectService {
             SET name = COALESCE($1, name),
                 platform = COALESCE($2, platform),
                 slug = COALESCE($3, slug),
+                rate_limit_per_minute = CASE WHEN $5 THEN $6 ELSE rate_limit_per_minute END,
+                rate_limit_per_hour = CASE WHEN $7 THEN $8 ELSE rate_limit_per_hour END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $4
             RETURNING id, name, slug, sentry_key, stored_event_count,
                       digested_event_count, created_at, updated_at, platform,
-                      quota_exceeded_until, quota_exceeded_reason, next_quota_check
+                      quota_exceeded_until, quota_exceeded_reason, next_quota_check,
+                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
+                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour
             "#,
         )
         .bind(name)
         .bind(platform)
         .bind(slug.as_deref())
         .bind(id)
+        .bind(input.rate_limit_per_minute.is_some())
+        .bind(input.rate_limit_per_minute.flatten())
+        .bind(input.rate_limit_per_hour.is_some())
+        .bind(input.rate_limit_per_hour.flatten())
         .fetch_one(pool)
         .await
         .map_err(|e| {
@@ -549,7 +581,9 @@ impl ProjectService {
             VALUES ($1, $2, $3, $4)
             RETURNING id, name, slug, sentry_key, stored_event_count,
                       digested_event_count, created_at, updated_at, platform,
-                      quota_exceeded_until, quota_exceeded_reason, next_quota_check
+                      quota_exceeded_until, quota_exceeded_reason, next_quota_check,
+                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
+                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour
         "#;
 
         let result = sqlx::query_as::<_, Project>(INSERT_SQL)

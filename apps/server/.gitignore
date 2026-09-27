@@ -56,3 +56,6 @@ doc/
 # The compiled dashboard, copied here by scripts/bundle-dashboard.sh.
 # A build artifact of apps/dashboard, never a source file.
 static/
+
+# Local SQLite data and source maps from .env.example
+data/

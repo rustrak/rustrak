@@ -210,7 +210,7 @@ The server runs as a local process over stdio — no open network port, no daemo
 
 ## What is Rustrak?
 
-[Rustrak](https://rustrak.github.io/rustrak) is a self-hosted error tracking server written in Rust that is fully compatible with any Sentry SDK. No code changes needed if you're migrating from Sentry. Runs on ~50 MB of memory as a single binary or Docker image.
+[Rustrak](https://rustrak.github.io/rustrak) is a self-hosted error tracking server written in Rust that accepts events from any Sentry SDK: point the SDK's DSN at it and nothing else changes. One container serves the API and the dashboard.
 
 - [Getting Started](https://rustrak.github.io/rustrak/getting-started/overview)
 - [Self-Hosting Guide](https://rustrak.github.io/rustrak/configuration/production)

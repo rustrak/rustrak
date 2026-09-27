@@ -13,7 +13,10 @@ export const Route = createFileRoute(
     meta: [{ title: translator('settings')('general.meta.title') }],
   }),
   loader: ({ params: { id }, context: { queryClient } }) =>
-    queryClient.ensureQueryData(projectQueries.detail(id)),
+    Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(projectQueries.rateLimits()),
+    ]),
   component: GeneralSettingsPage,
 });
 
@@ -21,6 +24,7 @@ function GeneralSettingsPage() {
   const t = useTranslations('settings');
   const { id } = Route.useParams();
   const { data: project } = useSuspenseQuery(projectQueries.detail(id));
+  const { data: rateLimits } = useSuspenseQuery(projectQueries.rateLimits());
 
   if (!project.success) {
     return <LoadFailure error={project.error} title={t('loadProjectFailed')} />;
@@ -35,7 +39,11 @@ function GeneralSettingsPage() {
         <p className="text-muted-foreground mt-1">{t('general.subtitle')}</p>
       </div>
 
-      <GeneralSettingsForm project={project.data} />
+      <GeneralSettingsForm
+        project={project.data}
+        // A failure here costs only the placeholder, not the page.
+        serverLimits={rateLimits.success ? rateLimits.data : null}
+      />
     </>
   );
 }

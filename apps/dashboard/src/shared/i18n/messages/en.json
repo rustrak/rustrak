@@ -7,7 +7,12 @@
     "ro": "Română",
     "label": "Language",
     "storedOnAccount": "Saved to your account.",
-    "saveFailed": "Could not save your language."
+    "saveFailed": "Could not save your language.",
+    "timeZoneLabel": "Timezone",
+    "timeZonePlaceholder": "Search timezones...",
+    "timeZoneNoResults": "No timezone found.",
+    "timeZoneHint": "Every date and time is shown in this zone. Pick UTC to read them the way events record them.",
+    "timeZoneSaveFailed": "Could not save your timezone."
   },
   "app": {
     "title": "Rustrak - Error Tracking System",
@@ -531,6 +536,19 @@
       "compatSteps": "for the setup steps for this platform.",
       "commandLabel": "command",
       "exampleLabel": "example"
+    },
+    "rateLimits": {
+      "title": "Event limits",
+      "description": "How many events this project may store. Events past a limit are answered with 429, so the SDK waits before sending more.",
+      "perMinute": "Events per minute",
+      "perHour": "Events per hour",
+      "limitDescription": "Leave empty to use the server's limit. A value here can only be lower than the server's, never higher.",
+      "save": "Save",
+      "saved": "Limit saved",
+      "saveFailed": "Failed to save the limit",
+      "invalid": "Enter a whole number of at least 1, or leave it empty.",
+      "dropped": "Dropped by the limit",
+      "droppedDescription": "Events that were accepted but not stored because a limit was already reached."
     }
   },
   "alerts": {

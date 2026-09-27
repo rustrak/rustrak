@@ -1,6 +1,6 @@
 # Source Maps
 
-Source maps let Rustrak translate minified JavaScript stack traces into their original source locations. When source maps are uploaded, errors show the real file name, line number, and source code — not the minified bundle.
+Source maps let Rustrak translate minified JavaScript stack traces into their original source locations. When source maps are uploaded, errors show the real file name, line number, and source code, not the minified bundle.
 
 ## Before and after
 
@@ -173,7 +173,7 @@ file; the explicit option wins when both are present.
 > **The `url` must point to Rustrak.** Source map upload is a separate channel from
 > error reporting: your DSN controls where **events** go, but the build plugin
 > decides where **source maps** go. If you leave `url` unset, the plugin uploads to
-> Sentry's hosted service (`sentry.io`) by default — pointing the DSN at Rustrak does
+> Sentry's hosted service (`sentry.io`) by default; pointing the DSN at Rustrak does
 > not change this. And if `authToken` is missing, the upload is **silently skipped**
 > and the build still succeeds. Other SDKs use the same two options under different
 > names (e.g. `sentryUrl` for `@sentry/nextjs`, `--url` for `sentry-cli`).
@@ -182,15 +182,15 @@ file; the explicit option wins when both are present.
 
 The SDK uploads source maps in three steps during your build:
 
-1. **Capability check** — The SDK asks the server what chunk sizes it accepts.
-2. **Chunk upload** — Source map files are split into chunks and uploaded. Each chunk is keyed by its SHA-1 hash (content-addressable storage).
-3. **Assembly** — The SDK tells the server which chunks form a complete artifact bundle. The server assembles the ZIP and confirms.
+1. **Capability check**: The SDK asks the server what chunk sizes it accepts.
+2. **Chunk upload**: Source map files are split into chunks and uploaded. Each chunk is keyed by its SHA-1 hash (content-addressable storage).
+3. **Assembly**: The SDK tells the server which chunks form a complete artifact bundle. The server assembles the ZIP and confirms.
 
 From your perspective: run `vite build` (or `webpack`) and it happens automatically.
 
 Because the upload runs **during the build**, the credentials (`authToken` / `url`)
 have to be available at build time. If you build in Docker or CI, pass the token to
-the build itself — a variable set only on the running container comes too late, and
+the build itself: a variable set only on the running container comes too late, and
 the upload is silently skipped.
 
 ## Storage
@@ -219,9 +219,9 @@ The directory must be writable by the Rustrak process.
 
 **Sizing estimate:** Each source map chunk is ~2MB. A typical app with 50 source files uses ~100MB. Scale as needed.
 
-## Production: shared volume required
+## Multiple instances: shared volume required
 
-If you run multiple Rustrak instances behind a load balancer, **all instances must share the same `SOURCEMAP_STORAGE_PATH`**. Chunks uploaded to one instance need to be readable by any other instance.
+Running several Rustrak instances behind a load balancer requires PostgreSQL (SQLite has a single writer), and **all instances must share the same `SOURCEMAP_STORAGE_PATH`**. Chunks uploaded to one instance need to be readable by any other instance.
 
 Mount a shared network volume (NFS, AWS EFS, etc.) and set the same `SOURCEMAP_STORAGE_PATH` on every instance:
 
@@ -229,10 +229,11 @@ Mount a shared network volume (NFS, AWS EFS, etc.) and set the same `SOURCEMAP_S
 # docker-compose.yml (multi-server example)
 services:
   rustrak:
-    image: rustrak/rustrak-server:latest
+    image: rustrak/rustrak-server:postgres
     volumes:
       - sourcemaps_nfs:/var/lib/rustrak/sourcemaps
     environment:
+      - DATABASE_URL=${DATABASE_URL}
       - SOURCEMAP_STORAGE_PATH=/var/lib/rustrak/sourcemaps
 ```
 

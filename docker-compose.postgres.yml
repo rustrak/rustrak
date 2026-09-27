@@ -1,0 +1,50 @@
+# Rustrak with PostgreSQL: one container serves the dashboard and the API on
+# 8080, next to a PostgreSQL service.
+#
+#   export SESSION_SECRET_KEY=$(openssl rand -hex 32)
+#   export CREATE_SUPERUSER=admin@example.com:changeme123
+#   export POSTGRES_PASSWORD=$(openssl rand -hex 16)
+#   docker compose -f docker-compose.postgres.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rustrak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?generate one with openssl rand -hex 16}
+      POSTGRES_DB: ${POSTGRES_DB:-rustrak}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rustrak} -d ${POSTGRES_DB:-rustrak}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  server:
+    image: rustrak/rustrak-server:postgres
+    # Behind a reverse proxy on the same Docker network, delete this `ports`
+    # block: the proxy reaches the container on 8080 and nothing needs a host
+    # port. Full setup: https://rustrak.github.io/rustrak/configuration/production#reverse-proxy
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-rustrak}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rustrak}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
+      - CREATE_SUPERUSER=${CREATE_SUPERUSER:-}
+      # The address people and SDKs reach, e.g. https://rustrak.example.com.
+      # Without it the DSN carries the bind address, which nothing can reach.
+      - PUBLIC_URL=${PUBLIC_URL:-}
+      # Anonymous telemetry is on by default. Uncomment to turn it off.
+      # - RUSTRAK_TELEMETRY=off
+    # Uploaded source maps live here; the database is in PostgreSQL.
+    volumes:
+      - rustrak_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  rustrak_data:

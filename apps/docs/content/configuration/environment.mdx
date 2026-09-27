@@ -1,41 +1,95 @@
 # Environment Variables
 
-All configuration options for the Rustrak server.
+All configuration options for the Rustrak server. None is needed to start it
+except `SESSION_SECRET_KEY` in production: the defaults run SQLite, serve the
+dashboard and listen on `8080`.
 
-## Required
+## Server
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | Database connection string. **Optional for SQLite** (defaults to `sqlite:///data/rustrak.db`). Required for PostgreSQL. |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `0.0.0.0` | TCP bind address |
+| `PORT` | `8080` | Server port, for the API and the dashboard |
+| `RUST_LOG` | `info` | Log level (trace, debug, info, warn, error) |
+| `RUSTRAK_LOG_TIMEZONE` | `UTC` | IANA timezone name for log timestamp display (e.g. `Asia/Shanghai`) |
+| `PUBLIC_URL` | *(none)* | Public-facing URL used in DSN strings and alert links |
 
-### DATABASE_URL
+### HOST
 
-Rustrak supports two database backends selected at compile time.
+The network interface the server listens on. The default (`0.0.0.0`) means "all interfaces" and is correct for Docker, so you don't need to set it.
 
-**SQLite**:
-
-```bash
-# Relative file path
-DATABASE_URL=sqlite://./rustrak.db
-
-# Absolute path
-DATABASE_URL=sqlite:///var/lib/rustrak/rustrak.db
-
-# In-memory (for testing only — data lost on restart)
-DATABASE_URL=sqlite::memory:
-```
-
-**PostgreSQL**:
+Only change this if you want to restrict access to a specific interface:
 
 ```bash
-# Format
-postgres://username:password@host:port/database
-
-# Examples
-DATABASE_URL=postgres://rustrak:rustrak@localhost:5432/rustrak
-DATABASE_URL=postgres://rustrak:rustrak@postgres:5432/rustrak  # Docker
-DATABASE_URL=postgres://user:pass@host:5432/rustrak?sslmode=require  # With SSL
+HOST=127.0.0.1  # loopback only, e.g. for local dev behind a local proxy
 ```
+
+> **Docker note:** If you set `HOST=127.0.0.1` inside a container, the port mapping won't work and the server will be unreachable.
+
+### PUBLIC_URL
+
+The address your SDKs and your team reach the server on. Rustrak writes it into every DSN and, unless `DASHBOARD_URL` says otherwise, into the issue links in alert notifications. Must include the scheme (`http://` or `https://`). Trailing slashes are stripped automatically.
+
+```bash
+# Production (behind reverse proxy)
+PUBLIC_URL=https://rustrak.example.com
+
+# Self-hosted with custom port
+PUBLIC_URL=http://192.168.1.10:9090
+```
+
+**Why this matters:** `HOST=0.0.0.0` is the TCP *bind* address. It means "listen on all interfaces" and is not a routable address. Without `PUBLIC_URL`, the DSN shown in the dashboard contains `http://0.0.0.0:8080/...`, which your SDK cannot reach. Set it even locally, e.g. `PUBLIC_URL=http://localhost:8080`.
+
+### RUSTRAK_LOG_TIMEZONE
+
+Converts the timestamps in the server's process logs (stdout: HTTP requests, background workers, event digestion, everything under `RUST_LOG`) to a specific IANA timezone for easier correlation with logs from other systems.
+
+```bash
+RUSTRAK_LOG_TIMEZONE=Asia/Shanghai
+```
+
+Use an IANA zone name (e.g. `Asia/Shanghai`, `America/New_York`, `Europe/Madrid`), not a fixed UTC offset, so daylight saving time is handled correctly. If unset, or set to a name that isn't a recognized IANA zone, logs fall back to UTC and the server still starts normally (a warning is logged when the value is invalid).
+
+**Scope:** this only affects how log lines are displayed. Event and issue timestamps are always stored and returned as UTC.
+
+## Dashboard
+
+The dashboard is on by default, served from `/` on the same port and origin as the API. Nothing here needs setting for that.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RUSTRAK_DASHBOARD` | `on` | Whether to serve the dashboard at all. `off` keeps the server API-only |
+| `DASHBOARD_URL` | `PUBLIC_URL` | Base URL for the issue links in notifications |
+| `RUSTRAK_DASHBOARD_DIR` | `./static` | Where the compiled dashboard lives, relative to the working directory or absolute |
+
+### RUSTRAK_DASHBOARD
+
+`off` keeps the dashboard unmounted even though the image carries a build. Use it for a server that should answer the API only, or when the dashboard runs from [another host](/configuration/production#dashboard-on-its-own-host).
+
+```bash
+RUSTRAK_DASHBOARD=off
+```
+
+`on`, `off`, `true`, `false`, `1` and `0` are accepted. Anything else refuses to start, deliberately: a typo that silently left the dashboard on would expose a UI you meant to keep off the box.
+
+### DASHBOARD_URL
+
+The issue links in alert notifications follow `PUBLIC_URL`, because the server serves the dashboard itself. Set `DASHBOARD_URL` only when people open the dashboard on a different host than `PUBLIC_URL`: a separate ingestion hostname, or a `rustrak-ui` container. With neither set, the links use the server's bind address.
+
+### RUSTRAK_DASHBOARD_DIR
+
+The image already puts the dashboard at `/app/static`, which is what the default resolves to, so you do not normally set this. The dashboard is mounted when the directory holds an `index.html` and skipped when it does not.
+
+```bash
+# Serve a dashboard you built and mounted yourself
+RUSTRAK_DASHBOARD_DIR=/srv/rustrak-dashboard
+```
+
+`RUSTRAK_API_URL` is not a server variable. It belongs to the optional `rustrak/rustrak-ui` image, for a dashboard [on its own host](/configuration/production#dashboard-on-its-own-host), and names the server that image proxies the API to.
+
+### The update check
+
+The dashboard compares the running server's version against the release feed published on GitHub Pages, and shows a notice when a newer one exists. The request is made by each reader's browser. Nothing about the instance is sent: it is a plain `GET` for a public JSON file, and a blocked or unreachable feed simply means no notice appears.
 
 ## Security
 
@@ -66,77 +120,56 @@ openssl rand -hex 32
 - **Development**: Optional (a random key is used, sessions don't persist across restarts)
 - **Production with `SSL_PROXY=true`**: Required
 
-The key must be at least 64 characters, which is what `openssl rand -hex 32`
-produces: the cookie key is a 256-bit signing key followed by a 256-bit
-encryption key. Anything shorter is refused at startup with the length it
-received, so `openssl rand -base64 32` (44 characters) will not do. Changing the
-key invalidates every existing session.
+The key must be at least 64 characters, which is what `openssl rand -hex 32` produces: the cookie key is a 256-bit signing key followed by a 256-bit encryption key. Anything shorter is refused at startup with the length it received, so `openssl rand -base64 32` (44 characters) will not do. Changing the key invalidates every existing session.
 
-## Server
+## Database
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HOST` | `0.0.0.0` | TCP bind address |
-| `PORT` | `8080` | Server port |
-| `RUST_LOG` | `info` | Log level (trace, debug, info, warn, error) |
-| `RUSTRAK_LOG_TIMEZONE` | `UTC` | IANA timezone name for log timestamp display (e.g. `Asia/Shanghai`) |
-| `PUBLIC_URL` | *(none)* | Public-facing URL used in DSN strings shown to users |
-
-### HOST
-
-The network interface the server listens on. The default (`0.0.0.0`) means "all interfaces" and is correct for Docker — you don't need to set it explicitly.
-
-Only change this if you want to restrict access to a specific interface:
-
-```bash
-HOST=127.0.0.1  # loopback only — useful for local dev behind a local proxy
-```
-
-> **Docker note:** `HOST=0.0.0.0` is already the default. You don't need to include it in your `docker-compose.yml` or `.env`. If you set `HOST=127.0.0.1` inside a container, the port mapping won't work and the server will be unreachable.
-
-### PUBLIC_URL
-
-The URL that Rustrak embeds in DSN strings. Must include the scheme (`http://` or `https://`). Trailing slashes are stripped automatically.
-
-```bash
-# Production (behind reverse proxy)
-PUBLIC_URL=https://api.yourcompany.com
-
-# Self-hosted with custom port
-PUBLIC_URL=http://192.168.1.10:9090
-```
-
-**Why this matters:** `HOST=0.0.0.0` is the TCP *bind* address — it means "listen on all interfaces." It is not a routable address. Without `PUBLIC_URL`, the DSN shown in the dashboard will contain `http://0.0.0.0:8080/...`, which your SDK cannot reach.
-
-When unset, Rustrak falls back to `http://{HOST}:{PORT}` — fine for local development where `HOST` is `localhost` or `127.0.0.1`.
-
-### RUSTRAK_LOG_TIMEZONE
-
-Converts the timestamps in the server's process logs (stdout — HTTP requests, background workers, event digestion, everything under `RUST_LOG`) to a specific IANA timezone for easier correlation with logs from other systems.
-
-```bash
-RUSTRAK_LOG_TIMEZONE=Asia/Shanghai
-```
-
-Use an IANA zone name (e.g. `Asia/Shanghai`, `America/New_York`, `Europe/Madrid`), not a fixed UTC offset — this ensures daylight saving time is handled correctly for zones that observe it. If unset, or set to a name that isn't a recognized IANA zone, logs fall back to UTC and the server still starts normally (a warning is logged when the value is invalid).
-
-**Scope:** this only affects how log lines are displayed. It does not change event or issue timestamps — those are always stored and returned as UTC by the database and the API, regardless of this setting.
-
-## Database Pool
-
-| Variable | Default | Description |
-|----------|---------|-------------|
+| `DATABASE_URL` | `sqlite:///data/rustrak.db` | Database connection string. Required only for PostgreSQL |
 | `DATABASE_MAX_CONNECTIONS` | `10` | Maximum pool connections |
 | `DATABASE_MIN_CONNECTIONS` | `1` | Minimum pool connections |
+
+### DATABASE_URL
+
+The backend is chosen by the image: `latest` is SQLite, `postgres` is PostgreSQL. See [Database backends](/configuration/database).
+
+**SQLite** (optional, the default above is right for Docker):
+
+```bash
+# Absolute path
+DATABASE_URL=sqlite:///var/lib/rustrak/rustrak.db
+
+# In-memory (for testing only, data lost on restart)
+DATABASE_URL=sqlite::memory:
+```
+
+**PostgreSQL** (required with the `postgres` image):
+
+```bash
+# Format
+postgres://username:password@host:port/database
+
+# Examples
+DATABASE_URL=postgres://rustrak:rustrak@postgres:5432/rustrak  # Docker
+DATABASE_URL=postgres://user:pass@host:5432/rustrak?sslmode=require  # With SSL
+```
 
 ## Rate Limiting
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MAX_EVENTS_PER_MINUTE` | `1000` | Max events/minute (global) |
-| `MAX_EVENTS_PER_HOUR` | `10000` | Max events/hour (global) |
-| `MAX_EVENTS_PER_PROJECT_PER_MINUTE` | `500` | Max events/minute per project |
-| `MAX_EVENTS_PER_PROJECT_PER_HOUR` | `5000` | Max events/hour per project |
+| `MAX_EVENTS_PER_MINUTE` | `60000` | Max events/minute (global) |
+| `MAX_EVENTS_PER_HOUR` | `1000000` | Max events/hour (global) |
+| `MAX_EVENTS_PER_PROJECT_PER_MINUTE` | `20000` | Max events/minute per project |
+| `MAX_EVENTS_PER_PROJECT_PER_HOUR` | `300000` | Max events/hour per project |
+
+The defaults are a brake for a runaway loop that would fill the disk, not a cap
+on ordinary spikes. Windows are fixed minutes and hours, and the limit is
+exact: once a window is full, ingest answers `429` with `Retry-After` and
+`X-Sentry-Rate-Limits`, and the SDK waits before sending again. An event that
+was already accepted when its window filled is dropped rather than stored, and
+counted in the project's `rate_limited_event_count`.
 
 ## Storage
 
@@ -148,7 +181,7 @@ Use an IANA zone name (e.g. `Asia/Shanghai`, `America/New_York`, `Europe/Madrid`
 
 ### SOURCEMAP_STORAGE_PATH
 
-Where Rustrak stores source map chunks uploaded by Sentry SDKs. Chunks are stored in a content-addressable layout: a SHA-1 hash like `abc123...` is written to `{SOURCEMAP_STORAGE_PATH}/ab/c123....map`.
+Where Rustrak stores source map chunks uploaded by Sentry SDKs. The default is inside the `/data` volume, so with `-v rustrak_data:/data` they persist with no setting. Chunks are stored in a content-addressable layout: a SHA-1 hash like `abc123...` is written to `{SOURCEMAP_STORAGE_PATH}/ab/c123....map`.
 
 ```bash
 SOURCEMAP_STORAGE_PATH=/var/lib/rustrak/sourcemaps
@@ -156,7 +189,7 @@ SOURCEMAP_STORAGE_PATH=/var/lib/rustrak/sourcemaps
 
 **Storage sizing:** Each source map chunk is typically around 2MB. Multiply by the number of distinct source files across all your deployments. A typical JavaScript app with 50 source files uses around 100MB.
 
-**Production / multi-server deployments:** All server instances must read and write from the same `SOURCEMAP_STORAGE_PATH`. Mount a shared volume (NFS, EFS, a network filesystem) and point every instance at it. Without this, chunks uploaded to one instance won't be visible to others during bundle assembly.
+**Multi-server deployments:** All server instances must read and write from the same `SOURCEMAP_STORAGE_PATH`. Mount a shared volume (NFS, EFS, a network filesystem) and point every instance at it. Without this, chunks uploaded to one instance won't be visible to others during bundle assembly.
 
 ### SOURCEMAP_CACHE_MB
 
@@ -180,17 +213,6 @@ Global SMTP settings for email notifications. Channels can override these.
 | `SMTP_PASSWORD` | - | SMTP password |
 | `SMTP_FROM` | `alerts@rustrak.local` | Default sender address |
 
-## Dashboard URL
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DASHBOARD_URL` | `PUBLIC_URL` | Base URL for the issue links in notifications |
-
-The server serves the dashboard itself, so the links follow `PUBLIC_URL` and
-this needs no setting. Set it only when the dashboard is served from another
-host than `PUBLIC_URL`, such as a `rustrak-ui` container. With neither set, the
-links use the server's bind address.
-
 ## Bootstrap
 
 | Variable | Description |
@@ -201,80 +223,7 @@ links use the server's bind address.
 CREATE_SUPERUSER="admin@example.com:secure-password"
 ```
 
-Only creates user if database is empty.
-
-## Dashboard
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RUSTRAK_DASHBOARD` | `on` | Whether to serve the dashboard at all. `off` keeps the server API-only |
-| `RUSTRAK_DASHBOARD_DIR` | `./static` | Where the compiled dashboard lives, relative to the working directory or absolute |
-
-### RUSTRAK_DASHBOARD
-
-`off` keeps the dashboard unmounted even though the image carries a build.
-This is for the deployment that runs the dashboard from
-[another host](/configuration/production#dashboard-on-its-own-host) and wants
-the machine holding the data to serve no frontend at all.
-
-```bash
-RUSTRAK_DASHBOARD=off
-```
-
-`on`, `off`, `true`, `false`, `1` and `0` are accepted. Anything else refuses
-to start, deliberately: a typo that silently left the dashboard on would
-expose a UI you meant to keep off the box.
-
-### RUSTRAK_DASHBOARD_DIR
-
-The dashboard is static files, and the server hands them out from `/`. This is
-where it looks for them. The image already puts a build at `/app/static`, which
-is what the default resolves to, so you do not normally set this.
-
-**It is a path, not a switch.** The dashboard is mounted when the directory
-actually holds an `index.html` and skipped when it does not, so an image built
-without a dashboard behaves exactly as one always has. To keep a build that is
-there from being served, use `RUSTRAK_DASHBOARD=off` above.
-
-```bash
-# Serve a dashboard you built and mounted yourself
-RUSTRAK_DASHBOARD_DIR=/srv/rustrak-dashboard
-```
-
-**There is no API address to configure.** The browser loads the dashboard from
-the server and calls the API on that same origin, so the two can never disagree
-about where the other one is. That also means the session cookie is
-first-party, and no CORS policy applies to the dashboard's own requests.
-
-`RUSTRAK_API_URL` is not a server variable. It belongs to the optional
-`rustrak/rustrak-ui` image, nginx serving the same bundle for a dashboard
-hosted [on its own host](/configuration/production#dashboard-on-its-own-host),
-and it names the server that image proxies the API to. `HOSTNAME`, which was
-the old dashboard process's bind address, is gone.
-
-### The update check
-
-The dashboard compares the running server's version against the release feed
-published on GitHub Pages, and shows a notice when a newer one exists. **That
-request is now made by the browser rather than by a server process**, which is
-the one consequence of serving the dashboard as static files worth knowing
-about: the feed is fetched from each reader's browser, on their connection,
-rather than once per hour from the instance.
-
-Nothing about the instance is sent — the request is a plain `GET` for a public
-JSON file, with no identifier, telemetry or usage data — and every failure is
-silent: a blocked or unreachable feed simply means no notice appears. The
-browser's own HTTP cache decides how often it is re-fetched.
-
-It is switched off at build time rather than at runtime, because a static
-bundle has no process to read an environment from:
-
-```bash
-VITE_RUSTRAK_VERSION_CHECK_ENABLED=false pnpm --filter @rustrak/dashboard build
-```
-
-For an installation that must make no outbound requests at all and does not
-build its own image, blocking the host at the network is the reliable answer.
+Only creates the user if the database has no users yet. After that it is ignored.
 
 ## Telemetry
 
@@ -283,57 +232,44 @@ build its own image, blocking the host at the network is the reliable answer.
 | `RUSTRAK_TELEMETRY` | `on` | Anonymous usage report every 6 hours. `off` sends nothing |
 | `DO_NOT_TRACK` | unset | `1` sends nothing either; the cross-tool convention |
 
-Either variable on its own is enough to turn it off. What the report
-contains, field by field, is on the [Telemetry](/configuration/telemetry)
-page.
+Either variable on its own is enough to turn it off. What the report contains, field by field, is on the [Telemetry](/configuration/telemetry) page.
 
 ## Complete Example
 
-### SQLite (development / personal)
+### SQLite (image tag `latest`)
 
 ```bash
-# .env file (SQLite — image tag: latest)
-
-# Required
-DATABASE_URL=sqlite:///data/rustrak.db
-
-# Server (the dashboard is served by this same process, from /)
-PORT=8080
-RUST_LOG=info
+SESSION_SECRET_KEY=generate-your-own-with-openssl-rand-hex-32
+PUBLIC_URL=https://rustrak.example.com
+SSL_PROXY=true
 ```
 
-### PostgreSQL (production)
+That is the whole configuration. The database defaults to `/data/rustrak.db` and the dashboard is served from `/`.
+
+### PostgreSQL (image tag `postgres`)
 
 ```bash
-# .env file (PostgreSQL — image tag: postgres)
-
-# Required
 DATABASE_URL=postgres://rustrak:password@postgres:5432/rustrak
 
-# Security (required for production behind HTTPS proxy)
+# Security (required behind an HTTPS proxy)
 SSL_PROXY=true
 SESSION_SECRET_KEY=generate-your-own-with-openssl-rand-hex-32
 
-# Server
-PORT=8080
+# Server: SDKs, the dashboard and alert links all use this address
+PUBLIC_URL=https://rustrak.example.com
 RUST_LOG=info
-PUBLIC_URL=https://api.yourcompany.com
 
 # Database Pool
 DATABASE_MAX_CONNECTIONS=20
 
-# Rate Limiting
-MAX_EVENTS_PER_MINUTE=1000
-MAX_EVENTS_PER_HOUR=10000
+# Rate Limiting (only to lower the defaults on small hardware)
+MAX_EVENTS_PER_MINUTE=10000
+MAX_EVENTS_PER_HOUR=200000
 
-# Dashboard (only for the links inside notifications; the dashboard itself
-# needs no configuration, it is served from / by this process)
-DASHBOARD_URL=https://rustrak.yourcompany.com
-
-# Email Alerts (optional - can also configure per-channel)
-SMTP_HOST=smtp.yourcompany.com
+# Email Alerts (optional, can also be set per channel)
+SMTP_HOST=smtp.example.com
 SMTP_PORT=587
-SMTP_USERNAME=alerts@yourcompany.com
+SMTP_USERNAME=alerts@example.com
 SMTP_PASSWORD=your-smtp-password
-SMTP_FROM=alerts@yourcompany.com
+SMTP_FROM=alerts@example.com
 ```

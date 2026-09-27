@@ -1,7 +1,7 @@
 # Rustrak Server
 
-The Rust API server. Actix-web 4, SQLx against PostgreSQL, Tokio for background
-work. Root context: `/CLAUDE.md`.
+The Rust API server. Actix-web 4, SQLx against SQLite (default) or PostgreSQL
+(feature `postgres`), Tokio for background work. Root context: `/CLAUDE.md`.
 
 ## Layout
 
@@ -56,9 +56,10 @@ first-party. `RUSTRAK_DASHBOARD_DIR` says where the build is (default
 `./static`, which is where `scripts/bundle-dashboard.sh` puts it).
 
 **It stays optional.** No `index.html` in that directory means nothing is
-mounted and the server behaves exactly as it did before — the premise is that
+mounted and the server behaves exactly as it did before: the premise is that
 the server alone is a complete product, and `cargo build` has to keep working
-for anyone who never installs Node.
+for anyone who never installs Node. `RUSTRAK_DASHBOARD=off` skips a build that
+is present, which is how a published image runs API-only.
 
 The one rule the fallback must not break: `API_PREFIXES` (`/api`, `/auth`,
 `/health`, `/docs`, `/api-docs`) never answer with the application shell. An

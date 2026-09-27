@@ -1,0 +1,11 @@
+ALTER TABLE installation DROP COLUMN quota_minute_window;
+ALTER TABLE installation DROP COLUMN quota_minute_count;
+ALTER TABLE installation DROP COLUMN quota_hour_window;
+ALTER TABLE installation DROP COLUMN quota_hour_count;
+ALTER TABLE projects DROP COLUMN quota_minute_window;
+ALTER TABLE projects DROP COLUMN quota_minute_count;
+ALTER TABLE projects DROP COLUMN quota_hour_window;
+ALTER TABLE projects DROP COLUMN quota_hour_count;
+ALTER TABLE projects DROP COLUMN rate_limited_event_count;
+ALTER TABLE projects DROP COLUMN rate_limit_per_minute;
+ALTER TABLE projects DROP COLUMN rate_limit_per_hour;

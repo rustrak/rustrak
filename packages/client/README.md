@@ -135,6 +135,8 @@ await client.issues.delete(projectId, issueId);
 ```typescript
 const { items } = await client.events.list(projectId, issueId, { order: 'desc' });
 const event     = await client.events.get(projectId, issueId, eventId);
+// Resolve the ID returned by a Sentry SDK without knowing its issue first.
+const captured  = await client.events.getBySentryId(projectId, sentryEventId);
 console.log(event.data); // Full Sentry event payload
 ```
 
@@ -264,7 +266,7 @@ export default async function ProjectsPage() {
     // `kind` is what decides: only 'unauthenticated' means "send to login".
     // Redirecting on 'network' or 'server_error' turns a flaky connection
     // into a login loop.
-    if (projects.error.kind === 'unauthenticated') redirect('/auth/login');
+    if (projects.error.kind === 'unauthenticated') redirect('/login');
     return <LoadFailed error={projects.error} />;
   }
 
@@ -317,7 +319,7 @@ import type {
 
 ## What is Rustrak?
 
-[Rustrak](https://rustrak.github.io/rustrak) is a self-hosted error tracking server written in Rust that is fully compatible with any Sentry SDK. Drop-in replacement for Sentry — no code changes needed. Runs on ~50 MB of memory as a single binary or Docker image.
+[Rustrak](https://rustrak.github.io/rustrak) is a self-hosted error tracking server written in Rust that accepts events from any Sentry SDK: point the SDK's DSN at it and nothing else changes. One container serves the API and the dashboard.
 
 - [Getting Started](https://rustrak.github.io/rustrak/getting-started/overview)
 - [Self-Hosting Guide](https://rustrak.github.io/rustrak/configuration/production)

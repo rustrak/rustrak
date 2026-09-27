@@ -8,6 +8,7 @@ import {
   paginatedResponseSchema,
   projectSchema,
   transactionSchema,
+  updateProjectSchema,
   userReportSchema,
 } from '../../src/schemas/index.js';
 
@@ -22,6 +23,9 @@ describe('Schema Validation', () => {
         dsn: 'http://123e4567-e89b-12d3-a456-426614174000@localhost:8080/1',
         stored_event_count: 100,
         digested_event_count: 95,
+        rate_limited_event_count: 0,
+        rate_limit_per_minute: null,
+        rate_limit_per_hour: null,
         created_at: '2026-01-20T10:00:00.000Z',
         updated_at: '2026-01-20T10:00:00.000Z',
         platform: null,
@@ -40,6 +44,9 @@ describe('Schema Validation', () => {
         dsn: 'http://123e4567-e89b-12d3-a456-426614174000@localhost:8080/1',
         stored_event_count: 100,
         digested_event_count: 95,
+        rate_limited_event_count: 0,
+        rate_limit_per_minute: null,
+        rate_limit_per_hour: null,
         created_at: '2026-01-20T10:00:00.000Z',
         updated_at: '2026-01-20T10:00:00.000Z',
         platform: 'python',
@@ -61,6 +68,9 @@ describe('Schema Validation', () => {
         dsn: 'http://localhost:8080/1',
         stored_event_count: 100,
         digested_event_count: 95,
+        rate_limited_event_count: 0,
+        rate_limit_per_minute: null,
+        rate_limit_per_hour: null,
         created_at: '2026-01-20T10:00:00.000Z',
         updated_at: '2026-01-20T10:00:00.000Z',
       };
@@ -78,6 +88,9 @@ describe('Schema Validation', () => {
         dsn: 'http://localhost:8080/1',
         stored_event_count: 100,
         digested_event_count: 95,
+        rate_limited_event_count: 0,
+        rate_limit_per_minute: null,
+        rate_limit_per_hour: null,
         created_at: 'not-a-date',
         updated_at: '2026-01-20T10:00:00.000Z',
       };
@@ -94,6 +107,43 @@ describe('Schema Validation', () => {
 
       const result = projectSchema.safeParse(invalidProject);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('project quota fields', () => {
+    const project = {
+      id: 1,
+      name: 'Test Project',
+      slug: 'test-project',
+      sentry_key: '123e4567-e89b-12d3-a456-426614174000',
+      dsn: 'http://123e4567-e89b-12d3-a456-426614174000@localhost:8080/1',
+      stored_event_count: 100,
+      digested_event_count: 95,
+      rate_limited_event_count: 7,
+      rate_limit_per_minute: 300,
+      rate_limit_per_hour: null,
+      created_at: '2026-01-20T10:00:00.000Z',
+      updated_at: '2026-01-20T10:00:00.000Z',
+      platform: null,
+    };
+
+    it('keeps what the quota dropped and the project own limits', () => {
+      const parsed = projectSchema.parse(project);
+      expect(parsed.rate_limited_event_count).toBe(7);
+      expect(parsed.rate_limit_per_minute).toBe(300);
+      expect(parsed.rate_limit_per_hour).toBeNull();
+    });
+
+    it('sets a limit with a number and removes it with null', () => {
+      expect(updateProjectSchema.parse({ rate_limit_per_minute: 300 })).toEqual(
+        { rate_limit_per_minute: 300 },
+      );
+      expect(updateProjectSchema.parse({ rate_limit_per_hour: null })).toEqual({
+        rate_limit_per_hour: null,
+      });
+      expect(
+        updateProjectSchema.safeParse({ rate_limit_per_minute: 0 }).success,
+      ).toBe(false);
     });
   });
 
@@ -396,6 +446,9 @@ describe('Schema Validation', () => {
             dsn: 'http://localhost:8080/1',
             stored_event_count: 100,
             digested_event_count: 95,
+            rate_limited_event_count: 0,
+            rate_limit_per_minute: null,
+            rate_limit_per_hour: null,
             created_at: '2026-01-20T10:00:00.000Z',
             updated_at: '2026-01-20T10:00:00.000Z',
             platform: null,

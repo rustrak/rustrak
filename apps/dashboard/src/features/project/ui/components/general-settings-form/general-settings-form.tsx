@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { Project } from '@rustrak/client';
+import type { Project, RateLimits } from '@rustrak/client';
 import { useNavigate } from '@tanstack/react-router';
 import { useMemo, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
@@ -22,6 +22,7 @@ import { PlatformPicker } from '@/shared/ui/components/platform-picker';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { Form, FormRootError } from '@/shared/ui/components/shadcn/form';
 import { DangerZone } from './danger-zone';
+import { RateLimitSettings } from './rate-limit-settings';
 import { SavableRow } from './savable-row';
 
 /**
@@ -44,9 +45,13 @@ export type GeneralSettingsFormData = z.infer<
 
 interface GeneralSettingsFormProps {
   project: Project;
+  serverLimits: RateLimits | null;
 }
 
-export function GeneralSettingsForm({ project }: GeneralSettingsFormProps) {
+export function GeneralSettingsForm({
+  project,
+  serverLimits,
+}: GeneralSettingsFormProps) {
   const t = useTranslations('projects');
   const formT = useTranslations();
   const navigate = useNavigate();
@@ -244,6 +249,8 @@ export function GeneralSettingsForm({ project }: GeneralSettingsFormProps) {
           <FormRootError />
         </SettingSection>
       </Form>
+
+      <RateLimitSettings project={project} serverLimits={serverLimits} />
 
       <DangerZone project={project} onRemove={handleRemoveProject} />
     </div>

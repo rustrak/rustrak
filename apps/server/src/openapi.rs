@@ -51,6 +51,7 @@ impl Modify for SecurityAddon {
         crate::routes::events::list_events,
         crate::routes::events::get_event,
         crate::routes::events::get_event_navigation,
+        crate::routes::events::get_event_by_sentry_id,
         crate::routes::tokens::list_tokens,
         crate::routes::tokens::create_token,
         crate::routes::tokens::get_token,

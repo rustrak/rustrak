@@ -102,7 +102,7 @@ pub use gen_ai::{
     AgentTraceSummary, GenAiBreakdownRow,
 };
 pub use grouping::Grouping;
-pub use installation::Installation;
+pub use installation::{Installation, QuotaWindows};
 pub use invitation::{
     AcceptInvitation, CreateInvitation, Invitation, InvitationResponse, InvitationStatus,
 };

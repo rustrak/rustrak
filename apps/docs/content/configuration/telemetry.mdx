@@ -67,6 +67,7 @@ breaking.
 | `ingest.rejected.{rate_limit,auth,too_large,malformed,other}` | Ingest requests turned away, by reason |
 | `ingest.latency_ms.{p50,p99}` | Ingest latency percentiles, on a fixed scale of buckets |
 | `digest.ok`, `digest.failed` | Events grouped into issues, and events that could not be |
+| `digest.rate_limited` | Accepted events the quota dropped instead of storing |
 | `http_5xx_by_route` | Server errors per **route pattern**, such as `/api/issues/{id}`. The real path never appears |
 | `alerts_failed_by_provider` | Alert deliveries that failed, per provider kind (`slack`, `webhook`, …) |
 | `panics` | Panics per source location inside Rustrak's own code (`src/digest/mod.rs:212`). The panic message is never included, because it could carry a path or a query |
@@ -79,6 +80,7 @@ Booleans and kinds only, never values.
 |---|---|
 | `ssl_proxy`, `public_url_set`, `smtp_configured`, `session_secret_set` | Whether each is set |
 | `alert_providers` | The kinds of alert channel enabled, such as `["slack", "webhook"]` |
+| `quota_customized` | Whether any `MAX_EVENTS_*` limit differs from its default. The limits themselves are not sent |
 
 ## What is never sent
 

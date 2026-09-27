@@ -63,3 +63,10 @@ export function splitIssueTitle(title: string, value?: string | null) {
     message: value || title,
   };
 }
+
+/** A payload record with at least one key. SDKs may send `null` for any of them. */
+export function isNonEmpty<T extends object>(
+  record: T | null | undefined,
+): record is T {
+  return record != null && Object.keys(record).length > 0;
+}

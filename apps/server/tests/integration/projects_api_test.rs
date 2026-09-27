@@ -204,6 +204,142 @@ async fn test_list_projects_with_valid_bearer_token_returns_200() {
     assert_eq!(resp.status(), 200);
 }
 
+/// What the quota dropped is reported with the project, next to what it stored.
+#[actix_web::test]
+async fn test_get_project_reports_rate_limited_events() {
+    let db = TestDb::new().await;
+    let config = create_test_config();
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+        .await
+        .unwrap();
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "Rate Limited".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    sqlx::query("UPDATE projects SET rate_limited_event_count = 7 WHERE id = $1")
+        .bind(project.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.pool.clone()))
+            .app_data(web::Data::new(config))
+            .configure(routes::projects::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/projects/{}", project.id))
+        .insert_header(("Authorization", format!("Bearer {}", token.token)))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(body["rate_limited_event_count"], 7);
+}
+
+/// A project's own limit is set with a number, removed with `null`, and left
+/// alone when the key is absent.
+#[actix_web::test]
+async fn test_update_project_rate_limit_set_keep_and_clear() {
+    let db = TestDb::new().await;
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+        .await
+        .unwrap();
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "Own Limit".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.pool.clone()))
+            .app_data(web::Data::new(create_test_config()))
+            .configure(routes::projects::configure),
+    )
+    .await;
+    let patch = |body: serde_json::Value| {
+        test::TestRequest::patch()
+            .uri(&format!("/api/projects/{}", project.id))
+            .insert_header(("Authorization", format!("Bearer {}", token.token)))
+            .set_json(body)
+            .to_request()
+    };
+
+    let set: serde_json::Value = test::call_and_read_body_json(
+        &app,
+        patch(serde_json::json!({"rate_limit_per_minute": 100, "rate_limit_per_hour": 2000})),
+    )
+    .await;
+    assert_eq!(
+        (
+            set["rate_limit_per_minute"].clone(),
+            set["rate_limit_per_hour"].clone()
+        ),
+        (100.into(), 2000.into())
+    );
+
+    let kept: serde_json::Value =
+        test::call_and_read_body_json(&app, patch(serde_json::json!({"name": "Renamed"}))).await;
+    assert_eq!(kept["rate_limit_per_minute"], 100);
+
+    let cleared: serde_json::Value = test::call_and_read_body_json(
+        &app,
+        patch(serde_json::json!({"rate_limit_per_minute": null})),
+    )
+    .await;
+    assert!(cleared["rate_limit_per_minute"].is_null());
+    assert_eq!(cleared["rate_limit_per_hour"], 2000);
+
+    let zero = test::call_service(&app, patch(serde_json::json!({"rate_limit_per_hour": 0}))).await;
+    assert_eq!(zero.status(), 400);
+}
+
+/// The server's own per-project limits, so the dashboard can show what a
+/// project follows when it has no limit of its own.
+#[actix_web::test]
+async fn test_rate_limits_report_the_servers_project_limits() {
+    let db = TestDb::new().await;
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+        .await
+        .unwrap();
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.pool.clone()))
+            .app_data(web::Data::new(create_test_config()))
+            .configure(routes::projects::configure),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/rate-limits")
+        .insert_header(("Authorization", format!("Bearer {}", token.token)))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(body["project_per_minute"], 500);
+    assert_eq!(body["project_per_hour"], 5000);
+
+    let anonymous = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/api/rate-limits")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(anonymous.status(), 401);
+}
+
 // =============================================================================
 // Slug Collision Tests
 // =============================================================================
@@ -270,6 +406,7 @@ async fn test_update_project_platform_sets_valid_platform() {
             name: None,
             slug: None,
             platform: Some("python".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -304,6 +441,7 @@ async fn test_update_project_platform_accepts_framework_specific_id() {
             name: None,
             slug: None,
             platform: Some("javascript-nextjs".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -333,6 +471,7 @@ async fn test_update_project_platform_rejects_invalid_value() {
             name: None,
             slug: None,
             platform: Some("not-a-real-platform".to_string()),
+            ..Default::default()
         },
     )
     .await;
@@ -370,6 +509,7 @@ async fn test_update_project_sets_name_and_platform_together() {
             name: Some("New Name".to_string()),
             slug: None,
             platform: Some("go".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -415,6 +555,7 @@ async fn test_update_project_slug() {
             name: None,
             platform: None,
             slug: Some("renamed-slug".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -466,6 +607,7 @@ async fn test_update_project_slug_conflict_is_reported_as_conflict() {
             name: None,
             platform: None,
             slug: Some("taken-slug-project".to_string()),
+            ..Default::default()
         },
     )
     .await;
@@ -510,6 +652,7 @@ async fn test_update_project_slug_rejects_unslugifiable_input() {
             name: None,
             platform: None,
             slug: Some("!!!".to_string()),
+            ..Default::default()
         },
     )
     .await;
@@ -655,6 +798,7 @@ async fn test_update_project_platform_overwrites_existing_value() {
             name: None,
             slug: None,
             platform: Some("javascript".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -669,6 +813,7 @@ async fn test_update_project_platform_overwrites_existing_value() {
             name: None,
             slug: None,
             platform: Some("ruby".to_string()),
+            ..Default::default()
         },
     )
     .await

@@ -1,16 +1,16 @@
 # Database Backends
 
-Rustrak supports two database backends compiled as separate Docker images. Choose based on your use case.
+Rustrak supports two database backends compiled as separate Docker images. Both images include the dashboard; they differ only in where data is stored.
 
 ## Comparison
 
 | | SQLite | PostgreSQL |
 |---|--------|------------|
 | **Image tag** | `latest`, `vX.Y.Z` | `postgres`, `vX.Y.Z-postgres` |
-| **Setup** | Zero — data stored in a Docker volume | External PostgreSQL service required |
+| **Setup** | None: data stored in a Docker volume | External PostgreSQL service required |
 | **Best for** | Personal use, low traffic, quick setup | Production, teams, high volume |
 | **Concurrency** | Single writer | Fully concurrent |
-| **Backup** | Copy the `.db` file | `pg_dump` |
+| **Backup** | `sqlite3 .backup`, or the whole `/data` volume | `pg_dump` |
 
 ---
 
@@ -43,8 +43,8 @@ services:
     volumes:
       - rustrak_data:/data
     environment:
-      # DATABASE_URL defaults to sqlite:///data/rustrak.db — no need to set it
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
+      # DATABASE_URL defaults to sqlite:///data/rustrak.db, no need to set it
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
       - CREATE_SUPERUSER=${CREATE_SUPERUSER}
     restart: unless-stopped
 
@@ -71,7 +71,7 @@ DATABASE_URL=sqlite:///var/lib/rustrak/rustrak.db
 docker run --rm \
   -v rustrak_data:/data \
   -v $(pwd)/backups:/backups \
-  alpine sh -c 'sqlite3 /data/rustrak.db ".backup /backups/rustrak-$(date +%Y%m%d).db"'
+  alpine sh -c 'apk add -q sqlite && sqlite3 /data/rustrak.db ".backup /backups/rustrak-$(date +%Y%m%d).db"'
 ```
 
 > Use `sqlite3 .backup` rather than `cp`. A plain file copy while the server is
@@ -108,6 +108,7 @@ Use the `:postgres` image tag when you need PostgreSQL.
 docker run -d \
   --name rustrak \
   -p 8080:8080 \
+  -v rustrak_data:/data \
   -e DATABASE_URL=postgres://user:password@db-host:5432/rustrak \
   -e SESSION_SECRET_KEY=$(openssl rand -hex 32) \
   -e CREATE_SUPERUSER=admin@example.com:changeme123 \
@@ -122,7 +123,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: rustrak
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?generate one with openssl rand -hex 16}
       POSTGRES_DB: rustrak
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -139,15 +140,23 @@ services:
       - "8080:8080"
     environment:
       - DATABASE_URL=postgres://rustrak:${POSTGRES_PASSWORD}@postgres:5432/rustrak
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
       - CREATE_SUPERUSER=${CREATE_SUPERUSER}
+    volumes:
+      # Uploaded source maps. The database lives in PostgreSQL.
+      - rustrak_data:/data
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
+  postgres_data:
+  rustrak_data:
 ```
+
+The `/data` volume holds uploaded source maps, which stay on disk rather than
+in the database.
 
 ### DATABASE_URL format
 

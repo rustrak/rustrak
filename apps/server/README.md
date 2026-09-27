@@ -1,6 +1,8 @@
 # Rustrak Server
 
-Rust API server for Rustrak error tracking system. Compatible with Sentry SDKs.
+The Rustrak server: a Rust API compatible with Sentry SDKs. It also serves the
+dashboard at `/` on the same port, so one process answers both the page and the
+API. `RUSTRAK_DASHBOARD=off` keeps it API-only.
 
 ## Features
 
@@ -8,48 +10,75 @@ Rust API server for Rustrak error tracking system. Compatible with Sentry SDKs.
 - Two-phase event ingestion (fast ingest + async digest)
 - Issue grouping with custom fingerprints
 - Rate limiting (per-project and global)
-- Session-based authentication for web UI
+- Session-based authentication for the dashboard
 - Token authentication for API access
+- Serves the compiled dashboard from `./static`, when a build is present
 
 ## Requirements
 
-- Rust 1.75+
-- PostgreSQL 16+
+- Rust 1.80+
+- No database to run: SQLite is the default. PostgreSQL 16+ is optional, with
+  `--features postgres` (or the `:postgres` image)
 
 ## Quick Start
 
 ```bash
-# Set environment variables
-export DATABASE_URL="postgres://user:pass@localhost:5432/rustrak"
 export SESSION_SECRET_KEY="$(openssl rand -hex 32)"
 export CREATE_SUPERUSER="admin@example.com:password123"
+export DATABASE_URL="sqlite://./rustrak.db"
+export SOURCEMAP_STORAGE_PATH="./data/sourcemaps"
 
-# Run
 cargo run
+```
+
+Or copy `.env.example` to `.env`, which sets the same paths. The server listens
+on `http://localhost:8080`. It serves the dashboard only if `./static` holds a
+build (`pnpm build --filter=@rustrak/server` from the repository root puts one
+there).
+
+With PostgreSQL:
+
+```bash
+docker compose -f ../../docker-compose.dev.yml up -d postgres
+export DATABASE_URL="postgres://rustrak:rustrak@localhost:5432/rustrak"
+cargo run --no-default-features --features postgres
 ```
 
 ## Docker
 
 ```bash
-docker pull rustrak/rustrak-server
-docker run -d -p 8080:8080 \
-  -e DATABASE_URL="postgres://user:pass@localhost:5432/rustrak" \
+docker run -d \
+  --name rustrak \
+  -p 8080:8080 \
+  -v rustrak_data:/data \
   -e SESSION_SECRET_KEY="$(openssl rand -hex 32)" \
-  rustrak/rustrak-server
+  -e CREATE_SUPERUSER=admin@example.com:changeme123 \
+  rustrak/rustrak-server:latest
 ```
+
+Open `http://localhost:8080` for the dashboard; the API is on the same port.
+The database and uploaded source maps live in the `/data` volume. Use the
+`:postgres` image and set `DATABASE_URL` for PostgreSQL.
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | - | PostgreSQL connection string |
+| `DATABASE_URL` | No | `sqlite:///data/rustrak.db` | Database connection string. Required with the `postgres` feature |
 | `SESSION_SECRET_KEY` | Production | - | 64-char hex key for sessions |
 | `HOST` | No | `0.0.0.0` | Server bind address |
 | `PORT` | No | `8080` | Server port |
 | `RUST_LOG` | No | `info` | Log level |
 | `CREATE_SUPERUSER` | No | - | Create admin user `email:password` |
 | `SSL_PROXY` | No | `false` | Enable secure cookies (behind HTTPS) |
+| `PUBLIC_URL` | No | `http://{HOST}:{PORT}` | The address people and SDKs reach; used in DSNs and alert links |
+| `RUSTRAK_DASHBOARD` | No | `on` | `off` keeps the server API-only |
 | `RUSTRAK_DASHBOARD_DIR` | No | `./static` | Where the compiled dashboard is; skipped when absent |
+| `DASHBOARD_URL` | No | `PUBLIC_URL` | Base of alert links, for a dashboard on another host |
+| `SOURCEMAP_STORAGE_PATH` | No | `/data/sourcemaps` | Where uploaded source maps are stored |
+| `RUSTRAK_TELEMETRY` | No | `on` | `off` stops the anonymous heartbeat |
+
+The full list is in the [environment reference](https://rustrak.github.io/rustrak/configuration/environment).
 
 ## API Endpoints
 
@@ -92,7 +121,7 @@ git add openapi.json
 git commit -m "chore(openapi): update spec"
 ```
 
-The docs site copies the spec at CI build time — `apps/docs/public/openapi.json` is not committed.
+The docs site copies the spec at CI build time; `apps/docs/public/openapi.json` is not committed.
 
 To run the server with the interactive explorer at `/docs`:
 

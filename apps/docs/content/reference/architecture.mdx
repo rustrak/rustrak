@@ -5,32 +5,39 @@ How Rustrak is designed and why.
 ## Overview
 
 ```
-┌─────────────────┐     ┌─────────────────────┐     ┌─────────────────┐
-│   Sentry SDK    │────▶│   Rustrak Server    │────▶│   PostgreSQL    │
-│   (your app)    │     │   (Rust/Actix-web)  │     │                 │
-└─────────────────┘     └─────────────────────┘     └─────────────────┘
-                                  │
-                                  ▼
-                        ┌─────────────────┐
-                        │  Dashboard      │ (optional)
-                        │  (Next.js)      │
-                        └─────────────────┘
+┌─────────────────┐     ┌──────────────────────────┐     ┌──────────────────┐
+│   Sentry SDK    │────▶│      Rustrak server      │────▶│ SQLite (default) │
+│   (your app)    │     │    (Rust / Actix-web)    │     │  or PostgreSQL   │
+└─────────────────┘     │                          │     └──────────────────┘
+                        │  /api    ingest and API  │
+┌─────────────────┐     │  /       dashboard       │
+│     Browser     │────▶│          (static files)  │
+└─────────────────┘     └──────────────────────────┘
 ```
+
+One process in one container answers everything: SDKs send events to `/api`,
+and people open the dashboard at `/` on the same port. The image is about
+20 MB and the server idles under 100 MB of memory.
 
 ## Key design decisions
 
-### Separation of server and UI
+### One process, one origin
 
-The server and dashboard are independent:
+The dashboard is a React application (Vite and TanStack Router) compiled to
+static files and built into the server image. The same Actix process that
+answers `/api/projects` hands out `/`, so:
 
-- **Server**: Rust binary, ~50MB RAM, handles all API and ingestion
-- **Dashboard**: Next.js app, can run anywhere
+- There is one container, one port and one address to configure (`PUBLIC_URL`)
+- The browser calls the API on the origin it loaded the page from, so the
+  session cookie is first-party and the dashboard needs no CORS
+- The dashboard costs nothing at runtime: the server reads the files once at
+  startup
+- Paths under `/api`, `/auth`, `/health`, `/docs` and `/api-docs` always get an
+  API answer, never the dashboard page
 
-This means you can:
-- Run only the server for minimal footprint
-- Host the dashboard on Vercel (free)
-- Run the dashboard on your laptop
-- Use the API without any dashboard
+The dashboard stays optional. `RUSTRAK_DASHBOARD=off` makes the server
+API-only, and a server built without a dashboard (a plain `cargo build`) serves
+the API and nothing else.
 
 ### Two-phase ingestion
 
@@ -45,90 +52,111 @@ SDK → Server → Temp Storage → [Background] → Database
 1. **Ingest** (sync): Receive, validate, store temporarily, return 200
 2. **Digest** (async): Calculate grouping, create/update issue, store event
 
-This ensures your apps get fast responses while heavy processing happens in the background.
+Your apps get a fast response while the heavy processing happens in the
+background. An event accepted by ingest is kept on disk until its digest has
+committed, so a restart does not lose it.
 
 ### Sentry protocol compatibility
 
-Rustrak implements the Sentry envelope protocol. Benefits:
+Rustrak implements the Sentry envelope protocol:
 - Use any official Sentry SDK
 - No custom SDK to maintain
-- Just change your DSN
+- Point your DSN at Rustrak
 
 ## Components
 
 ### Server (Rust)
 
 Responsibilities:
-- Receive events from SDKs
-- Parse Sentry envelope format
-- Group events into issues
-- Store data in PostgreSQL
-- Provide REST API
-- Handle authentication
+- Receive events, transactions, spans, sessions and logs from SDKs
+- Group errors into issues
+- Apply source maps to JavaScript stack traces
+- Store data in SQLite or PostgreSQL
+- Provide the REST API
+- Serve the dashboard
+- Send alerts
 - Enforce rate limits
 
-Tech: Rust + Actix-web + SQLx + Tokio
+Tech: Rust, Actix-web, SQLx, Tokio
 
-### Database (PostgreSQL)
+### Database
 
-Tables:
-- `projects` – Project configuration
-- `issues` – Grouped errors
-- `events` – Individual error events
-- `groupings` – Issue grouping keys
-- `users` – User accounts
-- `auth_tokens` – API tokens
+SQLite by default, stored at `/data/rustrak.db`, or PostgreSQL with the
+`postgres` image. The main tables:
 
-### Dashboard (Next.js)
+- `projects`: project configuration
+- `issues` and `groupings`: grouped errors and their grouping keys
+- `events`: individual error events
+- `transactions`, `spans`, `logs`, `releases`, `session_counts`: performance, logs and release health
+- `users`, `auth_tokens`, `project_members`: accounts and access
+- `alert_rules`, `alert_integrations`, `alert_history`: alerting
 
-Features:
-- Project management
-- Issue browsing
-- Event details (stack traces, breadcrumbs)
-- Token management
+Uploaded source maps are files on disk under `SOURCEMAP_STORAGE_PATH`
+(default `/data/sourcemaps`), inside the same `/data` volume as SQLite.
 
-Can be deployed anywhere: Docker, Vercel, local.
+### Dashboard
+
+A React single-page application in `apps/dashboard`, compiled into the server
+image:
+- Projects, issues and events (stack traces, breadcrumbs, context)
+- Performance, releases, logs and AI agent traces
+- Alerts, team, tokens and storage settings
 
 ## Authentication
 
 | Method | Use case | How |
 |--------|----------|-----|
-| Session | Web dashboard | Login form → httpOnly cookie |
+| Session | Dashboard | Sign in at `/login` → httpOnly cookie |
 | Bearer Token | API access | `Authorization: Bearer <token>` |
-| SentryAuth | SDK ingestion | DSN sentry_key |
+| SentryAuth | SDK ingestion | DSN `sentry_key` |
 
 ## Deployment options
 
-### Minimal (~50MB RAM)
-
-Server only. Access dashboard locally or via Vercel.
+### Default: one container
 
 ```
-SDK → Server → PostgreSQL
-
-Dashboard runs on your laptop or Vercel
+SDKs and browsers → Server (API + dashboard) → SQLite or PostgreSQL
 ```
 
-### Full stack (~200MB RAM)
+The setup the [installation guide](/getting-started/installation) describes.
+Put a reverse proxy in front for HTTPS; it has one upstream.
 
-Everything together.
+### API only
 
 ```
-SDK → Server → PostgreSQL
-        ↓
-    Dashboard
+SDKs and scripts → Server (API) → SQLite or PostgreSQL
 ```
 
-### Production
+Set `RUSTRAK_DASHBOARD=off`. The server serves no pages.
 
-Multiple servers behind a load balancer.
+### Dashboard on its own host
+
+```
+SDKs → Server (API, RUSTRAK_DASHBOARD=off) → Database
+          ▲
+          │ /api, /auth, /health, /docs, /api-docs
+          │
+Browser → rustrak-ui (nginx + dashboard) on another host
+```
+
+For keeping the machine that holds your data free of any frontend.
+`rustrak/rustrak-ui` serves the same dashboard and proxies the API paths to
+`RUSTRAK_API_URL`, so the browser still sees one origin. Set `DASHBOARD_URL`
+on the server to the `ui` address so alert links open it. See
+[Dashboard on its own host](/configuration/production#dashboard-on-its-own-host).
+
+### Several servers
 
 ```
          ┌─────────────┐
-SDKs → LB│  Server x N │→ PostgreSQL (replicated)
+SDKs → LB│  Server x N │→ PostgreSQL
          └─────────────┘
-               ↓
-         Dashboard (CDN/Vercel)
+                │
+          shared volume for source maps
 ```
 
-Servers are stateless—add more as needed.
+Running more than one server needs PostgreSQL, since SQLite is a single file
+on one machine. Every instance needs the same `SESSION_SECRET_KEY`, so a
+session cookie from one is valid on the others, and the same
+`SOURCEMAP_STORAGE_PATH` on a shared volume, so a source map uploaded to one
+instance can be read by all of them.

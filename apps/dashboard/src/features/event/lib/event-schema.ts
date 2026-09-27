@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseEpochSeconds } from '@/shared/lib/protocol-timestamp';
 
 /**
  * Schema for a stack frame in an exception.
@@ -70,9 +71,18 @@ const threadsSchema = z.union([
 
 /**
  * Schema for a breadcrumb entry.
+ *
+ * `timestamp` is deliberately left open here and read by `parseEpochSeconds`
+ * in {@link normalizeBreadcrumbs}. The protocol allows epoch seconds or an
+ * RFC 3339 string, and which one arrives depends on the SDK (`sentry-python`
+ * sends the string). A `z.number()` here made one string crumb fail the whole
+ * `breadcrumbs` parse, and the section vanished from the page for every event
+ * those SDKs sent. Relay reads a timestamp it cannot parse as absent and keeps
+ * the crumb, so an unreadable value is `undefined` rather than a reason to
+ * drop anything.
  */
 const breadcrumbSchema = z.object({
-  timestamp: z.number().optional(),
+  timestamp: z.unknown().optional(),
   type: z.string().optional(),
   category: z.string().optional(),
   message: z.string().optional(),
@@ -157,7 +167,8 @@ export function parseEventData(eventData: Record<string, unknown>) {
 }
 
 /**
- * Normalize breadcrumbs to always be an array.
+ * Normalize breadcrumbs to always be an array, with every timestamp read
+ * into epoch seconds the way Relay would have re-emitted it.
  */
 export function normalizeBreadcrumbs(
   breadcrumbs: ValidatedEventBreadcrumbs | undefined,
@@ -170,8 +181,13 @@ export function normalizeBreadcrumbs(
   data?: Record<string, unknown>;
 }> {
   if (!breadcrumbs) return [];
-  if (Array.isArray(breadcrumbs)) return breadcrumbs;
-  return breadcrumbs.values ?? [];
+  const items = Array.isArray(breadcrumbs)
+    ? breadcrumbs
+    : (breadcrumbs.values ?? []);
+  return items.map((crumb) => ({
+    ...crumb,
+    timestamp: parseEpochSeconds(crumb.timestamp),
+  }));
 }
 
 /**

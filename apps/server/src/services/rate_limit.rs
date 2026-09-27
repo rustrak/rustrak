@@ -1,62 +1,71 @@
-use chrono::{Duration, Utc};
+use chrono::Utc;
 
 use crate::config::RateLimitConfig;
 use crate::db::DbPool;
-use crate::error::{AppError, AppResult};
-use crate::models::{Installation, Project};
+use crate::error::AppResult;
+use crate::models::{Installation, Project, QuotaWindows};
 
 pub struct RateLimitService;
 
-const MAX_QUOTA_REFRESH_ATTEMPTS: usize = 3;
-
-fn is_retryable_quota_refresh(err: &AppError) -> bool {
-    #[cfg(feature = "sqlite")]
-    {
-        matches!(
-            err,
-            AppError::Database(sqlx::Error::Database(db))
-                if db.code().as_deref().is_some_and(is_sqlite_busy_code)
+/// Counts one event in the current minute and hour windows of `$table`,
+/// unless either is already full. A row whose stored window is older starts
+/// over at one. `$1`/`$2` are the window numbers, `$3`/`$4` the limits.
+macro_rules! consume_sql {
+    ($table:literal, $row:literal, $minute_limit:literal, $hour_limit:literal) => {
+        concat!(
+            "UPDATE ", $table, " SET ",
+            "quota_minute_count = CASE WHEN quota_minute_window = $1 THEN quota_minute_count + 1 ELSE 1 END, ",
+            "quota_minute_window = $1, ",
+            "quota_hour_count = CASE WHEN quota_hour_window = $2 THEN quota_hour_count + 1 ELSE 1 END, ",
+            "quota_hour_window = $2 ",
+            "WHERE ", $row, " ",
+            "AND (quota_minute_window <> $1 OR quota_minute_count < ", $minute_limit, ") ",
+            "AND (quota_hour_window <> $2 OR quota_hour_count < ", $hour_limit, ")"
         )
-    }
-    #[cfg(feature = "postgres")]
-    {
-        let _ = err;
-        false
-    }
+    };
 }
 
-#[cfg(feature = "sqlite")]
-fn is_sqlite_busy_code(code: &str) -> bool {
-    matches!(code, "5" | "261" | "517" | "773")
+/// Seconds until a full window of `quota` rolls over, or `None` while both
+/// the current minute and the current hour still have room.
+fn seconds_while_full(
+    quota: QuotaWindows,
+    (minute_limit, hour_limit): (i64, i64),
+    now: chrono::DateTime<Utc>,
+) -> Option<u64> {
+    let full = |window: i64, count: i64, limit: i64, length: i64| {
+        (window == now.timestamp().div_euclid(length) && count >= limit)
+            .then(|| (length - now.timestamp().rem_euclid(length)) as u64)
+    };
+    full(
+        quota.quota_hour_window,
+        quota.quota_hour_count,
+        hour_limit,
+        3600,
+    )
+    .or_else(|| {
+        full(
+            quota.quota_minute_window,
+            quota.quota_minute_count,
+            minute_limit,
+            60,
+        )
+    })
 }
 
-fn quota_refresh_is_due(digested_count: i64, next_quota_check: i64) -> bool {
-    digested_count >= next_quota_check
-}
-
-/// The committed event counters and the watermarks that say when each quota
-/// row is due for a window scan. Produced by the digest transaction's
-/// `RETURNING` and by the rows the ingest path has already loaded, so the
-/// post-commit refresh never reads them back.
-#[derive(Debug, Clone, Copy)]
-pub struct QuotaCounters {
-    pub installation_count: i64,
-    pub installation_next_check: i64,
-    pub project_count: i64,
-    pub project_next_check: i64,
-}
-
-/// The window start as SQLite stores `events.digested_at`.
-///
-/// The column is only ever written by its `DEFAULT (datetime('now'))`, i.e.
-/// `YYYY-MM-DD HH:MM:SS` in UTC, so a bound in the same shape compares as
-/// plain text and the `(project_id, digested_at)` index serves the scan. The
-/// previous `datetime(digested_at) >= datetime($1)` form applied a function to
-/// the column and forced a full scan of the project's events on every refresh.
-/// Dropping the fraction truncates the bound exactly like `datetime()` did.
-#[cfg(feature = "sqlite")]
-fn sqlite_window_bound(since: chrono::DateTime<Utc>) -> String {
-    since.format("%Y-%m-%d %H:%M:%S").to_string()
+/// The limits a project's events count against: the operator's
+/// `MAX_EVENTS_PER_PROJECT_*`, tightened by the project's own where it has one.
+fn project_limits(config: &RateLimitConfig, project: &Project) -> (i64, i64) {
+    let tighten = |operator: i64, own: Option<i64>| own.map_or(operator, |own| own.min(operator));
+    (
+        tighten(
+            config.max_events_per_project_per_minute,
+            project.rate_limit_per_minute,
+        ),
+        tighten(
+            config.max_events_per_project_per_hour,
+            project.rate_limit_per_hour,
+        ),
+    )
 }
 
 /// Result when quota is exceeded
@@ -64,11 +73,7 @@ fn sqlite_window_bound(since: chrono::DateTime<Utc>) -> String {
 pub struct QuotaExceeded {
     /// Seconds until the quota resets
     pub retry_after: u64,
-    /// Which scope triggered the limit (Installation or Project)
-    ///
-    /// NOTE: Currently unused but kept for future detailed error responses
-    /// showing which limit (global vs project) was exceeded.
-    #[allow(dead_code)]
+    /// Which row was full: the installation or the project.
     pub scope: QuotaScope,
 }
 
@@ -76,6 +81,19 @@ pub struct QuotaExceeded {
 pub enum QuotaScope {
     Installation,
     Project,
+}
+
+impl QuotaExceeded {
+    /// The `X-Sentry-Rate-Limits` value Relay would send for this limit:
+    /// `retry_after:categories:scope`, with no categories because the quota
+    /// counts every event alike. The installation is Relay's organization.
+    pub fn sentry_rate_limits_header(&self) -> String {
+        let scope = match self.scope {
+            QuotaScope::Installation => "organization",
+            QuotaScope::Project => "project",
+        };
+        format!("{}::{scope}", self.retry_after)
+    }
 }
 
 impl RateLimitService {
@@ -101,358 +119,106 @@ impl RateLimitService {
     ) -> AppResult<Option<QuotaExceeded>> {
         let now = Utc::now();
 
-        // 1. Check installation (global) quota
-        let mut installation = Self::get_installation(pool).await?;
-        let mut current_project = std::borrow::Cow::Borrowed(project);
-        let project_is_stale = quota_refresh_is_due(
-            i64::from(current_project.digested_event_count),
-            current_project.next_quota_check,
-        );
-        let installation_is_stale = quota_refresh_is_due(
-            installation.digested_event_count,
-            installation.next_quota_check,
-        );
-        if installation_is_stale || project_is_stale {
-            let counters = QuotaCounters {
-                installation_count: installation.digested_event_count,
-                installation_next_check: installation.next_quota_check,
-                project_count: i64::from(current_project.digested_event_count),
-                project_next_check: current_project.next_quota_check,
-            };
-            let mut attempt = 0;
-            let refresh = loop {
-                match Self::update_quota_state(pool, project.id, config, &counters).await {
-                    Err(e)
-                        if is_retryable_quota_refresh(&e)
-                            && attempt + 1 < MAX_QUOTA_REFRESH_ATTEMPTS =>
-                    {
-                        tokio::time::sleep(std::time::Duration::from_millis(50 << attempt)).await;
-                        attempt += 1;
-                    }
-                    result => break result,
-                }
-            };
-            match refresh {
-                Ok(()) => {
-                    installation = Self::get_installation(pool).await?;
-                    current_project = std::borrow::Cow::Owned(
-                        sqlx::query_as("SELECT * FROM projects WHERE id = $1")
-                            .bind(project.id)
-                            .fetch_one(pool)
-                            .await?,
-                    );
-                }
-                // The refresh is derived bookkeeping; the digest path already
-                // treats it as best-effort. Admit or reject on the stale state
-                // rather than failing an ingest request nothing else objects to.
-                Err(e) => {
-                    log::warn!(
-                        "quota refresh failed; using stale quota state for this request: {e}"
-                    );
-                }
-            }
-        }
-        if let Some(until) = installation.quota_exceeded_until {
-            if now < until {
-                let retry_after = (until - now).num_seconds().max(1) as u64;
-                return Ok(Some(QuotaExceeded {
-                    retry_after,
-                    scope: QuotaScope::Installation,
-                }));
-            }
+        let installation = Self::get_installation(pool).await?;
+        let limits = (config.max_events_per_minute, config.max_events_per_hour);
+        if let Some(retry_after) = seconds_while_full(installation.quota, limits, now) {
+            return Ok(Some(QuotaExceeded {
+                retry_after,
+                scope: QuotaScope::Installation,
+            }));
         }
 
-        // 2. Check project quota
-        if let Some(until) = current_project.quota_exceeded_until {
-            if now < until {
-                let retry_after = (until - now).num_seconds().max(1) as u64;
-                return Ok(Some(QuotaExceeded {
-                    retry_after,
-                    scope: QuotaScope::Project,
-                }));
-            }
+        let limits = project_limits(config, project);
+        if let Some(retry_after) = seconds_while_full(project.quota, limits, now) {
+            return Ok(Some(QuotaExceeded {
+                retry_after,
+                scope: QuotaScope::Project,
+            }));
         }
 
         Ok(None)
     }
 
-    /// Refreshes derived quota state after digesting an event.
+    /// Counts one event against every quota window, or none of them.
     ///
-    /// The counters are already committed by the digest transaction; only the
-    /// time-window checks and cached quota fields are updated here. The caller
-    /// passes the counters and watermarks it already holds (from the digest's
-    /// `RETURNING`, or from the rows it just loaded) so the refresh does not
-    /// read the two rows back before deciding whether a window scan is due.
-    pub async fn update_quota_state(
-        pool: &DbPool,
-        project_id: i32,
+    /// The check and the increment are one statement per row, so two digests
+    /// can never both take the last slot: the same all-or-nothing contract as
+    /// Relay's `is_rate_limited.lua`. Runs inside the digest transaction; on
+    /// `Some`, the caller rolls back, which also undoes the installation count
+    /// when only the project was full. The scope names the row that was full.
+    pub async fn try_consume(
+        executor: &mut <crate::db::Db as sqlx::Database>::Connection,
+        project: &Project,
         config: &RateLimitConfig,
-        counters: &QuotaCounters,
-    ) -> AppResult<()> {
-        let now = Utc::now();
+        now: chrono::DateTime<Utc>,
+    ) -> AppResult<Option<QuotaScope>> {
+        let minute = now.timestamp().div_euclid(60);
+        let hour = now.timestamp().div_euclid(3600);
 
-        // The counters are committed already; refresh derived quota rows
-        // independently where the backend can benefit from it. SQLite keeps
-        // its two writes serial because it has one writer at a time.
-        #[cfg(feature = "postgres")]
-        tokio::try_join!(
-            Self::update_installation_quota(pool, config, now, counters),
-            Self::update_project_quota(pool, project_id, config, now, counters),
-        )?;
-
-        #[cfg(feature = "sqlite")]
-        {
-            Self::update_installation_quota(pool, config, now, counters).await?;
-            Self::update_project_quota(pool, project_id, config, now, counters).await?;
+        let installation = sqlx::query(consume_sql!("installation", "id = 1", "$3", "$4"))
+            .bind(minute)
+            .bind(hour)
+            .bind(config.max_events_per_minute)
+            .bind(config.max_events_per_hour)
+            .execute(&mut *executor)
+            .await?;
+        if installation.rows_affected() == 0 {
+            return Ok(Some(QuotaScope::Installation));
         }
 
+        // The project's own limits are read from the row inside the UPDATE, not
+        // from `project`: a limit lowered after the digest loaded the row must
+        // still hold. A NULL own limit compares false and leaves the
+        // operator's.
+        let consumed = sqlx::query(consume_sql!(
+            "projects",
+            "id = $5",
+            "CASE WHEN rate_limit_per_minute < $3 THEN rate_limit_per_minute ELSE $3 END",
+            "CASE WHEN rate_limit_per_hour < $4 THEN rate_limit_per_hour ELSE $4 END"
+        ))
+        .bind(minute)
+        .bind(hour)
+        .bind(config.max_events_per_project_per_minute)
+        .bind(config.max_events_per_project_per_hour)
+        .bind(project.id)
+        .execute(&mut *executor)
+        .await?;
+        if consumed.rows_affected() == 0 {
+            return Ok(Some(QuotaScope::Project));
+        }
+
+        Ok(None)
+    }
+
+    /// Counts one event the quota dropped against the project it was sent to,
+    /// whichever row was full. Runs after the digest rolled back, on its own.
+    pub async fn record_rate_limited(pool: &DbPool, project_id: i32) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE projects SET rate_limited_event_count = rate_limited_event_count + 1 WHERE id = $1",
+        )
+        .bind(project_id)
+        .execute(pool)
+        .await?;
         Ok(())
     }
 
-    /// Increments both quota counters atomically with the digest transaction.
-    /// Returns the committed counters, with the watermarks that decide whether
-    /// the post-commit quota refresh has to scan the time windows.
-    pub async fn increment_quota_counters(
+    /// Counts the stored event on the installation and its project, in the
+    /// digest transaction that stores it.
+    pub async fn increment_event_counters(
         executor: &mut <crate::db::Db as sqlx::Database>::Connection,
         project_id: i32,
-    ) -> AppResult<QuotaCounters> {
-        let (installation_count, installation_next_check): (i64, i64) = sqlx::query_as(
-            "UPDATE installation SET digested_event_count = digested_event_count + 1 WHERE id = 1 RETURNING digested_event_count, next_quota_check",
-        )
-        .fetch_one(&mut *executor)
-        .await?;
-
-        let (project_count, project_next_check): (i32, i64) = sqlx::query_as(
-            "UPDATE projects SET stored_event_count = stored_event_count + 1, digested_event_count = digested_event_count + 1 WHERE id = $1 RETURNING digested_event_count, next_quota_check",
-        )
-        .bind(project_id)
-        .fetch_one(&mut *executor)
-        .await?;
-
-        Ok(QuotaCounters {
-            installation_count,
-            installation_next_check,
-            project_count: i64::from(project_count),
-            project_next_check,
-        })
-    }
-
-    /// Counts events in a time window for the whole installation
-    async fn count_global_events_since(
-        pool: &DbPool,
-        since: chrono::DateTime<Utc>,
-    ) -> AppResult<i64> {
-        #[cfg(feature = "postgres")]
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE digested_at >= $1")
-            .bind(since)
-            .fetch_one(pool)
-            .await?;
-
-        #[cfg(feature = "sqlite")]
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE digested_at >= $1")
-            .bind(sqlite_window_bound(since))
-            .fetch_one(pool)
-            .await?;
-
-        Ok(count)
-    }
-
-    /// Counts events in a time window for a specific project
-    async fn count_project_events_since(
-        pool: &DbPool,
-        project_id: i32,
-        since: chrono::DateTime<Utc>,
-    ) -> AppResult<i64> {
-        #[cfg(feature = "postgres")]
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM events WHERE project_id = $1 AND digested_at >= $2",
-        )
-        .bind(project_id)
-        .bind(since)
-        .fetch_one(pool)
-        .await?;
-
-        #[cfg(feature = "sqlite")]
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM events WHERE project_id = $1 AND digested_at >= $2",
-        )
-        .bind(project_id)
-        .bind(sqlite_window_bound(since))
-        .fetch_one(pool)
-        .await?;
-
-        Ok(count)
-    }
-
-    /// Updates installation quota state
-    async fn update_installation_quota(
-        pool: &DbPool,
-        config: &RateLimitConfig,
-        now: chrono::DateTime<Utc>,
-        counters: &QuotaCounters,
     ) -> AppResult<()> {
-        let new_count = counters.installation_count;
-        let next_quota_check = counters.installation_next_check;
-
-        // Calculate minimum threshold for optimization
-        let min_threshold = config.max_events_per_minute.min(config.max_events_per_hour);
-
-        // Only do expensive COUNT if needed
-        let should_check =
-            new_count >= next_quota_check || (next_quota_check - new_count) > min_threshold;
-
-        if should_check {
-            // Count events in each window (parallel queries)
-            let (count_minute, count_hour) = tokio::try_join!(
-                Self::count_global_events_since(pool, now - Duration::minutes(1)),
-                Self::count_global_events_since(pool, now - Duration::hours(1))
-            )?;
-
-            // Check which thresholds are exceeded
-            let (exceeded_until, exceeded_reason) = if count_minute + 1
-                >= config.max_events_per_minute
-            {
-                // Exceeded per-minute limit
-                let until = now + Duration::minutes(1);
-                let reason = serde_json::to_string(&("minute", 1, config.max_events_per_minute))
-                    .expect("tuple serialization should not fail");
-                (Some(until), Some(reason))
-            } else if count_hour + 1 >= config.max_events_per_hour {
-                // Exceeded per-hour limit
-                let until = now + Duration::hours(1);
-                let reason = serde_json::to_string(&("hour", 1, config.max_events_per_hour))
-                    .expect("tuple serialization should not fail");
-                (Some(until), Some(reason))
-            } else {
-                (None, None)
-            };
-
-            // Calculate when to check again
-            let check_again_after = (config.max_events_per_minute - count_minute - 1)
-                .min(config.max_events_per_hour - count_hour - 1)
-                .max(1);
-
-            sqlx::query(
-                r#"
-                UPDATE installation
-                SET quota_exceeded_until = $1,
-                    quota_exceeded_reason = $2,
-                    next_quota_check = $3
-                WHERE id = 1 AND next_quota_check <= $4
-                "#,
-            )
-            .bind(exceeded_until)
-            .bind(exceeded_reason)
-            .bind(new_count + check_again_after)
-            .bind(new_count)
-            .execute(pool)
-            .await?;
-        }
-
+        sqlx::query(
+            "UPDATE installation SET digested_event_count = digested_event_count + 1 WHERE id = 1",
+        )
+        .execute(&mut *executor)
+        .await?;
+        sqlx::query(
+            "UPDATE projects SET stored_event_count = stored_event_count + 1, digested_event_count = digested_event_count + 1 WHERE id = $1",
+        )
+        .bind(project_id)
+        .execute(&mut *executor)
+        .await?;
         Ok(())
-    }
-
-    /// Updates project quota state
-    async fn update_project_quota(
-        pool: &DbPool,
-        project_id: i32,
-        config: &RateLimitConfig,
-        now: chrono::DateTime<Utc>,
-        counters: &QuotaCounters,
-    ) -> AppResult<()> {
-        let new_count = counters.project_count;
-        let next_quota_check = counters.project_next_check;
-
-        // Calculate minimum threshold for optimization
-        let min_threshold = config
-            .max_events_per_project_per_minute
-            .min(config.max_events_per_project_per_hour);
-
-        // Only do expensive COUNT if needed
-        let should_check =
-            new_count >= next_quota_check || (next_quota_check - new_count) > min_threshold;
-
-        if should_check {
-            // Count events in each window (parallel queries)
-            let (count_minute, count_hour) = tokio::try_join!(
-                Self::count_project_events_since(pool, project_id, now - Duration::minutes(1)),
-                Self::count_project_events_since(pool, project_id, now - Duration::hours(1))
-            )?;
-
-            // Check which thresholds are exceeded
-            let (exceeded_until, exceeded_reason) = if count_minute + 1
-                >= config.max_events_per_project_per_minute
-            {
-                let until = now + Duration::minutes(1);
-                let reason =
-                    serde_json::to_string(&("minute", 1, config.max_events_per_project_per_minute))
-                        .expect("tuple serialization should not fail");
-                (Some(until), Some(reason))
-            } else if count_hour + 1 >= config.max_events_per_project_per_hour {
-                let until = now + Duration::hours(1);
-                let reason =
-                    serde_json::to_string(&("hour", 1, config.max_events_per_project_per_hour))
-                        .expect("tuple serialization should not fail");
-                (Some(until), Some(reason))
-            } else {
-                (None, None)
-            };
-
-            // Calculate when to check again
-            let check_again_after = (config.max_events_per_project_per_minute - count_minute - 1)
-                .min(config.max_events_per_project_per_hour - count_hour - 1)
-                .max(1);
-
-            sqlx::query(
-                r#"
-                UPDATE projects
-                SET quota_exceeded_until = $2,
-                    quota_exceeded_reason = $3,
-                    next_quota_check = $4
-                WHERE id = $1 AND next_quota_check <= $5
-                "#,
-            )
-            .bind(project_id)
-            .bind(exceeded_until)
-            .bind(exceeded_reason)
-            .bind(new_count + check_again_after)
-            .bind(new_count)
-            .execute(pool)
-            .await?;
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::quota_refresh_is_due;
-
-    #[cfg(feature = "sqlite")]
-    use super::is_sqlite_busy_code;
-
-    #[cfg(feature = "sqlite")]
-    #[test]
-    fn sqlite_busy_codes_are_retryable() {
-        let codes = ["5", "261", "517", "773"];
-        assert!(codes.into_iter().all(is_sqlite_busy_code));
-        assert!(!is_sqlite_busy_code("2067"));
-    }
-
-    #[test]
-    fn quota_refresh_is_due_handles_initial_and_advanced_watermarks() {
-        assert!(quota_refresh_is_due(0, 0) && quota_refresh_is_due(12, 10));
-        assert!(!quota_refresh_is_due(9, 10));
-    }
-
-    #[cfg(feature = "sqlite")]
-    #[test]
-    fn sqlite_window_bound_matches_the_default_digested_at_format() {
-        use chrono::TimeZone;
-        let since = chrono::Utc.with_ymd_and_hms(2026, 9, 14, 23, 4, 5).unwrap()
-            + chrono::Duration::milliseconds(789);
-        // Same shape as `datetime('now')`: no `T`, no fraction, no offset.
-        assert_eq!(super::sqlite_window_bound(since), "2026-09-14 23:04:05");
     }
 }

@@ -6,24 +6,20 @@
 
 Any Sentry SDK. Rustrak implements the Sentry protocol, so you can use the official Sentry SDKs for JavaScript, Python, Go, Rust, Java, .NET, PHP, Ruby, and more.
 
-### Is Rustrak a Sentry replacement?
+### What does Rustrak cover?
 
-Rustrak focuses on **error tracking only**. It doesn't support:
-- Performance monitoring
-- Session tracking
-- Release management
-- Replays
+- **Errors**: grouping into issues, stack traces with [source maps](/usage/source-maps), and [alerts](/usage/alerts)
+- **Performance**: transactions and spans
+- **Releases and sessions**: release health from SDK sessions
+- **Logs** and **AI agent traces**
 
-If you need these features, use the hosted Sentry service.
+It does not support session replays.
 
 ### How much resources does Rustrak need?
 
-| Setup | RAM | Notes |
-|-------|-----|-------|
-| Server only | ~50MB | Dashboard runs elsewhere |
-| Full stack | ~200MB | Server + Dashboard |
-
-For a 512MB VPS, server-only is recommended.
+One container of about 20 MB, dashboard included, that idles under 100 MB of
+memory. A 512 MB VPS is enough for a small team. The dashboard is static files,
+so it adds nothing under load.
 
 ### Can I migrate from Sentry?
 
@@ -37,50 +33,51 @@ Sentry.init({ dsn: 'https://key@sentry.io/123' });
 Sentry.init({ dsn: 'http://key@your-server:8080/1' });
 ```
 
-Historical data doesn't migrate—you start fresh.
+Historical data doesn't migrate; you start fresh.
 
 ## Deployment
 
-### Do I need to run the dashboard?
+### Do I need to run the dashboard separately?
 
-No. You can run only the server and access the dashboard:
-- Locally on your laptop
-- Deployed on Vercel (free)
-- Not at all (API-only usage)
+No. The server serves it at `/`, on the same port as the API, so there is
+nothing else to run. Two variations exist for special cases:
 
-This keeps your server footprint minimal.
+- **API only**: set `RUSTRAK_DASHBOARD=off` and the server serves no pages.
+- **Dashboard on another host**: run `rustrak/rustrak-ui` there. See
+  [Dashboard on its own host](/configuration/production#dashboard-on-its-own-host).
 
 ### Can I run Rustrak without Docker?
 
-Yes. Build from source:
+Yes. Build from source, from the repository root:
 
 ```bash
+pnpm install
+pnpm build --filter=@rustrak/server   # builds the dashboard, then the server
 cd apps/server
-cargo build --release
-./target/release/rustrak
+DATABASE_URL=sqlite://./rustrak.db \
+  SOURCEMAP_STORAGE_PATH=./data/sourcemaps \
+  ./target/release/rustrak
 ```
 
-You'll need PostgreSQL running separately.
+This build uses SQLite. Without `DATABASE_URL` the database goes to
+`/data/rustrak.db`, the path the Docker image uses, which a machine without a
+writable `/data` cannot create; set it, and `SOURCEMAP_STORAGE_PATH`, to a
+local path as above. For PostgreSQL, build with
+`cargo build --release --no-default-features --features postgres`. A plain
+`cargo build` works too, without Node, and gives a server with no dashboard.
 
-### How do I backup my data?
+### How do I back up my data?
 
-Backup PostgreSQL:
-
-```bash
-pg_dump -h localhost -U rustrak rustrak > backup.sql
-```
-
-Restore:
-
-```bash
-psql -h localhost -U rustrak rustrak < backup.sql
-```
+Back up the database and the source maps. See
+[Backups](/configuration/production#backups) for SQLite and PostgreSQL.
 
 ## Data
 
 ### How long are events stored?
 
-Indefinitely, unless you delete them. There's no automatic retention policy (yet).
+Indefinitely, until you delete them. An admin can remove old data by age and
+type under Settings, [Storage](/usage/storage). There is no automatic retention
+yet.
 
 ### Can I export my data?
 
@@ -91,13 +88,13 @@ Yes, via the API:
 curl -H "Authorization: Bearer TOKEN" http://localhost:8080/api/projects/1/issues
 
 # Get events for an issue
-curl -H "Authorization: Bearer TOKEN" http://localhost:8080/api/issues/1/events
+curl -H "Authorization: Bearer TOKEN" http://localhost:8080/api/projects/1/issues/ISSUE_ID/events
 ```
 
 ### Is my data encrypted?
 
 - **In transit**: Use HTTPS (configure via reverse proxy)
-- **At rest**: Depends on your PostgreSQL setup
+- **At rest**: Depends on your disk or PostgreSQL setup
 
 Rustrak doesn't add additional encryption.
 
@@ -115,7 +112,8 @@ Sentry.captureException(error, {
 
 ### Why don't I see stack traces?
 
-Check that your SDK is configured to send them. For minified JavaScript, you'll need source maps (not yet supported by Rustrak).
+Check that your SDK is configured to send them. For minified JavaScript,
+upload [source maps](/usage/source-maps).
 
 ### Can I ignore certain errors?
 
@@ -139,15 +137,15 @@ Or mute issues in the dashboard.
 
 ### Does Rustrak support alerts?
 
-Not yet. This is planned for a future release.
-
-### Can I integrate with Slack/PagerDuty?
-
-Not built-in. You can use the API to build custom integrations.
+Yes. New issues and regressions can notify Slack, email, a webhook, or a
+custom webhook whose JSON body you write, for services with their own
+message format.
+See [Alerts](/usage/alerts).
 
 ### Is there multi-user support?
 
-Yes. Create users and they can all access the dashboard. There's no role-based access control yet—all users have full access.
+Yes. Admins invite users and assign roles, and access can be limited per
+project. See [Team & Access](/usage/team).
 
 ### Is there multi-organization support?
 

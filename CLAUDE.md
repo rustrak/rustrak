@@ -5,8 +5,8 @@ a small memory footprint, which also hands out an optional dashboard compiled
 to static files.
 
 ```
-Sentry SDK  ──▶  Rustrak server  ──▶  PostgreSQL
-(any app)        (Rust/Actix-web)
+Sentry SDK  ──▶  Rustrak server  ──▶  SQLite (default)
+(any app)        (Rust/Actix-web)       or PostgreSQL
                   serves /api and, if
                   one was built, / too
 ```
@@ -39,9 +39,12 @@ Read that one before working inside it.
 ## Commands
 
 ```bash
-docker compose up -d postgres     # database
-cd apps/server && cargo run       # server on :8000
+cd apps/server && cargo run       # server on :8080, SQLite
 pnpm dev                          # dashboard and docs
+
+# PostgreSQL instead of SQLite
+docker compose -f docker-compose.dev.yml up -d postgres
+cd apps/server && cargo run --no-default-features --features postgres
 
 pnpm test                         # everything except the Rust side
 (cd apps/server && cargo test)    # unit, integration and e2e

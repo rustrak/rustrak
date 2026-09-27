@@ -1,24 +1,12 @@
+# Rustrak with SQLite: one container serves the dashboard and the API on 8080.
+#
+#   export SESSION_SECRET_KEY=$(openssl rand -hex 32)
+#   export CREATE_SUPERUSER=admin@example.com:changeme123
+#   docker compose up -d
+#
+# For PostgreSQL, use docker-compose.postgres.yml. For a dashboard on another
+# host from the server: https://rustrak.github.io/rustrak/configuration/production#dashboard-on-its-own-host
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # One service, and one image: the dashboard is compiled into static files
-  # that this same process hands out at `/`, so there is no second container
-  # and no second origin. It is still optional — an image built without the
-  # dashboard serves the API and nothing else. The `ui` service at the bottom
-  # is the exception, for a dashboard on another host.
   server:
     image: rustrak/rustrak-server:latest
     # Behind a reverse proxy on the same Docker network, delete this `ports`
@@ -27,44 +15,17 @@ services:
     ports:
       - "${SERVER_PORT:-8080}:8080"
     environment:
-      - PORT=8080
-      - RUST_LOG=${RUST_LOG}
-      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
-      - CREATE_SUPERUSER=${CREATE_SUPERUSER}
-      # The host your SDKs will send events to, e.g. https://rustrak.example.com.
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
+      - CREATE_SUPERUSER=${CREATE_SUPERUSER:-}
+      # The address people and SDKs reach, e.g. https://rustrak.example.com.
       # Without it the DSN carries the bind address, which nothing can reach.
       - PUBLIC_URL=${PUBLIC_URL:-}
-      # `off` keeps this container API-only, for when the `ui` service below
-      # (or a rustrak-ui elsewhere) is the dashboard instead.
-      - RUSTRAK_DASHBOARD=${RUSTRAK_DASHBOARD:-on}
-      - SOURCEMAP_STORAGE_PATH=/data/sourcemaps
+      # Anonymous telemetry is on by default. Uncomment to turn it off.
+      # - RUSTRAK_TELEMETRY=off
+    # The database and uploaded source maps both live here.
     volumes:
-      - sourcemap_data:/data/sourcemaps
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-  # Optional, and off unless you ask for it: `docker compose --profile ui up`.
-  # The same dashboard behind nginx, proxying the API to the server, for an
-  # installation that keeps the dashboard on a different host from its data.
-  # On the same host it buys nothing over the copy the server already serves.
-  ui:
-    image: rustrak/rustrak-ui:latest
-    profiles: ["ui"]
-    # As with `server` above: behind a reverse proxy on the same network,
-    # delete this `ports` block and let the proxy reach the container on 3000.
-    # This is the address people sign in on, so in production it sits behind
-    # TLS like the server does.
-    ports:
-      - "${UI_PORT:-3000}:3000"
-    environment:
-      - RUSTRAK_API_URL=http://server:8080
-    depends_on:
-      - server
+      - rustrak_data:/data
     restart: unless-stopped
 
 volumes:
-  postgres_data:
-  sourcemap_data:
+  rustrak_data:

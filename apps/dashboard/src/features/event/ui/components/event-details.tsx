@@ -3,6 +3,7 @@ import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
+import { isNonEmpty } from '@/features/event/lib/event-payload';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import { Button } from '@/shared/ui/components/shadcn/button';
 
@@ -110,10 +111,6 @@ interface EventPayload {
   exception?: {
     values?: Array<{ mechanism?: { type?: string; handled?: boolean } }>;
   };
-}
-
-function isNonEmpty<T extends object>(record: T | undefined): record is T {
-  return record !== undefined && Object.keys(record).length > 0;
 }
 
 export function EventDetails({ event }: EventDetailsProps) {

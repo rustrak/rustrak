@@ -12,4 +12,18 @@ pub struct Installation {
     pub quota_exceeded_reason: Option<String>,
     pub next_quota_check: i64,
     pub created_at: DateTime<Utc>,
+    #[sqlx(flatten)]
+    pub quota: super::QuotaWindows,
+}
+
+/// The fixed-window counters one quota row keeps (see
+/// `RateLimitService::try_consume`). A window is numbered as seconds since the
+/// epoch divided by its length; a count only means anything while its window
+/// is the current one.
+#[derive(Debug, Clone, Copy, Default, FromRow)]
+pub struct QuotaWindows {
+    pub quota_minute_window: i64,
+    pub quota_minute_count: i64,
+    pub quota_hour_window: i64,
+    pub quota_hour_count: i64,
 }

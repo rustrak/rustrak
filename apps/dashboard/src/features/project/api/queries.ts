@@ -11,6 +11,7 @@ import type {
   OffsetPaginatedResponse,
   Project,
   ProjectStatsSummary,
+  RateLimits,
   Result,
   RustrakError,
 } from '@rustrak/client';
@@ -43,6 +44,14 @@ export async function getProject(
 ): Promise<Result<Project, RustrakError>> {
   const client = await createClient();
   return client.projects.get(id);
+}
+
+/** The server's per-project limits, which a project without its own follows. */
+export async function getRateLimits(): Promise<
+  Result<RateLimits, RustrakError>
+> {
+  const client = await createClient();
+  return client.projects.rateLimits();
 }
 
 /**
@@ -99,6 +108,12 @@ export const projectQueries = {
     queryOptions({
       queryKey: [...scope.project(id), 'detail'],
       queryFn: () => getProject(id),
+    }),
+  /** Instance-wide, so it sits outside any project's key. */
+  rateLimits: () =>
+    queryOptions({
+      queryKey: ['rate-limits'],
+      queryFn: getRateLimits,
     }),
   timeseries: (projectId: number, period?: string, interval?: number) =>
     queryOptions({

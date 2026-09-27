@@ -52,8 +52,9 @@ justify to anyone.
 SQLite is the default, so this is the whole install. There is no database to
 provision and no broker to run.
 
+This is the repository's `docker-compose.yml`:
+
 ```yaml
-# docker-compose.yml
 services:
   server:
     image: rustrak/rustrak-server:latest
@@ -80,9 +81,10 @@ address to tell one half about the other. Want the dashboard on a different
 host from your data? `rustrak/rustrak-ui` is the same dashboard behind nginx;
 see the [production guide](https://rustrak.github.io/rustrak/configuration/production#dashboard-on-its-own-host).
 
-Running at scale? Use the `:postgres` tag and set `DATABASE_URL`. The
+Running at scale? `docker-compose.postgres.yml` runs the `:postgres` image next
+to a PostgreSQL service. The
 [installation guide](https://rustrak.github.io/rustrak/getting-started/installation)
-has the full compose file and the production notes.
+has both setups and the production notes.
 
 ## Point your SDK at it
 
@@ -250,7 +252,7 @@ npx @rustrak/mcp              # Claude, Cursor, Continue
 | [`@rustrak/client`](https://www.npmjs.com/package/@rustrak/client) | [![npm](https://img.shields.io/npm/v/@rustrak/client?style=flat-square)](https://www.npmjs.com/package/@rustrak/client) | TypeScript client. Every method returns `Result<T, RustrakError>` and never throws, so a call that can fail says so in its type |
 | [`@rustrak/mcp`](https://www.npmjs.com/package/@rustrak/mcp) | [![npm](https://img.shields.io/npm/v/@rustrak/mcp?style=flat-square)](https://www.npmjs.com/package/@rustrak/mcp) | MCP server over that client, so an assistant can read and manage your instance |
 
-An OpenAPI spec is served at `/docs` and mirrored in the documentation site.
+The OpenAPI spec is browsable in the [API reference](https://rustrak.github.io/rustrak/api-reference).
 
 ## Telemetry
 

@@ -1,10 +1,13 @@
 # Installation
 
-There are several ways to run Rustrak depending on your needs. Pick the one that fits your setup.
+Rustrak is one container. It ingests events, answers the API and serves the
+dashboard, all on port `8080`. There is nothing to configure for the
+dashboard.
 
-## SQLite (default — no external database)
+## Docker
 
-The default `latest` image uses SQLite. No PostgreSQL needed — data persists in a Docker volume.
+The default image stores everything in SQLite, so no database has to run next
+to it:
 
 ```bash
 docker run -d \
@@ -13,42 +16,82 @@ docker run -d \
   -v rustrak_data:/data \
   -e SESSION_SECRET_KEY=$(openssl rand -hex 32) \
   -e CREATE_SUPERUSER=admin@example.com:changeme123 \
+  -e PUBLIC_URL=http://localhost:8080 \
   rustrak/rustrak-server:latest
 ```
 
-The server starts on **http://localhost:8080**. No other services needed.
+Open **http://localhost:8080** and sign in with the credentials from
+`CREATE_SUPERUSER`. The sign-in page is `/login`.
 
-> `DATABASE_URL` defaults to `sqlite:///data/rustrak.db` — no need to set it. The Docker volume `rustrak_data` mounts at `/data` so data persists across container restarts.
+- **`rustrak_data`** holds the database and uploaded source maps. Keep it, and
+  the data survives restarts and upgrades
+- **`SESSION_SECRET_KEY`** signs the session cookie. Keep the same value across
+  restarts, or everyone is signed out
+- **`PUBLIC_URL`** is the address your SDKs send events to and the host
+  written into every DSN. Set it to your public address in production
 
-### When to use SQLite
+SQLite suits personal projects, small teams and up to about 1,000 events an
+hour. For more, use [PostgreSQL](#postgresql).
 
-- Personal projects or solo developers
-- Low to medium traffic (under ~1,000 events/hour)
-- Environments where running PostgreSQL is impractical
-- Trying out Rustrak quickly
+## Docker Compose
 
----
+The same setup as a Compose file. This is the `docker-compose.yml` at the root
+of the repository:
 
-## Quick install (Docker Compose — PostgreSQL)
+```yaml
+services:
+  server:
+    image: rustrak/rustrak-server:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
+      - CREATE_SUPERUSER=${CREATE_SUPERUSER}
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
+    volumes:
+      - rustrak_data:/data
+    restart: unless-stopped
 
-The fastest way to get everything running locally.
+volumes:
+  rustrak_data:
+```
 
-### 1. Create the docker-compose.yml
+Create a `.env` next to it and start it:
 
-Create a `docker-compose.yml` file with the following content:
+```bash
+cat > .env <<EOF
+SESSION_SECRET_KEY=$(openssl rand -hex 32)
+CREATE_SUPERUSER=admin@example.com:changeme123
+PUBLIC_URL=http://localhost:8080
+EOF
+docker compose up -d
+```
+
+`CREATE_SUPERUSER` is `email:password` and is only used while no user exists.
+`PUBLIC_URL` is the address SDKs reach, e.g. `https://rustrak.example.com`.
+Compose refuses to start without `SESSION_SECRET_KEY`.
+
+> **Reverse proxy?** Behind Traefik, nginx or Caddy, delete the `ports` block
+> and let the proxy reach the container on `8080`. Set `PUBLIC_URL` to your
+> public host. See [Reverse proxy](/configuration/production#reverse-proxy).
+
+## PostgreSQL
+
+For higher volume or concurrent writes, use the `postgres` image and a
+PostgreSQL database. The repository ships this as `docker-compose.postgres.yml`:
 
 ```yaml
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: rustrak
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?generate one with openssl rand -hex 16}
+      POSTGRES_DB: rustrak
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U rustrak -d rustrak"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -57,14 +100,15 @@ services:
   server:
     image: rustrak/rustrak-server:postgres
     ports:
-      - "${SERVER_PORT:-8080}:8080"
+      - "8080:8080"
     environment:
-      - PORT=8080
-      - RUST_LOG=${RUST_LOG}
-      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
+      - DATABASE_URL=postgres://rustrak:${POSTGRES_PASSWORD}@postgres:5432/rustrak
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
       - CREATE_SUPERUSER=${CREATE_SUPERUSER}
-      - PUBLIC_URL=${PUBLIC_URL:-}
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
+    volumes:
+      # Uploaded source maps. The database lives in PostgreSQL.
+      - rustrak_data:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,146 +116,50 @@ services:
 
 volumes:
   postgres_data:
+  rustrak_data:
 ```
 
-**What each service does:**
-
-| Service | Description |
-|---------|-------------|
-| `postgres` | PostgreSQL 16 database with persistent storage. Includes a healthcheck to ensure it's ready before the server starts. |
-| `server` | The Rustrak API server (Rust/Actix-web). Handles event ingestion, API requests, **and the dashboard** — the same process answers `/` and `/api`. Uses ~50MB RAM. |
-
-### 2. Configure environment variables
-
-Create a `.env` file with all required configuration:
+Add a database password to the `.env` above and start it:
 
 ```bash
-# ===================
-# Database (PostgreSQL)
-# ===================
-POSTGRES_USER=rustrak
-POSTGRES_PASSWORD=rustrak
-POSTGRES_DB=rustrak
-
-# ===================
-# Server
-# ===================
-SERVER_PORT=8080
-RUST_LOG=info
-# The address your SDKs will send events to. Without it the DSN carries the
-# bind address, which nothing can reach. e.g. https://rustrak.example.com
-PUBLIC_URL=
-
-# Session secret (required) - replace with the output of: openssl rand -hex 32
-# The server refuses to start until you do.
-SESSION_SECRET_KEY=generate-your-own-with-openssl-rand-hex-32
-
-# Admin user (required) - format: email:password
-CREATE_SUPERUSER=admin@example.com:changeme123
-
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env
+docker compose -f docker-compose.postgres.yml up -d
 ```
+ To use a database you
+already run, drop the `postgres` service and point `DATABASE_URL` at it. See
+[Database backends](/configuration/database).
 
-> **The dashboard needs no configuration.** It is compiled into the server
-> image and served from `/`, so the browser talks to the same origin the API
-> answers on. There is no API address to tell it about and no second port to
-> open.
+## The dashboard
 
-> **Reverse proxy?** Behind Traefik, nginx or Caddy you can delete the `ports`
-> block from `server` entirely and let the proxy reach the container on the
-> Docker network. Set `PUBLIC_URL` to your public host. See
-> [Reverse proxy](/configuration/production#reverse-proxy).
+It is compiled into the image and served from `/`, on the same origin as the
+API, so there is no second container and no address to configure. The whole
+image, dashboard included, is about 20 MB, and the server idles under 100 MB
+of memory.
 
-To generate a secure session secret:
+Two cases need something extra:
 
-```bash
-openssl rand -hex 32
-```
+- **No dashboard at all.** Set `RUSTRAK_DASHBOARD=off` and the server answers
+  the API only
+- **The dashboard on a different host from your data.** Run the server with
+  `RUSTRAK_DASHBOARD=off` and put `rustrak/rustrak-ui` (about 30 MB) on the
+  other host. See
+  [Dashboard on its own host](/configuration/production#dashboard-on-its-own-host)
 
-### 3. Start Rustrak
+## Telemetry
 
-```bash
-docker compose up -d
-```
+The server sends one anonymous report every six hours: version, platform and
+health counters, never your data. Set `RUSTRAK_TELEMETRY=off` to turn it off.
+[Telemetry](/configuration/telemetry) lists every field.
 
-This starts:
-- PostgreSQL on port 5432
-- Rustrak Server on port 8080, answering both the API and the dashboard
+## First admin user
 
-Open [http://localhost:8080](http://localhost:8080) and log in with the credentials you set in `CREATE_SUPERUSER`.
-
-## Server only (recommended for production)
-
-For production, you often want minimal resource usage on your server. One
-container is the whole install: it ingests events, answers the API, and hands
-out the dashboard.
-
-### On your server
-
-**With SQLite (no external DB):**
-
-```bash
-docker run -d \
-  --name rustrak \
-  -p 8080:8080 \
-  -v rustrak_data:/data \
-  -e DATABASE_URL="sqlite:///data/rustrak.db" \
-  -e SESSION_SECRET_KEY="$(openssl rand -hex 32)" \
-  -e CREATE_SUPERUSER="admin@example.com:changeme123" \
-  rustrak/rustrak-server:latest
-```
-
-**With PostgreSQL:**
-
-```bash
-docker run -d \
-  --name rustrak \
-  -p 8080:8080 \
-  -e DATABASE_URL="postgres://user:pass@db-host:5432/rustrak" \
-  -e SESSION_SECRET_KEY="$(openssl rand -hex 32)" \
-  -e CREATE_SUPERUSER="admin@example.com:changeme123" \
-  rustrak/rustrak-server:postgres
-```
-
-The server uses **~50MB RAM** and handles all error ingestion, API requests and
-the dashboard.
-
-### Access the dashboard
-
-Open the server's own address — `http://localhost:8080`, or whatever
-`PUBLIC_URL` points at. The dashboard is compiled into the image and served
-from `/`, so nothing else has to run and nothing has to be configured.
-
-**API-only deployments still work.** The dashboard is mounted only when a build
-is present in the image, so a server built without one answers the API and
-returns a plain JSON 404 for `/`. Point any Sentry SDK at it and never deploy a
-UI — that has always been the premise, and it has not changed.
-
-## User management
-
-### First admin user
-
-The admin user is created automatically on first startup using the `CREATE_SUPERUSER` environment variable:
-
-```bash
-# In your .env file
-CREATE_SUPERUSER=admin@example.com:yourpassword
-```
-
-The format is `email:password`. This only creates the user if no users exist in the database yet.
+`CREATE_SUPERUSER` creates the first account on startup, in the format
+`email:password`. It only does so when the database has no users yet; after
+that it is ignored, so changing it does not change a password.
 
 ## Verify the installation
 
-1. Open the dashboard (localhost:8080, or your `PUBLIC_URL`)
-2. Log in with your admin credentials
-3. You should see an empty project list
+1. Open http://localhost:8080 (or your `PUBLIC_URL`) and sign in
+2. You should see an empty project list
 
 You're ready to [capture your first error](/getting-started/quickstart).
-
-## Resource comparison
-
-| Setup | RAM | Notes |
-|-------|-----|-------|
-| Server with the dashboard built in | ~25MB idle | The default. One container, one origin |
-| Server API-only + `rustrak/rustrak-ui` elsewhere | ~25MB + ~15MB | The dashboard on another host, behind nginx. See [production](/configuration/production#dashboard-on-its-own-host) |
-
-For a 512MB VPS, either option leaves plenty of room for your application and database.

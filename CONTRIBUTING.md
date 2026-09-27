@@ -17,7 +17,7 @@ Thank you for your interest in contributing to Rustrak! This guide will help you
 Before you begin, ensure you have the following installed:
 
 - **Rust** - For the server component; `rustup` installs the version pinned in `rust-toolchain.toml`
-- **Node.js** (22.x+) - For the UI and build tools; CI and the images use 24
+- **Node.js** (22.12+) - For the UI and build tools; CI and the images use 24
 - **pnpm** (12.x) - Package manager; `corepack enable` picks the version pinned in `package.json`
 - **Docker** - For local development and testing
 
@@ -36,34 +36,36 @@ Before you begin, ensure you have the following installed:
    pnpm install
    ```
 
-3. **Start PostgreSQL for Development**
-
-   ```bash
-   docker-compose -f docker-compose.dev.yml up -d postgres
-   ```
-
-4. **Configure the Server**
+3. **Configure the Server**
 
    ```bash
    cd apps/server
    cp .env.example .env
    ```
 
-   The example configuration connects to the PostgreSQL container through
-   `localhost:5432`. Review `.env` and adjust its values if your local setup is
-   different. Without this file, the server may fail with a missing or invalid
-   database configuration.
+   The example configuration uses SQLite, with the database and source maps
+   next to the checkout, so there is nothing else to run.
 
-5. **Run the Server (in a new terminal)**
+4. **Run the Server (in a new terminal)**
+
+   ```bash
+   cd apps/server
+   cargo run --bin rustrak
+   ```
+
+5. **Or run it against PostgreSQL**
+
+   ```bash
+   docker compose -f docker-compose.dev.yml up -d postgres
+   ```
+
+   Switch `DATABASE_URL` in `apps/server/.env` to the PostgreSQL line the file
+   shows, then disable the default `sqlite` feature:
 
    ```bash
    cd apps/server
    cargo run --no-default-features --features postgres --bin rustrak
    ```
-
-   The server defaults to the `sqlite` feature. Because this development setup
-   starts PostgreSQL, disable the default feature and explicitly enable
-   `postgres`.
 
 6. **Run the dashboard (in another terminal)**
 
@@ -74,7 +76,7 @@ Before you begin, ensure you have the following installed:
 
    Vite serves it on `:3000` and proxies `/api`, `/auth`, `/health`, `/docs`
    and `/api-docs` through to the server, so the browser only ever talks to one
-   origin — the same arrangement production has, where the server itself hands
+   origin: the same arrangement production has, where the server itself hands
    out the compiled bundle.
 
 ### Running Tests
@@ -158,6 +160,7 @@ rustrak/
 ├── packages/
 │   ├── client/           # TypeScript API client
 │   ├── mcp/              # MCP server over the client
+│   ├── ui/               # Design system (Storybook)
 │   ├── benchmarks/       # Load and throughput benchmarks
 │   └── test-sentry/      # Test utilities for Sentry compatibility
 ├── .changeset/           # Versioning configuration
@@ -188,7 +191,7 @@ that apply inside it. Read the one for the area you are touching:
 ### TypeScript/JavaScript (UI and Packages)
 
 - Use strict TypeScript mode
-- Follow ESLint and Prettier configurations
+- Format and lint with Biome (`pnpm format`, `pnpm lint`)
 - Write tests for new functionality
 - Use Zod for runtime validation where appropriate
 

@@ -309,6 +309,7 @@ mod reporter {
                 smtp_configured: false,
                 session_secret_set: true,
                 alert_providers: vec![],
+                quota_customized: false,
             },
             sqlite_path: None,
             ingest_dir: std::env::temp_dir(),

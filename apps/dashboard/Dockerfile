@@ -37,8 +37,8 @@ RUN pnpm --filter @rustrak/client build && pnpm --filter @rustrak/dashboard buil
 # life and nothing to drop.
 FROM nginxinc/nginx-unprivileged:1.29-alpine-slim
 
-# Compose and the docs address the dashboard on 3000, as the Next.js image
-# did. `PORT` is read by the template at start, so it can still be changed.
+# The docs address this image on 3000. `PORT` is read by the template at
+# start, so it can still be changed.
 ENV PORT=3000
 ENV RUSTRAK_API_URL=http://server:8080
 # Makes the entrypoint export the container's DNS as NGINX_LOCAL_RESOLVERS,

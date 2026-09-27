@@ -38,6 +38,9 @@ describe('ProjectsResource Integration', () => {
                 dsn: 'http://localhost:8080/1',
                 stored_event_count: 0,
                 digested_event_count: 0,
+                rate_limited_event_count: 0,
+                rate_limit_per_minute: null,
+                rate_limit_per_hour: null,
                 created_at: '2026-01-20T10:00:00.000Z',
                 updated_at: '2026-01-20T10:00:00.000Z',
               },
@@ -127,6 +130,9 @@ describe('ProjectsResource Integration', () => {
                 dsn: 'http://key@localhost:8080/1',
                 stored_event_count: 0,
                 digested_event_count: 0,
+                rate_limited_event_count: 0,
+                rate_limit_per_minute: null,
+                rate_limit_per_hour: null,
                 created_at: '2026-01-20T10:00:00.000Z',
                 updated_at: '2026-01-20T10:00:00.000Z',
                 platform: 'node',
@@ -173,6 +179,9 @@ describe('ProjectsResource Integration', () => {
                 dsn: 'http://key@localhost:8080/1',
                 stored_event_count: 0,
                 digested_event_count: 0,
+                rate_limited_event_count: 0,
+                rate_limit_per_minute: null,
+                rate_limit_per_hour: null,
                 created_at: '2026-01-20T10:00:00.000Z',
                 updated_at: '2026-01-20T10:00:00.000Z',
                 platform: null,
@@ -196,6 +205,44 @@ describe('ProjectsResource Integration', () => {
       const response = expectOk(await client.projects.list());
 
       expect(response.items[0]?.stats?.events.previous).toBeNull();
+    });
+  });
+
+  describe('rateLimits()', () => {
+    it('reads the server per-project limits', async () => {
+      server.use(
+        http.get('http://localhost:8080/api/rate-limits', () =>
+          HttpResponse.json({
+            project_per_minute: 20000,
+            project_per_hour: 300000,
+          }),
+        ),
+      );
+
+      expect(expectOk(await client.projects.rateLimits())).toEqual({
+        project_per_minute: 20000,
+        project_per_hour: 300000,
+      });
+    });
+
+    it('reports an unauthenticated caller as such', async () => {
+      server.use(
+        http.get('http://localhost:8080/api/rate-limits', () =>
+          HttpResponse.json(
+            {
+              error: {
+                type: 'Unauthorized',
+                message: 'Authentication required',
+              },
+            },
+            { status: 401 },
+          ),
+        ),
+      );
+
+      expect(expectErr(await client.projects.rateLimits()).kind).toBe(
+        'unauthenticated',
+      );
     });
   });
 

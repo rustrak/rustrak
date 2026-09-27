@@ -77,7 +77,10 @@ describe('SpansResource', () => {
     });
 
     it('returns a not-found error for an unknown span', async () => {
-      const result = await client.spans.get(1, 'ffffffff-0000-0000-0000-000000000000');
+      const result = await client.spans.get(
+        1,
+        'ffffffff-0000-0000-0000-000000000000',
+      );
 
       expect(result.success).toBe(false);
       if (!result.success) {

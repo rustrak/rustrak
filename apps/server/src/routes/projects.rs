@@ -218,7 +218,37 @@ pub async fn delete_project(
 }
 
 /// Configure project routes
+/// The server's per-project event limits (`MAX_EVENTS_PER_PROJECT_*`).
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RateLimitsResponse {
+    pub project_per_minute: i64,
+    pub project_per_hour: i64,
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/rate-limits",
+    tag = "Projects",
+    responses(
+        (status = 200, description = "The server's per-project limits", body = RateLimitsResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// GET /api/rate-limits - What a project without limits of its own follows
+pub async fn get_rate_limits(
+    config: web::Data<Config>,
+    _actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    Ok(HttpResponse::Ok().json(RateLimitsResponse {
+        project_per_minute: config.rate_limit.max_events_per_project_per_minute,
+        project_per_hour: config.rate_limit.max_events_per_project_per_hour,
+    }))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.route("/api/rate-limits", web::get().to(get_rate_limits));
     cfg.service(
         web::scope("/api/projects")
             .route("", web::get().to(list_projects))
@@ -307,10 +337,12 @@ mod tests {
         get_project,
         create_project,
         update_project,
-        delete_project
+        delete_project,
+        get_rate_limits
     ),
     components(schemas(
         crate::models::ProjectResponse,
+        RateLimitsResponse,
         crate::models::CreateProject,
         crate::models::UpdateProject,
         crate::error::ErrorResponse,

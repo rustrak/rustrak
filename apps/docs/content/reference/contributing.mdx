@@ -6,16 +6,15 @@ How to contribute to Rustrak.
 
 ### Prerequisites
 
-- Rust 1.75+
-- Node.js 20+
-- pnpm 9+
-- PostgreSQL 15+
-- Docker (optional)
+- Rust, current stable
+- Node.js 22+
+- pnpm 10+
+- Docker, optional: only for PostgreSQL or to build images
 
 ### Clone and install
 
 ```bash
-git clone https://github.com/AbianS/rustrak.git
+git clone https://github.com/rustrak/rustrak.git
 cd rustrak
 pnpm install
 ```
@@ -23,27 +22,43 @@ pnpm install
 ### Start development
 
 ```bash
-# Start PostgreSQL
-docker compose -f docker-compose.dev.yml up -d postgres
+# Run the server on :8080, with SQLite. The .env keeps the database and
+# source maps inside the checkout instead of /data.
+cd apps/server && cp .env.example .env && cargo run
 
-# Run server
-cd apps/server && cargo run
-
-# Run dashboard (separate terminal)
+# Run the dashboard on :3000, proxying the API to :8080 (separate terminal)
 cd apps/dashboard && pnpm dev
 ```
+
+The server uses SQLite unless told otherwise. To work against PostgreSQL:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d postgres
+cd apps/server && DATABASE_URL=postgres://rustrak:rustrak@localhost:5432/rustrak \
+  cargo run --no-default-features --features postgres
+```
+
+To have the server itself serve the dashboard, as it does in production, run
+`pnpm build --filter=@rustrak/server` from the root: it builds the dashboard,
+copies it to `apps/server/static` with `scripts/bundle-dashboard.sh`, and
+builds the server.
 
 ## Project structure
 
 ```
 rustrak/
 ├── apps/
-│   ├── server/         # Rust API server
-│   ├── dashboard/      # React SPA, served by the server
-│   └── docs/           # Documentation
+│   ├── server/         # Rust server: API, ingest, and the dashboard from static/
+│   ├── dashboard/      # React SPA, compiled into apps/server/static
+│   └── docs/           # Documentation site
 ├── packages/
+│   ├── ui/             # Design system
 │   ├── client/         # TypeScript API client
-│   └── test-sentry/    # Test CLI tool
+│   ├── mcp/            # MCP server over the client
+│   ├── test-sentry/    # CLI that sends test events
+│   └── benchmarks/     # Load and throughput benchmarks
+├── scripts/
+│   └── bundle-dashboard.sh   # copies the dashboard build into apps/server/static
 └── docker-compose.yml
 ```
 
@@ -115,7 +130,7 @@ pnpm lint
 
 Every user-facing sentence lives in `src/shared/i18n/messages/`, one JSON dictionary per locale, and nowhere else. A new string goes into **all five** dictionaries, and is read through a translator rather than written inline.
 
-Dates, numbers and percentages are never formatted by hand. `toLocaleString()` resolves the locale of whatever process runs it, which on a Server Component is the container's, so it disagrees with the browser that hydrates it. Use next-intl's `useFormatter` or `getFormatter` with one of the named formats. The architecture suites fail the build on all of this.
+Dates, numbers and percentages are never formatted by hand. `toLocaleString()` and a bare `Intl` formatter use the browser's locale rather than the one the reader chose in Rustrak. Use `use-intl`'s `useFormatter` with one of the named formats in `src/shared/i18n/config.ts`. The architecture suites fail the build on all of this.
 
 ### Adding a language
 
@@ -123,7 +138,7 @@ The server needs no change: it accepts any well-formed language tag, so a locale
 
 1. Copy `src/shared/i18n/messages/en.json` to your locale's tag, for example `fr.json`, and translate the values. Keep every key: a missing one renders as the raw key, not as English
 2. Add the tag to `LOCALES` in `src/shared/i18n/routing.ts`
-3. Extend the dictionary parity check in `src/__tests__/architecture/message-keys.test.ts`, which today compares English against Chinese, so your locale is held to the same rule
+3. Add the dictionary to `OTHER_LOCALES` in `src/__tests__/architecture/message-keys.test.ts`, which holds every locale to the same keys as English
 4. Run `pnpm test`
 
 ## Documentation

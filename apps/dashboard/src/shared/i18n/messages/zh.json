@@ -7,7 +7,12 @@
     "ro": "Română",
     "label": "语言",
     "storedOnAccount": "已保存到您的账户。",
-    "saveFailed": "无法保存您的语言设置。"
+    "saveFailed": "无法保存您的语言设置。",
+    "timeZoneLabel": "时区",
+    "timeZonePlaceholder": "搜索时区...",
+    "timeZoneNoResults": "未找到时区。",
+    "timeZoneHint": "所有日期和时间都按此时区显示。选择 UTC 可按事件记录的原始时间查看。",
+    "timeZoneSaveFailed": "无法保存您的时区设置。"
   },
   "app": {
     "title": "Rustrak - 错误跟踪系统",
@@ -531,6 +536,19 @@
       "compatSteps": "以了解此平台的配置步骤。",
       "commandLabel": "命令",
       "exampleLabel": "示例"
+    },
+    "rateLimits": {
+      "title": "事件限制",
+      "description": "此项目可存储的事件数量。超出限制的事件会收到 429 响应，SDK 会等待后再发送。",
+      "perMinute": "每分钟事件数",
+      "perHour": "每小时事件数",
+      "limitDescription": "留空则使用服务器的限制。此处的值只能低于服务器的限制，不能更高。",
+      "save": "保存",
+      "saved": "限制已保存",
+      "saveFailed": "无法保存限制",
+      "invalid": "请输入不小于 1 的整数，或留空。",
+      "dropped": "因限制被丢弃",
+      "droppedDescription": "已接收但因已达到限制而未存储的事件。"
     }
   },
   "alerts": {

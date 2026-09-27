@@ -9,7 +9,7 @@ If your DSN looks like `http://key@0.0.0.0:8080/1`, the server is using its TCP 
 **Fix:** Set `PUBLIC_URL` in your server environment:
 
 ```bash
-PUBLIC_URL=https://api.yourcompany.com
+PUBLIC_URL=https://rustrak.yourcompany.com
 ```
 
 The DSN will immediately reflect the correct URL on the next API call. See [Environment Variables](/configuration/environment#public_url) for details.
@@ -58,49 +58,43 @@ Look for "rate limit exceeded" messages.
 
 ## CORS errors
 
-If your browser shows CORS errors, your Rustrak server needs to allow your domain.
+The server already answers CORS for any origin, so a browser SDK on any domain
+can send events and the preflight passes. The dashboard needs no CORS at all:
+it calls the API on the origin it was loaded from.
 
-### Using a reverse proxy
-
-Add CORS headers in nginx:
-
-```nginx
-location / {
-    proxy_pass http://localhost:8080;
-
-    # CORS headers
-    add_header Access-Control-Allow-Origin "https://your-app.com";
-    add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-    add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-Sentry-Auth";
-
-    if ($request_method = 'OPTIONS') {
-        return 204;
-    }
-}
-```
+**Don't add CORS headers at your reverse proxy.** The browser then sees
+`Access-Control-Allow-Origin` twice and rejects the response. If you see CORS
+errors behind a proxy, check that it passes the `OPTIONS` request and the
+`X-Sentry-Auth`, `sentry-trace` and `baggage` headers through to the server
+unchanged.
 
 ## Can't connect to dashboard
 
 The dashboard is served by the server itself, from `/`, so its address is the
-server's address — `http://localhost:8080` by default.
+server's address: `http://localhost:8080` by default, or your `PUBLIC_URL`.
+The sign-in page is `/login`.
 
-If `/` answers with a JSON 404 instead of the sign-in page, the image has no
-dashboard build in it. That is a supported configuration, not a fault: the
-server is a complete product without a UI, and it mounts one only when
-`RUSTRAK_DASHBOARD_DIR` (default `./static`) actually holds an `index.html`.
-The startup log says which it found:
+If a page answers with a JSON 404 instead of the dashboard, the startup log
+says why. It prints one of these lines:
 
 ```
 Serving the dashboard from /app/static
+Dashboard switched off by RUSTRAK_DASHBOARD — serving the API only
 No dashboard build at ./static — serving the API only
 ```
 
-Make sure:
-- You are opening the server's port, not `:3000`
-- HTTPS is configured if required, and `SSL_PROXY=true` when a proxy
-  terminates it — otherwise the session cookie is dropped and every page looks
-  signed out
-- No firewall blocking the connection
+- **Switched off**: `RUSTRAK_DASHBOARD=off` is set. Remove it to serve the
+  dashboard again.
+- **No dashboard build**: the server was built without one, for example a
+  plain `cargo build`. The published images always include it.
+- **`/auth/login`**: that was the sign-in address before 0.15. It now belongs
+  to the API and answers a JSON 404; open `/login` instead.
+
+Also check that:
+- You are opening the server's port (`8080` by default)
+- `SSL_PROXY=true` is set when a proxy terminates HTTPS, or the session cookie
+  is dropped and every page looks signed out
+- No firewall blocks the connection
 
 ### Server not responding
 
@@ -147,26 +141,21 @@ Check your token:
 
 ### Can't log in to dashboard
 
-1. Verify user was created by checking your `.env` file has `CREATE_SUPERUSER` set:
-```bash
-# In your .env file
-CREATE_SUPERUSER=admin@example.com:password
-```
+1. Check that the first user was created. `CREATE_SUPERUSER=email:password`
+   creates an admin only when the database has no users yet; the startup log
+   says `Superuser created`, or that it skipped creation because users exist.
+   Changing it later does not change an existing account's password.
+2. Check the email and password. The email is not case-sensitive.
+3. Clear the browser's cookies for the Rustrak address and try again.
 
-2. If you need to create/recreate the user, update `.env` and restart:
-```bash
-docker compose restart server
-```
-
-3. Check you're using the correct email/password
-
-4. Clear browser cookies and try again
+There is no password reset in the dashboard yet. If another admin can sign
+in, they can remove the account under Settings, Team and invite it again.
 
 ## High memory usage
 
 ### Server using too much RAM
 
-Check your rate limits—processing many events increases memory:
+Check your rate limits. Processing many events increases memory:
 
 ```bash
 # Reduce limits for constrained environments
@@ -174,15 +163,11 @@ MAX_EVENTS_PER_MINUTE=100
 MAX_EVENTS_PER_HOUR=1000
 ```
 
-### Consider server-only deployment
+### The dashboard is not the cost
 
-The whole install is one container (~50MB RAM), dashboard included — the
-dashboard is static files the server reads once at startup, so it costs nothing
-at runtime:
-
-```bash
-docker run -d -p 8080:8080 rustrak/rustrak-server:latest
-```
+The dashboard is static files the server reads once at startup, so it adds
+nothing to memory under load. The whole install idles under 100 MB. If you
+don't want it anyway, `RUSTRAK_DASHBOARD=off` serves the API only.
 
 ## Events delayed
 
@@ -220,4 +205,4 @@ See [Source Maps](/usage/source-maps) for full setup.
 
 - Check server logs: `docker logs rustrak`
 - Enable debug logging: `RUST_LOG=debug`
-- [Open an issue](https://github.com/AbianS/rustrak/issues)
+- [Open an issue](https://github.com/rustrak/rustrak/issues)

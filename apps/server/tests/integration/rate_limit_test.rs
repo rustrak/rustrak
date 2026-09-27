@@ -78,28 +78,40 @@ async fn create_test_project(pool: &rustrak::db::DbPool, name: &str) -> (i32, St
     (project.id, project.sentry_key.to_string())
 }
 
-/// Sets project quota exceeded until the given time
+/// Fills the minute window that `until` falls in: the current one when
+/// `until` is ahead, so the quota is full now; an earlier one when it has
+/// passed, so the count belongs to a window that is over.
+fn full_minute_window(until: chrono::DateTime<Utc>) -> i64 {
+    let window = Utc::now().timestamp().div_euclid(60);
+    if until > Utc::now() {
+        window
+    } else {
+        window - 2
+    }
+}
+
+/// Makes the project's quota full until the given time
 async fn set_project_quota_exceeded(
     pool: &rustrak::db::DbPool,
     project_id: i32,
     until: chrono::DateTime<Utc>,
 ) {
     sqlx::query(
-        "UPDATE projects SET quota_exceeded_until = $1, next_quota_check = 1 WHERE id = $2",
+        "UPDATE projects SET quota_minute_window = $1, quota_minute_count = 1000000 WHERE id = $2",
     )
-    .bind(until)
+    .bind(full_minute_window(until))
     .bind(project_id)
     .execute(pool)
     .await
     .expect("Failed to set project quota");
 }
 
-/// Sets installation quota exceeded until the given time
+/// Makes the installation's quota full until the given time
 async fn set_installation_quota_exceeded(pool: &rustrak::db::DbPool, until: chrono::DateTime<Utc>) {
     sqlx::query(
-        "UPDATE installation SET quota_exceeded_until = $1, next_quota_check = 1 WHERE id = 1",
+        "UPDATE installation SET quota_minute_window = $1, quota_minute_count = 1000000 WHERE id = 1",
     )
-    .bind(until)
+    .bind(full_minute_window(until))
     .execute(pool)
     .await
     .expect("Failed to set installation quota");
@@ -110,20 +122,11 @@ async fn stale_quota_cache_is_refreshed_before_the_next_ingest() {
     let db = TestDb::new().await;
     let (project_id, _) = create_test_project(&db.pool, "Stale Quota Cache").await;
     let config = default_rate_limit_config();
-    sqlx::query("UPDATE installation SET next_quota_check = 1 WHERE id = 1")
-        .execute(&db.pool)
-        .await
-        .unwrap();
-    sqlx::query("UPDATE projects SET next_quota_check = 1 WHERE id = $1")
-        .bind(project_id)
-        .execute(&db.pool)
-        .await
-        .unwrap();
-    // Whole seconds: Postgres keeps microseconds, so a nanosecond `Utc::now()`
-    // would not compare equal once it comes back.
+    // A closed-until left behind by an older server: the counters have room,
+    // so it must not turn events away.
     let stale_until = (Utc::now() + Duration::minutes(10)).trunc_subsecs(0);
-    set_project_quota_exceeded(&db.pool, project_id, stale_until).await;
-    sqlx::query("UPDATE projects SET next_quota_check = 0 WHERE id = $1")
+    sqlx::query("UPDATE projects SET quota_exceeded_until = $1 WHERE id = $2")
+        .bind(stale_until)
         .bind(project_id)
         .execute(&db.pool)
         .await
@@ -140,11 +143,6 @@ async fn stale_quota_cache_is_refreshed_before_the_next_ingest() {
         .await
         .unwrap()
         .is_none());
-    let refreshed = ProjectService::get_by_id(&db.pool, project_id)
-        .await
-        .unwrap();
-    assert!(refreshed.quota_exceeded_until.is_none());
-    assert!(refreshed.next_quota_check > i64::from(refreshed.digested_event_count));
 }
 
 /// Creates a minimal valid Sentry envelope
@@ -224,6 +222,14 @@ async fn test_rate_limit_project_exceeded_returns_429() {
         .expect("Retry-After should be a number");
     assert!(retry_after_value > 0);
     assert!(retry_after_value <= 60);
+
+    // Relay's own header, so SDKs back off exactly as they do against Sentry:
+    // `retry_after:categories:scope`, no categories meaning all of them.
+    let rate_limits = resp.headers().get("x-sentry-rate-limits").unwrap();
+    assert_eq!(
+        rate_limits.to_str().unwrap(),
+        format!("{retry_after_value}::project")
+    );
 }
 
 #[actix_web::test]
@@ -329,6 +335,14 @@ async fn test_rate_limit_installation_exceeded_returns_429() {
 
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 429);
+
+    // The installation is Relay's organization scope: one per server.
+    let retry_after = resp.headers().get("retry-after").unwrap().to_str().unwrap();
+    let rate_limits = resp.headers().get("x-sentry-rate-limits").unwrap();
+    assert_eq!(
+        rate_limits.to_str().unwrap(),
+        format!("{retry_after}::organization")
+    );
 }
 
 #[actix_web::test]
@@ -400,18 +414,8 @@ async fn test_rate_limit_429_has_cors_headers() {
     let exceeded_until = Utc::now() + Duration::seconds(60);
     set_project_quota_exceeded(&db.pool, project_id, exceeded_until).await;
 
-    // CORS is handled by middleware, so we need to include it in the test
-    let cors = actix_cors::Cors::default()
-        .allow_any_origin()
-        .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-        .allowed_headers(vec![
-            actix_web::http::header::AUTHORIZATION,
-            actix_web::http::header::ACCEPT,
-            actix_web::http::header::CONTENT_TYPE,
-            actix_web::http::header::CONTENT_ENCODING,
-            actix_web::http::header::HeaderName::from_static("x-sentry-auth"),
-        ])
-        .max_age(3600);
+    // The server's own CORS policy, not a copy of it.
+    let cors = rustrak::middleware::cors::cors();
 
     let app = test::init_service(
         App::new()
@@ -461,6 +465,21 @@ async fn test_rate_limit_429_has_cors_headers() {
         headers.get("access-control-allow-origin").unwrap(),
         "https://example.com"
     );
+
+    // A browser SDK only sees the headers the response exposes; Relay exposes
+    // these three (`relay-server/src/middlewares/cors.rs`).
+    let exposed = headers
+        .get("access-control-expose-headers")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_ascii_lowercase();
+    for header in ["x-sentry-rate-limits", "retry-after", "x-sentry-error"] {
+        assert!(
+            exposed.contains(header),
+            "{header} must be exposed: {exposed}"
+        );
+    }
 }
 
 // =============================================================================
@@ -587,48 +606,4 @@ async fn test_rate_limit_affects_only_specific_project() {
 
     let resp_b = test::call_service(&app, req_b).await;
     assert!(resp_b.status().is_success());
-}
-
-#[tokio::test]
-async fn test_check_quota_degrades_to_stale_state_when_refresh_fails() {
-    // Quota refresh is derived bookkeeping. When it cannot run (e.g. SQLite
-    // busy under write load), ingestion must proceed on the stale quota state
-    // instead of failing the request: the digest side already treats the same
-    // refresh as best-effort, and a 5xx here would reject an event that
-    // nothing else objects to.
-    let db = TestDb::new().await;
-    let (project_id, _key) = create_test_project(&db.pool, "Stale Quota Project").await;
-    let project = ProjectService::get_by_id(&db.pool, project_id)
-        .await
-        .expect("project lookup must succeed");
-    let config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-
-    // Make the derived state stale so check_quota attempts a refresh...
-    sqlx::query(
-        "UPDATE installation SET next_quota_check = 1, digested_event_count = 5 WHERE id = 1",
-    )
-    .execute(&db.pool)
-    .await
-    .expect("staleness setup must succeed");
-    // ...and make that refresh fail deterministically.
-    sqlx::query(
-        "CREATE TRIGGER fail_quota_refresh BEFORE UPDATE OF next_quota_check ON installation \
-         BEGIN SELECT RAISE(ABORT, 'injected: quota refresh unavailable'); END",
-    )
-    .execute(&db.pool)
-    .await
-    .expect("trigger creation must succeed");
-
-    let verdict = RateLimitService::check_quota(&db.pool, &project, &config)
-        .await
-        .expect("a failed quota refresh must not fail the ingest request");
-    assert!(
-        verdict.is_none(),
-        "stale non-exceeded quota state must admit the event"
-    );
 }

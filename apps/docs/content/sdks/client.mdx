@@ -40,7 +40,7 @@ The shape deliberately mirrors Zod's `safeParse`, and it is the same shape every
 ```typescript
 const client = new RustrakClient({
   baseUrl: 'https://rustrak.example.com', // required
-  token: 'your-bearer-token',             // required — create one in Settings → Tokens
+  token: 'your-bearer-token',             // required: create one in Settings → Tokens
   timeout: 30000,                         // optional, ms (default: 30000)
   maxRetries: 2,                          // optional (default: 2)
   headers: {},                            // optional custom headers
@@ -249,6 +249,10 @@ import { unwrap, unwrapOr, mapResult } from '@rustrak/client';
 
 ## Next.js Integration
 
+These examples are for your own Next.js application calling a Rustrak server
+through the client. `RUSTRAK_API_URL` and `RUSTRAK_API_TOKEN` are your app's
+settings: the server's address and an API token.
+
 A `Result` is a plain object with no prototype chain, so it survives `structuredClone` and therefore React's server/client boundary. A thrown error class does not: it reaches the browser as an opaque digest, which is why returning the failure is the recommended shape.
 
 ### Server Component
@@ -268,7 +272,7 @@ export default async function ProjectsPage() {
   if (!projects.success) {
     // `kind` decides. Redirecting on 'network' or 'server_error' turns a flaky
     // connection into a login loop that logging in cannot fix.
-    if (projects.error.kind === 'unauthenticated') redirect('/auth/login');
+    if (projects.error.kind === 'unauthenticated') redirect('/login'); // your app's sign-in page
     return <LoadFailed error={projects.error} />;
   }
 
@@ -341,6 +345,6 @@ Value exports for the same API: `Ok`, `Err`, `unwrap`, `unwrapOr`, `mapResult`, 
 
 ## Related
 
-- [`@rustrak/mcp`](/sdks/mcp) — MCP server built on top of this client; gives Claude, Cursor, and Continue direct access to your Rustrak instance
-- [API Reference](/api-reference) — Full REST API documentation
-- [API Tokens](/usage/tokens) — How to create and manage tokens
+- [`@rustrak/mcp`](/sdks/mcp): MCP server built on top of this client; gives Claude, Cursor, and Continue direct access to your Rustrak instance
+- [API Reference](/api-reference): Full REST API documentation
+- [API Tokens](/usage/tokens): How to create and manage tokens

@@ -158,9 +158,9 @@ export function OneCommand() {
           </div>
 
           <p className="mt-4 text-center text-[13px] text-muted-foreground">
-            The server comes up on{' '}
-            <span className="font-mono text-white/70">localhost:8080</span>.
-            SQLite by default, so there is no second service to stand up.
+            Open <span className="font-mono text-white/70">localhost:8080</span>
+            : the dashboard and the API, on one port. SQLite by default, so
+            there is no second service to stand up.
           </p>
         </div>
       </div>

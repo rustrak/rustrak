@@ -1,37 +1,36 @@
 # Overview
 
-Rustrak is a lightweight, self-hosted error tracking system. It's compatible with Sentry SDKs, so you can use your existing setup—just change the DSN.
+Rustrak is a lightweight, self-hosted error tracking system. It speaks the Sentry protocol, so any Sentry SDK you already use can send to it: change the DSN and you are done.
 
 <Video src="/videos/overview.webm" autoPlay loop muted playsInline />
 
 ## Why Rustrak?
 
 - **Self-hosted**: Your data stays on your servers
-- **Lightweight**: ~50MB RAM, ~20MB Docker image
+- **Lightweight**: about 20 MB image, under 100 MB of memory idle
 - **Fast**: Under 50ms ingestion latency
-- **Simple**: No complex configuration required
+- **Simple**: One container, no complex configuration
 - **Free**: No per-event pricing, no limits
 
 ## How it works
 
 ```
-Your App → Sentry SDK → Rustrak Server → SQLite or PostgreSQL
-                              ↓
-                        Dashboard (optional)
+Your App → Sentry SDK → Rustrak server → SQLite or PostgreSQL
+                         (API + dashboard on :8080)
 ```
 
-Your application sends errors using any Sentry SDK. Rustrak receives them, groups similar errors into issues, and stores everything in the database. You view and manage issues through the dashboard.
+Your application sends errors using any Sentry SDK. Rustrak receives them, groups similar errors into issues, and stores everything in the database. You view and manage issues in the dashboard, which the same server serves.
 
 ## Database backends
 
-Rustrak ships two Docker image variants, each compiled for a different database backend:
+Rustrak ships two Docker image variants, each compiled for a different database backend. Both include the dashboard.
 
 | Image tag | Backend | Use case |
 |-----------|---------|----------|
 | `latest`, `vX.Y.Z` | **SQLite** | Personal projects, low traffic, zero-ops setup |
 | `postgres`, `vX.Y.Z-postgres` | **PostgreSQL** | Production, teams, high throughput |
 
-SQLite is the default — no external service needed. PostgreSQL is available for production deployments that need concurrent writes or high volume.
+SQLite is the default: no external service needed. PostgreSQL is available for deployments that need concurrent writes or high volume.
 
 ## Deployment
 
@@ -39,47 +38,38 @@ One container, one port, one process:
 
 ```bash
 docker run -d -p 8080:8080 \
-  -e DATABASE_URL=postgres://user:pass@localhost:5432/rustrak \
+  -v rustrak_data:/data \
   -e SESSION_SECRET_KEY=$(openssl rand -hex 32) \
   -e CREATE_SUPERUSER=admin@example.com:your-secure-password \
-  rustrak/rustrak-server:postgres
+  rustrak/rustrak-server:latest
 ```
 
-The dashboard is compiled to static files and served by the same Actix process
-that answers `/api`, so there is no Node.js runtime in production, no second
-image, and no API address to configure. The browser and the API share one
-origin, which is what keeps the session cookie first-party.
+Open **http://localhost:8080** and sign in. The dashboard is compiled to static files and served by the same process that answers `/api`, so there is no second image and no API address to configure. The browser and the API share one origin, which is what keeps the session cookie first-party.
 
-The whole thing uses **~50MB RAM**, which is what makes it comfortable on:
+The whole thing idles under 100 MB of memory, which makes it comfortable on:
 - a VPS with 512MB–1GB
 - edge deployments
 - cost-conscious setups
 
-**The dashboard is still optional.** It is mounted only when a build is present
-in the image; without one the server answers the API and nothing else. Point
-any Sentry SDK at it and never deploy a UI.
+**The dashboard is optional.** Set `RUSTRAK_DASHBOARD=off` and the server answers the API and nothing else. Point any Sentry SDK at it and never open a UI.
 
 ## What's included
 
-- Error and exception tracking
-- Stack traces with source context
-- Issue grouping and deduplication
-- Issue states (open, resolved, muted)
-- User context and breadcrumbs
-- Tags and custom data
-- Rate limiting
-- API access
+- Error and exception tracking, with stack traces and source context
+- Issue grouping, deduplication and states (open, resolved, muted)
+- Source maps for JavaScript, including Hermes and React Native
+- Performance: transactions and spans
+- Release health and session tracking
+- Logs and AI agent traces
+- Alerts to Slack, email, webhooks and custom webhooks
+- Teams, roles and API tokens
+- Storage usage and retention
 
-## What's NOT included
+## What's not included
 
-Rustrak focuses on error tracking. These features are not supported:
-
-- Performance monitoring (transactions, spans)
-- Session tracking
-- Release management
-- Attachments and replays
-
-If you need these, consider the hosted Sentry service.
+- Attachments
+- Session replays
+- Profiling
 
 ## Next steps
 

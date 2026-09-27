@@ -3,6 +3,7 @@ import type {
   createProjectSchema,
   projectListStatsSchema,
   projectSchema,
+  rateLimitsSchema,
   updateProjectSchema,
 } from '../schemas/project.js';
 
@@ -25,3 +26,8 @@ export type CreateProject = z.infer<typeof createProjectSchema>;
  * Request payload for updating a project
  */
 export type UpdateProject = z.infer<typeof updateProjectSchema>;
+
+/**
+ * The server's per-project limits
+ */
+export type RateLimits = z.infer<typeof rateLimitsSchema>;

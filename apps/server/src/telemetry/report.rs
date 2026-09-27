@@ -58,6 +58,8 @@ pub struct ConfigFacts {
     pub smtp_configured: bool,
     pub session_secret_set: bool,
     pub alert_providers: Vec<String>,
+    /// Whether any quota limit differs from its default. Never the limits.
+    pub quota_customized: bool,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -39,6 +39,8 @@ This ensures:
 
 ### 4. Database security
 
+With PostgreSQL:
+
 ```bash
 # Enable SSL
 DATABASE_URL=postgres://user:pass@host:5432/rustrak?sslmode=require
@@ -60,10 +62,9 @@ upstream and only one address to get right:
 - **`PUBLIC_URL` is public.** It is the host Rustrak writes into every DSN, so
   it has to be an address your SDKs can reach from outside.
 
-There is no longer an internal dashboard-to-server address to configure. The
-dashboard is static files served from `/`, and the browser calls the API on the
-origin it was loaded from — which is the public host, through the proxy, like
-every other request.
+There is no internal dashboard-to-server address to configure. The dashboard
+is static files served from `/`, and the browser calls the API on the origin it
+was loaded from: the public host, through the proxy, like every other request.
 
 ### One hostname
 
@@ -75,17 +76,24 @@ services:
   server:
     image: rustrak/rustrak-server:latest
     environment:
-      - DATABASE_URL=postgres://rustrak:${POSTGRES_PASSWORD}@postgres:5432/rustrak
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
       - SSL_PROXY=true
       - PUBLIC_URL=https://rustrak.example.com
-    networks: [internal, proxy]
+    volumes:
+      - rustrak_data:/data
+    networks: [proxy]
+    restart: unless-stopped
+
+volumes:
+  rustrak_data:
 
 networks:
-  internal:
   proxy:
     external: true
 ```
+
+With PostgreSQL it is the same service on the `postgres` image, plus a
+`DATABASE_URL`; see [Installation](/getting-started/installation#postgresql).
 
 ```nginx
 server {
@@ -109,13 +117,19 @@ disagree because there is only one of them.
 
 ### Two hostnames
 
-Still available, and worth it if you want ingestion on a name of its own — an
+Worth it if you want ingestion on a name of its own: an
 SDK's `POST /api/<project>/envelope/` is unauthenticated traffic from the open
 internet, and separating it lets the proxy rate-limit or firewall that name
 without touching the one your team signs in on.
 
-Point both names at the same container and set `PUBLIC_URL` to the ingestion
-one, since that is the address the DSN has to carry:
+Point both names at the same container. Set `PUBLIC_URL` to the ingestion
+one, since that is the address the DSN has to carry, and `DASHBOARD_URL` to the
+one your team opens, so alert links land on the dashboard:
+
+```bash
+PUBLIC_URL=https://ingest.example.com
+DASHBOARD_URL=https://rustrak.example.com
+```
 
 ```nginx
 server {
@@ -133,12 +147,22 @@ server {
 
 ### Dashboard on its own host
 
-The default is one container, and it is the one to reach for. The other
-topology is still supported: the API on a small box and the dashboard
-somewhere else, with the machine holding your data serving no frontend at all.
+Most installations never need this. It is for keeping the machine that holds
+your data from serving any frontend, with the dashboard on another host.
 `rustrak/rustrak-ui` is the same dashboard bundle behind nginx, which proxies
 `/api`, `/auth`, `/health`, `/docs` and `/api-docs` to the server named by
-`RUSTRAK_API_URL`:
+`RUSTRAK_API_URL`.
+
+On the server, turn its own copy of the dashboard off and point alert links at
+the dashboard host:
+
+```bash
+RUSTRAK_DASHBOARD=off
+PUBLIC_URL=https://ingest.example.com
+DASHBOARD_URL=https://rustrak.example.com
+```
+
+On the dashboard host:
 
 ```yaml
 services:
@@ -159,11 +183,8 @@ dashboard. The image is about 30MB and idles under 15MB of memory.
 not `https://ingest.example.com/`; a trailing slash is dropped, a path refuses
 to start). Across hosts make it `https://`: the session cookie travels on that
 hop, and nginx verifies the server's certificate against the system bundle.
-Plain `http://server:8080` is for the two containers sharing a Docker
-network, as in the Compose file.
-
-The server keeps serving its own copy of the dashboard unless you turn it off
-with [`RUSTRAK_DASHBOARD=off`](/configuration/environment#rustrak_dashboard).
+Plain `http://server:8080` works only when the two containers share a Docker
+network.
 
 ## Performance
 
@@ -175,22 +196,22 @@ with [`RUSTRAK_DASHBOARD=off`](/configuration/environment#rustrak_dashboard).
 | Database | 1 vCPU | 512MB |
 
 The dashboard costs nothing at runtime: it is static files the server reads
-once at startup and hands out from memory. The whole process idles at about
-25MB and stays under 60MB while absorbing a 20k-event burst.
+once at startup and hands out from memory. The whole process idles under
+100MB of memory.
 
 ### Rate limiting
 
-Adjust based on your expected volume:
+The defaults stop a runaway loop without cutting off ordinary spikes, so most
+installs never touch them. Lower them when the hardware is small:
 
 ```bash
-# High volume
-MAX_EVENTS_PER_MINUTE=5000
-MAX_EVENTS_PER_HOUR=50000
-
-# Low volume / constrained resources
-MAX_EVENTS_PER_MINUTE=100
-MAX_EVENTS_PER_HOUR=1000
+# Constrained resources
+MAX_EVENTS_PER_MINUTE=1000
+MAX_EVENTS_PER_HOUR=20000
 ```
+
+See [Rate Limiting](/configuration/environment#rate-limiting) for how the
+windows work.
 
 ## Reliability
 
@@ -222,21 +243,50 @@ pg_dump -h localhost -U rustrak rustrak > backup_$(date +%Y%m%d).sql
 psql -h localhost -U rustrak rustrak < backup.sql
 ```
 
-**SQLite:**
+**SQLite:** everything lives in the `/data` volume: the database at
+`/data/rustrak.db` and uploaded source maps under `/data/sourcemaps`. The
+simplest backup is the whole volume, with the server stopped:
 
 ```bash
-# Use SQLite's online backup API (safe while server is running)
-sqlite3 /var/lib/rustrak/rustrak.db ".backup /backups/rustrak-$(date +%Y%m%d).db"
+docker stop rustrak
+docker run --rm -v rustrak_data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/rustrak-$(date +%Y%m%d).tgz -C /data .
+docker start rustrak
 ```
 
-> Use `sqlite3 .backup` rather than `cp`. A plain file copy may capture an inconsistent state if a write is in progress.
+With Docker Compose, the service is `server` and Compose prefixes the volume
+with the project name (`docker volume ls` shows it, usually
+`<directory>_rustrak_data`):
+
+```bash
+docker compose stop server
+docker run --rm -v <directory>_rustrak_data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/rustrak-$(date +%Y%m%d).tgz -C /data .
+docker compose start server
+```
+
+To back up only the database while the server runs, use SQLite's online
+backup rather than `cp`, which can capture a write half done. It writes the
+copy to the current directory, off the volume, and does not include source
+maps:
+
+```bash
+docker run --rm -v rustrak_data:/data -v "$PWD":/backup alpine sh -c \
+  'apk add -q sqlite && sqlite3 /data/rustrak.db ".backup /backup/rustrak-$(date +%Y%m%d).db"'
+```
+
+**Source maps with PostgreSQL** live in the server's `/data` volume, not in the
+database. Back up that volume too.
 
 ## Pre-launch checklist
 
 - [ ] Secure secrets generated (`SESSION_SECRET_KEY`)
 - [ ] HTTPS configured (reverse proxy)
 - [ ] `SSL_PROXY=true` set
-- [ ] `PUBLIC_URL` set to your public domain (e.g. `https://api.yourcompany.com`)
+- [ ] `PUBLIC_URL` set to your public domain (e.g. `https://rustrak.example.com`)
+- [ ] A named volume mounted at `/data`
+- [ ] Telemetry left on or turned off (`RUSTRAK_TELEMETRY=off`), deliberately
+- [ ] Dashboard served (the default) or `RUSTRAK_DASHBOARD=off` if this server should answer the API only
 - [ ] Database SSL enabled
 - [ ] Rate limits set
 - [ ] Health checks monitored

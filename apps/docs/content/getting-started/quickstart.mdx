@@ -8,7 +8,7 @@
 
 ## Step 1: Log in
 
-Open your Rustrak dashboard and log in with your admin credentials.
+Open http://localhost:8080 (or your `PUBLIC_URL`) and sign in with your admin credentials.
 
 ## Step 2: Create a project
 
@@ -24,9 +24,9 @@ After creating the project, you'll see a DSN (Data Source Name). It looks like t
 http://a1b2c3d4e5f6@localhost:8080/1
 ```
 
-Copy it—you'll need it in the next step.
+Copy it. You'll need it in the next step.
 
-> **Production deployment?** If your DSN shows `0.0.0.0` instead of your domain, set `PUBLIC_URL=https://api.yourcompany.com` in your server environment. See [Environment Variables](/configuration/environment#public_url).
+> **Production deployment?** If your DSN shows `0.0.0.0` instead of your domain, set `PUBLIC_URL=https://rustrak.example.com` in your server environment. See [Environment Variables](/configuration/environment#public_url).
 
 ## Step 4: Install a Sentry SDK
 
@@ -137,7 +137,7 @@ except Exception as e:
     sentry_sdk.capture_exception(e)
 ```
 
-Check the dashboard again—you'll see a new issue with a full stack trace.
+Check the dashboard again: you'll see a new issue with a full stack trace.
 
 ## Step 9: Add context
 

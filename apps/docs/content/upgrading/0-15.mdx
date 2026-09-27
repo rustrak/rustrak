@@ -34,7 +34,7 @@ docker run --rm -v rustrak_data:/data -v "$PWD":/backup alpine \
   tar czf /backup/rustrak-data-0.14.tgz -C /data .
 ```
 
-**PostgreSQL** (the Compose file, with a `postgres` service). Back up the
+**PostgreSQL** (the 0.14 Compose file, with a `postgres` service). Back up the
 database and the source map volume:
 
 ```bash
@@ -68,6 +68,8 @@ nginx serving the same dashboard and passing the API through to the server.
 On the same host it only adds a container, so remove it unless you want the
 dashboard on a different host from your data
 ([Dashboard on its own host](/configuration/production#dashboard-on-its-own-host)).
+If you do, set `RUSTRAK_DASHBOARD=off` on the server, and `DASHBOARD_URL` to
+the `ui` address so the links in alert notifications open the dashboard.
 
 ### Source maps are kept in the data volume
 
@@ -78,7 +80,7 @@ them in a separate unnamed volume that a new container did not reuse.
 
 **What to do.** Nothing, if you mount a volume at `/data/sourcemaps` or set
 [`SOURCEMAP_STORAGE_PATH`](/usage/source-maps#storage) to a mounted path, as
-the Compose file does. If you ran the server with only
+the 0.14 Compose file does. If you ran the server with only
 `-v rustrak_data:/data`, source maps uploaded before the upgrade are not
 carried over. Upload them again for the releases you still need symbolicated;
 your application's next deploy uploads the maps for its new release.

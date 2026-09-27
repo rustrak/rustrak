@@ -103,7 +103,7 @@ impl std::fmt::Debug for SecurityConfig {
 }
 
 /// Rate limiting configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RateLimitConfig {
     /// Global (installation-wide) max events per minute
     pub max_events_per_minute: i64,
@@ -189,27 +189,46 @@ impl TelemetryConfig {
     }
 }
 
+/// A brake for a runaway loop that would fill the disk, not a cap on the
+/// spikes an ordinary production app sends.
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_events_per_minute: 60_000,
+            max_events_per_hour: 1_000_000,
+            max_events_per_project_per_minute: 20_000,
+            max_events_per_project_per_hour: 300_000,
+        }
+    }
+}
+
 impl RateLimitConfig {
     /// Load rate limit configuration from environment variables
     pub fn from_env() -> Self {
+        let defaults = Self::default();
+        let limit = |name: &str, default: i64| {
+            env::var(name)
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(default)
+        };
         Self {
-            max_events_per_minute: env::var("MAX_EVENTS_PER_MINUTE")
-                .unwrap_or_else(|_| "1000".to_string())
-                .parse()
-                .unwrap_or(1000),
-            max_events_per_hour: env::var("MAX_EVENTS_PER_HOUR")
-                .unwrap_or_else(|_| "10000".to_string())
-                .parse()
-                .unwrap_or(10000),
-            max_events_per_project_per_minute: env::var("MAX_EVENTS_PER_PROJECT_PER_MINUTE")
-                .unwrap_or_else(|_| "500".to_string())
-                .parse()
-                .unwrap_or(500),
-            max_events_per_project_per_hour: env::var("MAX_EVENTS_PER_PROJECT_PER_HOUR")
-                .unwrap_or_else(|_| "5000".to_string())
-                .parse()
-                .unwrap_or(5000),
+            max_events_per_minute: limit("MAX_EVENTS_PER_MINUTE", defaults.max_events_per_minute),
+            max_events_per_hour: limit("MAX_EVENTS_PER_HOUR", defaults.max_events_per_hour),
+            max_events_per_project_per_minute: limit(
+                "MAX_EVENTS_PER_PROJECT_PER_MINUTE",
+                defaults.max_events_per_project_per_minute,
+            ),
+            max_events_per_project_per_hour: limit(
+                "MAX_EVENTS_PER_PROJECT_PER_HOUR",
+                defaults.max_events_per_project_per_hour,
+            ),
         }
+    }
+
+    /// Whether any limit differs from its default.
+    pub fn is_customized(&self) -> bool {
+        *self != Self::default()
     }
 }
 
