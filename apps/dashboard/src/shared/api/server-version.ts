@@ -36,5 +36,7 @@ export async function getServerVersion(): Promise<
 export const serverVersionQuery = queryOptions({
   queryKey: ['server-version'],
   queryFn: getServerVersion,
-  staleTime: Number.POSITIVE_INFINITY,
+  // A failure is cached as data too, and must not outlive the outage.
+  staleTime: (query) =>
+    query.state.data?.success ? Number.POSITIVE_INFINITY : 0,
 });

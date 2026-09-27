@@ -14,7 +14,7 @@ import type {
   RustrakError,
 } from '@rustrak/client';
 import { queryOptions } from '@tanstack/react-query';
-import { invalidate, scope } from '@/shared/api/query-client';
+import { invalidate, queryClient, scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
 
 /**
@@ -134,14 +134,19 @@ export const issueQueries = {
 };
 
 /**
- * After a write to issues: the issue reads and the counts built on them. The
- * event on screen and its prev/next navigation cannot have changed, and the
- * navigation is the most expensive read on the page.
+ * After a write to issues: the issue reads, the counts built on them and each
+ * release's list of new issues. The event on screen and its prev/next
+ * navigation cannot have changed, and the navigation is the most expensive
+ * read on the page.
  */
 export function invalidateIssues(projectId: number): Promise<void> {
   return Promise.all([
     invalidate([...scope.project(projectId), 'issues']),
     invalidate([...scope.project(projectId), 'summary']),
     invalidate(scope.projects),
+    queryClient.invalidateQueries({
+      queryKey: [...scope.project(projectId), 'releases'],
+      predicate: (query) => query.queryKey.includes('new-issues'),
+    }),
   ]).then(() => undefined);
 }

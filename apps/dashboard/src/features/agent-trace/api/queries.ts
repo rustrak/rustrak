@@ -205,16 +205,13 @@ export const agentQueries = {
       queryFn: () => getAgentTraces(projectId, options),
     }),
   /**
-   * Everything the agents dashboard draws, as one read. The page renders all
-   * of it or its failure, so the ten requests are one cache entry.
+   * Everything the agents dashboard draws except the traces table, as one
+   * read. The page renders all of it or its failure. The table pages on its
+   * own, so turning a page does not refetch the charts.
    */
-  dashboard: (
-    projectId: number,
-    filters: AgentDashboardFilters,
-    page: number,
-  ) =>
+  dashboard: (projectId: number, filters: AgentDashboardFilters) =>
     queryOptions({
-      queryKey: [...scope.project(projectId), 'agents', filters, page],
+      queryKey: [...scope.project(projectId), 'agents', filters],
       queryFn: () => {
         const series = {
           period_hours: filters.periodHours,
@@ -231,12 +228,6 @@ export const agentQueries = {
           getAgentModelsByCalls(projectId, breakdown),
           getAgentModelsByTokens(projectId, breakdown),
           getAgentTools(projectId, breakdown),
-          getAgentTraces(projectId, {
-            page,
-            per_page: 20,
-            period_hours: filters.periodHours,
-            environment: filters.environment,
-          }),
           getAgentSummary(projectId, breakdown),
           getAgentModelsTable(projectId, breakdown),
           getAgentToolsTable(projectId, breakdown),
@@ -245,6 +236,18 @@ export const agentQueries = {
           getAgentEnvironments(projectId),
         ]);
       },
+    }),
+  /** One page of the dashboard's traces table, in the dashboard's window. */
+  dashboardTraces: (
+    projectId: number,
+    filters: AgentDashboardFilters,
+    page: number,
+  ) =>
+    agentQueries.traces(projectId, {
+      page,
+      per_page: 20,
+      period_hours: filters.periodHours,
+      environment: filters.environment,
     }),
   traceSpans: (projectId: number, traceId: string) =>
     queryOptions({

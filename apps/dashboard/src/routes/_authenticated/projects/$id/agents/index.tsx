@@ -1,3 +1,4 @@
+import type { RustrakError } from '@rustrak/client';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { Bot } from 'lucide-react';
@@ -26,18 +27,11 @@ import {
 
 // One window for every widget on the page: a chart on 24h beside a table on
 // all-time is a reader's trap, not a feature.
-function dashboardQuery(
-  projectId: number,
-  search: { page: number; period?: string; environment?: string },
-) {
-  return agentQueries.dashboard(
-    projectId,
-    resolveAgentFilters({
-      period: search.period,
-      environment: search.environment,
-    }),
-    search.page,
-  );
+function dashboardFilters(search: { period?: string; environment?: string }) {
+  return resolveAgentFilters({
+    period: search.period,
+    environment: search.environment,
+  });
 }
 
 export const Route = createFileRoute('/_authenticated/projects/$id/agents/')({
@@ -62,9 +56,13 @@ export const Route = createFileRoute('/_authenticated/projects/$id/agents/')({
     // rather than the "no agent activity yet" onboarding state, which would
     // tell a team whose agents are running that they never instrumented
     // anything.
+    const filters = dashboardFilters(deps);
     const [project] = await Promise.all([
       queryClient.ensureQueryData(projectQueries.detail(id)),
-      queryClient.ensureQueryData(dashboardQuery(id, deps)),
+      queryClient.ensureQueryData(agentQueries.dashboard(id, filters)),
+      queryClient.ensureQueryData(
+        agentQueries.dashboardTraces(id, filters, deps.page),
+      ),
     ]);
     return { project };
   },
@@ -100,8 +98,12 @@ function AgentsPage() {
     }),
   });
   const projectResult = useSuspenseQuery(projectQueries.detail(projectId)).data;
+  const filters = dashboardFilters({ period, environment });
   const loaded = useSuspenseQuery(
-    dashboardQuery(projectId, { page: currentPage, period, environment }),
+    agentQueries.dashboard(projectId, filters),
+  ).data;
+  const tracesResult = useSuspenseQuery(
+    agentQueries.dashboardTraces(projectId, filters, currentPage),
   ).data;
 
   if (!projectResult.success) {
@@ -113,13 +115,10 @@ function AgentsPage() {
   const project = projectResult.data;
 
   if (!loaded.success) {
-    return (
-      <LoadFailure
-        error={loaded.error}
-        title={t('agents.loadFailed')}
-        notFoundOnMissing={false}
-      />
-    );
+    return <AgentsLoadFailure error={loaded.error} />;
+  }
+  if (!tracesResult.success) {
+    return <AgentsLoadFailure error={tracesResult.error} />;
   }
 
   const [
@@ -128,12 +127,12 @@ function AgentsPage() {
     modelsByCalls,
     modelsByTokens,
     tools,
-    traces,
     summary,
     modelRows,
     toolRows,
     environments,
   ] = loaded.data;
+  const traces = tracesResult.data;
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)]">
@@ -281,5 +280,16 @@ function AgentsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function AgentsLoadFailure({ error }: { error: RustrakError }) {
+  const t = useTranslations('projectPages');
+  return (
+    <LoadFailure
+      error={error}
+      title={t('agents.loadFailed')}
+      notFoundOnMissing={false}
+    />
   );
 }

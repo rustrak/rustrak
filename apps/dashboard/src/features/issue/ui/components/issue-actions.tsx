@@ -113,7 +113,9 @@ export function IssueActions({ issue, projectId }: IssueActionsProps) {
       }
 
       setDeleteDialogOpen(false);
-      navigate({ to: '/projects/$id', params: { id: projectId } });
+      // Leave first, so the deleted issue's own reads are not refetched.
+      await navigate({ to: '/projects/$id', params: { id: projectId } });
+      void invalidateIssues(projectId);
       setPending(null);
     });
   };
