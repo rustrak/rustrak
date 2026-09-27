@@ -1,23 +1,10 @@
 import type { RustrakError } from '@rustrak/client';
+import { useQuery } from '@tanstack/react-query';
 import { useFormatter, useTranslations } from 'use-intl';
-import { listIssues } from '@/features/issue/api/queries';
 import { IssueListCard } from '@/features/issue/ui/components/issue-list-card';
-import {
-  getProjectEventTimeseries,
-  getProjectStatsSummary,
-} from '@/features/project/api/queries';
-import {
-  getSessionSummary,
-  getSessionTimeseries,
-} from '@/features/release/api/queries';
-import {
-  type OverviewPeriod,
-  overviewInterval,
-} from '@/features/release/model/session-health';
 import { CrashFreeTrend } from '@/features/release/ui/components/crash-free-trend';
 import { SessionHealthArea } from '@/features/release/ui/components/session-health-area';
-import { getTransactionStats } from '@/features/transaction/api/queries';
-import { loadAll } from '@/shared/lib/results';
+import { combine } from '@/shared/lib/results';
 import { ErrorVolumeChart } from '@/shared/ui/components/error-volume-chart';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import {
@@ -30,7 +17,7 @@ import {
 import { Skeleton } from '@/shared/ui/components/shadcn/skeleton';
 import { StatTile } from '@/shared/ui/components/stat-tile';
 import { TransactionP95Bars } from '@/shared/ui/components/transaction-p95-bars';
-import { useAsync } from '@/shared/ui/hooks/use-async';
+import { type TileProps, tileQueries } from './overview-queries';
 
 /**
  * Every tile takes the same props so the grid can fill in independently: each
@@ -42,11 +29,6 @@ import { useAsync } from '@/shared/ui/hooks/use-async';
  * tall it renders is the one that says how tall its placeholder is, which is
  * one fewer pair of numbers to keep in step.
  */
-interface TileProps {
-  projectId: number;
-  period?: OverviewPeriod;
-}
-
 function TileShell({
   title,
   subtitle,
@@ -103,14 +85,11 @@ function TileFailure({ error, title }: { error: RustrakError; title: string }) {
 
 export function ErrorVolumeTile({ projectId, period }: TileProps) {
   const t = useTranslations('projectPages');
-  const read = useAsync(
-    () =>
-      getProjectEventTimeseries(projectId, period, overviewInterval(period)),
-    [projectId, period],
+  const { data: timeseries } = useQuery(
+    tileQueries.errorVolume({ projectId, period }),
   );
 
-  if (read.state === 'pending') return <TileSkeleton height={300} />;
-  const timeseries = read.data;
+  if (!timeseries) return <TileSkeleton height={300} />;
 
   if (!timeseries.success) {
     return (
@@ -128,12 +107,11 @@ export function ErrorVolumeTile({ projectId, period }: TileProps) {
 export function CounterTiles({ projectId, period }: TileProps) {
   const format = useFormatter();
   const t = useTranslations('projectPages');
-  const read = useAsync(
-    () => getProjectStatsSummary(projectId, period),
-    [projectId, period],
+  const { data: result } = useQuery(
+    tileQueries.counters({ projectId, period }),
   );
 
-  if (read.state === 'pending') {
+  if (!result) {
     return (
       <>
         <TileSkeleton height={56} />
@@ -141,8 +119,6 @@ export function CounterTiles({ projectId, period }: TileProps) {
       </>
     );
   }
-  const result = read.data;
-
   if (!result.success) {
     // One fetch fills two grid cells, so it has to fail as two. Returning a
     // single `TileFailure` left the grid one child short and the "New issues"
@@ -187,17 +163,17 @@ export function CrashFreeTile({ projectId, period }: TileProps) {
   // trend beside a missing headline, or a "0 sessions" headline beside a real
   // trend, invents a relationship between two figures only one of which was
   // measured.
-  const read = useAsync(
-    () =>
-      loadAll([
-        getSessionSummary(projectId, period),
-        getSessionTimeseries(projectId, period, overviewInterval(period)),
-      ]),
-    [projectId, period],
+  const { data: summaryResult } = useQuery(
+    tileQueries.sessionSummary({ projectId, period }),
+  );
+  const { data: timeseriesResult } = useQuery(
+    tileQueries.sessionTimeseries({ projectId, period }),
   );
 
-  if (read.state === 'pending') return <TileSkeleton height={132} />;
-  const loaded = read.data;
+  if (!summaryResult || !timeseriesResult) {
+    return <TileSkeleton height={132} />;
+  }
+  const loaded = combine([summaryResult, timeseriesResult]);
 
   if (!loaded.success) {
     return (
@@ -224,13 +200,12 @@ export function CrashFreeTile({ projectId, period }: TileProps) {
 
 export function SessionHealthTile({ projectId, period }: TileProps) {
   const t = useTranslations('projectPages');
-  const read = useAsync(
-    () => getSessionTimeseries(projectId, period, overviewInterval(period)),
-    [projectId, period],
+  // The same read as the crash-free tile's, so it is fetched once for both.
+  const { data: timeseries } = useQuery(
+    tileQueries.sessionTimeseries({ projectId, period }),
   );
 
-  if (read.state === 'pending') return <TileSkeleton height={250} />;
-  const timeseries = read.data;
+  if (!timeseries) return <TileSkeleton height={250} />;
 
   if (!timeseries.success) {
     return (
@@ -253,17 +228,9 @@ export function SessionHealthTile({ projectId, period }: TileProps) {
 
 export function PerformanceTile({ projectId }: TileProps) {
   const t = useTranslations('projectPages');
+  const { data: stats } = useQuery(tileQueries.performance({ projectId }));
 
-  // Transaction stats have no period filter of their own yet, so this tile is
-  // all-time regardless of the selected window. Said out loud in the subtitle
-  // rather than silently pretending to follow the filter.
-  const read = useAsync(
-    () => getTransactionStats(projectId, { page: 1, per_page: 20 }),
-    [projectId],
-  );
-
-  if (read.state === 'pending') return <TileSkeleton height={250} />;
-  const stats = read.data;
+  if (!stats) return <TileSkeleton height={250} />;
 
   if (!stats.success) {
     return <TileFailure error={stats.error} title={t('overview.latency')} />;
@@ -281,25 +248,9 @@ export function PerformanceTile({ projectId }: TileProps) {
 
 export function TopIssuesTile({ projectId }: TileProps) {
   const t = useTranslations('projectPages');
+  const { data: response } = useQuery(tileQueries.topIssues({ projectId }));
 
-  // The issues endpoint takes no time window, and `event_count` is the issue's
-  // lifetime total, so this ranking is all-time whatever the page filter says.
-  // Labelled rather than left to look like it follows the filter, the same way
-  // the latency tile is.
-  const read = useAsync(
-    () =>
-      listIssues(projectId, {
-        filter: 'open',
-        page: 1,
-        per_page: 5,
-        sort: 'event_count',
-        order: 'desc',
-      }),
-    [projectId],
-  );
-
-  if (read.state === 'pending') return <TileSkeleton height={180} />;
-  const response = read.data;
+  if (!response) return <TileSkeleton height={180} />;
 
   if (!response.success) {
     return (

@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { getLastEvent } from '@/features/event/api/queries';
-import { getIssue } from '@/features/issue/api/queries';
+import { issueQueries } from '@/features/issue/api/queries';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 /**
@@ -16,18 +16,18 @@ import { LoadFailure } from '@/shared/ui/components/load-failure';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/',
 )({
-  beforeLoad: async ({ params }) => {
-    const projectId = Number.parseInt(params.id, 10);
+  beforeLoad: async ({ params: { id, issueId }, context: { queryClient } }) => {
+    // Both at once, and the issue into the cache the event page reads it from.
+    const [issue, lastEvent] = await Promise.all([
+      queryClient.ensureQueryData(issueQueries.detail(id, issueId)),
+      getLastEvent(id, issueId),
+    ]);
 
-    // Verify issue exists
-    const issue = await getIssue(projectId, params.issueId);
     if (!issue.success) {
       return {
         failure: { error: issue.error, title: 'loadIssueFailed' as const },
       };
     }
-
-    const lastEvent = await getLastEvent(projectId, params.issueId);
 
     if (!lastEvent.success) {
       return {
@@ -40,13 +40,14 @@ export const Route = createFileRoute(
 
     if (lastEvent.data) {
       throw redirect({
-        href: `/projects/${projectId}/issues/${params.issueId}/events/${lastEvent.data.id}`,
+        to: '/projects/$id/issues/$issueId/events/$eventId',
+        params: { id, issueId, eventId: lastEvent.data.id },
       });
     }
 
-    // If no events, show empty state
     throw redirect({
-      href: `/projects/${projectId}/issues/${params.issueId}/events/empty`,
+      to: '/projects/$id/issues/$issueId/events/empty',
+      params: { id, issueId },
     });
   },
   component: IssuePage,

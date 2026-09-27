@@ -1,4 +1,9 @@
-import type { Issue, OffsetPaginatedResponse } from '@rustrak/client';
+import type {
+  Issue,
+  IssueFilter,
+  OffsetPaginatedResponse,
+} from '@rustrak/client';
+import { useNavigate } from '@tanstack/react-router';
 import { AlertCircle, Check, Trash2, VolumeX, X } from 'lucide-react';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -8,12 +13,12 @@ import {
   bulkUpdateIssues,
   deleteIssue,
 } from '@/features/issue/api/mutations';
+import { invalidateIssues } from '@/features/issue/api/queries';
 import { type IssueAction, STATUS_FOR } from '@/features/issue/model/actions';
 import { DataTable } from '@/shared/ui/components/data-table/data-table';
 import { DataTablePagination } from '@/shared/ui/components/data-table/pagination';
 import { useAppTable } from '@/shared/ui/components/data-table/use-app-table';
 import { Button } from '@/shared/ui/components/shadcn/button';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useTableUrlState } from '@/shared/ui/hooks/use-table-url-state';
 import { DeleteIssuesDialog } from './delete-issues-dialog';
 import { type IssueRowHandlers, issueColumns } from './issue-columns';
@@ -21,39 +26,32 @@ import { IssueFilters } from './issue-filters';
 
 interface IssuesListProps {
   projectId: number;
-  initialIssues: OffsetPaginatedResponse<Issue>;
-  currentFilter: string;
+  issues: OffsetPaginatedResponse<Issue>;
+  currentFilter: IssueFilter;
   currentPage: number;
 }
 
 export function IssuesList({
   projectId,
-  initialIssues,
+  issues: page,
   currentFilter,
   currentPage,
 }: IssuesListProps) {
   const t = useTranslations('issues');
   const tableT = useTranslations('table');
   const format = useFormatter();
-  const router = useRouter();
-  const { items: issues, total_count, per_page } = initialIssues;
+  const navigate = useNavigate({ from: '/projects/$id/issues/' });
+  const { items: issues, total_count, per_page } = page;
 
   // Null means "no single issue targeted", which is how the dialog tells a row
   // delete from a batch delete without a second flag to keep in step.
   const [pendingDelete, setPendingDelete] = useState<Issue | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const buildUrl = (next: { filter?: string; page?: number }) => {
-    const search = new URLSearchParams();
-    search.set('filter', next.filter ?? currentFilter);
-    search.set('page', String(next.page ?? 1));
-    return `/projects/${projectId}/issues?${search.toString()}`;
-  };
-
   const urlState = useTableUrlState({
     page: currentPage,
     perPage: per_page,
-    navigate: ({ page }) => router.push(buildUrl({ page })),
+    navigate: ({ page }) => navigate({ search: (prev) => ({ ...prev, page }) }),
   });
 
   /**
@@ -105,7 +103,7 @@ export function IssuesList({
       }
 
       table.resetRowSelection();
-      router.refresh();
+      await invalidateIssues(projectId);
     });
   };
 
@@ -128,7 +126,7 @@ export function IssuesList({
       if (!pendingDelete) table.resetRowSelection();
       setDeleteOpen(false);
       setPendingDelete(null);
-      router.refresh();
+      await invalidateIssues(projectId);
     });
   };
 
@@ -148,7 +146,9 @@ export function IssuesList({
     <div className="flex h-full flex-col">
       <IssueFilters
         currentFilter={currentFilter}
-        onFilterChange={(filter) => router.push(buildUrl({ filter, page: 1 }))}
+        onFilterChange={(filter) =>
+          navigate({ search: { filter, page: undefined } })
+        }
         disabled={urlState.isPending}
       />
 

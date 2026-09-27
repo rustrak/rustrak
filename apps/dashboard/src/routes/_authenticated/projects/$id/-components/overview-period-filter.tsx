@@ -1,3 +1,4 @@
+import { useNavigate } from '@tanstack/react-router';
 import { useTransition } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -5,7 +6,6 @@ import {
   type OverviewPeriod,
 } from '@/features/release/model/session-health';
 import { Button } from '@/shared/ui/components/shadcn/button';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface OverviewPeriodFilterProps {
   projectId: number;
@@ -21,14 +21,17 @@ export function OverviewPeriodFilter({
   projectId,
   activePeriod,
 }: OverviewPeriodFilterProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const t = useTranslations('projectPages');
   const [isPending, startTransition] = useTransition();
 
-  const navigate = (period?: OverviewPeriod) => {
-    const query = period ? `?period=${period}` : '';
+  const go = (period?: OverviewPeriod) => {
     startTransition(() => {
-      router.push(`/projects/${projectId}${query}`);
+      navigate({
+        to: '/projects/$id',
+        params: { id: projectId },
+        search: { period },
+      });
     });
   };
 
@@ -43,7 +46,7 @@ export function OverviewPeriodFilter({
           variant={activePeriod === period ? 'secondary' : 'ghost'}
           size="sm"
           className="h-7 px-3"
-          onClick={() => navigate(period)}
+          onClick={() => go(period)}
           disabled={isPending}
         >
           {period}
@@ -53,7 +56,7 @@ export function OverviewPeriodFilter({
         variant={!activePeriod ? 'secondary' : 'ghost'}
         size="sm"
         className="h-7 px-3"
-        onClick={() => navigate()}
+        onClick={() => go()}
         disabled={isPending}
       >
         {t('overview.periodAll')}

@@ -52,3 +52,18 @@ export function searchOneOf<T extends string>(
     ? (raw as T)
     : undefined;
 }
+
+/**
+ * Where to go after signing in: a path on this origin, or absent.
+ *
+ * Only an absolute path counts. `//host` and `/\host` are read by browsers as
+ * another origin, and a scheme is one by definition, so all of them are
+ * dropped rather than followed.
+ */
+export function searchRedirect(value: unknown): string | undefined {
+  const raw = searchString(value);
+  if (raw === undefined || !raw.startsWith('/')) return undefined;
+  if (raw.startsWith('//') || raw.startsWith('/\\')) return undefined;
+  if (/^\/login(?:[/?#]|$)/.test(raw)) return undefined;
+  return raw;
+}

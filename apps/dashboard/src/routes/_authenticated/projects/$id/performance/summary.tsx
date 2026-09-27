@@ -1,23 +1,35 @@
-import { createFileRoute, notFound } from '@tanstack/react-router';
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, Link, notFound } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { getProject } from '@/features/project/api/queries';
-import {
-  getTransactionStatForGroup,
-  listTransactions,
-} from '@/features/transaction/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
+import { transactionQueries } from '@/features/transaction/api/queries';
 import { TransactionsList } from '@/features/transaction/ui/components/transactions-list';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
+import { combine, loadAll } from '@/shared/lib/results';
 import { searchPage, searchString } from '@/shared/lib/search-params';
-import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
+
+function samplesQuery(
+  projectId: number,
+  name: string,
+  op: string | undefined,
+  page: number,
+) {
+  return transactionQueries.list(projectId, { page, per_page: 20, name, op });
+}
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/performance/summary',
 )({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    name?: string;
+    op?: string;
+    page?: number;
+  } => ({
     name: searchString(search.name),
     op: searchString(search.op),
     page: searchPage(search.page),
@@ -27,26 +39,23 @@ export const Route = createFileRoute(
     op: search.op,
     page: search.page ?? 1,
   }),
-  loader: ({ params, deps }) => {
+  loader: ({ params: { id }, deps, context: { queryClient } }) => {
     // The transaction name *is* the address of this page: without it there is
     // no group to summarise, which is a wrong address rather than an outage.
     if (!deps.name) throw notFound();
-
-    const projectId = Number.parseInt(params.id, 10);
 
     // Direct group lookup — correct regardless of how many groups exist (no
     // "fetch page 1 and hope the group is on it").
     // `getTransactionStatForGroup` already turns "this group has no rows" into
     // a successful `null`, so a failure here is a real one.
     return loadAll([
-      getProject(projectId),
-      listTransactions(projectId, {
-        page: deps.page,
-        per_page: 20,
-        name: deps.name,
-        op: deps.op,
-      }),
-      getTransactionStatForGroup(projectId, deps.name, deps.op),
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(
+        samplesQuery(id, deps.name, deps.op, deps.page),
+      ),
+      queryClient.ensureQueryData(
+        transactionQueries.groupStat(id, deps.name, deps.op),
+      ),
     ]);
   },
   head: ({ match }) => {
@@ -72,7 +81,7 @@ function formatMs(ms: number): string {
 function TransactionSummaryPage() {
   const t = useTranslations('projectPages');
   const format = useFormatter();
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const { name, op, currentPage } = Route.useSearch({
     select: (search) => ({
       name: search.name,
@@ -80,9 +89,14 @@ function TransactionSummaryPage() {
       currentPage: search.page ?? 1,
     }),
   });
-  const loaded = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
-  const filters = { name, op };
+  // The loader turned an absent `name` into a not-found before this renders.
+  const groupName = name ?? '';
+  const loaded = combine([
+    useSuspenseQuery(projectQueries.detail(projectId)).data,
+    useSuspenseQuery(samplesQuery(projectId, groupName, op, currentPage)).data,
+    useSuspenseQuery(transactionQueries.groupStat(projectId, groupName, op))
+      .data,
+  ]);
 
   if (!loaded.success) {
     return (
@@ -126,7 +140,8 @@ function TransactionSummaryPage() {
     <div className="flex flex-col h-[calc(100vh-64px)]">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <Link
-          href={`/projects/${projectId}/performance`}
+          to="/projects/$id/performance"
+          params={{ id: projectId }}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
           <ArrowLeft className="size-4" />
@@ -161,8 +176,6 @@ function TransactionSummaryPage() {
           projectId={projectId}
           initialTransactions={samples}
           currentPage={currentPage}
-          basePath={`/projects/${projectId}/performance/summary`}
-          filters={filters}
         />
       </div>
     </div>

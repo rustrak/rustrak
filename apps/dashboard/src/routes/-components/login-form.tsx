@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { RustrakError } from '@rustrak/client';
+import { useNavigate } from '@tanstack/react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
@@ -18,7 +19,6 @@ import {
   FormRootError,
 } from '@/shared/ui/components/shadcn/form';
 import { Input } from '@/shared/ui/components/shadcn/input';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 type LoginFormData = {
   email: string;
@@ -59,9 +59,9 @@ function formatWait(seconds: number, t: LoginTranslator): string {
   return t('form.waitHours', { count: hours });
 }
 
-export function LoginForm() {
+export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const t = useTranslations('auth');
-  const router = useRouter();
+  const navigate = useNavigate();
   const [isPending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
 
@@ -85,7 +85,10 @@ export function LoginForm() {
       const result = await login(data);
 
       if (result.success) {
-        router.push('/');
+        // The guard's own `location.href`, so it stays an address rather than
+        // a route: `searchRedirect` has already kept it on this origin.
+        if (redirectTo) navigate({ href: redirectTo });
+        else navigate({ to: '/' });
         return;
       }
 

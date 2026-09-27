@@ -1,11 +1,10 @@
 import type { TransactionStats } from '@rustrak/client';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useTransition } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
 import { TablePagination } from '@/shared/ui/components/table-pagination';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface TransactionStatsTableProps {
   projectId: number;
@@ -35,13 +34,6 @@ function failureTone(rate: number): string {
   return 'text-muted-foreground';
 }
 
-/** Link to a group's samples (Sentry's transaction summary drill-down). */
-function summaryHref(projectId: number, s: TransactionStats): string {
-  const params = new URLSearchParams({ name: s.transaction_name });
-  if (s.op) params.set('op', s.op);
-  return `/projects/${projectId}/performance/summary?${params.toString()}`;
-}
-
 /**
  * The performance overview: one row per (transaction, op) group with throughput
  * and latency percentiles. Offset-paginated like every other table. Rows link
@@ -57,12 +49,12 @@ export function TransactionStatsTable({
 }: TransactionStatsTableProps) {
   const format = useFormatter();
   const t = useTranslations('transactions');
-  const router = useRouter();
+  const navigate = useNavigate({ from: '/projects/$id/performance/' });
   const [isPending, startTransition] = useTransition();
 
   const handlePageChange = (page: number) => {
     startTransition(() => {
-      router.push(`/projects/${projectId}/performance?page=${page}`);
+      navigate({ search: (prev) => ({ ...prev, page }) });
     });
   };
 
@@ -83,9 +75,12 @@ export function TransactionStatsTable({
           {stats.map((s) => {
             const key = `${s.transaction_name}⋄${s.op ?? ''}`;
             return (
+              // Rows open the group's samples, Sentry's transaction summary.
               <Link
                 key={key}
-                href={summaryHref(projectId, s)}
+                to="/projects/$id/performance/summary"
+                params={{ id: projectId }}
+                search={{ name: s.transaction_name, op: s.op || undefined }}
                 className="flex items-center gap-4 px-4 py-3 text-sm hover:bg-muted/30 transition-colors group"
               >
                 <div className="flex-1 min-w-0">

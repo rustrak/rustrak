@@ -2,7 +2,8 @@
 <html lang="en" class="dark" style="color-scheme: dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/apple-icon.png" />
     <!--
@@ -17,12 +18,29 @@
       content="Lightweight, self-hosted error tracking compatible with Sentry SDKs"
     />
     <!--
-      `dark` on <html> above is the same default `ThemeProvider` carries
-      (`defaultTheme="dark"`). Spelled out here as well so the first paint is
-      already dark: next-themes injected a blocking script into the document
-      for this, and a static shell has to state it instead of flashing white
-      until React mounts and swaps the class.
+      `dark` on <html> above is the default `ThemeProvider` carries, so a first
+      visit paints dark from the first frame. A reader who chose otherwise has
+      it in `localStorage.theme` (next-themes' key), and this applies it before
+      the stylesheet paints. next-themes' own script does the same thing but
+      only runs in a server-rendered document.
     -->
+    <script>
+      (() => {
+        let theme = null;
+        try {
+          theme = localStorage.getItem('theme');
+          if (theme === 'system') {
+            theme = matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+          }
+          if (theme === 'light') {
+            document.documentElement.classList.replace('dark', 'light');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch {}
+      })();
+    </script>
   </head>
   <body class="antialiased min-h-screen flex flex-col">
     <div id="root" class="min-h-screen flex flex-col flex-1"></div>

@@ -1,33 +1,30 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { Zap } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { getProject } from '@/features/project/api/queries';
-import { getTransactionStats } from '@/features/transaction/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
+import { transactionQueries } from '@/features/transaction/api/queries';
 import { TransactionStatsTable } from '@/features/transaction/ui/components/transaction-stats-table';
 import { translator } from '@/shared/i18n/intl';
 import { searchPage } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
+function statsQuery(projectId: number, page: number) {
+  return transactionQueries.stats(projectId, { page, per_page: 20 });
+}
+
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/performance/',
 )({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { page?: number } => ({
     page: searchPage(search.page),
   }),
   loaderDeps: ({ search }) => ({ page: search.page ?? 1 }),
-  loader: async ({ params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    const project = await getProject(projectId);
-
-    if (!project.success) return { project, stats: null };
-
-    // Nothing is swallowed: a fetch/auth failure renders an outage surface
-    // rather than the "no transactions yet" onboarding state.
-    const stats = await getTransactionStats(projectId, {
-      page: deps.page,
-      per_page: 20,
-    });
-
+  loader: async ({ params: { id }, deps, context: { queryClient } }) => {
+    const [project, stats] = await Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(statsQuery(id, deps.page)),
+    ]);
     return { project, stats };
   },
   head: ({ loaderData }) => {
@@ -53,12 +50,12 @@ export const Route = createFileRoute(
 
 function PerformancePage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const currentPage = Route.useSearch({
     select: (search) => search.page ?? 1,
   });
-  const { project: projectResult, stats: statsResult } = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const projectResult = useSuspenseQuery(projectQueries.detail(projectId)).data;
+  const statsResult = useSuspenseQuery(statsQuery(projectId, currentPage)).data;
 
   if (!projectResult.success) {
     return (
@@ -70,8 +67,6 @@ function PerformancePage() {
 
   // `null` only where the project read already failed, and that branch
   // returned above — so this one is a real failure of its own request.
-  if (statsResult === null) return null;
-
   if (!statsResult.success) {
     return (
       <LoadFailure

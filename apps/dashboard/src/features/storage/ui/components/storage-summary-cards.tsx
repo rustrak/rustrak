@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import {
   Database,
   FileCode2,
@@ -6,12 +7,11 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { getStorageSummary } from '@/features/storage/api/queries';
+import { storageQueries } from '@/features/storage/api/queries';
 import { SummaryCardsSkeleton } from '@/features/storage/ui/components/storage-skeletons';
 import { formatBytes } from '@/shared/lib/utils';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
-import { useAsync } from '@/shared/ui/hooks/use-async';
 
 /**
  * Overview cards. Owns its own (heavy) summary query so it can stream in behind
@@ -20,10 +20,9 @@ import { useAsync } from '@/shared/ui/hooks/use-async';
 export function StorageSummaryCards() {
   const format = useFormatter();
   const t = useTranslations('settings');
-  const read = useAsync(() => getStorageSummary(), []);
+  const { data: result } = useQuery(storageQueries.summary());
 
-  if (read.state === 'pending') return <SummaryCardsSkeleton />;
-  const result = read.data;
+  if (!result) return <SummaryCardsSkeleton />;
 
   if (!result.success) {
     return (

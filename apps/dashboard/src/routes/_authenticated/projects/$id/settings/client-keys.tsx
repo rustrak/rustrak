@@ -1,6 +1,7 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { getProject } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { ClientKeysSettings } from '@/features/project/ui/components/client-keys-settings';
 import { translator } from '@/shared/i18n/intl';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
@@ -11,13 +12,15 @@ export const Route = createFileRoute(
   head: () => ({
     meta: [{ title: translator('settings')('clientKeys.meta.title') }],
   }),
-  loader: ({ params }) => getProject(Number.parseInt(params.id, 10)),
+  loader: ({ params: { id }, context: { queryClient } }) =>
+    queryClient.ensureQueryData(projectQueries.detail(id)),
   component: ClientKeysPage,
 });
 
 function ClientKeysPage() {
   const t = useTranslations('settings');
-  const project = Route.useLoaderData();
+  const { id } = Route.useParams();
+  const { data: project } = useSuspenseQuery(projectQueries.detail(id));
 
   if (!project.success) {
     return <LoadFailure error={project.error} title={t('loadProjectFailed')} />;

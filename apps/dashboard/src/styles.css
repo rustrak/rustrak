@@ -200,3 +200,14 @@
     cursor: pointer;
   }
 }
+
+/* The navigation bar in `navigation-progress.tsx`: it never reaches the end,
+   because the router, not a timer, decides when loading is over. */
+@keyframes nav-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}

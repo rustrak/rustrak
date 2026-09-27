@@ -1,6 +1,7 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { getProject, getRateLimits } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { GeneralSettingsForm } from '@/features/project/ui/components/general-settings-form/general-settings-form';
 import { translator } from '@/shared/i18n/intl';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
@@ -11,19 +12,19 @@ export const Route = createFileRoute(
   head: () => ({
     meta: [{ title: translator('settings')('general.meta.title') }],
   }),
-  loader: async ({ params }) => {
-    const [project, rateLimits] = await Promise.all([
-      getProject(Number.parseInt(params.id, 10)),
-      getRateLimits(),
-    ]);
-    return { project, rateLimits };
-  },
+  loader: ({ params: { id }, context: { queryClient } }) =>
+    Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(projectQueries.rateLimits()),
+    ]),
   component: GeneralSettingsPage,
 });
 
 function GeneralSettingsPage() {
   const t = useTranslations('settings');
-  const { project, rateLimits } = Route.useLoaderData();
+  const { id } = Route.useParams();
+  const { data: project } = useSuspenseQuery(projectQueries.detail(id));
+  const { data: rateLimits } = useSuspenseQuery(projectQueries.rateLimits());
 
   if (!project.success) {
     return <LoadFailure error={project.error} title={t('loadProjectFailed')} />;

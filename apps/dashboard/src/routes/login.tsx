@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { translator } from '@/shared/i18n/intl';
-import { Link } from '@/shared/ui/components/link';
+import { searchRedirect } from '@/shared/lib/search-params';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { LoginForm } from './-components/login-form';
 
@@ -20,6 +20,9 @@ import { LoginForm } from './-components/login-form';
  * project route are the addresses they were.
  */
 export const Route = createFileRoute('/login')({
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
+    redirect: searchRedirect(search.redirect),
+  }),
   head: () => {
     const t = translator('auth');
     return {
@@ -34,6 +37,7 @@ export const Route = createFileRoute('/login')({
 
 function LoginPage() {
   const t = useTranslations('auth');
+  const redirectTo = Route.useSearch({ select: (search) => search.redirect });
 
   return (
     <div className="min-h-screen flex">
@@ -44,7 +48,7 @@ function LoginPage() {
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent z-10" />
 
         {/* Brand */}
-        <Link href="/" className="relative z-20 flex items-center w-fit">
+        <Link to="/" className="relative z-20 flex items-center w-fit">
           <RustrakWordmark className="h-[22px] w-auto" />
         </Link>
 
@@ -100,7 +104,7 @@ function LoginPage() {
           </div>
 
           {/* Form */}
-          <LoginForm />
+          <LoginForm redirectTo={redirectTo} />
         </div>
       </div>
     </div>

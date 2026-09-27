@@ -1,7 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTranslations } from 'use-intl';
 import {
   buildFrameContextLines,
@@ -9,6 +7,7 @@ import {
   type StackFrame,
 } from '@/features/event/lib/format-stack-trace';
 import { cn } from '@/shared/lib/utils';
+import { CodeHighlighter } from '@/shared/ui/components/code-highlighter';
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   js: 'javascript',
@@ -191,6 +190,18 @@ function FrameVariables({ vars }: { vars: Record<string, unknown> }) {
   );
 }
 
+const CODE_STYLE = {
+  margin: 0,
+  padding: 0,
+  background: 'transparent',
+  fontSize: 'inherit',
+  lineHeight: 'inherit',
+};
+
+const CODE_TAG_PROPS = {
+  style: { fontFamily: 'inherit', whiteSpace: 'pre' as const },
+};
+
 function CodeLine({
   lineNumber,
   code,
@@ -226,25 +237,13 @@ function CodeLine({
 
       {/* Code with syntax highlighting */}
       <div className="flex-1 py-0.5 pr-4 overflow-x-auto">
-        <SyntaxHighlighter
+        <CodeHighlighter
+          code={code || ' '}
           language={language}
-          style={vscDarkPlus}
-          customStyle={{
-            margin: 0,
-            padding: 0,
-            background: 'transparent',
-            fontSize: 'inherit',
-            lineHeight: 'inherit',
-          }}
-          codeTagProps={{
-            style: {
-              fontFamily: 'inherit',
-              whiteSpace: 'pre',
-            },
-          }}
-        >
-          {code || ' '}
-        </SyntaxHighlighter>
+          dark
+          customStyle={CODE_STYLE}
+          codeTagProps={CODE_TAG_PROPS}
+        />
       </div>
     </div>
   );

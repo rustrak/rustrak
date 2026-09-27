@@ -5,11 +5,11 @@ import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { updateProject } from '@/features/project/api/mutations';
 import { parseRateLimit } from '@/features/project/model/rate-limit';
+import { invalidateProject } from '@/shared/api/query-client';
 import { describeError } from '@/shared/lib/error-copy';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { Input } from '@/shared/ui/components/shadcn/input';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 type LimitField = 'rate_limit_per_minute' | 'rate_limit_per_hour';
 
@@ -68,7 +68,6 @@ function LimitRow({
 }) {
   const t = useTranslations('projects.rateLimits');
   const formT = useTranslations();
-  const router = useRouter();
   const id = useId();
   const stored = project[field];
   const [raw, setRaw] = useState(stored === null ? '' : String(stored));
@@ -92,7 +91,7 @@ function LimitRow({
         return;
       }
       toast.success(t('saved'));
-      router.refresh();
+      void invalidateProject(project.id);
     });
   };
 

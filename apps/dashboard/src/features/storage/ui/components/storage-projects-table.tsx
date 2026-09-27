@@ -1,5 +1,6 @@
+import { useQuery } from '@tanstack/react-query';
 import { useFormatter, useTranslations } from 'use-intl';
-import { getStorageProjects } from '@/features/storage/api/queries';
+import { storageQueries } from '@/features/storage/api/queries';
 import { ProjectsTableSkeleton } from '@/features/storage/ui/components/storage-skeletons';
 import { formatBytes } from '@/shared/lib/utils';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
@@ -18,7 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/shared/ui/components/shadcn/table';
-import { useAsync } from '@/shared/ui/hooks/use-async';
 
 /**
  * Per-project breakdown table. Owns the heavy per-project aggregation query and
@@ -27,10 +27,9 @@ import { useAsync } from '@/shared/ui/hooks/use-async';
 export function StorageProjectsTable() {
   const format = useFormatter();
   const t = useTranslations('settings');
-  const read = useAsync(() => getStorageProjects(), []);
+  const { data: result } = useQuery(storageQueries.projects());
 
-  if (read.state === 'pending') return <ProjectsTableSkeleton />;
-  const result = read.data;
+  if (!result) return <ProjectsTableSkeleton />;
 
   if (!result.success) {
     return (

@@ -8,6 +8,7 @@ import {
 } from '@/shared/config/commands';
 import { cn } from '@/shared/lib/utils';
 import { IconTile } from '../primitives/icon-tile';
+import type { CommandTarget } from '../results/command-target';
 
 /**
  * The preview column: the pages of whichever project is selected.
@@ -29,12 +30,11 @@ export function ProjectPanel({
   /** Which page holds DOM focus. The column only exists while it is set. */
   focusIndex: number | null;
   onFocusIndexChange: (index: number) => void;
-  onNavigate: (href: string) => void;
+  onNavigate: (target: CommandTarget) => void;
   /** Tab, which closes the column and returns focus to the list. */
   onToggle: () => void;
 }) {
   const t = useTranslations();
-  const base = `/projects/${project.id}`;
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // DOM focus is state this component does not own, so it is synced rather
@@ -65,7 +65,10 @@ export function ProjectPanel({
     } else if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
-      onNavigate(`${base}${ALL_PROJECT_PAGES[focusIndex].segment}`);
+      onNavigate({
+        to: ALL_PROJECT_PAGES[focusIndex].to,
+        params: { id: project.id },
+      });
     } else if (event.key === 'Tab' && !event.shiftKey) {
       event.preventDefault();
       event.stopPropagation();
@@ -111,7 +114,7 @@ export function ProjectPanel({
       {/* Only the page list scrolls; the identity above it stays put. */}
       <ul className="-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2">
         {ALL_PROJECT_PAGES.map((page, index) => (
-          <li key={page.segment}>
+          <li key={page.to}>
             <button
               type="button"
               ref={(node) => {
@@ -120,7 +123,9 @@ export function ProjectPanel({
               // Roving focus: the column is entered deliberately with Tab and
               // walked with the arrows, so only the active page is a tab stop.
               tabIndex={focusIndex === index ? 0 : -1}
-              onClick={() => onNavigate(`${base}${page.segment}`)}
+              onClick={() =>
+                onNavigate({ to: page.to, params: { id: project.id } })
+              }
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors duration-100 outline-none hover:bg-primary/10 hover:text-primary focus-visible:bg-primary/10 focus-visible:text-primary"
             >
               <page.icon className="size-3.5 shrink-0 opacity-70" />

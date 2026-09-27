@@ -1,9 +1,9 @@
 import type { User } from '@rustrak/client';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { LogOut, Settings } from 'lucide-react';
 import { type ReactNode, useTransition } from 'react';
 import { useTranslations } from 'use-intl';
 import { logout } from '@/features/user/api/mutations';
-import { Link } from '@/shared/ui/components/link';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import {
@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/shared/ui/components/shadcn/dropdown-menu';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface HeaderProps {
   user: User;
@@ -25,14 +24,14 @@ interface HeaderProps {
 }
 
 export function Header({ user, commandBar }: HeaderProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const t = useTranslations('user');
   const [isPending, startTransition] = useTransition();
 
   const handleLogout = () => {
     startTransition(async () => {
       await logout();
-      router.push('/login');
+      navigate({ to: '/login' });
     });
   };
 
@@ -42,7 +41,7 @@ export function Header({ user, commandBar }: HeaderProps) {
         {/* The wordmark is the whole mark: no icon beside it, and the word is
             not typed next to itself. 18px because the artwork box is trimmed to
             the ink, so it reads a size larger than the number suggests. */}
-        <Link href="/projects" className="flex items-center">
+        <Link to="/projects" className="flex items-center">
           <RustrakWordmark className="h-[18px] w-auto" />
         </Link>
       </div>
@@ -80,7 +79,7 @@ export function Header({ user, commandBar }: HeaderProps) {
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              render={<Link href="/settings" className="cursor-pointer" />}
+              render={<Link to="/settings" className="cursor-pointer" />}
             >
               <Settings className="mr-2 size-4" />
               {t('header.settings')}

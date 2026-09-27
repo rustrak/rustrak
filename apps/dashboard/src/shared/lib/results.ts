@@ -1,7 +1,8 @@
 import type { Result, RustrakError } from '@rustrak/client';
 import { Ok } from '@rustrak/client';
 
-type PendingResult = Promise<Result<unknown, RustrakError>>;
+type AnyResult = Result<unknown, RustrakError>;
+type PendingResult = Promise<AnyResult>;
 
 /**
  * The success type of one `Result`.
@@ -13,10 +14,29 @@ type PendingResult = Promise<Result<unknown, RustrakError>>;
  */
 type OkData<R> = R extends { success: true; data: infer U } ? U : never;
 
-/** The success types of a tuple of pending `Result`s, in the same order. */
-type Unwrapped<T extends readonly PendingResult[]> = {
+/** The success types of a tuple of `Result`s, pending or not, in order. */
+type Unwrapped<T extends readonly (AnyResult | PendingResult)[]> = {
   -readonly [K in keyof T]: OkData<Awaited<T[K]>>;
 };
+
+/**
+ * `loadAll` for results already in hand: the component-side twin, for a
+ * screen that reads the same queries its loader awaited.
+ */
+export function combine<T extends readonly AnyResult[] | []>(
+  results: T,
+): Result<Unwrapped<T>, RustrakError> {
+  const data: unknown[] = [];
+
+  for (const result of results) {
+    if (!result.success) {
+      return result;
+    }
+    data.push(result.data);
+  }
+
+  return Ok(data as Unwrapped<T>);
+}
 
 /**
  * Await several fetches together and collapse them into one `Result`, keeping
@@ -55,15 +75,8 @@ export async function loadAll<T extends readonly PendingResult[] | []>(
   // array of the union of the members.
   pending: T,
 ): Promise<Result<Unwrapped<T>, RustrakError>> {
-  const results = await Promise.all(pending);
-  const data: unknown[] = [];
-
-  for (const result of results) {
-    if (!result.success) {
-      return result;
-    }
-    data.push(result.data);
-  }
-
-  return Ok(data as Unwrapped<T>);
+  return combine(await Promise.all(pending)) as Result<
+    Unwrapped<T>,
+    RustrakError
+  >;
 }

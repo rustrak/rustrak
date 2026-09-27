@@ -6,14 +6,12 @@ import type {
   LoginRequest,
   Result,
   RustrakError,
-  TeamMember,
   UpsertProjectMember,
   User,
 } from '@rustrak/client';
 import { Ok } from '@rustrak/client';
 import { createClient } from '@/shared/api/rustrak';
 import { session } from '@/shared/api/session';
-import { listTeam as listTeamQuery } from './queries';
 
 /**
  * Login with email and password.
@@ -225,18 +223,4 @@ export async function revokeInvitation(
 ): Promise<Result<void, RustrakError>> {
   const client = await createClient();
   return client.invitations.revoke(token);
-}
-
-/**
- * The roster, for the add-member dropdown.
- *
- * A delegate that no longer has to exist. It was here because `queries.ts`
- * carried `server-only` and the dropdown is a browser component, so the read
- * had to cross a `'use server'` boundary to be reachable at all. Nothing is
- * `server-only` any more and this could be one import change at the call site
- * — it is kept for now so that this commit changes the framework and not the
- * shape of the feature, and it is the first thing to delete afterwards.
- */
-export async function listTeam(): Promise<Result<TeamMember[], RustrakError>> {
-  return listTeamQuery();
 }

@@ -1,6 +1,7 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { getProjects } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { ProjectsList } from '@/features/project/ui/components/projects-list/projects-list';
 import { translator } from '@/shared/i18n/intl';
 import { searchPage } from '@/shared/lib/search-params';
@@ -15,6 +16,14 @@ import { ProjectsHeader } from './-components/projects-header';
  */
 const STATS_PERIOD = '24h';
 
+function pageQuery(page: number) {
+  return projectQueries.list({
+    page,
+    per_page: 20,
+    stats_period: STATS_PERIOD,
+  });
+}
+
 export const Route = createFileRoute('/_authenticated/projects/')({
   head: () => {
     const t = translator('projectPages');
@@ -28,26 +37,22 @@ export const Route = createFileRoute('/_authenticated/projects/')({
       ],
     };
   },
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { page?: number } => ({
     page: searchPage(search.page),
   }),
   loaderDeps: ({ search }) => ({ page: search.page ?? 1 }),
   // One request, stats included: the server aggregates the whole page in two
   // queries. Asking per row would be 20 round trips for a table that renders
   // above the fold.
-  loader: ({ deps }) =>
-    getProjects({
-      page: deps.page,
-      per_page: 20,
-      stats_period: STATS_PERIOD,
-    }),
+  loader: ({ deps, context: { queryClient } }) =>
+    queryClient.ensureQueryData(pageQuery(deps.page)),
   component: ProjectsPage,
 });
 
 function ProjectsPage() {
   const t = useTranslations('projectPages');
   const page = Route.useSearch({ select: (search) => search.page ?? 1 });
-  const projectsResponse = Route.useLoaderData();
+  const { data: projectsResponse } = useSuspenseQuery(pageQuery(page));
 
   if (!projectsResponse.success) {
     return (

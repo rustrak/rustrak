@@ -1,11 +1,10 @@
 import type { AgentTraceSummary } from '@rustrak/client';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useTransition } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { cn } from '@/shared/lib/utils';
-import { Link } from '@/shared/ui/components/link';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
 import { TablePagination } from '@/shared/ui/components/table-pagination';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface AgentTracesTableProps {
   projectId: number;
@@ -14,8 +13,6 @@ interface AgentTracesTableProps {
   totalPages: number;
   totalCount: number;
   perPage: number;
-  /** The dashboard's active filters, carried through pagination. */
-  filters: { period?: string; environment?: string };
 }
 
 function formatMs(ms: number | null): string {
@@ -37,24 +34,18 @@ export function AgentTracesTable({
   totalPages,
   totalCount,
   perPage,
-  filters,
 }: AgentTracesTableProps) {
   const format = useFormatter();
   const t = useTranslations('agents');
-  const router = useRouter();
+  const navigate = useNavigate({ from: '/projects/$id/agents/' });
   const [isPending, startTransition] = useTransition();
 
   const handlePageChange = (page: number) => {
-    // The dashboard's filters live in the same query string. Navigating with
-    // only `page` would drop them, so a reader who paged through a filtered
-    // view would silently get unfiltered traces back.
-    const query = new URLSearchParams();
-    if (filters.period) query.set('period', filters.period);
-    if (filters.environment) query.set('environment', filters.environment);
-    query.set('page', String(page));
-
+    // `prev` carries the dashboard's filters. Navigating with only `page`
+    // would drop them, and a reader paging through a filtered view would
+    // silently get unfiltered traces back.
     startTransition(() => {
-      router.push(`/projects/${projectId}/agents?${query}`);
+      navigate({ search: (prev) => ({ ...prev, page }) });
     });
   };
 
@@ -74,7 +65,8 @@ export function AgentTracesTable({
           {traces.map((trace) => (
             <Link
               key={trace.trace_id}
-              href={`/projects/${projectId}/agents/${trace.trace_id}`}
+              to="/projects/$id/agents/$traceId"
+              params={{ id: projectId, traceId: trace.trace_id }}
               className="flex items-center gap-4 px-4 py-3 text-sm hover:bg-muted/30 transition-colors group"
             >
               <div className="flex-1 min-w-0">

@@ -4,58 +4,15 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { addIssueComment } from '@/features/issue/api/mutations';
+import { invalidateIssues } from '@/features/issue/api/queries';
+import { describeActivity, noteText } from '@/features/issue/lib/activity';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { Textarea } from '@/shared/ui/components/shadcn/textarea';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface IssueActivityProps {
   projectId: number;
   issueId: string;
   activity: ActivityEntry[];
-}
-
-function parseData(data: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(data);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-/** The text body for a comment/note entry. */
-function noteText(entry: ActivityEntry): string {
-  const text = parseData(entry.data).text;
-  return typeof text === 'string' ? text : entry.data;
-}
-
-/** A human-readable description of a non-note activity entry. */
-function describe(
-  entry: ActivityEntry,
-  t: (key: string, values?: Record<string, string | number>) => string,
-): string {
-  const d = parseData(entry.data);
-  switch (entry.type) {
-    case 'set_status': {
-      const status = typeof d.status === 'string' ? d.status : '';
-      const keys: Record<string, string> = {
-        resolved: 'activity.statusResolved',
-        unresolved: 'activity.statusReopened',
-        ignored: 'activity.statusMuted',
-      };
-      return keys[status] ?? t('activity.statusChanged', { status });
-    }
-    case 'set_priority':
-      return t('activity.priorityChanged', {
-        priority: String(d.priority ?? '—'),
-      });
-    case 'set_regression':
-      return t('activity.regression');
-    case 'first_seen':
-      return t('activity.firstSeen');
-    default:
-      return entry.type.replace(/_/g, ' ');
-  }
 }
 
 export function IssueActivity({
@@ -65,7 +22,6 @@ export function IssueActivity({
 }: IssueActivityProps) {
   const format = useFormatter();
   const t = useTranslations('issues');
-  const router = useRouter();
   const [text, setText] = useState('');
   const [isPending, startTransition] = useTransition();
 
@@ -93,7 +49,7 @@ export function IssueActivity({
       }
 
       setText('');
-      router.refresh();
+      void invalidateIssues(projectId);
     });
   };
 
@@ -144,7 +100,7 @@ export function IssueActivity({
                       </p>
                     ) : (
                       <p className="text-muted-foreground">
-                        {describe(entry, t)}
+                        {describeActivity(entry, t)}
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground/70 mt-0.5">

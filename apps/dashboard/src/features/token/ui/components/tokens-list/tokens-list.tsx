@@ -8,6 +8,7 @@ import {
   deleteToken,
   getToken,
 } from '@/features/token/api/mutations';
+import { invalidate, scope } from '@/shared/api/query-client';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import {
   AlertDialog,
@@ -27,7 +28,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/shared/ui/components/shadcn/card';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { CreateTokenDialog } from './create-token-dialog';
 import { TokenCards, TokenTable } from './token-rows';
 
@@ -38,7 +38,6 @@ interface TokensListProps {
 export function TokensList({ initialTokens }: TokensListProps) {
   const t = useTranslations('tokens');
   const commonT = useTranslations('common');
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
@@ -51,7 +50,7 @@ export function TokensList({ initialTokens }: TokensListProps) {
   const closeCreate = () => {
     setIsCreateOpen(false);
     setNewToken(null);
-    router.refresh();
+    void invalidate(scope.tokens);
   };
 
   const create = (description: string) => {
@@ -85,7 +84,7 @@ export function TokensList({ initialTokens }: TokensListProps) {
 
       if (result.success) {
         toast.success(t('toasts.deleted'));
-        router.refresh();
+        void invalidate(scope.tokens);
       } else {
         toast.error(t('toasts.deleteFailed'), {
           description: result.error.message,

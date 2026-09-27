@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { Project, RateLimits } from '@rustrak/client';
+import { useNavigate } from '@tanstack/react-router';
 import { useMemo, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -10,6 +11,7 @@ import {
   projectNameField,
   projectSlugField,
 } from '@/features/project/model/fields';
+import { invalidateProject } from '@/shared/api/query-client';
 import type { Translate } from '@/shared/lib/error-copy';
 import { describeError } from '@/shared/lib/error-copy';
 import {
@@ -19,7 +21,6 @@ import {
 import { PlatformPicker } from '@/shared/ui/components/platform-picker';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { Form, FormRootError } from '@/shared/ui/components/shadcn/form';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { DangerZone } from './danger-zone';
 import { RateLimitSettings } from './rate-limit-settings';
 import { SavableRow } from './savable-row';
@@ -53,7 +54,7 @@ export function GeneralSettingsForm({
 }: GeneralSettingsFormProps) {
   const t = useTranslations('projects');
   const formT = useTranslations();
-  const router = useRouter();
+  const navigate = useNavigate();
   const [isPending, startTransition] = useTransition();
 
   const generalSettingsSchema = useMemo(
@@ -91,7 +92,7 @@ export function GeneralSettingsForm({
         form.setValue('name', trimmed);
         clearFailure();
         toast.success(t('toasts.nameUpdated'));
-        router.refresh();
+        void invalidateProject(project.id);
       });
     });
   };
@@ -116,7 +117,7 @@ export function GeneralSettingsForm({
         form.setValue('slug', result.data.slug);
         clearFailure();
         toast.success(t('toasts.slugUpdated'));
-        router.refresh();
+        void invalidateProject(project.id);
       });
     });
   };
@@ -136,7 +137,7 @@ export function GeneralSettingsForm({
 
       clearFailure();
       toast.success(t('toasts.platformUpdated'));
-      router.refresh();
+      void invalidateProject(project.id);
     });
   };
 
@@ -154,7 +155,7 @@ export function GeneralSettingsForm({
     }
 
     toast.success(t('toasts.deleted'));
-    router.push('/projects');
+    navigate({ to: '/projects' });
   };
 
   /**

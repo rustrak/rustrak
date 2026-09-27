@@ -7,6 +7,7 @@ import {
   executeStorageCleanup,
   previewStorageCleanup,
 } from '@/features/storage/api/mutations';
+import { invalidateAll } from '@/shared/api/query-client';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/shadcn/select';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface StorageCleanupProps {
   projects: { id: number; name: string }[];
@@ -72,7 +72,6 @@ const periodLabel = (
 export function StorageCleanup({ projects }: StorageCleanupProps) {
   const format = useFormatter();
   const t = useTranslations('storage');
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [period, setPeriod] = useState('90');
   const [scope, setScope] = useState(ALL_SCOPE);
@@ -138,7 +137,7 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
 
       toast.success(summarizeRemoved(counts.data, t));
       setPreview(null);
-      router.refresh();
+      void invalidateAll();
     });
   };
 

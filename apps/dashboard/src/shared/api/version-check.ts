@@ -2,7 +2,8 @@
  * The update check, read by the banner slot.
  */
 import { z } from 'zod';
-import { getServerVersion } from '@/shared/api/server-version';
+import { queryClient } from '@/shared/api/query-client';
+import { serverVersionQuery } from '@/shared/api/server-version';
 import { compareVersions, type UpdateCheck } from '@/shared/lib/version';
 
 const VERSIONS_URL = 'https://rustrak.github.io/rustrak/versions.json';
@@ -61,7 +62,7 @@ export async function checkForUpdate(): Promise<UpdateCheck> {
   // not throws, and this branch is the one that has to be seen; putting the
   // read inside the block below would let a future refactor drop it into the
   // catch and quietly restore the bug this function exists to fix.
-  const version = await getServerVersion();
+  const version = await queryClient.fetchQuery(serverVersionQuery);
   if (!version.success) return { state: 'unknown', reason: 'server-version' };
 
   const current = version.data.version;

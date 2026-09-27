@@ -19,6 +19,7 @@ import { Kbd } from '@/shared/ui/components/shadcn/kbd';
 import { Section } from '../primitives/section';
 import { ProjectBadge, ScopeBadge } from './badges';
 import { CommandRow } from './command-row';
+import type { CommandTarget } from './command-target';
 
 /**
  * How many project-page rows a search will render.
@@ -46,7 +47,7 @@ export function ResultsList({
   ref: Ref<HTMLDivElement>;
   projects: CommandProject[];
   query: string;
-  onNavigate: (href: string) => void;
+  onNavigate: (target: CommandTarget) => void;
   /** Moves cmdk's selection to a hovered row, when the palette wants it moved. */
   onHighlight: (value: string) => void;
 }) {
@@ -96,14 +97,14 @@ export function ResultsList({
     value: string,
   ) => (
     <CommandRow
-      key={`${project.id}${page.segment}`}
+      key={`${project.id}${page.to}`}
       value={value}
       keywords={page.keywords}
       label={t(page.labelKey)}
       description={t(page.descriptionKey)}
       badge={<ProjectBadge project={project} />}
       media={<page.icon className="size-[18px] text-muted-foreground" />}
-      onSelect={() => onNavigate(`/projects/${project.id}${page.segment}`)}
+      onSelect={() => onNavigate({ to: page.to, params: { id: project.id } })}
       onHover={() => onHighlight(value)}
     />
   );
@@ -111,14 +112,14 @@ export function ResultsList({
   const linkRows = (links: CommandLink[], badgeLabel?: string) =>
     links.map((link) => (
       <CommandRow
-        key={link.href}
+        key={link.to}
         value={t(link.labelKey)}
         keywords={link.keywords}
         label={t(link.labelKey)}
         description={t(link.descriptionKey)}
         badge={badgeLabel ? <ScopeBadge label={badgeLabel} /> : undefined}
         media={<link.icon className="size-[18px] text-muted-foreground" />}
-        onSelect={() => onNavigate(link.href)}
+        onSelect={() => onNavigate({ to: link.to })}
         onHover={() => onHighlight(t(link.labelKey))}
       />
     ));
@@ -161,7 +162,12 @@ export function ResultsList({
                 // Enter goes to the project, like every other row goes to its
                 // page. Its pages are one Tab away instead of behind a mode
                 // that replaced the whole list.
-                onSelect={() => onNavigate(`/projects/${project.id}`)}
+                onSelect={() =>
+                  onNavigate({
+                    to: '/projects/$id',
+                    params: { id: project.id },
+                  })
+                }
                 onHover={() => onHighlight(project.name)}
                 // Advertises the shortcut on the row it applies to, which is
                 // the only place anyone would look for it.

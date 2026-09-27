@@ -1,3 +1,4 @@
+import { useNavigate } from '@tanstack/react-router';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -15,7 +16,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/components/shadcn/dialog';
 import { useIsMobile } from '@/shared/ui/hooks/use-mobile';
-import { useRouter } from '@/shared/ui/hooks/use-router';
+import type { CommandTarget } from '../results/command-target';
 import { ResultsList } from '../results/results-list';
 import { CommandBarFooter } from './footer';
 import { ProjectPanel } from './project-panel';
@@ -40,7 +41,7 @@ export function CommandBarDialog({
   projects,
 }: CommandBarDialogProps) {
   const t = useTranslations();
-  const router = useRouter();
+  const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // The preview column is `md:flex`, and 768px is exactly that breakpoint.
@@ -79,9 +80,9 @@ export function CommandBarDialog({
   // Nothing to tear down on the way out: `CommandBar` keys this component on
   // the open count, so the next open is a new instance and every piece of
   // state below starts from its initial value again.
-  const go = (href: string) => {
+  const go = (target: CommandTarget) => {
     onOpenChange(false);
-    router.push(href);
+    navigate(target);
   };
 
   /**
@@ -163,7 +164,7 @@ export function CommandBarDialog({
     if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
-      go(`/projects/${projectId}${ALL_PROJECT_PAGES[current].segment}`);
+      go({ to: ALL_PROJECT_PAGES[current].to, params: { id: projectId } });
     }
   };
 

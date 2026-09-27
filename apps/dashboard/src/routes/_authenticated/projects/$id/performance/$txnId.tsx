@@ -1,27 +1,25 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { getProject } from '@/features/project/api/queries';
-import { getTransaction } from '@/features/transaction/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
+import { transactionQueries } from '@/features/transaction/api/queries';
 import { readTransactionPayload } from '@/features/transaction/lib/transaction-payload';
 import { MeasurementsCard } from '@/features/transaction/ui/components/measurements-card';
 import { SpanWaterfall } from '@/features/transaction/ui/components/span-waterfall';
 import { translator } from '@/shared/i18n/intl';
-import { loadAll } from '@/shared/lib/results';
-import { Link } from '@/shared/ui/components/link';
+import { combine, loadAll } from '@/shared/lib/results';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { TransactionBadges } from './$txnId/-components/transaction-badges';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/performance/$txnId',
 )({
-  loader: ({ params }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    return loadAll([
-      getProject(projectId),
-      getTransaction(projectId, params.txnId),
-    ]);
-  },
+  loader: ({ params: { id, txnId }, context: { queryClient } }) =>
+    loadAll([
+      queryClient.ensureQueryData(projectQueries.detail(id)),
+      queryClient.ensureQueryData(transactionQueries.detail(id, txnId)),
+    ]),
   head: ({ loaderData }) => {
     const t = translator('projectPages');
     return {
@@ -74,9 +72,11 @@ function KeyValuePanel({
 
 function TransactionDetailPage() {
   const t = useTranslations('projectPages');
-  const { id } = Route.useParams();
-  const loaded = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, txnId } = Route.useParams();
+  const loaded = combine([
+    useSuspenseQuery(projectQueries.detail(projectId)).data,
+    useSuspenseQuery(transactionQueries.detail(projectId, txnId)).data,
+  ]);
 
   if (!loaded.success) {
     return (
@@ -104,7 +104,8 @@ function TransactionDetailPage() {
       {/* Header */}
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <Link
-          href={`/projects/${projectId}/performance`}
+          to="/projects/$id/performance"
+          params={{ id: projectId }}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
         >
           <ArrowLeft className="size-4" />

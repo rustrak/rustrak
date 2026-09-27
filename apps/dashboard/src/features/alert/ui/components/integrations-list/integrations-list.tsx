@@ -11,6 +11,7 @@ import { alertProviders } from '@/features/alert/model/providers';
 import { ConfirmDeleteDialog } from '@/features/alert/ui/components/confirm-delete-dialog';
 import { IntegrationConfigDialog } from '@/features/alert/ui/components/integration-config-dialog/integration-config-dialog';
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
+import { invalidate, scope } from '@/shared/api/query-client';
 import type { Translate } from '@/shared/lib/error-copy';
 import { cn } from '@/shared/lib/utils';
 import { Badge } from '@/shared/ui/components/shadcn/badge';
@@ -20,7 +21,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/shared/ui/components/shadcn/collapsible';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { ManageDialog } from './manage-dialog';
 
 // Active alert notification providers
@@ -32,7 +32,6 @@ export function IntegrationsList({
   initialIntegrations,
 }: IntegrationsListProps) {
   const t = useTranslations('alerts');
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [configureType, setConfigureType] = useState<ProviderType | null>(null);
   const [manageType, setManageType] = useState<ProviderType | null>(null);
@@ -106,7 +105,7 @@ export function IntegrationsList({
       setDeleteIntegrationItem(null);
       setConfigureType(null);
       setEditIntegration(null);
-      router.refresh();
+      void invalidate(scope.integrations);
     });
   };
 

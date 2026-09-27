@@ -1,10 +1,10 @@
 import type { Project } from '@rustrak/client';
+import { Link } from '@tanstack/react-router';
 import { MoreVertical, Trash2 } from 'lucide-react';
 import { PlatformIcon } from 'platformicons';
 import { useFormatter, useTranslations } from 'use-intl';
 import { PROJECT_COLUMNS } from '@/features/project/model/columns';
 import { ProjectStatsCells } from '@/features/project/ui/components/project-stats-cells';
-import { Link } from '@/shared/ui/components/link';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { Checkbox } from '@/shared/ui/components/shadcn/checkbox';
 import {
@@ -42,7 +42,8 @@ export function ProjectRow({
 
       <div className={PROJECT_COLUMNS.name}>
         <Link
-          href={`/projects/${project.id}`}
+          to="/projects/$id"
+          params={{ id: project.id }}
           className="block group-hover:text-primary transition-colors"
         >
           {/* The DSN used to sit here. It is a secret-ish connection string

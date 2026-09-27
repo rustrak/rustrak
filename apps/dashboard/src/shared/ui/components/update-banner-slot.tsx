@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { checkForUpdate } from '@/shared/api/version-check';
-import type { UpdateCheck } from '@/shared/lib/version';
 import { UpdateBanner } from '@/shared/ui/components/update-banner';
 
 /**
@@ -23,17 +22,11 @@ import { UpdateBanner } from '@/shared/ui/components/update-banner';
  * authenticated layout, which survives every route change under it.
  */
 export function UpdateBannerSlot() {
-  const [check, setCheck] = useState<UpdateCheck | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    void checkForUpdate().then((result) => {
-      if (live) setCheck(result);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
+  const { data: check } = useQuery({
+    queryKey: ['update-check'],
+    queryFn: checkForUpdate,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
 
   return check?.state === 'update-available' ? (
     <UpdateBanner info={check.info} />

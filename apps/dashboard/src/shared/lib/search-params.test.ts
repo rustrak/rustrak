@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { searchOneOf, searchPage, searchString } from './search-params';
+import {
+  searchOneOf,
+  searchPage,
+  searchRedirect,
+  searchString,
+} from './search-params';
 
 /**
  * Whatever these return becomes the URL, not just the props: the router writes
@@ -55,5 +60,29 @@ describe('searchOneOf', () => {
     expect(searchOneOf('exploded', filters)).toBeUndefined();
     expect(searchOneOf(undefined, filters)).toBeUndefined();
     expect(searchOneOf(7, filters)).toBeUndefined();
+  });
+});
+
+describe('searchRedirect', () => {
+  it('keeps a path on this origin, with its query and hash', () => {
+    expect(searchRedirect('/projects/3/issues?page=2#top')).toBe(
+      '/projects/3/issues?page=2#top',
+    );
+  });
+
+  // Signing in must not be a way to send someone to another site.
+  it('drops anything that leaves the origin', () => {
+    expect(searchRedirect('https://evil.example/')).toBeUndefined();
+    expect(searchRedirect('//evil.example/path')).toBeUndefined();
+    expect(searchRedirect('/\\evil.example')).toBeUndefined();
+    expect(searchRedirect('javascript:alert(1)')).toBeUndefined();
+    expect(searchRedirect('projects')).toBeUndefined();
+    expect(searchRedirect(42)).toBeUndefined();
+  });
+
+  // Coming back to the login page after signing in would be a loop.
+  it('drops the login page itself', () => {
+    expect(searchRedirect('/login')).toBeUndefined();
+    expect(searchRedirect('/login?redirect=%2F')).toBeUndefined();
   });
 });

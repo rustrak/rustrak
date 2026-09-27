@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useNavigate } from '@tanstack/react-router';
 import { useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
@@ -15,7 +16,6 @@ import {
 } from '@/shared/ui/components/shadcn/form';
 import { Input } from '@/shared/ui/components/shadcn/input';
 import { Label } from '@/shared/ui/components/shadcn/label';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 type AcceptFormData = {
   password: string;
@@ -32,7 +32,7 @@ export function AcceptInvitationForm({
   email,
 }: AcceptInvitationFormProps) {
   const t = useTranslations('invite');
-  const router = useRouter();
+  const navigate = useNavigate();
   const [isPending, startTransition] = useTransition();
 
   const acceptSchema = z
@@ -60,7 +60,7 @@ export function AcceptInvitationForm({
       const result = await acceptInvitation({ token, password: data.password });
 
       if (result.success) {
-        router.push('/projects');
+        navigate({ to: '/projects' });
       } else {
         form.setError('confirmPassword', {
           type: 'server',

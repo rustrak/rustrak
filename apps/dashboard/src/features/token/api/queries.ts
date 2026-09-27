@@ -1,11 +1,10 @@
 /**
- * Reads for the token feature, called straight from Server Components.
- *
- * `import 'server-only'` is a build-time poison pill rather than a directive:
- * if this module reaches the client bundle the build fails, instead of shipping
- * a browser bundle that holds the session cookie.
+ * Reads for the token feature.
  */
+
 import type { AuthToken, Result, RustrakError } from '@rustrak/client';
+import { queryOptions } from '@tanstack/react-query';
+import { scope } from '@/shared/api/query-client';
 import { createClient } from '@/shared/api/rustrak';
 
 /**
@@ -25,3 +24,7 @@ export async function listTokens(): Promise<Result<AuthToken[], RustrakError>> {
   const client = await createClient();
   return client.tokens.list();
 }
+
+export const tokenQueries = {
+  list: () => queryOptions({ queryKey: scope.tokens, queryFn: listTokens }),
+};

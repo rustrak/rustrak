@@ -1,14 +1,6 @@
 import type { SessionTimeseries } from '@rustrak/client';
 import { useMemo } from 'react';
-// Not loaded through next/dynamic, deliberately.
-//
-// The advice does not apply in the App Router: this module is a client
-// boundary, so recharts is already its own chunk and only ships to the three
-// routes that draw charts. dynamic() would not remove it from those, only
-// defer it past hydration — and on the overview and the agents page the
-// charts are the content, so deferring them puts a hole where the number
-// goes. It also cannot be written here: these are five named primitives used
-// as JSX, and every consumer is a Server Component, where ssr: false throws.
+// Static: where this chart renders, it is the content of the page.
 // react-doctor-disable-next-line react-doctor/prefer-dynamic-import
 import {
   Line,

@@ -1,5 +1,6 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
-import { getProject, getProjects } from '@/features/project/api/queries';
+import { projectQueries } from '@/features/project/api/queries';
 import { ProjectSidebar } from '@/features/project/ui/components/project-sidebar';
 import {
   SidebarInset,
@@ -23,20 +24,23 @@ function sidebarWasOpen(): boolean {
 }
 
 export const Route = createFileRoute('/_authenticated/projects/$id')({
-  loader: ({ params }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    return Promise.all([
-      getProject(projectId),
-      getProjects({ per_page: 100 }),
-    ]).then(([project, projects]) => ({ project, projects }));
+  // Parsed once here, so every route below reads `id` as a number.
+  params: {
+    parse: ({ id }) => ({ id: Number.parseInt(id, 10) }),
+    stringify: ({ id }) => ({ id: String(id) }),
   },
+  loader: ({ params, context: { queryClient } }) =>
+    Promise.all([
+      queryClient.ensureQueryData(projectQueries.detail(params.id)),
+      queryClient.ensureQueryData(projectQueries.all()),
+    ]),
   component: ProjectLayout,
 });
 
 function ProjectLayout() {
-  const { id } = Route.useParams();
-  const { project, projects: projectsResponse } = Route.useLoaderData();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId } = Route.useParams();
+  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
+  const { data: projectsResponse } = useSuspenseQuery(projectQueries.all());
 
   // The layout renders the chrome around whatever the page does with its own
   // failure, so neither fetch is fatal here. An empty switcher and a blank

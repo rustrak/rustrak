@@ -1,6 +1,7 @@
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { listIntegrations } from '@/features/alert/api/queries';
+import { alertQueries } from '@/features/alert/api/queries';
 import { IntegrationsList } from '@/features/alert/ui/components/integrations-list/integrations-list';
 import { translator } from '@/shared/i18n/intl';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
@@ -15,13 +16,14 @@ export const Route = createFileRoute('/_authenticated/settings/integrations')({
       ],
     };
   },
-  loader: () => listIntegrations(),
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(alertQueries.integrations()),
   component: IntegrationsPage,
 });
 
 function IntegrationsPage() {
   const t = useTranslations('settings');
-  const integrations = Route.useLoaderData();
+  const { data: integrations } = useSuspenseQuery(alertQueries.integrations());
 
   if (!integrations.success) {
     return (

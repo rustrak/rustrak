@@ -1,7 +1,7 @@
+import { Link } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { ErrorScreen } from '@/shared/ui/components/error-screen';
-import { Link } from '@/shared/ui/components/link';
 import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
@@ -45,7 +45,7 @@ export function NotFoundScreen() {
       description={t('notFound.description')}
       guidance={t('notFound.guidance')}
       actions={
-        <Button nativeButton={false} render={<Link href="/projects" />}>
+        <Button nativeButton={false} render={<Link to="/projects" />}>
           {t('goToProjects')}
         </Button>
       }

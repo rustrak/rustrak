@@ -61,12 +61,19 @@ export function createIntlStore(deps: IntlDependencies): IntlStore {
   const listeners = new Set<() => void>();
 
   async function resolve(): Promise<IntlSnapshot> {
+    // The browser's language is the answer for most readers, so its
+    // catalogue loads alongside the session instead of after it.
+    const guess = resolveLocale(undefined, deps.browserLanguages());
+    const guessed = deps.loadMessages(guess);
+    guessed.catch(() => undefined);
+
     const answer = await deps.readSession();
     const user = answer.state === 'authenticated' ? answer.user : null;
 
     const locale = resolveLocale(user?.language, deps.browserLanguages());
     const timeZone = resolveTimeZone(user?.timezone);
-    const messages = await deps.loadMessages(locale);
+    const messages =
+      locale === guess ? await guessed : await deps.loadMessages(locale);
 
     current = {
       locale,

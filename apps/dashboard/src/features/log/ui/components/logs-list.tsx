@@ -1,4 +1,5 @@
 import type { Log, OffsetPaginatedResponse } from '@rustrak/client';
+import { useNavigate } from '@tanstack/react-router';
 import { ScrollText } from 'lucide-react';
 import { useMemo } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -13,11 +14,9 @@ import {
 import { Badge } from '@/shared/ui/components/shadcn/badge';
 import { Button } from '@/shared/ui/components/shadcn/button';
 import { Separator } from '@/shared/ui/components/shadcn/separator';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useTableUrlState } from '@/shared/ui/hooks/use-table-url-state';
 
 interface LogsListProps {
-  projectId: number;
   initialLogs: OffsetPaginatedResponse<Log>;
   currentPage: number;
   /** Active level filter, if any. */
@@ -205,7 +204,6 @@ function LogDetail({ log }: { log: Log }) {
 }
 
 export function LogsList({
-  projectId,
   initialLogs,
   currentPage,
   activeLevel,
@@ -213,21 +211,17 @@ export function LogsList({
   const t = useTranslations('logs');
   const tableT = useTranslations('table');
   const format = useFormatter();
-  const router = useRouter();
+  const navigate = useNavigate({ from: '/projects/$id/logs' });
   const { items: logs, total_count, per_page } = initialLogs;
-
-  const buildUrl = (page: number, level = activeLevel) => {
-    const params = new URLSearchParams();
-    params.set('page', String(page));
-    if (level) params.set('level', level);
-    return `/projects/${projectId}/logs?${params.toString()}`;
-  };
 
   const urlState = useTableUrlState({
     page: currentPage,
     perPage: per_page,
-    navigate: ({ page }) => router.push(buildUrl(page)),
+    navigate: ({ page }) => navigate({ search: (prev) => ({ ...prev, page }) }),
   });
+
+  const filterLevel = (level?: string) =>
+    urlState.run(() => navigate({ search: { page: 1, level } }));
 
   const columns = useMemo(
     () => buildColumns(t, tableT, format),
@@ -251,9 +245,7 @@ export function LogsList({
             variant={!activeLevel ? 'secondary' : 'ghost'}
             size="sm"
             className="h-7 px-3"
-            onClick={() =>
-              urlState.run(() => router.push(buildUrl(1, undefined)))
-            }
+            onClick={() => filterLevel()}
             disabled={urlState.isPending}
           >
             {t('allLevels')}
@@ -264,9 +256,7 @@ export function LogsList({
               variant={activeLevel === level ? 'secondary' : 'ghost'}
               size="sm"
               className="h-7 px-3 capitalize"
-              onClick={() =>
-                urlState.run(() => router.push(buildUrl(1, level)))
-              }
+              onClick={() => filterLevel(level)}
               disabled={urlState.isPending}
             >
               {level}

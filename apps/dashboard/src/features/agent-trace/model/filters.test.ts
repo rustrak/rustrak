@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  agentDashboardQuery,
+  agentDashboardSearch,
   defaultSelectedSpanId,
   resolveAgentFilters,
 } from './filters';
@@ -31,29 +31,28 @@ describe('resolveAgentFilters', () => {
   });
 });
 
-describe('agentDashboardQuery', () => {
+describe('agentDashboardSearch', () => {
   it('keeps the other filter when one changes', () => {
     expect(
-      agentDashboardQuery(
+      agentDashboardSearch(
         { period: '7d', environment: 'production' },
         { period: '1h' },
       ),
-    ).toBe('?period=1h&environment=production');
+    ).toStrictEqual({ period: '1h', environment: 'production' });
   });
 
   it('drops a filter set to null rather than writing it empty', () => {
     expect(
-      agentDashboardQuery(
+      agentDashboardSearch(
         { period: '7d', environment: 'production' },
         { environment: null },
       ),
-    ).toBe('?period=7d');
+    ).toStrictEqual({ period: '7d' });
   });
 
-  it('is an empty string when nothing is filtered', () => {
-    // Not "?" — a bare question mark is a different URL to the clean one and
-    // would show up as a spurious navigation.
-    expect(agentDashboardQuery({}, {})).toBe('');
+  it('is empty when nothing is filtered', () => {
+    // No keys at all, not keys holding `undefined`: the URL stays the clean one.
+    expect(agentDashboardSearch({}, {})).toStrictEqual({});
   });
 });
 

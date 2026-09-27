@@ -85,6 +85,35 @@ export default defineConfig(({ mode }) => {
       // Vite fingerprints everything under `assets/`, which is what lets the
       // server mark that one directory `immutable` and nothing else.
       assetsDir: 'assets',
+      // `platformicons` imports all ~450 of its SVGs from one module, and each
+      // is under the 4 KB inline limit, so by default every icon became a
+      // base64 string in the chunk every screen loads. As files, the browser
+      // fetches only the icons a page draws, and caches them.
+      assetsInlineLimit: (file) =>
+        file.includes('/platformicons/') ? false : undefined,
+      rolldownOptions: {
+        output: {
+          // The framework in chunks of its own. Left to itself, Rolldown can
+          // place React inside whichever shared chunk it builds first (it
+          // once landed in recharts', which put the chart library in the
+          // entry), and a deploy that changes no framework code still
+          // changes those chunks' hashes.
+          codeSplitting: {
+            groups: [
+              {
+                name: 'react',
+                test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'tanstack',
+                test: /node_modules[\\/]@tanstack[\\/](react-router|router-core|history|react-store|store|query-core|react-query)[\\/]/,
+                priority: 20,
+              },
+            ],
+          },
+        },
+      },
     },
   };
 });

@@ -37,3 +37,15 @@ export const eventDetailSchema = z.object({
   event_type: z.string(),
   data: z.record(z.string(), z.any()), // Full Sentry event JSON
 });
+
+/**
+ * Where one event sits among its issue's events, oldest first
+ */
+export const eventNavigationSchema = z.object({
+  current_index: z.number().int(),
+  total_count: z.number().int(),
+  first_event_id: uuidSchema.nullable(),
+  last_event_id: uuidSchema.nullable(),
+  prev_event_id: uuidSchema.nullable(),
+  next_event_id: uuidSchema.nullable(),
+});

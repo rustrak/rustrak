@@ -1,3 +1,4 @@
+import type { IssueFilter } from '@rustrak/client';
 import { useTranslations } from 'use-intl';
 import {
   Tabs,
@@ -5,10 +6,10 @@ import {
   TabsTrigger,
 } from '@/shared/ui/components/shadcn/tabs';
 
-const FILTERS = [
+const FILTERS: readonly { value: IssueFilter; key: string }[] = [
   { value: 'open', key: 'filters.open' },
   { value: 'resolved', key: 'filters.resolved' },
-  { value: 'ignored', key: 'filters.muted' },
+  { value: 'muted', key: 'filters.muted' },
   { value: 'all', key: 'filters.all' },
 ];
 
@@ -25,14 +26,20 @@ export function IssueFilters({
   onFilterChange,
   disabled,
 }: {
-  currentFilter: string;
-  onFilterChange: (filter: string) => void;
+  currentFilter: IssueFilter;
+  onFilterChange: (filter: IssueFilter) => void;
   disabled: boolean;
 }) {
   const t = useTranslations('issues');
   return (
     <div className="mb-4 shrink-0">
-      <Tabs value={currentFilter} onValueChange={onFilterChange}>
+      <Tabs
+        value={currentFilter}
+        onValueChange={(value) => {
+          const filter = FILTERS.find((f) => f.value === value);
+          if (filter) onFilterChange(filter.value);
+        }}
+      >
         <TabsList>
           {FILTERS.map((filter) => (
             <TabsTrigger
