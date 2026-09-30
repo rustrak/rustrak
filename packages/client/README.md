@@ -140,6 +140,21 @@ const captured  = await client.events.getBySentryId(projectId, sentryEventId);
 console.log(event.data); // Full Sentry event payload
 ```
 
+Look up events across issues when you know a user or request identity:
+
+```typescript
+const matches = await client.events.lookup(projectId, { user_id: 'customer-42' });
+if (matches.success) console.log(matches.data.items);
+const requests = await client.events.lookup(projectId, { request_id: 'request-123' });
+```
+
+Supply exactly one selector. `user_id` reads `user.id`; `request_id` reads the
+`request.id` tag in object, tuple-array or key/value-array tags. Results contain
+at most 20 summaries, with `has_more` and an
+optional `next_cursor` for the same project and selector. Identifiers are exact
+strings of 1–200 UTF-8 bytes without control or surrounding whitespace. Lookup
+failures use the same `Result` contract as the other methods.
+
 ### Auth Tokens
 
 ```typescript

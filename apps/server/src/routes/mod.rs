@@ -2,6 +2,7 @@ pub mod agents;
 pub mod alerts;
 pub mod auth;
 pub mod dashboard;
+pub mod event_lookup;
 pub mod events;
 pub mod health;
 pub mod ingest;

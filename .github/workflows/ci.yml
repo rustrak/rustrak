@@ -233,3 +233,6 @@ jobs:
           cache-workspaces: apps/server -> target
 
       - run: cargo test --no-default-features --features postgres --locked --test e2e_tests
+
+      # Exercise identity lookup and its JSON indexes on both shipped backends.
+      - run: cargo test --no-default-features --features postgres --locked --test integration_tests event_identity_lookup
