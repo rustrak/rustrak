@@ -57,11 +57,13 @@ export interface EventNavigation {
 export async function getLastEvent(
   projectId: number,
   issueId: string,
+  environment?: string,
 ): Promise<Result<Event | null, RustrakError>> {
   const client = await createClient();
   // Get events ordered by desc (most recent first), limit to 1
   const response = await client.events.list(projectId, issueId, {
     order: 'desc',
+    environment,
   });
 
   if (!response.success) {
@@ -104,6 +106,7 @@ export async function getEventNavigation(
   projectId: number,
   issueId: string,
   currentEventId: string,
+  environment?: string,
 ): Promise<Result<EventNavigation, RustrakError>> {
   const client = await createClient();
 
@@ -116,6 +119,7 @@ export async function getEventNavigation(
     const response = await client.events.list(projectId, issueId, {
       order: 'asc',
       cursor,
+      environment,
     });
     if (!response.success) {
       return response;

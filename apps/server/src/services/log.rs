@@ -13,6 +13,7 @@ pub struct LogService;
 pub struct LogFilters {
     pub level: Option<String>,
     pub trace_id: Option<String>,
+    pub environment: Option<String>,
 }
 
 impl LogService {
@@ -40,6 +41,7 @@ impl LogService {
             WHERE project_id = $1
               AND ($2 IS NULL OR level = $3)
               AND ($4 IS NULL OR trace_id = $5)
+              AND ($6 IS NULL OR environment = $7)
             "#,
         )
         .bind(project_id)
@@ -47,19 +49,22 @@ impl LogService {
         .bind(filters.level.as_deref())
         .bind(filters.trace_id.as_deref())
         .bind(filters.trace_id.as_deref())
+        .bind(filters.environment.as_deref())
+        .bind(filters.environment.as_deref())
         .fetch_one(pool)
         .await?;
 
         let rows = sqlx::query(
             r#"
-            SELECT id, trace_id, span_id, level, severity_number, body,
+            SELECT id, trace_id, span_id, level, severity_number, body, environment,
                    attributes, timestamp, ingested_at
             FROM logs
             WHERE project_id = $1
               AND ($2 IS NULL OR level = $3)
               AND ($4 IS NULL OR trace_id = $5)
+              AND ($6 IS NULL OR environment = $7)
             ORDER BY timestamp DESC, id DESC
-            LIMIT $6 OFFSET $7
+            LIMIT $8 OFFSET $9
             "#,
         )
         .bind(project_id)
@@ -67,6 +72,8 @@ impl LogService {
         .bind(filters.level.as_deref())
         .bind(filters.trace_id.as_deref())
         .bind(filters.trace_id.as_deref())
+        .bind(filters.environment.as_deref())
+        .bind(filters.environment.as_deref())
         .bind(per_page)
         .bind(offset)
         .fetch_all(pool)
@@ -79,6 +86,7 @@ impl LogService {
                 let ingested_at: DateTime<Utc> = row.get("ingested_at");
                 LogResponse {
                     id: row.get("id"),
+                    environment: row.get("environment"),
                     trace_id: row.get("trace_id"),
                     span_id: row.get("span_id"),
                     level: row.get("level"),

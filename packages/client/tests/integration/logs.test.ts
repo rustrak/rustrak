@@ -24,6 +24,7 @@ describe('LogsResource', () => {
       expect(log.id).toBe('a1b2c3d4-e89b-12d3-a456-426614174000');
       expect(log.level).toBe('info');
       expect(log.body).toBe('ok');
+      expect(log.environment).toBeNull();
       expect(log.trace_id).toBe('bbbb');
       expect(log.severity_number).toBe(9);
       expect(log.timestamp).toBe('2026-06-18T12:00:01.000Z');

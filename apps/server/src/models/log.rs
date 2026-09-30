@@ -76,6 +76,7 @@ mod tests {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LogResponse {
     pub id: Uuid,
+    pub environment: Option<String>,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,
     pub level: String,

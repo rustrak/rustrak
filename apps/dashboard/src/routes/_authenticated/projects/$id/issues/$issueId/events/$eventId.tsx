@@ -28,6 +28,7 @@ import {
 } from '@/features/issue/api/queries';
 import { getProject } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
+import { searchString } from '@/shared/lib/search-params';
 import { CollapsibleRail } from '@/shared/ui/components/collapsible-rail';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { EventHeader } from './$eventId/-components/event-header';
@@ -40,18 +41,22 @@ import { EventTrends } from './$eventId/-components/event-trends';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/events/$eventId',
 )({
-  loader: async ({ params }) => {
+  validateSearch: (search: Record<string, unknown>) => ({
+    environment: searchString(search.environment),
+  }),
+  loaderDeps: ({ search }) => ({ environment: search.environment }),
+  loader: async ({ params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     const { issueId, eventId } = params;
 
     const [project, issue, event, navigation, aggregates, stats, activity] =
       await Promise.all([
         getProject(projectId),
-        getIssue(projectId, issueId),
+        getIssue(projectId, issueId, deps.environment),
         getEventDetail(projectId, issueId, eventId),
-        getEventNavigation(projectId, issueId, eventId),
-        getIssueAggregates(projectId, issueId),
-        getIssueStats(projectId, issueId, '30d'),
+        getEventNavigation(projectId, issueId, eventId, deps.environment),
+        getIssueAggregates(projectId, issueId, deps.environment),
+        getIssueStats(projectId, issueId, '30d', deps.environment),
         getIssueActivity(projectId, issueId),
       ]);
 
@@ -92,6 +97,7 @@ const LEVEL_TEXT: Record<string, string> = {
 function EventPage() {
   const t = useTranslations('projectPages');
   const { id, issueId } = Route.useParams();
+  const { environment } = Route.useSearch();
   const {
     project: projectResult,
     issue: issueResult,
@@ -143,6 +149,7 @@ function EventPage() {
       aggregates={aggregatesResult.success ? aggregatesResult.data : null}
       stats30d={statsResult.success ? statsResult.data : null}
       activity={activityResult.success ? activityResult.data : []}
+      selectedEnvironment={environment}
     />
   );
 }
@@ -156,6 +163,7 @@ function EventView({
   aggregates,
   stats30d,
   activity,
+  selectedEnvironment,
 }: {
   projectId: number;
   issueId: string;
@@ -165,6 +173,7 @@ function EventView({
   aggregates: IssueAggregates | null;
   stats30d: IssueStats | null;
   activity: ActivityEntry[];
+  selectedEnvironment?: string;
 }) {
   const t = useTranslations('projectPages');
   const eventData = event.data as Record<string, unknown>;
@@ -204,7 +213,7 @@ function EventView({
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] bg-background">
+    <div className="flex flex-col h-full bg-background">
       <EventHeader
         issue={issue}
         projectId={projectId}
@@ -226,6 +235,10 @@ function EventView({
               event={event}
               navigation={navigation}
               jumps={jumps}
+              outsideSelectedEnvironment={Boolean(
+                selectedEnvironment &&
+                  event.environment !== selectedEnvironment,
+              )}
             />
 
             <EventSections

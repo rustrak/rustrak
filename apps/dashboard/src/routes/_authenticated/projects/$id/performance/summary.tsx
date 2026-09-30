@@ -21,11 +21,13 @@ export const Route = createFileRoute(
     name: searchString(search.name),
     op: searchString(search.op),
     page: searchPage(search.page),
+    environment: searchString(search.environment),
   }),
   loaderDeps: ({ search }) => ({
     name: search.name,
     op: search.op,
     page: search.page ?? 1,
+    environment: search.environment,
   }),
   loader: ({ params, deps }) => {
     // The transaction name *is* the address of this page: without it there is
@@ -45,8 +47,14 @@ export const Route = createFileRoute(
         per_page: 20,
         name: deps.name,
         op: deps.op,
+        environment: deps.environment,
       }),
-      getTransactionStatForGroup(projectId, deps.name, deps.op),
+      getTransactionStatForGroup(
+        projectId,
+        deps.name,
+        deps.op,
+        deps.environment,
+      ),
     ]);
   },
   head: ({ match }) => {
@@ -123,7 +131,7 @@ function TransactionSummaryPage() {
     : [];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
+    <div className="flex flex-col h-full">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <Link
           href={`/projects/${projectId}/performance`}

@@ -35,7 +35,7 @@ export async function getTransaction(
 
 export async function getTransactionStats(
   projectId: number,
-  options?: { page?: number; per_page?: number },
+  options?: { page?: number; per_page?: number; environment?: string },
 ): Promise<Result<OffsetPaginatedResponse<TransactionStats>, RustrakError>> {
   const client = await createClient();
   return client.transactions.getStats(projectId, options);
@@ -54,9 +54,15 @@ export async function getTransactionStatForGroup(
   projectId: number,
   name: string,
   op?: string,
+  environment?: string,
 ): Promise<Result<TransactionStats | null, RustrakError>> {
   const client = await createClient();
-  const result = await client.transactions.getStatForGroup(projectId, name, op);
+  const result = await client.transactions.getStatForGroup(
+    projectId,
+    name,
+    op,
+    environment,
+  );
 
   if (!result.success && result.error.kind === 'not_found') {
     return Ok(null);

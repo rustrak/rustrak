@@ -19,6 +19,7 @@ pub struct EventTimeseriesQuery {
     pub period: Option<String>,
     /// Bucket width in hours (default: 1, clamped to 1-24).
     pub interval: Option<i64>,
+    pub environment: Option<String>,
 }
 
 impl EventTimeseriesQuery {
@@ -70,6 +71,7 @@ pub async fn get_event_timeseries(
         project_id,
         query.period_hours(),
         query.interval_hours(),
+        query.environment.as_deref().filter(|s| !s.is_empty()),
     )
     .await?;
 
@@ -81,6 +83,7 @@ pub async fn get_event_timeseries(
 pub struct StatsSummaryQuery {
     /// Time window, e.g. "24h" or "7d". Omit for all time (no comparison).
     pub period: Option<String>,
+    pub environment: Option<String>,
 }
 
 impl StatsSummaryQuery {
@@ -122,8 +125,13 @@ pub async fn get_stats_summary(
     )
     .await?;
 
-    let summary =
-        StatsService::project_summary(pool.get_ref(), project_id, query.period_hours()).await?;
+    let summary = StatsService::project_summary(
+        pool.get_ref(),
+        project_id,
+        query.period_hours(),
+        query.environment.as_deref().filter(|s| !s.is_empty()),
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(summary))
 }

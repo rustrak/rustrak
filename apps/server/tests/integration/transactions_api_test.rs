@@ -310,6 +310,50 @@ async fn test_transaction_stat_group_returns_single_group_or_404() {
 }
 
 #[actix_web::test]
+async fn test_transaction_stats_environment_filter_changes_counts() {
+    let db = TestDb::new().await;
+    let pool = db.pool.clone();
+    let project = create_test_project(&pool, "Transaction Environments").await;
+    store_rich_transaction(&pool, project.id, "/checkout").await;
+    let staging_id = store_rich_transaction(&pool, project.id, "/checkout").await;
+    sqlx::query("UPDATE transactions SET environment = $1 WHERE id = $2")
+        .bind("staging")
+        .bind(staging_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (groups, total) =
+        rustrak::services::TransactionService::stats(&pool, project.id, 1, 10, Some("production"))
+            .await
+            .unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(groups[0].count, 1);
+    let group = rustrak::services::TransactionService::stats_for_group(
+        &pool,
+        project.id,
+        "/checkout",
+        Some("http.server"),
+        Some("staging"),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(group.count, 1);
+    let group = rustrak::services::TransactionService::stats_for_group(
+        &pool,
+        project.id,
+        "/checkout",
+        Some("http.server"),
+        None,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(group.count, 2);
+}
+
+#[actix_web::test]
 async fn test_get_transaction_404_for_unknown_id() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();

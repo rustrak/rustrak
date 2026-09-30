@@ -204,7 +204,7 @@
     "allLevels": "全部",
     "empty": {
       "title": "没有符合筛选条件的日志",
-      "hint": "尝试其他级别，或清除筛选条件。"
+      "hint": "尝试其他级别或环境，或清除筛选条件。"
     }
   },
   "issues": {
@@ -945,8 +945,8 @@
   "releases": {
     "all": "全部",
     "empty": {
-      "title": "此时间范围内没有发布版本",
-      "hint": "请尝试更长的时间范围或清除筛选条件。"
+      "title": "没有符合筛选条件的发布版本",
+      "hint": "尝试其他时间范围或环境，或清除筛选条件。"
     },
     "columns": {
       "release": "版本"
@@ -1078,6 +1078,7 @@
     },
     "filters": {
       "allTime": "全部时间",
+      "environment": "环境",
       "allEnvironments": "全部环境"
     },
     "modelsTable": {
@@ -1396,6 +1397,7 @@
       "subtitle": "{project} 的事务，按名称和操作分组",
       "loadFailed": "无法加载事务",
       "emptyTitle": "暂无事务",
+      "noEnvironmentData": "所选环境中没有事务",
       "emptyDescription": "在 SDK 中配置 <code>tracesSampleRate</code> 以开始采集性能数据。",
       "backLink": "性能"
     },
@@ -1498,6 +1500,7 @@
       },
       "loadFailed": "无法加载事件",
       "loadNavigationFailed": "无法加载此问题中的事件",
+      "outsideSelectedEnvironment": "此事件不属于所选环境。",
       "lastSeen": "最后出现",
       "firstSeen": "首次出现",
       "inRelease": "发布于 <rel>{release}</rel>",
@@ -1521,6 +1524,8 @@
       "formatPlainText": "纯文本",
       "formatJson": "JSON",
       "noEventsYet": "暂无事件",
+      "noEventsInEnvironment": "{environment} 中没有事件",
+      "noEventsInEnvironmentDescription": "选择其他环境或全部环境以查看此问题的其他事件。",
       "noEventsDescription": "此问题已创建，但尚未记录任何事件。一旦您的应用发送事件，它们就会显示在这里。"
     }
   },

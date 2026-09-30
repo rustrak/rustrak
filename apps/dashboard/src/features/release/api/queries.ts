@@ -38,9 +38,10 @@ export async function getNewIssuesForRelease(
   projectId: number,
   release: string,
   limit?: number,
+  environment?: string,
 ): Promise<Result<Issue[], RustrakError>> {
   const client = await createClient();
-  return client.releases.newIssues(projectId, release, limit);
+  return client.releases.newIssues(projectId, release, limit, environment);
 }
 
 /**
@@ -91,6 +92,7 @@ export async function getAllReleaseHealthRows(
   projectId: number,
   release: string,
   period?: string,
+  environment?: string,
 ): Promise<Result<ReleaseHealthRow[], RustrakError>> {
   const client = await createClient();
 
@@ -102,6 +104,7 @@ export async function getAllReleaseHealthRows(
     const response = await client.sessions.stats(projectId, {
       release,
       period,
+      environment,
       page,
       per_page: RELEASE_ROWS_PER_PAGE,
     });
@@ -132,9 +135,10 @@ export async function getAllReleaseHealthRows(
 export async function getSessionSummary(
   projectId: number,
   period?: string,
+  environment?: string,
 ): Promise<Result<SessionSummary, RustrakError>> {
   const client = await createClient();
-  return client.sessions.summary(projectId, period);
+  return client.sessions.summary(projectId, period, environment);
 }
 
 /**
@@ -153,7 +157,8 @@ export async function getSessionTimeseries(
   projectId: number,
   period?: string,
   interval?: number,
+  environment?: string,
 ): Promise<Result<SessionTimeseries, RustrakError>> {
   const client = await createClient();
-  return client.sessions.timeseries(projectId, period, interval);
+  return client.sessions.timeseries(projectId, period, interval, environment);
 }

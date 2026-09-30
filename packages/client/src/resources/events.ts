@@ -33,6 +33,9 @@ export class EventsResource extends BaseResource {
     if (options?.cursor) {
       searchParams.cursor = options.cursor;
     }
+    if (options?.environment) {
+      searchParams.environment = options.environment;
+    }
 
     return this.request(
       () =>

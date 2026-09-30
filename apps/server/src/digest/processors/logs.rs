@@ -39,13 +39,13 @@ impl Processor for LogsProcessor {
                 INSERT INTO logs (
                     id, project_id, dedupe_key,
                     trace_id, span_id,
-                    level, severity_number, body, attributes,
+                    level, severity_number, body, attributes, environment,
                     timestamp, ingested_at
                 ) VALUES (
                     $1, $2, $3,
                     $4, $5,
-                    $6, $7, $8, $9,
-                    $10, $11
+                    $6, $7, $8, $9, $10,
+                    $11, $12
                 )
                 ON CONFLICT (project_id, dedupe_key)
                     WHERE dedupe_key IS NOT NULL DO NOTHING
@@ -60,6 +60,16 @@ impl Processor for LogsProcessor {
             .bind(severity_number)
             .bind(&log.body)
             .bind(attributes_json(&log))
+            .bind(
+                log.attributes
+                    .get("sentry.environment")
+                    .filter(|attribute| {
+                        attribute.get("type").and_then(|v| v.as_str()) == Some("string")
+                    })
+                    .and_then(|attribute| attribute.get("value"))
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.is_empty()),
+            )
             .bind(timestamp)
             .bind(ctx.ingested_at)
             .execute(&mut *tx)

@@ -5,7 +5,7 @@ import { getProject } from '@/features/project/api/queries';
 import { getTransactionStats } from '@/features/transaction/api/queries';
 import { TransactionStatsTable } from '@/features/transaction/ui/components/transaction-stats-table';
 import { translator } from '@/shared/i18n/intl';
-import { searchPage } from '@/shared/lib/search-params';
+import { searchPage, searchString } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 export const Route = createFileRoute(
@@ -13,8 +13,12 @@ export const Route = createFileRoute(
 )({
   validateSearch: (search: Record<string, unknown>) => ({
     page: searchPage(search.page),
+    environment: searchString(search.environment),
   }),
-  loaderDeps: ({ search }) => ({ page: search.page ?? 1 }),
+  loaderDeps: ({ search }) => ({
+    page: search.page ?? 1,
+    environment: search.environment,
+  }),
   loader: async ({ params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     const project = await getProject(projectId);
@@ -26,6 +30,7 @@ export const Route = createFileRoute(
     const stats = await getTransactionStats(projectId, {
       page: deps.page,
       per_page: 20,
+      environment: deps.environment,
     });
 
     return { project, stats };
@@ -54,8 +59,11 @@ export const Route = createFileRoute(
 function PerformancePage() {
   const t = useTranslations('projectPages');
   const { id } = Route.useParams();
-  const currentPage = Route.useSearch({
-    select: (search) => search.page ?? 1,
+  const { currentPage, environment } = Route.useSearch({
+    select: (search) => ({
+      currentPage: search.page ?? 1,
+      environment: search.environment,
+    }),
   });
   const { project: projectResult, stats: statsResult } = Route.useLoaderData();
   const projectId = Number.parseInt(id, 10);
@@ -85,7 +93,7 @@ function PerformancePage() {
   const stats = statsResult.data;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
+    <div className="flex flex-col h-full">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <h1 className="text-lg font-semibold">{t('performance.title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
@@ -94,7 +102,7 @@ function PerformancePage() {
       </div>
 
       <div className="flex-1 overflow-hidden w-full px-4 md:px-8 py-4 md:py-6">
-        {stats.total_count === 0 ? (
+        {stats.total_count === 0 && !environment ? (
           <div className="flex flex-col items-center justify-center min-h-full text-center">
             <Zap className="size-12 text-muted-foreground/30 mb-4" />
             <h2 className="text-lg font-semibold mb-1">
@@ -105,6 +113,13 @@ function PerformancePage() {
                 code: (chunks) => <code>{chunks}</code>,
               })}
             </p>
+          </div>
+        ) : stats.total_count === 0 ? (
+          <div className="flex flex-col items-center justify-center min-h-full text-center">
+            <Zap className="size-12 text-muted-foreground/30 mb-4" />
+            <h2 className="text-lg font-semibold mb-1">
+              {t('performance.noEnvironmentData')}
+            </h2>
           </div>
         ) : (
           <TransactionStatsTable

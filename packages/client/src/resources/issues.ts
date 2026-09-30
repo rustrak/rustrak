@@ -66,6 +66,9 @@ export class IssuesResource extends BaseResource {
     if (options?.q) {
       searchParams.q = options.q;
     }
+    if (options?.environment) {
+      searchParams.environment = options.environment;
+    }
 
     return this.request(
       () => this.http.get(`api/projects/${projectId}/issues`, { searchParams }),
@@ -79,9 +82,13 @@ export class IssuesResource extends BaseResource {
   async get(
     projectId: number,
     issueId: string,
+    environment?: string,
   ): Promise<Result<Issue, RustrakError>> {
     return this.request(
-      () => this.http.get(`api/projects/${projectId}/issues/${issueId}`),
+      () =>
+        this.http.get(`api/projects/${projectId}/issues/${issueId}`, {
+          searchParams: environment ? { environment } : {},
+        }),
       issueSchema,
     );
   }
@@ -195,11 +202,13 @@ export class IssuesResource extends BaseResource {
     projectId: number,
     issueId: string,
     key: string,
+    environment?: string,
   ): Promise<Result<IssueTagValue[], RustrakError>> {
     return this.request(
       () =>
         this.http.get(
           `api/projects/${projectId}/issues/${issueId}/tags/${encodeURIComponent(key)}`,
+          { searchParams: environment ? { environment } : {} },
         ),
       z.array(issueTagValueSchema),
     );
@@ -211,10 +220,14 @@ export class IssuesResource extends BaseResource {
   async getAggregates(
     projectId: number,
     issueId: string,
+    environment?: string,
   ): Promise<Result<IssueAggregates, RustrakError>> {
     return this.request(
       () =>
-        this.http.get(`api/projects/${projectId}/issues/${issueId}/aggregates`),
+        this.http.get(
+          `api/projects/${projectId}/issues/${issueId}/aggregates`,
+          { searchParams: environment ? { environment } : {} },
+        ),
       issueAggregatesSchema,
     );
   }
@@ -226,11 +239,12 @@ export class IssuesResource extends BaseResource {
     projectId: number,
     issueId: string,
     window: IssueStatsWindow = '24h',
+    environment?: string,
   ): Promise<Result<IssueStats, RustrakError>> {
     return this.request(
       () =>
         this.http.get(`api/projects/${projectId}/issues/${issueId}/stats`, {
-          searchParams: { window },
+          searchParams: { window, ...(environment ? { environment } : {}) },
         }),
       issueStatsSchema,
     );

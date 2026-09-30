@@ -5,6 +5,7 @@ import { getIssue } from '@/features/issue/api/queries';
 import { getProject } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { loadAll } from '@/shared/lib/results';
+import { searchString } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { Button } from '@/shared/ui/components/shadcn/button';
@@ -13,11 +14,15 @@ import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/events/empty',
 )({
-  loader: ({ params }) => {
+  validateSearch: (search: Record<string, unknown>) => ({
+    environment: searchString(search.environment),
+  }),
+  loaderDeps: ({ search }) => ({ environment: search.environment }),
+  loader: ({ params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     return loadAll([
       getProject(projectId),
-      getIssue(projectId, params.issueId),
+      getIssue(projectId, params.issueId, deps.environment),
     ]);
   },
   head: ({ loaderData }) => {
@@ -38,6 +43,7 @@ export const Route = createFileRoute(
 function EmptyEventsPage() {
   const t = useTranslations('projectPages');
   const { id } = Route.useParams();
+  const { environment } = Route.useSearch();
   const loaded = Route.useLoaderData();
   const projectId = Number.parseInt(id, 10);
 
@@ -73,9 +79,15 @@ function EmptyEventsPage() {
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <AlertCircle className="size-12 text-muted-foreground mb-4" />
-          <h2 className="text-xl font-bold mb-2">{t('event.noEventsYet')}</h2>
+          <h2 className="text-xl font-bold mb-2">
+            {environment
+              ? t('event.noEventsInEnvironment', { environment })
+              : t('event.noEventsYet')}
+          </h2>
           <p className="text-muted-foreground max-w-md">
-            {t('event.noEventsDescription')}
+            {environment
+              ? t('event.noEventsInEnvironmentDescription')
+              : t('event.noEventsDescription')}
           </p>
         </CardContent>
       </Card>

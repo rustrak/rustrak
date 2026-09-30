@@ -204,7 +204,7 @@
     "allLevels": "Todos",
     "empty": {
       "title": "Ningún registro coincide con este filtro",
-      "hint": "Prueba con otro nivel o borra el filtro."
+      "hint": "Prueba con otro nivel o entorno, o borra el filtro."
     }
   },
   "issues": {
@@ -945,8 +945,8 @@
   "releases": {
     "all": "Todas",
     "empty": {
-      "title": "No hay versiones en esta ventana",
-      "hint": "Prueba con un período más largo o borra el filtro."
+      "title": "Ninguna versión coincide con estos filtros",
+      "hint": "Prueba con otro período o entorno, o borra el filtro."
     },
     "columns": {
       "release": "Versión"
@@ -1078,6 +1078,7 @@
     },
     "filters": {
       "allTime": "Todo el histórico",
+      "environment": "Entorno",
       "allEnvironments": "Todos los entornos"
     },
     "modelsTable": {
@@ -1396,6 +1397,7 @@
       "subtitle": "Transacciones de {project}, agrupadas por nombre y operación",
       "loadFailed": "No se pudieron cargar las transacciones",
       "emptyTitle": "Aún no hay transacciones",
+      "noEnvironmentData": "No hay transacciones en el entorno seleccionado",
       "emptyDescription": "Configura tu SDK con <code>tracesSampleRate</code> para empezar a capturar datos de rendimiento.",
       "backLink": "Rendimiento"
     },
@@ -1498,6 +1500,7 @@
       },
       "loadFailed": "No se pudo cargar el evento",
       "loadNavigationFailed": "No se pudieron cargar los eventos de este problema",
+      "outsideSelectedEnvironment": "Este evento no pertenece al entorno seleccionado.",
       "lastSeen": "Visto por última vez",
       "firstSeen": "Visto por primera vez",
       "inRelease": "en la versión <rel>{release}</rel>",
@@ -1521,6 +1524,8 @@
       "formatPlainText": "Texto sin formato",
       "formatJson": "JSON",
       "noEventsYet": "Aún no hay eventos",
+      "noEventsInEnvironment": "No hay eventos en {environment}",
+      "noEventsInEnvironmentDescription": "Elige otro entorno o Todos los entornos para ver los demás eventos de este problema.",
       "noEventsDescription": "Este problema se creó pero aún no se ha registrado ningún evento. Los eventos aparecerán aquí en cuanto tu aplicación los envíe."
     }
   },

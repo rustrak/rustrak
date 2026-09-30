@@ -247,6 +247,53 @@ pub async fn get_rate_limits(
     }))
 }
 
+/// Environment names reported by any telemetry type in this project.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/projects/{id}/environments",
+    tag = "Projects",
+    params(("id" = i32, Path, description = "Project ID")),
+    responses(
+        (status = 200, description = "Environment names found in project telemetry", body = Vec<String>),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 404, description = "Project not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+pub async fn list_environments(
+    pool: web::Data<DbPool>,
+    path: web::Path<i32>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    let project_id = path.into_inner();
+    access::require(
+        pool.get_ref(),
+        actor.is_admin(),
+        actor.user_id(),
+        project_id,
+        Action::ViewProject,
+    )
+    .await?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT environment FROM (\
+         SELECT environment FROM events WHERE project_id = $1 UNION ALL \
+         SELECT environment FROM transactions WHERE project_id = $2 UNION ALL \
+         SELECT environment FROM spans WHERE project_id = $3 UNION ALL \
+         SELECT environment FROM session_counts WHERE project_id = $4 UNION ALL \
+         SELECT environment FROM logs WHERE project_id = $5\
+         ) reported WHERE environment IS NOT NULL AND environment <> '' ORDER BY environment",
+    )
+    .bind(project_id)
+    .bind(project_id)
+    .bind(project_id)
+    .bind(project_id)
+    .bind(project_id)
+    .fetch_all(pool.get_ref())
+    .await?;
+    Ok(HttpResponse::Ok().json(rows.into_iter().map(|row| row.0).collect::<Vec<_>>()))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/api/rate-limits", web::get().to(get_rate_limits));
     cfg.service(
@@ -254,6 +301,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_projects))
             .route("", web::post().to(create_project))
             .route("/{id}", web::get().to(get_project))
+            .route("/{id}/environments", web::get().to(list_environments))
             .route("/{id}", web::patch().to(update_project))
             .route("/{id}", web::delete().to(delete_project)),
     );
@@ -335,6 +383,7 @@ mod tests {
     paths(
         list_projects,
         get_project,
+        list_environments,
         create_project,
         update_project,
         delete_project,

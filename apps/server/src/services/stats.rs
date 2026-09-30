@@ -43,9 +43,12 @@ impl StatsService {
         project_id: i32,
         period_hours: Option<i64>,
         interval_hours: i64,
+        environment: Option<&str>,
     ) -> AppResult<Vec<EventTimeseriesPoint>> {
         let interval_secs = interval_hours.max(1) * 3600;
-        let points = query_event_timeseries(pool, project_id, period_hours, interval_secs).await?;
+        let points =
+            query_event_timeseries(pool, project_id, period_hours, interval_secs, environment)
+                .await?;
 
         let Some(hours) = period_hours else {
             return Ok(points);
@@ -60,6 +63,7 @@ impl StatsService {
         pool: &DbPool,
         project_id: i32,
         period_hours: Option<i64>,
+        environment: Option<&str>,
     ) -> AppResult<ProjectStatsSummary> {
         // The comparison window is the same length, immediately before the
         // current one, so every query below scans `[previous_start, now]` once
@@ -72,9 +76,9 @@ impl StatsService {
             )
         });
 
-        let events = count_events(pool, project_id, bounds).await?;
-        let new_issues = count_new_issues(pool, project_id, bounds).await?;
-        let open_issues = count_open_issues(pool, project_id).await?;
+        let events = count_events(pool, project_id, bounds, environment).await?;
+        let new_issues = count_new_issues(pool, project_id, bounds, environment).await?;
+        let open_issues = count_open_issues(pool, project_id, environment).await?;
 
         Ok(ProjectStatsSummary {
             period_hours,
@@ -386,6 +390,7 @@ async fn query_event_timeseries(
     project_id: i32,
     period_hours: Option<i64>,
     interval_secs: i64,
+    environment: Option<&str>,
 ) -> AppResult<Vec<EventTimeseriesPoint>> {
     let [fatal, error, warning] = NAMED_LEVELS;
 
@@ -414,6 +419,7 @@ async fn query_event_timeseries(
             FROM events
             WHERE project_id = $1
               AND event_type = 'error'
+              AND ($2 IS NULL OR environment = $2)
               {time_filter}
             GROUP BY 1
             ORDER BY 1 ASC
@@ -423,6 +429,7 @@ async fn query_event_timeseries(
         let rows: Vec<(DateTime<Utc>, i64, i64, i64, i64, i64)> =
             sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
                 .bind(project_id)
+                .bind(environment)
                 .fetch_all(pool)
                 .await?;
 
@@ -467,6 +474,7 @@ async fn query_event_timeseries(
             FROM events
             WHERE project_id = ?1
               AND event_type = 'error'
+              AND (?2 IS NULL OR environment = ?2)
               {time_filter}
             GROUP BY 1
             ORDER BY 1 ASC
@@ -476,6 +484,7 @@ async fn query_event_timeseries(
         let rows: Vec<(String, i64, i64, i64, i64, i64)> =
             sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
                 .bind(project_id)
+                .bind(environment)
                 .fetch_all(pool)
                 .await?;
 
@@ -498,21 +507,28 @@ async fn query_event_timeseries(
 /// Window bounds as `(previous_start, current_start)`, or `None` for all time.
 type Bounds = Option<(DateTime<Utc>, DateTime<Utc>)>;
 
-async fn count_events(pool: &DbPool, project_id: i32, bounds: Bounds) -> AppResult<MetricDelta> {
+async fn count_events(
+    pool: &DbPool,
+    project_id: i32,
+    bounds: Bounds,
+    environment: Option<&str>,
+) -> AppResult<MetricDelta> {
     let Some((previous_start, current_start)) = bounds else {
         #[cfg(feature = "postgres")]
         let (total,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::bigint FROM events WHERE project_id = $1 AND event_type = 'error'",
+            "SELECT COUNT(*)::bigint FROM events WHERE project_id = $1 AND event_type = 'error' AND ($2 IS NULL OR environment = $2)",
         )
         .bind(project_id)
+        .bind(environment)
         .fetch_one(pool)
         .await?;
 
         #[cfg(not(feature = "postgres"))]
         let (total,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM events WHERE project_id = ?1 AND event_type = 'error'",
+            "SELECT COUNT(*) FROM events WHERE project_id = ?1 AND event_type = 'error' AND (?2 IS NULL OR environment = ?2)",
         )
         .bind(project_id)
+        .bind(environment)
         .fetch_one(pool)
         .await?;
 
@@ -529,11 +545,13 @@ async fn count_events(pool: &DbPool, project_id: i32, bounds: Bounds) -> AppResu
         WHERE project_id = $1
           AND event_type = 'error'
           AND ingested_at >= $3
+          AND ($4 IS NULL OR environment = $4)
         "#,
     )
     .bind(project_id)
     .bind(current_start)
     .bind(previous_start)
+    .bind(environment)
     .fetch_one(pool)
     .await?;
 
@@ -547,11 +565,13 @@ async fn count_events(pool: &DbPool, project_id: i32, bounds: Bounds) -> AppResu
         WHERE project_id = ?1
           AND event_type = 'error'
           AND datetime(ingested_at) >= datetime(?3)
+          AND (?4 IS NULL OR environment = ?4)
         "#,
     )
     .bind(project_id)
     .bind(current_start.naive_utc())
     .bind(previous_start.naive_utc())
+    .bind(environment)
     .fetch_one(pool)
     .await?;
 
@@ -562,18 +582,21 @@ async fn count_new_issues(
     pool: &DbPool,
     project_id: i32,
     bounds: Bounds,
+    environment: Option<&str>,
 ) -> AppResult<MetricDelta> {
     let Some((previous_start, current_start)) = bounds else {
         #[cfg(feature = "postgres")]
         let (total,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*)::bigint FROM issues WHERE project_id = $1")
+            sqlx::query_as("SELECT COUNT(*)::bigint FROM issues WHERE project_id = $1 AND ($2 IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.issue_id = issues.id AND e.environment = $2))")
                 .bind(project_id)
+                .bind(environment)
                 .fetch_one(pool)
                 .await?;
 
         #[cfg(not(feature = "postgres"))]
-        let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM issues WHERE project_id = ?1")
+        let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM issues WHERE project_id = ?1 AND (?2 IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.issue_id = issues.id AND e.environment = ?2))")
             .bind(project_id)
+            .bind(environment)
             .fetch_one(pool)
             .await?;
 
@@ -583,34 +606,48 @@ async fn count_new_issues(
     #[cfg(feature = "postgres")]
     let (current, previous): (i64, i64) = sqlx::query_as(
         r#"
+        WITH firsts AS (
+            SELECT CASE WHEN $4 IS NULL THEN i.first_seen ELSE (
+                SELECT MIN(e.timestamp) FROM events e
+                WHERE e.issue_id = i.id AND e.environment = $4
+            ) END AS first_seen
+            FROM issues i
+            WHERE i.project_id = $1 AND ($4 IS NOT NULL OR i.first_seen >= $3)
+        )
         SELECT
             COALESCE(SUM(CASE WHEN first_seen >= $2 THEN 1 ELSE 0 END), 0)::bigint,
             COALESCE(SUM(CASE WHEN first_seen <  $2 THEN 1 ELSE 0 END), 0)::bigint
-        FROM issues
-        WHERE project_id = $1
-          AND first_seen >= $3
+        FROM firsts WHERE first_seen >= $3
         "#,
     )
     .bind(project_id)
     .bind(current_start)
     .bind(previous_start)
+    .bind(environment)
     .fetch_one(pool)
     .await?;
 
     #[cfg(not(feature = "postgres"))]
     let (current, previous): (i64, i64) = sqlx::query_as(
         r#"
+        WITH firsts AS (
+            SELECT CASE WHEN ?4 IS NULL THEN i.first_seen ELSE (
+                SELECT MIN(e.timestamp) FROM events e
+                WHERE e.issue_id = i.id AND e.environment = ?4
+            ) END AS first_seen
+            FROM issues i
+            WHERE i.project_id = ?1 AND (?4 IS NOT NULL OR datetime(i.first_seen) >= datetime(?3))
+        )
         SELECT
             COALESCE(SUM(CASE WHEN datetime(first_seen) >= datetime(?2) THEN 1 ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN datetime(first_seen) <  datetime(?2) THEN 1 ELSE 0 END), 0)
-        FROM issues
-        WHERE project_id = ?1
-          AND datetime(first_seen) >= datetime(?3)
+        FROM firsts WHERE datetime(first_seen) >= datetime(?3)
         "#,
     )
     .bind(project_id)
     .bind(current_start.naive_utc())
     .bind(previous_start.naive_utc())
+    .bind(environment)
     .fetch_one(pool)
     .await?;
 
@@ -619,20 +656,26 @@ async fn count_new_issues(
 
 /// Issues currently unresolved. A backlog size, not a windowed rate, so it has
 /// no previous-period counterpart.
-async fn count_open_issues(pool: &DbPool, project_id: i32) -> AppResult<i64> {
+async fn count_open_issues(
+    pool: &DbPool,
+    project_id: i32,
+    environment: Option<&str>,
+) -> AppResult<i64> {
     #[cfg(feature = "postgres")]
     let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*)::bigint FROM issues WHERE project_id = $1 AND status = 'unresolved'",
+        "SELECT COUNT(*)::bigint FROM issues WHERE project_id = $1 AND status = 'unresolved' AND ($2 IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.issue_id = issues.id AND e.environment = $2))",
     )
     .bind(project_id)
+    .bind(environment)
     .fetch_one(pool)
     .await?;
 
     #[cfg(not(feature = "postgres"))]
     let (total,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM issues WHERE project_id = ?1 AND status = 'unresolved'",
+        "SELECT COUNT(*) FROM issues WHERE project_id = ?1 AND status = 'unresolved' AND (?2 IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.issue_id = issues.id AND e.environment = ?2))",
     )
     .bind(project_id)
+    .bind(environment)
     .fetch_one(pool)
     .await?;
 

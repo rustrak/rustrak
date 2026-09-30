@@ -45,6 +45,7 @@ import { useAsync } from '@/shared/ui/hooks/use-async';
 interface TileProps {
   projectId: number;
   period?: OverviewPeriod;
+  environment?: string;
 }
 
 function TileShell({
@@ -101,12 +102,17 @@ function TileFailure({ error, title }: { error: RustrakError; title: string }) {
   );
 }
 
-export function ErrorVolumeTile({ projectId, period }: TileProps) {
+export function ErrorVolumeTile({ projectId, period, environment }: TileProps) {
   const t = useTranslations('projectPages');
   const read = useAsync(
     () =>
-      getProjectEventTimeseries(projectId, period, overviewInterval(period)),
-    [projectId, period],
+      getProjectEventTimeseries(
+        projectId,
+        period,
+        overviewInterval(period),
+        environment,
+      ),
+    [projectId, period, environment],
   );
 
   if (read.state === 'pending') return <TileSkeleton height={300} />;
@@ -125,12 +131,12 @@ export function ErrorVolumeTile({ projectId, period }: TileProps) {
   );
 }
 
-export function CounterTiles({ projectId, period }: TileProps) {
+export function CounterTiles({ projectId, period, environment }: TileProps) {
   const format = useFormatter();
   const t = useTranslations('projectPages');
   const read = useAsync(
-    () => getProjectStatsSummary(projectId, period),
-    [projectId, period],
+    () => getProjectStatsSummary(projectId, period, environment),
+    [projectId, period, environment],
   );
 
   if (read.state === 'pending') {
@@ -176,7 +182,7 @@ export function CounterTiles({ projectId, period }: TileProps) {
   );
 }
 
-export function CrashFreeTile({ projectId, period }: TileProps) {
+export function CrashFreeTile({ projectId, period, environment }: TileProps) {
   const t = useTranslations('projectPages');
 
   // The headline rates and the shape behind them come from two endpoints, so
@@ -190,10 +196,15 @@ export function CrashFreeTile({ projectId, period }: TileProps) {
   const read = useAsync(
     () =>
       loadAll([
-        getSessionSummary(projectId, period),
-        getSessionTimeseries(projectId, period, overviewInterval(period)),
+        getSessionSummary(projectId, period, environment),
+        getSessionTimeseries(
+          projectId,
+          period,
+          overviewInterval(period),
+          environment,
+        ),
       ]),
-    [projectId, period],
+    [projectId, period, environment],
   );
 
   if (read.state === 'pending') return <TileSkeleton height={132} />;
@@ -222,11 +233,21 @@ export function CrashFreeTile({ projectId, period }: TileProps) {
   );
 }
 
-export function SessionHealthTile({ projectId, period }: TileProps) {
+export function SessionHealthTile({
+  projectId,
+  period,
+  environment,
+}: TileProps) {
   const t = useTranslations('projectPages');
   const read = useAsync(
-    () => getSessionTimeseries(projectId, period, overviewInterval(period)),
-    [projectId, period],
+    () =>
+      getSessionTimeseries(
+        projectId,
+        period,
+        overviewInterval(period),
+        environment,
+      ),
+    [projectId, period, environment],
   );
 
   if (read.state === 'pending') return <TileSkeleton height={250} />;
@@ -251,15 +272,16 @@ export function SessionHealthTile({ projectId, period }: TileProps) {
   );
 }
 
-export function PerformanceTile({ projectId }: TileProps) {
+export function PerformanceTile({ projectId, environment }: TileProps) {
   const t = useTranslations('projectPages');
 
   // Transaction stats have no period filter of their own yet, so this tile is
   // all-time regardless of the selected window. Said out loud in the subtitle
   // rather than silently pretending to follow the filter.
   const read = useAsync(
-    () => getTransactionStats(projectId, { page: 1, per_page: 20 }),
-    [projectId],
+    () =>
+      getTransactionStats(projectId, { page: 1, per_page: 20, environment }),
+    [projectId, environment],
   );
 
   if (read.state === 'pending') return <TileSkeleton height={250} />;
@@ -279,7 +301,7 @@ export function PerformanceTile({ projectId }: TileProps) {
   );
 }
 
-export function TopIssuesTile({ projectId }: TileProps) {
+export function TopIssuesTile({ projectId, environment }: TileProps) {
   const t = useTranslations('projectPages');
 
   // The issues endpoint takes no time window, and `event_count` is the issue's
@@ -289,13 +311,14 @@ export function TopIssuesTile({ projectId }: TileProps) {
   const read = useAsync(
     () =>
       listIssues(projectId, {
+        environment,
         filter: 'open',
         page: 1,
         per_page: 5,
         sort: 'event_count',
         order: 'desc',
       }),
-    [projectId],
+    [projectId, environment],
   );
 
   if (read.state === 'pending') return <TileSkeleton height={180} />;

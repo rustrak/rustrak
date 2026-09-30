@@ -143,6 +143,8 @@ pub struct ListIssuesQuery {
     /// Free-text search across type, value, transaction, and culprit.
     #[serde(default)]
     pub q: Option<String>,
+    /// Match issues containing at least one event in this environment.
+    pub environment: Option<String>,
 }
 
 fn default_page() -> i64 {
@@ -218,6 +220,7 @@ pub struct ListLogsQuery {
 
     /// Filter by trace id.
     pub trace_id: Option<String>,
+    pub environment: Option<String>,
 }
 
 /// Query parameters for listing spans (offset-based)
@@ -342,6 +345,7 @@ pub struct TransactionStatsQuery {
     #[serde(default = "default_per_page")]
     #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
     pub per_page: i64,
+    pub environment: Option<String>,
 }
 
 /// Query parameters for a single transaction group's aggregate stats.
@@ -352,6 +356,7 @@ pub struct TransactionStatGroupQuery {
     pub name: String,
     /// Trace operation of the group (omit for groups with no op).
     pub op: Option<String>,
+    pub environment: Option<String>,
 }
 
 /// Query parameters for listing events
@@ -364,6 +369,7 @@ pub struct ListEventsQuery {
 
     /// Pagination cursor
     pub cursor: Option<String>,
+    pub environment: Option<String>,
 }
 
 /// Query parameters for listing projects (offset-based)

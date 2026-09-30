@@ -58,9 +58,18 @@ impl SessionService {
         period_hours: Option<i64>,
         page: i64,
         per_page: i64,
+        environment: Option<&str>,
     ) -> AppResult<(Vec<ReleaseHealthRow>, i64)> {
-        let (rows, total) =
-            query_release_health(pool, project_id, period_hours, None, page, per_page).await?;
+        let (rows, total) = query_release_health(
+            pool,
+            project_id,
+            period_hours,
+            None,
+            page,
+            per_page,
+            environment,
+        )
+        .await?;
         Ok((rows, total))
     }
 
@@ -74,6 +83,7 @@ impl SessionService {
         period_hours: Option<i64>,
         page: i64,
         per_page: i64,
+        environment: Option<&str>,
     ) -> AppResult<(Vec<ReleaseHealthRow>, i64)> {
         let (rows, total) = query_release_health(
             pool,
@@ -82,6 +92,7 @@ impl SessionService {
             Some(release),
             page,
             per_page,
+            environment,
         )
         .await?;
         Ok((rows, total))
@@ -93,8 +104,9 @@ impl SessionService {
         pool: &DbPool,
         project_id: i32,
         period_hours: Option<i64>,
+        environment: Option<&str>,
     ) -> AppResult<SessionSummary> {
-        let summary = query_project_summary(pool, project_id, period_hours).await?;
+        let summary = query_project_summary(pool, project_id, period_hours, environment).await?;
         Ok(summary)
     }
 
@@ -107,9 +119,11 @@ impl SessionService {
         project_id: i32,
         period_hours: Option<i64>,
         interval_hours: i64,
+        environment: Option<&str>,
     ) -> AppResult<Vec<SessionTimeseriesPoint>> {
         let points =
-            query_session_timeseries(pool, project_id, period_hours, interval_hours).await?;
+            query_session_timeseries(pool, project_id, period_hours, interval_hours, environment)
+                .await?;
         Ok(points)
     }
 }
@@ -124,6 +138,7 @@ async fn query_release_health(
     release: Option<&str>,
     page: i64,
     per_page: i64,
+    environment: Option<&str>,
 ) -> Result<(Vec<ReleaseHealthRow>, i64), sqlx::Error> {
     let per_page = per_page.max(1);
     // Saturating, not plain arithmetic: `page` arrives straight from a query
@@ -142,11 +157,16 @@ async fn query_release_health(
         } else {
             ""
         };
+        let environment_param = if release.is_some() { "$3" } else { "$2" };
+        let environment_filter = format!(
+            "AND ({} IS NULL OR environment = {})",
+            environment_param, environment_param
+        );
         // $2 is taken by the release filter when present, so LIMIT/OFFSET shift up.
         let (limit_param, offset_param) = if release.is_some() {
-            ("$3", "$4")
+            ("$4", "$5")
         } else {
-            ("$2", "$3")
+            ("$3", "$4")
         };
 
         let count_sql = format!(
@@ -157,6 +177,7 @@ async fn query_release_health(
                     WHERE project_id = $1
                       {time_filter_sc}
                       {release_filter}
+                      {environment_filter}
                     GROUP BY release, environment
                 ) groups
                 "#,
@@ -166,6 +187,7 @@ async fn query_release_health(
         if let Some(r) = release {
             count_query = count_query.bind(r);
         }
+        count_query = count_query.bind(environment);
         let (total,): (i64,) = count_query.fetch_one(pool).await?;
 
         // session_counts and session_users are aggregated in separate subqueries
@@ -201,6 +223,7 @@ async fn query_release_health(
                     WHERE project_id = $1
                       {time_filter_sc}
                       {release_filter}
+                      {environment_filter}
                     GROUP BY release, environment
                 ) counts
                 LEFT JOIN (
@@ -215,6 +238,7 @@ async fn query_release_health(
                     WHERE project_id = $1
                       {time_filter_su}
                       {release_filter}
+                      {environment_filter}
                     GROUP BY release, environment
                 ) users
                 ON users.release = counts.release AND users.environment = counts.environment
@@ -227,6 +251,7 @@ async fn query_release_health(
         if let Some(r) = release {
             query = query.bind(r);
         }
+        query = query.bind(environment);
         let rows: Vec<PgHealthRow> = query.bind(per_page).bind(offset).fetch_all(pool).await?;
 
         let items = rows
@@ -261,11 +286,16 @@ async fn query_release_health(
         } else {
             ""
         };
+        let environment_param = if release.is_some() { "?3" } else { "?2" };
+        let environment_filter = format!(
+            "AND ({} IS NULL OR environment = {})",
+            environment_param, environment_param
+        );
         // ?2 is taken by the release filter when present, so LIMIT/OFFSET shift up.
         let (limit_param, offset_param) = if release.is_some() {
-            ("?3", "?4")
+            ("?4", "?5")
         } else {
-            ("?2", "?3")
+            ("?3", "?4")
         };
 
         let total_sql = format!(
@@ -276,6 +306,7 @@ async fn query_release_health(
                 WHERE project_id = ?1
                   {time_filter_sc}
                   {release_filter}
+                  {environment_filter}
                 GROUP BY release, environment
             ) groups
             "#,
@@ -285,6 +316,7 @@ async fn query_release_health(
         if let Some(r) = release {
             total_query = total_query.bind(r);
         }
+        total_query = total_query.bind(environment);
         let (total,): (i64,) = total_query.fetch_one(pool).await?;
 
         let sql = format!(
@@ -300,6 +332,7 @@ async fn query_release_health(
             WHERE project_id = ?1
               {time_filter_sc}
               {release_filter}
+              {environment_filter}
             GROUP BY release, environment
             ORDER BY SUM(total) DESC, release ASC, environment ASC
             LIMIT {limit_param} OFFSET {offset_param}
@@ -310,6 +343,7 @@ async fn query_release_health(
         if let Some(r) = release {
             count_query = count_query.bind(r);
         }
+        count_query = count_query.bind(environment);
         let rows: Vec<(String, String, i64, i64, i64, i64)> = count_query
             .bind(per_page)
             .bind(offset)
@@ -372,6 +406,7 @@ async fn query_project_summary(
     pool: &DbPool,
     project_id: i32,
     period_hours: Option<i64>,
+    environment: Option<&str>,
 ) -> Result<SessionSummary, sqlx::Error> {
     #[cfg(feature = "postgres")]
     {
@@ -405,6 +440,7 @@ async fn query_project_summary(
                         COUNT(DISTINCT CASE WHEN total > 0 THEN release END)::bigint AS active_releases
                     FROM session_counts
                     WHERE project_id = $1
+                      AND ($2 IS NULL OR environment = $2)
                       {}
                 ) counts
                 CROSS JOIN (
@@ -415,6 +451,7 @@ async fn query_project_summary(
                              ELSE NULL END AS crash_free_users_rate
                     FROM session_users
                     WHERE project_id = $1
+                      AND ($2 IS NULL OR environment = $2)
                       {}
                 ) users
                 "#,
@@ -432,6 +469,7 @@ async fn query_project_summary(
         ): (i64, i64, i64, i64, Option<f64>, Option<f64>, i64) =
             sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
                 .bind(project_id)
+                .bind(environment)
                 .fetch_one(pool)
                 .await?;
 
@@ -460,6 +498,7 @@ async fn query_project_summary(
                 COUNT(DISTINCT CASE WHEN total > 0 THEN release END) AS active_releases
             FROM session_counts
             WHERE project_id = ?1
+              AND (?2 IS NULL OR environment = ?2)
               {}
             "#,
             time_filter_sc
@@ -468,6 +507,7 @@ async fn query_project_summary(
         let (total, errored, crashed, abnormal, active_releases): (i64, i64, i64, i64, i64) =
             sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
                 .bind(project_id)
+                .bind(environment)
                 .fetch_one(pool)
                 .await?;
 
@@ -480,6 +520,7 @@ async fn query_project_summary(
                 COUNT(DISTINCT CASE WHEN crashed = 1 THEN did END)
             FROM session_users
             WHERE project_id = ?1
+              AND (?2 IS NULL OR environment = ?2)
               {}
             "#,
             time_filter_su
@@ -488,6 +529,7 @@ async fn query_project_summary(
         let (total_users, crashed_users): (i64, i64) =
             sqlx::query_as(sqlx::AssertSqlSafe(&*user_sql))
                 .bind(project_id)
+                .bind(environment)
                 .fetch_one(pool)
                 .await?;
 
@@ -519,6 +561,7 @@ async fn query_session_timeseries(
     project_id: i32,
     period_hours: Option<i64>,
     interval_hours: i64,
+    environment: Option<&str>,
 ) -> Result<Vec<SessionTimeseriesPoint>, sqlx::Error> {
     let interval_seconds = interval_hours.max(1) * 3600;
 
@@ -539,6 +582,7 @@ async fn query_session_timeseries(
                          ELSE NULL END AS crash_free_sessions_rate
                 FROM session_counts
                 WHERE project_id = $1
+                  AND ($2 IS NULL OR environment = $2)
                   {time_filter}
                 GROUP BY 1
                 ORDER BY 1 ASC
@@ -548,6 +592,7 @@ async fn query_session_timeseries(
         let rows: Vec<(DateTime<Utc>, i64, i64, Option<f64>)> =
             sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
                 .bind(project_id)
+                .bind(environment)
                 .fetch_all(pool)
                 .await?;
 
@@ -576,6 +621,7 @@ async fn query_session_timeseries(
                 SUM(crashed) AS crashed
             FROM session_counts
             WHERE project_id = ?1
+              AND (?2 IS NULL OR environment = ?2)
               {time_filter}
             GROUP BY 1
             ORDER BY 1 ASC
@@ -584,6 +630,7 @@ async fn query_session_timeseries(
 
         let rows: Vec<(String, i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
             .bind(project_id)
+            .bind(environment)
             .fetch_all(pool)
             .await?;
 

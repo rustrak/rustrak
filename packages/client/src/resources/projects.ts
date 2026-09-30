@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { RustrakError } from '../errors.js';
 import type { Result } from '../result.js';
 import {
@@ -21,6 +22,12 @@ import { BaseResource } from './base.js';
  * Projects API resource
  */
 export class ProjectsResource extends BaseResource {
+  async environments(id: number): Promise<Result<string[], RustrakError>> {
+    return this.request(
+      () => this.http.get(`api/projects/${id}/environments`),
+      z.array(z.string()),
+    );
+  }
   /**
    * List projects with pagination
    */

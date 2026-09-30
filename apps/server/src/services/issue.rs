@@ -60,6 +60,7 @@ const AGGREGATE_SCAN_CAP: i64 = 1000;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IssueListStats {
     pub user_count: i64,
+    pub event_count: Option<i64>,
     /// 24 hourly buckets covering the last 24h, oldest to newest.
     pub trend: Vec<i64>,
 }
@@ -485,18 +486,31 @@ impl IssueService {
         project_id: i32,
         release: &str,
         limit: i64,
+        environment: Option<&str>,
     ) -> AppResult<Vec<Issue>> {
         let issues = sqlx::query_as::<_, Issue>(
             r#"
             SELECT * FROM issues
-            WHERE project_id = $1 AND first_release = $2
-            ORDER BY first_seen DESC
+            WHERE project_id = $1
+              AND (($4 IS NULL AND first_release = $2)
+                OR ($4 IS NOT NULL AND (
+                  SELECT e.release FROM events e
+                  WHERE e.issue_id = issues.id AND e.environment = $4
+                    AND e.release <> ''
+                  ORDER BY e.timestamp ASC, e.id ASC LIMIT 1
+                ) = $2))
+            ORDER BY CASE WHEN $4 IS NULL THEN first_seen ELSE (
+              SELECT MIN(e.timestamp) FROM events e
+              WHERE e.issue_id = issues.id AND e.environment = $4
+                AND e.release <> ''
+            ) END DESC
             LIMIT $3
             "#,
         )
         .bind(project_id)
         .bind(release)
         .bind(limit)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 
@@ -516,6 +530,7 @@ impl IssueService {
         page: i64,
         per_page: i64,
         search: Option<&str>,
+        environment: Option<&str>,
     ) -> AppResult<(Vec<Issue>, i64)> {
         if page < 1 {
             return Err(AppError::Validation(format!(
@@ -538,6 +553,7 @@ impl IssueService {
             IssueFilter::Muted => "project_id = $1 AND status = 'ignored'",
             IssueFilter::All => "project_id = $1",
         };
+        let environment_clause = "AND ($2 IS NULL OR EXISTS (SELECT 1 FROM events e WHERE e.issue_id = issues.id AND e.environment = $2))";
 
         // Build ORDER BY clause
         let order_clause = match (sort, order) {
@@ -545,6 +561,8 @@ impl IssueService {
             (IssueSort::DigestOrder, SortOrder::Asc) => "digest_order ASC",
             (IssueSort::LastSeen, SortOrder::Desc) => "last_seen DESC, id DESC",
             (IssueSort::LastSeen, SortOrder::Asc) => "last_seen ASC, id ASC",
+            (IssueSort::EventCount, SortOrder::Desc) if environment.is_some() => "(SELECT COUNT(*) FROM events e WHERE e.issue_id = issues.id AND e.environment = $2) DESC, id DESC",
+            (IssueSort::EventCount, SortOrder::Asc) if environment.is_some() => "(SELECT COUNT(*) FROM events e WHERE e.issue_id = issues.id AND e.environment = $2) ASC, id ASC",
             (IssueSort::EventCount, SortOrder::Desc) => "digested_event_count DESC, id DESC",
             (IssueSort::EventCount, SortOrder::Asc) => "digested_event_count ASC, id ASC",
         };
@@ -564,31 +582,33 @@ impl IssueService {
         });
 
         if let Some(pattern) = pattern {
-            // $2 = search pattern, applied to both count and select.
+            // $3 = search pattern, applied to both count and select.
             let search_clause = r#"AND (
-                LOWER(calculated_type) LIKE $2 ESCAPE '\'
-                OR LOWER(calculated_value) LIKE $2 ESCAPE '\'
-                OR LOWER("transaction") LIKE $2 ESCAPE '\'
-                OR LOWER(culprit) LIKE $2 ESCAPE '\'
-                OR LOWER(last_frame_filename) LIKE $2 ESCAPE '\'
-                OR LOWER(last_frame_module) LIKE $2 ESCAPE '\'
+                LOWER(calculated_type) LIKE $3 ESCAPE '\'
+                OR LOWER(calculated_value) LIKE $3 ESCAPE '\'
+                OR LOWER("transaction") LIKE $3 ESCAPE '\'
+                OR LOWER(culprit) LIKE $3 ESCAPE '\'
+                OR LOWER(last_frame_filename) LIKE $3 ESCAPE '\'
+                OR LOWER(last_frame_module) LIKE $3 ESCAPE '\'
             )"#;
             let count_query = format!(
-                "SELECT COUNT(*) FROM issues WHERE {} {}",
-                status_clause, search_clause
+                "SELECT COUNT(*) FROM issues WHERE {} {} {}",
+                status_clause, environment_clause, search_clause
             );
             let total_count: (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(&*count_query))
                 .bind(project_id)
+                .bind(environment)
                 .bind(&pattern)
                 .fetch_one(pool)
                 .await?;
 
             let select_query = format!(
-                "SELECT * FROM issues WHERE {} {} ORDER BY {} LIMIT $3 OFFSET $4",
-                status_clause, search_clause, order_clause
+                "SELECT * FROM issues WHERE {} {} {} ORDER BY {} LIMIT $4 OFFSET $5",
+                status_clause, environment_clause, search_clause, order_clause
             );
             let issues = sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(&*select_query))
                 .bind(project_id)
+                .bind(environment)
                 .bind(&pattern)
                 .bind(per_page)
                 .bind(offset)
@@ -599,19 +619,24 @@ impl IssueService {
         }
 
         // Get total count
-        let count_query = format!("SELECT COUNT(*) FROM issues WHERE {}", status_clause);
+        let count_query = format!(
+            "SELECT COUNT(*) FROM issues WHERE {} {}",
+            status_clause, environment_clause
+        );
         let total_count: (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(&*count_query))
             .bind(project_id)
+            .bind(environment)
             .fetch_one(pool)
             .await?;
 
         // Get paginated results
         let select_query = format!(
-            "SELECT * FROM issues WHERE {} ORDER BY {} LIMIT $2 OFFSET $3",
-            status_clause, order_clause
+            "SELECT * FROM issues WHERE {} {} ORDER BY {} LIMIT $3 OFFSET $4",
+            status_clause, environment_clause, order_clause
         );
         let issues = sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(&*select_query))
             .bind(project_id)
+            .bind(environment)
             .bind(per_page)
             .bind(offset)
             .fetch_all(pool)
@@ -1070,12 +1095,14 @@ impl IssueService {
         pool: &DbPool,
         issue_id: Uuid,
         key: &str,
+        environment: Option<&str>,
     ) -> AppResult<Vec<IssueTagValue>> {
         let rows: Vec<(serde_json::Value, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT data, timestamp FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
+            "SELECT data, timestamp FROM events WHERE issue_id = $1 AND ($3 IS NULL OR environment = $3) ORDER BY digested_at DESC LIMIT $2",
         )
         .bind(issue_id)
         .bind(AGGREGATE_SCAN_CAP)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 
@@ -1121,12 +1148,17 @@ impl IssueService {
 
     /// Computes per-issue aggregates (unique user count + top tags) from a
     /// capped scan of recent events. Dialect-safe.
-    pub async fn aggregates(pool: &DbPool, issue_id: Uuid) -> AppResult<IssueAggregates> {
+    pub async fn aggregates(
+        pool: &DbPool,
+        issue_id: Uuid,
+        environment: Option<&str>,
+    ) -> AppResult<IssueAggregates> {
         let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
-            "SELECT data FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
+            "SELECT data FROM events WHERE issue_id = $1 AND ($3 IS NULL OR environment = $3) ORDER BY digested_at DESC LIMIT $2",
         )
         .bind(issue_id)
         .bind(AGGREGATE_SCAN_CAP)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 
@@ -1172,6 +1204,7 @@ impl IssueService {
     pub async fn list_stats(
         pool: &DbPool,
         issue_ids: &[Uuid],
+        environment: Option<&str>,
     ) -> AppResult<HashMap<Uuid, IssueListStats>> {
         if issue_ids.is_empty() {
             return Ok(HashMap::new());
@@ -1192,10 +1225,11 @@ impl IssueService {
         #[cfg(feature = "postgres")]
         let rows: Vec<(Uuid, Option<serde_json::Value>, DateTime<Utc>)> = sqlx::query_as(
             "SELECT issue_id, data -> 'user', ingested_at FROM events \
-             WHERE issue_id = ANY($1) AND ingested_at >= $2",
+             WHERE issue_id = ANY($1) AND ingested_at >= $2 AND ($3 IS NULL OR environment = $3)",
         )
         .bind(issue_ids)
         .bind(start_dt)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 
@@ -1211,6 +1245,10 @@ impl IssueService {
             }
             qb.push(") AND datetime(ingested_at) >= datetime(");
             qb.push_bind(start_dt.naive_utc());
+            qb.push(") AND (");
+            qb.push_bind(environment);
+            qb.push(" IS NULL OR environment = ");
+            qb.push_bind(environment);
             qb.push(")");
             qb.build_query_as().fetch_all(pool).await?
         };
@@ -1222,11 +1260,40 @@ impl IssueService {
                     *id,
                     IssueListStats {
                         user_count: 0,
+                        event_count: None,
                         trend: vec![0i64; LIST_TREND_BUCKETS as usize],
                     },
                 )
             })
             .collect();
+        if let Some(environment) = environment {
+            #[cfg(feature = "postgres")]
+            let counts: Vec<(Uuid, i64)> = sqlx::query_as(
+                "SELECT issue_id, COUNT(*)::bigint FROM events WHERE issue_id = ANY($1) AND environment = $2 GROUP BY issue_id",
+            ).bind(issue_ids).bind(environment).fetch_all(pool).await?;
+            #[cfg(not(feature = "postgres"))]
+            let counts: Vec<(Uuid, i64)> = {
+                use sqlx::QueryBuilder;
+                let mut qb =
+                    QueryBuilder::new("SELECT issue_id, COUNT(*) FROM events WHERE issue_id IN (");
+                let mut sep = qb.separated(", ");
+                for id in issue_ids {
+                    sep.push_bind(*id);
+                }
+                qb.push(") AND environment = ");
+                qb.push_bind(environment);
+                qb.push(" GROUP BY issue_id");
+                qb.build_query_as().fetch_all(pool).await?
+            };
+            for stats in out.values_mut() {
+                stats.event_count = Some(0);
+            }
+            for (id, count) in counts {
+                if let Some(stats) = out.get_mut(&id) {
+                    stats.event_count = Some(count);
+                }
+            }
+        }
         let mut users: HashMap<Uuid, std::collections::HashSet<String>> = HashMap::new();
 
         for (issue_id, user, ts) in &rows {
@@ -1261,6 +1328,7 @@ impl IssueService {
         issue_id: Uuid,
         bucket_secs: i64,
         buckets: i64,
+        environment: Option<&str>,
     ) -> AppResult<Vec<(i64, i64)>> {
         let now = Utc::now().timestamp();
         let start = now - bucket_secs * buckets;
@@ -1276,19 +1344,21 @@ impl IssueService {
         // comparing.
         #[cfg(feature = "postgres")]
         let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
-            "SELECT ingested_at FROM events WHERE issue_id = $1 AND ingested_at >= $2 ORDER BY ingested_at DESC",
+            "SELECT ingested_at FROM events WHERE issue_id = $1 AND ingested_at >= $2 AND ($3 IS NULL OR environment = $3) ORDER BY ingested_at DESC",
         )
         .bind(issue_id)
         .bind(start_dt)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 
         #[cfg(not(feature = "postgres"))]
         let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
-            "SELECT ingested_at FROM events WHERE issue_id = $1 AND datetime(ingested_at) >= datetime($2) ORDER BY ingested_at DESC",
+            "SELECT ingested_at FROM events WHERE issue_id = $1 AND datetime(ingested_at) >= datetime($2) AND ($3 IS NULL OR environment = $3) ORDER BY ingested_at DESC",
         )
         .bind(issue_id)
         .bind(start_dt.naive_utc())
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 

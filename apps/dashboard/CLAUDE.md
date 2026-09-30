@@ -10,6 +10,7 @@ the API prefixes to `RUSTRAK_API_URL`, for a dashboard hosted away from its
 server. The browser still sees one origin either way.
 
 ```bash
+# Run from the repository root; Turbo builds @rustrak/client first
 pnpm dev --filter=@rustrak/dashboard          # Vite on :3000, proxying to the server
 pnpm build --filter=@rustrak/dashboard        # -> dist/
 pnpm test --filter=@rustrak/dashboard         # architecture rules + the portable core

@@ -28,24 +28,35 @@ Example: `http://a1b2c3d4-e5f6-7890-abcd-ef1234567890@localhost:8080/1`
 cd packages/test-sentry
 
 # Run all tests
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --all
+pnpm start --dsn "http://<sentry_key>@localhost:8080/1" --all
 
 # Run a specific test
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --error
+pnpm start --dsn "http://<sentry_key>@localhost:8080/1" --error
 
 # Test rate limiting with many events
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --flood 100
+pnpm start --dsn "http://<sentry_key>@localhost:8080/1" --flood 100
 
 # Enable debug mode to see Sentry SDK output
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --all --debug
+pnpm start --dsn "http://<sentry_key>@localhost:8080/1" --all --debug
 ```
 
 ### Using environment variable
 
 ```bash
 export SENTRY_DSN="http://<sentry_key>@localhost:8080/1"
-pnpm dev --all
+pnpm start --all
 ```
+
+### Compare environments
+
+Send both runs to the same project DSN. Each run adds events; it does not clear earlier data.
+
+```bash
+pnpm start --dsn "http://<sentry_key>@localhost:8080/1" --all --env production
+pnpm start --dsn "http://<sentry_key>@localhost:8080/1" --all --env staging
+```
+
+Open that project in the dashboard and switch between All environments, production, and staging.
 
 ## Available Tests
 
@@ -83,7 +94,7 @@ pnpm dev --all
 
 ```bash
 # Run with CLI arguments
-pnpm dev [options]
+pnpm start [options]
 
 # Shortcuts for common tests
 pnpm test:all           # Run all tests

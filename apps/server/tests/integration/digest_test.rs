@@ -775,6 +775,7 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
         rustrak::pagination::SortOrder::Desc,
         None,
         10,
+        None,
     )
     .await
     .expect("Failed to list events");
@@ -797,6 +798,7 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
         rustrak::pagination::SortOrder::Asc,
         None,
         1,
+        None,
     )
     .await
     .expect("Failed to list events (ASC, page 1)");
@@ -814,6 +816,7 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
         rustrak::pagination::SortOrder::Asc,
         Some(&asc_cursor),
         10,
+        None,
     )
     .await
     .expect("Failed to list events (ASC, page 2)");
@@ -1166,6 +1169,7 @@ async fn test_issue_search_finds_the_frame_filename_and_module() {
             1,
             20,
             Some(term),
+            None,
         )
         .await
         .expect("search");
@@ -1226,6 +1230,7 @@ async fn test_search_follows_the_frame_of_the_latest_event() {
                 1,
                 20,
                 Some(term),
+                None,
             )
             .await
             .expect("search")
@@ -2679,7 +2684,7 @@ async fn test_tag_values_and_aggregates() {
 
     let issue_id = only_issue_id(&db.pool, project.id).await;
 
-    let values = IssueService::tag_values(&db.pool, issue_id, "browser")
+    let values = IssueService::tag_values(&db.pool, issue_id, "browser", None)
         .await
         .unwrap();
     // chrome (2) ranks before firefox (1)
@@ -2694,7 +2699,9 @@ async fn test_tag_values_and_aggregates() {
         assert!(v.first_seen <= v.last_seen);
     }
 
-    let agg = IssueService::aggregates(&db.pool, issue_id).await.unwrap();
+    let agg = IssueService::aggregates(&db.pool, issue_id, None)
+        .await
+        .unwrap();
     assert_eq!(agg.user_count, 2); // user-1, user-2
     let browser = agg.tags.iter().find(|t| t.key == "browser").unwrap();
     assert_eq!(browser.total_values, 2);
@@ -2728,7 +2735,7 @@ async fn test_list_stats_counts_distinct_users_per_issue() {
 
     let issue_id = only_issue_id(&db.pool, project.id).await;
 
-    let stats = IssueService::list_stats(&db.pool, &[issue_id])
+    let stats = IssueService::list_stats(&db.pool, &[issue_id], None)
         .await
         .unwrap();
     let entry = stats.get(&issue_id).expect("stats for the issue");
@@ -2746,7 +2753,7 @@ async fn test_list_stats_trend_has_24_buckets_summing_to_event_count() {
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
     let issue_id = only_issue_id(&db.pool, project.id).await;
 
-    let stats = IssueService::list_stats(&db.pool, &[issue_id])
+    let stats = IssueService::list_stats(&db.pool, &[issue_id], None)
         .await
         .unwrap();
     let entry = stats.get(&issue_id).expect("stats for the issue");
@@ -2811,7 +2818,7 @@ async fn test_list_stats_counts_by_email_when_id_is_absent() {
 
     let issue_id = only_issue_id(&db.pool, project.id).await;
 
-    let stats = IssueService::list_stats(&db.pool, &[issue_id])
+    let stats = IssueService::list_stats(&db.pool, &[issue_id], None)
         .await
         .unwrap();
     let entry = stats.get(&issue_id).expect("stats for the issue");
@@ -2862,6 +2869,7 @@ async fn test_list_offset_search_filters_by_text() {
         1,
         50,
         Some("databaseerror"),
+        None,
     )
     .await
     .unwrap();
@@ -2878,6 +2886,7 @@ async fn test_list_offset_search_filters_by_text() {
         1,
         50,
         Some("undefined"),
+        None,
     )
     .await
     .unwrap();
@@ -2894,6 +2903,7 @@ async fn test_list_offset_search_filters_by_text() {
         1,
         50,
         Some("nonexistent"),
+        None,
     )
     .await
     .unwrap();
@@ -2947,6 +2957,7 @@ async fn test_list_offset_search_escapes_like_wildcards() {
         1,
         50,
         Some("database_error"),
+        None,
     )
     .await
     .unwrap();
@@ -2971,6 +2982,7 @@ async fn test_list_offset_rejects_page_below_one() {
         0,
         20,
         None,
+        None,
     )
     .await
     .expect_err("page=0 must be rejected, not produce a negative SQL OFFSET");
@@ -2984,6 +2996,7 @@ async fn test_list_offset_rejects_page_below_one() {
         rustrak::pagination::IssueFilter::All,
         -5,
         20,
+        None,
         None,
     )
     .await
@@ -3005,6 +3018,7 @@ async fn test_list_offset_rejects_per_page_out_of_range() {
         1,
         0,
         None,
+        None,
     )
     .await
     .expect_err("per_page=0 must be rejected");
@@ -3018,6 +3032,7 @@ async fn test_list_offset_rejects_per_page_out_of_range() {
         rustrak::pagination::IssueFilter::All,
         1,
         101,
+        None,
         None,
     )
     .await
@@ -3222,7 +3237,7 @@ async fn test_issue_stats_timeseries() {
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
     let issue_id = only_issue_id(&db.pool, project.id).await;
 
-    let series = IssueService::stats(&db.pool, issue_id, 3600, 24)
+    let series = IssueService::stats(&db.pool, issue_id, 3600, 24, None)
         .await
         .unwrap();
     assert_eq!(series.len(), 24);

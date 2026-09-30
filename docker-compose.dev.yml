@@ -17,8 +17,8 @@ services:
 
   # Built from source with the postgres feature. It serves the dashboard only
   # if apps/server/static holds a build (`pnpm build --filter=@rustrak/server`
-  # puts one there); for dashboard work, run `pnpm dev` in apps/dashboard
-  # instead, on :3000.
+  # puts one there); for dashboard work, run `pnpm dev --filter=@rustrak/dashboard`
+  # from the repository root instead, on :3000.
   server:
     build:
       context: ./apps/server

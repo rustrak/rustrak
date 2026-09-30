@@ -12,8 +12,13 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
   validateSearch: (search: Record<string, unknown>) => ({
     page: searchPage(search.page),
     level: searchString(search.level),
+    environment: searchString(search.environment),
   }),
-  loaderDeps: ({ search }) => ({ page: search.page ?? 1, level: search.level }),
+  loaderDeps: ({ search }) => ({
+    page: search.page ?? 1,
+    level: search.level,
+    environment: search.environment,
+  }),
   loader: async ({ params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     const project = await getProject(projectId);
@@ -26,6 +31,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
       page: deps.page,
       per_page: 50,
       level: deps.level,
+      environment: deps.environment,
     });
 
     return { project, logs };
@@ -54,8 +60,12 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
 function LogsPage() {
   const t = useTranslations('projectPages');
   const { id } = Route.useParams();
-  const { page, level } = Route.useSearch({
-    select: (search) => ({ page: search.page ?? 1, level: search.level }),
+  const { page, level, environment } = Route.useSearch({
+    select: (search) => ({
+      page: search.page ?? 1,
+      level: search.level,
+      environment: search.environment,
+    }),
   });
   const { project: projectResult, logs: logsResult } = Route.useLoaderData();
   const projectId = Number.parseInt(id, 10);
@@ -85,7 +95,7 @@ function LogsPage() {
   const logs = logsResult.data;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
+    <div className="flex flex-col h-full">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <h1 className="text-lg font-semibold">{t('logs.title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
@@ -94,7 +104,7 @@ function LogsPage() {
       </div>
 
       <div className="flex-1 overflow-hidden w-full px-4 md:px-8 py-4 md:py-6">
-        {logs.total_count === 0 && !level ? (
+        {logs.total_count === 0 && !level && !environment ? (
           <div className="flex flex-col items-center justify-center min-h-full text-center">
             <ScrollText className="size-12 text-muted-foreground/30 mb-4" />
             <h2 className="text-lg font-semibold mb-1">

@@ -33,7 +33,8 @@ export const Route = createFileRoute(
   validateSearch: (search: Record<string, unknown>) => ({
     environment: searchString(search.environment),
   }),
-  loader: async ({ params }) => {
+  loaderDeps: ({ search }) => ({ environment: search.environment }),
+  loader: async ({ params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     const releaseVersion = decodeRelease(params.release);
 
@@ -57,11 +58,17 @@ export const Route = createFileRoute(
       projectId,
       releaseVersion,
       10,
+      deps.environment,
     );
 
     const loaded = await loadAll([
       getProject(projectId),
-      getAllReleaseHealthRows(projectId, releaseVersion),
+      getAllReleaseHealthRows(
+        projectId,
+        releaseVersion,
+        undefined,
+        deps.environment,
+      ),
     ]);
 
     // Both early exits drain the in-flight request above, so a transport-level
@@ -77,8 +84,21 @@ export const Route = createFileRoute(
     // and before the second await, so a wrong address does not wait on a
     // request whose answer it will not use.
     if (loaded.data[1].length === 0) {
-      void newIssuesPromise.catch(() => undefined);
-      throw notFound();
+      const allRows = deps.environment
+        ? await getAllReleaseHealthRows(projectId, releaseVersion)
+        : null;
+      if (allRows && !allRows.success) {
+        void newIssuesPromise.catch(() => undefined);
+        return {
+          loaded: allRows,
+          newIssues: null,
+          releaseVersion,
+        };
+      }
+      if (!allRows || allRows.data.length === 0) {
+        void newIssuesPromise.catch(() => undefined);
+        throw notFound();
+      }
     }
 
     const newIssues = await newIssuesPromise;
@@ -133,7 +153,7 @@ function ReleaseDetailPage() {
     : rows;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] overflow-auto">
+    <div className="flex flex-col h-full overflow-auto">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <h1 className="text-lg font-semibold font-mono">{releaseVersion}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">

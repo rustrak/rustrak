@@ -204,7 +204,7 @@
     "allLevels": "All",
     "empty": {
       "title": "No logs match this filter",
-      "hint": "Try a different level or clear the filter."
+      "hint": "Try a different level or environment, or clear the filter."
     }
   },
   "issues": {
@@ -945,8 +945,8 @@
   "releases": {
     "all": "All",
     "empty": {
-      "title": "No releases in this window",
-      "hint": "Try a longer period or clear the filter."
+      "title": "No releases match these filters",
+      "hint": "Try a different period or environment, or clear the filter."
     },
     "columns": {
       "release": "Release"
@@ -1078,6 +1078,7 @@
     },
     "filters": {
       "allTime": "All time",
+      "environment": "Environment",
       "allEnvironments": "All environments"
     },
     "modelsTable": {
@@ -1396,6 +1397,7 @@
       "subtitle": "Transactions for {project}, grouped by name and operation",
       "loadFailed": "Could not load transactions",
       "emptyTitle": "No transactions yet",
+      "noEnvironmentData": "No transactions in the selected environment",
       "emptyDescription": "Configure your SDK with <code>tracesSampleRate</code> to start capturing performance data.",
       "backLink": "Performance"
     },
@@ -1498,6 +1500,7 @@
       },
       "loadFailed": "Could not load event",
       "loadNavigationFailed": "Could not load the events in this issue",
+      "outsideSelectedEnvironment": "This event is outside the selected environment.",
       "lastSeen": "Last seen",
       "firstSeen": "First seen",
       "inRelease": "in release <rel>{release}</rel>",
@@ -1521,6 +1524,8 @@
       "formatPlainText": "Plain Text",
       "formatJson": "JSON",
       "noEventsYet": "No Events Yet",
+      "noEventsInEnvironment": "No events in {environment}",
+      "noEventsInEnvironmentDescription": "Choose another environment or All environments to see this issue's other events.",
       "noEventsDescription": "This issue has been created but no events have been recorded yet. Events will appear here once your application sends them."
     }
   },

@@ -38,6 +38,7 @@ export class SessionsResource extends BaseResource {
     if (options?.release) {
       searchParams.release = options.release;
     }
+    if (options?.environment) searchParams.environment = options.environment;
     if (options?.page) {
       searchParams.page = String(options.page);
     }
@@ -62,11 +63,13 @@ export class SessionsResource extends BaseResource {
   async summary(
     projectId: number,
     period?: string,
+    environment?: string,
   ): Promise<Result<SessionSummary, RustrakError>> {
     const searchParams: Record<string, string> = {};
     if (period) {
       searchParams.period = period;
     }
+    if (environment) searchParams.environment = environment;
 
     return this.request(
       () =>
@@ -88,6 +91,7 @@ export class SessionsResource extends BaseResource {
     projectId: number,
     period?: string,
     interval?: number,
+    environment?: string,
   ): Promise<Result<SessionTimeseries, RustrakError>> {
     const searchParams: Record<string, string> = {};
     if (period) {
@@ -96,6 +100,7 @@ export class SessionsResource extends BaseResource {
     if (interval !== undefined) {
       searchParams.interval = interval.toString();
     }
+    if (environment) searchParams.environment = environment;
 
     return this.request(
       () =>

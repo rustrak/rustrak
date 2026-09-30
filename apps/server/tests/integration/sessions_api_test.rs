@@ -71,6 +71,41 @@ async fn seed_count(
     .expect("seed_count failed");
 }
 
+#[actix_web::test]
+async fn release_health_environment_filter_changes_rows_and_totals() {
+    let db = TestDb::new().await;
+    let project_id = create_project(&db.pool, "Environment Filter Project").await;
+    seed_count(&db.pool, project_id, "1.0", "production", 1, 10, 0, 0, 0).await;
+    seed_count(&db.pool, project_id, "1.0", "staging", 1, 20, 0, 0, 0).await;
+    seed_count(&db.pool, project_id, "2.0", "production", 1, 30, 0, 0, 0).await;
+
+    let (rows, total) =
+        SessionService::release_health(&db.pool, project_id, None, 1, 1, Some("production"))
+            .await
+            .unwrap();
+    assert_eq!(total, 2);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].environment, "production");
+    let (rows, total) = SessionService::release_health_for_release(
+        &db.pool,
+        project_id,
+        "1.0",
+        None,
+        1,
+        10,
+        Some("staging"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(rows[0].total, 20);
+    let (rows, total) = SessionService::release_health(&db.pool, project_id, None, 1, 10, None)
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+    assert_eq!(rows.len(), 3);
+}
+
 /// Insert one row into session_users using today's date.
 async fn seed_user(
     pool: &DbPool,
@@ -139,9 +174,10 @@ async fn test_release_health_empty_returns_empty() {
     let db = TestDb::new().await;
     let project_id = create_project(&db.pool, "Empty Project").await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert!(rows.is_empty());
 }
@@ -167,9 +203,10 @@ async fn test_release_health_sums_across_buckets() {
     )
     .await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 1);
     let row = &rows[0];
@@ -189,9 +226,10 @@ async fn test_release_health_healthy_is_total_minus_unhealthy() {
     // total=100, errored=5, crashed=3, abnormal=2 → healthy=90
     seed_count(&db.pool, project_id, "2.0.0", "staging", 1, 100, 5, 3, 2).await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].healthy, 90);
@@ -218,9 +256,10 @@ async fn test_release_health_excludes_buckets_outside_window() {
     )
     .await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].total, 50, "old bucket must not contribute to total");
@@ -250,7 +289,7 @@ async fn test_release_health_no_period_returns_all_buckets() {
     .await;
 
     // No period filter → all buckets should be included
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, None, 1, 100)
+    let (rows, _total) = SessionService::release_health(&db.pool, project_id, None, 1, 100, None)
         .await
         .expect("query failed");
 
@@ -270,9 +309,10 @@ async fn test_release_health_excludes_other_projects() {
     seed_count(&db.pool, project_a, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_b, "1.0.0", "prod", 1, 999, 0, 0, 0).await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_a, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_a, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 1);
     assert_eq!(
@@ -290,9 +330,10 @@ async fn test_release_health_orders_by_total_desc() {
     seed_count(&db.pool, project_id, "large", "prod", 1, 500, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "medium", "prod", 1, 100, 0, 0, 0).await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0].release, "large");
@@ -309,7 +350,7 @@ async fn test_release_health_paginates_and_reports_total() {
     seed_count(&db.pool, project_id, "large", "prod", 1, 500, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "medium", "prod", 1, 100, 0, 0, 0).await;
 
-    let (page1, total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 2)
+    let (page1, total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 2, None)
         .await
         .expect("query failed");
 
@@ -318,15 +359,16 @@ async fn test_release_health_paginates_and_reports_total() {
     assert_eq!(page1[0].release, "large");
     assert_eq!(page1[1].release, "medium");
 
-    let (page2, total2) = SessionService::release_health(&db.pool, project_id, Some(24), 2, 2)
-        .await
-        .expect("query failed");
+    let (page2, total2) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 2, 2, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(total2, 3);
     assert_eq!(page2.len(), 1, "last page holds the remainder");
     assert_eq!(page2[0].release, "small");
 
-    let (page3, _) = SessionService::release_health(&db.pool, project_id, Some(24), 3, 2)
+    let (page3, _) = SessionService::release_health(&db.pool, project_id, Some(24), 3, 2, None)
         .await
         .expect("query failed");
 
@@ -346,9 +388,10 @@ async fn test_release_health_pagination_breaks_ties_deterministically() {
 
     let mut seen = Vec::new();
     for page in 1..=3 {
-        let (rows, _) = SessionService::release_health(&db.pool, project_id, Some(24), page, 1)
-            .await
-            .expect("query failed");
+        let (rows, _) =
+            SessionService::release_health(&db.pool, project_id, Some(24), page, 1, None)
+                .await
+                .expect("query failed");
         assert_eq!(rows.len(), 1);
         seen.push(rows[0].release.clone());
     }
@@ -368,7 +411,7 @@ async fn test_release_health_extreme_page_yields_empty_page() {
     // offset Postgres rejects without them. Either way the caller saw a 500
     // instead of an empty page.
     let (rows, total) =
-        SessionService::release_health(&db.pool, project_id, Some(24), i64::MAX, 100)
+        SessionService::release_health(&db.pool, project_id, Some(24), i64::MAX, 100, None)
             .await
             .expect("an out-of-range page must not error");
 
@@ -385,10 +428,17 @@ async fn test_release_health_for_release_reports_scoped_total() {
     seed_count(&db.pool, project_id, "1.0.0", "staging", 1, 40, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 999, 0, 0, 0).await;
 
-    let (rows, total) =
-        SessionService::release_health_for_release(&db.pool, project_id, "1.0.0", Some(24), 1, 1)
-            .await
-            .expect("query failed");
+    let (rows, total) = SessionService::release_health_for_release(
+        &db.pool,
+        project_id,
+        "1.0.0",
+        Some(24),
+        1,
+        1,
+        None,
+    )
+    .await
+    .expect("query failed");
 
     assert_eq!(total, 2, "total is scoped to the requested release");
     assert_eq!(rows.len(), 1, "per_page still bounds the page");
@@ -403,9 +453,10 @@ async fn test_release_health_crash_free_sessions_rate() {
     // 100 total, 10 crashed → crash_free_sessions_rate = 0.90
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 10, 0).await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 1);
     let rate = rows[0]
@@ -422,9 +473,10 @@ async fn test_release_health_crash_free_sessions_rate_is_none_when_no_sessions()
     // 0 total → rate must be None (CASE WHEN total > 0)
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 0, 0, 0, 0).await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     // A bucket with all zeros should still surface via GROUP BY:
     assert_eq!(
@@ -451,9 +503,10 @@ async fn test_release_health_crash_free_users_rate() {
     seed_user(&db.pool, project_id, "1.0.0", "prod", "user-3", true).await;
     seed_user(&db.pool, project_id, "1.0.0", "prod", "user-4", true).await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 1);
     let rate = rows[0]
@@ -484,9 +537,10 @@ async fn test_release_health_total_not_inflated_by_multiple_users() {
         .await;
     }
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 1);
     assert_eq!(
@@ -504,10 +558,17 @@ async fn test_release_health_for_release_filters_server_side() {
     seed_count(&db.pool, project_id, "1.0.0", "staging", 1, 40, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 999, 0, 0, 0).await;
 
-    let (rows, _total) =
-        SessionService::release_health_for_release(&db.pool, project_id, "1.0.0", Some(24), 1, 100)
-            .await
-            .expect("query failed");
+    let (rows, _total) = SessionService::release_health_for_release(
+        &db.pool,
+        project_id,
+        "1.0.0",
+        Some(24),
+        1,
+        100,
+        None,
+    )
+    .await
+    .expect("query failed");
 
     assert_eq!(
         rows.len(),
@@ -530,7 +591,7 @@ async fn test_project_summary_empty_project_returns_zeros() {
     let db = TestDb::new().await;
     let project_id = create_project(&db.pool, "Empty Summary Project").await;
 
-    let summary = SessionService::project_summary(&db.pool, project_id, Some(24))
+    let summary = SessionService::project_summary(&db.pool, project_id, Some(24), None)
         .await
         .expect("query failed");
 
@@ -551,7 +612,7 @@ async fn test_project_summary_aggregates_across_releases() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 5, 10, 2).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 50, 1, 0, 0).await;
 
-    let summary = SessionService::project_summary(&db.pool, project_id, Some(24))
+    let summary = SessionService::project_summary(&db.pool, project_id, Some(24), None)
         .await
         .expect("query failed");
 
@@ -573,7 +634,7 @@ async fn test_project_summary_excludes_buckets_outside_window() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 50, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 48, 9999, 0, 0, 0).await;
 
-    let summary = SessionService::project_summary(&db.pool, project_id, Some(24))
+    let summary = SessionService::project_summary(&db.pool, project_id, Some(24), None)
         .await
         .expect("query failed");
 
@@ -589,7 +650,7 @@ async fn test_project_summary_crash_free_rates() {
     seed_user(&db.pool, project_id, "1.0.0", "prod", "user-1", false).await;
     seed_user(&db.pool, project_id, "1.0.0", "prod", "user-2", true).await;
 
-    let summary = SessionService::project_summary(&db.pool, project_id, Some(24))
+    let summary = SessionService::project_summary(&db.pool, project_id, Some(24), None)
         .await
         .expect("query failed");
 
@@ -635,7 +696,7 @@ async fn test_project_summary_total_not_inflated_by_multiple_users() {
         .await;
     }
 
-    let summary = SessionService::project_summary(&db.pool, project_id, Some(24))
+    let summary = SessionService::project_summary(&db.pool, project_id, Some(24), None)
         .await
         .expect("query failed");
 
@@ -653,7 +714,7 @@ async fn test_project_summary_active_releases_excludes_zero_total_releases() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "0.9.0-empty", "prod", 1, 0, 0, 0, 0).await;
 
-    let summary = SessionService::project_summary(&db.pool, project_id, Some(24))
+    let summary = SessionService::project_summary(&db.pool, project_id, Some(24), None)
         .await
         .expect("query failed");
 
@@ -672,7 +733,7 @@ async fn test_project_summary_excludes_other_projects() {
     seed_count(&db.pool, project_a, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_b, "1.0.0", "prod", 1, 999, 0, 0, 0).await;
 
-    let summary = SessionService::project_summary(&db.pool, project_a, Some(24))
+    let summary = SessionService::project_summary(&db.pool, project_a, Some(24), None)
         .await
         .expect("query failed");
 
@@ -690,7 +751,7 @@ async fn test_session_timeseries_empty_project_returns_empty() {
     let db = TestDb::new().await;
     let project_id = create_project(&db.pool, "Empty Timeseries Project").await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -706,7 +767,7 @@ async fn test_session_timeseries_aggregates_across_releases_in_same_bucket() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 5, 10, 2).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 50, 1, 0, 0).await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -728,7 +789,7 @@ async fn test_session_timeseries_separates_buckets_outside_interval() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 5, 50, 0, 0, 0).await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -747,7 +808,7 @@ async fn test_session_timeseries_excludes_buckets_outside_window() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 50, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 48, 9999, 0, 0, 0).await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -767,7 +828,7 @@ async fn test_session_timeseries_ordered_chronologically() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 5, 20, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 10, 30, 0, 0, 0).await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -793,7 +854,7 @@ async fn test_session_timeseries_bucket_values_are_parsed_correctly() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 10, 30, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -820,7 +881,7 @@ async fn test_session_timeseries_crash_free_rate() {
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 10, 0).await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -840,7 +901,7 @@ async fn test_session_timeseries_excludes_other_projects() {
     seed_count(&db.pool, project_a, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_b, "1.0.0", "prod", 1, 999, 0, 0, 0).await;
 
-    let points = SessionService::session_timeseries(&db.pool, project_a, Some(24), 1)
+    let points = SessionService::session_timeseries(&db.pool, project_a, Some(24), 1, None)
         .await
         .expect("query failed");
 
@@ -856,9 +917,10 @@ async fn test_release_health_multiple_releases_independent() {
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 5, 10, 2).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 50, 1, 0, 0).await;
 
-    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
-        .await
-        .expect("query failed");
+    let (rows, _total) =
+        SessionService::release_health(&db.pool, project_id, Some(24), 1, 100, None)
+            .await
+            .expect("query failed");
 
     assert_eq!(rows.len(), 2);
     // rows[0] = 1.0.0 (total=100), rows[1] = 2.0.0 (total=50)

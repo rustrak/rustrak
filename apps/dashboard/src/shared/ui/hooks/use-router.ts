@@ -3,6 +3,7 @@ import {
   useRouter as useTanStackRouter,
 } from '@tanstack/react-router';
 import { useMemo } from 'react';
+import { projectHrefWithEnvironment } from '@/shared/lib/project-environment';
 
 /**
  * The four things this application ever asked a router to do.
@@ -34,10 +35,15 @@ export function useRouter(): AppRouter {
   return useMemo(
     () => ({
       push: (href: string) => {
-        void navigate({ href });
+        void navigate({
+          href: projectHrefWithEnvironment(href, window.location.href),
+        });
       },
       replace: (href: string) => {
-        void navigate({ href, replace: true });
+        void navigate({
+          href: projectHrefWithEnvironment(href, window.location.href),
+          replace: true,
+        });
       },
       back: () => {
         router.history.back();

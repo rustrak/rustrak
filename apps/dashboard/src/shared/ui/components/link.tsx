@@ -1,29 +1,14 @@
-import { Link as RouterLink } from '@tanstack/react-router';
+import { Link as RouterLink, useLocation } from '@tanstack/react-router';
 import type { ComponentProps } from 'react';
+import { projectHrefWithEnvironment } from '@/shared/lib/project-environment';
 
 type RouterLinkProps = ComponentProps<typeof RouterLink>;
 
-/**
- * A link, addressed by `href`.
- *
- * TanStack's own `Link` is normally addressed by `to` plus `params`, which is
- * how it type-checks a destination against the route tree. This one takes the
- * built path instead, through the `href` escape hatch the router already
- * provides for exactly that.
- *
- * **That is a deliberate trade, not laziness.** Every navigable component in
- * this app is handed its destination as a string — `item.href` on a sidebar
- * row, `` `/projects/${id}/issues/${issueId}` `` in a table cell — because
- * that is the shape `next/link` took and the shape the design system's
- * `render={<Link .../>}` prop passes through. Rewriting all of them into
- * `to`/`params` pairs is a real improvement and a genuinely separate change;
- * doing it in the same commit as the framework move would have made every
- * visual regression indistinguishable from a routing one.
- *
- * `href` also parses a query string and a hash for free, which `to` does not:
- * `/projects?page=2` is one string here and three properties there.
- */
-export type LinkProps = Omit<RouterLinkProps, 'to' | 'href'> & {
+/** Accept the app's string URLs, then pass each URL part to TanStack Router. */
+export type LinkProps = Omit<
+  RouterLinkProps,
+  'to' | 'href' | 'search' | 'hash'
+> & {
   href: string;
   /**
    * Whether following this link scrolls back to the top.
@@ -50,6 +35,8 @@ function isExternal(href: string): boolean {
 }
 
 export function Link({ href, scroll, ...props }: LinkProps) {
+  const currentHref = useLocation({ select: (location) => location.href });
+
   if (isExternal(href)) {
     const { children, ...anchorProps } = props;
     return (
@@ -59,5 +46,22 @@ export function Link({ href, scroll, ...props }: LinkProps) {
     );
   }
 
-  return <RouterLink {...props} href={href} resetScroll={scroll} />;
+  const target = new URL(
+    projectHrefWithEnvironment(href, currentHref),
+    'http://localhost',
+  );
+
+  return (
+    <RouterLink
+      {...props}
+      to={target.pathname as RouterLinkProps['to']}
+      search={
+        Object.fromEntries(
+          target.searchParams,
+        ) as unknown as RouterLinkProps['search']
+      }
+      hash={target.hash.slice(1)}
+      resetScroll={scroll}
+    />
+  );
 }

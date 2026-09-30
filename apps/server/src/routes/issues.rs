@@ -92,13 +92,19 @@ pub async fn list_issues(
         query.page,
         query.per_page,
         query.q.as_deref(),
+        query.environment.as_deref().filter(|s| !s.is_empty()),
     )
     .await?;
 
     // Bulk-compute per-issue user_count/trend for this page in one request
     // (avoids the list UI firing one aggregates/stats call per visible row).
     let issue_ids: Vec<Uuid> = issues.iter().map(|i| i.id).collect();
-    let list_stats = IssueService::list_stats(pool.get_ref(), &issue_ids).await?;
+    let list_stats = IssueService::list_stats(
+        pool.get_ref(),
+        &issue_ids,
+        query.environment.as_deref().filter(|s| !s.is_empty()),
+    )
+    .await?;
 
     // Build responses
     let responses: Vec<_> = issues
@@ -108,6 +114,9 @@ pub async fn list_issues(
             if let Some(stats) = list_stats.get(&i.id) {
                 response.user_count = Some(stats.user_count);
                 response.trend = Some(stats.trend.clone());
+                if let Some(count) = stats.event_count {
+                    response.event_count = count as i32;
+                }
             }
             response
         })
@@ -141,6 +150,7 @@ pub async fn list_issues(
 pub async fn get_issue(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
+    query: web::Query<std::collections::HashMap<String, String>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
@@ -166,6 +176,15 @@ pub async fn get_issue(
 
     // Enrich with per-user and aggregate fields.
     let mut response = issue.to_response(&project.slug);
+    if let Some(environment) = query.get("environment").filter(|s| !s.is_empty()) {
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM events WHERE issue_id = $1 AND environment = $2")
+                .bind(issue_id)
+                .bind(environment)
+                .fetch_one(pool.get_ref())
+                .await?;
+        response.event_count = count.0 as i32;
+    }
     response.user_report_count =
         Some(IssueSocialService::user_report_count(pool.get_ref(), issue_id).await?);
     if let Some(user_id) = actor.user_id() {
@@ -364,6 +383,7 @@ pub async fn get_issue_hashes(
 pub async fn get_issue_tag_values(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid, String)>,
+    query: web::Query<std::collections::HashMap<String, String>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id, key) = path.into_inner();
@@ -381,7 +401,16 @@ pub async fn get_issue_tag_values(
         return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
     }
 
-    let values = IssueService::tag_values(pool.get_ref(), issue_id, &key).await?;
+    let values = IssueService::tag_values(
+        pool.get_ref(),
+        issue_id,
+        &key,
+        query
+            .get("environment")
+            .map(String::as_str)
+            .filter(|s| !s.is_empty()),
+    )
+    .await?;
     Ok(HttpResponse::Ok().json(values))
 }
 
@@ -404,6 +433,7 @@ pub async fn get_issue_tag_values(
 pub async fn get_issue_aggregates(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
+    query: web::Query<std::collections::HashMap<String, String>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
@@ -421,7 +451,15 @@ pub async fn get_issue_aggregates(
         return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
     }
 
-    let aggregates = IssueService::aggregates(pool.get_ref(), issue_id).await?;
+    let aggregates = IssueService::aggregates(
+        pool.get_ref(),
+        issue_id,
+        query
+            .get("environment")
+            .map(String::as_str)
+            .filter(|s| !s.is_empty()),
+    )
+    .await?;
     Ok(HttpResponse::Ok().json(aggregates))
 }
 
@@ -569,7 +607,17 @@ pub async fn get_issue_stats(
         Some("30d") => (86_400, 30),
         _ => (3_600, 24),
     };
-    let series = IssueService::stats(pool.get_ref(), issue_id, bucket_secs, buckets).await?;
+    let series = IssueService::stats(
+        pool.get_ref(),
+        issue_id,
+        bucket_secs,
+        buckets,
+        query
+            .get("environment")
+            .map(String::as_str)
+            .filter(|s| !s.is_empty()),
+    )
+    .await?;
     let points: Vec<_> = series
         .into_iter()
         .map(|(ts, count)| json!([ts, count]))

@@ -20,11 +20,13 @@ export class ReleasesResource extends BaseResource {
     projectId: number,
     release: string,
     limit?: number,
+    environment?: string,
   ): Promise<Result<Issue[], RustrakError>> {
     const searchParams: Record<string, string> = {};
     if (limit !== undefined) {
       searchParams.limit = limit.toString();
     }
+    if (environment) searchParams.environment = environment;
 
     return this.request(
       () =>

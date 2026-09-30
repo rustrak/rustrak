@@ -67,7 +67,7 @@ pub async fn agent_runs(
         pool.get_ref(),
         project_id,
         &AgentFilters {
-            environment: query.environment.clone(),
+            environment: query.environment.clone().filter(|name| !name.is_empty()),
         },
         query.period_hours,
         query.interval_hours,
@@ -104,7 +104,7 @@ pub async fn agent_duration(
         pool.get_ref(),
         project_id,
         &AgentFilters {
-            environment: query.environment.clone(),
+            environment: query.environment.clone().filter(|name| !name.is_empty()),
         },
         query.period_hours,
         query.interval_hours,
@@ -141,7 +141,7 @@ pub async fn agent_models_calls(
         pool.get_ref(),
         project_id,
         &AgentFilters {
-            environment: query.environment.clone(),
+            environment: query.environment.clone().filter(|name| !name.is_empty()),
         },
         query.period_hours,
         query.limit,
@@ -178,7 +178,7 @@ pub async fn agent_models_tokens(
         pool.get_ref(),
         project_id,
         &AgentFilters {
-            environment: query.environment.clone(),
+            environment: query.environment.clone().filter(|name| !name.is_empty()),
         },
         query.period_hours,
         query.limit,
@@ -215,7 +215,7 @@ pub async fn agent_tools(
         pool.get_ref(),
         project_id,
         &AgentFilters {
-            environment: query.environment.clone(),
+            environment: query.environment.clone().filter(|name| !name.is_empty()),
         },
         query.period_hours,
         query.limit,
@@ -253,7 +253,7 @@ pub async fn agent_traces(
     let per_page = query.per_page.clamp(1, 100);
 
     let filters = AgentFilters {
-        environment: query.environment.clone(),
+        environment: query.environment.clone().filter(|name| !name.is_empty()),
     };
     let (traces, total_count) = SpanService::agent_traces(
         pool.get_ref(),
@@ -298,7 +298,7 @@ pub async fn agent_summary(
     require_view_access(pool.get_ref(), project_id, &actor).await?;
 
     let filters = AgentFilters {
-        environment: query.environment.clone(),
+        environment: query.environment.clone().filter(|name| !name.is_empty()),
     };
     let summary =
         SpanService::agent_summary(pool.get_ref(), project_id, query.period_hours, &filters)
@@ -330,7 +330,7 @@ pub async fn agent_models_table(
     require_view_access(pool.get_ref(), project_id, &actor).await?;
 
     let filters = AgentFilters {
-        environment: query.environment.clone(),
+        environment: query.environment.clone().filter(|name| !name.is_empty()),
     };
     let rows =
         SpanService::models_table(pool.get_ref(), project_id, query.period_hours, &filters).await?;
@@ -361,7 +361,7 @@ pub async fn agent_tools_table(
     require_view_access(pool.get_ref(), project_id, &actor).await?;
 
     let filters = AgentFilters {
-        environment: query.environment.clone(),
+        environment: query.environment.clone().filter(|name| !name.is_empty()),
     };
     let rows =
         SpanService::tools_table(pool.get_ref(), project_id, query.period_hours, &filters).await?;

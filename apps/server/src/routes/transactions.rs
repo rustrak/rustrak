@@ -54,7 +54,7 @@ pub async fn list_transactions(
         name: query.name.clone(),
         op: query.op.clone(),
         status: query.status.clone(),
-        environment: query.environment.clone(),
+        environment: query.environment.clone().filter(|name| !name.is_empty()),
         release: query.release.clone(),
     };
 
@@ -187,8 +187,14 @@ pub async fn get_transaction_stats(
     let page = query.page.max(1);
     let per_page = query.per_page.clamp(1, 100);
 
-    let (stats, total) =
-        TransactionService::stats(pool.get_ref(), project_id, page, per_page).await?;
+    let (stats, total) = TransactionService::stats(
+        pool.get_ref(),
+        project_id,
+        page,
+        per_page,
+        query.environment.as_deref().filter(|s| !s.is_empty()),
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(OffsetPaginatedResponse::new(stats, total, page, per_page)))
 }
@@ -233,6 +239,7 @@ pub async fn get_transaction_stat_group(
         project_id,
         &query.name,
         query.op.as_deref(),
+        query.environment.as_deref().filter(|s| !s.is_empty()),
     )
     .await?
     .ok_or_else(|| {

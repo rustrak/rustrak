@@ -22,6 +22,7 @@ pub struct StatsQuery {
     /// Scope to a single release (all environments). When omitted, every
     /// release in the project is returned.
     pub release: Option<String>,
+    pub environment: Option<String>,
     /// Page number (1-indexed, default: 1)
     #[serde(default = "default_page")]
     #[cfg_attr(feature = "openapi", param(minimum = 1))]
@@ -92,12 +93,20 @@ pub async fn get_stats(
                 period_hours,
                 page,
                 per_page,
+                query.environment.as_deref().filter(|s| !s.is_empty()),
             )
             .await?
         }
         None => {
-            SessionService::release_health(pool.get_ref(), project_id, period_hours, page, per_page)
-                .await?
+            SessionService::release_health(
+                pool.get_ref(),
+                project_id,
+                period_hours,
+                page,
+                per_page,
+                query.environment.as_deref().filter(|s| !s.is_empty()),
+            )
+            .await?
         }
     };
 
@@ -111,6 +120,7 @@ pub async fn get_stats(
 pub struct SummaryQuery {
     /// Time window in hours (default: 24).
     pub period: Option<String>,
+    pub environment: Option<String>,
 }
 
 impl SummaryQuery {
@@ -153,7 +163,13 @@ pub async fn get_summary(
     .await?;
 
     let period_hours = query.period_hours();
-    let summary = SessionService::project_summary(pool.get_ref(), project_id, period_hours).await?;
+    let summary = SessionService::project_summary(
+        pool.get_ref(),
+        project_id,
+        period_hours,
+        query.environment.as_deref().filter(|s| !s.is_empty()),
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(summary))
 }
@@ -165,6 +181,7 @@ pub struct TimeseriesQuery {
     pub period: Option<String>,
     /// Bucket width in hours (default: 1, clamped to 1-24).
     pub interval: Option<i64>,
+    pub environment: Option<String>,
 }
 
 impl TimeseriesQuery {
@@ -216,6 +233,7 @@ pub async fn get_timeseries(
         project_id,
         query.period_hours(),
         query.interval_hours(),
+        query.environment.as_deref().filter(|s| !s.is_empty()),
     )
     .await?;
 

@@ -263,11 +263,12 @@ impl TransactionService {
         project_id: i32,
         page: i64,
         per_page: i64,
+        environment: Option<&str>,
     ) -> AppResult<(Vec<TransactionStatsResponse>, i64)> {
         let per_page = per_page.clamp(1, 100);
         let offset = (page.max(1) - 1) * per_page;
 
-        let total = Self::group_count(pool, project_id).await?;
+        let total = Self::group_count(pool, project_id, environment).await?;
 
         // ORDER BY includes op so the tie order is deterministic across
         // requests (stable offset pagination).
@@ -280,7 +281,7 @@ impl TransactionService {
                    percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95,
                    percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99
             FROM transactions
-            WHERE project_id = $1 AND duration_ms IS NOT NULL
+            WHERE project_id = $1 AND duration_ms IS NOT NULL AND ($4 IS NULL OR environment = $4)
             GROUP BY transaction_name, op
             ORDER BY cnt DESC, transaction_name ASC, op ASC
             LIMIT $2 OFFSET $3
@@ -289,6 +290,7 @@ impl TransactionService {
         .bind(project_id)
         .bind(per_page)
         .bind(offset)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 
@@ -307,11 +309,12 @@ impl TransactionService {
         project_id: i32,
         page: i64,
         per_page: i64,
+        environment: Option<&str>,
     ) -> AppResult<(Vec<TransactionStatsResponse>, i64)> {
         let per_page = per_page.clamp(1, 100);
         let offset = (page.max(1) - 1) * per_page;
 
-        let total = Self::group_count(pool, project_id).await?;
+        let total = Self::group_count(pool, project_id, environment).await?;
 
         let group_rows = sqlx::query(
             r#"
@@ -319,7 +322,7 @@ impl TransactionService {
                    COUNT(*) AS cnt,
                    SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END) AS fails
             FROM transactions
-            WHERE project_id = $1 AND duration_ms IS NOT NULL
+            WHERE project_id = $1 AND duration_ms IS NOT NULL AND ($4 IS NULL OR environment = $4)
             GROUP BY transaction_name, op
             ORDER BY cnt DESC, transaction_name ASC, op ASC
             LIMIT $2 OFFSET $3
@@ -328,6 +331,7 @@ impl TransactionService {
         .bind(project_id)
         .bind(per_page)
         .bind(offset)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 
@@ -337,7 +341,8 @@ impl TransactionService {
             let op: Option<String> = row.get("op");
             let count: i64 = row.get("cnt");
             let fails: i64 = row.get("fails");
-            let durations = Self::group_durations(pool, project_id, &name, op.as_deref()).await?;
+            let durations =
+                Self::group_durations(pool, project_id, &name, op.as_deref(), environment).await?;
             stats.push(build_group_stats(name, op, count, fails, durations));
         }
 
@@ -346,17 +351,22 @@ impl TransactionService {
 
     /// Total number of (transaction_name, op) groups — the pagination total,
     /// shared by both backends' `stats`.
-    async fn group_count(pool: &DbPool, project_id: i32) -> AppResult<i64> {
+    async fn group_count(
+        pool: &DbPool,
+        project_id: i32,
+        environment: Option<&str>,
+    ) -> AppResult<i64> {
         let total: (i64,) = sqlx::query_as(
             r#"
             SELECT COUNT(*) FROM (
                 SELECT 1 FROM transactions
-                WHERE project_id = $1 AND duration_ms IS NOT NULL
+                WHERE project_id = $1 AND duration_ms IS NOT NULL AND ($2 IS NULL OR environment = $2)
                 GROUP BY transaction_name, op
             ) g
             "#,
         )
         .bind(project_id)
+        .bind(environment)
         .fetch_one(pool)
         .await?;
 
@@ -376,6 +386,7 @@ impl TransactionService {
         project_id: i32,
         name: &str,
         op: Option<&str>,
+        environment: Option<&str>,
     ) -> AppResult<Option<TransactionStatsResponse>> {
         // GROUP BY (not a bare aggregate) so an empty group yields zero rows
         // and maps to `None`, rather than one all-NULL row.
@@ -391,6 +402,7 @@ impl TransactionService {
             WHERE project_id = $1 AND transaction_name = $2
               AND (op = $3 OR (op IS NULL AND $4 IS NULL))
               AND duration_ms IS NOT NULL
+              AND ($5 IS NULL OR environment = $5)
             GROUP BY transaction_name, op
             "#,
         )
@@ -398,6 +410,7 @@ impl TransactionService {
         .bind(name)
         .bind(op)
         .bind(op)
+        .bind(environment)
         .fetch_optional(pool)
         .await?;
 
@@ -412,8 +425,9 @@ impl TransactionService {
         project_id: i32,
         name: &str,
         op: Option<&str>,
+        environment: Option<&str>,
     ) -> AppResult<Option<TransactionStatsResponse>> {
-        let durations = Self::group_durations(pool, project_id, name, op).await?;
+        let durations = Self::group_durations(pool, project_id, name, op, environment).await?;
         if durations.is_empty() {
             return Ok(None);
         }
@@ -425,12 +439,14 @@ impl TransactionService {
             WHERE project_id = $1 AND transaction_name = $2
               AND (op = $3 OR (op IS NULL AND $4 IS NULL))
               AND duration_ms IS NOT NULL
+              AND ($5 IS NULL OR environment = $5)
             "#,
         )
         .bind(project_id)
         .bind(name)
         .bind(op)
         .bind(op)
+        .bind(environment)
         .fetch_one(pool)
         .await?;
 
@@ -452,6 +468,7 @@ impl TransactionService {
         project_id: i32,
         name: &str,
         op: Option<&str>,
+        environment: Option<&str>,
     ) -> AppResult<Vec<f64>> {
         let rows = sqlx::query(
             r#"
@@ -459,12 +476,14 @@ impl TransactionService {
             WHERE project_id = $1 AND transaction_name = $2
               AND (op = $3 OR (op IS NULL AND $4 IS NULL))
               AND duration_ms IS NOT NULL
+              AND ($5 IS NULL OR environment = $5)
             "#,
         )
         .bind(project_id)
         .bind(name)
         .bind(op)
         .bind(op)
+        .bind(environment)
         .fetch_all(pool)
         .await?;
 

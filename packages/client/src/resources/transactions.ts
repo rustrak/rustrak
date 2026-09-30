@@ -85,7 +85,7 @@ export class TransactionsResource extends BaseResource {
    */
   async getStats(
     projectId: number,
-    options?: { page?: number; per_page?: number },
+    options?: { page?: number; per_page?: number; environment?: string },
   ): Promise<Result<OffsetPaginatedResponse<TransactionStats>, RustrakError>> {
     const searchParams: Record<string, string> = {};
     if (options?.page) {
@@ -94,6 +94,7 @@ export class TransactionsResource extends BaseResource {
     if (options?.per_page) {
       searchParams.per_page = String(options.per_page);
     }
+    if (options?.environment) searchParams.environment = options.environment;
 
     return this.request(
       () =>
@@ -113,11 +114,13 @@ export class TransactionsResource extends BaseResource {
     projectId: number,
     name: string,
     op?: string,
+    environment?: string,
   ): Promise<Result<TransactionStats, RustrakError>> {
     const searchParams: Record<string, string> = { name };
     if (op) {
       searchParams.op = op;
     }
+    if (environment) searchParams.environment = environment;
 
     return this.request(
       () =>

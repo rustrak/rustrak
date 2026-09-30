@@ -5,7 +5,11 @@ import { IssuesList } from '@/features/issue/ui/components/issues-list/issues-li
 import { getProject } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { loadAll } from '@/shared/lib/results';
-import { searchOneOf, searchPage } from '@/shared/lib/search-params';
+import {
+  searchOneOf,
+  searchPage,
+  searchString,
+} from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 const FILTERS = ['open', 'resolved', 'muted', 'all'] as const;
@@ -14,10 +18,12 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
   validateSearch: (search: Record<string, unknown>) => ({
     filter: searchOneOf(search.filter, FILTERS),
     page: searchPage(search.page),
+    environment: searchString(search.environment),
   }),
   loaderDeps: ({ search }) => ({
     filter: search.filter ?? 'open',
     page: search.page ?? 1,
+    environment: search.environment,
   }),
   loader: ({ params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
@@ -29,6 +35,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
         per_page: 20,
         sort: 'last_seen',
         order: 'desc',
+        environment: deps.environment,
       }),
     ]);
   },
@@ -56,10 +63,11 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
 function IssuesPage() {
   const t = useTranslations('projectPages');
   const { id } = Route.useParams();
-  const { filter, page } = Route.useSearch({
+  const { filter, page, environment } = Route.useSearch({
     select: (search) => ({
       filter: search.filter ?? 'open',
       page: search.page ?? 1,
+      environment: search.environment,
     }),
   });
   const loaded = Route.useLoaderData();
@@ -72,7 +80,7 @@ function IssuesPage() {
   const [project, issuesResponse] = loaded.data;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
+    <div className="flex flex-col h-full">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <h1 className="text-lg font-semibold">{t('issues.title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
@@ -86,6 +94,7 @@ function IssuesPage() {
           initialIssues={issuesResponse}
           currentFilter={filter}
           currentPage={page}
+          environment={environment}
         />
       </div>
     </div>

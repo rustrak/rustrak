@@ -9,7 +9,7 @@ use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
 use rustrak::models::CreateProject;
 use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
-use rustrak::services::{AuthTokenService, IssueService, ProjectService};
+use rustrak::services::{AuthTokenService, EventService, IssueService, ProjectService};
 use serde_json::{json, Value};
 use std::time::Duration as StdDuration;
 use uuid::Uuid;
@@ -115,6 +115,89 @@ async fn create_test_issue(
     )
     .await
     .expect("Failed to create test issue")
+}
+
+async fn create_environment_event(
+    pool: &rustrak::db::DbPool,
+    project_id: i32,
+    issue_id: Uuid,
+    environment: Option<&str>,
+    user: &str,
+) {
+    let grouping_id: i32 = sqlx::query_scalar(
+        "INSERT INTO groupings (project_id, issue_id, grouping_key, grouping_key_hash) VALUES ($1, $2, $3, $4) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(issue_id)
+    .bind(Uuid::new_v4().to_string())
+    .bind(Uuid::new_v4().to_string())
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    let data = json!({"environment": environment, "user": {"id": user}, "level": "error"});
+    EventService::create(
+        pool,
+        Uuid::new_v4(),
+        project_id,
+        issue_id,
+        grouping_id,
+        &data,
+        Utc::now(),
+        &create_denormalized_fields("TypeError", "environment test", "/test"),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[actix_web::test]
+async fn test_environment_filters_issue_membership_counts_and_pagination() {
+    let db = TestDb::new().await;
+    let pool = db.pool.clone();
+    let token = create_test_token(&pool).await;
+    let project = create_test_project(&pool, "Issue environments").await;
+    let mixed = create_test_issue(&pool, project.id, "TypeError", "mixed").await;
+    let staging = create_test_issue(&pool, project.id, "TypeError", "staging").await;
+    create_environment_event(&pool, project.id, mixed.id, Some("production"), "alice").await;
+    create_environment_event(&pool, project.id, mixed.id, Some("staging"), "bob").await;
+    create_environment_event(&pool, project.id, mixed.id, None, "charlie").await;
+    create_environment_event(&pool, project.id, staging.id, Some("staging"), "dana").await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(create_test_config()))
+            .configure(routes::issues::configure),
+    )
+    .await;
+
+    for (query, total, count, users) in [
+        ("?environment=production", 1, 1, 1),
+        ("?environment=staging", 2, 1, 1),
+        ("?environment=Production", 0, 0, 0),
+        ("?environment=unknown", 0, 0, 0),
+    ] {
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/projects/{}/issues{}&per_page=1",
+                project.id, query
+            ))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 200);
+        let body: Value = test::read_body_json(resp).await;
+        assert_eq!(body["total_count"], total, "query {query}");
+        assert_eq!(
+            body["items"].as_array().unwrap().len(),
+            usize::from(total > 0)
+        );
+        if total > 0 {
+            assert_eq!(body["items"][0]["event_count"], count);
+            assert_eq!(body["items"][0]["user_count"], users);
+        }
+    }
 }
 
 // =============================================================================
@@ -414,7 +497,7 @@ async fn test_top_issues_for_release_empty_when_no_matching_release() {
     let issue = create_test_issue(&db.pool, project.id, "TypeError", "Some error").await;
     set_first_release(&db.pool, issue.id, "1.0.0").await;
 
-    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "2.0.0", 10)
+    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "2.0.0", 10, None)
         .await
         .expect("query failed");
 
@@ -433,7 +516,7 @@ async fn test_top_issues_for_release_filters_by_release() {
         create_test_issue(&db.pool, project.id, "ValueError", "Other release").await;
     set_first_release(&db.pool, other_release.id, "0.9.0").await;
 
-    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "1.0.0", 10)
+    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "1.0.0", 10, None)
         .await
         .expect("query failed");
 
@@ -453,7 +536,7 @@ async fn test_top_issues_for_release_filters_by_project() {
     let issue_b = create_test_issue(&db.pool, project_b.id, "TypeError", "Project B").await;
     set_first_release(&db.pool, issue_b.id, "1.0.0").await;
 
-    let issues = IssueService::top_issues_for_release(&db.pool, project_a.id, "1.0.0", 10)
+    let issues = IssueService::top_issues_for_release(&db.pool, project_a.id, "1.0.0", 10, None)
         .await
         .expect("query failed");
 
@@ -472,7 +555,7 @@ async fn test_top_issues_for_release_orders_by_first_seen_desc() {
     let newer = create_test_issue(&db.pool, project.id, "ValueError", "Newer").await;
     set_first_release(&db.pool, newer.id, "1.0.0").await;
 
-    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "1.0.0", 10)
+    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "1.0.0", 10, None)
         .await
         .expect("query failed");
 
@@ -492,11 +575,56 @@ async fn test_top_issues_for_release_respects_limit() {
         set_first_release(&db.pool, issue.id, "1.0.0").await;
     }
 
-    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "1.0.0", 3)
+    let issues = IssueService::top_issues_for_release(&db.pool, project.id, "1.0.0", 3, None)
         .await
         .expect("query failed");
 
     assert_eq!(issues.len(), 3);
+}
+
+#[actix_web::test]
+async fn test_top_issues_for_release_uses_first_event_in_environment() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Release Environment Project").await;
+    let issue = create_test_issue(&db.pool, project.id, "TypeError", "Cross-environment").await;
+    set_first_release(&db.pool, issue.id, "1.0.0").await;
+
+    for (release, environment, hours_ago) in [
+        ("1.0.0", "production", 4),
+        ("", "staging", 3),
+        ("2.0.0", "staging", 2),
+        ("3.0.0", "staging", 1),
+    ] {
+        sqlx::query(
+            "INSERT INTO events (event_id, project_id, issue_id, data, timestamp, ingested_at, release, environment) VALUES ($1, $2, $3, $4, $5, $5, $6, $7)",
+        )
+        .bind(uuid::Uuid::new_v4())
+        .bind(project.id)
+        .bind(issue.id)
+        .bind(serde_json::json!({}))
+        .bind(chrono::Utc::now() - chrono::Duration::hours(hours_ago))
+        .bind(release)
+        .bind(environment)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    }
+
+    let staging_first =
+        IssueService::top_issues_for_release(&db.pool, project.id, "1.0.0", 10, Some("staging"))
+            .await
+            .unwrap();
+    assert!(staging_first.is_empty());
+    let staging_second =
+        IssueService::top_issues_for_release(&db.pool, project.id, "2.0.0", 10, Some("staging"))
+            .await
+            .unwrap();
+    assert_eq!(staging_second[0].id, issue.id);
+    let staging_third =
+        IssueService::top_issues_for_release(&db.pool, project.id, "3.0.0", 10, Some("staging"))
+            .await
+            .unwrap();
+    assert!(staging_third.is_empty());
 }
 
 // =============================================================================

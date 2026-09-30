@@ -68,6 +68,7 @@ export interface ListIssuesOptions {
   filter?: IssueFilter;
   /** Free-text search across type, value, transaction, and culprit. */
   q?: string;
+  environment?: string;
 }
 
 /**
@@ -76,6 +77,7 @@ export interface ListIssuesOptions {
 export interface ListEventsOptions {
   order?: SortOrder;
   cursor?: string;
+  environment?: string;
 }
 
 /**
@@ -122,6 +124,7 @@ export interface ListLogsOptions {
   level?: string;
   /** Filter by trace id. */
   trace_id?: string;
+  environment?: string;
 }
 
 /**
@@ -133,6 +136,7 @@ export interface ReleaseHealthStatsOptions {
   per_page?: number;
   /** Time window (e.g. '24h', '7d'). Defaults to '24h'. */
   period?: string;
+  environment?: string;
   /**
    * Scope to a single release (all environments), computed server-side. Omit
    * to get every release in the project.

@@ -68,6 +68,7 @@ pub async fn list_events(
         query.order,
         cursor.as_ref(),
         PAGE_SIZE,
+        query.environment.as_deref().filter(|s| !s.is_empty()),
     )
     .await?;
 

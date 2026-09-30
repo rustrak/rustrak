@@ -18,6 +18,7 @@ use utoipa::OpenApi;
 pub struct NewIssuesQuery {
     /// Max issues to return (default: 10, clamped to 1-50).
     pub limit: Option<i64>,
+    pub environment: Option<String>,
 }
 
 impl NewIssuesQuery {
@@ -62,13 +63,35 @@ pub async fn new_issues_for_release(
 
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
-    let issues =
-        IssueService::top_issues_for_release(pool.get_ref(), project_id, &release, query.limit())
-            .await?;
+    let issues = IssueService::top_issues_for_release(
+        pool.get_ref(),
+        project_id,
+        &release,
+        query.limit(),
+        query.environment.as_deref().filter(|s| !s.is_empty()),
+    )
+    .await?;
 
+    let environment = query.environment.as_deref().filter(|s| !s.is_empty());
+    let issue_ids: Vec<_> = issues.iter().map(|issue| issue.id).collect();
+    let stats = if environment.is_some() {
+        IssueService::list_stats(pool.get_ref(), &issue_ids, environment).await?
+    } else {
+        Default::default()
+    };
     let responses: Vec<_> = issues
         .iter()
-        .map(|i| i.to_response(&project.slug))
+        .map(|issue| {
+            let mut response = issue.to_response(&project.slug);
+            if let Some(stats) = stats.get(&issue.id) {
+                response.user_count = Some(stats.user_count);
+                response.trend = Some(stats.trend.clone());
+                if let Some(count) = stats.event_count {
+                    response.event_count = count as i32;
+                }
+            }
+            response
+        })
         .collect();
 
     Ok(HttpResponse::Ok().json(responses))

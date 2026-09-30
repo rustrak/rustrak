@@ -2973,6 +2973,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Match issues containing at least one event in this environment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -3828,6 +3840,17 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -4535,6 +4558,17 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -4572,6 +4606,12 @@
                           },
                           "body": {
                             "type": "string"
+                          },
+                          "environment": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           },
                           "id": {
                             "type": "string",
@@ -5001,6 +5041,17 @@
             "name": "release",
             "in": "query",
             "description": "Scope to a single release (all environments). When omitted, every\nrelease in the project is returned.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
             "required": false,
             "schema": {
               "type": [
@@ -5983,6 +6034,17 @@
               "maximum": 100,
               "minimum": 1
             }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -6129,6 +6191,17 @@
             "name": "op",
             "in": "query",
             "description": "Trace operation of the group (omit for groups with no op).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
             "required": false,
             "schema": {
               "type": [
@@ -9550,6 +9623,12 @@
           },
           "body": {
             "type": "string"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string",

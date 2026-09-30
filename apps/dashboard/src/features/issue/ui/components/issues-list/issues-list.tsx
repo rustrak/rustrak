@@ -24,6 +24,7 @@ interface IssuesListProps {
   initialIssues: OffsetPaginatedResponse<Issue>;
   currentFilter: string;
   currentPage: number;
+  environment?: string;
 }
 
 export function IssuesList({
@@ -31,6 +32,7 @@ export function IssuesList({
   initialIssues,
   currentFilter,
   currentPage,
+  environment,
 }: IssuesListProps) {
   const t = useTranslations('issues');
   const tableT = useTranslations('table');
@@ -47,6 +49,7 @@ export function IssuesList({
     const search = new URLSearchParams();
     search.set('filter', next.filter ?? currentFilter);
     search.set('page', String(next.page ?? 1));
+    if (environment) search.set('environment', environment);
     return `/projects/${projectId}/issues?${search.toString()}`;
   };
 

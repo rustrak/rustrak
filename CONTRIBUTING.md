@@ -70,8 +70,8 @@ Before you begin, ensure you have the following installed:
 6. **Run the dashboard (in another terminal)**
 
    ```bash
-   cd apps/dashboard
-   pnpm dev
+   # Run from the repository root; Turbo builds @rustrak/client first
+   pnpm dev --filter=@rustrak/dashboard
    ```
 
    Vite serves it on `:3000` and proxies `/api`, `/auth`, `/health`, `/docs`

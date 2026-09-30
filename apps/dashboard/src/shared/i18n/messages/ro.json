@@ -204,7 +204,7 @@
     "allLevels": "Toate",
     "empty": {
       "title": "Niciun jurnal nu corespunde acestui filtru",
-      "hint": "Încearcă un alt nivel sau șterge filtrul."
+      "hint": "Încearcă un alt nivel sau mediu, ori șterge filtrul."
     }
   },
   "issues": {
@@ -945,8 +945,8 @@
   "releases": {
     "all": "Toate",
     "empty": {
-      "title": "Nicio lansare în această fereastră",
-      "hint": "Încearcă o perioadă mai lungă sau șterge filtrul."
+      "title": "Nicio lansare nu corespunde acestor filtre",
+      "hint": "Încearcă o altă perioadă sau un alt mediu, ori șterge filtrul."
     },
     "columns": {
       "release": "Lansare"
@@ -1078,6 +1078,7 @@
     },
     "filters": {
       "allTime": "Tot intervalul",
+      "environment": "Mediu",
       "allEnvironments": "Toate mediile"
     },
     "modelsTable": {
@@ -1396,6 +1397,7 @@
       "subtitle": "Tranzacțiile pentru {project}, grupate după nume și operațiune",
       "loadFailed": "Tranzacțiile nu au putut fi încărcate",
       "emptyTitle": "Încă nu există tranzacții",
+      "noEnvironmentData": "Nu există tranzacții în mediul selectat",
       "emptyDescription": "Configurează SDK-ul cu <code>tracesSampleRate</code> pentru a începe capturarea datelor de performanță.",
       "backLink": "Performanță"
     },
@@ -1498,6 +1500,7 @@
       },
       "loadFailed": "Evenimentul nu a putut fi încărcat",
       "loadNavigationFailed": "Evenimentele din această problemă nu au putut fi încărcate",
+      "outsideSelectedEnvironment": "Acest eveniment nu aparține mediului selectat.",
       "lastSeen": "Ultima apariție",
       "firstSeen": "Prima apariție",
       "inRelease": "în lansarea <rel>{release}</rel>",
@@ -1521,6 +1524,8 @@
       "formatPlainText": "Text simplu",
       "formatJson": "JSON",
       "noEventsYet": "Niciun eveniment încă",
+      "noEventsInEnvironment": "Niciun eveniment în {environment}",
+      "noEventsInEnvironmentDescription": "Alege alt mediu sau Toate mediile pentru a vedea celelalte evenimente ale acestei probleme.",
       "noEventsDescription": "Această problemă a fost creată, dar încă nu s-a înregistrat niciun eveniment. Evenimentele vor apărea aici imediat ce aplicația ta le trimite."
     }
   },

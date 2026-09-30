@@ -1,11 +1,22 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { useTranslations } from 'use-intl';
 import { getProject, getProjects } from '@/features/project/api/queries';
 import { ProjectSidebar } from '@/features/project/ui/components/project-sidebar';
+import { createClient } from '@/shared/api/rustrak';
+import { searchString } from '@/shared/lib/search-params';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/components/shadcn/select';
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from '@/shared/ui/components/shadcn/sidebar';
+import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
  * Whether the sidebar was left open.
@@ -23,19 +34,32 @@ function sidebarWasOpen(): boolean {
 }
 
 export const Route = createFileRoute('/_authenticated/projects/$id')({
-  loader: ({ params }) => {
+  validateSearch: (search: Record<string, unknown>) => ({
+    environment: searchString(search.environment),
+  }),
+  loader: async ({ params }) => {
     const projectId = Number.parseInt(params.id, 10);
-    return Promise.all([
+    const client = await createClient();
+    const [project, projects, environments] = await Promise.all([
       getProject(projectId),
       getProjects({ per_page: 100 }),
-    ]).then(([project, projects]) => ({ project, projects }));
+      client.projects.environments(projectId),
+    ]);
+    return { project, projects, environments };
   },
   component: ProjectLayout,
 });
 
 function ProjectLayout() {
   const { id } = Route.useParams();
-  const { project, projects: projectsResponse } = Route.useLoaderData();
+  const {
+    project,
+    projects: projectsResponse,
+    environments,
+  } = Route.useLoaderData();
+  const { environment } = Route.useSearch();
+  const router = useRouter();
+  const t = useTranslations('agents.filters');
   const projectId = Number.parseInt(id, 10);
 
   // The layout renders the chrome around whatever the page does with its own
@@ -54,10 +78,51 @@ function ProjectLayout() {
   return (
     <SidebarProvider
       defaultOpen={sidebarWasOpen()}
-      className="min-h-[calc(100svh-4rem)]!"
+      className="h-[calc(100svh-4rem)]! min-h-0!"
     >
       <ProjectSidebar projectId={projectId} projects={projects} />
-      <SidebarInset className="min-w-0 overflow-hidden">
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+        <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 md:px-8">
+          <label
+            htmlFor="project-environment"
+            className="text-sm text-muted-foreground"
+          >
+            {t('environment')}
+          </label>
+          <Select
+            value={environment ?? ''}
+            onValueChange={(value) => {
+              const url = new URL(window.location.href);
+              if (value) url.searchParams.set('environment', String(value));
+              else url.searchParams.set('environment', '');
+              url.searchParams.delete('page');
+              router.push(`${url.pathname}${url.search}${url.hash}`);
+            }}
+          >
+            <SelectTrigger
+              id="project-environment"
+              size="sm"
+              className="min-w-44 max-w-56"
+            >
+              <SelectValue>
+                {(value) => (value ? String(value) : t('allEnvironments'))}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{t('allEnvironments')}</SelectItem>
+              {Array.from(
+                new Set([
+                  ...(environments.success ? environments.data : []),
+                  ...(environment ? [environment] : []),
+                ]),
+              ).map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {/* Mobile-only bar — opens the sidebar sheet. On desktop the sidebar
             collapses via its footer button, drag-rail, or Cmd/Ctrl+B.
             top-0: it pins to the top of SidebarInset, which already sits below
@@ -68,7 +133,9 @@ function ProjectLayout() {
             {project.success ? project.data.name : ''}
           </span>
         </div>
-        <Outlet />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Outlet />
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

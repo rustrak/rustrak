@@ -7,7 +7,7 @@ import { Skeleton } from '@/shared/ui/components/shadcn/skeleton';
  */
 export function EventLoading() {
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] bg-background">
+    <div className="flex flex-col h-full bg-background">
       {/* Header band */}
       <header className="shrink-0 bg-card border-b">
         <div className="w-full px-4 md:px-8 py-3 space-y-2">

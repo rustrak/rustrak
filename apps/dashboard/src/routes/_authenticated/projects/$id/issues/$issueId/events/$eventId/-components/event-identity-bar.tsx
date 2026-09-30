@@ -10,6 +10,7 @@ interface EventIdentityBarProps {
   event: EventDetail;
   navigation: EventNavigation;
   jumps: { id: EventJumpTarget; label: string }[];
+  outsideSelectedEnvironment: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export function EventIdentityBar({
   event,
   navigation,
   jumps,
+  outsideSelectedEnvironment,
 }: EventIdentityBarProps) {
   const t = useTranslations('projectPages');
   const format = useFormatter();
@@ -38,11 +40,17 @@ export function EventIdentityBar({
             {t('event.inThisIssue')}
           </span>
         </p>
-        <EventNavigationBar
-          projectId={projectId}
-          issueId={issueId}
-          navigation={navigation}
-        />
+        {outsideSelectedEnvironment ? (
+          <span className="text-xs text-muted-foreground">
+            {t('event.outsideSelectedEnvironment')}
+          </span>
+        ) : (
+          <EventNavigationBar
+            projectId={projectId}
+            issueId={issueId}
+            navigation={navigation}
+          />
+        )}
       </div>
 
       <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-2">

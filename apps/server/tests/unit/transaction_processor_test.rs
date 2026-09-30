@@ -932,7 +932,7 @@ mod level2 {
                 .unwrap();
         }
 
-        let (stats, total) = TransactionService::stats(&db.pool, project.id, 1, 20)
+        let (stats, total) = TransactionService::stats(&db.pool, project.id, 1, 20, None)
             .await
             .unwrap();
         assert_eq!(total, 2, "two (name, op) groups total");
@@ -988,13 +988,13 @@ mod level2 {
                 .unwrap();
         }
 
-        let (page1, total) = TransactionService::stats(&db.pool, project.id, 1, 2)
+        let (page1, total) = TransactionService::stats(&db.pool, project.id, 1, 2, None)
             .await
             .unwrap();
         assert_eq!(total, 5, "total reflects all groups, not the page size");
         assert_eq!(page1.len(), 2, "page is limited to per_page groups");
 
-        let (page3, _) = TransactionService::stats(&db.pool, project.id, 3, 2)
+        let (page3, _) = TransactionService::stats(&db.pool, project.id, 3, 2, None)
             .await
             .unwrap();
         assert_eq!(page3.len(), 1, "last page has the remaining group");
@@ -1061,18 +1061,24 @@ mod level2 {
                 .unwrap();
         }
 
-        let group =
-            TransactionService::stats_for_group(&db.pool, project.id, "/a", Some("http.server"))
-                .await
-                .unwrap()
-                .expect("group /a present");
+        let group = TransactionService::stats_for_group(
+            &db.pool,
+            project.id,
+            "/a",
+            Some("http.server"),
+            None,
+        )
+        .await
+        .unwrap()
+        .expect("group /a present");
         assert_eq!(group.transaction_name, "/a");
         assert_eq!(group.op.as_deref(), Some("http.server"));
         assert_eq!(group.count, 2);
 
-        let missing = TransactionService::stats_for_group(&db.pool, project.id, "/nope", None)
-            .await
-            .unwrap();
+        let missing =
+            TransactionService::stats_for_group(&db.pool, project.id, "/nope", None, None)
+                .await
+                .unwrap();
         assert!(missing.is_none(), "unknown group yields None");
     }
 
@@ -1114,10 +1120,10 @@ mod level2 {
                 .unwrap();
         }
 
-        let (first, _) = TransactionService::stats(&db.pool, project.id, 1, 20)
+        let (first, _) = TransactionService::stats(&db.pool, project.id, 1, 20, None)
             .await
             .unwrap();
-        let (second, _) = TransactionService::stats(&db.pool, project.id, 1, 20)
+        let (second, _) = TransactionService::stats(&db.pool, project.id, 1, 20, None)
             .await
             .unwrap();
 

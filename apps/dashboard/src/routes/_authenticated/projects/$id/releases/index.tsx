@@ -14,9 +14,11 @@ function releasesHref(
   projectId: number,
   page: number,
   period?: string,
+  environment?: string,
 ): string {
   const params = new URLSearchParams({ page: String(page) });
   if (period) params.set('period', period);
+  if (environment) params.set('environment', environment);
   return `/projects/${projectId}/releases?${params.toString()}`;
 }
 
@@ -27,10 +29,12 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
     // it cannot parse and answers with all-time data while no filter button
     // reads as selected. Drop it instead, so the URL and the UI always agree.
     period: parseReleasePeriod(searchString(search.period)),
+    environment: searchString(search.environment),
   }),
   loaderDeps: ({ search }) => ({
     page: search.page ?? 1,
     period: search.period,
+    environment: search.environment,
   }),
   loader: async ({ params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
@@ -44,6 +48,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
       page: deps.page,
       per_page: 20,
       period: deps.period,
+      environment: deps.environment,
     });
 
     // A page past the end still carries a positive total, which would render a
@@ -54,11 +59,18 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
       const { total_pages } = health.data;
       if (total_pages > 0 && deps.page > total_pages) {
         throw redirect({
-          href: releasesHref(projectId, total_pages, deps.period),
+          href: releasesHref(
+            projectId,
+            total_pages,
+            deps.period,
+            deps.environment,
+          ),
         });
       }
       if (total_pages === 0 && deps.page > 1) {
-        throw redirect({ href: releasesHref(projectId, 1, deps.period) });
+        throw redirect({
+          href: releasesHref(projectId, 1, deps.period, deps.environment),
+        });
       }
     }
 
@@ -88,8 +100,12 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
 function ReleasesPage() {
   const t = useTranslations('projectPages');
   const { id } = Route.useParams();
-  const { page, period } = Route.useSearch({
-    select: (search) => ({ page: search.page ?? 1, period: search.period }),
+  const { page, period, environment } = Route.useSearch({
+    select: (search) => ({
+      page: search.page ?? 1,
+      period: search.period,
+      environment: search.environment,
+    }),
   });
   const { project: projectResult, health: healthResult } =
     Route.useLoaderData();
@@ -119,7 +135,7 @@ function ReleasesPage() {
   const health = healthResult.data;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
+    <div className="flex flex-col h-full">
       <div className="shrink-0 w-full px-4 md:px-8 py-4 md:py-6 border-b">
         <h1 className="text-lg font-semibold">{t('releases.title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
@@ -128,7 +144,7 @@ function ReleasesPage() {
       </div>
 
       <div className="flex-1 overflow-hidden w-full px-4 md:px-8 py-4 md:py-6">
-        {health.total_count === 0 && !period ? (
+        {health.total_count === 0 && !period && !environment ? (
           <div className="flex flex-col items-center justify-center min-h-full text-center">
             <Rocket className="size-12 text-muted-foreground/30 mb-4" />
             <h2 className="text-lg font-semibold mb-1">

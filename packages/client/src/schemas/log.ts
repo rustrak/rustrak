@@ -10,6 +10,7 @@ import { dateTimeSchema, uuidSchema } from './common.js';
  */
 export const logSchema = z.object({
   id: uuidSchema,
+  environment: z.string().nullable(),
   trace_id: z.string().nullable(),
   span_id: z.string().nullable(),
   level: z.string(),

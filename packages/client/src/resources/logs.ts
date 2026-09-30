@@ -34,6 +34,9 @@ export class LogsResource extends BaseResource {
     if (options?.trace_id) {
       searchParams.trace_id = options.trace_id;
     }
+    if (options?.environment) {
+      searchParams.environment = options.environment;
+    }
 
     return this.request(
       () => this.http.get(`api/projects/${projectId}/logs`, { searchParams }),

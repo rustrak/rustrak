@@ -65,9 +65,10 @@ export async function getProjectEventTimeseries(
   projectId: number,
   period?: string,
   interval?: number,
+  environment?: string,
 ): Promise<Result<EventTimeseries, RustrakError>> {
   const client = await createClient();
-  return client.stats.timeseries(projectId, period, interval);
+  return client.stats.timeseries(projectId, period, interval, environment);
 }
 
 /**
@@ -83,7 +84,8 @@ export async function getProjectEventTimeseries(
 export async function getProjectStatsSummary(
   projectId: number,
   period?: string,
+  environment?: string,
 ): Promise<Result<ProjectStatsSummary, RustrakError>> {
   const client = await createClient();
-  return client.stats.summary(projectId, period);
+  return client.stats.summary(projectId, period, environment);
 }

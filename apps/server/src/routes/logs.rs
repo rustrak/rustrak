@@ -53,6 +53,7 @@ pub async fn list_logs(
     let filters = LogFilters {
         level: query.level.clone(),
         trace_id: query.trace_id.clone(),
+        environment: query.environment.clone().filter(|s| !s.is_empty()),
     };
 
     let (logs, total_count) =

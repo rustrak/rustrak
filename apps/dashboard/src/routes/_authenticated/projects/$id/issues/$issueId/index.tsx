@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { getLastEvent } from '@/features/event/api/queries';
 import { getIssue } from '@/features/issue/api/queries';
+import { searchString } from '@/shared/lib/search-params';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 /**
@@ -16,18 +17,25 @@ import { LoadFailure } from '@/shared/ui/components/load-failure';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/',
 )({
-  beforeLoad: async ({ params }) => {
+  validateSearch: (search: Record<string, unknown>) => ({
+    environment: searchString(search.environment),
+  }),
+  beforeLoad: async ({ params, search }) => {
     const projectId = Number.parseInt(params.id, 10);
 
     // Verify issue exists
-    const issue = await getIssue(projectId, params.issueId);
+    const issue = await getIssue(projectId, params.issueId, search.environment);
     if (!issue.success) {
       return {
         failure: { error: issue.error, title: 'loadIssueFailed' as const },
       };
     }
 
-    const lastEvent = await getLastEvent(projectId, params.issueId);
+    const lastEvent = await getLastEvent(
+      projectId,
+      params.issueId,
+      search.environment,
+    );
 
     if (!lastEvent.success) {
       return {
@@ -40,13 +48,13 @@ export const Route = createFileRoute(
 
     if (lastEvent.data) {
       throw redirect({
-        href: `/projects/${projectId}/issues/${params.issueId}/events/${lastEvent.data.id}`,
+        href: `/projects/${projectId}/issues/${params.issueId}/events/${lastEvent.data.id}${search.environment ? `?environment=${encodeURIComponent(search.environment)}` : ''}`,
       });
     }
 
     // If no events, show empty state
     throw redirect({
-      href: `/projects/${projectId}/issues/${params.issueId}/events/empty`,
+      href: `/projects/${projectId}/issues/${params.issueId}/events/empty${search.environment ? `?environment=${encodeURIComponent(search.environment)}` : ''}`,
     });
   },
   component: IssuePage,

@@ -30,6 +30,7 @@ export class StatsResource extends BaseResource {
     projectId: number,
     period?: string,
     interval?: number,
+    environment?: string,
   ): Promise<Result<EventTimeseries, RustrakError>> {
     const searchParams: Record<string, string> = {};
     if (period) {
@@ -38,6 +39,7 @@ export class StatsResource extends BaseResource {
     if (interval !== undefined) {
       searchParams.interval = interval.toString();
     }
+    if (environment) searchParams.environment = environment;
 
     return this.request(
       () =>
@@ -59,11 +61,13 @@ export class StatsResource extends BaseResource {
   async summary(
     projectId: number,
     period?: string,
+    environment?: string,
   ): Promise<Result<ProjectStatsSummary, RustrakError>> {
     const searchParams: Record<string, string> = {};
     if (period) {
       searchParams.period = period;
     }
+    if (environment) searchParams.environment = environment;
 
     return this.request(
       () =>

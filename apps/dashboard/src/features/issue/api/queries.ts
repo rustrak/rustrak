@@ -51,9 +51,10 @@ export async function listIssues(
 export async function getIssue(
   projectId: number,
   issueId: string,
+  environment?: string,
 ): Promise<Result<Issue, RustrakError>> {
   const client = await createClient();
-  return client.issues.get(projectId, issueId);
+  return client.issues.get(projectId, issueId, environment);
 }
 
 /**
@@ -65,9 +66,10 @@ export async function getIssue(
 export async function getIssueAggregates(
   projectId: number,
   issueId: string,
+  environment?: string,
 ): Promise<Result<IssueAggregates, RustrakError>> {
   const client = await createClient();
-  return client.issues.getAggregates(projectId, issueId);
+  return client.issues.getAggregates(projectId, issueId, environment);
 }
 
 /**
@@ -81,9 +83,10 @@ export async function getIssueStats(
   projectId: number,
   issueId: string,
   window: IssueStatsWindow = '24h',
+  environment?: string,
 ): Promise<Result<IssueStats, RustrakError>> {
   const client = await createClient();
-  return client.issues.getStats(projectId, issueId, window);
+  return client.issues.getStats(projectId, issueId, window, environment);
 }
 
 /**
