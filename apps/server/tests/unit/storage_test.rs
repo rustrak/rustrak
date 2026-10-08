@@ -387,8 +387,8 @@ async fn test_span_counts_past_the_sample_scale_and_include_standalone_spans() {
     .unwrap();
 
     let old = Utc::now() - chrono::Duration::days(60);
-    for _ in 0..250 {
-        seed_transaction_with_spans_at(&db.pool, project.id, 2, old).await;
+    for _ in 0..1_100 {
+        seed_transaction_with_spans_at(&db.pool, project.id, 1, old).await;
     }
     sqlx::query(
         "INSERT INTO spans (id, transaction_id, project_id, data) VALUES ($1, NULL, $2, $3)",
@@ -403,18 +403,18 @@ async fn test_span_counts_past_the_sample_scale_and_include_standalone_spans() {
     let preview = StorageService::preview_cleanup(&db.pool, 30, None, CleanupFilter::all())
         .await
         .unwrap();
-    assert_eq!(preview.transactions, 250);
-    assert_eq!(preview.spans, 500, "only spans under old transactions");
+    assert_eq!(preview.transactions, 1_100);
+    assert_eq!(preview.spans, 1_100, "only spans under old transactions");
 
     let summary = StorageService::global_summary(&db.pool).await.unwrap();
-    assert_eq!(summary.spans_count, 501);
+    assert_eq!(summary.spans_count, 1_101);
 
     let rows = StorageService::by_project(&db.pool).await.unwrap();
     let p = rows
         .iter()
         .find(|r| r.project_id == project.id)
         .expect("project in breakdown");
-    assert_eq!(p.spans_count, 501);
+    assert_eq!(p.spans_count, 1_101);
 }
 
 #[tokio::test]
