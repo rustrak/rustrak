@@ -73,6 +73,10 @@ pub enum SessionStatus {
     /// terminate. The JavaScript SDKs send it instead of `crashed` since 11.x.
     Unhandled,
     Errored,
+    /// Any status this version does not know yet. Relay keeps these as
+    /// `Unknown` and counts them as errored instead of dropping the session.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Derived classification used by the aggregator for a single session update.
@@ -99,7 +103,9 @@ pub fn classify(status: &SessionStatus, errors: i64) -> SessionOutcome {
         SessionStatus::Abnormal => SessionOutcome::Abnormal,
         // The process survived, so this is not a crash; the SDK reports it
         // with `errors >= 1`, which is what makes an exited session errored.
-        SessionStatus::Unhandled | SessionStatus::Errored => SessionOutcome::Errored,
+        SessionStatus::Unhandled | SessionStatus::Errored | SessionStatus::Unknown => {
+            SessionOutcome::Errored
+        }
         SessionStatus::Exited | SessionStatus::Ok => {
             if errors > 0 {
                 SessionOutcome::Errored
@@ -214,6 +220,20 @@ mod tests {
             serde_json::from_str(r#"{"started":"2026-01-01T00:00:00Z","exited":3,"unhandled":2}"#)
                 .expect("aggregates carry an unhandled count");
         assert_eq!((item.exited, item.unhandled, item.crashed), (3, 2, 0));
+    }
+
+    #[test]
+    fn unknown_status_parses_and_counts_as_errored() {
+        // Relay maps statuses it does not know to `Unknown` and counts them as
+        // errored, so a future protocol status does not drop the session.
+        let update: SessionUpdate =
+            serde_json::from_str(r#"{"sid":"a","init":false,"status":"something-new"}"#)
+                .expect("an unknown status still parses");
+        assert_eq!(update.status, Some(SessionStatus::Unknown));
+        assert_eq!(
+            classify(&SessionStatus::Unknown, 0),
+            SessionOutcome::Errored
+        );
     }
 
     #[test]
