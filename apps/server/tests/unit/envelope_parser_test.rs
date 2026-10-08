@@ -277,6 +277,32 @@ fn test_parse_session_item() {
 }
 
 #[test]
+fn test_parse_session_item_with_unhandled_status() {
+    // Sessions protocol 1.6.0: `unhandled` is a terminal status the JavaScript
+    // SDKs send since 11.x instead of `crashed`. It must parse as a session,
+    // not fall back to an opaque item and vanish from release health.
+    let payload = br#"{"sid":"a","init":false,"status":"unhandled","errors":1}"#;
+    let envelope = format!(
+        "{{\"event_id\":\"abc\"}}\n{{\"type\":\"session\",\"length\":{}}}\n{}\n",
+        payload.len(),
+        std::str::from_utf8(payload).unwrap()
+    );
+    let mut parser = EnvelopeParser::new(bytes::Bytes::from(envelope));
+    let result = parser.parse().unwrap();
+
+    match &result.items[0] {
+        EnvelopeItemKind::Session(update) => {
+            assert_eq!(
+                update.status,
+                Some(rustrak::models::session::SessionStatus::Unhandled)
+            );
+            assert_eq!(update.errors, 1);
+        }
+        other => panic!("expected a session item, got {}", item_type(other)),
+    }
+}
+
+#[test]
 fn test_parse_transaction_item() {
     // {"op":"http.get"} is 17 bytes
     let envelope = b"{\"event_id\":\"abc\"}\n{\"type\":\"transaction\",\"length\":17}\n{\"op\":\"http.get\"}\n";
