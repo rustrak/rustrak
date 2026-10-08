@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.16.1
+
+### Patch Changes
+
+- [`0fd47e8`](https://github.com/rustrak/rustrak/commit/0fd47e8f7142da3d89a7cd7e2fa079cb3aa59b9c) Thanks [@AbianS](https://github.com/AbianS)! - Storage stats and the cleanup preview estimate span counts from a random sample of 1,000 transactions per project instead of counting the spans table, which took over a minute on large instances. Estimated counts are marked with ≈ in the dashboard.
+
 ## 0.16.0
 
 ### Minor Changes
