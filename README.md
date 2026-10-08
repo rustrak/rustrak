@@ -3,8 +3,8 @@
 <img width="2000" height="1080" alt="hero" src="https://github.com/user-attachments/assets/6be3f33e-c17a-4aa9-a082-656639c3ad29" />
 
 [![CI](https://github.com/rustrak/rustrak/actions/workflows/ci.yml/badge.svg)](https://github.com/rustrak/rustrak/actions/workflows/ci.yml)
-[![Server coverage](https://codecov.io/gh/rustrak/rustrak/branch/main/graph/badge.svg?flag=rust)](https://codecov.io/gh/rustrak/rustrak)
-[![Client coverage](https://codecov.io/gh/rustrak/rustrak/branch/main/graph/badge.svg?flag=typescript)](https://codecov.io/gh/rustrak/rustrak)
+[![Server coverage](https://img.shields.io/codecov/c/github/rustrak/rustrak/main?flag=rust&label=server%20coverage&logo=codecov)](https://codecov.io/gh/rustrak/rustrak)
+[![Client coverage](https://img.shields.io/codecov/c/github/rustrak/rustrak/main?flag=typescript&label=client%20coverage&logo=codecov)](https://codecov.io/gh/rustrak/rustrak)
 [![Release](https://img.shields.io/github/v/release/rustrak/rustrak)](https://github.com/rustrak/rustrak/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Docker pulls](https://img.shields.io/docker/pulls/rustrak/rustrak-server)](https://hub.docker.com/r/rustrak/rustrak-server)
