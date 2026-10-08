@@ -1,0 +1,18 @@
+comment: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+    patch:
+      default:
+        target: auto
+
+flags:
+  rust:
+    paths:
+      - apps/server/
+  typescript:
+    paths:
+      - packages/client/

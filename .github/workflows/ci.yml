@@ -10,8 +10,9 @@ name: CI
 # release build, which no check ever read, was 10m50s of a 12m56s run: fat LTO
 # with one codegen unit is a single-threaded tail no runner can shorten.
 #
-# So: four jobs, each doing one thing, each on its own runner. The wall-clock
-# is the slowest job, not the sum.
+# So: four PR-gating jobs, each doing one thing, each on its own runner. The
+# wall-clock is the slowest job, not the sum. Coverage is a separate push/manual
+# job because badges read main, not a pull request's temporary merge ref.
 #
 # The Rust jobs restore compiled dependencies (rust-cache, through
 # setup-rust-toolchain) and never the workspace crates. A cache is scoped to
@@ -30,7 +31,8 @@ on:
   # otherwise never checked.
   push:
     branches: [main, next]
-  # By hand, for a branch: the same jobs as a push, `rust-release` included.
+  # By hand, for a branch: the same jobs as a push, including coverage and
+  # `rust-release`.
   workflow_dispatch:
 
 concurrency:
@@ -177,6 +179,55 @@ jobs:
           cargo run --bin gen_openapi --features openapi --locked
           git diff --exit-code -- openapi.json || \
             (echo "::error::openapi.json is out of date. Run: cd apps/server && cargo run --bin gen_openapi --features openapi" && exit 1)
+
+  # ── Coverage: uploaded for README badges, off the PR gate ────────────────
+  coverage:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache-save-if: ${{ github.event_name == 'push' }}
+          cache-workspaces: apps/server -> target
+
+      - uses: taiki-e/install-action@27cdd3237bf9a6a2b668f3bcbfaa06949ae17deb # cargo-llvm-cov
+        with:
+          tool: cargo-llvm-cov
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate server coverage
+        working-directory: apps/server
+        run: cargo llvm-cov --features openapi --locked --lcov --output-path lcov-rust.info
+
+      - name: Generate client coverage
+        working-directory: packages/client
+        run: pnpm test:coverage
+
+      - name: Upload server coverage
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          files: apps/server/lcov-rust.info
+          flags: rust
+          name: rust
+          fail_ci_if_error: true
+
+      - name: Upload client coverage
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          files: packages/client/coverage/lcov.info
+          flags: typescript
+          name: typescript
+          fail_ci_if_error: true
 
   # ── Rust: the release profile, on the release lines only ───────────────────
   # Fat LTO with one codegen unit is a different compile from the test profile:
