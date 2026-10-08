@@ -48,6 +48,10 @@ pub struct SessionAggregateItem {
     pub abnormal: i64,
     #[serde(default, deserialize_with = "de_non_negative_i64")]
     pub crashed: i64,
+    /// Protocol 1.6.0: sessions that ended with an unhandled error while the
+    /// process kept running. Counted as errored, not crashed.
+    #[serde(default, deserialize_with = "de_non_negative_i64")]
+    pub unhandled: i64,
 }
 
 /// Common session attributes.
@@ -65,6 +69,9 @@ pub enum SessionStatus {
     Exited,
     Crashed,
     Abnormal,
+    /// Protocol 1.6.0: an unhandled error occurred but the process did not
+    /// terminate. The JavaScript SDKs send it instead of `crashed` since 11.x.
+    Unhandled,
     Errored,
 }
 
@@ -90,7 +97,9 @@ pub fn classify(status: &SessionStatus, errors: i64) -> SessionOutcome {
     match status {
         SessionStatus::Crashed => SessionOutcome::Crashed,
         SessionStatus::Abnormal => SessionOutcome::Abnormal,
-        SessionStatus::Errored => SessionOutcome::Errored,
+        // The process survived, so this is not a crash; the SDK reports it
+        // with `errors >= 1`, which is what makes an exited session errored.
+        SessionStatus::Unhandled | SessionStatus::Errored => SessionOutcome::Errored,
         SessionStatus::Exited | SessionStatus::Ok => {
             if errors > 0 {
                 SessionOutcome::Errored
@@ -178,6 +187,33 @@ mod tests {
             classify(&SessionStatus::Errored, 0),
             SessionOutcome::Errored
         );
+    }
+
+    #[test]
+    fn classify_unhandled_is_errored_not_crashed() {
+        // Protocol 1.6.0: the process did not terminate, so crash-free is unaffected.
+        assert_eq!(
+            classify(&SessionStatus::Unhandled, 1),
+            SessionOutcome::Errored
+        );
+        assert_eq!(
+            classify(&SessionStatus::Unhandled, 0),
+            SessionOutcome::Errored
+        );
+        assert!(SessionStatus::Unhandled.is_terminal());
+    }
+
+    #[test]
+    fn unhandled_status_deserializes() {
+        let update: SessionUpdate =
+            serde_json::from_str(r#"{"sid":"a","init":false,"status":"unhandled","errors":1}"#)
+                .expect("the protocol's unhandled status parses");
+        assert_eq!(update.status, Some(SessionStatus::Unhandled));
+
+        let item: SessionAggregateItem =
+            serde_json::from_str(r#"{"started":"2026-01-01T00:00:00Z","exited":3,"unhandled":2}"#)
+                .expect("aggregates carry an unhandled count");
+        assert_eq!((item.exited, item.unhandled, item.crashed), (3, 2, 0));
     }
 
     #[test]
