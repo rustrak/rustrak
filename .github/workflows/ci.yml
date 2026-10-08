@@ -184,6 +184,11 @@ jobs:
   coverage:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # Codecov authenticates the upload with a GitHub OIDC token instead of a
+    # stored secret.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -219,6 +224,7 @@ jobs:
           files: apps/server/lcov-rust.info
           flags: rust
           name: rust
+          use_oidc: true
           fail_ci_if_error: true
 
       - name: Upload client coverage
@@ -227,6 +233,7 @@ jobs:
           files: packages/client/coverage/lcov.info
           flags: typescript
           name: typescript
+          use_oidc: true
           fail_ci_if_error: true
 
   # ── Rust: the release profile, on the release lines only ───────────────────
