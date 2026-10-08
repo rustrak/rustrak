@@ -29,6 +29,61 @@ Authorization: Bearer EXISTING_TOKEN
 { "description": "CI/CD Pipeline" }
 ```
 
+## Exact event lookup by user or request
+
+`GET /api/projects/{project_id}/events/lookup` finds matching events across
+issues in one project. It requires project Viewer access and exactly one selector:
+
+- `user_id`: exact string from the event's `user.id`.
+- `request_id`: exact string from the event's `request.id` tag. Object tags
+  (`{"request.id":"r"}`), tuple arrays (`[["request.id","r"]]`) and key/value
+  arrays (`[{"key":"request.id","value":"r"}]`) are supported. Set this tag in
+  the SDK when capturing an event; nested `tags.request.id`, HTTP headers and
+  trace IDs are not substituted for it. Repeated matching tags return an event
+  once; distinct request IDs on the same event are each searchable.
+
+Identifiers must contain 1–200 UTF-8 bytes without control characters or surrounding
+whitespace. Matching is case-sensitive. Missing, non-string and oversized stored
+identifiers remain ingestible but are not eligible for this lookup.
+
+```bash
+curl --get -H "Authorization: Bearer YOUR_TOKEN" \
+  --data-urlencode "user_id=customer-42" \
+  http://localhost:8080/api/projects/1/events/lookup
+```
+
+Responses use `{items, has_more, next_cursor?}` and contain at most 20 event
+summaries, newest first by `(timestamp, id)`, without full event JSON. Use the
+existing event-detail endpoint for a returned issue/event pair. Pass `next_cursor`
+with the same project and selector for the next page; reusing it for another
+search returns `400`. An accessible project with no matches returns an empty
+page. An inaccessible or nonexistent project returns `404`.
+
+When the SDK event ID is already known, use
+`GET /api/projects/{project_id}/events/sentry/{event_id}` instead.
+
+A partial expression index supports user lookup. Request lookup uses an indexed
+derived table, backfilled from all three tag forms without changing raw payloads.
+Database triggers keep this table synchronized on event inserts and relevant
+updates; foreign-key cascades remove its rows when events are deleted. Both
+paths add storage and event-write cost.
+
+Allow a maintenance window on a large database. SQLite holds its migration write
+transaction while creating the indexes and backfilling request tags. PostgreSQL
+builds the user index concurrently, then installs the request table, triggers and
+backfill in a separate transaction. Its trigger-creation lock blocks event writes
+until that transaction commits; historical backfill scans retained event JSON.
+The default SQLx migrator serializes PostgreSQL startup migrations with a
+database advisory lock, and records transactional migrations in the same commit.
+
+An interrupted concurrent user-index build can leave an INVALID index, or a
+valid index whose migration record was not yet written. Stop competing startup
+attempts and inspect `pg_index.indisvalid` and `_sqlx_migrations` before recovery.
+If the user index exists but migration `20260930000000` has no successful record,
+drop `idx_events_project_user_identity` with `DROP INDEX CONCURRENTLY` before
+retrying the migration, even if that leftover index is valid. Do not drop an
+index belonging to a successfully recorded migration as part of this recovery.
+
 ## Self-hosted spec
 
 The server exposes the spec directly when built with the `openapi` feature:

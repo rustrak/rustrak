@@ -100,6 +100,7 @@ export type {
   Log,
   LoginRequest,
   LoginResult,
+  LookupEventsOptions,
   MetricDelta,
   OffsetPaginatedResponse,
   PaginatedResponse,
