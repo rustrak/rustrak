@@ -81,7 +81,7 @@ export function StorageProjectsTable() {
                     {t('storage.spans')}
                   </span>
                   <span className="tabular-nums text-right">
-                    {format.number(p.spans_count)}
+                    ≈ {format.number(p.spans_count)}
                   </span>
                   <span className="text-muted-foreground">
                     {t('storage.logs')}
@@ -151,7 +151,7 @@ export function StorageProjectsTable() {
                     {format.number(p.transactions_count)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {format.number(p.spans_count)}
+                    ≈ {format.number(p.spans_count)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {format.number(p.logs_count)}

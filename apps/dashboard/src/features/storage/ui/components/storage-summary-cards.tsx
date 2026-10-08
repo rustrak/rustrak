@@ -52,14 +52,14 @@ export function StorageSummaryCards() {
       label: t('storage.transactions'),
       value: format.number(summary.transactions_count),
       sub: t('storage.spansCount', {
-        count: format.number(summary.spans_count),
+        count: `≈ ${format.number(summary.spans_count)}`,
       }),
       icon: ListTree,
     },
     {
       id: 'spans',
       label: t('storage.spans'),
-      value: format.number(summary.spans_count),
+      value: `≈ ${format.number(summary.spans_count)}`,
       sub: t('storage.spansSub'),
       icon: Layers,
     },

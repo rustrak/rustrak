@@ -369,6 +369,55 @@ async fn test_storage_summary_and_by_project_include_logs() {
 }
 
 #[tokio::test]
+async fn test_span_counts_past_the_sample_scale_and_include_standalone_spans() {
+    // Span counts are estimated from a sample of transactions, because an exact
+    // count reads the whole `spans` table. Past the sample size a uniform
+    // project still lands exactly, and standalone spans (no transaction) are
+    // counted on their own: the cleanup never deletes them, the page shows them.
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "span-estimate".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let old = Utc::now() - chrono::Duration::days(60);
+    for _ in 0..250 {
+        seed_transaction_with_spans_at(&db.pool, project.id, 2, old).await;
+    }
+    sqlx::query(
+        "INSERT INTO spans (id, transaction_id, project_id, data) VALUES ($1, NULL, $2, $3)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(project.id)
+    .bind(serde_json::json!({}))
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let preview = StorageService::preview_cleanup(&db.pool, 30, None, CleanupFilter::all())
+        .await
+        .unwrap();
+    assert_eq!(preview.transactions, 250);
+    assert_eq!(preview.spans, 500, "only spans under old transactions");
+
+    let summary = StorageService::global_summary(&db.pool).await.unwrap();
+    assert_eq!(summary.spans_count, 501);
+
+    let rows = StorageService::by_project(&db.pool).await.unwrap();
+    let p = rows
+        .iter()
+        .find(|r| r.project_id == project.id)
+        .expect("project in breakdown");
+    assert_eq!(p.spans_count, 501);
+}
+
+#[tokio::test]
 async fn test_cleanup_rejects_nonpositive_retention_window() {
     // A window of 0 puts the cutoff at "now" and a negative one in the future —
     // either turns the cleanup into a full data wipe. Both preview and execute

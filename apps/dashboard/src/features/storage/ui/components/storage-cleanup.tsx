@@ -282,7 +282,7 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
                   >
                     <dt className="text-muted-foreground">{line.label}</dt>
                     <dd className="tabular-nums font-medium">
-                      {format.number(line.count)}
+                      {line.key === 'spans' && '≈ '}{format.number(line.count)}
                     </dd>
                   </div>
                 ))}

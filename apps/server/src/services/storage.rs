@@ -53,6 +53,26 @@ const LOGS_SAMPLE: &str = "SELECT COALESCE(SUM(COALESCE(length(CAST(body AS TEXT
      + COALESCE(length(CAST(attributes AS TEXT)), 0)), 0), COUNT(*) \
      FROM (SELECT body, attributes FROM logs WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
 
+/// Transactions per project a span estimate reads. On production 1,000 put
+/// a 21M-span cleanup within 1% and took about a second; 200 was 16% off.
+const SPAN_SAMPLE_ROWS: i64 = 1_000;
+
+/// `(spans, transactions)` over `$3` of a project's transactions ingested
+/// before `$2`, picked in `event_id` order. `event_id` is a random UUID, so
+/// that order is a random sample across the project's whole history, read
+/// from its `(project_id, event_id)` index. The newest rows are not: traffic
+/// comes in bursts, and on production the newest 200 transactions held 384
+/// spans one minute and 3,080 a few minutes earlier.
+///
+/// Spans are never counted outright: on a large instance `spans` is the
+/// biggest table by far, and no index answers a count over it without
+/// reading the table (37M rows took over 60s).
+const TRANSACTION_SPANS_SAMPLE: &str = "WITH sample AS ( \
+     SELECT id FROM transactions WHERE project_id = $1 AND ingested_at < $2 \
+     ORDER BY event_id LIMIT $3) \
+     SELECT (SELECT COUNT(*) FROM spans WHERE transaction_id IN (SELECT id FROM sample)), \
+            (SELECT COUNT(*) FROM sample)";
+
 /// Gives waiting writers a turn between cleanup batches. SQLite's busy
 /// handler retries a blocked writer at intervals of up to 100ms, so a pause
 /// at least that long guarantees ingestion gets the lock between batches
@@ -548,8 +568,9 @@ impl StorageService {
 
     /// Counts what a cleanup at `cutoff` would remove. Retention is keyed on
     /// `ingested_at` (server receipt time, not client-controlled). Spans are
-    /// counted through their parent transaction since they cascade. An issue is
-    /// "removed" when it has events but none survive the cutoff.
+    /// estimated through their parent transactions since they cascade (see
+    /// [`Self::estimate_transaction_spans`]). An issue is "removed" when it has
+    /// events but none survive the cutoff.
     ///
     /// The scope is written as `project_id IN (...)` rather than
     /// `$n IS NULL OR project_id = $m`: the planner cannot use an index for the
@@ -561,64 +582,60 @@ impl StorageService {
         project_id: Option<i32>,
         filter: CleanupFilter,
     ) -> AppResult<CleanupCounts> {
-        let (events, transactions, spans, issues_removed, logs): (i64, i64, i64, i64, i64) =
-            sqlx::query_as(
-                r#"
+        let (events, issues_removed, logs): (i64, i64, i64) = sqlx::query_as(
+            r#"
             SELECT
                 (SELECT COUNT(*) FROM events e
                     WHERE e.ingested_at < $1
                       AND e.project_id IN (SELECT id FROM projects WHERE $2 IS NULL OR id = $3)),
-                (SELECT COUNT(*) FROM transactions t
-                    WHERE t.ingested_at < $4
-                      AND t.project_id IN (SELECT id FROM projects WHERE $5 IS NULL OR id = $6)),
-                (SELECT COUNT(*) FROM spans s
-                    JOIN transactions t2 ON s.transaction_id = t2.id
-                    WHERE t2.ingested_at < $7
-                      AND t2.project_id IN (SELECT id FROM projects WHERE $8 IS NULL OR id = $9)),
                 (SELECT COUNT(*) FROM issues i
-                    WHERE ($10 IS NULL OR i.project_id = $11)
+                    WHERE ($4 IS NULL OR i.project_id = $5)
                       AND EXISTS (SELECT 1 FROM events e2 WHERE e2.issue_id = i.id)
                       AND NOT EXISTS (
-                          SELECT 1 FROM events e3 WHERE e3.issue_id = i.id AND e3.ingested_at >= $12
+                          SELECT 1 FROM events e3 WHERE e3.issue_id = i.id AND e3.ingested_at >= $6
                       )),
                 (SELECT COUNT(*) FROM logs l
-                    WHERE l.ingested_at < $13
-                      AND l.project_id IN (SELECT id FROM projects WHERE $14 IS NULL OR id = $15))
+                    WHERE l.ingested_at < $7
+                      AND l.project_id IN (SELECT id FROM projects WHERE $8 IS NULL OR id = $9))
             "#,
+        )
+        .bind(cutoff)
+        .bind(project_id)
+        .bind(project_id)
+        .bind(project_id)
+        .bind(project_id)
+        .bind(cutoff)
+        .bind(cutoff)
+        .bind(project_id)
+        .bind(project_id)
+        .fetch_one(pool)
+        .await?;
+
+        // Spans need each project's own transaction count to scale its sample.
+        let (mut transactions, mut spans) = (0, 0);
+        if filter.include_transactions {
+            let projects: Vec<(i32, i64)> = sqlx::query_as(
+                "SELECT p.id, (SELECT COUNT(*) FROM transactions t \
+                     WHERE t.project_id = p.id AND t.ingested_at < $1) \
+                 FROM projects p WHERE $2 IS NULL OR p.id = $3",
             )
             .bind(cutoff)
             .bind(project_id)
             .bind(project_id)
-            .bind(cutoff)
-            .bind(project_id)
-            .bind(project_id)
-            .bind(cutoff)
-            .bind(project_id)
-            .bind(project_id)
-            .bind(project_id)
-            .bind(project_id)
-            .bind(cutoff)
-            .bind(cutoff)
-            .bind(project_id)
-            .bind(project_id)
-            .fetch_one(pool)
+            .fetch_all(pool)
             .await?;
+            for (id, count) in projects {
+                transactions += count;
+                spans += Self::estimate_transaction_spans(pool, id, cutoff, count).await?;
+            }
+        }
 
-        // Mask out categories the filter excludes. `spans` follow their parent
-        // transaction, and an issue can only be emptied when its events are in
-        // scope — so both track their governing flag, not a separate one.
+        // Mask out categories the filter excludes. An issue can only be emptied
+        // when its events are in scope, so it tracks that flag.
         Ok(CleanupCounts {
             events: if filter.include_events { events } else { 0 },
-            transactions: if filter.include_transactions {
-                transactions
-            } else {
-                0
-            },
-            spans: if filter.include_transactions {
-                spans
-            } else {
-                0
-            },
+            transactions,
+            spans,
             logs: if filter.include_logs { logs } else { 0 },
             issues_removed: if filter.include_events {
                 issues_removed
@@ -645,7 +662,8 @@ impl StorageService {
                 p.name,
                 (SELECT COUNT(*) FROM events e        WHERE e.project_id = p.id) AS events_count,
                 (SELECT COUNT(*) FROM transactions t  WHERE t.project_id = p.id) AS transactions_count,
-                (SELECT COUNT(*) FROM spans s         WHERE s.project_id = p.id) AS spans_count,
+                (SELECT COUNT(*) FROM spans s
+                    WHERE s.project_id = p.id AND s.transaction_id IS NULL) AS standalone_spans,
                 (SELECT COUNT(*) FROM logs lg         WHERE lg.project_id = p.id) AS logs_count,
                 (SELECT COUNT(*) FROM source_file_metadata m WHERE m.project_id = p.id) AS source_maps_count
             FROM projects p
@@ -661,11 +679,19 @@ impl StorageService {
             project_name,
             events_count,
             transactions_count,
-            spans_count,
+            standalone_spans,
             logs_count,
             source_maps_count,
         ) in rows
         {
+            let spans_count = standalone_spans
+                + Self::estimate_transaction_spans(
+                    pool,
+                    project_id,
+                    all_ingested(),
+                    transactions_count,
+                )
+                .await?;
             let estimated_bytes =
                 Self::estimate_bytes(pool, EVENTS_SAMPLE, project_id, events_count).await?
                     + Self::estimate_bytes(
@@ -712,23 +738,68 @@ impl StorageService {
             .bind(SIZE_SAMPLE_ROWS)
             .fetch_one(pool)
             .await?;
-        Ok(scale_sample(bytes, sampled, count))
+        Ok(scale_sample(bytes, sampled, SIZE_SAMPLE_ROWS, count))
+    }
+
+    /// Spans under a project's `transactions` transactions ingested before
+    /// `cutoff`, scaled from a random sample of them (see
+    /// [`TRANSACTION_SPANS_SAMPLE`]). Exact whenever there are no more of them
+    /// than the sample.
+    ///
+    /// ponytail: a sample, so a project whose span counts vary wildly per
+    /// transaction lands a few percent off (8% on a 37M-span production total).
+    /// A `span_count` column on `transactions`, written at ingest, would make
+    /// it exact.
+    async fn estimate_transaction_spans(
+        pool: &DbPool,
+        project_id: i32,
+        cutoff: chrono::DateTime<Utc>,
+        transactions: i64,
+    ) -> AppResult<i64> {
+        if transactions == 0 {
+            return Ok(0);
+        }
+        let (spans, sampled): (i64, i64) = sqlx::query_as(TRANSACTION_SPANS_SAMPLE)
+            .bind(project_id)
+            .bind(cutoff)
+            .bind(SPAN_SAMPLE_ROWS)
+            .fetch_one(pool)
+            .await?;
+        Ok(scale_sample(spans, sampled, SPAN_SAMPLE_ROWS, transactions))
     }
 
     /// Instance-wide storage summary (row counts + DB size + source-map weight).
+    /// Spans are the per-project estimate of [`Self::by_project`].
     pub async fn global_summary(pool: &DbPool) -> AppResult<StorageSummary> {
-        let (events_count, transactions_count, spans_count, logs_count): (i64, i64, i64, i64) =
-            sqlx::query_as(
-                r#"
+        let (events_count, transactions_count, logs_count): (i64, i64, i64) = sqlx::query_as(
+            r#"
             SELECT
                 (SELECT COUNT(*) FROM events)       AS events_count,
                 (SELECT COUNT(*) FROM transactions) AS transactions_count,
-                (SELECT COUNT(*) FROM spans)        AS spans_count,
                 (SELECT COUNT(*) FROM logs)         AS logs_count
             "#,
-            )
-            .fetch_one(pool)
-            .await?;
+        )
+        .fetch_one(pool)
+        .await?;
+
+        let projects: Vec<(i32, i64, i64)> = sqlx::query_as(
+            r#"
+            SELECT
+                p.id,
+                (SELECT COUNT(*) FROM transactions t WHERE t.project_id = p.id),
+                (SELECT COUNT(*) FROM spans s
+                    WHERE s.project_id = p.id AND s.transaction_id IS NULL)
+            FROM projects p
+            "#,
+        )
+        .fetch_all(pool)
+        .await?;
+        let mut spans_count = 0;
+        for (project_id, transactions, standalone) in projects {
+            spans_count += standalone
+                + Self::estimate_transaction_spans(pool, project_id, all_ingested(), transactions)
+                    .await?;
+        }
 
         Ok(StorageSummary {
             total_db_size_bytes: Self::db_size_bytes(pool).await?,
@@ -787,14 +858,20 @@ impl StorageService {
     }
 }
 
-/// Scales a sample's `bytes` over `sampled` rows to `count` rows.
+/// A cutoff past every row ingested so far, for estimates over all of them.
+fn all_ingested() -> chrono::DateTime<Utc> {
+    Utc::now() + chrono::Duration::days(1)
+}
+
+/// Scales a sample's `bytes` over `sampled` rows, read with `limit`, to
+/// `count` rows.
 ///
 /// A sample short of the limit already holds every row the project has, so
 /// its bytes are the exact figure. `count` was read in an earlier query, and
 /// a cleanup deleting rows in between would otherwise scale what is left by
 /// the count from before it.
-fn scale_sample(bytes: i64, sampled: i64, count: i64) -> i64 {
-    if sampled < SIZE_SAMPLE_ROWS {
+fn scale_sample(bytes: i64, sampled: i64, limit: i64, count: i64) -> i64 {
+    if sampled < limit {
         return bytes;
     }
     (i128::from(bytes) * i128::from(count) / i128::from(sampled)) as i64
@@ -807,12 +884,15 @@ mod tests {
     #[test]
     fn short_sample_is_exact_whatever_the_stale_count() {
         // 100 counted, 90 deleted before the sample: the 10 left are the answer.
-        assert_eq!(scale_sample(1_000, 10, 100), 1_000);
-        assert_eq!(scale_sample(0, 0, 5), 0);
+        assert_eq!(scale_sample(1_000, 10, SIZE_SAMPLE_ROWS, 100), 1_000);
+        assert_eq!(scale_sample(0, 0, SIZE_SAMPLE_ROWS, 5), 0);
     }
 
     #[test]
     fn full_sample_scales_to_the_count() {
-        assert_eq!(scale_sample(2_000, SIZE_SAMPLE_ROWS, 450), 4_500);
+        assert_eq!(
+            scale_sample(2_000, SIZE_SAMPLE_ROWS, SIZE_SAMPLE_ROWS, 450),
+            4_500
+        );
     }
 }
