@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1.53.1", features = ["full"] }
+tokio = { version = "1.53.2", features = ["full"] }
 
 # HTTP client
 reqwest = { version = "0.13.5", default-features = false, features = [
@@ -44,7 +44,7 @@ hdrhistogram = "7.6.0"
 chrono = { version = "0.4.45", features = ["serde"] }
 
 # UUID generation
-uuid = { version = "1.26.1", features = ["v4"] }
+uuid = { version = "1.27.0", features = ["v4"] }
 
 # Compression
 flate2 = "1.1.10"

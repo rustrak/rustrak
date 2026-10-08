@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type {
   cleanupCountsSchema,
   cleanupOptionsSchema,
+  cleanupStatusSchema,
   projectStorageSchema,
   sourceMapGcResultSchema,
   sourceMapStorageSchema,
@@ -19,6 +20,9 @@ export type ProjectStorage = z.infer<typeof projectStorageSchema>;
 
 /** Rows affected by a cleanup preview or execution. */
 export type CleanupCounts = z.infer<typeof cleanupCountsSchema>;
+
+/** The background cleanup job: its state and the rows removed so far. */
+export type CleanupStatus = z.infer<typeof cleanupStatusSchema>;
 
 /** Outcome of a source-map garbage collection. */
 export type SourceMapGcResult = z.infer<typeof sourceMapGcResultSchema>;

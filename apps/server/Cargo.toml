@@ -1,6 +1,6 @@
 [package]
 name = "rustrak"
-version = "0.15.2"
+version = "0.16.0"
 edition = "2021"
 authors = ["Rustrak Team"]
 description = "Ultra-lightweight error tracking server compatible with Sentry SDKs"
@@ -29,7 +29,7 @@ actix-session = { version = "0.11", features = ["cookie-session"] }
 argon2 = "0.6.0"
 
 # Async runtime
-tokio = { version = "1.53.1", features = ["full"] }
+tokio = { version = "1.53.2", features = ["full"] }
 
 # Serialization
 serde = { version = "1.0.229", features = ["derive"] }
@@ -58,7 +58,7 @@ sqlx = { version = "0.9.0", features = [
 ] }
 
 # UUID generation
-uuid = { version = "1.26.1", features = ["v4", "serde"] }
+uuid = { version = "1.27.0", features = ["v4", "serde"] }
 
 # Slug generation
 slug = "0.1.6"
@@ -148,7 +148,7 @@ utoipa-scalar = { version = "0.4.0", features = ["actix-web"], optional = true }
 rustrak = { path = ".", default-features = false, features = ["test-seams"] }
 
 # Names the request type for helpers that drive an `init_service` app
-actix-http = "3.13.7"
+actix-http = "3.18.12"
 
 # Test framework & fixtures
 rstest = "0.27.0"

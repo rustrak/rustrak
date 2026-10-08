@@ -1,6 +1,7 @@
 import type {
   CleanupCounts,
   CleanupOptions,
+  CleanupStatus,
   Result,
   RustrakError,
   SourceMapGcResult,
@@ -28,12 +29,23 @@ export async function previewStorageCleanup(
   return client.storage.previewCleanup(options);
 }
 
-/** Execute a cleanup: permanently delete old data and emptied issues. */
+/**
+ * Start a cleanup: permanently delete old data and emptied issues. Returns once
+ * the server has started it; follow it with {@link getStorageCleanupStatus}.
+ */
 export async function executeStorageCleanup(
   options: CleanupOptions,
-): Promise<Result<CleanupCounts, RustrakError>> {
+): Promise<Result<CleanupStatus, RustrakError>> {
   const client = await createClient();
   return client.storage.executeCleanup(options);
+}
+
+/** The running cleanup's progress, or the outcome of the last one. */
+export async function getStorageCleanupStatus(): Promise<
+  Result<CleanupStatus, RustrakError>
+> {
+  const client = await createClient();
+  return client.storage.getCleanupStatus();
 }
 
 /** Dry-run: count orphaned source maps a GC would remove. Mutates nothing. */

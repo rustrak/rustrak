@@ -245,6 +245,19 @@ CREATE_SUPERUSER="admin@example.com:secure-password"
 
 Only creates the user if the database has no users yet. After that it is ignored.
 
+## Prometheus metrics
+
+`RUSTRAK_METRICS=on` enables `GET /metrics` on the server's existing port. It is off by default (the route returns 404); only `on` and `off` are accepted. This is independent of anonymous telemetry and does not send data anywhere.
+
+The scrape reports ingest totals and latency, digest outcomes, 5xx responses by matched route, and failed alerts by provider. It also reports the pending spool (count, bytes and oldest-file age) and database size, read at most once every 15 seconds. Counters reset on restart, not when anonymous telemetry sends a report. Labels never contain project IDs, user details or event contents.
+
+`/metrics` has no application authentication. Keep it on a trusted network or restrict it at the reverse proxy. The standalone dashboard image does not forward it, so point Prometheus at the server.
+
+```bash
+RUSTRAK_METRICS=on
+curl http://localhost:8080/metrics
+```
+
 ## Telemetry
 
 | Variable | Default | Description |

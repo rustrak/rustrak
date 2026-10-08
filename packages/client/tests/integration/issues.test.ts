@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { HttpResponse, http } from 'msw/http';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RustrakClient } from '../../src/client.js';
 import { expectErr, expectOk } from '../helpers/result.js';
+import { appErrorResponse } from '../mocks/handlers.js';
+import { server } from '../setup.js';
 
 describe('IssuesResource Integration', () => {
   let client: RustrakClient;
@@ -346,6 +349,53 @@ describe('IssuesResource Integration', () => {
     it('should bulk-delete issues', async () => {
       const res = expectOk(await client.issues.bulkDelete(1, { ids }));
       expect(res.deleted).toBe(2);
+    });
+
+    it.each(['open', 'resolved', 'muted', 'all'] as const)(
+      'should send the %s filter in the DELETE body',
+      async (filter) => {
+        const requestBody = vi.fn();
+        server.use(
+          http.delete(
+            'http://localhost:8080/api/projects/1/issues',
+            async ({ request }) => {
+              requestBody(await request.json());
+              return HttpResponse.json({ deleted: 3 });
+            },
+          ),
+        );
+        const result = expectOk(await client.issues.bulkDelete(1, { filter }));
+        expect(result.deleted).toBe(3);
+        expect(requestBody).toHaveBeenCalledExactlyOnceWith({ filter });
+      },
+    );
+
+    it('should reject conflicting selectors before making a request', async () => {
+      const request = vi.fn(() => HttpResponse.json({ deleted: 0 }));
+      server.use(
+        http.delete('http://localhost:8080/api/projects/1/issues', request),
+      );
+      const error = expectErr(
+        await client.issues.bulkDelete(1, { ids, filter: 'all' }),
+      );
+      expect(error.kind).toBe('invalid_request');
+      expect(request).not.toHaveBeenCalled();
+    });
+
+    it('should return permission errors when deleting by filter', async () => {
+      server.use(
+        http.delete('http://localhost:8080/api/projects/1/issues', () =>
+          appErrorResponse('Forbidden', 'Forbidden: Insufficient project role'),
+        ),
+      );
+      const error = expectErr(
+        await client.issues.bulkDelete(1, { filter: 'all' }),
+      );
+      expect(error).toMatchObject({
+        kind: 'forbidden',
+        status: 403,
+        message: 'Forbidden: Insufficient project role',
+      });
     });
 
     it('should resolve in next release', async () => {

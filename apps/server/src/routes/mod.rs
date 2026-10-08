@@ -9,6 +9,7 @@ pub mod invitations;
 pub mod issues;
 pub mod logs;
 pub mod members;
+pub mod metrics;
 pub mod period;
 pub mod projects;
 pub mod releases;

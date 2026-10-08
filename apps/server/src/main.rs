@@ -61,6 +61,13 @@ async fn main() -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
     })?;
 
+    let metrics_enabled = match std::env::var("RUSTRAK_METRICS") {
+        Ok(value) => routes::metrics::enabled(Some(&value)),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(std::env::VarError::NotUnicode(_)) => Err("RUSTRAK_METRICS must be 'on' or 'off'"),
+    }
+    .map_err(|msg| std::io::Error::new(std::io::ErrorKind::InvalidInput, msg))?;
+
     log::info!("Starting Rustrak server on {}:{}", config.host, config.port);
 
     // Built before any I/O: an unusable secret must stop the process here, not
@@ -241,8 +248,19 @@ async fn main() -> std::io::Result<()> {
     }
     let telemetry_reporter_data = web::Data::new(telemetry_reporter);
     let telemetry_status_data = web::Data::new(telemetry_status);
+    let metrics_data = web::Data::new(routes::metrics::MetricsEndpoint::new(
+        metrics_enabled,
+        ingest_dir.clone(),
+        rustrak::telemetry::Counters::global(),
+    ));
+    if metrics_enabled {
+        log::info!("Prometheus metrics enabled at /metrics");
+    }
 
     let session_aggregator_data = web::Data::new(session_aggregator.clone());
+    // Built outside the worker factory so every worker shares the one job and
+    // a second cleanup is refused no matter which worker takes the request.
+    let cleanup_job_data = web::Data::new(rustrak::services::CleanupJob::default());
 
     // Processor registry — single dispatch surface for the ingest pipeline.
     // Built once; each processor owns the deps it needs.
@@ -296,6 +314,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(processors_data.clone())
             .app_data(telemetry_reporter_data.clone())
             .app_data(telemetry_status_data.clone())
+            .app_data(metrics_data.clone())
+            .app_data(cleanup_job_data.clone())
             // Middleware
             // `Logger::default()`'s format, plus the incident id a 5xx echoes
             // in `INCIDENT_ID_HEADER`. `error_response` never sees the request
@@ -331,6 +351,8 @@ async fn main() -> std::io::Result<()> {
             )
             // Root health check alias
             .route("/health", web::get().to(routes::health::liveness))
+            // Off by default; returns 404 unless RUSTRAK_METRICS=on.
+            .configure(routes::metrics::configure)
             // Auth routes (public - no Bearer auth required)
             .configure(routes::auth::configure)
             // API routes (auth required)

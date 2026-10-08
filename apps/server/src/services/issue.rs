@@ -531,13 +531,7 @@ impl IssueService {
         }
         let offset = (page - 1) * per_page;
 
-        // Build WHERE clause based on filter
-        let status_clause = match filter {
-            IssueFilter::Open => "project_id = $1 AND status = 'unresolved'",
-            IssueFilter::Resolved => "project_id = $1 AND status = 'resolved'",
-            IssueFilter::Muted => "project_id = $1 AND status = 'ignored'",
-            IssueFilter::All => "project_id = $1",
-        };
+        let status_clause = filter_clause(filter);
 
         // Build ORDER BY clause
         let order_clause = match (sort, order) {
@@ -1064,6 +1058,81 @@ impl IssueService {
         Ok(deleted)
     }
 
+    /// Deletes every issue in the project matching `filter`, with their events
+    /// (CASCADE), in one statement rather than one round trip per issue.
+    pub async fn delete_by_filter(
+        pool: &DbPool,
+        project_id: i32,
+        filter: IssueFilter,
+    ) -> AppResult<u64> {
+        // `filter_clause` returns fixed SQL; only the project id is user input.
+        let clause = filter_clause(filter);
+
+        #[cfg(feature = "postgres")]
+        let deleted = {
+            let query = format!(
+                "WITH deleted AS (
+                    DELETE FROM issues WHERE {clause}
+                    RETURNING stored_event_count, digested_event_count
+                ), totals AS (
+                    SELECT COUNT(*) AS issues,
+                           COALESCE(SUM(stored_event_count), 0) AS stored,
+                           COALESCE(SUM(digested_event_count), 0) AS digested
+                    FROM deleted
+                ), updated AS (
+                    UPDATE projects SET
+                        stored_event_count   = GREATEST(0, projects.stored_event_count   - totals.stored),
+                        digested_event_count = GREATEST(0, projects.digested_event_count - totals.digested)
+                    FROM totals
+                    WHERE projects.id = $1
+                )
+                -- Count from `totals`, not the UPDATE: an admin can target a
+                -- project id with no row, which must be 0 deleted, not an error.
+                SELECT issues FROM totals"
+            );
+            let issues: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(&*query))
+                .bind(project_id)
+                .fetch_one(pool)
+                .await?;
+            issues as u64
+        };
+
+        #[cfg(feature = "sqlite")]
+        let deleted = {
+            // Same reason as `delete`: read-then-write needs BEGIN IMMEDIATE.
+            let mut tx = crate::db::begin_write(pool).await?;
+            let totals = format!(
+                "SELECT COALESCE(SUM(stored_event_count), 0), COALESCE(SUM(digested_event_count), 0)
+                 FROM issues WHERE {clause}"
+            );
+            let (stored, digested): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(&*totals))
+                .bind(project_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            let delete = format!("DELETE FROM issues WHERE {clause}");
+            let deleted = sqlx::query(sqlx::AssertSqlSafe(&*delete))
+                .bind(project_id)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            sqlx::query(
+                "UPDATE projects SET
+                    stored_event_count    = MAX(0, stored_event_count    - $1),
+                    digested_event_count  = MAX(0, digested_event_count  - $2)
+                WHERE id = $3",
+            )
+            .bind(stored)
+            .bind(digested)
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            deleted
+        };
+
+        Ok(deleted)
+    }
+
     /// Aggregates the distinct values (with counts) for a single tag key across
     /// an issue's recent events. Dialect-safe: scans event JSON in Rust.
     pub async fn tag_values(
@@ -1374,6 +1443,16 @@ impl IssueService {
         }
 
         Ok(())
+    }
+}
+
+/// WHERE clause for an issue filter; `$1` is the project id.
+fn filter_clause(filter: IssueFilter) -> &'static str {
+    match filter {
+        IssueFilter::Open => "project_id = $1 AND status = 'unresolved'",
+        IssueFilter::Resolved => "project_id = $1 AND status = 'resolved'",
+        IssueFilter::Muted => "project_id = $1 AND status = 'ignored'",
+        IssueFilter::All => "project_id = $1",
     }
 }
 

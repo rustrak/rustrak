@@ -1187,6 +1187,10 @@
     "cancel": "Cancelar",
     "deleting": "Eliminando…",
     "deleteAction": "Eliminar definitivamente",
+    "running": {
+      "title": "Limpieza en curso",
+      "description": "Borrando en lotes pequeños en segundo plano, para que la ingesta siga funcionando. Puedes salir de esta página: seguirá ejecutándose."
+    },
     "toasts": {
       "previewFailed": "No se pudo previsualizar la limpieza",
       "cleanupFailed": "La limpieza falló",

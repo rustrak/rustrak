@@ -1,4 +1,4 @@
-import { HttpResponse, http } from 'msw';
+import { HttpResponse, http } from 'msw/http';
 import { describe, expect, it } from 'vitest';
 import { RustrakClient } from '../../src/index.js';
 import { expectErr, expectOk } from '../helpers/result.js';
@@ -78,15 +78,16 @@ describe('StorageResource', () => {
   });
 
   describe('executeCleanup()', () => {
-    it('returns the counts of removed rows', async () => {
-      const counts = expectOk(
+    it('returns the started job', async () => {
+      const status = expectOk(
         await client.storage.executeCleanup({
           older_than_days: 30,
         }),
       );
 
-      expect(counts.events).toBe(20);
-      expect(counts.issues_removed).toBe(3);
+      expect(status.state).toBe('running');
+      expect(status.removed.events).toBe(0);
+      expect(status.finished_at).toBeNull();
     });
 
     it('forwards the data-type selection flags in the request body', async () => {
@@ -96,13 +97,22 @@ describe('StorageResource', () => {
           'http://localhost:8080/api/storage/cleanup',
           async ({ request }) => {
             sentBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              events: 0,
-              transactions: 0,
-              spans: 0,
-              logs: 50,
-              issues_removed: 0,
-            });
+            return HttpResponse.json(
+              {
+                state: 'running',
+                removed: {
+                  events: 0,
+                  transactions: 0,
+                  spans: 0,
+                  logs: 0,
+                  issues_removed: 0,
+                },
+                started_at: '2026-10-07T10:00:00Z',
+                finished_at: null,
+                error: null,
+              },
+              { status: 202 },
+            );
           },
         ),
       );
@@ -122,6 +132,55 @@ describe('StorageResource', () => {
         include_transactions: false,
         include_logs: true,
       });
+    });
+
+    it('reports a conflict while another cleanup is running', async () => {
+      server.use(
+        http.post('http://localhost:8080/api/storage/cleanup', () =>
+          HttpResponse.json(
+            {
+              error: 'Conflict',
+              message: 'Conflict: A storage cleanup is already running',
+            },
+            { status: 409 },
+          ),
+        ),
+      );
+
+      const result = await client.storage.executeCleanup({
+        older_than_days: 30,
+      });
+      expect(expectErr(result).kind).toBe('conflict');
+    });
+
+    it('is never retried, so a lost response cannot start a second run', async () => {
+      let calls = 0;
+      server.use(
+        http.post('http://localhost:8080/api/storage/cleanup', () => {
+          calls += 1;
+          return HttpResponse.json(
+            { error: 'InternalError', message: 'boom' },
+            { status: 503 },
+          );
+        }),
+      );
+
+      const result = await client.storage.executeCleanup({
+        older_than_days: 30,
+      });
+      expect(result.success).toBe(false);
+      expect(calls).toBe(1);
+    });
+  });
+
+  describe('getCleanupStatus()', () => {
+    it('returns the progress or outcome of the cleanup', async () => {
+      const status = expectOk(await client.storage.getCleanupStatus());
+
+      expect(status.state).toBe('completed');
+      expect(status.removed.events).toBe(20);
+      expect(status.removed.issues_removed).toBe(3);
+      expect(status.finished_at).not.toBeNull();
     });
   });
 

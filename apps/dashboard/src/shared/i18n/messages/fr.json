@@ -1187,6 +1187,10 @@
     "cancel": "Annuler",
     "deleting": "Suppression…",
     "deleteAction": "Supprimer définitivement",
+    "running": {
+      "title": "Nettoyage en cours",
+      "description": "Suppression par petits lots en arrière-plan, pour que l'ingestion continue de fonctionner. Vous pouvez quitter cette page : il continue de s'exécuter."
+    },
     "toasts": {
       "previewFailed": "Impossible de prévisualiser le nettoyage",
       "cleanupFailed": "Échec du nettoyage",

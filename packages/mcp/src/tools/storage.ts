@@ -89,7 +89,7 @@ export function registerStorageTools(
     'execute_storage_cleanup',
     {
       description:
-        'DESTRUCTIVE (admin only): permanently delete Rustrak data older than `older_than_days` (optionally scoped to one project and to specific data categories) and remove any issue left with zero events. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_cleanup first and show the user the counts before confirming.',
+        'DESTRUCTIVE (admin only): permanently delete Rustrak data older than `older_than_days` (optionally scoped to one project and to specific data categories) and remove the issues it leaves with zero events. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_cleanup first and show the user the counts before confirming. The cleanup runs in the background: this returns the started job at once, and get_storage_cleanup_status reports its progress and final counts. Only one cleanup runs at a time; starting another while one runs is refused with a conflict.',
       inputSchema: {
         older_than_days: z
           .number()
@@ -144,6 +144,19 @@ export function registerStorageTools(
         include_transactions,
         include_logs,
       });
+      return mcpJson(result);
+    },
+  );
+
+  server.registerTool(
+    'get_storage_cleanup_status',
+    {
+      description:
+        'Get the progress of the running Rustrak storage cleanup, or the outcome of the last one (admin only): its state (idle, running, completed, failed), the rows removed so far, and when it started and finished. Use it after execute_storage_cleanup to tell the user when the deletion is done.',
+      inputSchema: {},
+    },
+    async () => {
+      const result = await client.storage.getCleanupStatus();
       return mcpJson(result);
     },
   );

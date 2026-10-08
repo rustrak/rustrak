@@ -63,6 +63,7 @@ export type {
   ChunkUploadCapability,
   CleanupCounts,
   CleanupOptions,
+  CleanupStatus,
   CreateAlertIntegration,
   CreateAlertRule,
   CreateAuthToken,

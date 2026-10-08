@@ -9,7 +9,7 @@ use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
 use rustrak::models::CreateProject;
 use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
-use rustrak::services::{AuthTokenService, IssueService, ProjectService};
+use rustrak::services::{AuthTokenService, EventService, IssueService, ProjectService};
 use serde_json::{json, Value};
 use std::time::Duration as StdDuration;
 use uuid::Uuid;
@@ -1279,6 +1279,241 @@ async fn test_bulk_delete_issues_via_http_scoped_to_project() {
 
     assert!(IssueService::get_by_id(&db.pool, mine.id).await.is_err());
     assert!(IssueService::get_by_id(&db.pool, theirs.id).await.is_ok());
+}
+
+#[actix_web::test]
+async fn test_bulk_delete_issues_by_filter_updates_project_counts() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Bulk Delete Filter Project").await;
+    let other_project = create_test_project(&db.pool, "Other Filter Project").await;
+    let config = create_test_config();
+
+    let open = create_test_issue(&db.pool, project.id, "TypeError", "open").await;
+    let resolved = create_test_issue(&db.pool, project.id, "TypeError", "resolved").await;
+    let other_resolved = create_test_issue(&db.pool, other_project.id, "TypeError", "b").await;
+    let mut event_ids = Vec::new();
+    for (issue, events) in [(&open, 2), (&resolved, 3), (&other_resolved, 3)] {
+        let grouping_id: i32 = sqlx::query_scalar(
+            "INSERT INTO groupings (project_id, issue_id, grouping_key, grouping_key_hash)
+             VALUES ($1, $2, $3, $4) RETURNING id",
+        )
+        .bind(issue.project_id)
+        .bind(issue.id)
+        .bind(issue.id.to_string())
+        .bind(issue.id.to_string())
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        for _ in 0..events {
+            let event_id = EventService::create(
+                &db.pool,
+                Uuid::new_v4(),
+                issue.project_id,
+                issue.id,
+                grouping_id,
+                &json!({ "level": "error" }),
+                Utc::now(),
+                &create_denormalized_fields("TypeError", "bulk delete", "/api/test"),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+            event_ids.push((issue.id, event_id));
+        }
+        sqlx::query(
+            "UPDATE issues SET stored_event_count = $1, digested_event_count = $1 + 1 WHERE id = $2",
+        )
+        .bind(events)
+        .bind(issue.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    }
+    sqlx::query("UPDATE issues SET status = 'resolved' WHERE id IN ($1, $2)")
+        .bind(resolved.id)
+        .bind(other_resolved.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE projects SET stored_event_count = 5, digested_event_count = 7 WHERE id = $1",
+    )
+    .bind(project.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE projects SET stored_event_count = 3, digested_event_count = 4 WHERE id = $1",
+    )
+    .bind(other_project.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.pool.clone()))
+            .app_data(web::Data::new(config))
+            .configure(routes::issues::configure)
+            .configure(routes::projects::configure),
+    )
+    .await;
+    let delete = |body: Value| {
+        test::TestRequest::delete()
+            .uri(&format!("/api/projects/{}/issues", project.id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(body)
+            .to_request()
+    };
+
+    // Invalid selections must preserve the JSON error contract and delete nothing.
+    for selection in [
+        json!({}),
+        json!({ "ids": [], "filter": "all" }),
+        json!({ "filter": "everything" }),
+        json!({ "ids": [], "filter": "everything" }),
+        json!({ "ids": ["invalid-uuid"] }),
+        json!({ "filter": null }),
+        json!({ "filter": "resolved", "extra": true }),
+    ] {
+        let resp = test::call_service(&app, delete(selection)).await;
+        assert_eq!(resp.status(), 400);
+        assert_eq!(
+            resp.headers().get("content-type").unwrap(),
+            "application/json"
+        );
+        let body: Value = test::read_body_json(resp).await;
+        assert_eq!(body["error"]["type"], "ValidationError");
+        assert!(body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("ids or filter"));
+    }
+
+    let resp = test::call_service(&app, delete(json!({ "filter": "resolved" }))).await;
+    assert!(resp.status().is_success());
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["deleted"], 1);
+
+    assert!(IssueService::get_by_id(&db.pool, resolved.id)
+        .await
+        .is_err());
+    assert!(IssueService::get_by_id(&db.pool, open.id).await.is_ok());
+    assert!(IssueService::get_by_id(&db.pool, other_resolved.id)
+        .await
+        .is_ok());
+    let project_after = ProjectService::get_by_id(&db.pool, project.id)
+        .await
+        .unwrap();
+    assert_eq!(project_after.stored_event_count, 2);
+    assert_eq!(project_after.digested_event_count, 3);
+    for (issue_id, event_id) in &event_ids {
+        let exists = EventService::get_by_id(&db.pool, *event_id).await.is_ok();
+        assert_eq!(exists, *issue_id != resolved.id);
+    }
+
+    let resp = test::call_service(&app, delete(json!({ "filter": "all" }))).await;
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["deleted"], 1);
+    let project_after = ProjectService::get_by_id(&db.pool, project.id)
+        .await
+        .unwrap();
+    assert_eq!(project_after.stored_event_count, 0);
+    assert_eq!(project_after.digested_event_count, 0);
+    for (issue_id, event_id) in &event_ids {
+        let exists = EventService::get_by_id(&db.pool, *event_id).await.is_ok();
+        assert_eq!(exists, *issue_id == other_resolved.id);
+    }
+    let other_after = ProjectService::get_by_id(&db.pool, other_project.id)
+        .await
+        .unwrap();
+    assert_eq!(other_after.stored_event_count, 3);
+    assert_eq!(other_after.digested_event_count, 4);
+
+    let resp = test::call_service(&app, delete(json!({ "filter": "all" }))).await;
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["deleted"], 0);
+
+    // An admin token skips the project check, so a missing project reaches the
+    // service. Nothing matches; that is 0 deleted, as with unknown ids.
+    let req = test::TestRequest::delete()
+        .uri("/api/projects/999999/issues")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(json!({ "filter": "all" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["deleted"], 0);
+}
+
+#[actix_web::test]
+async fn test_bulk_delete_issues_open_and_muted_filters() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Open and Muted").await;
+    let open = create_test_issue(&db.pool, project.id, "TypeError", "open").await;
+    let muted = create_test_issue(&db.pool, project.id, "TypeError", "muted").await;
+    let resolved = create_test_issue(&db.pool, project.id, "TypeError", "resolved").await;
+    for (issue_id, status) in [(muted.id, "ignored"), (resolved.id, "resolved")] {
+        sqlx::query("UPDATE issues SET status = $1 WHERE id = $2")
+            .bind(status)
+            .bind(issue_id)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+    }
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.pool.clone()))
+            .configure(routes::issues::configure),
+    )
+    .await;
+
+    for (filter, deleted_id, kept_id) in [
+        ("open", open.id, muted.id),
+        ("muted", muted.id, resolved.id),
+    ] {
+        let req = test::TestRequest::delete()
+            .uri(&format!("/api/projects/{}/issues", project.id))
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(json!({ "filter": filter }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let body: Value = test::read_body_json(resp).await;
+        assert_eq!(body["deleted"], 1);
+        assert!(IssueService::get_by_id(&db.pool, deleted_id).await.is_err());
+        assert!(IssueService::get_by_id(&db.pool, kept_id).await.is_ok());
+        assert!(IssueService::get_by_id(&db.pool, resolved.id).await.is_ok());
+    }
+}
+
+#[actix_web::test]
+async fn test_bulk_delete_issues_preserves_payload_limit() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Payload Limit").await;
+    let issue = create_test_issue(&db.pool, project.id, "TypeError", "preserved").await;
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.pool.clone()))
+            .app_data(web::JsonConfig::default().limit(32))
+            .configure(routes::issues::configure),
+    )
+    .await;
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/projects/{}/issues", project.id))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(json!({ "ids": [issue.id] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 413);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["error"]["type"], "PayloadTooLarge");
+    assert!(IssueService::get_by_id(&db.pool, issue.id).await.is_ok());
 }
 
 #[actix_web::test]

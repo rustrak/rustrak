@@ -1187,6 +1187,10 @@
     "cancel": "Anulează",
     "deleting": "Se șterge…",
     "deleteAction": "Șterge definitiv",
+    "running": {
+      "title": "Curățare în curs",
+      "description": "Se șterge în loturi mici în fundal, astfel încât ingestia continuă să funcționeze. Poți părăsi această pagină: va continua să ruleze."
+    },
     "toasts": {
       "previewFailed": "Previzualizarea curățării nu a putut fi realizată",
       "cleanupFailed": "Curățarea a eșuat",

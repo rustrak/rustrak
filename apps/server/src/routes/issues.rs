@@ -490,15 +490,16 @@ pub async fn bulk_update_issues(
     request_body = crate::models::BulkDeleteIssues,
     responses(
         (status = 200, description = "Number of issues deleted", body = resp::BulkDeleteResponse),
+        (status = 400, description = "Neither or both of ids and filter given", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{project_id}/issues  (bulk delete)
+/// DELETE /api/projects/{project_id}/issues  (bulk delete by ids or filter)
 pub async fn bulk_delete_issues(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
-    body: web::Json<BulkDeleteIssues>,
+    body: Result<web::Json<BulkDeleteIssues>, actix_web::Error>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
@@ -510,9 +511,27 @@ pub async fn bulk_delete_issues(
         Action::MutateIssue,
     )
     .await?;
+
+    let body = body.map_err(|error| {
+        if error.as_response_error().status_code() == actix_web::http::StatusCode::PAYLOAD_TOO_LARGE {
+            AppError::PayloadTooLarge("Bulk delete request is too large".to_string())
+        } else {
+            AppError::Validation(
+                "Specify exactly one of ids or filter (open, resolved, muted, all), with no extra fields"
+                    .to_string(),
+            )
+        }
+    })?;
     body.validate_size()?;
 
-    let deleted = IssueService::bulk_delete(pool.get_ref(), project_id, &body.ids).await?;
+    let deleted = match &*body {
+        BulkDeleteIssues::Ids { ids } => {
+            IssueService::bulk_delete(pool.get_ref(), project_id, ids).await?
+        }
+        BulkDeleteIssues::Filter { filter } => {
+            IssueService::delete_by_filter(pool.get_ref(), project_id, *filter).await?
+        }
+    };
     Ok(HttpResponse::Ok().json(json!({ "deleted": deleted })))
 }
 

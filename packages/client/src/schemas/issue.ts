@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dateTimeSchema, uuidSchema } from './common.js';
+import { dateTimeSchema, issueFilterSchema, uuidSchema } from './common.js';
 
 /**
  * Canonical issue status values (Sentry-compatible).
@@ -193,8 +193,10 @@ export const bulkUpdateIssuesSchema = z.object({
 });
 
 /**
- * Request to bulk-delete issues.
+ * Request to bulk-delete issues: the listed ids, or every issue matching a
+ * filter. The server rejects a body with both or neither.
  */
-export const bulkDeleteIssuesSchema = z.object({
-  ids: z.array(uuidSchema),
-});
+export const bulkDeleteIssuesSchema = z.union([
+  z.strictObject({ ids: z.array(uuidSchema) }),
+  z.strictObject({ filter: issueFilterSchema }),
+]);

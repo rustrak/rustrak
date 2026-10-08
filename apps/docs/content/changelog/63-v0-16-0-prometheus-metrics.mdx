@@ -1,0 +1,46 @@
+---
+version: v0.16.0
+title: Prometheus Metrics
+description: An opt-in Prometheus endpoint, bulk issue deletion by state, and storage cleanups that run in the background
+date: 2026-10-07
+tags: [server, dashboard, client, mcp, storage, metrics]
+---
+
+## Prometheus metrics
+
+Set `RUSTRAK_METRICS=on` and the server answers `GET /metrics` on its existing
+port. It is off by default, and the route returns `404` until it is enabled
+([@WahidinAji](https://github.com/WahidinAji)).
+
+- Reports ingest totals and latency, digest outcomes, 5xx responses by route,
+  failed alerts by provider, the pending spool and the database size
+- Labels never carry project IDs, user details or event contents
+- `/metrics` has no authentication: keep it on a trusted network or restrict
+  it at the reverse proxy
+
+## Background storage cleanup
+
+A cleanup now runs on the server in small batches, each committed on its own,
+so ingestion keeps working while it runs. The storage page shows its progress,
+and you can leave the page and come back to it later. Only one cleanup runs at
+a time.
+
+- **Breaking:** `POST /api/storage/cleanup` answers `202` with the job instead
+  of the final counts, and `client.storage.executeCleanup()` returns a
+  `CleanupStatus`
+- `GET /api/storage/cleanup/status` reports `idle`, `running`, `completed` or
+  `failed` with the rows removed so far. It is available as
+  `client.storage.getCleanupStatus()` and as the MCP tool
+  `get_storage_cleanup_status`
+- If the server restarts mid-cleanup, what was already deleted stays deleted
+
+## Improvements
+
+- `DELETE /api/projects/{id}/issues` takes either `ids` or a `filter` (`open`,
+  `resolved`, `muted`, `all`), in the client and the MCP `bulk_delete_issues`
+  tool ([@WahidinAji](https://github.com/WahidinAji))
+- The storage page estimates per-project size from a sample of recent rows, so
+  it stays fast however much data the instance holds. Row counts stay exact
+- The integrations page links back to the alert settings you came from
+  ([@WahidinAji](https://github.com/WahidinAji))
+- Dependency updates

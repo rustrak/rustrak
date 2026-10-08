@@ -241,6 +241,55 @@ describe('issue tools', () => {
         ids: ['a', 'b'],
       });
     });
+
+    it.each(['open', 'resolved', 'muted', 'all'])(
+      'bulk_delete_issues forwards the %s filter',
+      async (filter) => {
+        mockClient.issues.bulkDelete.mockResolvedValue(ok({ deleted: 3 }));
+        const result = await callTool({
+          name: 'bulk_delete_issues',
+          arguments: { project_id: 1, filter },
+        });
+        expect(result.isError).toBeFalsy();
+        expect(mockClient.issues.bulkDelete).toHaveBeenCalledWith(1, {
+          filter,
+        });
+        expect(JSON.parse(result.content[0].text)).toEqual({ deleted: 3 });
+      },
+    );
+
+    it.each([
+      {},
+      { ids: [], filter: 'all' },
+      { filter: 'everything' },
+      { filter: null },
+    ])('bulk_delete_issues rejects invalid selection %j', async (selection) => {
+      const result = await callTool({
+        name: 'bulk_delete_issues',
+        arguments: { project_id: 1, ...selection },
+      });
+      expect(result.isError).toBe(true);
+      expect(mockClient.issues.bulkDelete).not.toHaveBeenCalled();
+    });
+
+    it('bulk_delete_issues returns API failures for a filter', async () => {
+      mockClient.issues.bulkDelete.mockResolvedValue(
+        fail({
+          kind: 'forbidden',
+          status: 403,
+          message: 'Insufficient project role',
+        }),
+      );
+      const result = await callTool({
+        name: 'bulk_delete_issues',
+        arguments: { project_id: 1, filter: 'all' },
+      });
+      expect(result.isError).toBe(true);
+      expect(mockClient.issues.bulkDelete).toHaveBeenCalledWith(1, {
+        filter: 'all',
+      });
+      expect(result.content[0].text).toContain('Insufficient project role');
+    });
   });
 
   describe('read sub-resources (#165)', () => {

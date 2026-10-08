@@ -8,6 +8,8 @@ use std::time::Duration;
 
 use serde::Serialize;
 
+use super::metrics::MetricsCounters;
+
 /// Why an ingest request was turned away. Reasons only, never the detail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rejection {
@@ -20,7 +22,8 @@ pub enum Rejection {
 
 /// Upper bounds, in milliseconds, of the latency buckets. Anything slower
 /// than the last one lands in it.
-const LATENCY_BOUNDS_MS: [u64; 13] = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+pub(crate) const LATENCY_BOUNDS_MS: [u64; 13] =
+    [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
 
 pub struct Counters {
     ingest_accepted: AtomicU64,
@@ -32,6 +35,7 @@ pub struct Counters {
     http_5xx_by_route: Mutex<BTreeMap<String, u64>>,
     alerts_failed_by_provider: Mutex<BTreeMap<String, u64>>,
     panics: Mutex<BTreeMap<String, u64>>,
+    metrics: MetricsCounters,
 }
 
 impl Default for Counters {
@@ -52,6 +56,7 @@ impl Counters {
             http_5xx_by_route: Mutex::new(BTreeMap::new()),
             alerts_failed_by_provider: Mutex::new(BTreeMap::new()),
             panics: Mutex::new(BTreeMap::new()),
+            metrics: MetricsCounters::new(),
         }
     }
 
@@ -61,7 +66,12 @@ impl Counters {
         GLOBAL.get_or_init(Counters::new)
     }
 
+    pub fn metrics(&self) -> &MetricsCounters {
+        &self.metrics
+    }
+
     pub fn ingest_accepted(&self, latency: Duration) {
+        self.metrics.accepted(latency);
         self.ingest_accepted.fetch_add(1, Relaxed);
         let ms = latency.as_millis() as u64;
         let bucket = LATENCY_BOUNDS_MS
@@ -72,28 +82,34 @@ impl Counters {
     }
 
     pub fn ingest_rejected(&self, reason: Rejection) {
+        self.metrics.rejected(reason);
         self.rejected[reason as usize].fetch_add(1, Relaxed);
     }
 
     pub fn digest_ok(&self) {
+        self.metrics.digest_ok();
         self.digest_ok.fetch_add(1, Relaxed);
     }
 
     pub fn digest_failed(&self) {
+        self.metrics.digest_failed();
         self.digest_failed.fetch_add(1, Relaxed);
     }
 
     /// An accepted event the quota dropped at digest.
     pub fn digest_rate_limited(&self) {
+        self.metrics.digest_rate_limited();
         self.digest_rate_limited.fetch_add(1, Relaxed);
     }
 
     /// `route` is the matched pattern (`/api/issues/{id}`), never the path.
     pub fn http_5xx(&self, route: &str) {
+        self.metrics.http_5xx(route);
         bump(&self.http_5xx_by_route, route);
     }
 
     pub fn alert_failed(&self, provider: &str) {
+        self.metrics.alert_failed(provider);
         bump(&self.alerts_failed_by_provider, provider);
     }
 

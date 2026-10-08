@@ -1,4 +1,5 @@
 use crate::error::{AppError, AppResult};
+use crate::pagination::IssueFilter;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -196,17 +197,26 @@ impl BulkUpdateIssues {
     }
 }
 
-/// Bulk delete request: remove many issues by id.
+/// Bulk delete request: the listed `ids`, or every issue matching `filter`.
+/// A body with neither or both matches no variant and is rejected, so an empty
+/// body can never mean "all".
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct BulkDeleteIssues {
-    pub ids: Vec<Uuid>,
+#[serde(untagged, deny_unknown_fields)]
+pub enum BulkDeleteIssues {
+    #[cfg_attr(feature = "openapi", schema(max_properties = 1))]
+    Ids { ids: Vec<Uuid> },
+    #[cfg_attr(feature = "openapi", schema(max_properties = 1))]
+    Filter { filter: IssueFilter },
 }
 
 impl BulkDeleteIssues {
-    /// Rejects the request if `ids` exceeds [`MAX_BULK_IDS`].
+    /// Rejects an `ids` request larger than [`MAX_BULK_IDS`].
     pub fn validate_size(&self) -> AppResult<()> {
-        validate_bulk_ids_size(&self.ids)
+        match self {
+            Self::Ids { ids } => validate_bulk_ids_size(ids),
+            Self::Filter { .. } => Ok(()),
+        }
     }
 }
 
@@ -357,8 +367,37 @@ mod tests {
     #[test]
     fn test_bulk_delete_rejects_ids_over_max() {
         let ids = (0..=MAX_BULK_IDS).map(|_| Uuid::new_v4()).collect();
-        let body = BulkDeleteIssues { ids };
+        let body = BulkDeleteIssues::Ids { ids };
         assert!(body.validate_size().is_err());
+    }
+
+    #[test]
+    fn test_bulk_delete_needs_exactly_one_of_ids_or_filter() {
+        let parse = |body| serde_json::from_value::<BulkDeleteIssues>(body);
+        assert!(parse(serde_json::json!({})).is_err());
+        assert!(parse(serde_json::json!({ "ids": [], "filter": "all" })).is_err());
+        assert!(matches!(
+            parse(serde_json::json!({ "filter": "resolved" })),
+            Ok(BulkDeleteIssues::Filter {
+                filter: IssueFilter::Resolved
+            })
+        ));
+    }
+
+    #[cfg(feature = "openapi")]
+    #[test]
+    fn test_bulk_delete_schema_limits_each_selector_to_one_property() {
+        use utoipa::PartialSchema;
+
+        let schema = serde_json::to_value(BulkDeleteIssues::schema()).unwrap();
+        let branches = schema["oneOf"].as_array().unwrap();
+        assert_eq!(branches.len(), 2);
+        for branch in branches {
+            // With one required selector, a second property (including an invalid
+            // other selector) must never validate against either branch.
+            assert_eq!(branch["required"].as_array().unwrap().len(), 1);
+            assert_eq!(branch["maxProperties"], 1);
+        }
     }
 
     #[test]

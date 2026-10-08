@@ -6,7 +6,7 @@ export const server = setupServer(...handlers);
 
 // Start server before all tests
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' });
+  server.listen({ onUnhandledFrame: 'error' });
 });
 
 // Reset handlers after each test

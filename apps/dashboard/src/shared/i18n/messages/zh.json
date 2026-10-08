@@ -1187,6 +1187,10 @@
     "cancel": "取消",
     "deleting": "正在删除…",
     "deleteAction": "永久删除",
+    "running": {
+      "title": "正在清理",
+      "description": "正在后台分小批删除，数据接收不受影响。你可以离开此页面，清理会继续进行。"
+    },
     "toasts": {
       "previewFailed": "无法预览清理",
       "cleanupFailed": "清理失败",

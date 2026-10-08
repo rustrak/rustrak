@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { RustrakClient } from '@rustrak/client';
 import { z } from 'zod';
-import { mcpDone, mcpJson } from '../errors.js';
+import { mcpDone, mcpJson, mcpRefusal } from '../errors.js';
 
 export function registerIssueTools(
   server: McpServer,
@@ -195,16 +195,26 @@ export function registerIssueTools(
   server.registerTool(
     'bulk_delete_issues',
     {
-      description: 'Permanently delete multiple issues and all their events.',
+      description:
+        'Permanently delete issues and all their events. Specify exactly one of ids or filter; filter=all deletes every issue in the project.',
       inputSchema: {
         project_id: z.number().int().describe('Project ID'),
-        ids: z.array(z.string()).describe('Issue IDs to delete'),
+        ids: z.array(z.string()).optional().describe('Issue IDs to delete'),
+        filter: z
+          .enum(['open', 'resolved', 'muted', 'all'])
+          .optional()
+          .describe('Delete every issue matching this state'),
       },
       annotations: { destructiveHint: true },
     },
-    async ({ project_id, ids }) => {
-      const result = await client.issues.bulkDelete(project_id, { ids });
-      return mcpJson(result);
+    async ({ project_id, ids, filter }) => {
+      if (ids !== undefined && filter === undefined) {
+        return mcpJson(await client.issues.bulkDelete(project_id, { ids }));
+      }
+      if (filter !== undefined && ids === undefined) {
+        return mcpJson(await client.issues.bulkDelete(project_id, { filter }));
+      }
+      return mcpRefusal('Specify exactly one of ids or filter.');
     },
   );
 

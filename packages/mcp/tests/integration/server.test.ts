@@ -70,6 +70,7 @@ const EXPECTED_TOOLS = [
   'get_storage_by_project',
   'preview_storage_cleanup',
   'execute_storage_cleanup',
+  'get_storage_cleanup_status',
   'preview_storage_source_maps_gc',
   'gc_storage_source_maps',
   // Spans (1)
@@ -120,6 +121,7 @@ describe('MCP server integration', () => {
         getProjects: vi.fn(),
         previewCleanup: vi.fn(),
         executeCleanup: vi.fn(),
+        getCleanupStatus: vi.fn(),
         previewGcSourceMaps: vi.fn(),
         gcSourceMaps: vi.fn(),
       },

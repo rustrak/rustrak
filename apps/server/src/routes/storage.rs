@@ -13,10 +13,11 @@ use crate::error::{AppError, AppResult};
 use crate::models::CleanupRequest;
 #[cfg(feature = "openapi")]
 use crate::models::{
-    CleanupCounts, ProjectStorage, SourceMapGcResult, SourceMapStorage, StorageSummary,
+    CleanupCounts, CleanupState, CleanupStatus, ProjectStorage, SourceMapGcResult,
+    SourceMapStorage, StorageSummary,
 };
 use crate::services::sourcemap_store::SourceMapStore;
-use crate::services::StorageService;
+use crate::services::{CleanupJob, StorageService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
@@ -98,26 +99,50 @@ pub async fn preview_cleanup(
     tag = "Storage",
     request_body = CleanupRequest,
     responses(
-        (status = 200, description = "Cleanup executed; rows removed", body = CleanupCounts),
+        (status = 202, description = "Cleanup started in the background; poll its status", body = CleanupStatus),
+        (status = 400, description = "Invalid retention window", body = crate::error::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 409, description = "A cleanup is already running", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/cleanup — deletes old data and removes emptied issues.
+/// POST /api/storage/cleanup — starts deleting old data and the issues it
+/// empties. Returns at once: the purge runs detached, in batches, and
+/// `GET /api/storage/cleanup/status` reports its progress.
 pub async fn execute_cleanup(
     pool: web::Data<DbPool>,
+    job: web::Data<CleanupJob>,
     actor: ApiActor,
     body: web::Json<CleanupRequest>,
 ) -> AppResult<HttpResponse> {
     require_admin(&actor)?;
-    let counts = StorageService::execute_cleanup(
-        pool.get_ref(),
+    let status = job.start(
+        pool.get_ref().clone(),
         body.older_than_days,
         body.project_id,
         body.filter(),
-    )
-    .await?;
-    Ok(HttpResponse::Ok().json(counts))
+    )?;
+    Ok(HttpResponse::Accepted().json(status))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/storage/cleanup/status",
+    tag = "Storage",
+    responses(
+        (status = 200, description = "The current or last cleanup and the rows it removed", body = CleanupStatus),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// GET /api/storage/cleanup/status — progress of the running cleanup, or the
+/// outcome of the last one.
+pub async fn get_cleanup_status(
+    job: web::Data<CleanupJob>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    require_admin(&actor)?;
+    Ok(HttpResponse::Ok().json(job.status()))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -169,6 +194,7 @@ pub async fn gc_source_maps(
         get_projects,
         preview_cleanup,
         execute_cleanup,
+        get_cleanup_status,
         preview_source_map_gc,
         gc_source_maps
     ),
@@ -178,6 +204,8 @@ pub async fn gc_source_maps(
         ProjectStorage,
         CleanupCounts,
         CleanupRequest,
+        CleanupState,
+        CleanupStatus,
         SourceMapGcResult,
     ))
 )]
@@ -191,6 +219,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/projects", web::get().to(get_projects))
             .route("/cleanup/preview", web::post().to(preview_cleanup))
             .route("/cleanup", web::post().to(execute_cleanup))
+            .route("/cleanup/status", web::get().to(get_cleanup_status))
             .route(
                 "/source-maps/gc/preview",
                 web::post().to(preview_source_map_gc),

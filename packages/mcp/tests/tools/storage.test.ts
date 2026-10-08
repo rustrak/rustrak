@@ -38,6 +38,14 @@ describe('storage tools', () => {
     issues_removed: 3,
   };
 
+  const mockStatus = (state: string) => ({
+    state,
+    removed: { ...mockCounts, logs: 0 },
+    started_at: '2026-10-07T10:00:00Z',
+    finished_at: state === 'running' ? null : '2026-10-07T10:05:00Z',
+    error: null,
+  });
+
   beforeEach(async () => {
     mockClient = {
       storage: {
@@ -45,6 +53,7 @@ describe('storage tools', () => {
         getProjects: vi.fn(),
         previewCleanup: vi.fn(),
         executeCleanup: vi.fn(),
+        getCleanupStatus: vi.fn(),
         previewGcSourceMaps: vi.fn(),
         gcSourceMaps: vi.fn(),
       },
@@ -142,8 +151,10 @@ describe('storage tools', () => {
       expect(mockClient.storage.executeCleanup).not.toHaveBeenCalled();
     });
 
-    it('runs the destructive cleanup when confirm is true', async () => {
-      mockClient.storage.executeCleanup.mockResolvedValue(ok(mockCounts));
+    it('starts the destructive cleanup when confirm is true', async () => {
+      mockClient.storage.executeCleanup.mockResolvedValue(
+        ok(mockStatus('running')),
+      );
 
       const result = await callTool({
         name: 'execute_storage_cleanup',
@@ -152,7 +163,7 @@ describe('storage tools', () => {
 
       expect(result.isError).toBeFalsy();
       const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.issues_removed).toBe(3);
+      expect(parsed.state).toBe('running');
       expect(mockClient.storage.executeCleanup).toHaveBeenCalledWith({
         older_than_days: 30,
         project_id: undefined,
@@ -160,7 +171,9 @@ describe('storage tools', () => {
     });
 
     it('forwards the data-type selection flags when confirmed', async () => {
-      mockClient.storage.executeCleanup.mockResolvedValue(ok(mockCounts));
+      mockClient.storage.executeCleanup.mockResolvedValue(
+        ok(mockStatus('running')),
+      );
 
       await callTool({
         name: 'execute_storage_cleanup',
@@ -181,6 +194,24 @@ describe('storage tools', () => {
           include_logs: false,
         }),
       );
+    });
+  });
+
+  describe('get_storage_cleanup_status', () => {
+    it('returns the progress or outcome of the cleanup', async () => {
+      mockClient.storage.getCleanupStatus.mockResolvedValue(
+        ok(mockStatus('completed')),
+      );
+
+      const result = await callTool({
+        name: 'get_storage_cleanup_status',
+        arguments: {},
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.state).toBe('completed');
+      expect(parsed.removed.issues_removed).toBe(3);
     });
   });
 

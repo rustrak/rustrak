@@ -1,12 +1,14 @@
 import type { CleanupCounts } from '@rustrak/client';
-import { AlertTriangle, Trash2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import {
   executeStorageCleanup,
+  getStorageCleanupStatus,
   previewStorageCleanup,
 } from '@/features/storage/api/mutations';
+import { useCleanupJob } from '@/features/storage/ui/hooks/use-cleanup-job';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +36,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/components/shadcn/select';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 interface StorageCleanupProps {
   projects: { id: number; name: string }[];
@@ -49,6 +50,12 @@ const PERIODS = [
 ];
 
 const ALL_SCOPE = 'all';
+
+const ALL_SELECTED: Record<DataType, boolean> = {
+  events: true,
+  transactions: true,
+  logs: true,
+};
 
 /** The three selectable data categories. `events` also governs the issues that
  *  empty out; `transactions` also governs cascaded spans. */
@@ -72,7 +79,6 @@ const periodLabel = (
 export function StorageCleanup({ projects }: StorageCleanupProps) {
   const format = useFormatter();
   const t = useTranslations('storage');
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [period, setPeriod] = useState('90');
   const [scope, setScope] = useState(ALL_SCOPE);
@@ -82,6 +88,8 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
     logs: true,
   });
   const [preview, setPreview] = useState<CleanupCounts | null>(null);
+  const { job, running, follow } = useCleanupJob();
+  const busy = isPending || running;
 
   const olderThanDays = Number(period);
   const projectId = scope === ALL_SCOPE ? undefined : Number(scope);
@@ -121,7 +129,7 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
 
   const handleExecute = () => {
     startTransition(async () => {
-      const counts = await executeStorageCleanup({
+      const started = await executeStorageCleanup({
         older_than_days: olderThanDays,
         project_id: projectId,
         include_events: selected.events,
@@ -129,16 +137,20 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
         include_logs: selected.logs,
       });
 
-      if (!counts.success) {
+      if (!started.success) {
         toast.error(t('toasts.cleanupFailed'), {
-          description: counts.error.message,
+          description: started.error.message,
         });
+        // Another cleanup is running: follow that one instead.
+        if (started.error.kind === 'conflict') {
+          const status = await getStorageCleanupStatus();
+          if (status.success) follow(status.data);
+        }
         return;
       }
 
-      toast.success(summarizeRemoved(counts.data, t));
       setPreview(null);
-      router.refresh();
+      follow(started.data);
     });
   };
 
@@ -172,7 +184,7 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
                 resetPreview();
               }
             }}
-            disabled={isPending}
+            disabled={busy}
           >
             <SelectTrigger
               className="sm:w-56"
@@ -197,7 +209,7 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
                 resetPreview();
               }
             }}
-            disabled={isPending}
+            disabled={busy}
           >
             <SelectTrigger
               className="sm:w-56"
@@ -230,7 +242,7 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
               <Checkbox
                 checked={selected[item.key]}
                 onCheckedChange={() => toggle(item.key)}
-                disabled={isPending}
+                disabled={busy}
               />
               {t(`type.${item.key}`)}
             </label>
@@ -241,12 +253,15 @@ export function StorageCleanup({ projects }: StorageCleanupProps) {
           type="button"
           variant="outline"
           onClick={handlePreview}
-          disabled={isPending || noneSelected}
+          disabled={busy || noneSelected}
         >
           {isPending ? t('working') : t('preview')}
         </Button>
 
-        {preview !== null &&
+        {running && job && <CleanupProgress removed={job.removed} />}
+
+        {!running &&
+          preview !== null &&
           (nothingToDelete ? (
             <div className="border-t pt-4">
               <p className="text-sm text-muted-foreground">
@@ -363,21 +378,33 @@ function totalRows(lines: PreviewLine[]): number {
   return lines.reduce((sum, l) => sum + l.count, 0);
 }
 
-/** Success toast text after an executed cleanup — categories the server reports
- *  as zero (spared or empty) simply don't show up. */
-function summarizeRemoved(
-  counts: CleanupCounts,
-  t: (key: string, values?: Record<string, string | number>) => string,
-): string {
-  const parts: string[] = [];
-  if (counts.events) parts.push(t('unit.errors', { count: counts.events }));
-  if (counts.transactions)
-    parts.push(t('unit.transactions', { count: counts.transactions }));
-  if (counts.spans) parts.push(t('unit.spans', { count: counts.spans }));
-  if (counts.logs) parts.push(t('unit.logs', { count: counts.logs }));
-  if (counts.issues_removed)
-    parts.push(t('unit.emptyIssues', { count: counts.issues_removed }));
-  return parts.length > 0
-    ? t('toasts.removed', { parts: parts.join(', ') })
-    : t('toasts.nothingRemoved');
+/** The running cleanup: what it has removed so far, across every category. */
+function CleanupProgress({ removed }: { removed: CleanupCounts }) {
+  const format = useFormatter();
+  const t = useTranslations('storage');
+
+  return (
+    <div className="border-t pt-4 space-y-3" aria-live="polite">
+      <p className="flex items-center gap-2 text-sm font-medium">
+        <Loader2 className="size-4 animate-spin" />
+        {t('running.title')}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {t('running.description')}
+      </p>
+      <dl className="text-sm">
+        {buildLines(removed, ALL_SELECTED, t).map((line) => (
+          <div
+            key={line.key}
+            className="flex items-center justify-between border-b py-1.5 last:border-b-0"
+          >
+            <dt className="text-muted-foreground">{line.label}</dt>
+            <dd className="tabular-nums font-medium">
+              {format.number(line.count)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 }

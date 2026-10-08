@@ -37,6 +37,8 @@ services:
       - PUBLIC_URL=${PUBLIC_URL:-}
       # Anonymous telemetry is on by default. Uncomment to turn it off.
       # - RUSTRAK_TELEMETRY=off
+      # /metrics is unauthenticated. Restrict access before setting this to on.
+      - RUSTRAK_METRICS=${RUSTRAK_METRICS:-off}
     # Uploaded source maps live here; the database is in PostgreSQL.
     volumes:
       - rustrak_data:/data

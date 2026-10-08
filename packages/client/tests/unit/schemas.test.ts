@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   authTokenCreatedSchema,
   authTokenSchema,
+  bulkDeleteIssuesSchema,
   createProjectSchema,
   eventDetailSchema,
   issueSchema,
@@ -523,6 +524,27 @@ describe('Schema Validation', () => {
 
       const result = authTokenCreatedSchema.safeParse(token);
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('bulkDeleteIssuesSchema', () => {
+    const ids = ['123e4567-e89b-12d3-a456-426614174000'];
+
+    it('should accept ids or a filter', () => {
+      expect(bulkDeleteIssuesSchema.safeParse({ ids }).success).toBe(true);
+      expect(
+        bulkDeleteIssuesSchema.safeParse({ filter: 'resolved' }).success,
+      ).toBe(true);
+    });
+
+    it('should reject both, neither, or an unknown filter', () => {
+      expect(
+        bulkDeleteIssuesSchema.safeParse({ ids, filter: 'all' }).success,
+      ).toBe(false);
+      expect(bulkDeleteIssuesSchema.safeParse({}).success).toBe(false);
+      expect(
+        bulkDeleteIssuesSchema.safeParse({ filter: 'everything' }).success,
+      ).toBe(false);
     });
   });
 });

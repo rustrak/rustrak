@@ -26,7 +26,9 @@ export const storageSummarySchema = z.object({
 
 /**
  * Per-project storage breakdown (one row per project, including empty ones).
- * `estimated_bytes` is the summed JSON payload length the project owns.
+ * `estimated_bytes` estimates the JSON payload length the project holds,
+ * from a sample of its newest rows scaled by the row count (spans, which
+ * have no ingest time, are sampled in no particular order).
  */
 export const projectStorageSchema = z.object({
   project_id: z.number(),
@@ -49,6 +51,20 @@ export const cleanupCountsSchema = z.object({
   spans: z.number(),
   logs: z.number(),
   issues_removed: z.number(),
+});
+
+/**
+ * The instance's cleanup job. A cleanup runs in the background, one at a time:
+ * `removed` holds the rows deleted so far while `running`, and the total once
+ * it is `completed` or `failed`. `idle` means none has run since the server
+ * started. Batches a failed run committed stay deleted.
+ */
+export const cleanupStatusSchema = z.object({
+  state: z.enum(['idle', 'running', 'completed', 'failed']),
+  removed: cleanupCountsSchema,
+  started_at: z.string().nullable(),
+  finished_at: z.string().nullable(),
+  error: z.string().nullable(),
 });
 
 /**

@@ -1,5 +1,11 @@
 # docs
 
+## 0.15.13
+
+### Patch Changes
+
+- [`c472b6f`](https://github.com/rustrak/rustrak/commit/c472b6fcd5fdcd8682c04323d64d4772a20ad5c4) Thanks [@AbianS](https://github.com/AbianS)! - Document the Prometheus metrics endpoint and the background storage cleanup with its status endpoint.
+
 ## 0.15.12
 
 ### Patch Changes

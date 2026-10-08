@@ -10,7 +10,7 @@
       "name": "GPL-3.0-only",
       "identifier": "GPL-3.0-only"
     },
-    "version": "0.15.2"
+    "version": "0.16.0"
   },
   "paths": {
     "/api/0/organizations/{org_slug}/": {
@@ -3269,7 +3269,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "DELETE /api/projects/{project_id}/issues  (bulk delete)",
+        "summary": "DELETE /api/projects/{project_id}/issues  (bulk delete by ids or filter)",
         "operationId": "bulk_delete_issues",
         "parameters": [
           {
@@ -3300,6 +3300,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BulkDeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Neither or both of ids and filter given",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -6492,7 +6502,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/cleanup — deletes old data and removes emptied issues.",
+        "summary": "POST /api/storage/cleanup — starts deleting old data and the issues it\nempties. Returns at once: the purge runs detached, in batches, and\n`GET /api/storage/cleanup/status` reports its progress.",
         "operationId": "execute_cleanup",
         "requestBody": {
           "content": {
@@ -6505,18 +6515,38 @@
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "Cleanup executed; rows removed",
+          "202": {
+            "description": "Cleanup started in the background; poll its status",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CleanupCounts"
+                  "$ref": "#/components/schemas/CleanupStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid retention window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A cleanup is already running",
             "content": {
               "application/json": {
                 "schema": {
@@ -6579,6 +6609,42 @@
         ]
       }
     },
+    "/api/storage/cleanup/status": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "GET /api/storage/cleanup/status — progress of the running cleanup, or the\noutcome of the last one.",
+        "operationId": "get_cleanup_status",
+        "responses": {
+          "200": {
+            "description": "The current or last cleanup and the rows it removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupStatus"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/storage/projects": {
       "get": {
         "tags": [
@@ -6595,7 +6661,7 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "description": "Per-project storage breakdown, one row per project (including empty ones).\n\nCounts are exact. `estimated_bytes` is the summed length of the JSON payloads\nthis project owns across events/transactions/spans — a real per-project weight,\nnot an apportioned guess.",
+                    "description": "Per-project storage breakdown, one row per project (including empty ones).\n\nCounts are exact. `estimated_bytes` estimates the JSON payload length this\nproject holds across events, transactions, spans and logs: a sample of its\nnewest rows per table (spans, which have no ingest time, are sampled in no\nparticular order), scaled by the row count. It is exact for a project with\nno more rows than the sample.",
                     "required": [
                       "project_id",
                       "project_name",
@@ -8612,20 +8678,37 @@
         }
       },
       "BulkDeleteIssues": {
-        "type": "object",
-        "description": "Bulk delete request: remove many issues by id.",
-        "required": [
-          "ids"
-        ],
-        "properties": {
-          "ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "ids"
+            ],
+            "properties": {
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "maxProperties": 1
+          },
+          {
+            "type": "object",
+            "required": [
+              "filter"
+            ],
+            "properties": {
+              "filter": {
+                "$ref": "#/components/schemas/IssueFilter"
+              }
+            },
+            "maxProperties": 1
           }
-        }
+        ],
+        "description": "Bulk delete request: the listed `ids`, or every issue matching `filter`.\nA body with neither or both matches no variant and is rejected, so an empty\nbody can never mean \"all\"."
       },
       "BulkDeleteResponse": {
         "type": "object",
@@ -8761,6 +8844,54 @@
               "null"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "CleanupState": {
+        "type": "string",
+        "description": "Where the instance's cleanup job is. There is at most one at a time.",
+        "enum": [
+          "idle",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
+      "CleanupStatus": {
+        "type": "object",
+        "description": "The cleanup job as the API reports it. Kept in memory: a restart forgets\nit, and a run cut short by one is simply run again, since every batch it\ncommitted is already gone.",
+        "required": [
+          "state",
+          "removed"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a `failed` run stopped. Batches committed before it stay deleted."
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "removed": {
+            "$ref": "#/components/schemas/CleanupCounts",
+            "description": "Rows removed so far while `running`; the total once it has finished."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CleanupState"
           }
         }
       },
@@ -9300,6 +9431,16 @@
           }
         }
       },
+      "IssueFilter": {
+        "type": "string",
+        "description": "Filter for issues listing",
+        "enum": [
+          "open",
+          "resolved",
+          "muted",
+          "all"
+        ]
+      },
       "IssueResponse": {
         "type": "object",
         "description": "Response for API",
@@ -9822,7 +9963,7 @@
       },
       "ProjectStorage": {
         "type": "object",
-        "description": "Per-project storage breakdown, one row per project (including empty ones).\n\nCounts are exact. `estimated_bytes` is the summed length of the JSON payloads\nthis project owns across events/transactions/spans — a real per-project weight,\nnot an apportioned guess.",
+        "description": "Per-project storage breakdown, one row per project (including empty ones).\n\nCounts are exact. `estimated_bytes` estimates the JSON payload length this\nproject holds across events, transactions, spans and logs: a sample of its\nnewest rows per table (spans, which have no ingest time, are sampled in no\nparticular order), scaled by the row count. It is exact for a project with\nno more rows than the sample.",
         "required": [
           "project_id",
           "project_name",

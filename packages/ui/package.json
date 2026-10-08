@@ -34,9 +34,9 @@
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",
-    "@tanstack/react-table": "9.2.4",
+    "@tanstack/react-table": "9.2.6",
     "clsx": "2.1.1",
-    "lucide-react": "1.48.0",
+    "lucide-react": "1.52.0",
     "recharts": "3.10.1",
     "tailwind-merge": "3.7.0",
     "tailwind-variants": "3.3.1"
@@ -46,26 +46,26 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@storybook/addon-a11y": "10.6.0",
-    "@storybook/addon-docs": "10.6.0",
-    "@storybook/addon-themes": "10.6.0",
-    "@storybook/addon-vitest": "10.6.0",
-    "@storybook/react-vite": "10.6.0",
+    "@storybook/addon-a11y": "10.6.1",
+    "@storybook/addon-docs": "10.6.1",
+    "@storybook/addon-themes": "10.6.1",
+    "@storybook/addon-vitest": "10.6.1",
+    "@storybook/react-vite": "10.6.1",
     "@tailwindcss/vite": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-react": "6.1.1",
-    "@vitest/browser": "4.1.11",
-    "@vitest/browser-playwright": "4.1.11",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitejs/plugin-react": "6.1.2",
+    "@vitest/browser": "5.0.3",
+    "@vitest/browser-playwright": "5.0.3",
+    "@vitest/coverage-v8": "5.0.3",
     "playwright": "1.63.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "storybook": "10.6.0",
+    "storybook": "10.6.1",
     "tailwindcss": "4.3.3",
     "tsdown": "0.23.0",
     "typescript": "6.0.3",
-    "vite": "8.3.1",
-    "vitest": "4.1.11"
+    "vite": "8.3.3",
+    "vitest": "5.0.3"
   }
 }

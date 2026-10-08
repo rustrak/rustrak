@@ -83,9 +83,11 @@ where
         // - /api/* - API routes (authentication handled by extractors:
         //            SentryAuth for ingest, AuthenticatedUser for management)
         // - /health - health check routes
+        // - /metrics - opt-in Prometheus scrape, restricted at the network edge
         let is_api = path.starts_with("/auth")
             || path.starts_with("/api/")
             || path.starts_with("/health")
+            || path == "/metrics"
             || {
                 #[cfg(feature = "openapi")]
                 {

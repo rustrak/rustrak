@@ -133,8 +133,13 @@ describe('the API prefixes do not drift', () => {
   });
 
   it('proxies from the standalone image exactly what the server keeps', () => {
+    // `/metrics` is unauthenticated: the image answers it with a 404 so a
+    // public dashboard cannot reach a scrape kept off the public network.
+    const notProxied = ['/metrics'];
     expect([...nginxProxyPrefixes()].sort()).toEqual(
-      [...serverApiPrefixes()].sort(),
+      serverApiPrefixes()
+        .filter((prefix) => !notProxied.includes(prefix))
+        .sort(),
     );
   });
 

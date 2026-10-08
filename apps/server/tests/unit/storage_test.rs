@@ -6,10 +6,11 @@
 use crate::common::TestDb;
 use bytes::Bytes;
 use chrono::Utc;
+use rustrak::error::AppError;
 use rustrak::ingest::{delete_event, read_event_for_project as read_scoped, store_event};
-use rustrak::models::{CleanupFilter, CreateProject};
+use rustrak::models::{CleanupCounts, CleanupFilter, CleanupState, CleanupStatus, CreateProject};
 use rustrak::services::sourcemap_store::{LocalSourceMapStore, SourceMapStore};
-use rustrak::services::{ProjectService, StorageService};
+use rustrak::services::{CleanupJob, ProjectService, StorageService};
 use std::sync::atomic::{AtomicI32, Ordering};
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -991,6 +992,64 @@ async fn test_by_project_breaks_down_counts_per_project_with_isolation() {
 }
 
 #[tokio::test]
+async fn test_by_project_estimates_bytes_from_a_sample_of_recent_rows() {
+    // Summing every payload read the whole database on each page load. The
+    // estimate scales a sample of the project's most recent rows by its row
+    // count instead. Events are uniform, so their estimate equals the exact
+    // sum. Logs are 250 old, large rows and 200 recent, small ones: only the
+    // newest 200 may drive the estimate, so reading old rows or dropping the
+    // sample limit both miss it.
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "sampled".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let at = Utc::now();
+    let old = at - chrono::Duration::days(1);
+    for _ in 0..250 {
+        seed_log_at(&db.pool, project.id, old).await;
+    }
+    sqlx::query("UPDATE logs SET body = $1 WHERE project_id = $2")
+        .bind("x".repeat(1_000))
+        .bind(project.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    for _ in 0..200 {
+        seed_log_at(&db.pool, project.id, at).await;
+    }
+    for _ in 0..450 {
+        seed_issueless_event_at(&db.pool, project.id, "log", at).await;
+    }
+
+    let (events, recent_logs): (i64, i64) = sqlx::query_as(
+        "SELECT \
+           (SELECT COALESCE(SUM(length(CAST(data AS TEXT))), 0) FROM events WHERE project_id = $1), \
+           (SELECT COALESCE(SUM(length(CAST(body AS TEXT)) + length(CAST(attributes AS TEXT))), 0) \
+              FROM logs WHERE project_id = $2 AND ingested_at > $3)",
+    )
+    .bind(project.id)
+    .bind(project.id)
+    .bind(old)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+
+    let rows = StorageService::by_project(&db.pool).await.unwrap();
+    let p = rows.iter().find(|r| r.project_id == project.id).unwrap();
+    assert_eq!(p.events_count, 450);
+    assert_eq!(p.logs_count, 450);
+    assert_eq!(p.estimated_bytes, events + recent_logs * 450 / 200);
+}
+
+#[tokio::test]
 async fn test_preview_source_map_gc_counts_orphans_without_deleting() {
     // The GC dry-run reports the orphaned files + bytes a real GC would reclaim,
     // and deletes nothing — same safety contract as the time-based preview.
@@ -1079,6 +1138,386 @@ async fn test_gc_source_maps_removes_orphans_from_db_and_disk() {
         storage.file_count, 1,
         "only the referenced source_file row remains"
     );
+}
+
+/// Seeds one issue holding one event per entry of `ages`, with the issue's
+/// counters set to the number of events (what the digest path would record).
+/// Returns the issue id.
+async fn seed_issue_with_events_at(
+    pool: &rustrak::db::DbPool,
+    project_id: i32,
+    ages: &[chrono::DateTime<Utc>],
+) -> Uuid {
+    let issue_id = Uuid::new_v4();
+    let digest_order = DIGEST_ORDER.fetch_add(1, Ordering::Relaxed);
+    let count = ages.len() as i32;
+    sqlx::query(
+        "INSERT INTO issues (id, project_id, digest_order, first_seen, last_seen, \
+         stored_event_count, digested_event_count) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(issue_id)
+    .bind(project_id)
+    .bind(digest_order)
+    .bind(Utc::now())
+    .bind(Utc::now())
+    .bind(count)
+    .bind(count)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    let grouping_id: i32 = sqlx::query_scalar(
+        "INSERT INTO groupings (project_id, issue_id, grouping_key, grouping_key_hash) \
+         VALUES ($1, $2, $3, $4) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(issue_id)
+    .bind(format!("key-{digest_order}"))
+    .bind(format!("{digest_order:0>64}"))
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    for at in ages {
+        sqlx::query(
+            "INSERT INTO events \
+             (id, event_id, project_id, issue_id, grouping_id, data, timestamp, ingested_at, digested_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .bind(project_id)
+        .bind(issue_id)
+        .bind(grouping_id)
+        .bind(serde_json::json!({}))
+        .bind(at)
+        .bind(at)
+        .bind(at)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+    issue_id
+}
+
+async fn issue_counters(pool: &rustrak::db::DbPool, issue_id: Uuid) -> Option<(i32, i32)> {
+    sqlx::query_as("SELECT stored_event_count, digested_event_count FROM issues WHERE id = $1")
+        .bind(issue_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap()
+}
+
+async fn project_counters(pool: &rustrak::db::DbPool, project_id: i32) -> (i32, i32) {
+    sqlx::query_as("SELECT stored_event_count, digested_event_count FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_cleanup_keeps_project_counters_right_after_every_batch() {
+    // A restart can cut a cleanup short between any two batches, and nothing
+    // repairs the project counters at startup: each batch has to leave them
+    // right, not only the end of the run.
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "per-batch-counters".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    let old = Utc::now() - chrono::Duration::days(60);
+    seed_issue_with_events_at(&db.pool, project.id, &[old, old, Utc::now()]).await;
+    sqlx::query(
+        "UPDATE projects SET stored_event_count = 3, digested_event_count = 3 WHERE id = $1",
+    )
+    .bind(project.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let mut seen = Vec::new();
+    StorageService::execute_cleanup_in_batches(&db.pool, 30, None, CleanupFilter::all(), 1, |c| {
+        let counters = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(project_counters(&db.pool, project.id))
+        });
+        seen.push((c.events, counters));
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(seen, vec![(1, (2, 2)), (2, (1, 1))]);
+}
+
+#[tokio::test]
+async fn test_execute_cleanup_in_small_batches_removes_everything_and_keeps_counters_exact() {
+    // The cleanup deletes in short batches so it never holds one huge write
+    // transaction. Batches must add up to exactly what one pass would remove:
+    // an issue whose events straddle several batches is decremented once per
+    // event and removed only when its last event goes, an issue with a recent
+    // event survives with the right counters, spans go with their transaction,
+    // and every project in scope is walked.
+    let db = TestDb::new().await;
+    let create = |name: &str| CreateProject {
+        name: name.to_string(),
+        slug: None,
+        platform: None,
+    };
+    let a = ProjectService::create(&db.pool, create("batch-a"))
+        .await
+        .unwrap();
+    let b = ProjectService::create(&db.pool, create("batch-b"))
+        .await
+        .unwrap();
+
+    let old = Utc::now() - chrono::Duration::days(60);
+    let now = Utc::now();
+    let emptied = seed_issue_with_events_at(&db.pool, a.id, &[old, old, old]).await;
+    let survivor = seed_issue_with_events_at(&db.pool, a.id, &[old, old, now]).await;
+    let b_issue = seed_issue_with_events_at(&db.pool, b.id, &[old, old]).await;
+    for _ in 0..3 {
+        seed_transaction_with_spans_at(&db.pool, a.id, 1, old).await;
+        seed_log_at(&db.pool, a.id, old).await;
+    }
+    seed_transaction_with_spans_at(&db.pool, a.id, 1, now).await;
+    seed_log_at(&db.pool, b.id, now).await;
+    for (project, count) in [(a.id, 6), (b.id, 2)] {
+        sqlx::query(
+            "UPDATE projects SET stored_event_count = $1, digested_event_count = $1 WHERE id = $2",
+        )
+        .bind(count)
+        .bind(project)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    }
+
+    let mut progress: Vec<CleanupCounts> = Vec::new();
+    let counts = StorageService::execute_cleanup_in_batches(
+        &db.pool,
+        30,
+        None,
+        CleanupFilter::all(),
+        2,
+        |c| progress.push(c.clone()),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        counts,
+        CleanupCounts {
+            events: 7,
+            transactions: 3,
+            spans: 3,
+            logs: 3,
+            issues_removed: 2,
+        }
+    );
+    assert!(progress.len() > 3, "progress is reported batch by batch");
+    assert!(
+        progress
+            .windows(2)
+            .all(|w| w[0].events <= w[1].events && w[0].logs <= w[1].logs),
+        "progress only grows"
+    );
+    assert_eq!(progress.last(), Some(&counts), "last report is the total");
+
+    assert_eq!(
+        issue_counters(&db.pool, emptied).await,
+        None,
+        "emptied issue removed"
+    );
+    assert_eq!(issue_counters(&db.pool, b_issue).await, None);
+    assert_eq!(
+        issue_counters(&db.pool, survivor).await,
+        Some((1, 1)),
+        "two of three events removed"
+    );
+    assert_eq!(project_counters(&db.pool, a.id).await, (1, 1));
+    assert_eq!(project_counters(&db.pool, b.id).await, (0, 0));
+
+    let summary = StorageService::global_summary(&db.pool).await.unwrap();
+    assert_eq!(summary.events_count, 1);
+    assert_eq!(summary.transactions_count, 1);
+    assert_eq!(summary.spans_count, 1);
+    assert_eq!(summary.logs_count, 1);
+}
+
+#[tokio::test]
+async fn test_execute_cleanup_leaves_issues_it_did_not_touch() {
+    // Only issues emptied by this cleanup are removed. An issue that already
+    // had no events (or belongs to data out of scope) is not the cleanup's to
+    // delete.
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "untouched-issue".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let empty = seed_issue_with_events_at(&db.pool, project.id, &[]).await;
+    seed_event_at(
+        &db.pool,
+        project.id,
+        Utc::now() - chrono::Duration::days(60),
+    )
+    .await;
+
+    let counts = StorageService::execute_cleanup(&db.pool, 30, None, CleanupFilter::all())
+        .await
+        .unwrap();
+
+    assert_eq!(counts.issues_removed, 1, "only the emptied issue");
+    assert!(issue_counters(&db.pool, empty).await.is_some());
+}
+
+#[tokio::test]
+async fn test_cleanup_job_runs_in_the_background_and_refuses_a_second_run() {
+    // The HTTP request only starts the cleanup; the work runs detached so a
+    // client timeout can no longer roll it back. While it runs, a second start
+    // is refused rather than racing the first.
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "job".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    let old = Utc::now() - chrono::Duration::days(60);
+    seed_event_at(&db.pool, project.id, old).await;
+    seed_log_at(&db.pool, project.id, old).await;
+
+    let job = CleanupJob::default();
+    assert_eq!(job.status().state, CleanupState::Idle);
+
+    let started = job
+        .start(db.pool.clone(), 30, None, CleanupFilter::all())
+        .unwrap();
+    assert_eq!(started.state, CleanupState::Running);
+    assert!(started.started_at.is_some());
+
+    let second = job.start(db.pool.clone(), 30, None, CleanupFilter::all());
+    assert!(
+        matches!(second, Err(AppError::Conflict(_))),
+        "a second run is refused while the first is running"
+    );
+
+    let done = wait_for_job(&job).await;
+    assert_eq!(done.state, CleanupState::Completed);
+    assert_eq!(done.removed.events, 1);
+    assert_eq!(done.removed.logs, 1);
+    assert_eq!(done.removed.issues_removed, 1);
+    assert!(done.finished_at.is_some());
+    assert!(done.error.is_none());
+
+    // Finished: a new run may start.
+    job.start(db.pool.clone(), 30, None, CleanupFilter::all())
+        .unwrap();
+    assert_eq!(wait_for_job(&job).await.state, CleanupState::Completed);
+}
+
+#[tokio::test]
+async fn test_cleanup_job_rejects_a_bad_window_without_starting() {
+    let db = TestDb::new().await;
+    let job = CleanupJob::default();
+
+    let result = job.start(db.pool.clone(), 0, None, CleanupFilter::all());
+
+    assert!(matches!(result, Err(AppError::Validation(_))));
+    assert_eq!(job.status().state, CleanupState::Idle, "nothing started");
+}
+
+#[cfg(feature = "sqlite")]
+#[tokio::test]
+async fn test_cleanup_lookups_are_index_range_scans() {
+    // The timeouts this cleanup used to hit came from full passes over events.
+    // Pin the plans of the batch pick and the preview count (same predicates as
+    // StorageService uses) to the (project_id, ingested_at) indexes, so a
+    // dropped index or a rewritten predicate fails here, not in production.
+    let db = TestDb::new().await;
+    let plan = |sql: &'static str| {
+        let pool = db.pool.clone();
+        async move {
+            let rows: Vec<(i64, i64, i64, String)> =
+                sqlx::query_as(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}")))
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap();
+            rows.into_iter()
+                .map(|r| r.3)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        }
+    };
+
+    for (sql, index) in [
+        (
+            "SELECT id, issue_id FROM events WHERE project_id = $1 AND ingested_at < $2 LIMIT $3",
+            "idx_events_project_ingested",
+        ),
+        (
+            "SELECT id FROM transactions WHERE project_id = $1 AND ingested_at < $2 LIMIT $3",
+            "idx_transactions_project_ingested",
+        ),
+        (
+            "SELECT id FROM logs WHERE project_id = $1 AND ingested_at < $2 LIMIT $3",
+            "idx_logs_project_ingested",
+        ),
+        (
+            "SELECT COUNT(*) FROM events e WHERE e.ingested_at < $1 \
+             AND e.project_id IN (SELECT id FROM projects WHERE $2 IS NULL OR id = $3)",
+            "idx_events_project_ingested",
+        ),
+        // The storage page's size estimate samples each project's newest rows.
+        (
+            "SELECT data FROM events WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
+            "idx_events_project_ingested",
+        ),
+        (
+            "SELECT data FROM transactions WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
+            "idx_transactions_project_ingested",
+        ),
+        (
+            "SELECT body FROM logs WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
+            "idx_logs_project_ingested",
+        ),
+        (
+            "SELECT COUNT(*) FROM issues i WHERE NOT EXISTS \
+             (SELECT 1 FROM events e3 WHERE e3.issue_id = i.id AND e3.ingested_at >= $1)",
+            "idx_events_issue_ingested",
+        ),
+    ] {
+        let got = plan(sql).await;
+        assert!(got.contains(index), "{sql}\n  expected {index}, got: {got}");
+    }
+}
+
+/// Polls a cleanup job until it leaves `Running`, failing after 10 seconds.
+async fn wait_for_job(job: &CleanupJob) -> CleanupStatus {
+    for _ in 0..200 {
+        let status = job.status();
+        if status.state != CleanupState::Running {
+            return status;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("cleanup job did not finish");
 }
 
 #[tokio::test]

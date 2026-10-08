@@ -7,6 +7,7 @@
 
 pub mod counters;
 pub mod identity;
+pub mod metrics;
 pub mod posthog;
 pub mod report;
 pub mod reporter;

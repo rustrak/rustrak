@@ -763,6 +763,13 @@ async fn viewer_cannot_mutate_new_issue_endpoints_but_editor_can() {
         403,
         "viewer cannot bulk-delete issues"
     );
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/projects/{}/issues", project.id))
+        .insert_header(bearer(&viewer_token))
+        .set_json(json!({ "filter": "all" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 403);
+    assert!(IssueService::get_by_id(&db.pool, issue2.id).await.is_ok());
 
     // Comment (POST .../comments).
     let req = test::TestRequest::post()
@@ -889,4 +896,15 @@ async fn viewer_cannot_mutate_new_issue_endpoints_but_editor_can() {
         test::call_service(&app, req).await.status().is_success(),
         "viewer can mark an issue seen"
     );
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/projects/{}/issues", project.id))
+        .insert_header(bearer(&editor_token))
+        .set_json(json!({ "filter": "resolved" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success(), "editor can delete by filter");
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["deleted"], 1);
+    assert!(IssueService::get_by_id(&db.pool, issue.id).await.is_err());
+    assert!(IssueService::get_by_id(&db.pool, issue2.id).await.is_ok());
 }

@@ -127,6 +127,7 @@ impl Modify for SecurityAddon {
         crate::routes::storage::get_projects,
         crate::routes::storage::preview_cleanup,
         crate::routes::storage::execute_cleanup,
+        crate::routes::storage::get_cleanup_status,
         crate::routes::storage::preview_source_map_gc,
         crate::routes::storage::gc_source_maps,
         crate::routes::telemetry::preview,

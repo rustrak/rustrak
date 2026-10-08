@@ -1,4 +1,4 @@
-import { HttpResponse, http } from 'msw';
+import { HttpResponse, http } from 'msw/http';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { RustrakClient } from '../../src/client.js';
 import { SERVER_ERROR_MESSAGE } from '../../src/errors.js';

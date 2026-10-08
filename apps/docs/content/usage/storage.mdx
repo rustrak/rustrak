@@ -22,7 +22,7 @@ Row counts are exact. The database size is the figure the backend reports (`pg_d
 
 A per-project table breaks the same data down by project: events, transactions, spans, source maps, and an estimated size for each. Empty projects still appear with zeros, so you can see at a glance which project is accumulating the most.
 
-The estimated size is the summed length of the JSON payloads a project owns across events, transactions, and spans — a real per-project weight, not an apportioned guess.
+The estimated size is the length of the JSON payloads a project holds across events, transactions, spans, and logs. It is estimated from a sample of each project's newest rows (spans have no ingest time, so theirs are sampled in no particular order), scaled by how many rows it has, so the page stays fast however much data the instance holds; the row counts next to it are exact.
 
 ## Cleaning up old data
 
@@ -33,11 +33,14 @@ Under **Clean up old data** you pick:
 
 Then **Preview** runs a **dry-run**: it counts exactly what would be removed and **deletes nothing**. You see how many events, transactions, spans, and empty issues a cleanup would remove before committing. Confirm in the dialog to delete.
 
+The cleanup then runs **in the background on the server**. The page shows its progress as it goes, and you can leave it: the cleanup keeps running, and coming back to the page picks it up again. Only one cleanup runs at a time.
+
 What a cleanup does:
 
 - Deletes **events** and **transactions** older than the cutoff (a transaction's **spans** cascade away with it).
 - Removes any **issue** left with zero events — no empty ghost issues are kept.
 - Keeps the denormalized event counts on projects and issues in sync, exactly like deleting an issue does.
+- Deletes in **small batches**, each committed on its own, so it never holds the database for the whole purge and ingestion keeps working while it runs. If the server restarts mid-cleanup, what was already deleted stays deleted; run it again to finish the rest.
 
 Retention is keyed on **ingestion time** (when Rustrak received the data), not on the client-supplied timestamp, so a bad clock on a sender can't hide data from cleanup.
 
@@ -71,11 +74,15 @@ curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d '{"older_than_days":30}' \
   http://localhost:8080/api/storage/cleanup/preview
 
-# Execute the cleanup (optionally scoped to one project)
+# Start the cleanup (optionally scoped to one project). Answers 202 at once.
 curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"older_than_days":30,"project_id":1}' \
   http://localhost:8080/api/storage/cleanup
+
+# Follow it until it is no longer "running"
+curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  http://localhost:8080/api/storage/cleanup/status
 
 # Dry-run, then remove, orphaned source maps
 curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
@@ -84,10 +91,22 @@ curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   http://localhost:8080/api/storage/source-maps/gc
 ```
 
-The preview and execute endpoints return the same shape, so a preview tells you exactly what an execute will remove:
+The preview returns the counts a cleanup would remove:
 
 ```json
-{ "events": 1240, "transactions": 80000, "spans": 1200000, "issues_removed": 37 }
+{ "events": 1240, "transactions": 80000, "spans": 1200000, "logs": 5000, "issues_removed": 37 }
+```
+
+Starting a cleanup and asking for its status both return the job. `state` is `idle` (none since the server started), `running`, `completed` or `failed`, and `removed` has the same shape as the preview: the rows deleted so far while it runs, the total once it has finished.
+
+```json
+{
+  "state": "completed",
+  "removed": { "events": 1240, "transactions": 80000, "spans": 1200000, "logs": 5000, "issues_removed": 37 },
+  "started_at": "2026-10-07T10:00:00Z",
+  "finished_at": "2026-10-07T10:04:12Z",
+  "error": null
+}
 ```
 
 You can also drive all of this from an AI assistant via the [MCP server](/sdks/mcp) — the destructive cleanup tool requires an explicit confirmation flag before it will run.
@@ -98,6 +117,9 @@ You can also drive all of this from an AI assistant via the [MCP server](/sdks/m
 |---|---|
 | Member opens **Settings → Storage** or calls a storage endpoint | `403 Forbidden` |
 | Preview (cleanup or source-map GC) | Counts only — nothing is deleted |
+| Start a cleanup | `202 Accepted`; it runs in the background |
+| Start a cleanup while one is running | `409 Conflict` |
+| Server restarts during a cleanup | Batches already deleted stay deleted; run it again for the rest |
 | Cleanup scoped to one project | Other projects' data is never touched |
 | Issue left with zero events after cleanup | Issue is deleted |
 | Source-map GC | Only unreferenced (orphaned) files are removed |

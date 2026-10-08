@@ -1,4 +1,4 @@
-import { HttpResponse, http } from 'msw';
+import { HttpResponse, http } from 'msw/http';
 import type { FieldError } from '../../src/errors.js';
 
 const BASE_URL = 'http://localhost:8080';
@@ -1182,32 +1182,13 @@ export const handlers = [
     });
   }),
 
-  http.get(`${BASE_URL}/auth/me`, ({ request }) => {
-    const cookieHeader = request.headers.get('Cookie');
-
-    // Check if session cookie is present
-    if (!cookieHeader?.includes('session=mock-session-cookie')) {
-      return appErrorResponse(
-        'Unauthorized',
-        'Unauthorized: Not authenticated',
-      );
-    }
-
-    // Return current user based on session
-    return HttpResponse.json(mockUser);
-  }),
+  // msw 3 keeps no cookie store in Node, so the session cookie from login never
+  // comes back here; these handlers assume an authenticated caller.
+  http.get(`${BASE_URL}/auth/me`, () => HttpResponse.json(mockUser)),
 
   // Preferences: echoes what it was given, merged onto the current user, which
   // is what the real endpoint does after writing.
   http.patch(`${BASE_URL}/auth/me`, async ({ request }) => {
-    const cookieHeader = request.headers.get('Cookie');
-    if (!cookieHeader?.includes('session=mock-session-cookie')) {
-      return appErrorResponse(
-        'Unauthorized',
-        'Unauthorized: Not authenticated',
-      );
-    }
-
     const body = (await request.json()) as Record<string, unknown>;
     return HttpResponse.json({
       ...mockUser,
@@ -2484,14 +2465,40 @@ export const handlers = [
     });
   }),
 
-  // Storage — execute cleanup
+  // Storage — start a cleanup (runs in the background)
   http.post(`${BASE_URL}/api/storage/cleanup`, () => {
+    return HttpResponse.json(
+      {
+        state: 'running',
+        removed: {
+          events: 0,
+          transactions: 0,
+          spans: 0,
+          logs: 0,
+          issues_removed: 0,
+        },
+        started_at: '2026-10-07T10:00:00Z',
+        finished_at: null,
+        error: null,
+      },
+      { status: 202 },
+    );
+  }),
+
+  // Storage — cleanup progress
+  http.get(`${BASE_URL}/api/storage/cleanup/status`, () => {
     return HttpResponse.json({
-      events: 20,
-      transactions: 10,
-      spans: 80,
-      logs: 50,
-      issues_removed: 3,
+      state: 'completed',
+      removed: {
+        events: 20,
+        transactions: 10,
+        spans: 80,
+        logs: 50,
+        issues_removed: 3,
+      },
+      started_at: '2026-10-07T10:00:00Z',
+      finished_at: '2026-10-07T10:05:00Z',
+      error: null,
     });
   }),
 

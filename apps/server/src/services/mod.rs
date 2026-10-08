@@ -50,7 +50,7 @@ pub use sourcemap::{rewrite_frames, DbSourceMapProvider, SourceMapEntry, SourceM
 pub use sourcemap_store::{LocalSourceMapStore, SourceMapStore, StoreError};
 pub use span::{SpanFilters, SpanService};
 pub use stats::StatsService;
-pub use storage::StorageService;
+pub use storage::{CleanupJob, StorageService};
 pub use transaction::{TransactionFilters, TransactionService};
 pub use users::{OidcLinkPolicy, OidcOutcome, UsersService};
 

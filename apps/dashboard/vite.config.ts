@@ -23,7 +23,14 @@ export default defineConfig(({ mode }) => {
    * in development and in production alike -- `routes::dashboard` in the
    * server keeps the same list, and the two must not drift.
    */
-  const apiPrefixes = ['/api', '/auth', '/health', '/docs', '/api-docs'];
+  const apiPrefixes = [
+    '/api',
+    '/auth',
+    '/health',
+    '/docs',
+    '/api-docs',
+    '/metrics',
+  ];
 
   const proxy = Object.fromEntries(
     apiPrefixes.map((prefix) => [

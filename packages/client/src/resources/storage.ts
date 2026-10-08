@@ -4,6 +4,7 @@ import type { Result } from '../result.js';
 import {
   cleanupCountsSchema,
   cleanupOptionsSchema,
+  cleanupStatusSchema,
   projectStorageSchema,
   sourceMapGcResultSchema,
   storageSummarySchema,
@@ -11,6 +12,7 @@ import {
 import type {
   CleanupCounts,
   CleanupOptions,
+  CleanupStatus,
   ProjectStorage,
   SourceMapGcResult,
   StorageSummary,
@@ -67,12 +69,17 @@ export class StorageResource extends BaseResource {
   }
 
   /**
-   * Execute a cleanup: delete data older than `older_than_days` (optionally
-   * scoped to one project) and remove any issue left with zero events.
+   * Start a cleanup: delete data older than `older_than_days` (optionally
+   * scoped to one project) and remove the issues it leaves with zero events.
+   *
+   * Returns as soon as the server has started it, with the `running` status.
+   * The deletion runs in the background; follow it with
+   * {@link getCleanupStatus}. A second start while one is running fails with
+   * a `conflict`.
    */
   async executeCleanup(
     options: CleanupOptions,
-  ): Promise<Result<CleanupCounts, RustrakError>> {
+  ): Promise<Result<CleanupStatus, RustrakError>> {
     const validatedInput = this.validateInput(options, cleanupOptionsSchema);
     if (!validatedInput.success) {
       return validatedInput;
@@ -80,8 +87,24 @@ export class StorageResource extends BaseResource {
 
     return this.request(
       () =>
-        this.http.post('api/storage/cleanup', { json: validatedInput.data }),
-      cleanupCountsSchema,
+        this.http.post('api/storage/cleanup', {
+          json: validatedInput.data,
+          // No retry: if the first attempt started the cleanup and only its
+          // response was lost, a retry would be refused as a second run and
+          // report a failure for a cleanup that is in fact running.
+          retry: 0,
+        }),
+      cleanupStatusSchema,
+    );
+  }
+
+  /**
+   * The running cleanup's progress, or the outcome of the last one.
+   */
+  async getCleanupStatus(): Promise<Result<CleanupStatus, RustrakError>> {
+    return this.request(
+      () => this.http.get('api/storage/cleanup/status'),
+      cleanupStatusSchema,
     );
   }
 
