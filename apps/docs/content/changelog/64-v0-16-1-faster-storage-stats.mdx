@@ -1,0 +1,20 @@
+---
+version: v0.16.1
+title: Faster Storage Stats
+description: Storage stats and cleanup previews estimate span counts instead of counting every span
+date: 2026-10-08
+tags: [server, dashboard, storage]
+---
+
+## Faster storage stats
+
+The storage page and the cleanup preview no longer count the `spans` table row
+by row. On a large instance that count read 37M rows and took over a minute.
+
+- Spans under transactions are estimated from a random sample of 1,000
+  transactions per project, then scaled to the project's transaction count. On
+  a 21M-span production cleanup the estimate came within 1% and took about a
+  second
+- The count is exact when a project has 1,000 transactions or fewer, and spans
+  that belong to no transaction are always counted exactly
+- The dashboard marks estimated span counts with `≈`
