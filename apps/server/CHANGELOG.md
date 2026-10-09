@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.16.2
+
+### Patch Changes
+
+- [`823f881`](https://github.com/rustrak/rustrak/commit/823f8811932683a2daf5a4a457ecb829c654d2d7) Thanks [@AbianS](https://github.com/AbianS)! - Sessions with the protocol 1.6.0 `unhandled` status, sent by the JavaScript SDKs since 11.x, are now accepted and counted as errored instead of crashed (@edsonmartins). Unknown session statuses count as errored instead of dropping the session, matching Relay. Session counts are no longer flushed on the request path, which deadlocked on PostgreSQL and answered the SDK with a 500; buffered counts are still persisted on graceful shutdown. Healthy session counts are clamped at zero like Sentry.
+
 ## 0.16.1
 
 ### Patch Changes
