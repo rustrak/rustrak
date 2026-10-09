@@ -198,6 +198,25 @@ async fn test_release_health_healthy_is_total_minus_unhealthy() {
 }
 
 #[actix_web::test]
+async fn test_release_health_healthy_never_goes_negative() {
+    // #388: an SDK that resends its terminal `crashed` update counts the same
+    // session twice. Sentry clamps healthy as max(0, init - errored_all);
+    // crash_free_sessions_rate is left unclamped, as Sentry leaves it.
+    let db = TestDb::new().await;
+    let project_id = create_project(&db.pool, "Resent Crash Project").await;
+
+    seed_count(&db.pool, project_id, "3.0.0", "production", 1, 1, 0, 2, 0).await;
+
+    let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
+        .await
+        .expect("query failed");
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].healthy, 0);
+    assert_eq!(rows[0].crash_free_sessions_rate, Some(-1.0));
+}
+
+#[actix_web::test]
 async fn test_release_health_excludes_buckets_outside_window() {
     let db = TestDb::new().await;
     let project_id = create_project(&db.pool, "Window Project").await;
