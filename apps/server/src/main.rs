@@ -421,58 +421,18 @@ async fn main() -> std::io::Result<()> {
     .shutdown_timeout(30)
     .run();
 
-    // Spawn graceful shutdown handler
-    let server_handle = server.handle();
-    let agg_for_shutdown = session_aggregator.clone();
-    tokio::spawn(async move {
-        shutdown_signal().await;
-        log::info!("Shutdown signal received, stopping server...");
-        // Stop accepting new requests first, then flush remaining buckets
-        server_handle.stop(true).await;
-        if let Err(e) = agg_for_shutdown.flush().await {
-            log::error!(
-                "Failed to flush session aggregator during shutdown: {:?}",
-                e
-            );
-        }
-    });
-
-    server.await
-}
-
-/// Wait for shutdown signal (Ctrl+C or SIGTERM)
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        match tokio::signal::ctrl_c().await {
-            Ok(()) => {}
-            Err(e) => {
-                log::error!("Failed to install Ctrl+C handler: {}", e);
-                // Wait forever if signal handler fails
-                std::future::pending::<()>().await;
-            }
-        }
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut signal) => {
-                signal.recv().await;
-            }
-            Err(e) => {
-                log::error!("Failed to install SIGTERM handler: {}", e);
-                std::future::pending::<()>().await;
-            }
-        }
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
+    // Actix stops on SIGINT/SIGTERM by itself, draining in-flight requests,
+    // and only then does `server.await` return. The final flush runs here, on
+    // main, so the runtime cannot exit before it commits: ingest acknowledges
+    // sessions before they reach the database (#390).
+    let result = server.await;
+    if let Err(e) = session_aggregator.flush().await {
+        log::error!(
+            "Failed to flush session aggregator during shutdown: {:?}",
+            e
+        );
     }
+    result
 }
 
 /// Bootstrap: create initial token if none exist and RUSTRAK_BOOTSTRAP_TOKEN is set

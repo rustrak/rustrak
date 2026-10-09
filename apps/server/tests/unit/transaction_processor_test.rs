@@ -707,26 +707,111 @@ mod level2 {
             remote_addr: None,
         };
 
-        processor
-            .process(SessionItem::Update(update), &ctx)
-            .await
-            .unwrap();
-        handle.flush().await.unwrap();
-
         #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT COUNT(*) FROM session_counts WHERE project_id = $1";
         #[cfg(not(feature = "postgres"))]
         const QUERY: &str = "SELECT COUNT(*) FROM session_counts WHERE project_id = ?";
+        let count = || async {
+            sqlx::query_scalar::<_, i64>(QUERY)
+                .bind(project.id)
+                .fetch_one(&db.pool)
+                .await
+                .unwrap()
+        };
 
-        let count: i64 = sqlx::query_scalar(QUERY)
+        processor
+            .process(SessionItem::Update(update), &ctx)
+            .await
+            .unwrap();
+        // Like Relay, which turns sessions into metric buckets and flushes them
+        // on its own cycle, ingest only aggregates in memory: the database
+        // write belongs to the aggregator's single flusher (#390).
+        assert_eq!(count().await, 0, "ingest must not write session_counts");
+
+        handle.flush().await.unwrap();
+        assert_eq!(
+            count().await,
+            1,
+            "session must be aggregated and flushed to session_counts"
+        );
+    }
+
+    /// The shutdown flush can start while an interval flush is still writing.
+    /// It must not return before that batch is committed, or the process exits
+    /// and drops counters the SDK was already told were accepted.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_session_aggregator_flush_waits_for_in_flight_flush() {
+        use rustrak::models::session::SessionAggregates;
+        use rustrak::workers::session_aggregator::SessionAggregator;
+
+        let db = TestDb::new().await;
+        let project = ProjectService::create(
+            &db.pool,
+            CreateProject {
+                name: "sess-flush-wait".to_string(),
+                slug: None,
+                platform: None,
+            },
+        )
+        .await
+        .unwrap();
+        let handle = SessionAggregator::new(db.pool.clone(), 3600, 1000);
+
+        let aggregates: Vec<_> = (0..10)
+            .map(|m| json!({ "started": format!("2026-06-10T10:{m:02}:00Z"), "exited": 1 }))
+            .collect();
+        let agg: SessionAggregates = serde_json::from_value(json!({
+            "attrs": { "release": "1.0.0", "environment": "production" },
+            "aggregates": aggregates,
+        }))
+        .unwrap();
+        handle.ingest_aggregates(project.id, &agg).await;
+
+        // An open write transaction stalls the first flush mid-batch: on
+        // PostgreSQL it holds the row lock, on SQLite the only connection.
+        let mut blocker = db.pool.begin().await.unwrap();
+        #[cfg(feature = "postgres")]
+        const BLOCK: &str = "INSERT INTO session_counts (project_id, release, environment, bucket, total, errored, crashed, abnormal) VALUES ($1, '1.0.0', 'production', '2026-06-10T10:00:00Z', 0, 0, 0, 0)";
+        #[cfg(not(feature = "postgres"))]
+        const BLOCK: &str = "INSERT INTO session_counts (project_id, release, environment, bucket, total, errored, crashed, abnormal) VALUES (?, '1.0.0', 'production', '2026-06-10 10:00:00', 0, 0, 0, 0)";
+        sqlx::query(BLOCK)
+            .bind(project.id)
+            .execute(&mut *blocker)
+            .await
+            .unwrap();
+
+        let in_flight = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.flush().await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let mut shutdown = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.flush().await }
+        });
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(200), &mut shutdown)
+                .await
+                .is_err(),
+            "flush returned while another flush still held uncommitted counters"
+        );
+
+        blocker.rollback().await.unwrap();
+        in_flight.await.unwrap().unwrap();
+        shutdown.await.unwrap().unwrap();
+
+        #[cfg(feature = "postgres")]
+        const QUERY: &str = "SELECT COUNT(*), COALESCE(SUM(total), 0)::bigint FROM session_counts WHERE project_id = $1";
+        #[cfg(not(feature = "postgres"))]
+        const QUERY: &str =
+            "SELECT COUNT(*), COALESCE(SUM(total), 0) FROM session_counts WHERE project_id = ?";
+        let counts: (i64, i64) = sqlx::query_as(QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        assert!(
-            count >= 1,
-            "session must be aggregated and flushed to session_counts"
-        );
+        assert_eq!(counts, (10, 10));
     }
 
     #[tokio::test]

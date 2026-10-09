@@ -72,6 +72,9 @@ impl SessionAggregatorHandle {
 pub struct SessionAggregator {
     pool: DbPool,
     state: Mutex<AggregatorState>,
+    /// Serializes flushes, so the shutdown flush waits for an interval flush
+    /// that already took its batch out of `state` and is still writing it.
+    flushing: Mutex<()>,
     flush_interval_secs: u64,
     cardinality_cap: usize,
 }
@@ -86,6 +89,7 @@ impl SessionAggregator {
         let agg = Arc::new(Self {
             pool,
             state: Mutex::new(AggregatorState::default()),
+            flushing: Mutex::new(()),
             flush_interval_secs,
             cardinality_cap,
         });
@@ -207,6 +211,7 @@ impl SessionAggregator {
 
     /// Flush all in-memory counters to the DB via batched UPSERT.
     pub async fn flush(&self) -> AppResult<()> {
+        let _flushing = self.flushing.lock().await;
         let (counts, users) = {
             let mut state = self.state.lock().await;
             let counts = std::mem::take(&mut state.counts);
