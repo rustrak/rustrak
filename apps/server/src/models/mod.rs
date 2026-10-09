@@ -43,6 +43,7 @@ where
 }
 
 pub mod alert;
+pub mod alert_conditions;
 pub mod auth_token;
 pub mod event;
 pub mod gen_ai;
@@ -95,6 +96,7 @@ pub use alert::{
     WebhookConfig,
     WebhookRoutingOverride,
 };
+pub use alert_conditions::{AlertConditions, IssueLevel};
 pub use auth_token::{AuthToken, AuthTokenCreatedResponse, AuthTokenResponse, CreateAuthToken};
 pub use event::{Event, EventDetailResponse, EventResponse, EventSummary};
 pub use gen_ai::{
