@@ -233,7 +233,9 @@ async fn query_release_health(
             .into_iter()
             .map(
                 |(release, environment, total, errored, crashed, abnormal, cfsr, cfur)| {
-                    let healthy = total - errored - crashed - abnormal;
+                    // Sentry clamps healthy as max(0, init - errored_all), so an SDK that
+                    // resends a terminal update cannot drive it negative (#388).
+                    let healthy = (total - errored - crashed - abnormal).max(0);
                     ReleaseHealthRow {
                         release,
                         environment,
@@ -351,7 +353,9 @@ async fn query_release_health(
                 None
             };
 
-            let healthy = total - errored - crashed - abnormal;
+            // Sentry clamps healthy as max(0, init - errored_all), so an SDK that
+            // resends a terminal update cannot drive it negative (#388).
+            let healthy = (total - errored - crashed - abnormal).max(0);
             result.push(ReleaseHealthRow {
                 release,
                 environment,
