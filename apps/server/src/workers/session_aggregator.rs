@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,7 +15,7 @@ use crate::models::session::{
 const OVERFLOW_RELEASE: &str = "<overflow>";
 
 /// Key identifying a minute-bucketed session count row.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BucketKey {
     pub project_id: i32,
     pub release: String,
@@ -33,7 +33,7 @@ pub struct Counters {
 }
 
 /// Key identifying a day-bucketed distinct-user row.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UserKey {
     pub project_id: i32,
     pub release: String,
@@ -43,15 +43,11 @@ pub struct UserKey {
 }
 
 /// State held under the mutex.
-///
-/// BTreeMap, not HashMap: a flush upserts in iteration order, so sorted keys
-/// make overlapping flushes (the interval loop and the shutdown flush) lock
-/// rows in one order. Hash order differs per map and deadlocked PostgreSQL (#390).
 #[derive(Debug, Default)]
 pub struct AggregatorState {
-    pub counts: BTreeMap<BucketKey, Counters>,
+    pub counts: HashMap<BucketKey, Counters>,
     /// Map of UserKey → crashed; TRUE means this user had a crash this flush cycle.
-    pub users: BTreeMap<UserKey, bool>,
+    pub users: HashMap<UserKey, bool>,
 }
 
 /// Shared handle to the session aggregator — cheaply cloneable across handlers.
@@ -76,6 +72,9 @@ impl SessionAggregatorHandle {
 pub struct SessionAggregator {
     pool: DbPool,
     state: Mutex<AggregatorState>,
+    /// Serializes flushes, so the shutdown flush waits for an interval flush
+    /// that already took its batch out of `state` and is still writing it.
+    flushing: Mutex<()>,
     flush_interval_secs: u64,
     cardinality_cap: usize,
 }
@@ -90,6 +89,7 @@ impl SessionAggregator {
         let agg = Arc::new(Self {
             pool,
             state: Mutex::new(AggregatorState::default()),
+            flushing: Mutex::new(()),
             flush_interval_secs,
             cardinality_cap,
         });
@@ -211,6 +211,7 @@ impl SessionAggregator {
 
     /// Flush all in-memory counters to the DB via batched UPSERT.
     pub async fn flush(&self) -> AppResult<()> {
+        let _flushing = self.flushing.lock().await;
         let (counts, users) = {
             let mut state = self.state.lock().await;
             let counts = std::mem::take(&mut state.counts);
@@ -376,8 +377,8 @@ impl SessionAggregator {
 
 fn merge_state(
     state: &mut AggregatorState,
-    counts: BTreeMap<BucketKey, Counters>,
-    users: BTreeMap<UserKey, bool>,
+    counts: HashMap<BucketKey, Counters>,
+    users: HashMap<UserKey, bool>,
 ) {
     for (key, counters) in counts {
         let current = state.counts.entry(key).or_default();
@@ -721,25 +722,25 @@ mod tests {
             did: "did".to_string(),
         };
         let mut state = AggregatorState {
-            counts: BTreeMap::from([(
+            counts: HashMap::from([(
                 key.clone(),
                 Counters {
                     total: 1,
                     ..Default::default()
                 },
             )]),
-            users: BTreeMap::from([(user.clone(), false)]),
+            users: HashMap::from([(user.clone(), false)]),
         };
         merge_state(
             &mut state,
-            BTreeMap::from([(
+            HashMap::from([(
                 key.clone(),
                 Counters {
                     total: 2,
                     ..Default::default()
                 },
             )]),
-            BTreeMap::from([(user.clone(), true)]),
+            HashMap::from([(user.clone(), true)]),
         );
         assert_eq!(state.counts[&key].total, 3);
         assert!(state.users[&user]);

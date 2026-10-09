@@ -736,10 +736,11 @@ mod level2 {
         );
     }
 
-    /// Overlapping flushes (the interval loop and the shutdown flush) must
-    /// lock `session_counts` rows in one order, or PostgreSQL deadlocks (#390).
-    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-    async fn test_session_aggregator_concurrent_flushes_do_not_deadlock() {
+    /// The shutdown flush can start while an interval flush is still writing.
+    /// It must not return before that batch is committed, or the process exits
+    /// and drops counters the SDK was already told were accepted.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_session_aggregator_flush_waits_for_in_flight_flush() {
         use rustrak::models::session::SessionAggregates;
         use rustrak::workers::session_aggregator::SessionAggregator;
 
@@ -747,7 +748,7 @@ mod level2 {
         let project = ProjectService::create(
             &db.pool,
             CreateProject {
-                name: "sess-deadlock".to_string(),
+                name: "sess-flush-wait".to_string(),
                 slug: None,
                 platform: None,
             },
@@ -756,27 +757,61 @@ mod level2 {
         .unwrap();
         let handle = SessionAggregator::new(db.pool.clone(), 3600, 1000);
 
-        let tasks: Vec<_> = (0..200)
-            .map(|_| {
-                let handle = handle.clone();
-                tokio::spawn(async move {
-                    let aggregates: Vec<_> = (0..10)
-                        .map(|m| json!({ "started": format!("2026-06-10T10:{m:02}:00Z"), "exited": 1 }))
-                        .collect();
-                    let agg: SessionAggregates = serde_json::from_value(json!({
-                        "attrs": { "release": "1.0.0", "environment": "production" },
-                        "aggregates": aggregates,
-                    }))
-                    .unwrap();
-                    handle.ingest_aggregates(project.id, &agg).await;
-                    handle.flush().await
-                })
-            })
+        let aggregates: Vec<_> = (0..10)
+            .map(|m| json!({ "started": format!("2026-06-10T10:{m:02}:00Z"), "exited": 1 }))
             .collect();
+        let agg: SessionAggregates = serde_json::from_value(json!({
+            "attrs": { "release": "1.0.0", "environment": "production" },
+            "aggregates": aggregates,
+        }))
+        .unwrap();
+        handle.ingest_aggregates(project.id, &agg).await;
 
-        for task in tasks {
-            task.await.unwrap().unwrap();
-        }
+        // An open write transaction stalls the first flush mid-batch: on
+        // PostgreSQL it holds the row lock, on SQLite the only connection.
+        let mut blocker = db.pool.begin().await.unwrap();
+        #[cfg(feature = "postgres")]
+        const BLOCK: &str = "INSERT INTO session_counts (project_id, release, environment, bucket, total, errored, crashed, abnormal) VALUES ($1, '1.0.0', 'production', '2026-06-10T10:00:00Z', 0, 0, 0, 0)";
+        #[cfg(not(feature = "postgres"))]
+        const BLOCK: &str = "INSERT INTO session_counts (project_id, release, environment, bucket, total, errored, crashed, abnormal) VALUES (?, '1.0.0', 'production', '2026-06-10 10:00:00', 0, 0, 0, 0)";
+        sqlx::query(BLOCK)
+            .bind(project.id)
+            .execute(&mut *blocker)
+            .await
+            .unwrap();
+
+        let in_flight = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.flush().await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let mut shutdown = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.flush().await }
+        });
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(200), &mut shutdown)
+                .await
+                .is_err(),
+            "flush returned while another flush still held uncommitted counters"
+        );
+
+        blocker.rollback().await.unwrap();
+        in_flight.await.unwrap().unwrap();
+        shutdown.await.unwrap().unwrap();
+
+        #[cfg(feature = "postgres")]
+        const QUERY: &str = "SELECT COUNT(*), COALESCE(SUM(total), 0)::bigint FROM session_counts WHERE project_id = $1";
+        #[cfg(not(feature = "postgres"))]
+        const QUERY: &str =
+            "SELECT COUNT(*), COALESCE(SUM(total), 0) FROM session_counts WHERE project_id = ?";
+        let counts: (i64, i64) = sqlx::query_as(QUERY)
+            .bind(project.id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        assert_eq!(counts, (10, 10));
     }
 
     #[tokio::test]
