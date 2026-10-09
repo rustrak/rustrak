@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,7 +15,7 @@ use crate::models::session::{
 const OVERFLOW_RELEASE: &str = "<overflow>";
 
 /// Key identifying a minute-bucketed session count row.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BucketKey {
     pub project_id: i32,
     pub release: String,
@@ -33,7 +33,7 @@ pub struct Counters {
 }
 
 /// Key identifying a day-bucketed distinct-user row.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct UserKey {
     pub project_id: i32,
     pub release: String,
@@ -43,11 +43,15 @@ pub struct UserKey {
 }
 
 /// State held under the mutex.
+///
+/// BTreeMap, not HashMap: a flush upserts in iteration order, so sorted keys
+/// make overlapping flushes (the interval loop and the shutdown flush) lock
+/// rows in one order. Hash order differs per map and deadlocked PostgreSQL (#390).
 #[derive(Debug, Default)]
 pub struct AggregatorState {
-    pub counts: HashMap<BucketKey, Counters>,
+    pub counts: BTreeMap<BucketKey, Counters>,
     /// Map of UserKey → crashed; TRUE means this user had a crash this flush cycle.
-    pub users: HashMap<UserKey, bool>,
+    pub users: BTreeMap<UserKey, bool>,
 }
 
 /// Shared handle to the session aggregator — cheaply cloneable across handlers.
@@ -372,8 +376,8 @@ impl SessionAggregator {
 
 fn merge_state(
     state: &mut AggregatorState,
-    counts: HashMap<BucketKey, Counters>,
-    users: HashMap<UserKey, bool>,
+    counts: BTreeMap<BucketKey, Counters>,
+    users: BTreeMap<UserKey, bool>,
 ) {
     for (key, counters) in counts {
         let current = state.counts.entry(key).or_default();
@@ -717,25 +721,25 @@ mod tests {
             did: "did".to_string(),
         };
         let mut state = AggregatorState {
-            counts: HashMap::from([(
+            counts: BTreeMap::from([(
                 key.clone(),
                 Counters {
                     total: 1,
                     ..Default::default()
                 },
             )]),
-            users: HashMap::from([(user.clone(), false)]),
+            users: BTreeMap::from([(user.clone(), false)]),
         };
         merge_state(
             &mut state,
-            HashMap::from([(
+            BTreeMap::from([(
                 key.clone(),
                 Counters {
                     total: 2,
                     ..Default::default()
                 },
             )]),
-            HashMap::from([(user.clone(), true)]),
+            BTreeMap::from([(user.clone(), true)]),
         );
         assert_eq!(state.counts[&key].total, 3);
         assert!(state.users[&user]);

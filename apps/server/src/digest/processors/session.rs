@@ -36,6 +36,13 @@ impl Processor for SessionProcessor {
         // metrics_extraction/sessions/types.rs BucketValue::Counter), so an SDK
         // resend double-counts in real Sentry as well. Matching that is
         // Sentry parity, not a gap.
+        //
+        // No flush here either. Relay extracts sessions into metric buckets
+        // that its aggregator flushes on its own cycle, never on the request
+        // path. Flushing per envelope ran one transaction per request against
+        // the same few minute rows, which deadlocked on PostgreSQL and
+        // answered the SDK with a 500 (#390). The aggregator's interval loop
+        // and the shutdown flush in main.rs persist the counters instead.
         if let Some(agg) = &self.aggregator {
             match work {
                 SessionItem::Update(update) => {
@@ -45,7 +52,6 @@ impl Processor for SessionProcessor {
                     agg.ingest_aggregates(ctx.project_id, &aggregates).await;
                 }
             }
-            agg.flush().await?;
         }
         Ok(())
     }

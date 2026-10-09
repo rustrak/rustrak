@@ -707,26 +707,76 @@ mod level2 {
             remote_addr: None,
         };
 
-        processor
-            .process(SessionItem::Update(update), &ctx)
-            .await
-            .unwrap();
-        handle.flush().await.unwrap();
-
         #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT COUNT(*) FROM session_counts WHERE project_id = $1";
         #[cfg(not(feature = "postgres"))]
         const QUERY: &str = "SELECT COUNT(*) FROM session_counts WHERE project_id = ?";
+        let count = || async {
+            sqlx::query_scalar::<_, i64>(QUERY)
+                .bind(project.id)
+                .fetch_one(&db.pool)
+                .await
+                .unwrap()
+        };
 
-        let count: i64 = sqlx::query_scalar(QUERY)
-            .bind(project.id)
-            .fetch_one(&db.pool)
+        processor
+            .process(SessionItem::Update(update), &ctx)
             .await
             .unwrap();
-        assert!(
-            count >= 1,
+        // Like Relay, which turns sessions into metric buckets and flushes them
+        // on its own cycle, ingest only aggregates in memory: the database
+        // write belongs to the aggregator's single flusher (#390).
+        assert_eq!(count().await, 0, "ingest must not write session_counts");
+
+        handle.flush().await.unwrap();
+        assert_eq!(
+            count().await,
+            1,
             "session must be aggregated and flushed to session_counts"
         );
+    }
+
+    /// Overlapping flushes (the interval loop and the shutdown flush) must
+    /// lock `session_counts` rows in one order, or PostgreSQL deadlocks (#390).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn test_session_aggregator_concurrent_flushes_do_not_deadlock() {
+        use rustrak::models::session::SessionAggregates;
+        use rustrak::workers::session_aggregator::SessionAggregator;
+
+        let db = TestDb::new().await;
+        let project = ProjectService::create(
+            &db.pool,
+            CreateProject {
+                name: "sess-deadlock".to_string(),
+                slug: None,
+                platform: None,
+            },
+        )
+        .await
+        .unwrap();
+        let handle = SessionAggregator::new(db.pool.clone(), 3600, 1000);
+
+        let tasks: Vec<_> = (0..200)
+            .map(|_| {
+                let handle = handle.clone();
+                tokio::spawn(async move {
+                    let aggregates: Vec<_> = (0..10)
+                        .map(|m| json!({ "started": format!("2026-06-10T10:{m:02}:00Z"), "exited": 1 }))
+                        .collect();
+                    let agg: SessionAggregates = serde_json::from_value(json!({
+                        "attrs": { "release": "1.0.0", "environment": "production" },
+                        "aggregates": aggregates,
+                    }))
+                    .unwrap();
+                    handle.ingest_aggregates(project.id, &agg).await;
+                    handle.flush().await
+                })
+            })
+            .collect();
+
+        for task in tasks {
+            task.await.unwrap().unwrap();
+        }
     }
 
     #[tokio::test]
