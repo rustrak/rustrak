@@ -441,8 +441,10 @@ pub fn apply_aggregate_item(
         bucket,
     };
     let entry = state.counts.entry(key).or_default();
-    entry.total += item.exited + item.errored + item.crashed + item.abnormal;
-    entry.errored += item.errored;
+    entry.total += item.exited + item.errored + item.crashed + item.abnormal + item.unhandled;
+    // Protocol 1.6.0 `unhandled`: the process survived, so it is an errored
+    // session, not a crash.
+    entry.errored += item.errored + item.unhandled;
     entry.crashed += item.crashed;
     entry.abnormal += item.abnormal;
 }
@@ -622,12 +624,49 @@ mod tests {
             errored: 2,
             crashed: 1,
             abnormal: 0,
+            unhandled: 0,
         };
         apply_aggregate_item(&mut state, 1, "2.0.0", "staging", &item);
         let c = state.counts.values().next().unwrap();
         assert_eq!(c.total, 8); // 5+2+1+0
         assert_eq!(c.errored, 2);
         assert_eq!(c.crashed, 1);
+    }
+
+    #[test]
+    fn unhandled_update_counts_as_errored() {
+        let mut state = AggregatorState::default();
+        apply_update(
+            &mut state,
+            1,
+            &make_update(true, SessionStatus::Ok, 0, None),
+        );
+        apply_update(
+            &mut state,
+            1,
+            &make_update(false, SessionStatus::Unhandled, 1, None),
+        );
+        let c = state.counts.values().next().unwrap();
+        assert_eq!(c.errored, 1);
+        assert_eq!(c.crashed, 0);
+    }
+
+    #[test]
+    fn pre_aggregated_unhandled_counts_as_errored() {
+        let mut state = AggregatorState::default();
+        let item = SessionAggregateItem {
+            started: Some("2026-06-10T10:00:00.000Z".to_string()),
+            exited: 5,
+            errored: 1,
+            crashed: 0,
+            abnormal: 0,
+            unhandled: 2,
+        };
+        apply_aggregate_item(&mut state, 1, "2.0.0", "staging", &item);
+        let c = state.counts.values().next().unwrap();
+        assert_eq!(c.total, 8); // 5+1+0+0+2
+        assert_eq!(c.errored, 3);
+        assert_eq!(c.crashed, 0);
     }
 
     #[test]
