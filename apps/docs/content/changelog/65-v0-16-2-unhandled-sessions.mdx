@@ -1,0 +1,35 @@
+---
+version: v0.16.2
+title: Unhandled Sessions
+description: Sessions with the unhandled status are counted, and session ingest no longer deadlocks on PostgreSQL
+date: 2026-10-09
+tags: [server, sessions]
+---
+
+## Unhandled session status
+
+The JavaScript SDKs send `unhandled` instead of `crashed` since 11.x, for an
+unhandled error the process survived (protocol 1.6.0). Rustrak now accepts it
+([@edsonmartins](https://github.com/edsonmartins)).
+
+- Session updates with `"status": "unhandled"` and session aggregates with an
+  `unhandled` count are both ingested
+- They count as errored, not crashed, so the crash-free rate is unaffected
+
+## No more session deadlocks on PostgreSQL
+
+Session counts were written to the database on every ingest request. Under
+load on PostgreSQL those writes deadlocked on the same rows and the SDK got a
+500 back.
+
+- Counts are buffered in memory and written by the aggregator on its own
+  interval, as Relay does
+- A graceful shutdown waits for any flush in progress, then writes what is
+  left, so sessions already accepted are not lost
+
+## Improvements
+
+- A session status this version does not know counts as errored instead of
+  dropping the session, matching Relay
+- Healthy session counts are clamped at zero like Sentry, so an SDK that
+  resends a terminal update cannot drive them negative
