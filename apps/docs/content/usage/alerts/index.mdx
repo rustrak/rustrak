@@ -210,6 +210,18 @@ Prevents alert fatigue by limiting how often alerts fire for the same issue.
 - **5 minutes**: Wait 5 minutes before alerting again
 - **60 minutes**: Good for high-traffic issues
 
+### Minimum level
+
+A rule can limit itself to issues at or above a level, so low-severity issues stay recorded without sending alerts. Set `min_level` in the rule's `conditions` through the API:
+
+```json
+{ "conditions": { "min_level": "error" } }
+```
+
+Levels from least to most severe are `debug`, `info`, `warning`, `error` and `fatal`. The filter checks the level stored on the issue. When a later event has no level, the issue keeps its previous level. An issue without a level, or with a level Rustrak does not recognize, counts as `error`, as it does in Sentry, so every threshold up to `error` admits it; a `fatal` threshold withholds it. An empty `conditions` object alerts on every issue.
+
+An issue below the minimum level creates no alert history entry and does not start the rule's cooldown. The API rejects unknown condition names and unknown levels.
+
 ## Managing rules
 
 ### Enable/disable

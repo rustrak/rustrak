@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{
-    AlertHistory, AlertIntegration, AlertPayload, AlertRule, AlertRuleChannel,
+    AlertConditions, AlertHistory, AlertIntegration, AlertPayload, AlertRule, AlertRuleChannel,
     AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, Issue, IssueInfo,
     Project, ProjectInfo, UpdateAlertIntegration, UpdateAlertRule,
 };
@@ -270,6 +270,7 @@ impl AlertService {
         project_id: i32,
         input: CreateAlertRule,
     ) -> AppResult<AlertRule> {
+        AlertConditions::validate(&input.conditions)?;
         // Write-first (INSERT opens the tx) — deferred BEGIN deliberate, see db::begin_write.
         let mut tx = pool.begin().await?;
 
@@ -348,6 +349,9 @@ impl AlertService {
         id: i32,
         input: UpdateAlertRule,
     ) -> AppResult<AlertRule> {
+        if let Some(conditions) = &input.conditions {
+            AlertConditions::validate(conditions)?;
+        }
         // Write-first (UPDATE opens the tx) — deferred BEGIN deliberate, see db::begin_write.
         let mut tx = pool.begin().await?;
 
@@ -607,6 +611,19 @@ impl AlertService {
                 return Ok(());
             }
         };
+
+        // A rule can restrict itself to issues at or above a level. This runs before the
+        // cooldown reservation on purpose: an issue the rule never considers must not start
+        // a cooldown that would then suppress an alert it does send. Nothing is recorded in
+        // the history for it either; the rule's own conditions explain the silence.
+        if !AlertConditions::from_stored(&rule.conditions, rule.id).admits(issue.level.as_deref()) {
+            log::debug!(
+                "Alert rule {} does not alert on level {:?}",
+                rule.id,
+                issue.level
+            );
+            return Ok(());
+        }
 
         // 2. Get associated rule channels (only enabled integrations — SCL-1)
         let rule_channels: Vec<AlertRuleChannel> = sqlx::query_as(

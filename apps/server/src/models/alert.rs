@@ -292,6 +292,9 @@ pub struct AlertRule {
     pub name: String,
     pub alert_type: AlertType,
     pub is_enabled: bool,
+    /// Optional filters. `min_level` (`debug`, `info`, `warning`, `error` or `fatal`) limits the
+    /// rule to issues at or above that level; an issue without a level, or with one Rustrak does
+    /// not recognize, counts as `error`. An empty object alerts on every issue.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub conditions: serde_json::Value,
     pub cooldown_minutes: i32,
@@ -306,6 +309,9 @@ pub struct AlertRule {
 pub struct CreateAlertRule {
     pub name: String,
     pub alert_type: AlertType,
+    /// Optional filters. `min_level` (`debug`, `info`, `warning`, `error` or `fatal`) limits the
+    /// rule to issues at or above that level; an issue without a level, or with one Rustrak does
+    /// not recognize, counts as `error`. Unknown condition names and levels are rejected.
     #[serde(default = "default_conditions")]
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub conditions: serde_json::Value,
@@ -338,6 +344,9 @@ fn default_empty_object() -> serde_json::Value {
 pub struct UpdateAlertRule {
     pub name: Option<String>,
     pub is_enabled: Option<bool>,
+    /// Replaces the rule's filters. See `CreateAlertRule`: `min_level` is the one supported
+    /// condition, an issue without a recognized level counts as `error`, and unknown condition
+    /// names and levels are rejected.
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub conditions: Option<serde_json::Value>,
     pub cooldown_minutes: Option<i32>,
@@ -353,6 +362,9 @@ pub struct AlertRuleResponse {
     pub name: String,
     pub alert_type: AlertType,
     pub is_enabled: bool,
+    /// Optional filters. `min_level` (`debug`, `info`, `warning`, `error` or `fatal`) limits the
+    /// rule to issues at or above that level; an issue without a level, or with one Rustrak does
+    /// not recognize, counts as `error`. An empty object alerts on every issue.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub conditions: serde_json::Value,
     pub cooldown_minutes: i32,
