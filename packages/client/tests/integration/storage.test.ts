@@ -202,3 +202,94 @@ describe('StorageResource', () => {
     });
   });
 });
+
+describe('StorageResource auto-cleanup', () => {
+  const URL = 'http://localhost:8080/api/storage/auto-cleanup';
+  const settings = {
+    enabled: true,
+    schedule: { type: 'crontab', value: '0 3 * * *' },
+    timezone: 'UTC',
+    older_than_days: 30,
+    include_events: false,
+    include_transactions: true,
+    include_logs: true,
+  } as const;
+  const client = new RustrakClient({
+    baseUrl: 'http://localhost:8080',
+    token: 'test-token',
+  });
+
+  it('reads the settings, the next run and the last run', async () => {
+    server.use(
+      http.get(URL, () =>
+        HttpResponse.json({
+          settings,
+          next_run_at: '2026-01-02T03:00:00Z',
+          last_run: {
+            started_at: '2026-01-01T03:00:00Z',
+            finished_at: '2026-01-01T03:00:04Z',
+            status: 'ok',
+            removed: {
+              events: 0,
+              transactions: 12,
+              spans: 40,
+              logs: 300,
+              issues_removed: 0,
+            },
+            error: null,
+          },
+        }),
+      ),
+    );
+
+    const auto = expectOk(await client.storage.getAutoCleanup());
+    expect(auto.settings.include_events).toBe(false);
+    expect(auto.last_run?.removed?.logs).toBe(300);
+  });
+
+  it('saves settings', async () => {
+    let body: unknown;
+    server.use(
+      http.put(URL, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({
+          settings,
+          next_run_at: null,
+          last_run: null,
+        });
+      }),
+    );
+
+    expectOk(await client.storage.updateAutoCleanup(settings));
+    expect(body).toEqual(settings);
+  });
+
+  it('refuses a retention under one day before sending it', async () => {
+    const error = expectErr(
+      await client.storage.updateAutoCleanup({
+        ...settings,
+        older_than_days: 0,
+      }),
+    );
+    expect(error.kind).toBe('invalid_request');
+  });
+
+  it('reports a non-admin as forbidden', async () => {
+    server.use(
+      http.get(URL, () =>
+        HttpResponse.json(
+          {
+            error: {
+              type: 'Forbidden',
+              message: 'Forbidden: Admin privileges required',
+            },
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+    expect(expectErr(await client.storage.getAutoCleanup()).kind).toBe(
+      'forbidden',
+    );
+  });
+});

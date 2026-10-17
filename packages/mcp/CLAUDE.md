@@ -18,7 +18,7 @@ src/
 ├── config.ts    loadConfig: validates RUSTRAK_API_URL and RUSTRAK_API_TOKEN
 ├── errors.ts    mcpJson, mcpDone, mcpRefusal and toMcpError
 └── tools/       one module per area: projects, issues, events, transactions,
-                 spans, agents, sessions, logs, stats, storage, team, tokens,
+                 spans, agents, sessions, logs, monitors, schedules, stats, storage, team, tokens,
                  alerts, health
 ```
 

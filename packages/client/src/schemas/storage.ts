@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { dateTimeSchema } from './common.js';
+import { scheduleSchema } from './schedule.js';
 
 /**
  * Exact source-map storage weight, summed from the `size` columns of the
@@ -88,6 +90,32 @@ export const sourceMapGcResultSchema = z.object({
  * also governs the cascaded spans, and `include_events` governs the emptied
  * issues that get removed alongside their events.
  */
+/** Automatic cleanup, run by the server on a schedule. */
+export const autoCleanupSettingsSchema = z.object({
+  enabled: z.boolean(),
+  schedule: scheduleSchema,
+  timezone: z.string().min(1),
+  older_than_days: z.number().int().min(1),
+  include_events: z.boolean(),
+  include_transactions: z.boolean(),
+  include_logs: z.boolean(),
+});
+
+export const autoCleanupRunSchema = z.object({
+  started_at: dateTimeSchema,
+  finished_at: dateTimeSchema.nullable(),
+  status: z.enum(['running', 'ok', 'error']),
+  removed: cleanupCountsSchema.nullable(),
+  error: z.string().nullable(),
+});
+
+export const autoCleanupSchema = z.object({
+  settings: autoCleanupSettingsSchema,
+  /** Null while disabled, and for up to a minute after the settings change. */
+  next_run_at: dateTimeSchema.nullable(),
+  last_run: autoCleanupRunSchema.nullable(),
+});
+
 export const cleanupOptionsSchema = z.object({
   older_than_days: z.number().int().min(1),
   project_id: z.number().int().optional(),

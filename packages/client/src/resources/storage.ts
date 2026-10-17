@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { RustrakError } from '../errors.js';
 import type { Result } from '../result.js';
 import {
+  autoCleanupSchema,
+  autoCleanupSettingsSchema,
   cleanupCountsSchema,
   cleanupOptionsSchema,
   cleanupStatusSchema,
@@ -10,6 +12,8 @@ import {
   storageSummarySchema,
 } from '../schemas/index.js';
 import type {
+  AutoCleanup,
+  AutoCleanupSettings,
   CleanupCounts,
   CleanupOptions,
   CleanupStatus,
@@ -130,6 +134,31 @@ export class StorageResource extends BaseResource {
     return this.request(
       () => this.http.post('api/storage/source-maps/gc'),
       sourceMapGcResultSchema,
+    );
+  }
+
+  /**
+   * Automatic cleanup: what it deletes, its schedule, when it runs next and
+   * how its last run went.
+   */
+  async getAutoCleanup(): Promise<Result<AutoCleanup, RustrakError>> {
+    return this.request(
+      () => this.http.get('api/storage/auto-cleanup'),
+      autoCleanupSchema,
+    );
+  }
+
+  /** Replaces the automatic cleanup settings. Applies within a minute. */
+  async updateAutoCleanup(
+    settings: AutoCleanupSettings,
+  ): Promise<Result<AutoCleanup, RustrakError>> {
+    const validated = this.validateInput(settings, autoCleanupSettingsSchema);
+    if (!validated.success) {
+      return validated;
+    }
+    return this.request(
+      () => this.http.put('api/storage/auto-cleanup', { json: validated.data }),
+      autoCleanupSchema,
     );
   }
 }

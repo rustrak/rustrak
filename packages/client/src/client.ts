@@ -12,8 +12,10 @@ import {
   IssuesResource,
   LogsResource,
   MembersResource,
+  MonitorsResource,
   ProjectsResource,
   ReleasesResource,
+  SchedulesResource,
   SessionsResource,
   SourceMapsResource,
   SpansResource,
@@ -124,6 +126,16 @@ export class RustrakClient {
   public readonly logs: LogsResource;
 
   /**
+   * Cron monitors API resource (Sentry Crons)
+   */
+  public readonly monitors: MonitorsResource;
+
+  /**
+   * Schedules API resource (previews for crontab/interval schedules)
+   */
+  public readonly schedules: SchedulesResource;
+
+  /**
    * Spans API resource (standalone + transaction-embedded spans, shared table)
    */
   public readonly spans: SpansResource;
@@ -178,6 +190,8 @@ export class RustrakClient {
     this.releases = new ReleasesResource(this.http);
     this.transactions = new TransactionsResource(this.http);
     this.logs = new LogsResource(this.http);
+    this.monitors = new MonitorsResource(this.http);
+    this.schedules = new SchedulesResource(this.http);
     this.spans = new SpansResource(this.http);
     this.agents = new AgentsResource(this.http);
     this.stats = new StatsResource(this.http);

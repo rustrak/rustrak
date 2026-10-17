@@ -1,5 +1,8 @@
 import type { z } from 'zod';
 import type {
+  autoCleanupRunSchema,
+  autoCleanupSchema,
+  autoCleanupSettingsSchema,
   cleanupCountsSchema,
   cleanupOptionsSchema,
   cleanupStatusSchema,
@@ -30,3 +33,12 @@ export type SourceMapGcResult = z.infer<typeof sourceMapGcResultSchema>;
 /** Request body for a cleanup: remove data older than `older_than_days`,
  * optionally scoped to one project (omit for all projects). */
 export type CleanupOptions = z.infer<typeof cleanupOptionsSchema>;
+
+/** What automatic cleanup deletes, and when. */
+export type AutoCleanupSettings = z.infer<typeof autoCleanupSettingsSchema>;
+
+/** How the last automatic cleanup went. */
+export type AutoCleanupRun = z.infer<typeof autoCleanupRunSchema>;
+
+/** Automatic cleanup: settings, next run, last run. */
+export type AutoCleanup = z.infer<typeof autoCleanupSchema>;

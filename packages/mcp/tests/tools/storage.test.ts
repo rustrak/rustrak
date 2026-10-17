@@ -56,6 +56,8 @@ describe('storage tools', () => {
         getCleanupStatus: vi.fn(),
         previewGcSourceMaps: vi.fn(),
         gcSourceMaps: vi.fn(),
+        getAutoCleanup: vi.fn(),
+        updateAutoCleanup: vi.fn(),
       },
     };
     testEnv = await createTestEnv(mockClient);
@@ -265,6 +267,54 @@ describe('storage tools', () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.files_removed).toBe(4);
       expect(mockClient.storage.gcSourceMaps).toHaveBeenCalled();
+    });
+  });
+
+  describe('auto cleanup', () => {
+    const settings = {
+      enabled: true,
+      schedule: { type: 'crontab', value: '0 3 * * 0' },
+      timezone: 'UTC',
+      older_than_days: 30,
+      include_events: false,
+      include_transactions: true,
+      include_logs: true,
+    };
+
+    it('get_auto_cleanup returns settings, next run and last run', async () => {
+      mockClient.storage.getAutoCleanup.mockResolvedValue(
+        ok({ settings, next_run_at: null, last_run: null }),
+      );
+      const result = await callTool({
+        name: 'get_auto_cleanup',
+        arguments: {},
+      });
+      expect(result.isError).toBeFalsy();
+      expect(JSON.parse(result.content[0].text).settings.older_than_days).toBe(
+        30,
+      );
+    });
+
+    it('update_auto_cleanup sends the full settings', async () => {
+      mockClient.storage.updateAutoCleanup.mockResolvedValue(
+        ok({ settings, next_run_at: null, last_run: null }),
+      );
+      const result = await callTool({
+        name: 'update_auto_cleanup',
+        arguments: settings,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(mockClient.storage.updateAutoCleanup).toHaveBeenCalledWith(
+        settings,
+      );
+    });
+
+    it('update_auto_cleanup is marked destructive', async () => {
+      const tools = await testEnv.mcpClient.listTools();
+      const tool = tools.tools.find(
+        (t: any) => t.name === 'update_auto_cleanup',
+      );
+      expect(tool?.annotations?.destructiveHint).toBe(true);
     });
   });
 });
