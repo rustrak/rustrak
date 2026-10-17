@@ -1,4 +1,5 @@
 import type {
+  AutoCleanup,
   ProjectStorage,
   Result,
   RustrakError,
@@ -29,4 +30,12 @@ export async function getStorageProjects(): Promise<
 > {
   const client = await createClient();
   return client.storage.getProjects();
+}
+
+/** Automatic cleanup: settings, next run and last run. */
+export async function getAutoCleanup(): Promise<
+  Result<AutoCleanup, RustrakError>
+> {
+  const client = await createClient();
+  return client.storage.getAutoCleanup();
 }

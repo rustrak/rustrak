@@ -1228,7 +1228,37 @@
       "removeDescription": "这将从数据库和磁盘中永久删除 {count} 个未被任何上传引用的源映射文件（{bytes}）。被引用的文件不受影响。"
     },
     "removing": "正在删除…",
-    "remove": "删除"
+    "remove": "删除",
+    "auto": {
+      "title": "自动清理",
+      "description": "按计划删除旧数据，避免存储无限增长。只会处理你选择的数据类型。",
+      "enabled": "自动清理",
+      "enabledHint": "在后台小批量运行，不影响数据接收。",
+      "olderThan": "删除早于以下时间的数据",
+      "days": "{count, plural, other {天}}",
+      "dataLabel": "清理内容",
+      "eventsHint": "错误事件，以及因此变空的问题",
+      "transactionsHint": "事务及其 span",
+      "logsHint": "结构化日志",
+      "scheduleLabel": "执行时间",
+      "timezone": "时区",
+      "timezonePlaceholder": "搜索时区",
+      "timezoneNoResults": "没有匹配的时区",
+      "save": "保存",
+      "saving": "正在保存…",
+      "saved": "自动清理已保存",
+      "saveFailed": "无法保存自动清理",
+      "loadFailed": "无法加载自动清理",
+      "pickOne": "请至少选择一种数据",
+      "daysMin": "至少 1 天",
+      "nextRun": "下次运行 {when}",
+      "nextRunPending": "正在安排下次运行…",
+      "off": "已关闭",
+      "lastRunRunning": "自 {when} 起运行中",
+      "lastRunFailed": "上次运行（{when}）失败：{error}",
+      "lastRunNothing": "上次运行（{when}）：没有可删除的数据",
+      "lastRunRemoved": "上次运行（{when}）：已删除 {parts}"
+    }
   },
   "errors": {
     "notFound": {

@@ -1228,7 +1228,37 @@
       "removeDescription": "Esto elimina definitivamente de la base de datos y del disco {count, plural, =1 {# archivo de source map} other {# archivos de source map}} ({bytes}) a los que no hace referencia ninguna carga. Los archivos referenciados no se ven afectados."
     },
     "removing": "Eliminando…",
-    "remove": "Eliminar"
+    "remove": "Eliminar",
+    "auto": {
+      "title": "Limpieza automática",
+      "description": "Borra datos antiguos según una programación para que el almacenamiento no crezca sin control. Solo se tocan los tipos que elijas.",
+      "enabled": "Limpiar automáticamente",
+      "enabledHint": "Se ejecuta en segundo plano en lotes pequeños, así que la ingesta sigue funcionando.",
+      "olderThan": "Borrar datos con más de",
+      "days": "{count, plural, =1 {día} other {días}}",
+      "dataLabel": "Qué limpiar",
+      "eventsHint": "Eventos de error y las incidencias que se queden vacías",
+      "transactionsHint": "Transacciones y sus spans",
+      "logsHint": "Logs estructurados",
+      "scheduleLabel": "Cuándo",
+      "timezone": "Zona horaria",
+      "timezonePlaceholder": "Busca una zona",
+      "timezoneNoResults": "Ninguna zona coincide",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Limpieza automática guardada",
+      "saveFailed": "No se pudo guardar la limpieza automática",
+      "loadFailed": "No se pudo cargar la limpieza automática",
+      "pickOne": "Elige al menos un tipo de dato",
+      "daysMin": "Como mínimo 1 día",
+      "nextRun": "Próxima ejecución {when}",
+      "nextRunPending": "Programando la próxima ejecución…",
+      "off": "Desactivada",
+      "lastRunRunning": "En ejecución desde {when}",
+      "lastRunFailed": "La última ejecución {when} falló: {error}",
+      "lastRunNothing": "Última ejecución {when}: nada que borrar",
+      "lastRunRemoved": "Última ejecución {when}: borrados {parts}"
+    }
   },
   "errors": {
     "notFound": {

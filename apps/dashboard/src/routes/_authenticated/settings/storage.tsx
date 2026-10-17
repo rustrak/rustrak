@@ -7,6 +7,7 @@ import { StorageSummaryCards } from '@/features/storage/ui/components/storage-su
 import { translator } from '@/shared/i18n/intl';
 import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
+import { AutoCleanupPanel } from './-components/auto-cleanup-panel';
 import { StorageCleanupPanel } from './-components/storage-cleanup-panel';
 
 export const Route = createFileRoute('/_authenticated/settings/storage')({
@@ -70,6 +71,7 @@ function StoragePage() {
       <StorageSummaryCards />
       <StorageProjectsTable />
       <div className="space-y-6">
+        <AutoCleanupPanel />
         <StorageCleanupPanel />
         <SourceMapGc />
       </div>

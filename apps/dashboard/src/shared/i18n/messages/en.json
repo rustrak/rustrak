@@ -1228,7 +1228,37 @@
       "removeDescription": "This permanently deletes {count, plural, =1 {# source-map file} other {# source-map files}} ({bytes}) that no upload references, from the database and disk. Referenced files are not affected."
     },
     "removing": "Removing…",
-    "remove": "Remove"
+    "remove": "Remove",
+    "auto": {
+      "title": "Automatic cleanup",
+      "description": "Delete old data on a schedule so storage doesn't keep growing. Only the kinds you pick are touched.",
+      "enabled": "Clean up automatically",
+      "enabledHint": "Runs in the background in small batches, so ingestion keeps working.",
+      "olderThan": "Delete data older than",
+      "days": "{count, plural, =1 {day} other {days}}",
+      "dataLabel": "What to clean up",
+      "eventsHint": "Error events, and the issues they leave empty",
+      "transactionsHint": "Transactions and their spans",
+      "logsHint": "Structured logs",
+      "scheduleLabel": "When",
+      "timezone": "Timezone",
+      "timezonePlaceholder": "Search a zone",
+      "timezoneNoResults": "No matching zone",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Automatic cleanup saved",
+      "saveFailed": "Could not save automatic cleanup",
+      "loadFailed": "Could not load automatic cleanup",
+      "pickOne": "Pick at least one kind of data",
+      "daysMin": "At least 1 day",
+      "nextRun": "Next run {when}",
+      "nextRunPending": "Scheduling the next run…",
+      "off": "Off",
+      "lastRunRunning": "Running since {when}",
+      "lastRunFailed": "Last run {when} failed: {error}",
+      "lastRunNothing": "Last run {when}: nothing to delete",
+      "lastRunRemoved": "Last run {when}: removed {parts}"
+    }
   },
   "errors": {
     "notFound": {

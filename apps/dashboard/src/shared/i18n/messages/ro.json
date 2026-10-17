@@ -1228,7 +1228,37 @@
       "removeDescription": "Aceasta șterge definitiv {count, plural, =1 {# fișier source map} few {# fișiere source map} other {# de fișiere source map}} ({bytes}) la care nu se referă nicio încărcare, din baza de date și de pe disc. Fișierele referențiate nu sunt afectate."
     },
     "removing": "Se elimină…",
-    "remove": "Elimină"
+    "remove": "Elimină",
+    "auto": {
+      "title": "Curățare automată",
+      "description": "Șterge datele vechi după o programare, ca stocarea să nu crească la nesfârșit. Sunt atinse doar tipurile alese.",
+      "enabled": "Curăță automat",
+      "enabledHint": "Rulează în fundal, în loturi mici, așa că ingestia continuă să funcționeze.",
+      "olderThan": "Șterge datele mai vechi de",
+      "days": "{count, plural, one {zi} few {zile} other {de zile}}",
+      "dataLabel": "Ce se curăță",
+      "eventsHint": "Evenimente de eroare și problemele pe care le lasă goale",
+      "transactionsHint": "Tranzacții și span-urile lor",
+      "logsHint": "Loguri structurate",
+      "scheduleLabel": "Când",
+      "timezone": "Fus orar",
+      "timezonePlaceholder": "Caută un fus",
+      "timezoneNoResults": "Niciun fus nu corespunde",
+      "save": "Salvează",
+      "saving": "Se salvează…",
+      "saved": "Curățarea automată a fost salvată",
+      "saveFailed": "Curățarea automată nu a putut fi salvată",
+      "loadFailed": "Curățarea automată nu a putut fi încărcată",
+      "pickOne": "Alege cel puțin un tip de date",
+      "daysMin": "Cel puțin 1 zi",
+      "nextRun": "Următoarea rulare {when}",
+      "nextRunPending": "Se programează următoarea rulare…",
+      "off": "Dezactivată",
+      "lastRunRunning": "Rulează din {when}",
+      "lastRunFailed": "Ultima rulare {when} a eșuat: {error}",
+      "lastRunNothing": "Ultima rulare {when}: nimic de șters",
+      "lastRunRemoved": "Ultima rulare {when}: șterse {parts}"
+    }
   },
   "errors": {
     "notFound": {

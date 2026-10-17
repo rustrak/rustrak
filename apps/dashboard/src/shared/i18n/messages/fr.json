@@ -1228,7 +1228,37 @@
       "removeDescription": "Cette action supprime définitivement de la base de données et du disque {count, plural, =1 {# fichier de source map} other {# fichiers de source map}} ({bytes}) qu’aucun téléversement ne référence. Les fichiers référencés ne sont pas affectés."
     },
     "removing": "Suppression…",
-    "remove": "Supprimer"
+    "remove": "Supprimer",
+    "auto": {
+      "title": "Nettoyage automatique",
+      "description": "Supprimez les anciennes données selon une planification pour que le stockage ne grossisse pas sans fin. Seuls les types choisis sont touchés.",
+      "enabled": "Nettoyer automatiquement",
+      "enabledHint": "S’exécute en arrière-plan par petits lots, l’ingestion continue donc de fonctionner.",
+      "olderThan": "Supprimer les données de plus de",
+      "days": "{count, plural, =1 {jour} other {jours}}",
+      "dataLabel": "Quoi nettoyer",
+      "eventsHint": "Événements d’erreur et les tickets qu’ils laissent vides",
+      "transactionsHint": "Transactions et leurs spans",
+      "logsHint": "Logs structurés",
+      "scheduleLabel": "Quand",
+      "timezone": "Fuseau horaire",
+      "timezonePlaceholder": "Rechercher un fuseau",
+      "timezoneNoResults": "Aucun fuseau correspondant",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "saved": "Nettoyage automatique enregistré",
+      "saveFailed": "Impossible d’enregistrer le nettoyage automatique",
+      "loadFailed": "Impossible de charger le nettoyage automatique",
+      "pickOne": "Choisissez au moins un type de données",
+      "daysMin": "Au moins 1 jour",
+      "nextRun": "Prochaine exécution {when}",
+      "nextRunPending": "Planification de la prochaine exécution…",
+      "off": "Désactivé",
+      "lastRunRunning": "En cours depuis {when}",
+      "lastRunFailed": "La dernière exécution {when} a échoué : {error}",
+      "lastRunNothing": "Dernière exécution {when} : rien à supprimer",
+      "lastRunRemoved": "Dernière exécution {when} : {parts} supprimés"
+    }
   },
   "errors": {
     "notFound": {

@@ -1,4 +1,6 @@
 import type {
+  AutoCleanup,
+  AutoCleanupSettings,
   CleanupCounts,
   CleanupOptions,
   CleanupStatus,
@@ -62,4 +64,12 @@ export async function gcStorageSourceMaps(): Promise<
 > {
   const client = await createClient();
   return client.storage.gcSourceMaps();
+}
+
+/** Saves the automatic cleanup settings. */
+export async function updateAutoCleanup(
+  settings: AutoCleanupSettings,
+): Promise<Result<AutoCleanup, RustrakError>> {
+  const client = await createClient();
+  return client.storage.updateAutoCleanup(settings);
 }
