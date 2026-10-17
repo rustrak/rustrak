@@ -511,7 +511,8 @@
       "performance": "Performance",
       "agents": "Agents",
       "logs": "Logs",
-      "settings": "Paramètres"
+      "settings": "Paramètres",
+      "crons": "Crons"
     },
     "collapse": {
       "expand": "Développer",
@@ -1808,5 +1809,190 @@
     "minEvents": "Événements minimum",
     "environments": "Environnements",
     "description": "Séparés par des virgules. Vide signifie tous."
+  },
+  "crons": {
+    "meta": {
+      "listTitle": "Crons | {project} | Rustrak",
+      "listDescription": "Surveillance des tâches planifiées de {project}",
+      "newTitle": "Nouveau moniteur | {project} | Rustrak",
+      "editTitle": "Modifier {monitor} | Crons | Rustrak",
+      "detailTitle": "{monitor} | Crons | Rustrak"
+    },
+    "title": "Crons",
+    "subtitle": "Sachez quand une tâche planifiée ne s’exécute pas, échoue ou dure trop longtemps",
+    "newMonitor": "Nouveau moniteur",
+    "loadFailed": "Impossible de charger les moniteurs",
+    "loadMonitorFailed": "Impossible de charger ce moniteur",
+    "never": "Jamais",
+    "columns": {
+      "monitor": "Moniteur",
+      "schedule": "Planification",
+      "recent": "Dernières exécutions",
+      "lastCheckIn": "Dernier check-in",
+      "nextCheckIn": "Prochain attendu"
+    },
+    "health": {
+      "failing": "En échec",
+      "ok": "Sain",
+      "waiting": "En attente du premier check-in",
+      "muted": "En sourdine"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "Échec",
+      "in_progress": "En cours",
+      "missed": "Manqué",
+      "timeout": "Délai dépassé",
+      "unknown": "Inconnu"
+    },
+    "environmentStatus": {
+      "ok": "Sain",
+      "error": "Incident ouvert",
+      "active": "En attente d’une exécution réussie"
+    },
+    "timeline": {
+      "label": "Derniers check-ins, du plus ancien au plus récent",
+      "took": "Durée : {duration}"
+    },
+    "empty": {
+      "title": "Surveillez vos tâches planifiées",
+      "description": "Rustrak vous prévient quand un cron ne s’exécute pas à l’heure, échoue ou dure plus que prévu. Ajoutez un check-in à votre tâche : son moniteur est créé à la première exécution.",
+      "upsertNote": "Cet exemple fait un check-in sur le moniteur my-job toutes les heures et le crée à la première exécution. Remplacez le slug et la planification par ceux de votre tâche.",
+      "orManual": "Vous préférez le configurer à la main ?",
+      "manual": "Créer un moniteur"
+    },
+    "setup": {
+      "copy": "Copier",
+      "copied": "Copié",
+      "copyUnavailable": "La copie n’est pas disponible ici",
+      "copyUnavailableHint": "Sélectionnez l’extrait {label} et copiez-le à la main."
+    },
+    "guides": {
+      "curl": "cURL",
+      "cli": "Sentry CLI",
+      "python": "Python",
+      "node": "Node.js",
+      "laravel": "Laravel"
+    },
+    "detail": {
+      "environments": "Environnements",
+      "checkIns": "Check-ins",
+      "instrument": "Instrumentez votre tâche",
+      "noCheckIns": "Aucun check-in pour l’instant",
+      "waitingTitle": "En attente du premier check-in",
+      "waitingDescription": "Les exécutions manquées ne sont détectées qu’après un premier check-in de la tâche. Ajoutez l’un de ces extraits à votre tâche :",
+      "mutedBanner": "Ce moniteur est en sourdine : les échecs sont toujours enregistrés mais n’ouvrent aucun ticket et n’envoient aucune alerte.",
+      "config": "Configuration",
+      "schedule": "Planification",
+      "rawSchedule": "Expression",
+      "timezone": "Fuseau horaire",
+      "margin": "Délai de grâce",
+      "maxRuntime": "Durée maximale",
+      "failureThreshold": "Ouvrir un ticket après",
+      "recoveryThreshold": "Le résoudre après",
+      "slug": "Slug",
+      "lastCheckIn": "Dernier check-in",
+      "nextCheckIn": "Prochain attendu",
+      "minutes": "{count, plural, one {# minute} other {# minutes}}",
+      "failures": "{count, plural, one {# check-in en échec} other {# check-ins en échec d’affilée}}",
+      "successes": "{count, plural, one {# check-in réussi} other {# check-ins réussis d’affilée}}"
+    },
+    "checkInColumns": {
+      "status": "Statut",
+      "environment": "Environnement",
+      "started": "Début",
+      "duration": "Durée",
+      "expected": "Attendu"
+    },
+    "actions": {
+      "edit": "Modifier",
+      "more": "Plus d’actions",
+      "mute": "Mettre en sourdine",
+      "unmute": "Réactiver",
+      "muted": "Moniteur mis en sourdine",
+      "unmuted": "Moniteur réactivé",
+      "updateFailed": "Impossible de mettre à jour le moniteur",
+      "delete": "Supprimer",
+      "deleteTitle": "Supprimer {monitor} ?",
+      "deleteDescription": "Ses check-ins sont supprimés avec lui ; les tickets qu’il a ouverts restent. Une tâche qui continue à faire des check-ins avec une planification le recrée.",
+      "cancel": "Annuler",
+      "deleting": "Suppression…",
+      "confirmDelete": "Supprimer le moniteur",
+      "deleted": "Moniteur supprimé",
+      "deleteFailed": "Impossible de supprimer le moniteur"
+    },
+    "form": {
+      "newTitle": "Nouveau moniteur",
+      "newDescription": "Indiquez à Rustrak quand votre tâche doit s’exécuter, et quel retard ou quelle durée est de trop.",
+      "editTitle": "Modifier {monitor}",
+      "editDescription": "Une nouvelle planification s’applique dès le prochain check-in. Une tâche qui envoie son propre monitor_config écrase ce qu’elle envoie.",
+      "sectionMonitor": "Moniteur",
+      "sectionSchedule": "Planification",
+      "sectionTolerance": "Tolérance",
+      "name": "Nom",
+      "namePlaceholder": "Sauvegarde nocturne",
+      "slug": "Slug",
+      "slugPlaceholder": "sauvegarde-nocturne",
+      "slugHint": "Le slug avec lequel votre tâche fait ses check-ins. Tiré du nom s’il est vide.",
+      "slugLocked": "Les tâches font leurs check-ins avec ce slug, il ne peut donc pas changer.",
+      "timezone": "Fuseau horaire",
+      "timezonePlaceholder": "Rechercher un fuseau",
+      "timezoneNoResults": "Aucun fuseau correspondant",
+      "margin": "Délai de grâce",
+      "marginHint": "Le retard toléré pour un check-in avant que l’exécution soit considérée comme manquée.",
+      "maxRuntime": "Durée maximale",
+      "maxRuntimeHint": "Combien de temps une exécution peut rester en cours avant d’être considérée en dépassement.",
+      "failureThreshold": "Tolérance aux échecs",
+      "failureThresholdHint": "Check-ins en échec d’affilée avant l’ouverture d’un ticket.",
+      "recoveryThreshold": "Tolérance de rétablissement",
+      "recoveryThresholdHint": "Check-ins réussis d’affilée avant la résolution du ticket.",
+      "minutesSuffix": "minutes",
+      "checkInsSuffix": "check-ins",
+      "previewNote": "Heures en {timezone}. Chaque exécution est considérée comme manquée {margin, plural, one {# minute} other {# minutes}} après son heure.",
+      "cancel": "Annuler",
+      "create": "Créer le moniteur",
+      "save": "Enregistrer",
+      "created": "Moniteur créé",
+      "saved": "Moniteur enregistré",
+      "saveFailed": "Impossible d’enregistrer le moniteur"
+    },
+    "validation": {
+      "nameRequired": "Le nom est obligatoire",
+      "slugFormat": "Utilisez des minuscules, des chiffres, - et _",
+      "intervalMin": "Au moins 1",
+      "crontabInvalid": "Ce n’est pas un crontab valide à cinq champs"
+    }
+  },
+  "schedule": {
+    "type": "Type de planification",
+    "crontab": "Crontab",
+    "interval": "Intervalle",
+    "crontabHint": "Cinq champs : minute, heure, jour du mois, mois et jour de la semaine. Les alias comme @daily fonctionnent aussi.",
+    "every": "Tous les",
+    "unit": "Unité",
+    "intervalHint": "Compté à partir de chaque check-in.",
+    "units": {
+      "minute": "{count, plural, one {minute} other {minutes}}",
+      "hour": "{count, plural, one {heure} other {heures}}",
+      "day": "{count, plural, one {jour} other {jours}}",
+      "week": "{count, plural, one {semaine} other {semaines}}",
+      "month": "{count, plural, one {mois} other {mois}}",
+      "year": "{count, plural, one {an} other {ans}}"
+    },
+    "intervalText": {
+      "minute": "{count, plural, one {Toutes les minutes} other {Toutes les # minutes}}",
+      "hour": "{count, plural, one {Toutes les heures} other {Toutes les # heures}}",
+      "day": "{count, plural, one {Tous les jours} other {Tous les # jours}}",
+      "week": "{count, plural, one {Toutes les semaines} other {Toutes les # semaines}}",
+      "month": "{count, plural, one {Tous les mois} other {Tous les # mois}}",
+      "year": "{count, plural, one {Tous les ans} other {Tous les # ans}}"
+    },
+    "preview": {
+      "title": "Prochaines exécutions",
+      "empty": "Saisissez une planification valide pour voir quand elle s’exécute.",
+      "failed": "Impossible de charger l’aperçu.",
+      "invalid": "Cette planification ne peut pas s’exécuter. Vérifiez le crontab.",
+      "timesIn": "Heures en {timezone}."
+    }
   }
 }

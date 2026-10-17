@@ -511,7 +511,8 @@
       "performance": "性能",
       "agents": "智能体",
       "logs": "日志",
-      "settings": "设置"
+      "settings": "设置",
+      "crons": "Crons"
     },
     "collapse": {
       "expand": "展开",
@@ -1808,5 +1809,190 @@
     "minEvents": "最少事件数",
     "environments": "环境",
     "description": "用逗号分隔。留空表示所有环境。"
+  },
+  "crons": {
+    "meta": {
+      "listTitle": "Crons | {project} | Rustrak",
+      "listDescription": "{project} 的定时任务监控",
+      "newTitle": "新建监控 | {project} | Rustrak",
+      "editTitle": "编辑 {monitor} | Crons | Rustrak",
+      "detailTitle": "{monitor} | Crons | Rustrak"
+    },
+    "title": "Crons",
+    "subtitle": "在定时任务未运行、失败或运行过久时及时知晓",
+    "newMonitor": "新建监控",
+    "loadFailed": "无法加载监控",
+    "loadMonitorFailed": "无法加载此监控",
+    "never": "从未",
+    "columns": {
+      "monitor": "监控",
+      "schedule": "计划",
+      "recent": "最近运行",
+      "lastCheckIn": "上次签到",
+      "nextCheckIn": "下次预期"
+    },
+    "health": {
+      "failing": "失败中",
+      "ok": "正常",
+      "waiting": "等待首次签到",
+      "muted": "已静音"
+    },
+    "status": {
+      "ok": "成功",
+      "error": "失败",
+      "in_progress": "进行中",
+      "missed": "错过",
+      "timeout": "超时",
+      "unknown": "未知"
+    },
+    "environmentStatus": {
+      "ok": "正常",
+      "error": "事件进行中",
+      "active": "等待一次成功运行"
+    },
+    "timeline": {
+      "label": "最近的签到，按时间先后排列",
+      "took": "耗时 {duration}"
+    },
+    "empty": {
+      "title": "监控你的定时任务",
+      "description": "当 cron 任务没有按时运行、失败或运行时间过长时，Rustrak 会通知你。在任务中添加签到：首次运行时会自动创建监控。",
+      "upsertNote": "此示例每小时向 my-job 监控签到，并在首次运行时创建它。请将 slug 和计划替换为你的任务的。",
+      "orManual": "想手动设置？",
+      "manual": "创建监控"
+    },
+    "setup": {
+      "copy": "复制",
+      "copied": "已复制",
+      "copyUnavailable": "此处无法复制",
+      "copyUnavailableHint": "请选中 {label} 代码片段并手动复制。"
+    },
+    "guides": {
+      "curl": "cURL",
+      "cli": "Sentry CLI",
+      "python": "Python",
+      "node": "Node.js",
+      "laravel": "Laravel"
+    },
+    "detail": {
+      "environments": "环境",
+      "checkIns": "签到",
+      "instrument": "为你的任务接入签到",
+      "noCheckIns": "暂无签到",
+      "waitingTitle": "等待首次签到",
+      "waitingDescription": "只有在任务至少签到一次之后，才能检测到错过的运行。请将以下任一代码添加到你的任务中：",
+      "mutedBanner": "此监控已静音：失败仍会被记录，但不会创建问题，也不会发送告警。",
+      "config": "配置",
+      "schedule": "计划",
+      "rawSchedule": "表达式",
+      "timezone": "时区",
+      "margin": "宽限时间",
+      "maxRuntime": "最长运行时间",
+      "failureThreshold": "创建问题的条件",
+      "recoveryThreshold": "解决问题的条件",
+      "slug": "Slug",
+      "lastCheckIn": "上次签到",
+      "nextCheckIn": "下次预期",
+      "minutes": "{count, plural, other {# 分钟}}",
+      "failures": "{count, plural, other {连续 # 次签到失败}}",
+      "successes": "{count, plural, other {连续 # 次签到成功}}"
+    },
+    "checkInColumns": {
+      "status": "状态",
+      "environment": "环境",
+      "started": "开始时间",
+      "duration": "耗时",
+      "expected": "预期时间"
+    },
+    "actions": {
+      "edit": "编辑",
+      "more": "更多操作",
+      "mute": "静音",
+      "unmute": "取消静音",
+      "muted": "监控已静音",
+      "unmuted": "监控已取消静音",
+      "updateFailed": "无法更新监控",
+      "delete": "删除",
+      "deleteTitle": "删除 {monitor}？",
+      "deleteDescription": "其签到会一并删除；它创建的问题会保留。若任务继续带着计划签到，会重新创建该监控。",
+      "cancel": "取消",
+      "deleting": "正在删除…",
+      "confirmDelete": "删除监控",
+      "deleted": "监控已删除",
+      "deleteFailed": "无法删除监控"
+    },
+    "form": {
+      "newTitle": "新建监控",
+      "newDescription": "告诉 Rustrak 你的任务应在何时运行，以及多晚或多久算异常。",
+      "editTitle": "编辑 {monitor}",
+      "editDescription": "新的计划将从下一次签到开始生效。任务若自行发送 monitor_config，会覆盖其发送的配置。",
+      "sectionMonitor": "监控",
+      "sectionSchedule": "计划",
+      "sectionTolerance": "容忍度",
+      "name": "名称",
+      "namePlaceholder": "夜间备份",
+      "slug": "Slug",
+      "slugPlaceholder": "nightly-backup",
+      "slugHint": "任务签到时使用的 slug。留空时由名称生成。",
+      "slugLocked": "任务使用此 slug 签到，因此不能修改。",
+      "timezone": "时区",
+      "timezonePlaceholder": "搜索时区",
+      "timezoneNoResults": "没有匹配的时区",
+      "margin": "宽限时间",
+      "marginHint": "签到可延迟多久，超过后该次运行记为错过。",
+      "maxRuntime": "最长运行时间",
+      "maxRuntimeHint": "运行可保持进行中多久，超过后记为超时。",
+      "failureThreshold": "失败容忍度",
+      "failureThresholdHint": "连续失败多少次签到后创建问题。",
+      "recoveryThreshold": "恢复容忍度",
+      "recoveryThresholdHint": "连续成功多少次签到后解决问题。",
+      "minutesSuffix": "分钟",
+      "checkInsSuffix": "次签到",
+      "previewNote": "时间为 {timezone}。每次运行在其时间之后 {margin, plural, other {# 分钟}} 记为错过。",
+      "cancel": "取消",
+      "create": "创建监控",
+      "save": "保存更改",
+      "created": "监控已创建",
+      "saved": "监控已保存",
+      "saveFailed": "无法保存监控"
+    },
+    "validation": {
+      "nameRequired": "名称为必填项",
+      "slugFormat": "请使用小写字母、数字、- 和 _",
+      "intervalMin": "至少为 1",
+      "crontabInvalid": "不是有效的五字段 crontab"
+    }
+  },
+  "schedule": {
+    "type": "计划类型",
+    "crontab": "Crontab",
+    "interval": "间隔",
+    "crontabHint": "五个字段：分钟、小时、日、月、星期。也支持 @daily 等别名。",
+    "every": "每",
+    "unit": "单位",
+    "intervalHint": "从每次签到开始计算。",
+    "units": {
+      "minute": "{count, plural, other {分钟}}",
+      "hour": "{count, plural, other {小时}}",
+      "day": "{count, plural, other {天}}",
+      "week": "{count, plural, other {周}}",
+      "month": "{count, plural, other {个月}}",
+      "year": "{count, plural, other {年}}"
+    },
+    "intervalText": {
+      "minute": "每 {count, plural, other {# 分钟}}",
+      "hour": "每 {count, plural, other {# 小时}}",
+      "day": "每 {count, plural, other {# 天}}",
+      "week": "每 {count, plural, other {# 周}}",
+      "month": "每 {count, plural, other {# 个月}}",
+      "year": "每 {count, plural, other {# 年}}"
+    },
+    "preview": {
+      "title": "接下来的运行",
+      "empty": "输入有效的计划以查看运行时间。",
+      "failed": "无法加载预览。",
+      "invalid": "此计划无法运行，请检查 crontab。",
+      "timesIn": "时间为 {timezone}。"
+    }
   }
 }

@@ -1,6 +1,7 @@
 import {
   AlertCircle,
   Bot,
+  CalendarClock,
   Check,
   ChevronsLeft,
   ChevronsUpDown,
@@ -197,6 +198,11 @@ export function ProjectSidebar({ projectId, projects }: ProjectSidebarProps) {
       href: `/projects/${projectId}/logs`,
       label: t('nav.logs'),
       icon: ScrollText,
+    },
+    {
+      href: `/projects/${projectId}/crons`,
+      label: t('nav.crons'),
+      icon: CalendarClock,
     },
     {
       href: `/projects/${projectId}/settings`,

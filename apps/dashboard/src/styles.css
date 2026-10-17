@@ -24,6 +24,7 @@
   --color-sev-error: var(--sev-error);
   --color-sev-warning: var(--sev-warning);
   --color-sev-info: var(--sev-info);
+  --color-status-ok: var(--status-ok);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -116,6 +117,9 @@
   --sev-error: oklch(0.623 0.191 24.9);
   --sev-warning: oklch(0.764 0.161 75.1);
   --sev-info: oklch(0.77 0 0);
+  /* A healthy run, the counterpart of `--sev-error` on a cron timeline.
+     Never the only signal: every tick also names its status. */
+  --status-ok: oklch(0.627 0.17 149);
 
   /* Sidebar - Light mode */
   --sidebar: oklch(0.985 0 0);
@@ -173,6 +177,7 @@
   --sev-error: oklch(0.584 0.209 26.6);
   --sev-warning: oklch(0.67 0.143 73.2);
   --sev-info: oklch(0.468 0 0);
+  --status-ok: oklch(0.7 0.16 149);
 
   /* Sidebar - Dark mode */
   --sidebar: oklch(0.18 0 0);

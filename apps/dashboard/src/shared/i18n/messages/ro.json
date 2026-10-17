@@ -511,7 +511,8 @@
       "performance": "Performanță",
       "agents": "Agenți",
       "logs": "Jurnale",
-      "settings": "Setări"
+      "settings": "Setări",
+      "crons": "Crons"
     },
     "collapse": {
       "expand": "Extinde",
@@ -1808,5 +1809,190 @@
     "minEvents": "Minim de evenimente",
     "environments": "Medii",
     "description": "Separate prin virgulă. Gol înseamnă toate."
+  },
+  "crons": {
+    "meta": {
+      "listTitle": "Crons | {project} | Rustrak",
+      "listDescription": "Monitorizarea sarcinilor programate pentru {project}",
+      "newTitle": "Monitor nou | {project} | Rustrak",
+      "editTitle": "Editează {monitor} | Crons | Rustrak",
+      "detailTitle": "{monitor} | Crons | Rustrak"
+    },
+    "title": "Crons",
+    "subtitle": "Află când o sarcină programată nu rulează, eșuează sau durează prea mult",
+    "newMonitor": "Monitor nou",
+    "loadFailed": "Monitoarele nu au putut fi încărcate",
+    "loadMonitorFailed": "Acest monitor nu a putut fi încărcat",
+    "never": "Niciodată",
+    "columns": {
+      "monitor": "Monitor",
+      "schedule": "Programare",
+      "recent": "Rulări recente",
+      "lastCheckIn": "Ultimul check-in",
+      "nextCheckIn": "Următorul așteptat"
+    },
+    "health": {
+      "failing": "Eșuează",
+      "ok": "Funcțional",
+      "waiting": "Se așteaptă primul check-in",
+      "muted": "Silențios"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "Eșuat",
+      "in_progress": "În desfășurare",
+      "missed": "Ratat",
+      "timeout": "Timp depășit",
+      "unknown": "Necunoscut"
+    },
+    "environmentStatus": {
+      "ok": "Funcțional",
+      "error": "Incident deschis",
+      "active": "Se așteaptă o rulare reușită"
+    },
+    "timeline": {
+      "label": "Check-in-uri recente, de la cel mai vechi",
+      "took": "A durat {duration}"
+    },
+    "empty": {
+      "title": "Monitorizează-ți sarcinile programate",
+      "description": "Rustrak te anunță când un cron nu rulează la timp, eșuează sau durează mai mult decât ar trebui. Adaugă un check-in în sarcina ta: monitorul ei se creează la prima rulare.",
+      "upsertNote": "Acest exemplu face check-in în monitorul my-job în fiecare oră și îl creează la prima rulare. Înlocuiește slug-ul și programarea cu cele ale sarcinii tale.",
+      "orManual": "Preferi să îl configurezi manual?",
+      "manual": "Creează un monitor"
+    },
+    "setup": {
+      "copy": "Copiază",
+      "copied": "Copiat",
+      "copyUnavailable": "Copierea nu este disponibilă aici",
+      "copyUnavailableHint": "Selectează fragmentul {label} și copiază-l manual."
+    },
+    "guides": {
+      "curl": "cURL",
+      "cli": "Sentry CLI",
+      "python": "Python",
+      "node": "Node.js",
+      "laravel": "Laravel"
+    },
+    "detail": {
+      "environments": "Medii",
+      "checkIns": "Check-in-uri",
+      "instrument": "Instrumentează-ți sarcina",
+      "noCheckIns": "Încă nu există check-in-uri",
+      "waitingTitle": "Se așteaptă primul check-in",
+      "waitingDescription": "Rulările ratate sunt detectate abia după ce sarcina a făcut cel puțin un check-in. Adaugă unul dintre acestea în sarcina ta:",
+      "mutedBanner": "Acest monitor este silențios: eșecurile sunt înregistrate în continuare, dar nu deschid probleme și nu trimit alerte.",
+      "config": "Configurare",
+      "schedule": "Programare",
+      "rawSchedule": "Expresie",
+      "timezone": "Fus orar",
+      "margin": "Perioadă de grație",
+      "maxRuntime": "Durată maximă",
+      "failureThreshold": "Deschide o problemă după",
+      "recoveryThreshold": "Rezolv-o după",
+      "slug": "Slug",
+      "lastCheckIn": "Ultimul check-in",
+      "nextCheckIn": "Următorul așteptat",
+      "minutes": "{count, plural, one {# minut} few {# minute} other {# de minute}}",
+      "failures": "{count, plural, one {# check-in eșuat} few {# check-in-uri eșuate la rând} other {# de check-in-uri eșuate la rând}}",
+      "successes": "{count, plural, one {# check-in reușit} few {# check-in-uri reușite la rând} other {# de check-in-uri reușite la rând}}"
+    },
+    "checkInColumns": {
+      "status": "Stare",
+      "environment": "Mediu",
+      "started": "Început",
+      "duration": "Durată",
+      "expected": "Așteptat"
+    },
+    "actions": {
+      "edit": "Editează",
+      "more": "Mai multe acțiuni",
+      "mute": "Silențios",
+      "unmute": "Reactivează",
+      "muted": "Monitor trecut pe silențios",
+      "unmuted": "Monitor reactivat",
+      "updateFailed": "Monitorul nu a putut fi actualizat",
+      "delete": "Șterge",
+      "deleteTitle": "Ștergi {monitor}?",
+      "deleteDescription": "Check-in-urile lui se șterg odată cu el; problemele deschise de el rămân. O sarcină care continuă să facă check-in cu o programare îl creează din nou.",
+      "cancel": "Anulează",
+      "deleting": "Se șterge…",
+      "confirmDelete": "Șterge monitorul",
+      "deleted": "Monitor șters",
+      "deleteFailed": "Monitorul nu a putut fi șters"
+    },
+    "form": {
+      "newTitle": "Monitor nou",
+      "newDescription": "Spune-i lui Rustrak când trebuie să ruleze sarcina ta și cât întârziere sau durată este prea mult.",
+      "editTitle": "Editează {monitor}",
+      "editDescription": "O programare nouă se aplică de la următorul check-in. O sarcină care își trimite propriul monitor_config suprascrie ce trimite.",
+      "sectionMonitor": "Monitor",
+      "sectionSchedule": "Programare",
+      "sectionTolerance": "Toleranță",
+      "name": "Nume",
+      "namePlaceholder": "Backup de noapte",
+      "slug": "Slug",
+      "slugPlaceholder": "backup-noapte",
+      "slugHint": "Slug-ul cu care face check-in sarcina ta. Luat din nume dacă e gol.",
+      "slugLocked": "Sarcinile fac check-in cu acest slug, deci nu se poate schimba.",
+      "timezone": "Fus orar",
+      "timezonePlaceholder": "Caută un fus",
+      "timezoneNoResults": "Niciun fus nu corespunde",
+      "margin": "Perioadă de grație",
+      "marginHint": "Cât poate întârzia un check-in înainte ca rularea să fie considerată ratată.",
+      "maxRuntime": "Durată maximă",
+      "maxRuntimeHint": "Cât poate rămâne o rulare în desfășurare înainte de a fi considerată cu timp depășit.",
+      "failureThreshold": "Toleranță la eșecuri",
+      "failureThresholdHint": "Check-in-uri eșuate la rând înainte de a deschide o problemă.",
+      "recoveryThreshold": "Toleranță la recuperare",
+      "recoveryThresholdHint": "Check-in-uri reușite la rând înainte de a rezolva problema.",
+      "minutesSuffix": "minute",
+      "checkInsSuffix": "check-in-uri",
+      "previewNote": "Ore în {timezone}. Fiecare rulare este considerată ratată la {margin, plural, one {# minut} few {# minute} other {# de minute}} după ora ei.",
+      "cancel": "Anulează",
+      "create": "Creează monitorul",
+      "save": "Salvează modificările",
+      "created": "Monitor creat",
+      "saved": "Monitor salvat",
+      "saveFailed": "Monitorul nu a putut fi salvat"
+    },
+    "validation": {
+      "nameRequired": "Numele este obligatoriu",
+      "slugFormat": "Folosește litere mici, cifre, - și _",
+      "intervalMin": "Cel puțin 1",
+      "crontabInvalid": "Nu este un crontab valid cu cinci câmpuri"
+    }
+  },
+  "schedule": {
+    "type": "Tip de programare",
+    "crontab": "Crontab",
+    "interval": "Interval",
+    "crontabHint": "Cinci câmpuri: minut, oră, zi a lunii, lună și zi a săptămânii. Funcționează și aliasuri precum @daily.",
+    "every": "La fiecare",
+    "unit": "Unitate",
+    "intervalHint": "Numărat de la fiecare check-in.",
+    "units": {
+      "minute": "{count, plural, one {minut} few {minute} other {de minute}}",
+      "hour": "{count, plural, one {oră} few {ore} other {de ore}}",
+      "day": "{count, plural, one {zi} few {zile} other {de zile}}",
+      "week": "{count, plural, one {săptămână} few {săptămâni} other {de săptămâni}}",
+      "month": "{count, plural, one {lună} few {luni} other {de luni}}",
+      "year": "{count, plural, one {an} few {ani} other {de ani}}"
+    },
+    "intervalText": {
+      "minute": "{count, plural, one {În fiecare minut} few {La fiecare # minute} other {La fiecare # de minute}}",
+      "hour": "{count, plural, one {În fiecare oră} few {La fiecare # ore} other {La fiecare # de ore}}",
+      "day": "{count, plural, one {În fiecare zi} few {La fiecare # zile} other {La fiecare # de zile}}",
+      "week": "{count, plural, one {În fiecare săptămână} few {La fiecare # săptămâni} other {La fiecare # de săptămâni}}",
+      "month": "{count, plural, one {În fiecare lună} few {La fiecare # luni} other {La fiecare # de luni}}",
+      "year": "{count, plural, one {În fiecare an} few {La fiecare # ani} other {La fiecare # de ani}}"
+    },
+    "preview": {
+      "title": "Următoarele rulări",
+      "empty": "Introdu o programare validă ca să vezi când rulează.",
+      "failed": "Previzualizarea nu a putut fi încărcată.",
+      "invalid": "Această programare nu poate rula. Verifică crontab-ul.",
+      "timesIn": "Ore în {timezone}."
+    }
   }
 }

@@ -511,7 +511,8 @@
       "performance": "Performance",
       "agents": "Agents",
       "logs": "Logs",
-      "settings": "Settings"
+      "settings": "Settings",
+      "crons": "Crons"
     },
     "collapse": {
       "expand": "Expand",
@@ -1808,5 +1809,190 @@
     "minEvents": "Minimum events",
     "environments": "Environments",
     "description": "Comma-separated. Empty means every environment."
+  },
+  "crons": {
+    "meta": {
+      "listTitle": "Crons | {project} | Rustrak",
+      "listDescription": "Scheduled job monitoring for {project}",
+      "newTitle": "New monitor | {project} | Rustrak",
+      "editTitle": "Edit {monitor} | Crons | Rustrak",
+      "detailTitle": "{monitor} | Crons | Rustrak"
+    },
+    "title": "Crons",
+    "subtitle": "Know when a scheduled job doesn't run, fails or runs too long",
+    "newMonitor": "New monitor",
+    "loadFailed": "Could not load monitors",
+    "loadMonitorFailed": "Could not load this monitor",
+    "never": "Never",
+    "columns": {
+      "monitor": "Monitor",
+      "schedule": "Schedule",
+      "recent": "Recent runs",
+      "lastCheckIn": "Last check-in",
+      "nextCheckIn": "Next expected"
+    },
+    "health": {
+      "failing": "Failing",
+      "ok": "Healthy",
+      "waiting": "Waiting for first check-in",
+      "muted": "Muted"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "Failed",
+      "in_progress": "In progress",
+      "missed": "Missed",
+      "timeout": "Timed out",
+      "unknown": "Unknown"
+    },
+    "environmentStatus": {
+      "ok": "Healthy",
+      "error": "Incident open",
+      "active": "Waiting for a successful run"
+    },
+    "timeline": {
+      "label": "Recent check-ins, oldest first",
+      "took": "Took {duration}"
+    },
+    "empty": {
+      "title": "Monitor your scheduled jobs",
+      "description": "Rustrak tells you when a cron job doesn't run on time, fails, or runs longer than it should. Add a check-in to your job: its monitor is created on the first run.",
+      "upsertNote": "This example checks in to the my-job monitor every hour and creates it on the first run. Change the slug and the schedule to your job's.",
+      "orManual": "Prefer to set it up by hand?",
+      "manual": "Create a monitor"
+    },
+    "setup": {
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyUnavailable": "Copying is not available here",
+      "copyUnavailableHint": "Select the {label} snippet and copy it by hand."
+    },
+    "guides": {
+      "curl": "cURL",
+      "cli": "Sentry CLI",
+      "python": "Python",
+      "node": "Node.js",
+      "laravel": "Laravel"
+    },
+    "detail": {
+      "environments": "Environments",
+      "checkIns": "Check-ins",
+      "instrument": "Instrument your job",
+      "noCheckIns": "No check-ins yet",
+      "waitingTitle": "Waiting for the first check-in",
+      "waitingDescription": "Missed runs are only detected once the job has checked in at least once. Add one of these to your job:",
+      "mutedBanner": "This monitor is muted: failures are still recorded but open no issue and send no alert.",
+      "config": "Configuration",
+      "schedule": "Schedule",
+      "rawSchedule": "Expression",
+      "timezone": "Timezone",
+      "margin": "Grace period",
+      "maxRuntime": "Max runtime",
+      "failureThreshold": "Open an issue after",
+      "recoveryThreshold": "Resolve it after",
+      "slug": "Slug",
+      "lastCheckIn": "Last check-in",
+      "nextCheckIn": "Next expected",
+      "minutes": "{count, plural, one {# minute} other {# minutes}}",
+      "failures": "{count, plural, one {# failed check-in} other {# failed check-ins in a row}}",
+      "successes": "{count, plural, one {# successful check-in} other {# successful check-ins in a row}}"
+    },
+    "checkInColumns": {
+      "status": "Status",
+      "environment": "Environment",
+      "started": "Started",
+      "duration": "Duration",
+      "expected": "Expected"
+    },
+    "actions": {
+      "edit": "Edit",
+      "more": "More actions",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "muted": "Monitor muted",
+      "unmuted": "Monitor unmuted",
+      "updateFailed": "Could not update the monitor",
+      "delete": "Delete",
+      "deleteTitle": "Delete {monitor}?",
+      "deleteDescription": "Its check-ins are deleted with it; the issues it opened stay. A job that keeps checking in with a schedule creates it again.",
+      "cancel": "Cancel",
+      "deleting": "Deleting…",
+      "confirmDelete": "Delete monitor",
+      "deleted": "Monitor deleted",
+      "deleteFailed": "Could not delete the monitor"
+    },
+    "form": {
+      "newTitle": "New monitor",
+      "newDescription": "Tell Rustrak when your job should run, and how late or long is too much.",
+      "editTitle": "Edit {monitor}",
+      "editDescription": "A new schedule applies from the next check-in. A job that sends its own monitor_config overwrites what it sends.",
+      "sectionMonitor": "Monitor",
+      "sectionSchedule": "Schedule",
+      "sectionTolerance": "Tolerance",
+      "name": "Name",
+      "namePlaceholder": "Nightly backup",
+      "slug": "Slug",
+      "slugPlaceholder": "nightly-backup",
+      "slugHint": "The slug your job checks in with. Taken from the name when empty.",
+      "slugLocked": "Jobs check in with this slug, so it cannot change.",
+      "timezone": "Timezone",
+      "timezonePlaceholder": "Search a zone",
+      "timezoneNoResults": "No matching zone",
+      "margin": "Grace period",
+      "marginHint": "How late a check-in may arrive before the run counts as missed.",
+      "maxRuntime": "Max runtime",
+      "maxRuntimeHint": "How long a run may stay in progress before it counts as timed out.",
+      "failureThreshold": "Failure tolerance",
+      "failureThresholdHint": "Failed check-ins in a row before an issue opens.",
+      "recoveryThreshold": "Recovery tolerance",
+      "recoveryThresholdHint": "Successful check-ins in a row before the issue resolves.",
+      "minutesSuffix": "minutes",
+      "checkInsSuffix": "check-ins",
+      "previewNote": "Times in {timezone}. Each run counts as missed {margin, plural, one {# minute} other {# minutes}} after its time.",
+      "cancel": "Cancel",
+      "create": "Create monitor",
+      "save": "Save changes",
+      "created": "Monitor created",
+      "saved": "Monitor saved",
+      "saveFailed": "Could not save the monitor"
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "slugFormat": "Use lowercase letters, numbers, - and _",
+      "intervalMin": "At least 1",
+      "crontabInvalid": "Not a valid five-field crontab"
+    }
+  },
+  "schedule": {
+    "type": "Schedule type",
+    "crontab": "Crontab",
+    "interval": "Interval",
+    "crontabHint": "Five fields: minute, hour, day of month, month and day of week. Aliases such as @daily work too.",
+    "every": "Every",
+    "unit": "Unit",
+    "intervalHint": "Counted from each check-in.",
+    "units": {
+      "minute": "{count, plural, one {minute} other {minutes}}",
+      "hour": "{count, plural, one {hour} other {hours}}",
+      "day": "{count, plural, one {day} other {days}}",
+      "week": "{count, plural, one {week} other {weeks}}",
+      "month": "{count, plural, one {month} other {months}}",
+      "year": "{count, plural, one {year} other {years}}"
+    },
+    "intervalText": {
+      "minute": "Every {count, plural, one {minute} other {# minutes}}",
+      "hour": "Every {count, plural, one {hour} other {# hours}}",
+      "day": "Every {count, plural, one {day} other {# days}}",
+      "week": "Every {count, plural, one {week} other {# weeks}}",
+      "month": "Every {count, plural, one {month} other {# months}}",
+      "year": "Every {count, plural, one {year} other {# years}}"
+    },
+    "preview": {
+      "title": "Next runs",
+      "empty": "Enter a valid schedule to see when it runs.",
+      "failed": "Couldn't load the preview.",
+      "invalid": "This schedule can't run. Check the crontab.",
+      "timesIn": "Times in {timezone}."
+    }
   }
 }

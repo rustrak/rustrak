@@ -511,7 +511,8 @@
       "performance": "Rendimiento",
       "agents": "Agentes",
       "logs": "Logs",
-      "settings": "Configuración"
+      "settings": "Configuración",
+      "crons": "Crons"
     },
     "collapse": {
       "expand": "Expandir",
@@ -1808,5 +1809,190 @@
     "minEvents": "Mínimo de eventos",
     "environments": "Entornos",
     "description": "Separados por comas. Vacío significa todos."
+  },
+  "crons": {
+    "meta": {
+      "listTitle": "Crons | {project} | Rustrak",
+      "listDescription": "Monitorización de tareas programadas de {project}",
+      "newTitle": "Nuevo monitor | {project} | Rustrak",
+      "editTitle": "Editar {monitor} | Crons | Rustrak",
+      "detailTitle": "{monitor} | Crons | Rustrak"
+    },
+    "title": "Crons",
+    "subtitle": "Entérate cuando una tarea programada no se ejecuta, falla o tarda demasiado",
+    "newMonitor": "Nuevo monitor",
+    "loadFailed": "No se pudieron cargar los monitores",
+    "loadMonitorFailed": "No se pudo cargar este monitor",
+    "never": "Nunca",
+    "columns": {
+      "monitor": "Monitor",
+      "schedule": "Programación",
+      "recent": "Últimas ejecuciones",
+      "lastCheckIn": "Último check-in",
+      "nextCheckIn": "Próximo esperado"
+    },
+    "health": {
+      "failing": "Fallando",
+      "ok": "Correcto",
+      "waiting": "Esperando el primer check-in",
+      "muted": "Silenciado"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "Fallido",
+      "in_progress": "En curso",
+      "missed": "Omitido",
+      "timeout": "Tiempo agotado",
+      "unknown": "Desconocido"
+    },
+    "environmentStatus": {
+      "ok": "Correcto",
+      "error": "Incidencia abierta",
+      "active": "Esperando una ejecución correcta"
+    },
+    "timeline": {
+      "label": "Últimos check-ins, del más antiguo al más reciente",
+      "took": "Duró {duration}"
+    },
+    "empty": {
+      "title": "Monitoriza tus tareas programadas",
+      "description": "Rustrak te avisa cuando un cron no se ejecuta a tiempo, falla o tarda más de lo debido. Añade un check-in a tu tarea: su monitor se crea en la primera ejecución.",
+      "upsertNote": "Este ejemplo hace check-in en el monitor my-job cada hora y lo crea en la primera ejecución. Cambia el slug y la programación por los de tu tarea.",
+      "orManual": "¿Prefieres configurarlo a mano?",
+      "manual": "Crear un monitor"
+    },
+    "setup": {
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "copyUnavailable": "No se puede copiar aquí",
+      "copyUnavailableHint": "Selecciona el fragmento de {label} y cópialo a mano."
+    },
+    "guides": {
+      "curl": "cURL",
+      "cli": "Sentry CLI",
+      "python": "Python",
+      "node": "Node.js",
+      "laravel": "Laravel"
+    },
+    "detail": {
+      "environments": "Entornos",
+      "checkIns": "Check-ins",
+      "instrument": "Instrumenta tu tarea",
+      "noCheckIns": "Aún no hay check-ins",
+      "waitingTitle": "Esperando el primer check-in",
+      "waitingDescription": "Las ejecuciones omitidas solo se detectan cuando la tarea ha hecho check-in al menos una vez. Añade uno de estos a tu tarea:",
+      "mutedBanner": "Este monitor está silenciado: los fallos se siguen registrando, pero no abren incidencias ni envían alertas.",
+      "config": "Configuración",
+      "schedule": "Programación",
+      "rawSchedule": "Expresión",
+      "timezone": "Zona horaria",
+      "margin": "Margen de tolerancia",
+      "maxRuntime": "Duración máxima",
+      "failureThreshold": "Abrir una incidencia tras",
+      "recoveryThreshold": "Resolverla tras",
+      "slug": "Slug",
+      "lastCheckIn": "Último check-in",
+      "nextCheckIn": "Próximo esperado",
+      "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+      "failures": "{count, plural, one {# check-in fallido} other {# check-ins fallidos seguidos}}",
+      "successes": "{count, plural, one {# check-in correcto} other {# check-ins correctos seguidos}}"
+    },
+    "checkInColumns": {
+      "status": "Estado",
+      "environment": "Entorno",
+      "started": "Inicio",
+      "duration": "Duración",
+      "expected": "Esperado"
+    },
+    "actions": {
+      "edit": "Editar",
+      "more": "Más acciones",
+      "mute": "Silenciar",
+      "unmute": "Reactivar",
+      "muted": "Monitor silenciado",
+      "unmuted": "Monitor reactivado",
+      "updateFailed": "No se pudo actualizar el monitor",
+      "delete": "Eliminar",
+      "deleteTitle": "¿Eliminar {monitor}?",
+      "deleteDescription": "Sus check-ins se eliminan con él; las incidencias que abrió se mantienen. Una tarea que siga haciendo check-in con una programación lo vuelve a crear.",
+      "cancel": "Cancelar",
+      "deleting": "Eliminando…",
+      "confirmDelete": "Eliminar monitor",
+      "deleted": "Monitor eliminado",
+      "deleteFailed": "No se pudo eliminar el monitor"
+    },
+    "form": {
+      "newTitle": "Nuevo monitor",
+      "newDescription": "Indica a Rustrak cuándo debe ejecutarse tu tarea y cuánto retraso o duración es demasiado.",
+      "editTitle": "Editar {monitor}",
+      "editDescription": "Una programación nueva se aplica desde el siguiente check-in. Una tarea que envía su propio monitor_config sobrescribe lo que envía.",
+      "sectionMonitor": "Monitor",
+      "sectionSchedule": "Programación",
+      "sectionTolerance": "Tolerancia",
+      "name": "Nombre",
+      "namePlaceholder": "Copia de seguridad nocturna",
+      "slug": "Slug",
+      "slugPlaceholder": "copia-nocturna",
+      "slugHint": "El slug con el que hace check-in tu tarea. Se toma del nombre si lo dejas vacío.",
+      "slugLocked": "Las tareas hacen check-in con este slug, así que no puede cambiar.",
+      "timezone": "Zona horaria",
+      "timezonePlaceholder": "Busca una zona",
+      "timezoneNoResults": "Ninguna zona coincide",
+      "margin": "Margen de tolerancia",
+      "marginHint": "Cuánto puede retrasarse un check-in antes de que la ejecución cuente como omitida.",
+      "maxRuntime": "Duración máxima",
+      "maxRuntimeHint": "Cuánto puede seguir en curso una ejecución antes de contar como tiempo agotado.",
+      "failureThreshold": "Tolerancia a fallos",
+      "failureThresholdHint": "Check-ins fallidos seguidos antes de abrir una incidencia.",
+      "recoveryThreshold": "Tolerancia de recuperación",
+      "recoveryThresholdHint": "Check-ins correctos seguidos antes de resolver la incidencia.",
+      "minutesSuffix": "minutos",
+      "checkInsSuffix": "check-ins",
+      "previewNote": "Horas en {timezone}. Cada ejecución cuenta como omitida {margin, plural, one {# minuto} other {# minutos}} después de su hora.",
+      "cancel": "Cancelar",
+      "create": "Crear monitor",
+      "save": "Guardar cambios",
+      "created": "Monitor creado",
+      "saved": "Monitor guardado",
+      "saveFailed": "No se pudo guardar el monitor"
+    },
+    "validation": {
+      "nameRequired": "El nombre es obligatorio",
+      "slugFormat": "Usa minúsculas, números, - y _",
+      "intervalMin": "Como mínimo 1",
+      "crontabInvalid": "No es un crontab válido de cinco campos"
+    }
+  },
+  "schedule": {
+    "type": "Tipo de programación",
+    "crontab": "Crontab",
+    "interval": "Intervalo",
+    "crontabHint": "Cinco campos: minuto, hora, día del mes, mes y día de la semana. También sirven alias como @daily.",
+    "every": "Cada",
+    "unit": "Unidad",
+    "intervalHint": "Se cuenta desde cada check-in.",
+    "units": {
+      "minute": "{count, plural, one {minuto} other {minutos}}",
+      "hour": "{count, plural, one {hora} other {horas}}",
+      "day": "{count, plural, one {día} other {días}}",
+      "week": "{count, plural, one {semana} other {semanas}}",
+      "month": "{count, plural, one {mes} other {meses}}",
+      "year": "{count, plural, one {año} other {años}}"
+    },
+    "intervalText": {
+      "minute": "Cada {count, plural, one {minuto} other {# minutos}}",
+      "hour": "Cada {count, plural, one {hora} other {# horas}}",
+      "day": "Cada {count, plural, one {día} other {# días}}",
+      "week": "Cada {count, plural, one {semana} other {# semanas}}",
+      "month": "Cada {count, plural, one {mes} other {# meses}}",
+      "year": "Cada {count, plural, one {año} other {# años}}"
+    },
+    "preview": {
+      "title": "Próximas ejecuciones",
+      "empty": "Introduce una programación válida para ver cuándo se ejecuta.",
+      "failed": "No se pudo cargar la vista previa.",
+      "invalid": "Esta programación no puede ejecutarse. Revisa el crontab.",
+      "timesIn": "Horas en {timezone}."
+    }
   }
 }
