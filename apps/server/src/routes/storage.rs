@@ -10,12 +10,14 @@ use actix_web::{web, HttpResponse};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::models::CleanupRequest;
+use crate::models::{AutoCleanupResponse, AutoCleanupRun, AutoCleanupSettings, CleanupRequest};
 #[cfg(feature = "openapi")]
 use crate::models::{
     CleanupCounts, CleanupState, CleanupStatus, ProjectStorage, SourceMapGcResult,
     SourceMapStorage, StorageSummary,
 };
+use crate::scheduler::engine::{JobRunStatus, Scheduler};
+use crate::scheduler::jobs::StorageCleanupJob;
 use crate::services::sourcemap_store::SourceMapStore;
 use crate::services::{CleanupJob, StorageService};
 
@@ -196,9 +198,14 @@ pub async fn gc_source_maps(
         execute_cleanup,
         get_cleanup_status,
         preview_source_map_gc,
-        gc_source_maps
+        gc_source_maps,
+        get_auto_cleanup,
+        update_auto_cleanup
     ),
     components(schemas(
+        AutoCleanupSettings,
+        AutoCleanupResponse,
+        AutoCleanupRun,
         StorageSummary,
         SourceMapStorage,
         ProjectStorage,
@@ -212,6 +219,91 @@ pub async fn gc_source_maps(
 pub struct StorageApi;
 
 /// Configure storage routes.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/storage/auto-cleanup",
+    tag = "Storage",
+    responses(
+        (status = 200, description = "Automatic cleanup settings, next run and last run", body = AutoCleanupResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Admin privileges required", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// GET /api/storage/auto-cleanup
+pub async fn get_auto_cleanup(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
+    require_admin(&actor)?;
+    Ok(HttpResponse::Ok().json(auto_cleanup_response(pool.get_ref()).await?))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    put,
+    path = "/api/storage/auto-cleanup",
+    tag = "Storage",
+    request_body = AutoCleanupSettings,
+    responses(
+        (status = 200, description = "Saved; the new schedule applies within a minute", body = AutoCleanupResponse),
+        (status = 400, description = "Settings that cannot run", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Admin privileges required", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// PUT /api/storage/auto-cleanup
+pub async fn update_auto_cleanup(
+    pool: web::Data<DbPool>,
+    actor: ApiActor,
+    body: web::Json<AutoCleanupSettings>,
+) -> AppResult<HttpResponse> {
+    require_admin(&actor)?;
+    let settings = body.into_inner();
+    settings.validate()?;
+    Scheduler::update_settings(
+        pool.get_ref(),
+        StorageCleanupJob::KEY,
+        serde_json::to_value(&settings).unwrap_or_default(),
+    )
+    .await?;
+    Ok(HttpResponse::Ok().json(auto_cleanup_response(pool.get_ref()).await?))
+}
+
+async fn auto_cleanup_response(pool: &DbPool) -> AppResult<AutoCleanupResponse> {
+    let state = match Scheduler::job(pool, StorageCleanupJob::KEY).await {
+        Ok(state) => Some(state),
+        Err(AppError::NotFound(_)) => None,
+        Err(e) => return Err(e),
+    };
+    let Some(state) = state else {
+        return Ok(AutoCleanupResponse {
+            settings: AutoCleanupSettings::default(),
+            next_run_at: None,
+            last_run: None,
+        });
+    };
+    let last_run = state.last_started_at.map(|started_at| {
+        let finished = state.last_finished_at.filter(|f| *f >= started_at);
+        AutoCleanupRun {
+            started_at,
+            finished_at: finished,
+            status: match (finished, state.last_status) {
+                (None, _) => "running",
+                (Some(_), Some(JobRunStatus::Ok)) => "ok",
+                (Some(_), _) => "error",
+            }
+            .to_string(),
+            removed: finished
+                .and(state.last_result.clone())
+                .and_then(|r| serde_json::from_value(r).ok()),
+            error: finished.and(state.last_error.clone()),
+        }
+    });
+    Ok(AutoCleanupResponse {
+        settings: StorageCleanupJob::settings(&state.settings),
+        next_run_at: state.next_run_at,
+        last_run,
+    })
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/storage")
@@ -220,6 +312,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/cleanup/preview", web::post().to(preview_cleanup))
             .route("/cleanup", web::post().to(execute_cleanup))
             .route("/cleanup/status", web::get().to(get_cleanup_status))
+            .route("/auto-cleanup", web::get().to(get_auto_cleanup))
+            .route("/auto-cleanup", web::put().to(update_auto_cleanup))
             .route(
                 "/source-maps/gc/preview",
                 web::post().to(preview_source_map_gc),

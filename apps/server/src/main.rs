@@ -283,11 +283,14 @@ async fn main() -> std::io::Result<()> {
         ingest_dir,
     ));
 
-    // Recurring jobs: the cron monitor sweep.
+    // Recurring jobs: the cron monitor sweep and automatic storage cleanup.
     // One tick a minute, the granularity of every schedule.
-    let scheduler = rustrak::scheduler::engine::Scheduler::new(vec![Arc::new(
-        rustrak::scheduler::jobs::MonitorSweepJob::new(processors_data.clone()),
-    )]);
+    let scheduler = rustrak::scheduler::engine::Scheduler::new(vec![
+        Arc::new(rustrak::scheduler::jobs::MonitorSweepJob::new(
+            processors_data.clone(),
+        )),
+        Arc::new(rustrak::scheduler::jobs::StorageCleanupJob),
+    ]);
     let scheduler_pool = db_pool.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));

@@ -46,6 +46,28 @@ Retention is keyed on **ingestion time** (when Rustrak received the data), not o
 
 > **Warning:** Cleanup permanently deletes data and **cannot be undone**. Always run the preview first and check the counts.
 
+## Automatic cleanup
+
+So storage doesn't keep growing, Rustrak can delete old data for you on a schedule. In **Settings → Storage → Automatic cleanup**:
+
+- **Clean up automatically**: turns it on. It is off until you do.
+- **Delete data older than**: how many days of data to keep (default 90).
+- **What to clean up**: pick any of errors (and the issues they leave empty), transactions (with their spans) and logs. Kinds you leave unchecked are never touched.
+- **When**: a crontab (`0 3 * * *`, every night at 03:00) or an interval, read in the timezone you choose. The panel beside it shows the next five runs.
+
+It runs in the background in the same small batches as a manual cleanup, so ingestion keeps working. The card shows when it runs next and what the last run removed, or why it failed. If the server was down at run time, it runs once when it comes back rather than replaying every run it missed.
+
+The same settings are available to scripts:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://rustrak.example.com/api/storage/auto-cleanup
+
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  https://rustrak.example.com/api/storage/auto-cleanup \
+  --data '{"enabled": true, "schedule": {"type": "crontab", "value": "0 3 * * 0"}, "timezone": "UTC",
+           "older_than_days": 30, "include_events": false, "include_transactions": true, "include_logs": true}'
+```
+
 ## Orphaned source maps
 
 Source maps are content-addressed and shared, so deleting a project leaves its source-map files behind with nothing referencing them. The **Orphaned source maps** panel reclaims that space:

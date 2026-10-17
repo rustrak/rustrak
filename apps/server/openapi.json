@@ -8215,6 +8215,116 @@
         ]
       }
     },
+    "/api/storage/auto-cleanup": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Configure storage routes.\nGET /api/storage/auto-cleanup",
+        "operationId": "get_auto_cleanup",
+        "responses": {
+          "200": {
+            "description": "Automatic cleanup settings, next run and last run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoCleanupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "PUT /api/storage/auto-cleanup",
+        "operationId": "update_auto_cleanup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoCleanupSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved; the new schedule applies within a minute",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoCleanupResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Settings that cannot run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin privileges required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/storage/cleanup": {
       "post": {
         "tags": [
@@ -10381,6 +10491,116 @@
           },
           "token_prefix": {
             "type": "string"
+          }
+        }
+      },
+      "AutoCleanupResponse": {
+        "type": "object",
+        "required": [
+          "settings"
+        ],
+        "properties": {
+          "last_run": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AutoCleanupRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_run_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "`null` while disabled, and for up to a minute after the settings change."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AutoCleanupSettings"
+          }
+        }
+      },
+      "AutoCleanupRun": {
+        "type": "object",
+        "description": "How the last automatic cleanup went.",
+        "required": [
+          "started_at",
+          "status"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "removed": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CleanupCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "`running`, `ok` or `error`."
+          }
+        }
+      },
+      "AutoCleanupSettings": {
+        "type": "object",
+        "description": "Automatic cleanup: delete data older than `older_than_days`, of the chosen\ncategories, on a schedule. Stored as the settings of the\n`storage_cleanup` scheduled job; a field left out takes its default.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "include_events": {
+            "type": "boolean",
+            "default": true
+          },
+          "include_logs": {
+            "type": "boolean",
+            "default": true
+          },
+          "include_transactions": {
+            "type": "boolean",
+            "default": true
+          },
+          "older_than_days": {
+            "type": "integer",
+            "format": "int64",
+            "default": 90,
+            "minimum": 1
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/Schedule",
+            "default": {
+              "type": "crontab",
+              "value": "0 3 * * *"
+            }
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA zone the schedule is read in.",
+            "default": "UTC"
           }
         }
       },

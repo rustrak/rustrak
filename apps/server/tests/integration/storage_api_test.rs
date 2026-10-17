@@ -433,3 +433,237 @@ async fn source_map_gc_is_admin_only() {
     let body: Value = test::read_body_json(resp).await;
     assert_eq!(body["files_removed"], 0, "no orphans on an empty instance");
 }
+
+// =============================================================================
+// Automatic cleanup: GET/PUT /api/storage/auto-cleanup and its scheduled job
+// =============================================================================
+
+async fn seed_old_log(pool: &DbPool, project_id: i32, days_ago: i64) {
+    let old = Utc::now() - chrono::Duration::days(days_ago);
+    sqlx::query(
+        "INSERT INTO logs (id, project_id, trace_id, span_id, level, severity_number, \
+         body, attributes, timestamp, ingested_at) \
+         VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(project_id)
+    .bind("trace")
+    .bind("info")
+    .bind(9_i16)
+    .bind("hello")
+    .bind(json!({}))
+    .bind(old)
+    .bind(old)
+    .execute(pool)
+    .await
+    .expect("seed log");
+}
+
+async fn log_count(pool: &DbPool) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM logs")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[actix_web::test]
+async fn auto_cleanup_is_off_by_default_with_sensible_settings() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let token = token_for(&db.pool, admin.id).await;
+    let app = build_app!(db.pool.clone(), create_test_config());
+
+    let req = test::TestRequest::get()
+        .uri("/api/storage/auto-cleanup")
+        .insert_header(bearer(&token))
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(body["settings"]["enabled"], false);
+    assert_eq!(
+        body["settings"]["schedule"],
+        json!({"type": "crontab", "value": "0 3 * * *"})
+    );
+    assert_eq!(body["settings"]["timezone"], "UTC");
+    assert_eq!(body["settings"]["older_than_days"], 90);
+    assert_eq!(body["settings"]["include_events"], true);
+    assert_eq!(body["settings"]["include_transactions"], true);
+    assert_eq!(body["settings"]["include_logs"], true);
+    assert_eq!(body["next_run_at"], Value::Null);
+    assert_eq!(body["last_run"], Value::Null);
+}
+
+#[actix_web::test]
+async fn auto_cleanup_settings_are_saved() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let token = token_for(&db.pool, admin.id).await;
+    let app = build_app!(db.pool.clone(), create_test_config());
+
+    let settings = json!({
+        "enabled": true,
+        "schedule": {"type": "crontab", "value": "30 4 * * 0"},
+        "timezone": "Europe/Madrid",
+        "older_than_days": 30,
+        "include_events": false,
+        "include_transactions": true,
+        "include_logs": true,
+    });
+    let req = test::TestRequest::put()
+        .uri("/api/storage/auto-cleanup")
+        .insert_header(bearer(&token))
+        .set_json(&settings)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    let req = test::TestRequest::get()
+        .uri("/api/storage/auto-cleanup")
+        .insert_header(bearer(&token))
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(body["settings"], settings);
+}
+
+#[actix_web::test]
+async fn auto_cleanup_rejects_settings_that_cannot_run() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let token = token_for(&db.pool, admin.id).await;
+    let app = build_app!(db.pool.clone(), create_test_config());
+
+    let base = json!({
+        "enabled": true,
+        "schedule": {"type": "crontab", "value": "0 3 * * *"},
+        "timezone": "UTC",
+        "older_than_days": 30,
+        "include_events": true,
+        "include_transactions": true,
+        "include_logs": true,
+    });
+    let cases = [
+        (
+            "schedule",
+            json!({"schedule": {"type": "crontab", "value": "nope"}}),
+        ),
+        ("timezone", json!({"timezone": "Mars/Olympus"})),
+        ("older_than_days", json!({"older_than_days": 0})),
+        (
+            "include_events",
+            json!({"include_events": false, "include_transactions": false, "include_logs": false}),
+        ),
+    ];
+    for (field, patch) in cases {
+        let mut body = base.clone();
+        for (k, v) in patch.as_object().unwrap() {
+            body[k] = v.clone();
+        }
+        let req = test::TestRequest::put()
+            .uri("/api/storage/auto-cleanup")
+            .insert_header(bearer(&token))
+            .set_json(&body)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 400, "{field}");
+        let err: Value = test::read_body_json(resp).await;
+        assert_eq!(err["error"]["fields"][0]["field"], field);
+    }
+}
+
+#[actix_web::test]
+async fn auto_cleanup_is_admin_only() {
+    let db = TestDb::new().await;
+    let member = seed_user(&db.pool, "member@x.com", UserRole::Member).await;
+    let token = token_for(&db.pool, member.id).await;
+    let app = build_app!(db.pool.clone(), create_test_config());
+
+    let req = test::TestRequest::get()
+        .uri("/api/storage/auto-cleanup")
+        .insert_header(bearer(&token))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 403);
+    let req = test::TestRequest::put()
+        .uri("/api/storage/auto-cleanup")
+        .insert_header(bearer(&token))
+        .set_json(json!({"enabled": true}))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 403);
+}
+
+#[actix_web::test]
+async fn the_cleanup_job_purges_only_the_chosen_categories_on_schedule() {
+    use rustrak::scheduler::engine::Scheduler;
+    use rustrak::scheduler::jobs::StorageCleanupJob;
+
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "auto-cleanup".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    seed_old_log(&db.pool, project.id, 40).await;
+    seed_old_log(&db.pool, project.id, 5).await;
+
+    Scheduler::update_settings(
+        &db.pool,
+        StorageCleanupJob::KEY,
+        json!({
+            "enabled": true,
+            "schedule": {"type": "interval", "value": 1, "unit": "day"},
+            "timezone": "UTC",
+            "older_than_days": 30,
+            "include_events": false,
+            "include_transactions": false,
+            "include_logs": true,
+        }),
+    )
+    .await
+    .unwrap();
+    let scheduler = Scheduler::new(vec![Arc::new(StorageCleanupJob)]);
+    let now = Utc::now();
+    for tick in [now, now + chrono::Duration::days(1)] {
+        for handle in scheduler.tick(&db.pool, tick).await.unwrap() {
+            handle.await.unwrap();
+        }
+    }
+
+    assert_eq!(log_count(&db.pool).await, 1, "only the 40-day-old log goes");
+    let state = Scheduler::job(&db.pool, StorageCleanupJob::KEY)
+        .await
+        .unwrap();
+    assert_eq!(state.last_result.unwrap()["logs"], 1);
+}
+
+#[actix_web::test]
+async fn a_disabled_cleanup_job_deletes_nothing() {
+    use rustrak::scheduler::engine::Scheduler;
+    use rustrak::scheduler::jobs::StorageCleanupJob;
+
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "auto-cleanup-off".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    seed_old_log(&db.pool, project.id, 400).await;
+
+    let scheduler = Scheduler::new(vec![Arc::new(StorageCleanupJob)]);
+    let now = Utc::now();
+    for tick in [now, now + chrono::Duration::days(30)] {
+        for handle in scheduler.tick(&db.pool, tick).await.unwrap() {
+            handle.await.unwrap();
+        }
+    }
+
+    assert_eq!(log_count(&db.pool).await, 1);
+}

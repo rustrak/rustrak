@@ -89,7 +89,7 @@ pub struct StorageSummary {
 /// counted directly even though they cascade from `transactions`, so the UI can
 /// show the true row impact. `issues_removed` is the number of issues that would
 /// be left with zero events and therefore deleted.
-#[derive(Debug, Default, Clone, Serialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CleanupCounts {
     pub events: i64,
@@ -173,4 +173,99 @@ pub struct SourceMapStorage {
     pub total_bytes: i64,
     /// Number of `source_file` rows.
     pub file_count: i64,
+}
+
+/// Automatic cleanup: delete data older than `older_than_days`, of the chosen
+/// categories, on a schedule. Stored as the settings of the
+/// `storage_cleanup` scheduled job; a field left out takes its default.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct AutoCleanupSettings {
+    pub enabled: bool,
+    pub schedule: crate::scheduler::schedule::Schedule,
+    /// IANA zone the schedule is read in.
+    pub timezone: String,
+    #[cfg_attr(feature = "openapi", schema(minimum = 1))]
+    pub older_than_days: i64,
+    pub include_events: bool,
+    pub include_transactions: bool,
+    pub include_logs: bool,
+}
+
+impl Default for AutoCleanupSettings {
+    /// Off, and when turned on: every night at 03:00 UTC, everything older
+    /// than 90 days.
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            schedule: crate::scheduler::schedule::Schedule::Crontab {
+                value: "0 3 * * *".to_string(),
+            },
+            timezone: "UTC".to_string(),
+            older_than_days: 90,
+            include_events: true,
+            include_transactions: true,
+            include_logs: true,
+        }
+    }
+}
+
+impl AutoCleanupSettings {
+    /// Whether these settings can run, naming the field that can't.
+    pub fn validate(&self) -> crate::error::AppResult<()> {
+        use crate::error::{AppError, FieldErrorCode};
+        let invalid = |message: String, field: &str| {
+            Err(AppError::Validation(message).with_field(field, FieldErrorCode::Invalid))
+        };
+        if let Err(message) = self.schedule.validate() {
+            return invalid(format!("Invalid schedule: {message}"), "schedule");
+        }
+        if let Err(message) = crate::scheduler::schedule::parse_timezone(&self.timezone) {
+            return invalid(message, "timezone");
+        }
+        if self.older_than_days < 1 {
+            return invalid(
+                "older_than_days must be at least 1".to_string(),
+                "older_than_days",
+            );
+        }
+        if self.enabled && !(self.include_events || self.include_transactions || self.include_logs)
+        {
+            return invalid(
+                "Choose at least one kind of data to clean up".to_string(),
+                "include_events",
+            );
+        }
+        Ok(())
+    }
+
+    pub fn filter(&self) -> CleanupFilter {
+        CleanupFilter {
+            include_events: self.include_events,
+            include_transactions: self.include_transactions,
+            include_logs: self.include_logs,
+        }
+    }
+}
+
+/// How the last automatic cleanup went.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AutoCleanupRun {
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// `running`, `ok` or `error`.
+    pub status: String,
+    pub removed: Option<CleanupCounts>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AutoCleanupResponse {
+    pub settings: AutoCleanupSettings,
+    /// `null` while disabled, and for up to a minute after the settings change.
+    pub next_run_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_run: Option<AutoCleanupRun>,
 }

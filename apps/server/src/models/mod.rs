@@ -121,8 +121,9 @@ pub use release::{is_valid_version, CreateRelease, Release, ReleaseResponse, Upd
 pub use span_v2::{parse_span_v2_container, SpanV2Entry};
 pub use stats::{EventTimeseriesPoint, MetricDelta, ProjectStatsSummary};
 pub use storage::{
-    CleanupCounts, CleanupFilter, CleanupRequest, CleanupState, CleanupStatus, ProjectStorage,
-    SourceMapGcResult, SourceMapStorage, StorageSummary,
+    AutoCleanupResponse, AutoCleanupRun, AutoCleanupSettings, CleanupCounts, CleanupFilter,
+    CleanupRequest, CleanupState, CleanupStatus, ProjectStorage, SourceMapGcResult,
+    SourceMapStorage, StorageSummary,
 };
 pub use transaction::{
     span_attributes, SpanDetailResponse, SpanResponse, TransactionDetailResponse,
