@@ -1,5 +1,12 @@
 import type { z } from 'zod';
-import type { eventDetailSchema, eventSchema } from '../schemas/event.js';
+import type {
+  eventDetailSchema,
+  eventSchema,
+  lookupEventsOptionsSchema,
+} from '../schemas/event.js';
+
+/** Exact project-scoped user or request lookup, with an optional bound cursor. */
+export type LookupEventsOptions = z.infer<typeof lookupEventsOptionsSchema>;
 
 /**
  * Event resource from list endpoint
