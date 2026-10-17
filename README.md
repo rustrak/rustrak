@@ -303,7 +303,16 @@ are a reasonable place to start.
 ## Sponsors
 
 Rustrak has no paid tier and no hosted plan. Development is funded through
-GitHub Sponsors.
+GitHub Sponsors and [Open Collective](https://opencollective.com/rustrak).
+
+<div align="center">
+
+<a href="https://opencollective.com/rustrak/tiers/gold-sponsor"><img src="https://opencollective.com/rustrak/tiers/gold-sponsor.svg?avatarHeight=120&width=890" alt="Gold Sponsors" /></a>
+<a href="https://opencollective.com/rustrak/tiers/sponsors"><img src="https://opencollective.com/rustrak/tiers/sponsors.svg?avatarHeight=80&width=890" alt="Sponsors" /></a>
+<a href="https://opencollective.com/rustrak/tiers/supporter"><img src="https://opencollective.com/rustrak/tiers/supporter.svg?avatarHeight=48&width=890" alt="Supporters" /></a>
+<a href="https://opencollective.com/rustrak/tiers/backers"><img src="https://opencollective.com/rustrak/tiers/backers.svg?avatarHeight=36&width=890" alt="Backers" /></a>
+
+</div>
 
 <table align="center">
 <tr>
@@ -321,6 +330,9 @@ GitHub Sponsors.
 
 <a href="https://github.com/sponsors/AbianS">
   <img src="https://img.shields.io/badge/Sponsor%20Rustrak-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor Rustrak on GitHub" />
+</a>
+<a href="https://opencollective.com/rustrak">
+  <img src="https://img.shields.io/badge/Open%20Collective-7FADF2?style=for-the-badge&logo=opencollective&logoColor=white" alt="Support Rustrak on Open Collective" />
 </a>
 
 </div>

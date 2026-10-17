@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { RustrakWordmark } from '@/components/icons/rustrak-wordmark';
 import { GITHUB } from '../links';
 
-const SPONSOR_URL = 'https://github.com/sponsors/AbianS';
+// Open Collective rather than GitHub Sponsors: it lists every tier, takes
+// one-off donations and shows where the money goes.
+const SPONSOR_URL = 'https://opencollective.com/rustrak';
 
 /**
  * Four columns, because four divides into two and into four.
