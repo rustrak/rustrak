@@ -143,6 +143,7 @@ mimalloc = "0.1.52"
 # OpenAPI spec generation (optional, behind `openapi` feature flag)
 utoipa = { version = "6.0.0", features = ["actix_extras", "uuid", "chrono"], optional = true }
 utoipa-scalar = { version = "0.4.0", features = ["actix-web"], optional = true }
+croner = "4.0.1"
 
 [dev-dependencies]
 # The crate depends on itself so the integration tests, which are separate

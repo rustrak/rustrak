@@ -7638,6 +7638,63 @@
         ]
       }
     },
+    "/api/schedules/preview": {
+      "post": {
+        "tags": [
+          "Schedules"
+        ],
+        "summary": "POST /api/schedules/preview",
+        "description": "Validates a schedule and lists its next five runs from now, so no client\never parses a crontab itself.",
+        "operationId": "preview_schedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewSchedule"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The next five runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulePreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid schedule or timezone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/storage/cleanup": {
       "post": {
         "tags": [
@@ -10671,6 +10728,17 @@
           }
         }
       },
+      "IntervalUnit": {
+        "type": "string",
+        "enum": [
+          "minute",
+          "hour",
+          "day",
+          "week",
+          "month",
+          "year"
+        ]
+      },
       "InvitationInfoResponse": {
         "type": "object",
         "description": "Public-facing invitation info for the accept page.",
@@ -11200,6 +11268,25 @@
           }
         }
       },
+      "PreviewSchedule": {
+        "type": "object",
+        "description": "Body of `POST /api/schedules/preview`.",
+        "required": [
+          "schedule"
+        ],
+        "properties": {
+          "schedule": {
+            "$ref": "#/components/schemas/Schedule"
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IANA zone the schedule is read in. Defaults to UTC."
+          }
+        }
+      },
       "PreviewTemplateBody": {
         "type": "object",
         "description": "Body of a template preview request.",
@@ -11666,6 +11753,70 @@
           },
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "Schedule": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A five-field crontab, or an alias such as `@daily`.",
+            "required": [
+              "value",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "crontab"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Every `value` `unit`s, counted from the previous run.",
+            "required": [
+              "value",
+              "unit",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "interval"
+                ]
+              },
+              "unit": {
+                "$ref": "#/components/schemas/IntervalUnit"
+              },
+              "value": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "SchedulePreview": {
+        "type": "object",
+        "description": "When a schedule runs next, computed by the code that runs it: monitors\nexpect their check-ins and scheduled jobs fire at exactly these instants.",
+        "required": [
+          "next_runs"
+        ],
+        "properties": {
+          "next_runs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date-time"
+            }
           }
         }
       },

@@ -14,6 +14,7 @@ mod log_test;
 mod logging_test;
 mod message_normalization_test;
 mod notification_test;
+mod schedule_test;
 mod sourcemap_store_test;
 mod sourcemap_test;
 mod span_test;

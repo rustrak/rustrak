@@ -23,6 +23,8 @@ mod projects_api_test;
 mod quota_enforcement_test;
 mod rate_limit_test;
 mod releases_api_test;
+mod scheduler_test;
+mod schedules_api_test;
 mod sessions_api_test;
 mod sourcemap_cache_test;
 mod sourcemaps_api_test;

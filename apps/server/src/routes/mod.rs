@@ -14,6 +14,7 @@ pub mod metrics;
 pub mod period;
 pub mod projects;
 pub mod releases;
+pub mod schedules;
 pub mod sessions;
 pub mod sourcemaps;
 pub mod spans;
