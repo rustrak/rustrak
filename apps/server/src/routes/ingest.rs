@@ -15,6 +15,8 @@ use crate::ingest::{
     decompress_body, detach_payload_if_needed, get_content_encoding, store_event_with_metadata,
     EnvelopeItemKind, EnvelopeParser, EventMetadata, MAX_COMPRESSED_SIZE,
 };
+use crate::models::monitor::{CheckIn, CheckInStatus, MonitorFailure};
+use crate::services::monitor::MonitorService;
 use crate::services::RateLimitService;
 
 /// Response for successful ingestion.
@@ -106,6 +108,7 @@ pub async fn ingest_envelope(
     let mut span_items: Vec<Bytes> = Vec::new();
     let mut span_v2_items: Vec<Bytes> = Vec::new();
     let mut requires_event_id = false;
+    let mut check_in_seen = false;
     let envelope_len = parser.data().len();
     let delivery_id = stable_delivery_id(envelope.headers.event_id.as_deref(), parser.data());
     for item_kind in envelope.items {
@@ -178,6 +181,29 @@ pub async fn ingest_envelope(
                 // spans) — an envelope may still carry more than one such
                 // container item, so collect them all.
                 span_v2_items.push(detach_payload_if_needed(payload, envelope_len));
+            }
+            EnvelopeItemKind::CheckIn(payload) => {
+                // Relay expands only the first check-in of an envelope and
+                // drops the rest as duplicates (check_ins/process.rs).
+                if check_in_seen {
+                    log::debug!("dropping duplicate check_in item");
+                    continue;
+                }
+                check_in_seen = true;
+                let result = process_check_in(
+                    &processors,
+                    &pool,
+                    auth.project.id,
+                    CheckIn::parse(&payload),
+                    ingested_at,
+                )
+                .await;
+                // An unknown monitor drops the item, as Sentry's consumer does.
+                let result = match result {
+                    Err(AppError::NotFound(message)) => Err(AppError::Validation(message)),
+                    other => other,
+                };
+                drop_malformed_item(result, "check_in")?;
             }
             EnvelopeItemKind::Other(t, _) => {
                 log::debug!("envelope item '{}' ignored", t);
@@ -533,6 +559,16 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 "/envelope/",
                 web::method(actix_web::http::Method::OPTIONS).to(options),
             )
+            .route(
+                "/cron/{monitor_slug}/{sentry_key}/",
+                web::route().to(cron_check_in),
+            )
+            .route(
+                "/cron/{monitor_slug}/{sentry_key}",
+                web::route().to(cron_check_in),
+            )
+            .route("/cron/{monitor_slug}/", web::route().to(cron_check_in))
+            .route("/cron/{monitor_slug}", web::route().to(cron_check_in))
             .route("/store/", web::post().to(ingest_store))
             .route(
                 "/store/",
@@ -631,4 +667,156 @@ mod tests {
         // the previous full-parse semantics.
         assert!(validate_event_json(br#"{"a":1} garbage"#).is_err());
     }
+}
+
+/// Records a check-in and reports any failure it causes.
+async fn process_check_in(
+    processors: &Processors,
+    pool: &DbPool,
+    project_id: i32,
+    check_in: AppResult<CheckIn>,
+    received: chrono::DateTime<Utc>,
+) -> AppResult<()> {
+    let check_in = check_in?;
+    // `Sentry.withMonitor` sends a run's in_progress (which carries the
+    // monitor_config) and its result as two concurrent requests, so on a
+    // job's first run the result can arrive before the upsert has created
+    // the monitor. A short wait lets the upsert land instead of losing the
+    // run's outcome.
+    let mut retries = [100, 250, 500].into_iter();
+    let failures = loop {
+        match MonitorService::process_check_in(pool, project_id, check_in.clone(), received).await {
+            Err(AppError::NotFound(_)) if check_in.monitor_config.is_none() => {
+                match retries.next() {
+                    Some(ms) => tokio::time::sleep(std::time::Duration::from_millis(ms)).await,
+                    None => {
+                        return Err(AppError::NotFound(format!(
+                            "Monitor {} does not exist; send a monitor_config to create it",
+                            check_in.monitor_slug
+                        )))
+                    }
+                }
+            }
+            other => break other?,
+        }
+    };
+    report_monitor_failures(processors, pool, failures).await;
+    Ok(())
+}
+
+/// Marks missed and timed-out check-ins as of `now` and reports the
+/// failures. Returns how many were reported.
+pub async fn run_monitor_sweep(
+    processors: &Processors,
+    pool: &DbPool,
+    now: chrono::DateTime<Utc>,
+) -> AppResult<usize> {
+    let failures = MonitorService::sweep(pool, now).await?;
+    let reported = failures.len();
+    report_monitor_failures(processors, pool, failures).await;
+    Ok(reported)
+}
+
+/// Sends each failure through the error digest as a synthetic event, so a
+/// failing monitor gets an issue, regressions and alerts like any error.
+/// The event file is stored first, so a digest that fails here is replayed
+/// by the recovery worker.
+async fn report_monitor_failures(
+    processors: &Processors,
+    pool: &DbPool,
+    failures: Vec<MonitorFailure>,
+) {
+    for failure in failures {
+        let event_id = uuid::Uuid::new_v4();
+        let metadata = EventMetadata {
+            event_id: event_id.simple().to_string(),
+            project_id: failure.project_id,
+            ingested_at: Utc::now(),
+            remote_addr: None,
+        };
+        let payload = failure.to_event(event_id).to_string();
+        let _in_flight = processors
+            .errors
+            .in_flight()
+            .register(failure.project_id, event_id);
+        if let Err(e) = store_event_with_metadata(
+            processors.errors.ingest_dir(),
+            &metadata.event_id,
+            payload.as_bytes(),
+            &metadata,
+        )
+        .await
+        {
+            log::error!(
+                "Failed to store the failure event of monitor {}: {:?}",
+                failure.monitor_slug,
+                e
+            );
+            continue;
+        }
+        digest_stored_event(processors, pool, &metadata).await;
+    }
+}
+
+/// Query string of Relay's HTTP check-in endpoint (endpoints/monitor.rs).
+#[derive(serde::Deserialize)]
+pub struct CronQuery {
+    status: CheckInStatus,
+    check_in_id: Option<uuid::Uuid>,
+    environment: Option<String>,
+    duration: Option<f64>,
+}
+
+/// GET|POST /api/{project_id}/cron/{monitor_slug}/{sentry_key}/
+///
+/// Relay's HTTP check-in endpoint, for jobs that check in with `curl`. A
+/// JSON body is a full check-in (the slug in the path wins); otherwise the
+/// query string carries it and no `monitor_config`. Answers 202 like Relay,
+/// but a check-in that cannot be recorded is a 400 with the reason, not a
+/// silent drop: nothing else would tell a `curl` user.
+pub async fn cron_check_in(
+    pool: web::Data<DbPool>,
+    processors: web::Data<Processors>,
+    req: HttpRequest,
+    auth: SentryAuth,
+    body: Bytes,
+) -> AppResult<HttpResponse> {
+    let slug = req.match_info().get("monitor_slug").unwrap_or_default();
+    let is_json = req
+        .headers()
+        .get(actix_web::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/json"));
+
+    let check_in = if is_json {
+        let mut payload: serde_json::Value = serde_json::from_slice(&body)
+            .map_err(|e| AppError::Validation(format!("Invalid check-in JSON: {e}")))?;
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("monitor_slug".to_string(), slug.into());
+        }
+        CheckIn::parse(payload.to_string().as_bytes())?
+    } else {
+        let query = web::Query::<CronQuery>::from_query(req.query_string())
+            .map_err(|e| AppError::Validation(format!("Invalid check-in query: {e}")))?
+            .into_inner();
+        CheckIn::new(
+            query.check_in_id.unwrap_or_default(),
+            slug,
+            query.status,
+            query.environment,
+            query.duration,
+            None,
+            None,
+        )?
+    };
+
+    process_check_in(
+        &processors,
+        &pool,
+        auth.project.id,
+        Ok(check_in),
+        Utc::now(),
+    )
+    .await?;
+    Ok(HttpResponse::Accepted().finish())
 }

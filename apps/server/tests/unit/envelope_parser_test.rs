@@ -15,6 +15,7 @@ fn item_type(kind: &EnvelopeItemKind) -> &str {
         EnvelopeItemKind::Log(_) => "log",
         EnvelopeItemKind::Span(_) => "span",
         EnvelopeItemKind::SpanV2Batch(_) => "span_v2",
+        EnvelopeItemKind::CheckIn(_) => "check_in",
         EnvelopeItemKind::Other(t, _) => t,
     }
 }
@@ -26,7 +27,8 @@ fn raw_payload(kind: &EnvelopeItemKind) -> Option<&[u8]> {
         | EnvelopeItemKind::Transaction(p)
         | EnvelopeItemKind::Log(p)
         | EnvelopeItemKind::Span(p)
-        | EnvelopeItemKind::SpanV2Batch(p) => Some(p),
+        | EnvelopeItemKind::SpanV2Batch(p)
+        | EnvelopeItemKind::CheckIn(p) => Some(p),
         EnvelopeItemKind::Other(_, p) => Some(p),
         EnvelopeItemKind::Session(_) | EnvelopeItemKind::Sessions(_) => None,
     }
@@ -64,6 +66,19 @@ fn test_parse_log_item_maps_to_log_variant() {
         "expected Log variant, got {:?}",
         item_type(&result.items[0])
     );
+    assert_eq!(raw_payload(&result.items[0]).unwrap(), body);
+}
+
+#[test]
+fn test_parse_check_in_item_maps_to_check_in_variant() {
+    let body = br#"{"monitor_slug":"nightly","status":"ok"}"#;
+    let data = envelope_with_item("check_in", "application/json", body);
+
+    let mut parser = EnvelopeParser::new(bytes::Bytes::copy_from_slice(&data));
+    let result = parser.parse().unwrap();
+
+    assert!(matches!(result.items[0], EnvelopeItemKind::CheckIn(_)));
+    assert!(!result.items[0].requires_event());
     assert_eq!(raw_payload(&result.items[0]).unwrap(), body);
 }
 

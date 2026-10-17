@@ -2,6 +2,7 @@ export default {
   projects: 'Projects',
   issues: 'Issues',
   logs: 'Logs',
+  crons: 'Crons',
   agents: 'AI Agents',
   'source-maps': 'Source Maps',
   alerts: 'Alerts',

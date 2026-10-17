@@ -27,6 +27,7 @@
     "demo:run": "node demo/dist/app.js",
     "demo:sessions": "tsx demo/src/sessions.ts",
     "demo:logs": "tsx demo/src/logs.ts",
+    "demo:crons": "tsx demo/src/crons.ts",
     "demo:ai-agent": "tsx --import demo/src/ai-agent-instrument.ts demo/src/ai-agent.ts"
   },
   "dependencies": {

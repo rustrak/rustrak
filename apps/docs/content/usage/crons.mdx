@@ -1,0 +1,98 @@
+# Crons
+
+Errors tell you when code breaks. They can't tell you when code **never ran**: a nightly backup whose cron line was deleted, a queue worker that died, a job that has hung for six hours. **Crons** watches your scheduled jobs and opens an issue when a run is **missed**, **fails**, or **runs too long**.
+
+Crons is compatible with Sentry Crons: the `check_in` item Sentry SDKs send, and the HTTP check-in endpoint `curl` and `sentry-cli` use, work against Rustrak unchanged.
+
+## How it works
+
+Each job has a **monitor**, identified by a **slug**. Every run of the job sends **check-ins**:
+
+1. `in_progress` when the run starts.
+2. `ok` or `error` when it ends, with the same check-in ID.
+
+From the monitor's **schedule**, Rustrak knows when the next run is due. A sweep runs once a minute and records what the job didn't report itself:
+
+| Status | Meaning |
+|--------|---------|
+| **Missed** | No check-in arrived within the **grace period** after the expected time |
+| **Timed out** | A run stayed `in_progress` longer than its **max runtime** |
+| **Failed** | The job reported `error` |
+
+After **failure tolerance** consecutive failures, an issue opens: `Cron failure: <monitor>`. It goes through the same pipeline as any error, so your [alerts](/usage/alerts) fire for it, and every further failure lands in the same issue. After **recovery tolerance** consecutive `ok` check-ins, the issue resolves itself.
+
+Each **environment** a job checks in from (`production`, `staging`...) is tracked separately, with its own status and its own issue.
+
+## Creating a monitor
+
+**From code (recommended).** Send a `monitor_config` with the first check-in and the monitor is created on the job's first run, and updated whenever the config changes:
+
+```python
+from sentry_sdk.crons import monitor
+
+monitor_config = {
+    "schedule": {"type": "crontab", "value": "0 3 * * *"},
+    "timezone": "Europe/Madrid",
+    "checkin_margin": 5,   # minutes
+    "max_runtime": 30,     # minutes
+}
+
+@monitor(monitor_slug="nightly-backup", monitor_config=monitor_config)
+def nightly_backup():
+    ...
+```
+
+```javascript
+Sentry.withMonitor(
+  'nightly-backup',
+  async () => {
+    // your job
+  },
+  { schedule: { type: 'crontab', value: '0 3 * * *' }, checkinMargin: 5, maxRuntime: 30 },
+);
+```
+
+**From the dashboard.** Open a project, click **Crons**, then **New monitor**. The form previews the next five runs in the monitor's timezone as you type the schedule.
+
+## Without an SDK: HTTP check-ins
+
+Any job that can run `curl` can check in. The URL carries the project, the slug and the DSN key:
+
+```bash
+RUSTRAK_CRONS="https://rustrak.example.com/api/<project_id>/cron/<monitor-slug>/<dsn_key>/"
+
+curl "$RUSTRAK_CRONS?status=in_progress"
+./run-backup.sh && curl "$RUSTRAK_CRONS?status=ok" || curl "$RUSTRAK_CRONS?status=error"
+```
+
+`GET` or `POST` both work. The query string takes `status` (required), `check_in_id`, `environment` and `duration` (seconds). To create the monitor from a check-in, `POST` a JSON body with a `monitor_config`. The endpoint answers `202 Accepted`. A check-in for a monitor that doesn't exist yet, sent without a `monitor_config`, gets a `404` explaining why.
+
+`sentry-cli monitors run` wraps a command and reports its exit code:
+
+```bash
+export SENTRY_DSN=https://<dsn_key>@rustrak.example.com/<project_id>
+sentry-cli monitors run --schedule "0 3 * * *" nightly-backup -- ./run-backup.sh
+```
+
+The monitor's page shows these snippets with your DSN already filled in.
+
+## Configuration
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| **Schedule** | — | A five-field crontab (`0 3 * * *`, `@daily`) or an interval (`every 2 hours`) |
+| **Timezone** | `UTC` | The zone the crontab is read in, so `0 9 * * *` stays at 09:00 across daylight saving time |
+| **Grace period** | 1 minute | How late a check-in may arrive before the run counts as missed (max 28 days) |
+| **Max runtime** | 30 minutes | How long a run may stay in progress before it times out (max 7 days) |
+| **Failure tolerance** | 1 | Consecutive failed check-ins before an issue opens (1–720) |
+| **Recovery tolerance** | 1 | Consecutive successful check-ins before it resolves (1–720) |
+
+A config sent from code only overwrites the fields it includes; the rest keep what was set in the dashboard.
+
+## Muting
+
+**Mute** a monitor from the `⋯` menu on its page. A muted monitor keeps recording check-ins and its status, but opens no issue and sends no alert. Useful during maintenance windows.
+
+## Retention
+
+Check-ins are kept for 90 days, then deleted automatically.

@@ -52,6 +52,7 @@ pub mod installation;
 pub mod invitation;
 pub mod issue;
 pub mod log;
+pub mod monitor;
 pub mod project;
 pub mod project_member;
 pub mod release;

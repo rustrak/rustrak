@@ -121,6 +121,9 @@ impl FromRequest for SentryAuth {
             .get("project_id")
             .and_then(|s| s.parse().ok());
 
+        // The HTTP check-in endpoint carries the key in its path.
+        let path_sentry_key = req.match_info().get("sentry_key").map(str::to_string);
+
         // Extract sentry_key from query param
         let query_sentry_key = req.query_string().split('&').find_map(|pair| {
             let (key, value) = pair.split_once('=')?;
@@ -139,17 +142,38 @@ impl FromRequest for SentryAuth {
             .map(parse_sentry_auth_header)
             .and_then(|map| map.get("sentry_key").cloned());
 
+        // `Authorization: Basic base64("<key>:")`, which Relay accepts on the
+        // HTTP check-in endpoint.
+        let basic_sentry_key = req
+            .headers()
+            .get(actix_web::http::header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|h| h.strip_prefix("Basic "))
+            .and_then(|b| {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD
+                    .decode(b.trim())
+                    .ok()
+            })
+            .and_then(|raw| String::from_utf8(raw).ok())
+            .and_then(|creds| creds.split(':').next().map(str::to_string))
+            .filter(|key| !key.is_empty());
+
         Box::pin(async move {
             let project_id = project_id.ok_or_else(|| {
                 AppError::Validation("Missing or invalid project_id in URL".to_string())
             })?;
 
-            // Try query param first, then header
-            let sentry_key_str = query_sentry_key.or(header_sentry_key).ok_or_else(|| {
-                AppError::Unauthorized(
-                    "Missing sentry_key in query param or X-Sentry-Auth header".to_string(),
-                )
-            })?;
+            // Path (HTTP check-ins), query param, header, then Basic auth
+            let sentry_key_str = path_sentry_key
+                .or(query_sentry_key)
+                .or(header_sentry_key)
+                .or(basic_sentry_key)
+                .ok_or_else(|| {
+                    AppError::Unauthorized(
+                        "Missing sentry_key in query param or X-Sentry-Auth header".to_string(),
+                    )
+                })?;
 
             // Parse sentry_key as UUID
             let sentry_key: uuid::Uuid = sentry_key_str

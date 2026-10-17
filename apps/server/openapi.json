@@ -6052,6 +6052,526 @@
         ]
       }
     },
+    "/api/projects/{project_id}/monitors": {
+      "get": {
+        "tags": [
+          "Monitors"
+        ],
+        "summary": "GET /api/projects/{project_id}/monitors",
+        "operationId": "list_monitors",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every cron monitor of the project, with its environments and recent check-ins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonitorResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Monitors"
+        ],
+        "summary": "POST /api/projects/{project_id}/monitors",
+        "operationId": "create_monitor",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMonitor"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name or config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug already taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/monitors/{slug}": {
+      "get": {
+        "tags": [
+          "Monitors"
+        ],
+        "summary": "GET /api/projects/{project_id}/monitors/{slug}",
+        "operationId": "get_monitor",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Monitor slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The monitor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Monitors"
+        ],
+        "summary": "PUT /api/projects/{project_id}/monitors/{slug}",
+        "operationId": "update_monitor",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Monitor slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMonitor"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name or config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Monitors"
+        ],
+        "summary": "DELETE /api/projects/{project_id}/monitors/{slug}",
+        "operationId": "delete_monitor",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Monitor slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted with its check-ins; its issues stay"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/monitors/{slug}/checkins": {
+      "get": {
+        "tags": [
+          "Monitors"
+        ],
+        "summary": "GET /api/projects/{project_id}/monitors/{slug}/checkins",
+        "operationId": "list_checkins",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Monitor slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-indexed, default: 1)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Items per page (default: 50, max: 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only check-ins from this environment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Check-ins, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Offset-based paginated response wrapper",
+                  "required": [
+                    "items",
+                    "total_count",
+                    "page",
+                    "per_page",
+                    "total_pages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "One check-in, as the dashboard reads it.",
+                        "required": [
+                          "id",
+                          "environment",
+                          "status",
+                          "date_added",
+                          "date_updated"
+                        ],
+                        "properties": {
+                          "date_added": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "date_updated": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "duration_ms": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64"
+                          },
+                          "environment": {
+                            "type": "string"
+                          },
+                          "expected_time": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "status": {
+                            "$ref": "#/components/schemas/CheckInStatus"
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "per_page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_count": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_pages": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/projects/{project_id}/releases/{release}/new-issues": {
       "get": {
         "tags": [
@@ -9975,6 +10495,63 @@
           }
         }
       },
+      "CheckInResponse": {
+        "type": "object",
+        "description": "One check-in, as the dashboard reads it.",
+        "required": [
+          "id",
+          "environment",
+          "status",
+          "date_added",
+          "date_updated"
+        ],
+        "properties": {
+          "date_added": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "date_updated": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "expected_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckInStatus"
+          }
+        }
+      },
+      "CheckInStatus": {
+        "type": "string",
+        "description": "Status of one check-in. `Missed` and `Timeout` are only ever set by the\nserver.",
+        "enum": [
+          "ok",
+          "error",
+          "in_progress",
+          "missed",
+          "timeout",
+          "unknown"
+        ]
+      },
       "ChunkUploadBody": {
         "type": "object",
         "description": "Multipart chunk upload.\nEach part's **field name** may be the SHA-1 hex digest of that part's binary content\n(sentry-cli v2 protocol, e.g. `da39a3ee5e6b4b0d3255bfef95601890afd80709`) or an arbitrary\nname like `file` (sentry-cli v3.x). Up to 64 parts per request; each part body is raw binary."
@@ -10230,6 +10807,29 @@
           "role": {
             "type": "string",
             "description": "Global role the invited user will receive (`admin` | `member`)."
+          }
+        }
+      },
+      "CreateMonitor": {
+        "type": "object",
+        "description": "Body of `POST /api/projects/{project_id}/monitors`.",
+        "required": [
+          "name",
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/MonitorConfigInput"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Derived from `name` when left out. This is the slug SDKs check in with."
           }
         }
       },
@@ -11265,6 +11865,202 @@
               "null"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "MonitorConfig": {
+        "type": "object",
+        "description": "A validated monitor configuration, with every default filled in.",
+        "required": [
+          "schedule",
+          "checkin_margin",
+          "max_runtime",
+          "timezone",
+          "failure_issue_threshold",
+          "recovery_threshold"
+        ],
+        "properties": {
+          "checkin_margin": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minutes.",
+            "minimum": 0
+          },
+          "failure_issue_threshold": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "max_runtime": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minutes.",
+            "minimum": 0
+          },
+          "recovery_threshold": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/Schedule"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA name."
+          }
+        }
+      },
+      "MonitorConfigInput": {
+        "type": "object",
+        "description": "`monitor_config` as an SDK or the dashboard sends it: every field optional.",
+        "properties": {
+          "checkin_margin": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "failure_issue_threshold": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "max_runtime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_threshold": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "schedule": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schedule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MonitorEnvironmentResponse": {
+        "type": "object",
+        "description": "One environment of a monitor, with its most recent check-ins for the\ntimeline.",
+        "required": [
+          "id",
+          "environment",
+          "status",
+          "recent_checkins"
+        ],
+        "properties": {
+          "environment": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_checkin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "next_checkin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "next_checkin_latest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "recent_checkins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckInResponse"
+            },
+            "description": "Newest first."
+          },
+          "status": {
+            "$ref": "#/components/schemas/MonitorEnvironmentStatus"
+          }
+        }
+      },
+      "MonitorEnvironmentStatus": {
+        "type": "string",
+        "description": "Health of one monitor environment.",
+        "enum": [
+          "active",
+          "ok",
+          "error"
+        ]
+      },
+      "MonitorResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "config",
+          "is_muted",
+          "created_at",
+          "environments"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/MonitorConfig"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitorEnvironmentResponse"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_muted": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
           }
         }
       },
@@ -12653,6 +13449,34 @@
             ]
           },
           "substatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UpdateMonitor": {
+        "type": "object",
+        "description": "Body of `PUT /api/projects/{project_id}/monitors/{slug}`. Fields left out\nkeep their value, including each field of `config`.",
+        "properties": {
+          "config": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MonitorConfigInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_muted": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
             "type": [
               "string",
               "null"

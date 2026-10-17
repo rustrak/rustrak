@@ -283,6 +283,23 @@ async fn main() -> std::io::Result<()> {
         ingest_dir,
     ));
 
+    // Recurring jobs: the cron monitor sweep.
+    // One tick a minute, the granularity of every schedule.
+    let scheduler = rustrak::scheduler::engine::Scheduler::new(vec![Arc::new(
+        rustrak::scheduler::jobs::MonitorSweepJob::new(processors_data.clone()),
+    )]);
+    let scheduler_pool = db_pool.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            if let Err(e) = scheduler.tick(&scheduler_pool, chrono::Utc::now()).await {
+                log::error!("Scheduler tick failed: {:?}", e);
+            }
+        }
+    });
+
     let alert_pool = db_pool.clone();
     tokio::spawn(async move {
         loop {
@@ -382,6 +399,7 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::transactions::configure)
             // Logs API (more specific than generic projects scope)
             .configure(routes::logs::configure)
+            .configure(routes::monitors::configure)
             .configure(routes::schedules::configure)
             // Spans API (more specific than generic projects scope)
             .configure(routes::spans::configure)

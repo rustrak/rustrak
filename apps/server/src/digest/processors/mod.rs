@@ -261,6 +261,8 @@ pub enum Route {
     /// Standalone spans, Spans Protocol v2 (batched container) — direct
     /// store, no grouping.
     SpanV2,
+    /// Cron monitor check-ins — recorded inline by the monitor service.
+    CheckIn,
     /// Forward-compatible catch-all: logged and dropped, never processed.
     Ignored,
 }
@@ -277,6 +279,7 @@ pub fn route(item: &EnvelopeItemKind) -> Route {
         EnvelopeItemKind::Log(_) => Route::Log,
         EnvelopeItemKind::Span(_) => Route::Span,
         EnvelopeItemKind::SpanV2Batch(_) => Route::SpanV2,
+        EnvelopeItemKind::CheckIn(_) => Route::CheckIn,
         EnvelopeItemKind::Other(_, _) => Route::Ignored,
     }
 }
