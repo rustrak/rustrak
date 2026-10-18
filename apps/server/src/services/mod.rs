@@ -2,6 +2,7 @@ pub mod access;
 pub mod alert;
 pub mod auth_token;
 pub mod event;
+pub(crate) mod event_lookup;
 pub mod event_trim;
 pub mod gen_ai;
 pub mod generic_trim;

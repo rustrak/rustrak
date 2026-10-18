@@ -50,6 +50,7 @@ impl Modify for SecurityAddon {
         crate::routes::issues::bulk_delete_issues,
         crate::routes::events::list_events,
         crate::routes::events::get_event,
+        crate::routes::event_lookup::lookup,
         crate::routes::tokens::list_tokens,
         crate::routes::tokens::create_token,
         crate::routes::tokens::get_token,

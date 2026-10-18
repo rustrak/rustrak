@@ -176,13 +176,22 @@ pub async fn get_event_by_sentry_id(
 #[cfg(feature = "openapi")]
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_events, get_event, get_event_by_sentry_id),
+    paths(
+        list_events,
+        get_event,
+        get_event_by_sentry_id,
+        crate::routes::event_lookup::lookup
+    ),
     components(schemas(crate::models::EventResponse, crate::models::EventDetailResponse,))
 )]
 pub struct EventsApi;
 
 /// Configure event routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.route(
+        "/api/projects/{project_id}/events/lookup",
+        web::get().to(crate::routes::event_lookup::lookup),
+    );
     cfg.route(
         "/api/projects/{project_id}/events/sentry/{event_id}",
         web::get().to(get_event_by_sentry_id),

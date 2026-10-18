@@ -130,6 +130,24 @@ if (event.success) {
 }
 ```
 
+### Lookup across issues
+
+```typescript
+const matches = await client.events.lookup(projectId, { user_id: 'customer-42' });
+if (matches.success) {
+  console.log(matches.data.items); // Event summaries with their issue IDs
+}
+
+const correlated = await client.events.lookup(projectId, { request_id: 'request-123' });
+```
+
+Provide exactly one `user_id` or `request_id`, plus an optional `cursor` from the
+same lookup. User lookup reads `user.id`; request lookup reads the exact
+`request.id` tag in object, tuple-array or key/value-array tags. The server
+returns at most 20 summaries without full payloads.
+Identifiers are limited to 200 UTF-8 bytes. See the [API lookup contract](/reference/api#exact-event-lookup-by-user-or-request)
+for validation and migration details.
+
 ### Paginating
 
 ```typescript

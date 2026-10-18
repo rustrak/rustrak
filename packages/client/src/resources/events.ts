@@ -3,12 +3,14 @@ import type { Result } from '../result.js';
 import {
   eventDetailSchema,
   eventSchema,
+  lookupEventsOptionsSchema,
   paginatedResponseSchema,
 } from '../schemas/index.js';
 import type {
   Event,
   EventDetail,
   ListEventsOptions,
+  LookupEventsOptions,
   PaginatedResponse,
 } from '../types/index.js';
 import { BaseResource } from './base.js';
@@ -17,6 +19,27 @@ import { BaseResource } from './base.js';
  * Events API resource
  */
 export class EventsResource extends BaseResource {
+  /** Look up exact user.id or tags["request.id"] matches across a project's issues. */
+  async lookup(
+    projectId: number,
+    options: LookupEventsOptions,
+  ): Promise<Result<PaginatedResponse<Event>, RustrakError>> {
+    const validated = this.validateInput(options, lookupEventsOptionsSchema);
+    if (!validated.success) return validated;
+    const searchParams: Record<string, string> =
+      'user_id' in validated.data
+        ? { user_id: validated.data.user_id }
+        : { request_id: validated.data.request_id };
+    if (validated.data.cursor) searchParams.cursor = validated.data.cursor;
+    return this.request(
+      () =>
+        this.http.get(`api/projects/${projectId}/events/lookup`, {
+          searchParams,
+        }),
+      paginatedResponseSchema(eventSchema),
+    );
+  }
+
   /**
    * List events for an issue with pagination
    */
