@@ -195,6 +195,13 @@ impl ErrorProcessor {
             &mut event_data,
         )
         .await;
+        // 2b''. Symbolicate native (Apple) frames with dSYMs, likewise.
+        crate::services::native::process_event(
+            self.sourcemap_provider.as_ref(),
+            metadata.project_id,
+            &mut event_data,
+        )
+        .await;
 
         // 2c. Trim oversized fields (deep context windows, frame vars, huge
         // breadcrumb trails) for events whose raw payload came in above the

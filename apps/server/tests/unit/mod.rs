@@ -17,6 +17,8 @@ mod message_normalization_test;
 mod monitor_checkin_test;
 mod monitor_config_test;
 mod monitor_schedule_test;
+mod native_function_name_test;
+mod native_test;
 mod notification_test;
 mod schedule_test;
 mod sourcemap_store_test;

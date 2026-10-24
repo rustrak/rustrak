@@ -667,7 +667,12 @@ async fn assemble_bundle_inner(
         };
 
         store_file(
-            &mut tx, store, project_id, debug_uuid, &file_type, file_bytes,
+            &mut tx,
+            store,
+            project_id,
+            debug_uuid,
+            &file_type,
+            file_bytes.into(),
         )
         .await?;
     }
@@ -722,7 +727,7 @@ pub(crate) async fn store_file(
     project_id: i32,
     debug_uuid: Uuid,
     file_type: &str,
-    file_bytes: Vec<u8>,
+    file_bytes: Bytes,
 ) -> AppResult<()> {
     let mut fhasher = sha1::Sha1::new();
     fhasher.update(&file_bytes);
@@ -733,7 +738,7 @@ pub(crate) async fn store_file(
     // Propagate errors: a store failure must abort the job so chunks are NOT
     // deleted and the assembly can be retried.
     store
-        .put(&storage_key, Bytes::from(file_bytes))
+        .put(&storage_key, file_bytes)
         .await
         .map_err(|e| AppError::Internal(format!("failed to store source file: {}", e)))?;
 

@@ -135,6 +135,12 @@ sourcemap = "9"
 zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }  # CVE-2025-29787 fixed in 2.3+; DO NOT lower below 2.3; no zstd (non-SPDX license)
 # JVM deobfuscation: the crate Symbolicator remaps Android frames with
 proguard = "5.10"
+# Native (Apple) symbolication: the crates Symbolicator symbolicates with.
+# `symbolic-demangle` builds the Swift demangler from C++ (build-essential).
+symbolic-common = "12.18"
+symbolic-debuginfo = "12.18"
+symbolic-symcache = "12.18"
+symbolic-demangle = "12.18"
 actix-multipart = "0.8"
 sha1 = "0.11"
 tempfile = "3.27.0"

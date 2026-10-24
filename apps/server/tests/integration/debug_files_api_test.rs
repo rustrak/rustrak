@@ -498,6 +498,186 @@ async fn legacy_upload_queues_a_proguard_mapping() {
     );
 }
 
+const DSYM_ID: &str = "821b5334-aca1-3d75-bea8-579e8f53103a";
+
+/// What `sentry-cli debug-files upload` sends for a dSYM: the DWARF file,
+/// named after its path in the bundle, with the object's debug ID.
+async fn upload_dsym_files(db: &TestDb, token: &str, slug: &str) {
+    for (name, data) in [
+        (
+            "Contents/Resources/DWARF/crash",
+            include_bytes!("../fixtures/crash_arm64.dwarf").as_slice(),
+        ),
+        (
+            "crash.src.zip",
+            include_bytes!("../fixtures/crash_arm64.src.zip").as_slice(),
+        ),
+    ] {
+        let chunk = store_chunk(db, data).await;
+        let body = json!({chunk.clone(): {"name": name, "debug_id": DSYM_ID, "chunks": [chunk]}});
+        assemble(db, token, slug, body).await;
+    }
+}
+
+#[actix_web::test]
+async fn dsym_is_stored_with_its_symcache() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project_id = project(&db, "difs-dsym").await;
+    let data = include_bytes!("../fixtures/crash_arm64.dwarf");
+    let chunk = store_chunk(&db, data).await;
+    let body = json!({chunk.clone(): {
+        "name": "Contents/Resources/DWARF/crash",
+        "debug_id": DSYM_ID,
+        "chunks": [chunk.clone()]
+    }});
+
+    assemble(&db, &token, "difs-dsym", body.clone()).await;
+    let _dir = run_worker(&db).await;
+    let (_, done) = assemble(&db, &token, "difs-dsym", body).await;
+
+    assert_eq!(done[&chunk]["state"], "ok", "{done}");
+    assert_eq!(
+        file_types(&db, project_id).await,
+        [
+            (DSYM_ID.to_string(), "macho".to_string()),
+            (DSYM_ID.to_string(), "symcache".to_string()),
+        ]
+    );
+}
+
+/// The app's executable after its dSYM, same UUID but only a symbol table
+/// (`crash_arm64.exe`: `crash.c` built without `-g`, its LC_UUID set to the
+/// dSYM's). Sentry keeps both files and Symbolicator prefers the one with
+/// debug info (`object_quality`), so the DWARF SymCache stays.
+#[actix_web::test]
+async fn an_executable_does_not_replace_its_dsym_symcache() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project_id = project(&db, "difs-exe").await;
+    let symcache_file = || async {
+        let (id,): (String,) = sqlx::query_as(
+            "SELECT CAST(file_id AS TEXT) FROM source_file_metadata
+             WHERE project_id = $1 AND file_type = 'symcache'",
+        )
+        .bind(project_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        id
+    };
+    let mut done = Value::Null;
+    let mut files = Vec::new();
+    for (name, data) in [
+        (
+            "Contents/Resources/DWARF/crash",
+            include_bytes!("../fixtures/crash_arm64.dwarf").as_slice(),
+        ),
+        (
+            "Crash.app/Crash",
+            include_bytes!("../fixtures/crash_arm64.exe").as_slice(),
+        ),
+    ] {
+        let chunk = store_chunk(&db, data).await;
+        let body =
+            json!({chunk.clone(): {"name": name, "debug_id": DSYM_ID, "chunks": [chunk.clone()]}});
+        assemble(&db, &token, "difs-exe", body.clone()).await;
+        run_worker(&db).await;
+        done = assemble(&db, &token, "difs-exe", body).await.1;
+        assert_eq!(done[&chunk]["state"], "ok", "{done}");
+        files.push(symcache_file().await);
+    }
+
+    assert_eq!(files[0], files[1], "{done}");
+}
+
+/// An iOS crash in the app's own code, digested with its dSYM and sources
+/// stored: symbolicated before grouping, so the issue is named after it.
+#[actix_web::test]
+async fn digest_symbolicates_an_ios_crash() {
+    use rustrak::ingest::{store_event, EventMetadata};
+
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project_id = project(&db, "difs-ios").await;
+    upload_dsym_files(&db, &token, "difs-ios").await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(LocalSourceMapStore::new(dir.path()));
+    let worker = rustrak::workers::sourcemap_assembly::AssemblyWorker::new(
+        db.pool.clone(),
+        store.clone(),
+        100 << 20,
+    );
+    worker.run_once().await.unwrap();
+    worker.run_once().await.unwrap();
+    let provider: Arc<dyn SourceMapProvider> = Arc::new(
+        rustrak::services::DbSourceMapProvider::new(db.pool.clone(), store),
+    );
+
+    let event_id = Uuid::new_v4().simple().to_string();
+    let event = json!({
+        "event_id": event_id,
+        "timestamp": chrono::Utc::now().timestamp() as f64,
+        "platform": "cocoa",
+        "level": "fatal",
+        "contexts": {"os": {"type": "os", "name": "iOS"}},
+        "exception": {"values": [{
+            "type": "EXC_ARITHMETIC", "value": "divide by zero",
+            "mechanism": {"type": "mach", "handled": false},
+            "stacktrace": {"frames": [
+                {"instruction_addr": "0x104000430", "in_app": true},
+                {"instruction_addr": "0x10400041c", "in_app": true}
+            ]}
+        }]},
+        "debug_meta": {"images": [{
+            "type": "macho", "debug_id": DSYM_ID, "arch": "arm64",
+            "code_file": "/private/var/containers/Bundle/Application/7A8E/Crash.app/Crash",
+            "image_addr": "0x104000000", "image_size": 16384
+        }]}
+    });
+    let ingest = tempfile::TempDir::new().unwrap();
+    store_event(
+        ingest.path(),
+        &event_id,
+        &serde_json::to_vec(&event).unwrap(),
+    )
+    .await
+    .unwrap();
+    let metadata = EventMetadata {
+        event_id: event_id.clone(),
+        project_id,
+        ingested_at: chrono::Utc::now(),
+        remote_addr: None,
+    };
+    let rate_limit = rustrak::config::RateLimitConfig {
+        max_events_per_minute: 1000,
+        max_events_per_hour: 10000,
+        max_events_per_project_per_minute: 500,
+        max_events_per_project_per_hour: 5000,
+    };
+    crate::common::process_error_event(&db.pool, &metadata, ingest.path(), &rate_limit, provider)
+        .await
+        .expect("digest must succeed");
+
+    let (data,): (String,) =
+        sqlx::query_as("SELECT CAST(data AS TEXT) FROM events WHERE project_id = $1")
+            .bind(project_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    let data: Value = serde_json::from_str(&data).unwrap();
+    let frames = &data["exception"]["values"][0]["stacktrace"]["frames"];
+    let names: Vec<&str> = frames
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["function"].as_str().unwrap_or("?"))
+        .collect();
+    assert_eq!(names, ["compute", "divide", "compute", "divide"]);
+    assert_eq!(frames[3]["context_line"], "    return a / b;");
+    assert_eq!(data["debug_meta"]["images"][0]["debug_status"], "found");
+}
+
 /// Same mapping bytes under a second UUID: Sentry clones the stored DIF for
 /// the new debug ID (`_clone_proguard_debug_file_for_reupload`).
 #[actix_web::test]
@@ -583,7 +763,7 @@ async fn a_source_bundle_with_an_oversized_manifest_fails() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project_id = project(&db, "difs-bundle-bomb").await;
-    let mut manifest = vec![b' '; rustrak::services::jvm::MAX_BUNDLE_ENTRY_SIZE as usize];
+    let mut manifest = vec![b' '; rustrak::services::source_bundle::MAX_BUNDLE_ENTRY_SIZE as usize];
     manifest.extend(format!(r#"{{"debug_id":"{BUNDLE_ID}","files":{{}}}}"#).as_bytes());
     // symbolic's header, then a zip whose offsets count it.
     let mut cursor = std::io::Cursor::new(b"SYSB\x02\0\0\0".to_vec());
