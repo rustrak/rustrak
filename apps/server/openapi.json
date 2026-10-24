@@ -601,6 +601,196 @@
         ]
       }
     },
+    "/api/0/projects/{org_slug}/{project_slug}/files/difs/assemble/": {
+      "post": {
+        "tags": [
+          "Source Maps"
+        ],
+        "summary": "Assemble uploaded chunks into debug information files (ProGuard mappings, JVM source bundles).",
+        "description": "Sentry's `DifAssembleEndpoint`: the body maps each file's SHA-1 to its\nname, chunks and optional debug ID, and the answer maps it to its state.",
+        "operationId": "debugFiles.assemble",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_slug",
+            "in": "path",
+            "description": "Project slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/DifAssembleFile"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Assembly state per file checksum (not_found / created / assembling / ok / error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/AssembleResponse"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/0/projects/{org_slug}/{project_slug}/files/dsyms/": {
+      "post": {
+        "tags": [
+          "Source Maps"
+        ],
+        "summary": "Upload a zip of debug information files (the path `sentry-cli upload-proguard` takes).",
+        "description": "Sentry's `DebugFilesEndpoint.post` processes the zip in the request.\nHere each file goes through the assembly worker instead, the same as a\nchunked upload, because building a ProGuard cache can take gigabytes.\nOnly ProGuard mappings are recognised; other entries are skipped.",
+        "operationId": "debugFiles.upload",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_slug",
+            "in": "path",
+            "description": "Project slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "A `file` part: a zip of debug files, such as `proguard/<uuid>.txt`",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/DifUploadBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The debug files queued for processing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DebugFileResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/0/projects/{org_slug}/{project_slug}/files/source-maps/": {
       "get": {
         "tags": [
@@ -13334,6 +13524,100 @@
             "type": "string"
           }
         }
+      },
+      "DebugFileResponse": {
+        "type": "object",
+        "description": "A debug information file as Sentry's `DebugFileSerializer` describes it.",
+        "required": [
+          "id",
+          "uuid",
+          "debugId",
+          "codeId",
+          "cpuName",
+          "objectName",
+          "symbolType",
+          "headers",
+          "size",
+          "sha1",
+          "dateCreated",
+          "data"
+        ],
+        "properties": {
+          "codeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cpuName": {
+            "type": "string"
+          },
+          "data": {},
+          "dateCreated": {
+            "type": "string"
+          },
+          "debugId": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "objectName": {
+            "type": "string"
+          },
+          "sha1": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "symbolType": {
+            "type": "string"
+          },
+          "uuid": {
+            "type": "string"
+          }
+        }
+      },
+      "DifAssembleFile": {
+        "type": "object",
+        "description": "One file of a debug information file assemble request.",
+        "required": [
+          "name",
+          "chunks"
+        ],
+        "properties": {
+          "chunks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "debug_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "DifUploadBody": {
+        "type": "object",
+        "description": "Multipart legacy debug file upload: one `file` part holding a zip."
       },
       "ErrorDetail": {
         "type": "object",

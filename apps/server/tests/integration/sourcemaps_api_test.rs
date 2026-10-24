@@ -34,7 +34,7 @@ use uuid::Uuid;
 // Test helpers
 // =============================================================================
 
-fn create_test_config() -> Config {
+pub(super) fn create_test_config() -> Config {
     Config {
         host: "127.0.0.1".to_string(),
         port: 0,
@@ -75,7 +75,7 @@ fn create_test_config() -> Config {
     }
 }
 
-async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
+pub(super) async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
     AuthTokenService::create(
         pool,
         CreateAuthToken {
@@ -90,7 +90,7 @@ async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
 /// Build the sourcemap app data components from a pool + config.
 /// Returns `(Arc<dyn SourceMapProvider>, web::Data<Config>)` so tests can
 /// call `test::init_service(App::new().app_data(...)...)` inline.
-fn sourcemap_app_data(
+pub(super) fn sourcemap_app_data(
     pool: &rustrak::db::DbPool,
     config: &Config,
 ) -> (Arc<dyn SourceMapProvider>, web::Data<Config>) {
@@ -101,7 +101,7 @@ fn sourcemap_app_data(
     (provider, web::Data::new(config.clone()))
 }
 
-fn sha1_hex(data: &[u8]) -> String {
+pub(super) fn sha1_hex(data: &[u8]) -> String {
     let mut h = Sha1::new();
     h.update(data);
     hex::encode(h.finalize())

@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::error::AppResult;
-use crate::models::source_file::AssemblyJob;
+use crate::models::source_file::{AssemblyJob, DIF_JOB_KIND};
+use crate::services::debug_file::assemble_dif_for_job;
 use crate::services::sourcemap::assemble_bundle_for_job;
 use crate::services::sourcemap_store::SourceMapStore;
 
@@ -161,16 +162,26 @@ impl AssemblyWorker {
             job.bundle_checksum
         );
 
-        let result = assemble_bundle_for_job(
-            &self.pool,
-            self.store.as_ref(),
-            job.project_id,
-            &job.bundle_checksum,
-            job.chunk_list(),
-            self.max_bundle_size_bytes,
-            job.id,
-        )
-        .await;
+        let result = if job.kind == DIF_JOB_KIND {
+            assemble_dif_for_job(
+                &self.pool,
+                self.store.as_ref(),
+                &job,
+                self.max_bundle_size_bytes,
+            )
+            .await
+        } else {
+            assemble_bundle_for_job(
+                &self.pool,
+                self.store.as_ref(),
+                job.project_id,
+                &job.bundle_checksum,
+                job.chunk_list(),
+                self.max_bundle_size_bytes,
+                job.id,
+            )
+            .await
+        };
 
         match result {
             Ok(()) => {

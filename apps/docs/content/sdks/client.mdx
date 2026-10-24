@@ -499,6 +499,8 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
+| `debugFiles.assemble({ path, body })` | `POST /api/0/projects/{org_slug}/{project_slug}/files/difs/assemble/` | Assemble uploaded chunks into debug information files (ProGuard mappings, JVM source bundles). |
+| `debugFiles.upload({ path, body })` | `POST /api/0/projects/{org_slug}/{project_slug}/files/dsyms/` | Upload a zip of debug information files (the path `sentry-cli upload-proguard` takes). |
 | `sourceMaps.artifactBundleAssemble({ path, body })` | `POST /api/0/organizations/{org_slug}/artifactbundle/assemble/` |  |
 | `sourceMaps.chunkUpload({ path, body })` | `POST /api/0/organizations/{org_slug}/chunk-upload/` |  |
 | `sourceMaps.chunkUploadCapability({ path })` | `GET /api/0/organizations/{org_slug}/chunk-upload/` |  |

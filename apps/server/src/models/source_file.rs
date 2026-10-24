@@ -49,7 +49,16 @@ pub struct AssemblyJob {
     pub max_retries: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// `artifact_bundle` or `dif` ([`DIF_JOB_KIND`]).
+    pub kind: String,
+    /// A DIF's file name from the assemble request.
+    pub name: Option<String>,
+    /// A DIF's debug ID from the assemble request.
+    pub debug_id: Option<String>,
 }
+
+/// `assembly_jobs.kind` of a debug information file.
+pub const DIF_JOB_KIND: &str = "dif";
 
 impl AssemblyJob {
     /// Backend-agnostic accessor — use this everywhere instead of `.chunks` directly.

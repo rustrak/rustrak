@@ -187,6 +187,14 @@ impl ErrorProcessor {
                 e
             );
         }
+        // 2b'. Deobfuscate JVM frames with ProGuard mappings and source
+        // bundles, before grouping as Sentry does (non-fatal).
+        crate::services::jvm::process_event(
+            self.sourcemap_provider.as_ref(),
+            metadata.project_id,
+            &mut event_data,
+        )
+        .await;
 
         // 2c. Trim oversized fields (deep context windows, frame vars, huge
         // breadcrumb trails) for events whose raw payload came in above the

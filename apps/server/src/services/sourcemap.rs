@@ -511,33 +511,14 @@ async fn assemble_bundle_inner(
     max_bundle_size_bytes: usize,
     job_id: Option<i64>,
 ) -> AppResult<()> {
-    // --- Step 1: fetch + join chunk bytes ---
-    let mut joined: Vec<u8> = Vec::new();
-    for checksum in chunk_checksums {
-        let data: Vec<u8> = sqlx::query_scalar("SELECT data FROM chunk WHERE checksum = $1")
-            .bind(checksum)
-            .fetch_one(pool)
-            .await
-            .map_err(|_| AppError::Validation(format!("chunk not found: {}", checksum)))?;
-        if joined.len() + data.len() > max_bundle_size_bytes {
-            return Err(AppError::Validation(format!(
-                "bundle too large: exceeds {} bytes limit",
-                max_bundle_size_bytes
-            )));
-        }
-        joined.extend_from_slice(&data);
-    }
-
-    // --- Step 2: verify SHA1 ---
-    let mut hasher = sha1::Sha1::new();
-    hasher.update(&joined);
-    let computed = hex::encode(hasher.finalize());
-    if computed != bundle_checksum {
-        return Err(AppError::Validation(format!(
-            "checksum mismatch: expected {}, got {}",
-            bundle_checksum, computed
-        )));
-    }
+    // --- Steps 1+2: fetch + join chunk bytes, verify SHA1 ---
+    let joined = join_chunks(
+        pool,
+        chunk_checksums,
+        max_bundle_size_bytes,
+        bundle_checksum,
+    )
+    .await?;
 
     // --- Step 3: write to temp file (non-blocking) ---
     let temp_dir = tempfile::tempdir().map_err(|e| AppError::Internal(e.to_string()))?;
@@ -685,113 +666,152 @@ async fn assemble_bundle_inner(
             }
         };
 
-        // Compute SHA1 of file bytes → storage key
-        let mut fhasher = sha1::Sha1::new();
-        fhasher.update(&file_bytes);
-        let sha1_hex = hex::encode(fhasher.finalize());
-
-        // Store file in CAS (outside transaction — idempotent).
-        // Propagate errors: a store failure must abort the job so chunks are NOT
-        // deleted and the assembly can be retried.
-        store
-            .put(&sha1_hex, Bytes::from(file_bytes.clone()))
-            .await
-            .map_err(|e| AppError::Internal(format!("failed to store source file: {}", e)))?;
-
-        let file_size = file_bytes.len() as i32;
-        let storage_key = sha1_hex.clone();
-        let new_sf_id = Uuid::new_v4();
-
-        // Two-query upsert for source_file (avoids RETURNING NULL on conflict)
-        // Query A: insert (idempotent)
-        #[cfg(feature = "postgres")]
-        sqlx::query(
-            r#"
-            INSERT INTO source_file(id, checksum, size, storage_path)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT(checksum) DO NOTHING
-            "#,
+        store_file(
+            &mut tx, store, project_id, debug_uuid, &file_type, file_bytes,
         )
-        .bind(new_sf_id)
-        .bind(&storage_key)
-        .bind(file_size)
-        .bind(&storage_key)
-        .execute(&mut *tx)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        sqlx::query(
-            r#"
-            INSERT INTO source_file(id, checksum, size, storage_path)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT(checksum) DO NOTHING
-            "#,
-        )
-        .bind(new_sf_id.to_string())
-        .bind(&storage_key)
-        .bind(file_size)
-        .bind(&storage_key)
-        .execute(&mut *tx)
-        .await?;
-
-        // Query B: always fetch (works whether just inserted or pre-existing)
-        #[cfg(feature = "postgres")]
-        let sf_id: Uuid = sqlx::query_scalar("SELECT id FROM source_file WHERE checksum = $1")
-            .bind(&storage_key)
-            .fetch_one(&mut *tx)
-            .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let sf_id: String = sqlx::query_scalar("SELECT id FROM source_file WHERE checksum = $1")
-            .bind(&storage_key)
-            .fetch_one(&mut *tx)
-            .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let sf_id = Uuid::parse_str(&sf_id).map_err(|e| AppError::Internal(e.to_string()))?;
-
-        // Upsert source_file_metadata. A re-upload for the same debug_id wins,
-        // as in Sentry, which resolves to the newest bundle.
-        let new_sfm_id = Uuid::new_v4();
-        #[cfg(feature = "postgres")]
-        sqlx::query(
-            r#"
-            INSERT INTO source_file_metadata(id, project_id, debug_id, file_type, file_id)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT(project_id, debug_id, file_type) DO UPDATE SET file_id = EXCLUDED.file_id
-            "#,
-        )
-        .bind(new_sfm_id)
-        .bind(project_id)
-        .bind(debug_uuid)
-        .bind(&file_type)
-        .bind(sf_id)
-        .execute(&mut *tx)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        sqlx::query(
-            r#"
-            INSERT INTO source_file_metadata(id, project_id, debug_id, file_type, file_id)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT(project_id, debug_id, file_type) DO UPDATE SET file_id = EXCLUDED.file_id
-            "#,
-        )
-        .bind(new_sfm_id.to_string())
-        .bind(project_id)
-        .bind(debug_uuid.to_string())
-        .bind(&file_type)
-        .bind(sf_id.to_string())
-        .execute(&mut *tx)
         .await?;
     }
 
-    // --- Step 8: release this job's chunk references and delete only chunks
-    // no other pending or retryable job still owns. ---
+    finish_job(&mut tx, job_id, chunk_checksums).await?;
+    tx.commit().await?;
+
+    Ok(())
+}
+
+/// The bytes of `chunk_checksums` in order, checked against `checksum`.
+pub(crate) async fn join_chunks(
+    pool: &DbPool,
+    chunk_checksums: &[String],
+    max_size_bytes: usize,
+    checksum: &str,
+) -> AppResult<Vec<u8>> {
+    let mut joined: Vec<u8> = Vec::new();
+    for chunk in chunk_checksums {
+        let data: Vec<u8> = sqlx::query_scalar("SELECT data FROM chunk WHERE checksum = $1")
+            .bind(chunk)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| AppError::Validation(format!("chunk not found: {}", chunk)))?;
+        if joined.len() + data.len() > max_size_bytes {
+            return Err(AppError::Validation(format!(
+                "bundle too large: exceeds {} bytes limit",
+                max_size_bytes
+            )));
+        }
+        joined.extend_from_slice(&data);
+    }
+
+    let mut hasher = sha1::Sha1::new();
+    hasher.update(&joined);
+    let computed = hex::encode(hasher.finalize());
+    if computed != checksum {
+        return Err(AppError::Validation(format!(
+            "checksum mismatch: expected {}, got {}",
+            checksum, computed
+        )));
+    }
+    Ok(joined)
+}
+
+/// Stores `file_bytes` in the CAS and records it as `project_id`'s
+/// `file_type` for `debug_uuid`. A re-upload for the same debug ID wins, as
+/// in Sentry, which resolves to the newest file.
+pub(crate) async fn store_file(
+    tx: &mut sqlx::Transaction<'_, crate::db::Db>,
+    store: &dyn SourceMapStore,
+    project_id: i32,
+    debug_uuid: Uuid,
+    file_type: &str,
+    file_bytes: Vec<u8>,
+) -> AppResult<()> {
+    let mut fhasher = sha1::Sha1::new();
+    fhasher.update(&file_bytes);
+    let storage_key = hex::encode(fhasher.finalize());
+    let file_size = file_bytes.len() as i32;
+
+    // Store file in CAS (outside transaction — idempotent).
+    // Propagate errors: a store failure must abort the job so chunks are NOT
+    // deleted and the assembly can be retried.
+    store
+        .put(&storage_key, Bytes::from(file_bytes))
+        .await
+        .map_err(|e| AppError::Internal(format!("failed to store source file: {}", e)))?;
+
+    let new_sf_id = Uuid::new_v4();
+
+    // Two-query upsert for source_file (avoids RETURNING NULL on conflict)
+    // Query A: insert (idempotent)
+    #[cfg(feature = "postgres")]
+    let new_sf_id_bind = new_sf_id;
+    #[cfg(not(feature = "postgres"))]
+    let new_sf_id_bind = new_sf_id.to_string();
+    sqlx::query(
+        r#"
+        INSERT INTO source_file(id, checksum, size, storage_path)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT(checksum) DO NOTHING
+        "#,
+    )
+    .bind(new_sf_id_bind)
+    .bind(&storage_key)
+    .bind(file_size)
+    .bind(&storage_key)
+    .execute(&mut **tx)
+    .await?;
+
+    // Query B: always fetch (works whether just inserted or pre-existing)
+    #[cfg(feature = "postgres")]
+    let sf_id: Uuid = sqlx::query_scalar("SELECT id FROM source_file WHERE checksum = $1")
+        .bind(&storage_key)
+        .fetch_one(&mut **tx)
+        .await?;
+
+    #[cfg(not(feature = "postgres"))]
+    let sf_id: String = sqlx::query_scalar("SELECT id FROM source_file WHERE checksum = $1")
+        .bind(&storage_key)
+        .fetch_one(&mut **tx)
+        .await?;
+
+    #[cfg(not(feature = "postgres"))]
+    let sf_id = Uuid::parse_str(&sf_id).map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let new_sfm_id = Uuid::new_v4();
+    #[cfg(feature = "postgres")]
+    let (sfm_id, debug_id, file_id) = (new_sfm_id, debug_uuid, sf_id);
+    #[cfg(not(feature = "postgres"))]
+    let (sfm_id, debug_id, file_id) = (
+        new_sfm_id.to_string(),
+        debug_uuid.to_string(),
+        sf_id.to_string(),
+    );
+    sqlx::query(
+        r#"
+        INSERT INTO source_file_metadata(id, project_id, debug_id, file_type, file_id)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT(project_id, debug_id, file_type) DO UPDATE SET file_id = EXCLUDED.file_id
+        "#,
+    )
+    .bind(sfm_id)
+    .bind(project_id)
+    .bind(debug_id)
+    .bind(file_type)
+    .bind(file_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Releases a job's chunk references, deletes the chunks no other pending or
+/// retryable job still owns, and marks a worker-owned job `ok`.
+pub(crate) async fn finish_job(
+    tx: &mut sqlx::Transaction<'_, crate::db::Db>,
+    job_id: Option<i64>,
+    chunk_checksums: &[String],
+) -> AppResult<()> {
     if let Some(job_id) = job_id {
         sqlx::query("DELETE FROM assembly_job_chunks WHERE job_id = $1")
             .bind(job_id)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
     }
 
@@ -800,7 +820,7 @@ async fn assemble_bundle_inner(
         "DELETE FROM chunk c WHERE c.checksum = ANY($1) AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = c.checksum)",
     )
         .bind(chunk_checksums)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
     #[cfg(not(feature = "postgres"))]
@@ -813,7 +833,7 @@ async fn assemble_bundle_inner(
                 sep.push_bind(c);
             }
             qb.push(") AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = chunk.checksum)");
-            qb.build().execute(&mut *tx).await?;
+            qb.build().execute(&mut **tx).await?;
         }
     }
 
@@ -823,7 +843,7 @@ async fn assemble_bundle_inner(
             "UPDATE assembly_jobs SET state = 'ok', detail = NULL, updated_at = NOW() WHERE id = $1 AND state = 'assembling'",
         )
         .bind(job_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
         #[cfg(not(feature = "postgres"))]
@@ -831,7 +851,7 @@ async fn assemble_bundle_inner(
             "UPDATE assembly_jobs SET state = 'ok', detail = NULL, updated_at = datetime('now') WHERE id = $1 AND state = 'assembling'",
         )
         .bind(job_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
         if updated.rows_affected() != 1 {
@@ -841,9 +861,6 @@ async fn assemble_bundle_inner(
             )));
         }
     }
-
-    tx.commit().await?;
-
     Ok(())
 }
 

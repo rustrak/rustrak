@@ -9,6 +9,7 @@ mod bootstrap_test;
 mod concurrency_test;
 mod crons_ingest_test;
 mod dashboard_test;
+mod debug_files_api_test;
 mod digest_test;
 mod envelope_v2_test;
 mod environments_test;

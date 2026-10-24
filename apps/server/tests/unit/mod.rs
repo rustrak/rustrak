@@ -10,6 +10,7 @@ mod gen_ai_aggregation_test;
 mod gen_ai_test;
 mod grouping_test;
 mod grouping_v1_test;
+mod jvm_test;
 mod log_test;
 mod logging_test;
 mod message_normalization_test;

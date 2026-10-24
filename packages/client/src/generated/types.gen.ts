@@ -644,6 +644,42 @@ export type CreateUserRequest = {
     password: string;
 };
 
+/**
+ * A debug information file as Sentry's `DebugFileSerializer` describes it.
+ */
+export type DebugFileResponse = {
+    codeId: string | null;
+    cpuName: string;
+    data: unknown;
+    dateCreated: string;
+    debugId: string;
+    headers: {
+        [key: string]: string;
+    };
+    id: string;
+    objectName: string;
+    sha1: string;
+    size: number;
+    symbolType: string;
+    uuid: string;
+};
+
+/**
+ * One file of a debug information file assemble request.
+ */
+export type DifAssembleFile = {
+    chunks: Array<string>;
+    debug_id?: string | null;
+    name: string;
+};
+
+/**
+ * Multipart legacy debug file upload: one `file` part holding a zip.
+ */
+export type DifUploadBody = {
+    [key: string]: unknown;
+};
+
 export type ErrorDetail = {
     /**
      * Machine-readable annotations naming the inputs that were rejected.
@@ -2710,6 +2746,97 @@ export type SentryListProjectsResponses = {
 };
 
 export type SentryListProjectsResponse = SentryListProjectsResponses[keyof SentryListProjectsResponses];
+
+export type DebugFilesAssembleData = {
+    body: {
+        [key: string]: DifAssembleFile;
+    };
+    path: {
+        /**
+         * Organization slug
+         */
+        org_slug: string;
+        /**
+         * Project slug
+         */
+        project_slug: string;
+    };
+    query?: never;
+    url: '/api/0/projects/{org_slug}/{project_slug}/files/difs/assemble/';
+};
+
+export type DebugFilesAssembleErrors = {
+    /**
+     * Malformed request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Project not found
+     */
+    404: ErrorResponse;
+};
+
+export type DebugFilesAssembleError = DebugFilesAssembleErrors[keyof DebugFilesAssembleErrors];
+
+export type DebugFilesAssembleResponses = {
+    /**
+     * Assembly state per file checksum (not_found / created / assembling / ok / error)
+     */
+    200: {
+        [key: string]: AssembleResponse;
+    };
+};
+
+export type DebugFilesAssembleResponse = DebugFilesAssembleResponses[keyof DebugFilesAssembleResponses];
+
+export type DebugFilesUploadData = {
+    /**
+     * A `file` part: a zip of debug files, such as `proguard/<uuid>.txt`
+     */
+    body: DifUploadBody;
+    path: {
+        /**
+         * Organization slug
+         */
+        org_slug: string;
+        /**
+         * Project slug
+         */
+        project_slug: string;
+    };
+    query?: never;
+    url: '/api/0/projects/{org_slug}/{project_slug}/files/dsyms/';
+};
+
+export type DebugFilesUploadErrors = {
+    /**
+     * Missing or invalid upload
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Project not found
+     */
+    404: ErrorResponse;
+};
+
+export type DebugFilesUploadError = DebugFilesUploadErrors[keyof DebugFilesUploadErrors];
+
+export type DebugFilesUploadResponses = {
+    /**
+     * The debug files queued for processing
+     */
+    201: Array<DebugFileResponse>;
+};
+
+export type DebugFilesUploadResponse = DebugFilesUploadResponses[keyof DebugFilesUploadResponses];
 
 export type SourceMapsListData = {
     body?: never;

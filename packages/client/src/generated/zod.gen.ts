@@ -472,6 +472,38 @@ export const zCreateUserRequest = z.object({
 });
 
 /**
+ * A debug information file as Sentry's `DebugFileSerializer` describes it.
+ */
+export const zDebugFileResponse = z.object({
+    codeId: z.string().nullable(),
+    cpuName: z.string(),
+    data: z.unknown(),
+    dateCreated: z.string(),
+    debugId: z.string(),
+    headers: z.record(z.string(), z.string()),
+    id: z.string(),
+    objectName: z.string(),
+    sha1: z.string(),
+    size: z.int().gte(0),
+    symbolType: z.string(),
+    uuid: z.string()
+});
+
+/**
+ * One file of a debug information file assemble request.
+ */
+export const zDifAssembleFile = z.object({
+    chunks: z.array(z.string()),
+    debug_id: z.string().nullish(),
+    name: z.string()
+});
+
+/**
+ * Multipart legacy debug file upload: one `file` part holding a zip.
+ */
+export const zDifUploadBody = z.record(z.string(), z.unknown());
+
+/**
  * Response for API (full detail)
  */
 export const zEventDetailResponse = z.object({
@@ -2006,6 +2038,33 @@ export const zSentryListProjectsQuery = z.object({
  * Projects, newest first; paginated by the `Link` header
  */
 export const zSentryListProjectsResponse = z.array(zSentryProject);
+
+export const zDebugFilesAssembleBody = z.record(z.string(), zDifAssembleFile);
+
+export const zDebugFilesAssemblePath = z.object({
+    org_slug: z.string(),
+    project_slug: z.string()
+});
+
+/**
+ * Assembly state per file checksum (not_found / created / assembling / ok / error)
+ */
+export const zDebugFilesAssembleResponse = z.record(z.string(), zAssembleResponse);
+
+/**
+ * A `file` part: a zip of debug files, such as `proguard/<uuid>.txt`
+ */
+export const zDebugFilesUploadBody = zDifUploadBody;
+
+export const zDebugFilesUploadPath = z.object({
+    org_slug: z.string(),
+    project_slug: z.string()
+});
+
+/**
+ * The debug files queued for processing
+ */
+export const zDebugFilesUploadResponse = z.array(zDebugFileResponse);
 
 export const zSourceMapsListPath = z.object({
     org_slug: z.string(),
