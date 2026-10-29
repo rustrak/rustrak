@@ -85,3 +85,16 @@ export function firstFailure(
 export function okOrNull<T>(result: Result<T, RustrakError> | null): T | null {
   return result?.success ? result.data : null;
 }
+
+/**
+ * A read the page can do without: its data, or `fallback` when it failed.
+ * Never a failure, so a deferred panel that lost its read degrades the way it
+ * did when the loader awaited it, rather than showing an error.
+ */
+export async function orElse<T, F>(
+  pending: Promise<Result<T, RustrakError>>,
+  fallback: F,
+): Promise<Result<T | F, RustrakError>> {
+  const result = await pending;
+  return Ok(result.success ? result.data : fallback);
+}

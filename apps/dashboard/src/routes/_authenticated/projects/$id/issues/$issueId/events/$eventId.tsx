@@ -7,8 +7,13 @@ import type {
   IssueResponse,
   IssueStatsResponse,
   IssuesListUserReportsResponse,
+  ProjectMemberResponse,
   ProjectRepository,
+  Result,
+  RustrakError,
+  UserResponse,
 } from '@rustrak/client';
+import { Ok } from '@rustrak/client';
 import {
   Button,
   CollapsePanelIcon,
@@ -46,10 +51,12 @@ import {
   getIssueStats,
   listUserReports,
 } from '@/features/issue/api/queries';
-import { type Assignable, assignable } from '@/features/issue/model/assignable';
+import { assignable } from '@/features/issue/model/assignable';
 import { getProject } from '@/features/project/api/queries';
 import { listProjectMembers } from '@/features/user/api/queries';
 import { translator } from '@/shared/i18n/intl';
+import { loadAll, orElse } from '@/shared/lib/results';
+import { Deferred } from '@/shared/ui/components/deferred';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { EventLoading } from './$eventId/-components/event-loading';
@@ -62,36 +69,37 @@ import { IssueHeader } from './$eventId/-components/issue-header';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/events/$eventId',
 )({
+  // The event and what places it are awaited; the trends, the rail and the
+  // GitHub links arrive on their own. Each of those already degraded when it
+  // failed, so `orElse` keeps that: a panel without its read renders empty,
+  // never an error.
   loader: async ({ params }) => {
     const projectId = Number.parseInt(params.id, 10);
     const { issueId, eventId } = params;
 
+    const deferred = {
+      stats: orElse(getIssueStats(projectId, issueId, '30d'), null),
+      aggregates: orElse(getIssueAggregates(projectId, issueId), null),
+      activity: orElse(getIssueActivity(projectId, issueId), []),
+      code: orElse(getIssueGitHub(projectId, issueId), null),
+      members: orElse(listProjectMembers(projectId), []),
+    };
     const [
       project,
       issue,
       event,
       navigation,
-      aggregates,
-      stats,
-      activity,
       repository,
-      code,
       userReports,
       attachments,
-      members,
     ] = await Promise.all([
       getProject(projectId),
       getIssue(projectId, issueId),
       getEventDetail(projectId, issueId, eventId),
       getEventNavigation(projectId, issueId, eventId),
-      getIssueAggregates(projectId, issueId),
-      getIssueStats(projectId, issueId, '30d'),
-      getIssueActivity(projectId, issueId),
       getProjectRepository(projectId),
-      getIssueGitHub(projectId, issueId),
       listUserReports(projectId, issueId),
       listEventAttachments(projectId, issueId, eventId),
-      listProjectMembers(projectId),
     ]);
 
     return {
@@ -99,14 +107,10 @@ export const Route = createFileRoute(
       issue,
       event,
       navigation,
-      aggregates,
-      stats,
-      activity,
       repository,
-      code,
       userReports,
       attachments,
-      members,
+      deferred,
     };
   },
   head: ({ loaderData }) => {
@@ -125,8 +129,8 @@ export const Route = createFileRoute(
       ],
     };
   },
-  // The event view is seven requests behind one loader, so it is the one
-  // screen with a visible wait. This is the same skeleton Next rendered from
+  // The event view still awaits seven requests, so it is the one screen with
+  // a visible wait. This is the same skeleton Next rendered from
   // `loading.tsx`, mounted the same way: after `defaultPendingMs`, so a fast
   // network never flashes it.
   pendingComponent: EventLoading,
@@ -142,14 +146,10 @@ function EventPage() {
     issue: issueResult,
     event: eventResult,
     navigation: navigationResult,
-    aggregates: aggregatesResult,
-    stats: statsResult,
-    activity: activityResult,
     repository: repositoryResult,
-    code: codeResult,
     userReports: userReportsResult,
     attachments: attachmentsResult,
-    members: membersResult,
+    deferred,
   } = Route.useLoaderData();
   const projectId = Number.parseInt(id, 10);
 
@@ -178,7 +178,7 @@ function EventPage() {
     );
   }
 
-  // The three that decorate the page. Each already degraded on failure before
+  // The rest decorate the page. Each already degraded on failure before
   // the Result conversion; the degradation is now written out rather than
   // hidden behind a `.catch()`, and it stays deliberate: an issue with no tags
   // and an aggregates endpoint that failed genuinely render the same panel, and
@@ -190,18 +190,11 @@ function EventPage() {
       issue={issueResult.data}
       event={eventResult.data}
       navigation={navigationResult.data}
-      aggregates={aggregatesResult.success ? aggregatesResult.data : null}
-      stats30d={statsResult.success ? statsResult.data : null}
-      activity={activityResult.success ? activityResult.data : []}
       repository={repositoryResult.success ? repositoryResult.data : undefined}
-      code={codeResult.success ? codeResult.data : null}
       userReports={userReportsResult.success ? userReportsResult.data : null}
       attachments={attachmentsResult.success ? attachmentsResult.data : []}
-      members={assignable(
-        membersResult.success ? membersResult.data : [],
-        context.state === 'authenticated' ? context.user : null,
-      )}
-      me={context.state === 'authenticated' ? context.user.id : 0}
+      deferred={deferred}
+      user={context.state === 'authenticated' ? context.user : null}
     />
   );
 }
@@ -212,36 +205,29 @@ function EventView({
   issue,
   event,
   navigation,
-  aggregates,
-  stats30d,
-  activity,
   repository,
-  code,
   userReports,
   attachments,
-  members,
-  me,
+  deferred,
+  user,
 }: {
   projectId: number;
   issueId: string;
   issue: IssueResponse;
   event: EventDetailResponse;
   navigation: EventNavigation;
-  aggregates: IssueAggregates | null;
-  stats30d: IssueStatsResponse | null;
-  activity: ActivityEntry[];
   /** The project's GitHub repository: `null` without one, `undefined` when
    * it could not be loaded. */
   repository: ProjectRepository | null | undefined;
-  code: IssueGitHub | null;
   /** The newest page of feedback users sent about this issue. */
   userReports: IssuesListUserReportsResponse | null;
   /** Files sent with the event. */
   attachments: AttachmentInfo[];
-  members: Assignable[];
-  me: number;
+  deferred: Deferreds;
+  user: UserResponse | null;
 }) {
   const t = useTranslations('projectPages');
+  const me = user?.id ?? 0;
   usePageTrail([{ label: issue.short_id, mono: true }]);
   const eventData = event.data as Record<string, unknown>;
   const payload = readEventPayload(eventData);
@@ -266,27 +252,32 @@ function EventView({
   }));
 
   const rail = (
-    <EventRail
-      projectId={projectId}
-      issueId={issueId}
-      issue={issue}
-      aggregates={aggregates}
-      activity={activity}
-      code={code}
-      connected={repository === undefined ? null : repository !== null}
-      members={members}
-      me={me}
-    />
+    <Deferred
+      promise={railData(deferred)}
+      title={t('event.details')}
+      fallback={
+        <div className="m-5 h-80 animate-pulse rounded-lg bg-surface-hover motion-reduce:animate-none" />
+      }
+    >
+      {({ aggregates, activity, code, members }) => (
+        <EventRail
+          projectId={projectId}
+          issueId={issueId}
+          issue={issue}
+          aggregates={aggregates}
+          activity={activity}
+          code={code}
+          connected={repository === undefined ? null : repository !== null}
+          members={assignable(members, user)}
+          me={me}
+        />
+      )}
+    </Deferred>
   );
   const sourceUrl = repository
     ? (frame: { filename?: string; lineno?: number | null }) =>
         frameSourceUrl(repository, frame.filename, frame.lineno)
     : undefined;
-  // Links outlive a disconnected repository and can still be unlinked.
-  // Unloaded links are not "no links": offering Create then could open a
-  // second GitHub issue for one already linked.
-  const githubLinks =
-    code && (repository || code.links.length > 0) ? code.links : null;
 
   return (
     // On a phone the whole page scrolls as one; from lg the reading column
@@ -299,21 +290,38 @@ function EventView({
         titleType={titleType}
         message={message}
         github={
-          githubLinks ? (
-            <IssueGitHubButton
-              projectId={projectId}
-              issueId={issue.id}
-              links={githubLinks}
-              canLink={repository != null}
-            />
-          ) : undefined
+          <Deferred
+            promise={deferred.code}
+            title={t('event.details')}
+            fallback={null}
+          >
+            {(code) =>
+              // Links outlive a disconnected repository and can still be
+              // unlinked. Unloaded links are not "no links": offering Create
+              // then could open a second GitHub issue for one already linked.
+              code && (repository || code.links.length > 0) ? (
+                <IssueGitHubButton
+                  projectId={projectId}
+                  issueId={issue.id}
+                  links={code.links}
+                  canLink={repository != null}
+                />
+              ) : null
+            }
+          </Deferred>
         }
       />
 
       <div className="flex min-h-0 flex-1 max-lg:flex-col">
         <main className="min-w-0 flex-1 lg:overflow-y-auto">
           <div className="flex flex-col gap-5 px-page-gutter pb-8 pt-5">
-            <EventTrends stats={stats30d} />
+            <Deferred
+              promise={deferred.stats}
+              height={220}
+              title={t('event.details')}
+            >
+              {(stats) => <EventTrends stats={stats} />}
+            </Deferred>
 
             <EventNavigator
               projectId={projectId}
@@ -340,6 +348,41 @@ function EventView({
       </div>
     </div>
   );
+}
+
+type Deferreds = {
+  stats: Promise<Result<IssueStatsResponse | null, RustrakError>>;
+  aggregates: Promise<Result<IssueAggregates | null, RustrakError>>;
+  activity: Promise<Result<ActivityEntry[], RustrakError>>;
+  code: Promise<Result<IssueGitHub | null, RustrakError>>;
+  members: Promise<Result<ProjectMemberResponse[], RustrakError>>;
+};
+
+/**
+ * The rail's four reads as one, so it fills in at once rather than block by
+ * block. Memoised per loader result: `use` needs the same promise on every
+ * render.
+ */
+const railReads = new WeakMap<Deferreds, ReturnType<typeof readRail>>();
+function railData(deferred: Deferreds) {
+  let pending = railReads.get(deferred);
+  if (!pending) {
+    pending = readRail(deferred);
+    railReads.set(deferred, pending);
+  }
+  return pending;
+}
+
+async function readRail(deferred: Deferreds) {
+  const all = await loadAll([
+    deferred.aggregates,
+    deferred.activity,
+    deferred.code,
+    deferred.members,
+  ]);
+  if (!all.success) return all;
+  const [aggregates, activity, code, members] = all.data;
+  return Ok({ aggregates, activity, code, members });
 }
 
 /** Whether the reader last left the rail folded, in this browser. */

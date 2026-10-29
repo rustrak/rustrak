@@ -16,6 +16,7 @@ import type {
 } from '@rustrak/client';
 import { mapResult } from '@rustrak/client';
 import { createClient } from '@/shared/api/rustrak';
+import { shareInFlight } from '@/shared/lib/in-flight';
 
 /** What the overview's page filters narrow every read to. */
 export interface OverviewScope {
@@ -42,11 +43,13 @@ export async function getProjects(
  * @param id - Project ID
  * @returns The project
  */
-export async function getProject(
+export function getProject(
   id: number,
 ): Promise<Result<ProjectResponse, RustrakError>> {
-  const client = await createClient();
-  return client.projects.get({ path: { id } });
+  return shareInFlight(`project:${id}`, async () => {
+    const client = await createClient();
+    return client.projects.get({ path: { id } });
+  });
 }
 
 /** The server's per-project limits, which a project without its own follows. */

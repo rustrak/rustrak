@@ -53,10 +53,10 @@ import { getProject } from '@/features/project/api/queries';
 import { translator } from '@/shared/i18n/intl';
 import { firstFailure, loadAll, okOrNull } from '@/shared/lib/results';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { Deferred } from '@/shared/ui/components/deferred';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { Panel } from '@/shared/ui/components/panel';
 import { useRouter } from '@/shared/ui/hooks/use-router';
-import { Deferred } from './-components/deferred';
 
 const PAGE_SIZE = 25;
 const VIEWS = ['overview', 'traces', 'conversations'] as const;
