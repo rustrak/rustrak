@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.22.0
+
+### Minor Changes
+
+- [`f81efee`](https://github.com/rustrak/rustrak/commit/f81efee04282c6f72c5ed30b62a42233f78f7a55) Thanks [@AbianS](https://github.com/AbianS)! - The dashboard is redesigned end to end on `@rustrak/ui`: projects, settings with integrations as their own pages, overview, issues, issue detail, user feedback, releases, performance, logs, crons, agents, alerts, the login and the command bar. The server gains the endpoints behind it (one log and log volume, agent conversations, releases with per-environment new issues and session health, monitor stats, an endpoint's trend, alert deliveries per day), projects can turn products off and reorder them, and a project can hold several alert rules for one trigger.
+
 ## 0.21.1
 
 ### Patch Changes

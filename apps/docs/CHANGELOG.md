@@ -1,5 +1,11 @@
 # docs
 
+## 0.16.8
+
+### Patch Changes
+
+- [`f81efee`](https://github.com/rustrak/rustrak/commit/f81efee04282c6f72c5ed30b62a42233f78f7a55) Thanks [@AbianS](https://github.com/AbianS)! - The client reference lists the new log, agent, release, monitor, performance and alert methods.
+
 ## 0.16.7
 
 ### Patch Changes
