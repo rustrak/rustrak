@@ -47,6 +47,10 @@ pub struct Invitation {
     /// When SMTP accepted the invitation email for this address. NULL means
     /// the link is still shareable by hand (manual mode, or the send failed).
     pub email_sent_at: Option<DateTime<Utc>>,
+    /// When a delivery attempt claimed this invitation, or NULL when no send is
+    /// in flight. Internal claim state: never exposed in
+    /// [`InvitationResponse`], only consulted by the delivery helpers.
+    pub email_delivery_claimed_at: Option<DateTime<Utc>>,
 }
 
 impl Invitation {
@@ -67,10 +71,13 @@ pub struct CreateInvitation {
     /// Global role the invited user will receive (`admin` | `member`).
     #[cfg_attr(feature = "openapi", schema(value_type = crate::models::UserRole))]
     pub role: String,
-    /// When true, the server emails the invite link instead of returning it
-    /// for manual sharing. Only valid while an SMTP source is configured;
-    /// the handler rejects the request otherwise. Serde default keeps the
-    /// pre-email API shape (absent = manual share) working unchanged.
+    /// When true, the server also emails the invite link to the recipient.
+    /// The response still carries `token` for manual sharing either way.
+    /// Only valid while an SMTP source is configured and the invite link is
+    /// reachable (a configured public/dashboard URL, or a bind host that is
+    /// not a wildcard); the handler rejects the request otherwise. Serde
+    /// default keeps the pre-email API shape (absent = manual share) working
+    /// unchanged.
     #[serde(default)]
     pub send_email: bool,
 }
@@ -131,6 +138,7 @@ mod tests {
             created_at: Utc::now(),
             accepted_at: None,
             email_sent_at: None,
+            email_delivery_claimed_at: None,
         }
     }
 

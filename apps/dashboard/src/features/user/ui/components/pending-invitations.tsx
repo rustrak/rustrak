@@ -64,11 +64,12 @@ export function PendingInvitations({
   };
 
   /**
-   * Re-deliver the invite email. The button only exists on rows with no
-   * delivered email (`email_sent_at` null) — the server would demand
-   * `force` for a delivered one, and this state is what "send it again"
-   * means without asking anyone. It stays disabled while no transport is
-   * configured: a click could only ever come back as a server error.
+   * Re-deliver the invite email. The button only exists on rows a resend can
+   * actually deliver: no delivered email (`email_sent_at` null — the server
+   * would demand `force` for a delivered one) and an unexpired link (the
+   * server rejects an expired one, and a button that always fails is noise).
+   * It stays disabled while no transport is configured: a click could only
+   * ever come back as a server error.
    */
   const handleResend = (invitation: InvitationResponse) => {
     resend.mutate(
@@ -129,18 +130,19 @@ export function PendingInvitations({
             })}
             actions={
               <>
-                {!invitation.email_sent_at && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={RefreshIcon}
-                    onClick={() => handleResend(invitation)}
-                    disabled={resend.isPending || !emailAvailable}
-                    aria-label={t('pending.resendAria', {
-                      email: invitation.email,
-                    })}
-                  />
-                )}
+                {!invitation.email_sent_at &&
+                  new Date(invitation.expires_at).getTime() > Date.now() && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={RefreshIcon}
+                      onClick={() => handleResend(invitation)}
+                      disabled={resend.isPending || !emailAvailable}
+                      aria-label={t('pending.resendAria', {
+                        email: invitation.email,
+                      })}
+                    />
+                  )}
                 <Button
                   variant="ghost"
                   size="sm"

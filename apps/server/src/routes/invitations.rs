@@ -70,7 +70,16 @@ async fn deliver_invitation(
         invitation_email::send_invitation_mail(mailer, invitation, &invite_url, &inviter_email)
             .await?;
 
-    invitation_email::mark_email_sent(pool, &invitation.token, sent_at).await?;
+    // Once SMTP has the message, a stamp failure is a bookkeeping problem,
+    // not a delivery one: reporting it as undelivered invites a resend that
+    // sends the same link twice. The worst case here is the pending list
+    // showing no timestamp until the next delivery, so log and keep going.
+    if let Err(e) = invitation_email::mark_email_sent(pool, &invitation.token, sent_at).await {
+        log::error!(
+            "invitation email to {} was accepted but its delivery stamp failed: {e}",
+            invitation.email
+        );
+    }
     Ok(sent_at)
 }
 
@@ -82,7 +91,7 @@ async fn deliver_invitation(
     request_body = CreateInvitation,
     responses(
         (status = 201, description = "Invitation created", body = InvitationResponse),
-        (status = 400, description = "Invalid role, or send_email requested while no SMTP source is configured", body = crate::error::ErrorResponse),
+        (status = 400, description = "Invalid role, or send_email requested while no SMTP source is configured or the invite link would be unreachable", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 409, description = "Email already a user or pending invite", body = crate::error::ErrorResponse),
@@ -112,11 +121,21 @@ pub async fn create_invitation(
     // a mail went out.
     let mut mailer: Option<ResolvedMailer> = None;
     if input.send_email {
+        // The link we are about to mail must be openable by its recipient.
+        // dashboard_url() falls back to the bind address, whose default
+        // 0.0.0.0 is a wildcard nobody can visit: reject before writing the
+        // row instead of stamping a delivery the invitee cannot redeem.
+        if !config.emailed_links_are_reachable() {
+            return Err(AppError::Validation(
+                "The invite link would use the unreachable bind address; set DASHBOARD_URL or PUBLIC_URL to email invitations".to_string(),
+            )
+            .with_field("send_email", FieldErrorCode::Invalid));
+        }
         mailer = Some(
             invitation_email::resolve_mailer(pool.get_ref()).await?.ok_or_else(
                 || {
                     AppError::Validation(
-                        "Email delivery is not configured: add an enabled email                          integration or set the global SMTP_* environment"
+                        "Email delivery is not configured: add an enabled email integration or set the global SMTP_* environment"
                             .to_string(),
                     )
                     .with_field("send_email", FieldErrorCode::Invalid)
@@ -129,17 +148,40 @@ pub async fn create_invitation(
 
     let mut email_sent_at: Option<DateTime<Utc>> = None;
     if let Some(mailer) = &mailer {
-        // Best effort: a failed send leaves the invitation usable by hand.
-        // No delivery claim is needed here: the token is secret until this
-        // response returns, so nothing can race a brand-new invitation.
-        match deliver_invitation(pool.get_ref(), &config, mailer, &invitation).await {
-            Ok(sent_at) => email_sent_at = Some(sent_at),
-            Err(e) => {
-                log::error!(
-                    "invitation email delivery failed for {} (invitation still created): {e}",
-                    invitation.email
-                );
+        // Same claim as resend, for the same reason: the row is already
+        // committed and any admin can list its token, so a resend started
+        // while this send is in flight must not slip past the null stamp and
+        // email the same invitation twice. The claim is also the create
+        // path's own double-click guard against two near-simultaneous
+        // "invite with email" posts from one admin.
+        let claim =
+            invitation_email::claim_email_delivery(pool.get_ref(), &invitation.token).await?;
+        if let Some(claimed_at) = claim {
+            match deliver_invitation(pool.get_ref(), &config, mailer, &invitation).await {
+                Ok(sent_at) => email_sent_at = Some(sent_at),
+                Err(e) => {
+                    // Best effort: a failed send leaves the invitation usable
+                    // by hand, and the release unblocks a later resend.
+                    log::error!(
+                        "invitation email delivery failed for {} (invitation still created): {e}",
+                        invitation.email
+                    );
+                    let _ = invitation_email::release_email_delivery(
+                        pool.get_ref(),
+                        &invitation.token,
+                        claimed_at,
+                    )
+                    .await;
+                }
             }
+        } else {
+            // Someone claimed it between the INSERT and here. Harmless and
+            // vanishingly rare for a row this request just created: leave the
+            // invitation undelivered, its link still copyable.
+            log::warn!(
+                "invitation email for {} was skipped: a delivery claim was already held",
+                invitation.email
+            );
         }
     }
     invitation.email_sent_at = email_sent_at;
@@ -218,27 +260,35 @@ pub async fn resend_invitation(
 
     if invitation.email_sent_at.is_some() && !force {
         return Err(AppError::Validation(
-            "An invitation email was already sent to this address; pass              force: true to send it again"
+            "An invitation email was already sent to this address; pass force: true to send it again"
                 .to_string(),
         )
         .with_field("force", FieldErrorCode::Invalid));
     }
 
+    // Same reachability rule as create: never mail a link nobody can open.
+    if !config.emailed_links_are_reachable() {
+        return Err(AppError::Validation(
+            "The invite link would use the unreachable bind address; set DASHBOARD_URL or PUBLIC_URL to email invitations".to_string(),
+        )
+        .with_field("send_email", FieldErrorCode::Invalid));
+    }
+
     let mailer = invitation_email::resolve_mailer(pool.get_ref()).await?.ok_or_else(
         || {
             AppError::Validation(
-                "Email delivery is not configured: add an enabled email                  integration or set the global SMTP_* environment"
+                "Email delivery is not configured: add an enabled email integration or set the global SMTP_* environment"
                     .to_string(),
             )
             .with_field("send_email", FieldErrorCode::Invalid)
         },
     )?;
 
-    // Claim the right to deliver before sending: the claim is a conditional
-    // UPDATE that only succeeds while `email_sent_at` is still null, so two
-    // concurrent resends cannot both pass the check above and send twice. A
-    // lost claim means a delivery is already in flight. `force` bypasses the
-    // claim by design: it is the admin asking for a deliberate extra copy.
+    // Claim the right to deliver before sending: the claim lives on its own
+    // column and only succeeds while no live claim is held, so two
+    // concurrent resends cannot both send and a lost claim means a delivery
+    // is already in flight. `force` bypasses the claim by design: it is the
+    // admin asking for a deliberate extra copy.
     let claim = if force {
         None
     } else {
@@ -341,6 +391,7 @@ pub async fn revoke_invitation(
         crate::models::InvitationResponse,
         ResendInvitation,
         invitation_email::EmailStatusResponse,
+        invitation_email::EmailSourceKind,
     ))
 )]
 pub struct InvitationsApi;

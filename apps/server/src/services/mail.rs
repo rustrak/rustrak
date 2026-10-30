@@ -29,7 +29,9 @@ impl GlobalSmtp {
     /// `SMTP_FROM`, with the same defaults the alert notifier has always used.
     pub fn from_env() -> Self {
         Self {
-            host: std::env::var("SMTP_HOST").ok(),
+            host: std::env::var("SMTP_HOST")
+                .ok()
+                .filter(|host| !host.trim().is_empty()),
             port: std::env::var("SMTP_PORT")
                 .unwrap_or_else(|_| "587".to_string())
                 .parse()
@@ -152,4 +154,44 @@ pub fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// A transport that records the messages it is asked to send instead of
+/// delivering them.
+///
+/// **Test seam**, gated on `test-seams` like the send entry point that takes
+/// it (`invitation_email::send_invitation_mail_with_transport`): it does not
+/// exist in the shipped binary. The capture is the formatted message, so a
+/// test can assert on the recipient, the link and the sender without an
+/// SMTP server.
+#[cfg(feature = "test-seams")]
+#[derive(Clone, Default)]
+pub struct CapturedMail {
+    sent: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+#[cfg(feature = "test-seams")]
+impl CapturedMail {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Everything handed to `send_mail` so far, in order.
+    pub fn sent(&self) -> Vec<String> {
+        self.sent.lock().expect("captured mail lock").clone()
+    }
+}
+
+#[cfg(feature = "test-seams")]
+#[async_trait]
+impl MailTransport for CapturedMail {
+    async fn send_mail(&self, message: Message) -> Result<(), String> {
+        // lettre's Message has no Display: capture the wire format,
+        // exactly what a real transport would hand the SMTP server.
+        self.sent
+            .lock()
+            .expect("captured mail lock")
+            .push(String::from_utf8_lossy(&message.formatted()).into_owned());
+        Ok(())
+    }
 }

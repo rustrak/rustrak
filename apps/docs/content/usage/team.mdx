@@ -46,7 +46,7 @@ The **Send invite by email** switch is only usable when a mail transport is conf
 1. **An email alert integration** — any enabled email integration under **Settings → Alerts** carries its own SMTP settings (host, port, username, password, from address). The first enabled one is used.
 2. **Server environment variables** — `SMTP_HOST`, `SMTP_PORT` (defaults to 587; port 465 uses implicit TLS), `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM`.
 
-If neither is configured the switch is greyed out. Sending is best-effort: if the mail server rejects the invitation email, the invitation is still created (marked "not sent") and you can copy the link manually or hit resend later — an explicit resend, however, fails loudly if the mail server is unreachable.
+If neither is configured the switch is greyed out. An emailed link is built from `DASHBOARD_URL` or `PUBLIC_URL`; with neither set and the server bound to a wildcard address (`0.0.0.0`) the link would point somewhere the recipient cannot open, so `send_email` requests are rejected until one of the two is set. Sending is best-effort: if the mail server rejects the invitation email, the invitation is still created (marked "not sent") and you can copy the link manually or hit resend later — an explicit resend, however, fails loudly if the mail server is unreachable.
 
 ### Accepting an invitation
 
@@ -91,7 +91,7 @@ curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
 # Same, but also email the invite (requires configured SMTP — 400 otherwise)
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"email":"teammate@example.com","role":"member","send_email":true}' \
+  -d '{"email":"teammate2@example.com","role":"member","send_email":true}' \
   http://localhost:8080/api/invitations
 
 # Whether email delivery is available, and where it would come from

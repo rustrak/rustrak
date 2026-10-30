@@ -1264,3 +1264,123 @@ async fn email_delivery_claim_prevents_double_send() {
         .expect("claim after release");
     assert!(third.is_some(), "release must make the row claimable again");
 }
+
+/// Success path: a delivered invitation stamps `email_sent_at`, the stamp
+/// reaches the response, and a following list read proves it is persisted,
+/// not only set in memory. The transport is the `test-seams` capture, so
+/// this asserts the real render (recipient, link, sender) without SMTP.
+/// An abandoned claim must stop blocking ordinary resends once it is older
+/// than the stale horizon, or a crashed process would strand an invitation.
+#[actix_web::test]
+async fn stale_delivery_claims_stop_blocking_resend() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+
+    let invitation = InvitationService::create(
+        &db.pool,
+        CreateInvitation {
+            email: "stale@example.com".to_string(),
+            role: "member".to_string(),
+            send_email: false,
+        },
+        admin.id,
+    )
+    .await
+    .expect("invitation created");
+
+    // Take the claim, then age it far past the horizon: what a crashed
+    // attempt would leave behind.
+    let first = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("claim");
+    assert!(first.is_some());
+    let ancient = Utc::now() - chrono::Duration::days(30);
+    sqlx::query("UPDATE invitations SET email_delivery_claimed_at = $1 WHERE token = $2")
+        .bind(ancient)
+        .bind(&invitation.token)
+        .execute(&db.pool)
+        .await
+        .expect("claim aged");
+
+    let reclaimed = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("claim after expiry");
+    assert!(
+        reclaimed.is_some(),
+        "a stale claim must not block a resend forever"
+    );
+}
+
+#[cfg(feature = "test-seams")]
+#[actix_web::test]
+async fn send_email_success_path_persists_email_sent_at() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    seed_email_integration(
+        &db.pool,
+        json!({"smtp_host": "smtp.test", "smtp_port": 587, "from_address": "invites@example.com"}),
+    )
+    .await;
+
+    let invitation = InvitationService::create(
+        &db.pool,
+        CreateInvitation {
+            email: "invitee@example.com".to_string(),
+            role: "member".to_string(),
+            send_email: true,
+        },
+        admin.id,
+    )
+    .await
+    .expect("invitation created");
+
+    let mailer = invitation_email::resolve_mailer(&db.pool)
+        .await
+        .expect("mailer")
+        .expect("integration configured by seed");
+    let captured = rustrak::services::mail::CapturedMail::new();
+    let invite_url = format!("http://rustrak.test/invite/{}", invitation.token);
+    let sent_at = invitation_email::send_invitation_mail_with_transport(
+        &captured,
+        &mailer,
+        &invitation,
+        &invite_url,
+        "admin@x.com",
+    )
+    .await
+    .expect("capture transport accepts");
+
+    // The captured message carries the real render: recipient, sender, link.
+    let sent = captured.sent();
+    assert_eq!(sent.len(), 1, "exactly one message handed to the transport");
+    assert!(sent[0].contains("invitee@example.com"), "recipient header");
+    assert!(sent[0].contains("invites@example.com"), "configured sender");
+    assert!(sent[0].contains("rustrak.test/invite/"), "the invite link");
+
+    invitation_email::mark_email_sent(&db.pool, &invitation.token, sent_at)
+        .await
+        .expect("stamp persisted");
+
+    // A fresh list read proves the stamp is persisted, not only in memory.
+    let app = build_app!(db.pool.clone(), create_test_config());
+    let req = test::TestRequest::get()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let body: Value = test::read_body_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .cloned()
+        .or_else(|| body.as_array().cloned())
+        .expect("list array");
+    let seeded = items
+        .iter()
+        .find(|row| row["token"] == json!(invitation.token))
+        .expect("seeded invitation listed");
+    assert!(
+        seeded["email_sent_at"].is_string(),
+        "email_sent_at persisted and serialised: {seeded}"
+    );
+}

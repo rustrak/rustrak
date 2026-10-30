@@ -543,11 +543,18 @@ export const zDifAssembleFile = z.object({
 export const zDifUploadBody = z.record(z.string(), z.unknown());
 
 /**
+ * The wire form of the email-status `source` field: the only values it
+ * takes besides `null`, typed as an enum so the generated client names the
+ * set instead of accepting any string.
+ */
+export const zEmailSourceKind = z.enum(['integration', 'global']);
+
+/**
  * GET /api/invitations/email-status answer.
  */
 export const zEmailStatusResponse = z.object({
     available: z.boolean(),
-    source: z.string().nullable()
+    source: zEmailSourceKind.nullable()
 });
 
 /**

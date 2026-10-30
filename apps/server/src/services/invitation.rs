@@ -49,7 +49,7 @@ impl InvitationService {
             r#"
             INSERT INTO invitations (token, email, role, status, expires_at, invited_by)
             VALUES ($1, $2, $3, 'pending', $4, $5)
-            RETURNING token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            RETURNING token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, email_delivery_claimed_at
             "#,
         )
         .bind(&token)
@@ -67,7 +67,7 @@ impl InvitationService {
     pub async fn get(pool: &DbPool, token: &str) -> AppResult<Option<Invitation>> {
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, email_delivery_claimed_at
             FROM invitations WHERE token = $1
             "#,
         )
@@ -82,7 +82,7 @@ impl InvitationService {
     pub async fn list(pool: &DbPool) -> AppResult<Vec<Invitation>> {
         let invitations = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, email_delivery_claimed_at
             FROM invitations ORDER BY created_at DESC
             "#,
         )
@@ -95,7 +95,7 @@ impl InvitationService {
     async fn pending_for_email(pool: &DbPool, email: &str) -> AppResult<Option<Invitation>> {
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, email_delivery_claimed_at
             FROM invitations WHERE LOWER(email) = LOWER($1) AND status = 'pending'
             "#,
         )

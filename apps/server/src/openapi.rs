@@ -284,6 +284,7 @@ impl Modify for SecurityAddon {
         crate::models::InvitationResponse,
         crate::routes::invitations::ResendInvitation,
         crate::services::invitation_email::EmailStatusResponse,
+        crate::services::invitation_email::EmailSourceKind,
         crate::models::UpsertProjectMember,
         crate::models::ProjectMemberResponse,
         crate::routes::team::TeamMemberResponse,

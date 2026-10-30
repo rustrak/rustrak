@@ -659,10 +659,13 @@ export type CreateInvitation = {
      */
     role: UserRole;
     /**
-     * When true, the server emails the invite link instead of returning it
-     * for manual sharing. Only valid while an SMTP source is configured;
-     * the handler rejects the request otherwise. Serde default keeps the
-     * pre-email API shape (absent = manual share) working unchanged.
+     * When true, the server also emails the invite link to the recipient.
+     * The response still carries `token` for manual sharing either way.
+     * Only valid while an SMTP source is configured and the invite link is
+     * reachable (a configured public/dashboard URL, or a bind host that is
+     * not a wildcard); the handler rejects the request otherwise. Serde
+     * default keeps the pre-email API shape (absent = manual share) working
+     * unchanged.
      */
     send_email?: boolean;
 };
@@ -748,16 +751,18 @@ export type DifUploadBody = {
 };
 
 /**
+ * The wire form of the email-status `source` field: the only values it
+ * takes besides `null`, typed as an enum so the generated client names the
+ * set instead of accepting any string.
+ */
+export type EmailSourceKind = 'integration' | 'global';
+
+/**
  * GET /api/invitations/email-status answer.
  */
 export type EmailStatusResponse = {
     available: boolean;
-    /**
-     * `source: null` is a real answer (no SMTP anywhere), never an omitted
-     * field, so the schema keeps it required even though serde models it
-     * as an Option (see openapi_contract_test).
-     */
-    source: string | null;
+    source: EmailSourceKind | null;
 };
 
 export type ErrorDetail = {
@@ -3862,7 +3867,7 @@ export type InvitationsCreateData = {
 
 export type InvitationsCreateErrors = {
     /**
-     * Invalid role, or send_email requested while no SMTP source is configured
+     * Invalid role, or send_email requested while no SMTP source is configured or the invite link would be unreachable
      */
     400: ErrorResponse;
     /**

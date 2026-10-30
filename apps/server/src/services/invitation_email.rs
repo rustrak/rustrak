@@ -25,6 +25,17 @@ pub enum EmailSource {
     Global,
 }
 
+/// The wire form of the email-status `source` field: the only values it
+/// takes besides `null`, typed as an enum so the generated client names the
+/// set instead of accepting any string.
+#[cfg(feature = "openapi")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum EmailSourceKind {
+    Integration,
+    Global,
+}
+
 /// The resolved mailer plus where it came from. Integration means a real
 /// enabled email row supplied the credentials object; individual fields may
 /// still fall back to the global environment.
@@ -42,7 +53,7 @@ pub struct EmailStatusResponse {
     /// `source: null` is a real answer (no SMTP anywhere), never an omitted
     /// field, so the schema keeps it required even though serde models it
     /// as an Option (see openapi_contract_test).
-    #[cfg_attr(feature = "openapi", schema(required))]
+    #[cfg_attr(feature = "openapi", schema(required, value_type = Option<EmailSourceKind>))]
     pub source: Option<&'static str>,
 }
 
@@ -56,6 +67,13 @@ pub async fn resolve_mailer(pool: &DbPool) -> AppResult<Option<ResolvedMailer>> 
             serde_json::from_value(integration.credentials).map_err(|e| {
                 AppError::Internal(format!("Invalid email integration credentials: {}", e))
             })?;
+        // A blank host in the credentials object is not a configuration:
+        // counting it as one would suppress the global fallback below and
+        // point the send at an empty host name.
+        let credentials = EmailConfig {
+            smtp_host: credentials.smtp_host.filter(|host| !host.trim().is_empty()),
+            ..credentials
+        };
         if credentials.smtp_host.is_some() || global.host.is_some() {
             return Ok(Some(ResolvedMailer {
                 source: EmailSource::Integration,
@@ -212,47 +230,24 @@ pub fn render_html(
         .replace("{expires}", &expires)
 }
 
-/// Sends the invitation mail and returns the timestamp SMTP accepted it at.
-///
-/// Fails (Err) when no mailer is configured or the send itself failed; the
-/// caller decides how loud that is. The invitation row is untouched here —
-/// delivery is a side effect of the resource, not its precondition.
-pub async fn send_invitation_mail(
+/// Renders and hands the invitation email to `transport`, returning the
+/// timestamp it accepted the message. The only production caller is
+/// [`send_invitation_mail`]; a `test-seams` wrapper exposes this to tests
+/// with a [`mail::CapturedMail`], which keeps the subject, the link and the
+/// sender assertable without an SMTP server.
+async fn send_with_transport(
+    transport: &dyn mail::MailTransport,
     mailer: &ResolvedMailer,
     invitation: &Invitation,
     invite_url: &str,
     inviter_email: &str,
 ) -> AppResult<DateTime<Utc>> {
     let global = GlobalSmtp::from_env();
-
-    let host = mailer
-        .credentials
-        .smtp_host
-        .as_ref()
-        .or(global.host.as_ref())
-        .ok_or_else(|| AppError::Internal("SMTP host not configured".to_string()))?;
-    let port = mailer.credentials.smtp_port.unwrap_or(global.port);
     let from = mailer
         .credentials
         .from_address
         .as_ref()
         .unwrap_or(&global.from_address);
-
-    let transport = mail::build_transport(
-        host,
-        port,
-        mailer
-            .credentials
-            .smtp_username
-            .as_ref()
-            .or(global.username.as_ref()),
-        mailer
-            .credentials
-            .smtp_password
-            .as_ref()
-            .or(global.password.as_ref()),
-    )
-    .map_err(AppError::Internal)?;
 
     let message = mail::build_message(
         from,
@@ -281,9 +276,72 @@ pub async fn send_invitation_mail(
     Ok(Utc::now())
 }
 
-/// Persists that the invitation email was accepted by SMTP.
+/// **Test seam** for [`send_with_transport`]: the delivery path with a
+/// caller-supplied transport. Mirrors the `test-seams` gating of
+/// [`mail::CapturedMail`]; not in the shipped binary.
+#[cfg(feature = "test-seams")]
+pub async fn send_invitation_mail_with_transport(
+    transport: &dyn mail::MailTransport,
+    mailer: &ResolvedMailer,
+    invitation: &Invitation,
+    invite_url: &str,
+    inviter_email: &str,
+) -> AppResult<DateTime<Utc>> {
+    send_with_transport(transport, mailer, invitation, invite_url, inviter_email).await
+}
+
+/// Sends the invitation mail and returns the timestamp SMTP accepted it at.
+///
+/// Fails (Err) when no mailer is configured or the send itself failed; the
+/// caller decides how loud that is. The invitation row is untouched here —
+/// delivery is a side effect of the resource, not its precondition.
+pub async fn send_invitation_mail(
+    mailer: &ResolvedMailer,
+    invitation: &Invitation,
+    invite_url: &str,
+    inviter_email: &str,
+) -> AppResult<DateTime<Utc>> {
+    let global = GlobalSmtp::from_env();
+
+    let host = mailer
+        .credentials
+        .smtp_host
+        .as_ref()
+        .or(global.host.as_ref())
+        .ok_or_else(|| AppError::Internal("SMTP host not configured".to_string()))?;
+    let port = mailer.credentials.smtp_port.unwrap_or(global.port);
+
+    let transport = mail::build_transport(
+        host,
+        port,
+        mailer
+            .credentials
+            .smtp_username
+            .as_ref()
+            .or(global.username.as_ref()),
+        mailer
+            .credentials
+            .smtp_password
+            .as_ref()
+            .or(global.password.as_ref()),
+    )
+    .map_err(AppError::Internal)?;
+
+    send_with_transport(
+        transport.as_ref(),
+        mailer,
+        invitation,
+        invite_url,
+        inviter_email,
+    )
+    .await
+}
+
+/// Persists that the invitation email was accepted by SMTP, and retires this
+/// invitation's delivery claim in the same write: a completed send leaves
+/// nothing behind that could block a later resend.
 pub async fn mark_email_sent(pool: &DbPool, token: &str, sent_at: DateTime<Utc>) -> AppResult<()> {
-    sqlx::query("UPDATE invitations SET email_sent_at = $2 WHERE token = $1")
+    sqlx::query("UPDATE invitations SET email_sent_at = $2, email_delivery_claimed_at = NULL WHERE token = $1")
         .bind(token)
         .bind(sent_at)
         .execute(pool)
@@ -291,33 +349,50 @@ pub async fn mark_email_sent(pool: &DbPool, token: &str, sent_at: DateTime<Utc>)
     Ok(())
 }
 
-/// Atomically claims the right to deliver this invitation's email: the
-/// conditional UPDATE only goes through while `email_sent_at` is still
-/// null, so of two overlapping resends exactly one can be in flight
-/// without `force`. `Some` hands back the claimed timestamp, which the
-/// caller must pass to `release_email_delivery` when the send fails.
+/// How long a delivery claim is honoured before it is treated as abandoned.
+///
+/// A claim is written seconds before the SMTP call it protects and cleared
+/// just after it returns, so any real send is long gone by this horizon; what
+/// survives past it is a crashed process, not a delivery. The bound has to sit
+/// above the transport timeout, which is why it is generous rather than tight.
+const STALE_CLAIM_AFTER: chrono::Duration = chrono::Duration::hours(1);
+
+/// Atomically claims the right to deliver this invitation's email, recorded
+/// on its own column so it is never confused with a finished delivery.
+///
+/// The conditional UPDATE only goes through while no live claim is held, so of
+/// two overlapping sends exactly one wins; a claim older than
+/// [`STALE_CLAIM_AFTER`] came from a dead process and stops blocking.
+/// `Some` hands back the claimed timestamp, which the caller passes to
+/// [`release_email_delivery`] if the send fails.
 pub async fn claim_email_delivery(pool: &DbPool, token: &str) -> AppResult<Option<DateTime<Utc>>> {
     let claimed_at = Utc::now();
+    let stale_before = claimed_at - STALE_CLAIM_AFTER;
     let result = sqlx::query(
-        "UPDATE invitations SET email_sent_at = $1 WHERE token = $2 AND email_sent_at IS NULL",
+        "UPDATE invitations
+         SET email_delivery_claimed_at = $1
+         WHERE token = $2 AND (email_delivery_claimed_at IS NULL OR email_delivery_claimed_at < $3)",
     )
     .bind(claimed_at)
     .bind(token)
+    .bind(stale_before)
     .execute(pool)
     .await?;
     Ok((result.rows_affected() > 0).then_some(claimed_at))
 }
 
-/// Restores the undelivered state after a failed send. Guarded by the
-/// claimed timestamp so it can never clear a delivery someone else made
-/// meanwhile (a concurrent `force` resend, for example).
+/// Clears the claim after a failed send. Guarded by the claimed timestamp so
+/// it can never clear a claim someone else took in the meantime. The stamp of
+/// a *successful* delivery (`mark_email_sent` nulls the claim in the same
+/// statement), which is why a lost claim never hides the delivered state.
 pub async fn release_email_delivery(
     pool: &DbPool,
     token: &str,
     claimed_at: DateTime<Utc>,
 ) -> AppResult<()> {
     sqlx::query(
-        "UPDATE invitations SET email_sent_at = NULL WHERE token = $1 AND email_sent_at = $2",
+        "UPDATE invitations SET email_delivery_claimed_at = NULL
+         WHERE token = $1 AND email_delivery_claimed_at = $2",
     )
     .bind(token)
     .bind(claimed_at)
@@ -342,6 +417,7 @@ mod tests {
             created_at: Utc::now(),
             accepted_at: None,
             email_sent_at: None,
+            email_delivery_claimed_at: None,
         }
     }
 

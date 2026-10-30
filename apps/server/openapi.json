@@ -2244,7 +2244,7 @@
             }
           },
           "400": {
-            "description": "Invalid role, or send_email requested while no SMTP source is configured",
+            "description": "Invalid role, or send_email requested while no SMTP source is configured or the invite link would be unreachable",
             "content": {
               "application/json": {
                 "schema": {
@@ -15220,7 +15220,7 @@
           },
           "send_email": {
             "type": "boolean",
-            "description": "When true, the server emails the invite link instead of returning it\nfor manual sharing. Only valid while an SMTP source is configured;\nthe handler rejects the request otherwise. Serde default keeps the\npre-email API shape (absent = manual share) working unchanged."
+            "description": "When true, the server also emails the invite link to the recipient.\nThe response still carries `token` for manual sharing either way.\nOnly valid while an SMTP source is configured and the invite link is\nreachable (a configured public/dashboard URL, or a bind host that is\nnot a wildcard); the handler rejects the request otherwise. Serde\ndefault keeps the pre-email API shape (absent = manual share) working\nunchanged."
           }
         }
       },
@@ -15405,6 +15405,14 @@
         "type": "object",
         "description": "Multipart legacy debug file upload: one `file` part holding a zip."
       },
+      "EmailSourceKind": {
+        "type": "string",
+        "description": "The wire form of the email-status `source` field: the only values it\ntakes besides `null`, typed as an enum so the generated client names the\nset instead of accepting any string.",
+        "enum": [
+          "integration",
+          "global"
+        ]
+      },
       "EmailStatusResponse": {
         "type": "object",
         "description": "GET /api/invitations/email-status answer.",
@@ -15417,11 +15425,15 @@
             "type": "boolean"
           },
           "source": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "`source: null` is a real answer (no SMTP anywhere), never an omitted\nfield, so the schema keeps it required even though serde models it\nas an Option (see openapi_contract_test)."
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EmailSourceKind",
+                "description": "`source: null` is a real answer (no SMTP anywhere), never an omitted\nfield, so the schema keeps it required even though serde models it\nas an Option (see openapi_contract_test)."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
