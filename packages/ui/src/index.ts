@@ -80,6 +80,8 @@ export type { KbdProps } from './components/kbd/kbd';
 export { Kbd } from './components/kbd/kbd';
 export type { SeparatorProps } from './components/separator/separator';
 export { Separator } from './components/separator/separator';
+export type { SkeletonProps } from './components/skeleton/skeleton';
+export { Skeleton } from './components/skeleton/skeleton';
 export type { SpinnerProps } from './components/spinner/spinner';
 export { Spinner } from './components/spinner/spinner';
 export type { TagProps, TagTone } from './components/tag/tag';

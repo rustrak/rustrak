@@ -1,5 +1,6 @@
-import { Page, PageHeader, Text } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import type { ProjectResponse } from '@rustrak/client';
+import { Page, PageHeader, Skeleton, Text } from '@rustrak/ui';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { PlatformIcon } from 'platformicons';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -9,8 +10,8 @@ import {
   PERIOD_CHOICES,
   type PeriodChoice,
 } from '@/features/release/model/session-health';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { OverviewFilters } from './-components/overview-filters';
 import {
   ErrorVolumePanel,
@@ -57,57 +58,59 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
     compare: search.compare === true || search.compare === 'true' || undefined,
   }),
   loaderDeps: ({ search }) => search,
-  // Only the project is awaited; every panel is started and fills in when its
-  // own read lands, failing on its own.
+  // Every read is started here. The page waits only for the project; each
+  // panel fills in when its own read lands, failing on its own.
   loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     const { filters, compare } = overviewFilters(projectId, deps);
     const reads = overviewReads(filters, compare);
-    void queryClient.prefetchQuery(reads.summary);
-    void queryClient.prefetchQuery(reads.events);
-    void queryClient.prefetchQuery(reads.sessionSummary);
-    void queryClient.prefetchQuery(reads.sessionTrend);
-    void queryClient.prefetchQuery(reads.latency);
-    void queryClient.prefetchQuery(reads.environments);
-    void queryClient.prefetchQuery(reads.releases);
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    void queryClient.query(reads.summary).catch(noop);
+    void queryClient.query(reads.events).catch(noop);
+    void queryClient.query(reads.sessionSummary).catch(noop);
+    void queryClient.query(reads.sessionTrend).catch(noop);
+    void queryClient.query(reads.latency).catch(noop);
+    void queryClient.query(reads.environments).catch(noop);
+    void queryClient.query(reads.releases).catch(noop);
     if (reads.previousEvents)
-      void queryClient.prefetchQuery(reads.previousEvents);
-    void queryClient.prefetchQuery(reads.issues('recent'));
-    return queryClient.query({
-      ...projectQueries.detail(projectId),
-      staleTime: 'static',
-    });
+      void queryClient.query(reads.previousEvents).catch(noop);
+    void queryClient.query(reads.issues('recent')).catch(noop);
   },
-  head: ({ loaderData }) => {
-    const t = translator('projectPages');
-
-    if (!loaderData) {
-      return { meta: [{ title: t('projectNotFound') }] };
-    }
-
-    return {
-      meta: [
-        { title: t('projectTitle', { project: loaderData.name }) },
-        {
-          name: 'description',
-          content: t('overview.meta.description', {
-            project: loaderData.name,
-          }),
-        },
-      ],
-    };
-  },
+  pendingComponent: ProjectLoading,
   component: ProjectPage,
 });
 
 function ProjectPage() {
+  const { id } = Route.useParams();
+  const projectId = Number.parseInt(id, 10);
+  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
+  return <ProjectScreen project={project} />;
+}
+
+/**
+ * The same screen while the project loads. The filters and the panels are
+ * real: neither waits for the project, so each panel shows its own
+ * placeholder and fills in as its read lands, even before the header does.
+ */
+function ProjectLoading() {
+  return (
+    <PageLoading>
+      <ProjectScreen />
+    </PageLoading>
+  );
+}
+
+/**
+ * The panels follow the address directly: none of them suspends, so a new
+ * filter swaps each one for its own placeholder until its read is in.
+ */
+function ProjectScreen({ project }: { project?: ProjectResponse }) {
   const t = useTranslations('projectPages');
   const format = useFormatter();
   const { id } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const projectId = Number.parseInt(id, 10);
-  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { choice, filters, compare } = overviewFilters(projectId, search);
   const reads = overviewReads(filters, compare);
 
@@ -115,26 +118,42 @@ function ProjectPage() {
     // On a phone the header scrolls away with the page: held in place, the
     // title and the filters would take a third of the screen.
     <div className="flex h-full flex-col max-lg:overflow-y-auto">
+      {project ? (
+        <title>{t('projectTitle', { project: project.name })}</title>
+      ) : null}
       <PageHeader
         title={
           <span className="flex min-w-0 items-center gap-3">
-            <PlatformIcon
-              platform={project.platform ?? 'other'}
-              size={26}
-              format="lg"
-              className="shrink-0 rounded-md"
-            />
-            <span className="truncate">{project.name}</span>
+            {project ? (
+              <>
+                <PlatformIcon
+                  platform={project.platform ?? 'other'}
+                  size={26}
+                  format="lg"
+                  className="shrink-0 rounded-md"
+                />
+                <span className="truncate">{project.name}</span>
+              </>
+            ) : (
+              <>
+                <Skeleton className="size-[26px] shrink-0 rounded-md" />
+                <Skeleton className="h-7 w-48" />
+              </>
+            )}
           </span>
         }
-        summary={[
-          <Text key="slug" variant="mono-sm" tone="meta">
-            {project.slug}
-          </Text>,
-          t('overview.storedEvents', {
-            count: format.number(project.stored_event_count, 'compact'),
-          }),
-        ]}
+        summary={
+          project
+            ? [
+                <Text key="slug" variant="mono-sm" tone="meta">
+                  {project.slug}
+                </Text>,
+                t('overview.storedEvents', {
+                  count: format.number(project.stored_event_count, 'compact'),
+                }),
+              ]
+            : [<Skeleton key="summary" className="h-4 w-56" />]
+        }
         actions={
           <OverviewFilters
             projectId={projectId}

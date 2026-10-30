@@ -1,4 +1,40 @@
-import { Skeleton } from '@/shared/ui/components/shadcn/skeleton';
+import { Skeleton } from '@rustrak/ui';
+import { useTranslations } from 'use-intl';
+import { SettingSection } from '@/shared/ui/components/setting-row';
+import { SettingsHeader } from '@/shared/ui/components/settings-header';
+
+/**
+ * `StorageView` before its retention lands: the same header, without the
+ * actions that need it, and every panel in its figures-loading state.
+ */
+export function StorageViewSkeleton({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle: string;
+}) {
+  const t = useTranslations('storage');
+  return (
+    <div className="min-w-0">
+      <SettingsHeader title={title} description={subtitle} />
+      <SettingSection title={t('overview.title')}>
+        <OverviewSkeleton />
+      </SettingSection>
+      <SettingSection title={t('projects.retention')}>
+        <LineSkeleton />
+      </SettingSection>
+      <SettingSection title={t('age.title')} description={t('age.description')}>
+        <div className="px-5 py-4">
+          <ChartSkeleton />
+        </div>
+      </SettingSection>
+      <SettingSection title={t('projects.title')}>
+        <ProjectsSkeleton />
+      </SettingSection>
+    </div>
+  );
+}
 
 /** The overview's place while the figures load, inside its section. */
 export function OverviewSkeleton() {
@@ -29,7 +65,7 @@ export function LineSkeleton() {
 
 /** The age chart's place while the figures load. */
 export function ChartSkeleton() {
-  return <Skeleton className="h-48 w-full" aria-hidden="true" />;
+  return <Skeleton className="h-48 w-full" />;
 }
 
 /** The projects table's place while the figures load, inside its section. */

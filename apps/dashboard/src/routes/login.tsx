@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { Skeleton, Text } from '@rustrak/ui';
+import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { Link } from '@/shared/ui/components/link';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { LoginForm } from './-components/login-form';
 
@@ -25,31 +26,24 @@ export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>): { error?: string } => ({
     error: typeof search.error === 'string' ? search.error : undefined,
   }),
-  // Awaited so the form does not reshape under the reader, but through
-  // `prefetchQuery`, which never throws: a failed lookup leaves the password
-  // form, and the server decides whether it is allowed.
-  loader: ({ context: { queryClient } }) =>
-    queryClient.prefetchQuery(userQueries.ssoConfig()),
-  head: () => {
-    const t = translator('auth');
-    return {
-      meta: [
-        { title: t('meta.title') },
-        { name: 'description', content: t('meta.description') },
-      ],
-    };
+  loader: ({ context: { queryClient } }) => {
+    void queryClient.query(userQueries.ssoConfig()).catch(noop);
   },
   component: LoginPage,
 });
 
 function LoginPage() {
   const t = useTranslations('auth');
-  const ssoConfig = useQuery(userQueries.ssoConfig()).data ?? null;
+  // `useQuery`, not a suspending read: a failed lookup leaves the password
+  // form, and the server decides whether it is allowed. The form waits for
+  // the answer, though, so it does not reshape under the reader.
+  const sso = useQuery(userQueries.ssoConfig());
   const search = Route.useSearch();
   const ssoFailed = search.error === 'sso';
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-canvas px-4 py-12">
+      <title>{t('meta.title')}</title>
       {/* A directional light: a beam from just above the top-right, angled
           down towards the card. A wide soft cone and a narrow brighter core,
           both hung from their top edge so rotating them swings the beam
@@ -108,7 +102,14 @@ function LoginPage() {
                 className="pointer-events-none absolute inset-x-0 top-0 h-px [mask-image:linear-gradient(to_left,#000_33%,transparent_66%)] [mask-position:100%_0%] [mask-repeat:no-repeat] [mask-size:300%_100%] motion-safe:animate-login-wipe motion-safe:[animation-delay:800ms] bg-[linear-gradient(90deg,transparent_20%,rgb(255_255_255/0.35)_85%,transparent)]"
               />
               <div className="login-stagger relative">
-                <LoginForm ssoConfig={ssoConfig} ssoFailed={ssoFailed} />
+                {sso.isPending ? (
+                  <LoginFormLoading />
+                ) : (
+                  <LoginForm
+                    ssoConfig={sso.data ?? null}
+                    ssoFailed={ssoFailed}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -128,5 +129,27 @@ function LoginPage() {
         </nav>
       </div>
     </main>
+  );
+}
+
+/** The form's heading as itself, its fields and button while SSO is asked. */
+function LoginFormLoading() {
+  const t = useTranslations('auth');
+  return (
+    <PageLoading>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-fg text-page-title">{t('form.title')}</h1>
+          <Text render={<p />} tone="muted">
+            {t('form.subtitle')}
+          </Text>
+        </div>
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="mt-2 h-10 w-full" />
+        </div>
+      </div>
+    </PageLoading>
   );
 }

@@ -59,7 +59,7 @@ export function EventSections({
     has,
   } = payload;
   const feedback = readFeedback(eventData);
-  // The feedback users sent about the issue, which the loader read.
+  // The feedback users sent about the issue, which the loader started.
   const { data: userReports } = useSuspenseInfiniteQuery(
     issueQueries.userReports(projectId, issueId),
   );

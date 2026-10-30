@@ -4,7 +4,7 @@ import type {
   AlertRuleResponse,
   AlertType,
 } from '@rustrak/client';
-import { Button, cn, Input, TestIcon, Text } from '@rustrak/ui';
+import { Button, cn, Input, Skeleton, TestIcon, Text } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { type ReactNode, useMemo, useState, useTransition } from 'react';
 import { FormProvider, useForm, useFormContext } from 'react-hook-form';
@@ -274,6 +274,42 @@ export function RuleEditor({
         </aside>
       </form>
     </FormProvider>
+  );
+}
+
+/**
+ * The editor's layout with its fields still to come: what a page holding
+ * the editor shows while the rule and its channels load.
+ */
+export function RuleEditorSkeleton() {
+  const t = useTranslations('alerts');
+  const rows = [
+    [t('editor.name'), 'h-9 w-full'],
+    [t('editor.when'), 'h-16 w-full'],
+    [t('editor.environments'), 'h-7 w-64'],
+    [t('editor.level'), 'h-7 w-72'],
+    [t('editor.notify'), 'h-9 w-full'],
+    [t('editor.frequency'), 'h-7 w-80'],
+  ] as const;
+  return (
+    <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
+      <div className="flex min-w-0 flex-1 flex-col divide-y divide-border-divider lg:overflow-y-auto">
+        {rows.map(([label, size]) => (
+          <Row key={label} label={label}>
+            <Skeleton className={cn('max-w-full', size)} />
+          </Row>
+        ))}
+      </div>
+      <aside className="flex flex-col gap-4 border-border-divider bg-panel px-5 py-5 max-lg:border-t lg:w-88 lg:shrink-0 lg:border-l xl:w-96">
+        <h2 className="font-mono text-column text-fg-meta uppercase">
+          {t('editor.summary')}
+        </h2>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      </aside>
+    </div>
   );
 }
 

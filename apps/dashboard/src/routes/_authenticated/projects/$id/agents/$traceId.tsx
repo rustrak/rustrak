@@ -2,9 +2,10 @@ import {
   formatSpanDuration,
   SegmentedControl,
   SegmentedItem,
+  Skeleton,
   Waterfall,
 } from '@rustrak/ui';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -17,9 +18,9 @@ import {
 } from '@/features/agent-trace/model/trace-summary';
 import { AgentGraphView } from '@/features/agent-trace/ui/components/agent-graph';
 import { SpanDetailPane } from '@/features/agent-trace/ui/components/span-detail-pane';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
 export const Route = createFileRoute(
@@ -30,27 +31,29 @@ export const Route = createFileRoute(
     view: searchOneOf(search.view, ['graph'] as const),
   }),
   loaderDeps: ({ search }) => ({ span: search.span }),
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  // The trace is the page. A span named in the address is started beside
+  // it; the default one is chosen from the spans, so it is started as soon
+  // as they land rather than once the page has rendered them.
+  loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
-    const spans = await queryClient.query({
-      ...agentQueries.trace(projectId, params.traceId),
-      staleTime: 'static',
-    });
-    if (spans.length === 0) throw notFound();
-    // The pane's span is not awaited: the waterfall can be read without it.
-    const { selectedSpanId } = resolveSelectedSpan(spans, deps.span);
-    if (selectedSpanId != null) {
-      void queryClient.prefetchQuery(
-        agentQueries.span(projectId, selectedSpanId),
-      );
+    const span = (spanId: string) =>
+      queryClient.query(agentQueries.span(projectId, spanId));
+    const trace = queryClient.query(
+      agentQueries.trace(projectId, params.traceId),
+    );
+    if (deps.span != null) {
+      void span(deps.span).catch(noop);
+      void trace.catch(noop);
+    } else {
+      void trace
+        .then((spans) => {
+          const { selectedSpanId } = resolveSelectedSpan(spans, undefined);
+          if (selectedSpanId) void span(selectedSpanId).catch(noop);
+        })
+        .catch(noop);
     }
   },
-  head: ({ params }) => {
-    const t = translator('projectPages');
-    return {
-      meta: [{ title: t('trace.meta.title', { traceId: params.traceId }) }],
-    };
-  },
+  pendingComponent: AgentTraceLoading,
   component: AgentTraceDetailPage,
 });
 
@@ -67,6 +70,7 @@ function AgentTraceDetailPage() {
   const { data: spans } = useSuspenseQuery(
     agentQueries.trace(projectId, traceId),
   );
+  if (spans.length === 0) throw notFound();
   const summary = summarizeTrace(spans);
   const { selectedSpanId, requestedMissing } = resolveSelectedSpan(
     spans,
@@ -117,6 +121,7 @@ function AgentTraceDetailPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>{t('trace.meta.title', { traceId })}</title>
       <header className="shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex min-w-0 flex-col gap-1">
@@ -228,5 +233,48 @@ function AgentTraceDetailPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/**
+ * The trace's header and panes, with its agents, totals and spans still to
+ * come. The id is the address's, so it is real already.
+ */
+function AgentTraceLoading() {
+  const t = useTranslations('projectPages');
+  const { traceId } = Route.useParams();
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <title>{t('trace.meta.title', { traceId })}</title>
+        <header className="shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
+              <Skeleton className="h-8 w-72" />
+              <span className="truncate font-mono text-fg-subtle text-mono-sm">
+                {traceId}
+              </span>
+            </div>
+            <Skeleton className="h-4 w-96 max-w-full" />
+          </div>
+        </header>
+        <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
+          <main className="min-w-0 flex-1 lg:overflow-y-auto">
+            <div className="px-page-gutter pt-5 pb-8">
+              <section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border-subtle bg-surface px-5 pt-4 pb-5">
+                <h2 className="text-card-title text-fg">{t('trace.spans')}</h2>
+                <Skeleton className="h-64 w-full" />
+              </section>
+            </div>
+          </main>
+          <aside className="border-border-divider bg-panel max-lg:border-t lg:w-[30rem] lg:shrink-0 lg:border-l xl:w-[34rem]">
+            <div className="flex flex-col gap-3 px-5 py-5">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          </aside>
+        </div>
+      </div>
+    </PageLoading>
   );
 }

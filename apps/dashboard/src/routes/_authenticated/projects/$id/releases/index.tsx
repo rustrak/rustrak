@@ -1,3 +1,4 @@
+import type { ProjectResponse, ReleasesListResponse } from '@rustrak/client';
 import {
   type DataTableQuery,
   EmptyIcon,
@@ -5,15 +6,13 @@ import {
   Page,
   PageHeader,
   parseTableQuery,
+  Skeleton,
   serializeTableQuery,
   Text,
 } from '@rustrak/ui';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import {
-  createFileRoute,
-  redirect,
-  useRouterState,
-} from '@tanstack/react-router';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
+import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { releaseQueries } from '@/features/release/api/queries';
@@ -24,8 +23,8 @@ import {
 } from '@/features/release/model/session-health';
 import { PeriodFilter } from '@/features/release/ui/components/period-filter';
 import { ReleasesTable } from '@/features/release/ui/components/releases-table';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 
 const PAGE_SIZE = 25;
 /** `list_releases`'s own cap on `per_page`. */
@@ -85,71 +84,80 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
     per: searchString(String(search.per ?? '')) || undefined,
   }),
   loaderDeps: ({ search }) => search,
-  // The page is awaited, so the router keeps the previous one on screen while
-  // the next loads; the bar's suggestions are only started.
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
-    const query = tableQuery(deps);
-    void queryClient.prefetchQuery(projectQueries.environments(projectId));
-    const [project, page] = await Promise.all([
-      queryClient.query({
-        ...projectQueries.detail(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({
-        ...releasesList(projectId, deps),
-        staleTime: 'static',
-      }),
-    ]);
-
-    // A stale or shared `?page=` past the end lands on the last page, not on
-    // an empty table under a positive count.
-    const { total_pages } = page;
-    if (query.pagination.pageIndex + 1 > Math.max(total_pages, 1)) {
-      throw redirect({
-        to: '/projects/$id/releases',
-        params: { id: params.id },
-        search: {
-          ...deps,
-          page: total_pages > 1 ? String(total_pages) : undefined,
-        },
-      });
-    }
-    return { project };
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    void queryClient.query(releasesList(projectId, deps)).catch(noop);
+    void queryClient.query(projectQueries.environments(projectId)).catch(noop);
   },
-  head: ({ loaderData }) => {
-    const t = translator('projectPages');
-
-    if (!loaderData) {
-      return { meta: [{ title: t('projectNotFound') }] };
-    }
-
-    const { project } = loaderData;
-    return {
-      meta: [
-        { title: t('releases.meta.title', { project: project.name }) },
-        {
-          name: 'description',
-          content: t('releases.meta.description', { project: project.name }),
-        },
-      ],
-    };
-  },
+  pendingComponent: ReleasesLoading,
   component: ReleasesPage,
 });
 
+/**
+ * The list follows the address a beat behind: a new search or page keeps the
+ * rows on screen, dimmed, until the next page is in.
+ */
 function ReleasesPage() {
+  const { id } = Route.useParams();
+  const live = Route.useSearch();
+  const search = useDeferredValue(live);
+  const projectId = Number.parseInt(id, 10);
+  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
+  const { data: page } = useSuspenseQuery(releasesList(projectId, search));
+
+  // A stale or shared `?page=` past the end lands on the last page, not on
+  // an empty table under a positive count. Only once the rows on screen are
+  // the address's: an older answer must not overrule what was since asked.
+  const { total_pages } = page;
+  if (
+    search === live &&
+    tableQuery(search).pagination.pageIndex + 1 > Math.max(total_pages, 1)
+  ) {
+    return (
+      <Navigate
+        to="/projects/$id/releases"
+        params={{ id }}
+        search={{
+          ...search,
+          page: total_pages > 1 ? String(total_pages) : undefined,
+        }}
+        replace
+      />
+    );
+  }
+
+  return (
+    <ReleasesScreen project={project} page={page} loading={search !== live} />
+  );
+}
+
+/** The same screen, with the project's name and the rows still to come. */
+function ReleasesLoading() {
+  return (
+    <PageLoading>
+      <ReleasesScreen loading />
+    </PageLoading>
+  );
+}
+
+function ReleasesScreen({
+  project,
+  page,
+  loading,
+}: {
+  project?: ProjectResponse;
+  page?: ReleasesListResponse;
+  loading: boolean;
+}) {
   const t = useTranslations('projectPages');
   const tReleases = useTranslations('releases');
   const { id } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const loading = useRouterState({ select: (state) => state.isLoading });
   const projectId = Number.parseInt(id, 10);
   const query = tableQuery(search);
   const period = search.period ?? DEFAULT_PERIOD;
-  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
-  const { data: page } = useSuspenseQuery(releasesList(projectId, search));
 
   // What the bar can suggest; not the list, so the list does not wait for
   // it, and no suggestions while it loads or when it fails.
@@ -160,15 +168,19 @@ function ReleasesPage() {
 
   return (
     <div className="flex h-full flex-col">
+      {project ? (
+        <title>{t('releases.meta.title', { project: project.name })}</title>
+      ) : null}
       <PageHeader
         title={t('releases.title')}
-        summary={[
-          project.name,
-          tReleases('count', { count: page.total_count }),
-        ]}
+        summary={
+          project && page
+            ? [project.name, tReleases('count', { count: page.total_count })]
+            : [<Skeleton key="summary" className="h-4 w-48" />]
+        }
       />
 
-      {page.total_count === 0 && !filtered ? (
+      {page && page.total_count === 0 && !filtered && !loading ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-page-gutter py-16 text-center">
           <EmptyIcon size="xl" className="mb-2 text-fg-ghost" />
           <Text variant="body">{tReleases('empty.title')}</Text>

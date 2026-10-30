@@ -1,4 +1,8 @@
-import type { TransactionsGetStatsData } from '@rustrak/client';
+import type {
+  ProjectResponse,
+  TransactionsGetStatsData,
+  TransactionsGetStatsResponse,
+} from '@rustrak/client';
 import {
   type DataTableQuery,
   EmptyIcon,
@@ -6,11 +10,13 @@ import {
   Page,
   PageHeader,
   parseTableQuery,
+  Skeleton,
   serializeTableQuery,
   Text,
 } from '@rustrak/ui';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useRouterState } from '@tanstack/react-router';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute } from '@tanstack/react-router';
+import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import {
@@ -22,8 +28,8 @@ import { PeriodFilter } from '@/features/release/ui/components/period-filter';
 import { transactionQueries } from '@/features/transaction/api/queries';
 import { endpointHref } from '@/features/transaction/model/endpoints';
 import { EndpointsTable } from '@/features/transaction/ui/components/endpoints-table';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 const PAGE_SIZE = 25;
@@ -116,51 +122,64 @@ export const Route = createFileRoute(
     period: searchOneOf(search.period, PERIOD_CHOICES),
   }),
   loaderDeps: ({ search }) => search,
-  // The page is awaited, so the router keeps the previous one on screen while
-  // the next loads; the bar's suggestions are only started.
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
-    void queryClient.prefetchQuery(projectQueries.environments(projectId));
-    const [project] = await Promise.all([
-      queryClient.query({
-        ...projectQueries.detail(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({
-        ...transactionQueries.stats(projectId, statsParams(deps)),
-        staleTime: 'static',
-      }),
-    ]);
-    return { project };
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    void queryClient
+      .query(transactionQueries.stats(projectId, statsParams(deps)))
+      .catch(noop);
+    void queryClient.query(projectQueries.environments(projectId)).catch(noop);
   },
-  head: ({ loaderData }) => {
-    const tPages = translator('projectPages');
-    if (!loaderData) {
-      return { meta: [{ title: tPages('projectNotFound') }] };
-    }
-    const { project } = loaderData;
-    return {
-      meta: [
-        { title: tPages('performance.meta.title', { project: project.name }) },
-        {
-          name: 'description',
-          content: tPages('performance.meta.description', {
-            project: project.name,
-          }),
-        },
-      ],
-    };
-  },
+  pendingComponent: PerformanceLoading,
   component: PerformancePage,
 });
 
+/**
+ * The page of endpoints and the project are what the page waits for. The
+ * page follows the address a beat behind: a new filter, window or page keeps
+ * the rows on screen, dimmed, until the next page is in.
+ */
 function PerformancePage() {
+  const { id } = Route.useParams();
+  const projectId = Number.parseInt(id, 10);
+  const live = Route.useSearch();
+  const search = useDeferredValue(live);
+  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
+  const { data: page } = useSuspenseQuery(
+    transactionQueries.stats(projectId, statsParams(search)),
+  );
+  return (
+    <PerformanceScreen
+      project={project}
+      page={page}
+      loading={search !== live}
+    />
+  );
+}
+
+/** The same screen, with the project's facts and the rows still to come. */
+function PerformanceLoading() {
+  return (
+    <PageLoading>
+      <PerformanceScreen loading={false} />
+    </PageLoading>
+  );
+}
+
+function PerformanceScreen({
+  project,
+  page,
+  loading,
+}: {
+  project?: ProjectResponse;
+  page?: TransactionsGetStatsResponse;
+  loading: boolean;
+}) {
   const t = useTranslations('performance');
   const tPages = useTranslations('projectPages');
   const { id } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const loading = useRouterState({ select: (state) => state.isLoading });
   const projectId = Number.parseInt(id, 10);
   const query = tableQuery(search);
   const period = search.period ?? DEFAULT_PERIOD;
@@ -170,10 +189,6 @@ function PerformancePage() {
     environment: environment ?? undefined,
   };
 
-  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
-  const { data: page } = useSuspenseQuery(
-    transactionQueries.stats(projectId, statsParams(search)),
-  );
   // What the bar can suggest: none while they load or when they fail.
   const environments =
     useQuery(projectQueries.environments(projectId)).data ?? [];
@@ -184,12 +199,21 @@ function PerformancePage() {
 
   return (
     <div className="flex h-full flex-col">
+      {project ? (
+        <title>
+          {tPages('performance.meta.title', { project: project.name })}
+        </title>
+      ) : null}
       <PageHeader
         title={tPages('performance.title')}
-        summary={[project.name, t('count', { count: page.total_count })]}
+        summary={
+          project && page
+            ? [project.name, t('count', { count: page.total_count })]
+            : [<Skeleton key="summary" className="h-4 w-56" />]
+        }
       />
 
-      {page.total_count === 0 && !filtered && period === 'all' ? (
+      {page?.total_count === 0 && !filtered && period === 'all' ? (
         <NoTransactions />
       ) : (
         <Page scroll={false}>

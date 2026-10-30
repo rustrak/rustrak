@@ -36,9 +36,10 @@ import {
  * it. The header's two actions change retention and delete data now; a
  * project's own retention is changed from its row.
  *
- * The header and its actions need only the retention, which the route
- * awaits; the figures can take seconds on a large instance, so each panel
- * that shows them holds its own skeleton (or the failure) until they land.
+ * The header and its actions need only the retention, which this suspends on
+ * (the route's `pendingComponent` is `StorageViewSkeleton` meanwhile); the
+ * figures can take seconds on a large instance, so each panel that shows them
+ * holds its own skeleton (or the failure) until they land.
  */
 export function StorageView({
   title,

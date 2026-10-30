@@ -1,11 +1,12 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { Skeleton } from '@rustrak/ui';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { agentQueries } from '@/features/agent-trace/api/queries';
 import { conversationTurns } from '@/features/agent-trace/model/conversation';
 import { ConversationTranscript } from '@/features/agent-trace/ui/components/agent-conversations';
-import { translator } from '@/shared/i18n/intl';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
 /**
@@ -16,28 +17,23 @@ import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/agents/conversations/$conversationId',
 )({
-  loader: ({ context: { queryClient }, params }) =>
-    queryClient.query({
-      ...agentQueries.conversation(
-        Number.parseInt(params.id, 10),
-        params.conversationId,
-      ),
-      staleTime: 'static',
-    }),
-  head: ({ params }) => ({
-    meta: [
-      {
-        title: translator('agents')('conversations.metaTitle', {
-          conversation: params.conversationId,
-        }),
-      },
-    ],
-  }),
+  loader: ({ context: { queryClient }, params }) => {
+    void queryClient
+      .query(
+        agentQueries.conversation(
+          Number.parseInt(params.id, 10),
+          params.conversationId,
+        ),
+      )
+      .catch(noop);
+  },
+  pendingComponent: ConversationLoading,
   component: ConversationPage,
 });
 
 function ConversationPage() {
   const t = useTranslations('agents.conversations');
+  const tAgents = useTranslations('agents');
   const format = useFormatter();
   const { id, conversationId } = Route.useParams();
   const {
@@ -75,6 +71,9 @@ function ConversationPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>
+        {tAgents('conversations.metaTitle', { conversation: conversationId })}
+      </title>
       <header className="shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex min-w-0 flex-col gap-1">
@@ -101,5 +100,38 @@ function ConversationPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** The conversation's header and transcript, with its turns still to come. */
+function ConversationLoading() {
+  const tAgents = useTranslations('agents');
+  const { conversationId } = Route.useParams();
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <title>
+          {tAgents('conversations.metaTitle', { conversation: conversationId })}
+        </title>
+        <header className="shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
+              <Skeleton className="h-8 w-72" />
+              <span className="truncate font-mono text-fg-subtle text-mono-sm">
+                {conversationId}
+              </span>
+            </div>
+            <Skeleton className="h-4 w-80 max-w-full" />
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-page-gutter pt-6 pb-10">
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        </div>
+      </div>
+    </PageLoading>
   );
 }

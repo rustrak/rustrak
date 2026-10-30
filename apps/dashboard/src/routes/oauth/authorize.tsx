@@ -1,14 +1,14 @@
 import type { AuthorizationRequest } from '@rustrak/client';
-import { useQuery } from '@tanstack/react-query';
+import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { mcpQueries } from '@/features/mcp/api/queries';
 import { ConsentForm } from '@/features/mcp/ui/components/consent-form';
 import { returnPath } from '@/shared/api/return-path';
 import { session } from '@/shared/api/session';
-import { translator } from '@/shared/i18n/intl';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
+import { AuthScreenLoading } from '../-components/auth-screen-loading';
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 const optional = (value: unknown) =>
@@ -45,18 +45,27 @@ export const Route = createFileRoute('/oauth/authorize')({
     return { answer };
   },
   loaderDeps: ({ search }) => search,
-  // Awaited without throwing: a request the server refuses is this page's
-  // own answer, said in place of the consent form.
-  loader: async ({ deps, context: { answer, queryClient } }) => {
+  loader: ({ deps, context: { answer, queryClient } }) => {
     if (answer.state === 'authenticated') {
-      await queryClient.prefetchQuery(mcpQueries.authorization(deps));
+      void queryClient.query(mcpQueries.authorization(deps)).catch(noop);
     }
   },
-  head: () => ({ meta: [{ title: translator('oauth')('meta.title') }] }),
   component: AuthorizePage,
 });
 
 function AuthorizePage() {
+  const t = useTranslations('oauth');
+  return (
+    <>
+      <title>{t('meta.title')}</title>
+      <Authorize />
+    </>
+  );
+}
+
+// `useQuery`, not a suspending read: a request the server refuses is this
+// page's own answer, said in place of the consent form.
+function Authorize() {
   const t = useTranslations('oauth');
   const { answer } = Route.useRouteContext();
   const request = Route.useSearch();
@@ -68,6 +77,7 @@ function AuthorizePage() {
   if (answer.state === 'unavailable') {
     return <OutageScreen error={answer.error} />;
   }
+  if (client.isLoading) return <AuthScreenLoading wide />;
 
   return (
     <div className="min-h-screen bg-card flex items-center justify-center p-8 lg:p-12">
@@ -80,7 +90,7 @@ function AuthorizePage() {
             client={client.data}
             email={answer.user.email}
           />
-        ) : client.isLoading ? null : (
+        ) : (
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight">
               {t('failedTitle')}

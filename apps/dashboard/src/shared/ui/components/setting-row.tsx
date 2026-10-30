@@ -1,3 +1,4 @@
+import { Skeleton } from '@rustrak/ui';
 import { cn } from '@/shared/lib/utils';
 
 /**
@@ -169,6 +170,29 @@ export function SettingsListItem({
         <div className="flex shrink-0 items-center gap-1">{actions}</div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A `SettingsListItem` list while it loads: the same rows, bars where the
+ * name, its line and the facts will be, so the section does not resize when
+ * the list lands.
+ */
+export function SettingsListSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, row) => (
+        <SettingsListItem
+          // Placeholder rows have no identity beyond their position.
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+          key={row}
+          leading={<Skeleton className="size-8 rounded-lg" />}
+          title={<Skeleton className="my-0.5 h-4 w-48" />}
+          description={<Skeleton className="my-0.5 h-3 w-32" />}
+          meta={<Skeleton className="h-3 w-24" />}
+        />
+      ))}
+    </>
   );
 }
 

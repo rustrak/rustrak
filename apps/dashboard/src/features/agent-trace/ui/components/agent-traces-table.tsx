@@ -14,6 +14,9 @@ import { useFormatter, useTranslations } from 'use-intl';
 
 const column = createDataTableColumnHelper<AgentTraceSummary>();
 
+/** One empty list, so the table's data is stable while the first page loads. */
+const NO_TRACES: AgentTraceSummary[] = [];
+
 /**
  * Every agent trace, a row each: which agents ran, then its totals -- how
  * long, how many model and tool calls, how many tokens, how many failed --
@@ -29,7 +32,8 @@ export function AgentTracesTable({
   tools,
   scope,
 }: {
-  page: AgentsTracesResponse;
+  /** Absent while the first page loads: the table draws skeleton rows. */
+  page?: AgentsTracesResponse;
   query: DataTableQuery;
   onQueryChange: (
     updater: (previous: DataTableQuery) => DataTableQuery,
@@ -204,9 +208,9 @@ export function AgentTracesTable({
   );
 
   const table = useDataTable({
-    data: page.items,
+    data: page?.items ?? NO_TRACES,
     columns,
-    rowCount: page.total_count,
+    rowCount: page?.total_count ?? 0,
     query,
     onQueryChange,
     getRowId: (row) => row.trace_id,
@@ -236,7 +240,7 @@ export function AgentTracesTable({
       </div>
       <DataTable
         table={table}
-        loading={loading}
+        loading={!page || loading}
         className="min-h-0 flex-1"
         onRowClick={(row) => onOpen(row.original)}
         empty={{ title: t('table.empty') }}

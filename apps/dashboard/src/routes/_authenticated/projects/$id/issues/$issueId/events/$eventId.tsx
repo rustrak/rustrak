@@ -5,9 +5,9 @@ import {
   ExpandPanelIcon,
   Tooltip,
 } from '@rustrak/ui';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useDeferredValue, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { eventQueries } from '@/features/event/api/queries';
 import {
@@ -18,6 +18,7 @@ import {
   readEventPayload,
   splitIssueTitle,
 } from '@/features/event/lib/event-payload';
+import { EventLoading } from '@/features/event/ui/components/event-loading';
 import { githubQueries } from '@/features/github/api/queries';
 import { frameSourceUrl } from '@/features/github/lib/source-url';
 import { IssueGitHubButton } from '@/features/github/ui/components/issue-github-button';
@@ -25,9 +26,7 @@ import { issueQueries } from '@/features/issue/api/queries';
 import { assignable } from '@/features/issue/model/assignable';
 import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
-import { EventLoading } from './$eventId/-components/event-loading';
 import { EventNavigator } from './$eventId/-components/event-navigator';
 import { EventRail } from './$eventId/-components/event-rail';
 import { EventSections } from './$eventId/-components/event-sections';
@@ -54,58 +53,44 @@ function eventReads(projectId: number, issueId: string, eventId: string) {
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/events/$eventId',
 )({
-  // The event and what frames it are awaited; the trends, the rail and the
-  // GitHub button are only started, and render empty if they fail: an issue
-  // with no tags and a failed aggregates read genuinely render the same
-  // panel, and neither is worth taking the event view down for.
-  loader: async ({ context: { queryClient }, params }) => {
+  // Every read is started here and none is waited on. The event and what
+  // frames it are what the page suspends on; the trends, the rail and the
+  // GitHub button render empty if they fail: an issue with no tags and a
+  // failed aggregates read genuinely render the same panel, and neither is
+  // worth taking the event view down for.
+  loader: ({ context: { queryClient }, params }) => {
     const projectId = Number.parseInt(params.id, 10);
     const reads = eventReads(projectId, params.issueId, params.eventId);
-    void queryClient.prefetchQuery(reads.stats30d);
-    void queryClient.prefetchQuery(reads.aggregates);
-    void queryClient.prefetchQuery(reads.activity);
-    void queryClient.prefetchQuery(reads.code);
-    void queryClient.prefetchQuery(reads.members);
-    const [project] = await Promise.all([
-      queryClient.query({
-        ...projectQueries.detail(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({ ...reads.issue, staleTime: 'static' }),
-      queryClient.query({ ...reads.event, staleTime: 'static' }),
-      queryClient.query({ ...reads.navigation, staleTime: 'static' }),
-      queryClient.query({ ...reads.repository, staleTime: 'static' }),
-      queryClient.infiniteQuery({ ...reads.userReports, staleTime: 'static' }),
-      queryClient.query({ ...reads.attachments, staleTime: 'static' }),
-    ]);
-    return { project };
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    void queryClient.query(reads.issue).catch(noop);
+    void queryClient.query(reads.event).catch(noop);
+    void queryClient.query(reads.navigation).catch(noop);
+    void queryClient.query(reads.repository).catch(noop);
+    void queryClient.infiniteQuery(reads.userReports).catch(noop);
+    void queryClient.query(reads.attachments).catch(noop);
+    void queryClient.query(reads.stats30d).catch(noop);
+    void queryClient.query(reads.aggregates).catch(noop);
+    void queryClient.query(reads.activity).catch(noop);
+    void queryClient.query(reads.code).catch(noop);
+    void queryClient.query(reads.members).catch(noop);
   },
-  head: ({ loaderData }) => {
-    const t = translator('projectPages');
-
-    if (!loaderData) {
-      return { meta: [{ title: t('event.meta.eventNotFound') }] };
-    }
-
-    return {
-      meta: [
-        { title: t('projectTitle', { project: loaderData.project.name }) },
-        { name: 'description', content: t('event.meta.description') },
-      ],
-    };
-  },
-  // The event view awaits six requests, so it is the one screen with a
-  // visible wait: this skeleton, mounted after `defaultPendingMs`, so a fast
-  // network never flashes it.
   pendingComponent: EventLoading,
   component: EventView,
 });
 
+/**
+ * The event, a beat behind the address: stepping to the next event, or to
+ * another issue, keeps the one on screen, dimmed, until the next is in,
+ * rather than swapping the whole view for its skeleton.
+ */
 function EventView() {
-  const { id, issueId, eventId } = Route.useParams();
+  const live = Route.useParams();
+  const params = useDeferredValue(live);
+  const { id, issueId, eventId } = params;
   const context = Route.useRouteContext();
   const projectId = Number.parseInt(id, 10);
   const reads = eventReads(projectId, issueId, eventId);
+  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: issue } = useSuspenseQuery(reads.issue);
   const { data: event } = useSuspenseQuery(reads.event);
   const { data: navigation } = useSuspenseQuery(reads.navigation);
@@ -168,7 +153,14 @@ function EventView() {
   return (
     // On a phone the whole page scrolls as one; from lg the reading column
     // and the rail scroll on their own, under a header that stays.
-    <div className="flex h-full flex-col max-lg:overflow-y-auto">
+    <div
+      aria-busy={params !== live}
+      className={cn(
+        'flex h-full flex-col max-lg:overflow-y-auto',
+        params !== live && 'opacity-60',
+      )}
+    >
+      <title>{t('projectTitle', { project: project.name })}</title>
       <IssueHeader
         issue={issue}
         projectId={projectId}

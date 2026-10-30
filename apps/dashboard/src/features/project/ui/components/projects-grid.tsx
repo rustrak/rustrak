@@ -14,10 +14,16 @@ import { ProjectCard } from './project-card';
 interface ProjectsGridProps {
   page: ProjectsListResponse;
   currentPage: number;
+  /** The next page is on its way: the pager waits for it. */
+  loading?: boolean;
 }
 
 /** Every project the reader can see, one card each, a page at a time. */
-export function ProjectsGrid({ page, currentPage }: ProjectsGridProps) {
+export function ProjectsGrid({
+  page,
+  currentPage,
+  loading = false,
+}: ProjectsGridProps) {
   const t = useTranslations('projects');
   const router = useRouter();
   const remove = useMutation(projectMutations.delete());
@@ -87,7 +93,7 @@ export function ProjectsGrid({ page, currentPage }: ProjectsGridProps) {
           totalPages={total_pages}
           totalCount={total_count}
           perPage={per_page}
-          disabled={isPending}
+          disabled={isPending || loading}
           onPageChange={(page) => router.push(`/projects?page=${page}`)}
         />
       ) : null}

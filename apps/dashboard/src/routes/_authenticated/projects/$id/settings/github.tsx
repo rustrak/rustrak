@@ -1,28 +1,27 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { githubQueries } from '@/features/github/api/queries';
 import { RepositorySettings } from '@/features/github/ui/components/repository-settings';
 import { projectQueries } from '@/features/project/api/queries';
-import { translator } from '@/shared/i18n/intl';
+import { PageLoading } from '@/shared/ui/components/page-loading';
+import {
+  SettingSection,
+  SettingsListSkeleton,
+} from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/settings/github',
 )({
-  head: () => ({
-    meta: [{ title: translator('github')('repository.metaTitle') }],
-  }),
   loader: ({ context: { queryClient }, params }) => {
     const projectId = Number.parseInt(params.id, 10);
     // The picker's choices fill in on their own; their failure is how the
     // page says GitHub is not connected yet.
-    void queryClient.prefetchQuery(githubQueries.repositories(projectId));
-    return queryClient.query({
-      ...githubQueries.repository(projectId),
-      staleTime: 'static',
-    });
+    void queryClient.query(githubQueries.repositories(projectId)).catch(noop);
+    void queryClient.query(githubQueries.repository(projectId)).catch(noop);
   },
+  pendingComponent: GitHubSettingsLoading,
   component: GitHubSettingsPage,
 });
 
@@ -36,6 +35,7 @@ function GitHubSettingsPage() {
 
   return (
     <>
+      <title>{t('repository.metaTitle')}</title>
       <SettingsHeader title="GitHub" description={t('repository.subtitle')} />
       <RepositorySettings
         // A new repository starts from its own saved mappings.
@@ -45,5 +45,18 @@ function GitHubSettingsPage() {
         repository={repository}
       />
     </>
+  );
+}
+
+function GitHubSettingsLoading() {
+  const t = useTranslations('github');
+  return (
+    <PageLoading>
+      <title>{t('repository.metaTitle')}</title>
+      <SettingsHeader title="GitHub" description={t('repository.subtitle')} />
+      <SettingSection title={t('repository.section')}>
+        <SettingsListSkeleton rows={1} />
+      </SettingSection>
+    </PageLoading>
   );
 }

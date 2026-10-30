@@ -1,11 +1,12 @@
-import { MuteIcon, Text } from '@rustrak/ui';
+import { MuteIcon, Skeleton, Text } from '@rustrak/ui';
 import {
   keepPreviousData,
+  noop,
   useQuery,
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { useTransition } from 'react';
+import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { monitorQueries } from '@/features/monitor/api/queries';
 import {
@@ -24,8 +25,8 @@ import {
 import { MonitorStatus } from '@/features/monitor/ui/components/monitor-status';
 import { TimelinePeriodFilter } from '@/features/monitor/ui/components/timeline-period';
 import { projectQueries } from '@/features/project/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchPage } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { Panel, RailBlock } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { ScheduleText } from '@/shared/ui/components/schedule-text';
@@ -48,26 +49,16 @@ export const Route = createFileRoute(
     period: searchOneOf(search.period, TIMELINE_PERIODS),
   }),
   loaderDeps: ({ search }) => ({ page: search.page, period: search.period }),
-  // The monitor and the page of check-ins are awaited; the figures and the
-  // charts, all drawn from the stats, arrive after.
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  // The monitor and the page of check-ins are what the page suspends on;
+  // the figures and the charts, all drawn from the stats, arrive after.
+  loader: ({ context: { queryClient }, params, deps }) => {
     const reads = monitorReads(params, deps);
-    void queryClient.prefetchQuery(reads.stats);
-    const [monitor] = await Promise.all([
-      queryClient.query({ ...reads.monitor, staleTime: 'static' }),
-      queryClient.query({ ...reads.checkIns, staleTime: 'static' }),
-    ]);
-    return { monitor };
+    void queryClient.query(projectQueries.detail(reads.projectId)).catch(noop);
+    void queryClient.query(reads.monitor).catch(noop);
+    void queryClient.query(reads.checkIns).catch(noop);
+    void queryClient.query(reads.stats).catch(noop);
   },
-  head: ({ loaderData }) => ({
-    meta: [
-      {
-        title: translator('crons')('meta.detailTitle', {
-          monitor: loaderData?.monitor.name ?? '',
-        }),
-      },
-    ],
-  }),
+  pendingComponent: MonitorLoading,
   component: MonitorPage,
 });
 
@@ -78,6 +69,7 @@ function monitorReads(
 ) {
   const projectId = Number.parseInt(params.id, 10);
   return {
+    projectId,
     monitor: monitorQueries.detail(projectId, params.slug),
     checkIns: monitorQueries.checkIns(projectId, params.slug, {
       page: search.page ?? 1,
@@ -90,14 +82,18 @@ function monitorReads(
   };
 }
 
+/**
+ * The check-ins follow the address a beat behind: the next page keeps the
+ * one on screen, dimmed, until it is in. Controls read the live address.
+ */
 function MonitorPage() {
   const t = useTranslations('crons');
   const params = Route.useParams();
-  const search = Route.useSearch();
+  const live = Route.useSearch();
+  const search = useDeferredValue(live);
   const navigate = Route.useNavigate();
-  const [isPending, startTransition] = useTransition();
   const projectId = Number.parseInt(params.id, 10);
-  const period = search.period ?? DEFAULT_PERIOD;
+  const period = live.period ?? DEFAULT_PERIOD;
   const reads = monitorReads(params, search);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: monitor } = useSuspenseQuery(reads.monitor);
@@ -111,6 +107,7 @@ function MonitorPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>{t('meta.detailTitle', { monitor: monitor.name })}</title>
       <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
         <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
           <div className="flex min-w-0 flex-col gap-1.5">
@@ -218,16 +215,14 @@ function MonitorPage() {
                 page={checkIns}
                 currentPage={search.page ?? 1}
                 showEnvironment={monitor.environments.length > 1}
-                pending={isPending}
+                pending={search !== live}
                 onPageChange={(next) =>
-                  startTransition(() =>
-                    navigate({
-                      search: (prev) => ({
-                        ...prev,
-                        page: next === 1 ? undefined : next,
-                      }),
+                  navigate({
+                    search: (prev) => ({
+                      ...prev,
+                      page: next === 1 ? undefined : next,
                     }),
-                  )
+                  })
                 }
               />
             </Panel>
@@ -278,5 +273,63 @@ function MonitorPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** The monitor's layout, with the monitor and its runs still to come. */
+function MonitorLoading() {
+  const t = useTranslations('crons');
+  const lines = (widths: string[]) => (
+    <div className="flex flex-col gap-2.5">
+      {widths.map((width, line) => (
+        <Skeleton
+          // Placeholder lines have no identity beyond their position.
+          // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+          key={line}
+          className={`h-3 ${width}`}
+        />
+      ))}
+    </div>
+  );
+
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-7 w-56 max-w-full" />
+            <Skeleton className="my-0.5 h-3.5 w-72 max-w-full" />
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
+          <main className="min-w-0 flex-1 lg:overflow-y-auto">
+            <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
+              <Skeleton className="h-20 w-full rounded-2xl" />
+              <Panel
+                title={t('detail.timeline')}
+                hint={t('detail.timelineHint')}
+              >
+                <Skeleton className="h-6 w-full" />
+              </Panel>
+              <Panel
+                title={t('detail.checkIns')}
+                hint={t('detail.checkInsHint')}
+              >
+                {lines(['w-full', 'w-full', 'w-full', 'w-2/3'])}
+              </Panel>
+            </div>
+          </main>
+          <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
+            <RailBlock title={t('detail.config')}>
+              {lines(['w-full', 'w-full', 'w-2/3'])}
+            </RailBlock>
+            <RailBlock title={t('detail.environments')}>
+              {lines(['w-32'])}
+            </RailBlock>
+          </aside>
+        </div>
+      </div>
+    </PageLoading>
   );
 }

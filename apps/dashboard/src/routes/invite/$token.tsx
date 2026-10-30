@@ -1,10 +1,11 @@
 import type { RustrakError } from '@rustrak/client';
-import { useQuery } from '@tanstack/react-query';
+import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
+import { AuthScreenLoading } from '../-components/auth-screen-loading';
 import { AcceptInvitationForm } from './-components/accept-invitation-form';
 import { InvitationUnavailable } from './-components/invitation-unavailable';
 
@@ -31,27 +32,29 @@ function isDeadToken(error: RustrakError): boolean {
 }
 
 export const Route = createFileRoute('/invite/$token')({
-  head: () => {
-    const t = translator('invite');
-    return {
-      meta: [
-        { title: t('meta.title') },
-        { name: 'description', content: t('meta.description') },
-      ],
-    };
+  loader: ({ context: { queryClient }, params }) => {
+    void queryClient.query(userQueries.invitation(params.token)).catch(noop);
   },
-  // `prefetchQuery` rather than a critical read: a dead token is an answer
-  // this page renders, not a failure for the error boundary.
-  loader: ({ context: { queryClient }, params }) =>
-    queryClient.prefetchQuery(userQueries.invitation(params.token)),
   component: InvitePage,
 });
 
 function InvitePage() {
+  const t = useTranslations('invite');
+  return (
+    <>
+      <title>{t('meta.title')}</title>
+      <Invite />
+    </>
+  );
+}
+
+// `useQuery`, not a suspending read: a dead token is an answer this page
+// renders, not a failure for the error boundary.
+function Invite() {
   const { token } = Route.useParams();
   const result = useQuery(userQueries.invitation(token));
 
-  if (result.isPending) return null;
+  if (result.isPending) return <AuthScreenLoading />;
 
   // Three outcomes, where there used to be two. A failure alone folded
   // a transient outage into "this invitation link is invalid ... ask an

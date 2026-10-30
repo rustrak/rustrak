@@ -37,6 +37,9 @@ import { type Assignable, issueColumns } from './issue-columns';
 
 const PRIORITIES: IssuePriority[] = ['high', 'medium', 'low'];
 
+/** One empty list, so the table's data is stable while the first page loads. */
+const NO_ISSUES: IssueResponse[] = [];
+
 /** A change to some issues, as the list offers it. */
 type Change =
   | { status: 'resolved' | 'unresolved' | 'ignored' }
@@ -48,7 +51,8 @@ type Pick = () => IssueResponse[];
 
 interface IssuesTableProps {
   projectId: number;
-  page: IssuesListResponse;
+  /** Absent while the first page loads: the table draws skeleton rows. */
+  page?: IssuesListResponse;
   query: DataTableQuery;
   view: IssueView;
   onQueryChange: (
@@ -179,9 +183,9 @@ export function IssuesTable({
   });
 
   const table = useDataTable({
-    data: page.items,
+    data: page?.items ?? NO_ISSUES,
     columns,
-    rowCount: page.total_count,
+    rowCount: page?.total_count ?? 0,
     query,
     onQueryChange,
     getRowId: (issue) => issue.id,
@@ -216,7 +220,7 @@ export function IssuesTable({
 
       <DataTable
         table={table}
-        loading={loading || isPending}
+        loading={!page || loading || isPending}
         className="min-h-0 flex-1"
         onRowClick={(row) =>
           router.push(`/projects/${projectId}/issues/${row.original.id}`)

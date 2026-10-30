@@ -1,5 +1,5 @@
 import { Button, Tag, type TagTone } from '@rustrak/ui';
-import { useQuery } from '@tanstack/react-query';
+import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
@@ -7,7 +7,6 @@ import { alertQueries } from '@/features/alert/api/queries';
 import { alertProviders } from '@/features/alert/model/providers';
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
 import { githubQueries } from '@/features/github/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { cn } from '@/shared/lib/utils';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
@@ -22,20 +21,11 @@ export const Route = createFileRoute('/_authenticated/settings/integrations/')({
   validateSearch: (search: Record<string, unknown>) => ({
     projectId: integrationProjectId(search.projectId),
   }),
-  head: () => {
-    const t = translator('settings');
-    return {
-      meta: [
-        { title: t('integrations.meta.title') },
-        { name: 'description', content: t('integrations.meta.description') },
-      ],
-    };
-  },
-  // Started, not awaited: the catalogue stands without either read, and a
-  // card's status fills in when its read lands or says which one failed.
+  // The catalogue stands without either read, and a card's status fills in
+  // when its read lands or says which one failed.
   loader: ({ context: { queryClient } }) => {
-    void queryClient.prefetchQuery(alertQueries.integrations());
-    void queryClient.prefetchQuery(githubQueries.status());
+    void queryClient.query(alertQueries.integrations()).catch(noop);
+    void queryClient.query(githubQueries.status()).catch(noop);
   },
   component: IntegrationsPage,
 });
@@ -60,6 +50,7 @@ function IntegrationsPage() {
 
   return (
     <>
+      <title>{t('integrations.meta.title')}</title>
       <SettingsHeader
         title={t('integrations.title')}
         description={t('integrations.subtitle')}

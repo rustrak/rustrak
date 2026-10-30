@@ -1,5 +1,10 @@
-import { Button, DeleteIcon, EditIcon, Switch } from '@rustrak/ui';
-import { useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { Button, DeleteIcon, EditIcon, Skeleton, Switch } from '@rustrak/ui';
+import {
+  noop,
+  useMutation,
+  useQuery,
+  useSuspenseQuery,
+} from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
@@ -20,8 +25,8 @@ import { ConfirmDeleteDialog } from '@/features/alert/ui/components/confirm-dele
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
 import { useFrequency } from '@/features/alert/ui/components/rule-list';
 import { RuleSentence } from '@/features/alert/ui/components/rule-sentence';
-import { translator } from '@/shared/i18n/intl';
 import { Link } from '@/shared/ui/components/link';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { Panel, RailBlock } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
@@ -37,28 +42,14 @@ export const Route = createFileRoute(
   '/_authenticated/projects/$id/alerts/$ruleId/',
 )({
   // The rule and its channels are the page; what it has sent arrives after.
-  loader: async ({ context: { queryClient }, params }) => {
+  loader: ({ context: { queryClient }, params }) => {
     const reads = ruleReads(params);
-    void queryClient.prefetchQuery(reads.history);
-    void queryClient.prefetchQuery(reads.days);
-    const [rule] = await Promise.all([
-      queryClient.query({ ...reads.rule, staleTime: 'static' }),
-      queryClient.query({
-        ...alertQueries.integrations(),
-        staleTime: 'static',
-      }),
-    ]);
-    return { rule };
+    void queryClient.query(reads.rule).catch(noop);
+    void queryClient.query(alertQueries.integrations()).catch(noop);
+    void queryClient.query(reads.history).catch(noop);
+    void queryClient.query(reads.days).catch(noop);
   },
-  head: ({ loaderData }) => ({
-    meta: [
-      {
-        title: translator('alerts')('overview.ruleMetaTitle', {
-          name: loaderData?.rule.name ?? '',
-        }),
-      },
-    ],
-  }),
+  pendingComponent: AlertLoading,
   component: AlertPage,
 });
 
@@ -194,6 +185,7 @@ function AlertPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>{t('overview.ruleMetaTitle', { name: rule.name })}</title>
       <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
         <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
           <div className="flex min-w-0 flex-col gap-1.5">
@@ -319,5 +311,71 @@ function AlertPage() {
         onClose={() => setConfirming(false)}
       />
     </div>
+  );
+}
+
+/** The alert's layout, with the rule and what it has sent still to come. */
+function AlertLoading() {
+  const t = useTranslations('alerts');
+  const figures = [
+    t('history.lastTriggered'),
+    t('history.status.sent'),
+    t('history.status.skipped'),
+    t('history.status.failed'),
+  ];
+
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-7 w-64 max-w-full" />
+            <Skeleton className="my-1 h-4 w-96 max-w-full" />
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
+          <main className="min-w-0 flex-1 lg:overflow-y-auto">
+            <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
+              <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border-subtle bg-border-subtle xl:grid-cols-4">
+                {figures.map((label) => (
+                  <div
+                    key={label}
+                    className="flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5"
+                  >
+                    <dt className="truncate text-fg-meta text-meta">{label}</dt>
+                    <dd>
+                      <Skeleton className="my-1 h-5 w-12" />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <Panel title={t('history.last14')} hint={t('history.chartHint')}>
+                <Skeleton className="h-[180px] w-full" />
+              </Panel>
+              <Panel title={t('history.title')} hint={t('history.ruleHint')}>
+                <div className="flex flex-col gap-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              </Panel>
+            </div>
+          </main>
+          <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
+            <RailBlock title={t('detail.setup')}>
+              <div className="flex flex-col gap-2.5">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+            </RailBlock>
+            <RailBlock title={t('table.notifies')}>
+              <Skeleton className="h-3 w-32" />
+            </RailBlock>
+          </aside>
+        </div>
+      </div>
+    </PageLoading>
   );
 }

@@ -1,28 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
+import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { serverVersionQuery } from '@/shared/api/server-version';
 import { APP_VERSION } from '@/shared/config/constants';
-import { translator } from '@/shared/i18n/intl';
 import { describeError } from '@/shared/lib/error-copy';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 
 export const Route = createFileRoute('/_authenticated/settings/instance')({
-  head: () => {
-    const t = translator('settings');
-    return {
-      meta: [
-        { title: `${t('instance.title')} | Rustrak` },
-        { name: 'description', content: t('instance.subtitle') },
-      ],
-    };
-  },
-  // Both are rows the page paints without: started, not awaited.
+  // Both are rows the page paints without: it never suspends on them.
   loader: ({ context: { queryClient } }) => {
-    void queryClient.prefetchQuery(serverVersionQuery());
-    void queryClient.prefetchQuery(projectQueries.rateLimits());
+    void queryClient.query(serverVersionQuery()).catch(noop);
+    void queryClient.query(projectQueries.rateLimits()).catch(noop);
   },
   component: InstancePage,
 });
@@ -51,6 +41,7 @@ function InstancePage() {
 
   return (
     <>
+      <title>{`${t('instance.title')} | Rustrak`}</title>
       <SettingsHeader
         title={t('instance.title')}
         description={t('instance.subtitle')}

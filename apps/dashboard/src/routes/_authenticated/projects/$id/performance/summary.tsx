@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import {
@@ -16,7 +16,6 @@ import {
   LatencyChart,
   SlowestSamples,
 } from '@/features/transaction/ui/components/endpoint-detail';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
 import { Panel, RailBlock } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
@@ -72,30 +71,21 @@ export const Route = createFileRoute(
     if (!search.name) throw notFound();
   },
   loaderDeps: ({ search }) => search,
-  // Three panels, each started here and landing on its own.
+  // Three panels, each started here and landing on its own. Nothing
+  // suspends: the header is the address's, and each panel draws its own
+  // placeholder, so the page needs no skeleton of its own.
   loader: ({ context: { queryClient }, params, deps }) => {
     const reads = endpointReads(Number.parseInt(params.id, 10), deps);
-    void queryClient.prefetchQuery(reads.stats);
-    void queryClient.prefetchQuery(reads.trend);
-    void queryClient.prefetchQuery(reads.samples);
-  },
-  head: ({ match }) => {
-    const t = translator('projectPages');
-    return {
-      meta: [
-        {
-          title: t('summary.meta.title', {
-            name: match.search.name ?? t('summary.meta.fallbackName'),
-          }),
-        },
-      ],
-    };
+    void queryClient.query(reads.stats).catch(noop);
+    void queryClient.query(reads.trend).catch(noop);
+    void queryClient.query(reads.samples).catch(noop);
   },
   component: EndpointPage,
 });
 
 function EndpointPage() {
   const t = useTranslations('performance.detail');
+  const tPages = useTranslations('projectPages');
   const { id } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -112,6 +102,11 @@ function EndpointPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>
+        {tPages('summary.meta.title', {
+          name: search.name ?? tPages('summary.meta.fallbackName'),
+        })}
+      </title>
       <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
         <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
           <div className="flex min-w-0 flex-col gap-1">

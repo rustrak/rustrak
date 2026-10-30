@@ -3,7 +3,7 @@ import type {
   AlertRuleResponse,
   AlertType,
 } from '@rustrak/client';
-import { cn, focusRingInset, Switch, Text } from '@rustrak/ui';
+import { cn, focusRingInset, Skeleton, Switch, Text } from '@rustrak/ui';
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import {
@@ -60,7 +60,8 @@ export function RulesTable({
   onToggle,
 }: {
   projectId: number;
-  rules: AlertRuleResponse[];
+  /** Absent while the rules load: the table draws skeleton rows. */
+  rules?: AlertRuleResponse[];
   integrations: AlertIntegration[];
   busy: boolean;
   onToggle: (rule: AlertRuleResponse, enabled: boolean) => void;
@@ -88,7 +89,8 @@ export function RulesTable({
         <span className="sr-only">{t('table.active')}</span>
       </div>
       <ul className="min-h-0 flex-1 divide-y divide-border-divider overflow-y-auto">
-        {rules.map((rule) => {
+        {rules ? null : <RuleRowsSkeleton />}
+        {rules?.map((rule) => {
           const shape = ruleShape(rule, integrations);
           const channels = integrations.filter((i) =>
             rule.integration_ids.includes(i.id),
@@ -169,6 +171,31 @@ export function RulesTable({
       </ul>
     </div>
   );
+}
+
+/** Rows in the table's columns, at the size of what replaces them. */
+function RuleRowsSkeleton() {
+  return Array.from({ length: 5 }, (_, row) => (
+    <li
+      // Placeholder rows have no identity beyond their position.
+      // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+      key={row}
+      className={cn(
+        'grid grid-cols-1 gap-x-4 gap-y-1.5 py-3 ps-4 pe-16 lg:items-center lg:pe-4',
+        COLUMNS,
+      )}
+    >
+      <span className="flex items-center gap-3">
+        <Skeleton className="h-8 w-0.75" />
+        <Skeleton className="h-4 w-40" />
+      </span>
+      <Skeleton className="h-3 w-24" />
+      <Skeleton className="h-3 w-32" />
+      <Skeleton className="h-3 w-28" />
+      <Skeleton className="h-3 w-20" />
+      <Skeleton className="h-3 w-16 lg:ms-auto" />
+    </li>
+  ));
 }
 
 /** Ways to start, for a project with no alert yet: one per trigger. */

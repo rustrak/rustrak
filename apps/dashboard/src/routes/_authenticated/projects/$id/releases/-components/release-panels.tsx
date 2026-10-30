@@ -12,6 +12,7 @@ import {
   CopyIcon,
   cn,
   ExternalLinkIcon,
+  Skeleton,
   Tag,
 } from '@rustrak/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -47,9 +48,29 @@ export function ReleaseHeader({
   release,
   scope,
 }: {
-  release: ReleaseSummary;
+  /** Absent while it loads: its lines are drawn as skeleton bars. */
+  release?: ReleaseSummary;
   scope: ReactNode;
 }) {
+  return (
+    <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
+      <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
+        {release ? (
+          <ReleaseTitle release={release} />
+        ) : (
+          <div className="flex min-w-0 flex-col gap-1">
+            <Skeleton className="my-0.5 h-5 w-20" />
+            <Skeleton className="my-1 h-7 w-56" />
+            <Skeleton className="my-0.5 h-4 w-40" />
+          </div>
+        )}
+        {scope}
+      </div>
+    </header>
+  );
+}
+
+function ReleaseTitle({ release }: { release: ReleaseSummary }) {
   const t = useTranslations('releases.detail');
   const tReleases = useTranslations('releases');
   const format = useFormatter();
@@ -64,56 +85,48 @@ export function ReleaseHeader({
   };
 
   return (
-    <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
-      <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            {parts.package ? (
-              <span className="font-mono text-fg-meta text-mono-sm">
-                {parts.package}
-              </span>
-            ) : null}
-            <Tag
-              variant="soft"
-              tone={release.date_released ? 'brand' : 'neutral'}
-            >
-              {release.date_released
-                ? tReleases('released')
-                : tReleases('unreleased')}
-            </Tag>
-          </div>
-          <div className="flex min-w-0 items-center gap-1">
-            <h1 className="truncate font-mono text-fg text-page-title">
-              {parts.version}
-            </h1>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={CopyIcon}
-              aria-label={t('copy')}
-              onClick={copy}
-            />
-          </div>
-          <p className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-0.5 text-fg-subtle text-meta">
-            <span title={format.dateTime(created, 'dateTime')}>
-              {t('created', { when: format.relativeTime(created) })}
-            </span>
-            {release.date_released ? (
-              <span>
-                {t('releasedOn', {
-                  when: format.dateTime(
-                    new Date(release.date_released),
-                    'dateTime',
-                  ),
-                })}
-              </span>
-            ) : null}
-            {release.ref ? <Commit release={release} /> : null}
-          </p>
-        </div>
-        {scope}
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        {parts.package ? (
+          <span className="font-mono text-fg-meta text-mono-sm">
+            {parts.package}
+          </span>
+        ) : null}
+        <Tag variant="soft" tone={release.date_released ? 'brand' : 'neutral'}>
+          {release.date_released
+            ? tReleases('released')
+            : tReleases('unreleased')}
+        </Tag>
       </div>
-    </header>
+      <div className="flex min-w-0 items-center gap-1">
+        <h1 className="truncate font-mono text-fg text-page-title">
+          {parts.version}
+        </h1>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={CopyIcon}
+          aria-label={t('copy')}
+          onClick={copy}
+        />
+      </div>
+      <p className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-0.5 text-fg-subtle text-meta">
+        <span title={format.dateTime(created, 'dateTime')}>
+          {t('created', { when: format.relativeTime(created) })}
+        </span>
+        {release.date_released ? (
+          <span>
+            {t('releasedOn', {
+              when: format.dateTime(
+                new Date(release.date_released),
+                'dateTime',
+              ),
+            })}
+          </span>
+        ) : null}
+        {release.ref ? <Commit release={release} /> : null}
+      </p>
+    </div>
   );
 }
 

@@ -1,6 +1,13 @@
 import type { TransactionDetailResponse } from '@rustrak/client';
-import { CopyIcon, cn, formatSpanDuration, Tag, Waterfall } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import {
+  CopyIcon,
+  cn,
+  formatSpanDuration,
+  Skeleton,
+  Tag,
+  Waterfall,
+} from '@rustrak/ui';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
@@ -14,35 +21,21 @@ import {
   waterfallSpans,
 } from '@/features/transaction/lib/transaction-payload';
 import { endpointHref } from '@/features/transaction/model/endpoints';
-import { translator } from '@/shared/i18n/intl';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/performance/$txnId',
 )({
   // The project is the layout's; the transaction is the page.
-  loader: ({ context: { queryClient }, params }) =>
-    queryClient.query({
-      ...transactionQueries.detail(
-        Number.parseInt(params.id, 10),
-        params.txnId,
-      ),
-      staleTime: 'static',
-    }),
-  head: ({ loaderData }) => {
-    const t = translator('projectPages');
-    return {
-      meta: [
-        {
-          title: loaderData
-            ? t('transaction.meta.title', {
-                name: loaderData.transaction_name,
-              })
-            : t('transaction.meta.fallbackTitle'),
-        },
-      ],
-    };
+  loader: ({ context: { queryClient }, params }) => {
+    void queryClient
+      .query(
+        transactionQueries.detail(Number.parseInt(params.id, 10), params.txnId),
+      )
+      .catch(noop);
   },
+  pendingComponent: TransactionLoading,
   component: TransactionPage,
 });
 
@@ -60,6 +53,7 @@ const RATING_TEXT = {
  */
 function TransactionPage() {
   const t = useTranslations('performance.transaction');
+  const tPages = useTranslations('projectPages');
   const { id, txnId } = Route.useParams();
   const projectId = Number.parseInt(id, 10);
   const { data: txn } = useSuspenseQuery(
@@ -84,6 +78,9 @@ function TransactionPage() {
 
   return (
     <div className="flex h-full flex-col max-lg:overflow-y-auto">
+      <title>
+        {tPages('transaction.meta.title', { name: txn.transaction_name })}
+      </title>
       <TransactionHeader
         txn={txn}
         name={name}
@@ -104,6 +101,40 @@ function TransactionPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** The transaction's header, trace and rail, with what they hold to come. */
+function TransactionLoading() {
+  const t = useTranslations('performance.transaction');
+  const tPages = useTranslations('projectPages');
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col max-lg:overflow-y-auto">
+        <title>{tPages('transaction.meta.fallbackTitle')}</title>
+        <header className="shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-8 w-96 max-w-full" />
+            <Skeleton className="mt-1 h-4 w-64" />
+          </div>
+        </header>
+        <div className="flex min-h-0 flex-1 max-lg:flex-col">
+          <main className="min-w-0 flex-1 lg:overflow-y-auto">
+            <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
+              <section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border-subtle bg-surface px-5 pt-4 pb-5">
+                <h2 className="text-card-title text-fg">{t('trace')}</h2>
+                <Skeleton className="h-64 w-full" />
+              </section>
+            </div>
+          </main>
+          <aside className="flex flex-col gap-3 border-border-divider bg-panel px-5 py-4 max-lg:border-t lg:w-80 lg:shrink-0 lg:border-l xl:w-88">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-32 w-full" />
+          </aside>
+        </div>
+      </div>
+    </PageLoading>
   );
 }
 

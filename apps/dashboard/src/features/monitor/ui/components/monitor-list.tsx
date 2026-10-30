@@ -1,5 +1,5 @@
 import type { MonitorEnvironmentStats, MonitorResponse } from '@rustrak/client';
-import { cn, focusRingInset, MuteIcon, Text } from '@rustrak/ui';
+import { cn, focusRingInset, MuteIcon, Skeleton, Text } from '@rustrak/ui';
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { formatRunDuration } from '@/features/monitor/lib/duration';
@@ -27,16 +27,26 @@ export function MonitorList({
   projectId,
   monitors,
   stats,
+  loading,
 }: {
   projectId: number;
-  monitors: MonitorResponse[];
-  stats: MonitorEnvironmentStats[];
+  /** Absent while the monitors load: the list draws skeleton rows. */
+  monitors?: MonitorResponse[];
+  stats?: MonitorEnvironmentStats[];
+  /** The rows on screen are for an address the list is leaving. */
+  loading?: boolean;
 }) {
   const t = useTranslations('crons');
-  const axis = stats[0]?.buckets ?? [];
+  const axis = stats?.[0]?.buckets ?? [];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel">
+    <div
+      aria-busy={loading}
+      className={cn(
+        'flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel',
+        loading && monitors && 'opacity-60',
+      )}
+    >
       <div
         className={cn(
           'hidden shrink-0 items-end gap-4 border-border-divider border-b px-4 py-2.5 font-mono text-column text-fg-meta uppercase md:grid',
@@ -50,7 +60,9 @@ export function MonitorList({
         <span className="truncate text-right">{t('columns.nextCheckIn')}</span>
       </div>
       <ul className="min-h-0 flex-1 divide-y divide-border-divider overflow-y-auto">
-        {monitors.length === 0 ? (
+        {!monitors ? (
+          <MonitorRowsSkeleton />
+        ) : monitors.length === 0 ? (
           <li className="px-4 py-16 text-center">
             <Text variant="meta" tone="subtle">
               {t('noMatch')}
@@ -62,13 +74,42 @@ export function MonitorList({
               key={monitor.id}
               projectId={projectId}
               monitor={monitor}
-              stats={stats.filter((s) => s.monitor_slug === monitor.slug)}
+              stats={(stats ?? []).filter(
+                (s) => s.monitor_slug === monitor.slug,
+              )}
             />
           ))
         )}
       </ul>
     </div>
   );
+}
+
+/** Rows in the list's columns, at the size of what replaces them. */
+function MonitorRowsSkeleton() {
+  return Array.from({ length: 5 }, (_, row) => (
+    <li
+      // Placeholder rows have no identity beyond their position.
+      // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+      key={row}
+      className={cn(
+        'grid grid-cols-1 gap-x-4 gap-y-2.5 px-4 py-3 md:items-center',
+        COLUMNS,
+      )}
+    >
+      <span className="flex items-center gap-3">
+        <Skeleton className="h-8 w-0.75" />
+        <span className="flex flex-col gap-1.5">
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-3 w-24" />
+        </span>
+      </span>
+      <Skeleton className="hidden h-3 w-28 xl:block" />
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="hidden h-3 w-16 justify-self-end md:block" />
+      <Skeleton className="hidden h-3 w-16 justify-self-end md:block" />
+    </li>
+  ));
 }
 
 function MonitorRow({

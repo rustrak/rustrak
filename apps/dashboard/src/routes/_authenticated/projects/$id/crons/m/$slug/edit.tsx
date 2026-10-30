@@ -1,31 +1,25 @@
-import { PageHeader } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { PageHeader, Skeleton } from '@rustrak/ui';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { monitorQueries } from '@/features/monitor/api/queries';
 import { monitorHref } from '@/features/monitor/lib/href';
-import { MonitorForm } from '@/features/monitor/ui/components/monitor-form';
-import { translator } from '@/shared/i18n/intl';
+import {
+  MonitorForm,
+  MonitorFormSkeleton,
+} from '@/features/monitor/ui/components/monitor-form';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/crons/m/$slug/edit',
 )({
-  loader: async ({ context: { queryClient }, params }) => ({
-    monitor: await queryClient.query({
-      ...monitorQueries.detail(Number.parseInt(params.id, 10), params.slug),
-      staleTime: 'static',
-    }),
-  }),
-  head: ({ loaderData }) => ({
-    meta: [
-      {
-        title: translator('crons')('meta.editTitle', {
-          monitor: loaderData?.monitor.name ?? '',
-        }),
-      },
-    ],
-  }),
+  loader: ({ context: { queryClient }, params }) => {
+    void queryClient
+      .query(monitorQueries.detail(Number.parseInt(params.id, 10), params.slug))
+      .catch(noop);
+  },
+  pendingComponent: EditMonitorLoading,
   component: EditMonitorPage,
 });
 
@@ -43,6 +37,7 @@ function EditMonitorPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>{t('meta.editTitle', { monitor: monitor.name })}</title>
       <PageHeader
         title={t('form.editTitle', { monitor: monitor.name })}
         summary={[t('form.editDescription')]}
@@ -53,5 +48,24 @@ function EditMonitorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function EditMonitorLoading() {
+  const t = useTranslations('crons');
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <PageHeader
+          title={<Skeleton className="h-7 w-64 max-w-full" />}
+          summary={[t('form.editDescription')]}
+        />
+        <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
+          <div className="mx-auto max-w-5xl">
+            <MonitorFormSkeleton />
+          </div>
+        </div>
+      </div>
+    </PageLoading>
   );
 }

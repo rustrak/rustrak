@@ -1,0 +1,90 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import {
+  Cover,
+  Do,
+  DoDont,
+  DocPage,
+  Dont,
+  Guarantee,
+  Guarantees,
+  Place,
+  Rule,
+  Section,
+  Stage,
+  UsedIn,
+} from '../../docs/blocks';
+import { Skeleton } from './skeleton';
+import * as SkeletonStories from './skeleton.stories';
+
+<Meta of={SkeletonStories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="Skeleton"
+  lede="The place of something still loading, at the size it will arrive at."
+  note="Two shapes. The size is always the caller's, because it has to match what replaces it."
+/>
+
+<Section
+  n="01"
+  title="Drawn at the size of what replaces it"
+  intro="A bar the height of a title stands for the title. When the title lands, nothing on the page moves."
+>
+
+<Stage label="a title, a line, an avatar" stack>
+  <Skeleton className="h-7 w-48" />
+  <Skeleton className="h-4 w-72" />
+  <Skeleton shape="circle" className="size-8" />
+</Stage>
+
+<Rule>
+  A skeleton that is not the size of its content is a layout shift with a
+  delay. Measure the real thing and copy its height.
+</Rule>
+
+</Section>
+
+<Section n="02" title="Guidelines">
+
+<DoDont>
+  <Do example={<div className="flex w-56 flex-col gap-2"><Skeleton className="h-5 w-32" /><Skeleton className="h-4 w-full" /></div>}>
+    Skeleton only the data. A heading the page always shows is rendered for
+    real, so the frame is there from the first frame.
+  </Do>
+  <Dont example={<div className="flex w-56 flex-col gap-2"><Skeleton className="h-24 w-full" /></div>}>
+    One block for the whole page. It says "loading" and nothing about what is
+    coming.
+  </Dont>
+</DoDont>
+
+</Section>
+
+<Section n="03" title="Where it is used">
+
+<UsedIn>
+  <Place at="Every dashboard route">Its pending screen, shown while the route's reads are in flight.</Place>
+  <Place at="Panels">A chart or a rail that arrives after the page.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="04" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="ItIsHiddenFromAssistiveTechnology">It is hidden from assistive technology; the region holding it announces the wait.</Guarantee>
+  <Guarantee>With reduced motion it holds still and stays.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="05" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

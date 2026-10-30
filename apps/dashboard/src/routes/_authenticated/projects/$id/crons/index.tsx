@@ -1,4 +1,8 @@
-import type { MonitorResponse } from '@rustrak/client';
+import type {
+  MonitorEnvironmentStats,
+  MonitorResponse,
+  ProjectResponse,
+} from '@rustrak/client';
 import {
   Button,
   NewIcon,
@@ -6,9 +10,11 @@ import {
   PageHeader,
   QueryBar,
   type QueryField,
+  Skeleton,
 } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { monitorQueries } from '@/features/monitor/api/queries';
 import {
@@ -23,9 +29,9 @@ import { CronsEmpty } from '@/features/monitor/ui/components/crons-empty';
 import { MonitorList } from '@/features/monitor/ui/components/monitor-list';
 import { TimelinePeriodFilter } from '@/features/monitor/ui/components/timeline-period';
 import { projectQueries } from '@/features/project/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 
 const STATES = ['failing', 'ok', 'waiting', 'muted'] as const;
 type MonitorState = (typeof STATES)[number];
@@ -63,53 +69,34 @@ export const Route = createFileRoute('/_authenticated/projects/$id/crons/')({
   loaderDeps: ({ search }) => ({ period: search.period }),
   // The stats are the strips every row is drawn with, so they are the page
   // as much as the list is.
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
-    const [project] = await Promise.all([
-      queryClient.query({
-        ...projectQueries.detail(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({
-        ...monitorQueries.list(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({
-        ...monitorQueries.stats(projectId, {
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    void queryClient.query(monitorQueries.list(projectId)).catch(noop);
+    void queryClient
+      .query(
+        monitorQueries.stats(projectId, {
           period: deps.period ?? DEFAULT_PERIOD,
         }),
-        staleTime: 'static',
-      }),
-    ]);
-    return { project };
+      )
+      .catch(noop);
   },
-  head: ({ loaderData }) => {
-    const t = translator('crons');
-    const project = loaderData?.project.name ?? '';
-    return {
-      meta: [
-        { title: t('meta.listTitle', { project }) },
-        {
-          name: 'description',
-          content: t('meta.listDescription', { project }),
-        },
-      ],
-    };
-  },
+  pendingComponent: CronsLoading,
   component: CronsPage,
 });
 
 /** How often an empty page asks again, so the first check-in shows itself. */
 const EMPTY_POLL_MS = 5_000;
 
+/**
+ * The list follows the address a beat behind: a new search, state or window
+ * keeps the rows on screen, dimmed, until the next strips are in.
+ */
 function CronsPage() {
-  const t = useTranslations('crons');
   const { id } = Route.useParams();
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
+  const live = Route.useSearch();
+  const search = useDeferredValue(live);
   const projectId = Number.parseInt(id, 10);
-  const period = search.period ?? DEFAULT_PERIOD;
-  const newHref = `/projects/${projectId}/crons/new`;
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   // The snippet creates the monitor on its first run, so an empty list asks
   // again until one appears and the list replaces the setup screen.
@@ -121,11 +108,12 @@ function CronsPage() {
   // Asks again with the list, or the monitor the first check-in created
   // would show "waiting" next to the strip that check-in drew.
   const { data: stats } = useSuspenseQuery({
-    ...monitorQueries.stats(projectId, { period }),
+    ...monitorQueries.stats(projectId, {
+      period: search.period ?? DEFAULT_PERIOD,
+    }),
     refetchInterval: (query) =>
       query.state.data?.length === 0 ? EMPTY_POLL_MS : false,
   });
-  const failing = monitors.filter((m) => monitorHealth(m) === 'failing').length;
   const shown = monitors
     .filter((m) => matches(m, search.q ?? '', search.state))
     .sort(
@@ -134,6 +122,49 @@ function CronsPage() {
         a.name.localeCompare(b.name),
     );
 
+  return (
+    <CronsScreen
+      project={project}
+      monitors={monitors}
+      shown={shown}
+      stats={stats}
+      loading={search !== live}
+    />
+  );
+}
+
+/** The same screen, with the project's monitors still to come. */
+function CronsLoading() {
+  return (
+    <PageLoading>
+      <CronsScreen loading />
+    </PageLoading>
+  );
+}
+
+function CronsScreen({
+  project,
+  monitors,
+  shown,
+  stats,
+  loading,
+}: {
+  project?: ProjectResponse;
+  /** Every monitor, for the counts; `shown` is what the filters keep. */
+  monitors?: MonitorResponse[];
+  shown?: MonitorResponse[];
+  stats?: MonitorEnvironmentStats[];
+  loading: boolean;
+}) {
+  const t = useTranslations('crons');
+  const { id } = Route.useParams();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const projectId = Number.parseInt(id, 10);
+  const period = search.period ?? DEFAULT_PERIOD;
+  const newHref = `/projects/${projectId}/crons/new`;
+  const failing =
+    monitors?.filter((m) => monitorHealth(m) === 'failing').length ?? 0;
   const fields: QueryField[] = [
     {
       key: 'state',
@@ -149,19 +180,26 @@ function CronsPage() {
 
   return (
     <div className="flex h-full flex-col">
+      {project ? (
+        <title>{t('meta.listTitle', { project: project.name })}</title>
+      ) : null}
       <PageHeader
         title={t('title')}
-        summary={[
-          project.name,
-          t('count', { count: monitors.length }),
-          failing > 0 ? (
-            <span className="text-sev-error-fg">
-              {t('failingCount', { count: failing })}
-            </span>
-          ) : null,
-        ]}
+        summary={
+          project && monitors
+            ? [
+                project.name,
+                t('count', { count: monitors.length }),
+                failing > 0 ? (
+                  <span className="text-sev-error-fg">
+                    {t('failingCount', { count: failing })}
+                  </span>
+                ) : null,
+              ]
+            : [<Skeleton key="summary" className="h-4 w-56" />]
+        }
         actions={
-          monitors.length > 0 ? (
+          monitors && monitors.length > 0 ? (
             <Button
               variant="primary"
               icon={NewIcon}
@@ -173,7 +211,7 @@ function CronsPage() {
         }
       />
 
-      {monitors.length === 0 ? (
+      {project && monitors?.length === 0 ? (
         <Page>
           <CronsEmpty dsn={project.dsn} newHref={newHref} />
         </Page>
@@ -215,7 +253,12 @@ function CronsPage() {
               }
             />
           </div>
-          <MonitorList projectId={projectId} monitors={shown} stats={stats} />
+          <MonitorList
+            projectId={projectId}
+            monitors={shown}
+            stats={stats}
+            loading={loading}
+          />
         </Page>
       )}
     </div>

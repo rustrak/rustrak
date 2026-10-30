@@ -1,15 +1,18 @@
+import type { IssuesListResponse, ProjectResponse } from '@rustrak/client';
 import {
   type DataTableQuery,
   Page,
   PageHeader,
   parseTableQuery,
+  Skeleton,
   serializeTableQuery,
   Tab,
   TabList,
   Tabs,
 } from '@rustrak/ui';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useRouterState } from '@tanstack/react-router';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute } from '@tanstack/react-router';
+import { useDeferredValue } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { issueQueries } from '@/features/issue/api/queries';
 import { assignable } from '@/features/issue/model/assignable';
@@ -23,8 +26,8 @@ import {
 import { IssuesTable } from '@/features/issue/ui/components/issues-table/issues-table';
 import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 
 const PAGE_SIZE = 50;
 
@@ -91,47 +94,57 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
     return toSearch(withServerQuery(query, PAGE_SIZE), view);
   },
   loaderDeps: ({ search }) => search,
-  // Who can be assigned, and what the bar can suggest, are only started:
-  // none of it is the list itself, so the list does not wait for it.
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
-    void queryClient.prefetchQuery(userQueries.members(projectId));
-    void queryClient.prefetchQuery(projectQueries.environments(projectId));
-    void queryClient.prefetchQuery(projectQueries.releaseVersions(projectId));
-    const [project] = await Promise.all([
-      queryClient.query({
-        ...projectQueries.detail(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({
-        ...issuesList(projectId, deps),
-        staleTime: 'static',
-      }),
-    ]);
-    return { project };
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    void queryClient.query(issuesList(projectId, deps)).catch(noop);
+    void queryClient.query(userQueries.members(projectId)).catch(noop);
+    void queryClient.query(projectQueries.environments(projectId)).catch(noop);
+    void queryClient
+      .query(projectQueries.releaseVersions(projectId))
+      .catch(noop);
   },
-  head: ({ loaderData }) => {
-    const t = translator('projectPages');
-
-    if (!loaderData) {
-      return { meta: [{ title: t('projectNotFound') }] };
-    }
-
-    const { project } = loaderData;
-    return {
-      meta: [
-        { title: t('projectTitle', { project: project.name }) },
-        {
-          name: 'description',
-          content: t('issues.meta.description', { project: project.name }),
-        },
-      ],
-    };
-  },
+  pendingComponent: IssuesLoading,
   component: IssuesPage,
 });
 
+/**
+ * The list and the project it belongs to are what the page waits for. The
+ * page itself follows the address a beat behind: a new filter or page keeps
+ * the rows on screen, dimmed, until the next page is in, instead of
+ * swapping the whole list for a skeleton on every keystroke.
+ */
 function IssuesPage() {
+  const { id } = Route.useParams();
+  const projectId = Number.parseInt(id, 10);
+  const live = Route.useSearch();
+  const search = useDeferredValue(live);
+  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
+  const { data: page } = useSuspenseQuery(issuesList(projectId, search));
+
+  return (
+    <IssuesScreen project={project} page={page} loading={search !== live} />
+  );
+}
+
+/** The same screen, with the project's facts and the rows still to come. */
+function IssuesLoading() {
+  return (
+    <PageLoading>
+      <IssuesScreen loading />
+    </PageLoading>
+  );
+}
+
+function IssuesScreen({
+  project,
+  page,
+  loading,
+}: {
+  project?: ProjectResponse;
+  page?: IssuesListResponse;
+  loading: boolean;
+}) {
   const t = useTranslations('projectPages');
   const tIssues = useTranslations('issues');
   const format = useFormatter();
@@ -139,13 +152,10 @@ function IssuesPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const context = Route.useRouteContext();
-  const loading = useRouterState({ select: (state) => state.isLoading });
   const projectId = Number.parseInt(id, 10);
   const me = context.state === 'authenticated' ? context.user.id : 0;
   const view = search.view ?? 'open';
   const query = tableQuery(search);
-  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
-  const { data: page } = useSuspenseQuery(issuesList(projectId, search));
   // Suggestions only: without them the list still works.
   const members = useQuery(userQueries.members(projectId)).data ?? [];
   const environments =
@@ -170,16 +180,23 @@ function IssuesPage() {
 
   return (
     <div className="flex h-full flex-col">
+      {project ? (
+        <title>{t('projectTitle', { project: project.name })}</title>
+      ) : null}
       <PageHeader
         title={t('issues.title')}
         // What the page is, then how much of it there is.
-        summary={[
-          t('issues.subtitle', { project: project.name }),
-          tIssues('table.count', {
-            count: page.total_count,
-            display: format.number(page.total_count),
-          }),
-        ]}
+        summary={
+          project && page
+            ? [
+                t('issues.subtitle', { project: project.name }),
+                tIssues('table.count', {
+                  count: page.total_count,
+                  display: format.number(page.total_count),
+                }),
+              ]
+            : [<Skeleton key="summary" className="h-4 w-56" />]
+        }
         tabs={
           <Tabs
             value={view}

@@ -1,5 +1,4 @@
 import type { Formats, Messages } from 'use-intl';
-import { createTranslator } from 'use-intl';
 import type { CurrentUser } from '@/shared/api/session';
 import { session } from '@/shared/api/session';
 import { formatsFor, resolveLocale, resolveTimeZone } from './config';
@@ -153,23 +152,3 @@ export const intl = createIntlStore({
   browserLanguages,
   loadMessages,
 });
-
-/**
- * A translator outside React.
- *
- * Route titles are the whole reason this exists: TanStack resolves `head`
- * before a component tree exists, so it cannot call `useTranslations`. It
- * reads the same snapshot the provider renders from, so a title and the page
- * under it can never be in different languages.
- */
-export function translator(namespace?: string) {
-  const { locale, messages, timeZone, formats, now } = intl.snapshot();
-  return createTranslator({
-    locale,
-    messages,
-    timeZone,
-    formats,
-    now,
-    namespace,
-  });
-}

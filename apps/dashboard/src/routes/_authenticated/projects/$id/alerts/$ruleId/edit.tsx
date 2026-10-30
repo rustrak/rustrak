@@ -1,12 +1,15 @@
-import { PageHeader } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { PageHeader, Skeleton } from '@rustrak/ui';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { alertQueries } from '@/features/alert/api/queries';
 import { alertHref } from '@/features/alert/model/rule-summary';
-import { RuleEditor } from '@/features/alert/ui/components/rule-editor/rule-editor';
+import {
+  RuleEditor,
+  RuleEditorSkeleton,
+} from '@/features/alert/ui/components/rule-editor/rule-editor';
 import { projectQueries } from '@/features/project/api/queries';
-import { translator } from '@/shared/i18n/intl';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
@@ -14,33 +17,15 @@ import { useRouter } from '@/shared/ui/hooks/use-router';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/alerts/$ruleId/edit',
 )({
-  loader: async ({ context: { queryClient }, params }) => {
+  loader: ({ context: { queryClient }, params }) => {
     const projectId = Number.parseInt(params.id, 10);
-    const [rule] = await Promise.all([
-      queryClient.query({
-        ...alertQueries.rule(projectId, Number.parseInt(params.ruleId, 10)),
-        staleTime: 'static',
-      }),
-      queryClient.query({
-        ...alertQueries.integrations(),
-        staleTime: 'static',
-      }),
-      queryClient.query({
-        ...projectQueries.environments(projectId),
-        staleTime: 'static',
-      }),
-    ]);
-    return { rule };
+    void queryClient
+      .query(alertQueries.rule(projectId, Number.parseInt(params.ruleId, 10)))
+      .catch(noop);
+    void queryClient.query(alertQueries.integrations()).catch(noop);
+    void queryClient.query(projectQueries.environments(projectId)).catch(noop);
   },
-  head: ({ loaderData }) => ({
-    meta: [
-      {
-        title: translator('alerts')('overview.editMetaTitle', {
-          name: loaderData?.rule.name ?? '',
-        }),
-      },
-    ],
-  }),
+  pendingComponent: EditAlertLoading,
   component: EditAlertPage,
 });
 
@@ -63,6 +48,7 @@ function EditAlertPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>{t('overview.editMetaTitle', { name: rule.name })}</title>
       <PageHeader title={t('overview.editTitle', { name: rule.name })} />
       <RuleEditor
         projectId={projectId}
@@ -74,5 +60,16 @@ function EditAlertPage() {
         onCancel={() => router.push(alertHref(projectId, rule.id))}
       />
     </div>
+  );
+}
+
+function EditAlertLoading() {
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <PageHeader title={<Skeleton className="h-7 w-64" />} />
+        <RuleEditorSkeleton />
+      </div>
+    </PageLoading>
   );
 }

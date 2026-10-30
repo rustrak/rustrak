@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Skeleton } from '@rustrak/ui';
 import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -51,9 +52,7 @@ const JsonTemplateEditor = lazy(() =>
 
 /** Same height and frame as the editor, so the page does not jump when the chunk lands. */
 function EditorSkeleton() {
-  return (
-    <div className="h-[26rem] animate-pulse rounded-md border border-input bg-muted/30" />
-  );
+  return <Skeleton className="h-[26rem] rounded-md border border-input" />;
 }
 
 export function CustomWebhookForm({

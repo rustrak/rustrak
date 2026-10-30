@@ -6,15 +6,17 @@ import {
   EmptyIcon,
   Page,
   PageHeader,
+  Skeleton,
   Text,
 } from '@rustrak/ui';
 import {
+  noop,
   type UseQueryResult,
   useQuery,
   useSuspenseQuery,
 } from '@tanstack/react-query';
-import { createFileRoute, useRouterState } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import { createFileRoute } from '@tanstack/react-router';
+import { type ReactNode, useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { useShortcuts } from '@/features/issue/ui/components/issue-actions';
 import { logQueries } from '@/features/log/api/queries';
@@ -34,12 +36,12 @@ import {
 } from '@/features/release/model/session-health';
 import { PeriodFilter } from '@/features/release/ui/components/period-filter';
 import type { ApiError } from '@/shared/api/query';
-import { translator } from '@/shared/i18n/intl';
 import {
   searchOneOf,
   searchPage,
   searchString,
 } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 
 const PAGE_SIZE = 50;
 
@@ -73,6 +75,16 @@ function logReads(projectId: number, search: LogsReadSearch) {
   };
 }
 
+/** A new search starts over at the newest line, with nothing open. */
+const narrowed =
+  (next: LogSearchValue & { period?: PeriodChoice }) =>
+  <S extends object>(prev: S) => ({
+    ...prev,
+    ...next,
+    page: undefined,
+    selected: undefined,
+  });
+
 /**
  * Logs: the lines the SDKs send, newest first.
  *
@@ -98,49 +110,36 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
     period: search.period,
     page: search.page,
   }),
-  // The lines are awaited, so the router keeps the previous page on screen
-  // while the next loads. The chart is only started: a volume that fails
-  // leaves the lines readable.
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  // The page waits for the project and the lines. The chart is read on its
+  // own: a volume that fails leaves the lines readable.
+  loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     const reads = logReads(projectId, deps);
-    void queryClient.prefetchQuery(reads.volume);
-    const [project] = await Promise.all([
-      queryClient.query({
-        ...projectQueries.detail(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({ ...reads.list, staleTime: 'static' }),
-    ]);
-    return { project };
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    void queryClient.query(reads.list).catch(noop);
+    void queryClient.query(reads.volume).catch(noop);
   },
-  head: ({ loaderData }) => {
-    const t = translator('projectPages');
-
-    if (!loaderData) {
-      return { meta: [{ title: t('projectNotFound') }] };
-    }
-
-    const { project } = loaderData;
-    return {
-      meta: [
-        { title: t('logs.meta.title', { project: project.name }) },
-        {
-          name: 'description',
-          content: t('logs.meta.description', { project: project.name }),
-        },
-      ],
-    };
-  },
+  pendingComponent: LogsLoading,
   component: LogsPage,
 });
 
+/**
+ * The lines follow the address a beat behind: a new search or page keeps the
+ * current lines on screen, dimmed, until the next ones are in. What is
+ * deferred is the loader's deps, not the whole search, so opening a line
+ * (`selected`) never dims the list. The controls and the open line read the
+ * live address.
+ */
 function LogsPage() {
   const t = useTranslations('projectPages');
   const tLogs = useTranslations('logs');
-  const search = Route.useSearch();
+  const live = Route.useSearch();
+  // The router keeps the deps object while they are equal, so the two only
+  // differ while a new read is on its way.
+  const liveDeps = Route.useLoaderDeps();
+  const search = useDeferredValue(liveDeps);
   const navigate = Route.useNavigate();
-  const isPending = useRouterState({ select: (s) => s.status === 'pending' });
+  const isPending = search !== liveDeps;
   const { id } = Route.useParams();
   const projectId = Number.parseInt(id, 10);
   const period = search.period ?? DEFAULT_PERIOD;
@@ -151,22 +150,11 @@ function LogsPage() {
   const volume = useQuery(reads.volume);
 
   const items = logs.items;
-  const selection = useSelectedLog(projectId, items, search.selected);
+  const selection = useSelectedLog(projectId, items, live.selected);
   const current = selection.log;
 
   const select = (selected: string | undefined) =>
     navigate({ search: (prev) => ({ ...prev, selected }), replace: true });
-
-  // A new search starts over at the newest line, with nothing open.
-  const narrow = (next: LogSearchValue & { period?: PeriodChoice }) =>
-    navigate({
-      search: (prev) => ({
-        ...prev,
-        ...next,
-        page: undefined,
-        selected: undefined,
-      }),
-    });
 
   const step = (by: number) => {
     const at = current ? items.indexOf(current) + by : 0;
@@ -187,6 +175,7 @@ function LogsPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>{t('logs.meta.title', { project: project.name })}</title>
       <PageHeader
         title={t('logs.title')}
         summary={[project.name, tLogs('count', { count: logs.total_count })]}
@@ -196,25 +185,7 @@ function LogsPage() {
         <NoLogsYet title={t('logs.emptyTitle')} hint={howToSend} />
       ) : (
         <Page scroll={false}>
-          {/* Narrow, the bar takes a row and the window the next; with a
-              line open, the pane takes the whole page. */}
-          <div
-            className={cn(
-              'flex flex-wrap items-center gap-2',
-              current && 'max-lg:hidden',
-            )}
-          >
-            <LogSearch
-              value={{ q: search.q, level: search.level, trace: search.trace }}
-              onChange={narrow}
-            />
-            <PeriodFilter
-              period={period}
-              onChange={(next) =>
-                narrow({ period: next === DEFAULT_PERIOD ? undefined : next })
-              }
-            />
-          </div>
+          <LogsFilters lineOpen={Boolean(current)} />
 
           <VolumePanel volume={volume} lineOpen={Boolean(current)} />
 
@@ -254,12 +225,81 @@ function LogsPage() {
             </div>
             <SelectedPane
               selection={selection}
-              onTrace={(trace) => narrow({ trace })}
+              onTrace={(trace) => navigate({ search: narrowed({ trace }) })}
               onClose={() => select(undefined)}
             />
           </div>
         </Page>
       )}
+    </div>
+  );
+}
+
+/**
+ * The same page while the project and the lines load: the search and the
+ * window already work, the chart fills in on its own, and the lines are
+ * outlines.
+ */
+function LogsLoading() {
+  const t = useTranslations('projectPages');
+  const { id } = Route.useParams();
+  const search = Route.useSearch();
+  const volume = useQuery(logReads(Number.parseInt(id, 10), search).volume);
+
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <PageHeader
+          title={t('logs.title')}
+          summary={[<Skeleton key="summary" className="h-4 w-40" />]}
+        />
+        <Page scroll={false}>
+          <LogsFilters lineOpen={false} />
+          <VolumePanel volume={volume} lineOpen={false} />
+          <ul className="min-h-0 flex-1 divide-y divide-border-divider overflow-hidden rounded-lg border border-border bg-panel">
+            {Array.from({ length: 12 }, (_, line) => (
+              // Placeholder lines have no identity beyond their position.
+              // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+              <li key={line} className="flex items-center gap-3 py-2 pr-4 pl-2">
+                <Skeleton className="h-4 w-0.75 rounded-pill" />
+                <Skeleton className="h-3 w-10" />
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 flex-1" />
+              </li>
+            ))}
+          </ul>
+        </Page>
+      </div>
+    </PageLoading>
+  );
+}
+
+/** The search bar and the window, reading and writing the live address. */
+function LogsFilters({ lineOpen }: { lineOpen: boolean }) {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const narrow = (next: LogSearchValue & { period?: PeriodChoice }) =>
+    navigate({ search: narrowed(next) });
+
+  return (
+    // Narrow, the bar takes a row and the window the next; with a line open,
+    // the pane takes the whole page.
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-2',
+        lineOpen && 'max-lg:hidden',
+      )}
+    >
+      <LogSearch
+        value={{ q: search.q, level: search.level, trace: search.trace }}
+        onChange={narrow}
+      />
+      <PeriodFilter
+        period={search.period ?? DEFAULT_PERIOD}
+        onChange={(next) =>
+          narrow({ period: next === DEFAULT_PERIOD ? undefined : next })
+        }
+      />
     </div>
   );
 }

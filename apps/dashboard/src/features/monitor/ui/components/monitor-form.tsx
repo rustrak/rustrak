@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { MonitorResponse } from '@rustrak/client';
+import { Skeleton } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
@@ -191,6 +192,42 @@ export function MonitorForm({
         </aside>
       </form>
     </Form>
+  );
+}
+
+/**
+ * The form's layout with its fields still to come: what the edit page shows
+ * while the monitor loads.
+ */
+export function MonitorFormSkeleton() {
+  const t = useTranslations('crons');
+  const field = (key: number) => (
+    <div key={key} className="flex flex-col gap-2">
+      <Skeleton className="h-3.5 w-24" />
+      <Skeleton className="h-9 w-full" />
+    </div>
+  );
+  return (
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="space-y-10">
+        <Section title={t('form.sectionMonitor')}>
+          <div className="grid items-start gap-5 sm:grid-cols-2">
+            {[0, 1].map(field)}
+          </div>
+        </Section>
+        <Section title={t('form.sectionSchedule')}>
+          <div className="grid items-start gap-5 sm:grid-cols-2">
+            {[0, 1].map(field)}
+          </div>
+        </Section>
+        <Section title={t('form.sectionTolerance')}>
+          <div className="grid items-start gap-5 sm:grid-cols-2">
+            {[0, 1, 2, 3].map(field)}
+          </div>
+        </Section>
+      </div>
+      <Skeleton className="h-48 w-full self-start" />
+    </div>
   );
 }
 

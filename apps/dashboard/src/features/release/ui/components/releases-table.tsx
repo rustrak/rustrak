@@ -16,6 +16,9 @@ import { AdoptionBar, HealthRate, VersionName } from './release-figures';
 
 const column = createDataTableColumnHelper<ReleaseSummary>();
 
+/** One empty list, so the table's data is stable while the first page loads. */
+const NO_RELEASES: ReleaseSummary[] = [];
+
 /** What the list is scoped to, carried into a release's own page. */
 interface ReleaseScope {
   environment?: string;
@@ -51,7 +54,8 @@ export function ReleasesTable({
   scope,
 }: {
   projectId: number;
-  page: ReleasesListResponse;
+  /** Absent while the first page loads: the table draws skeleton rows. */
+  page?: ReleasesListResponse;
   query: DataTableQuery;
   onQueryChange: (
     updater: (previous: DataTableQuery) => DataTableQuery,
@@ -194,9 +198,9 @@ export function ReleasesTable({
   );
 
   const table = useDataTable({
-    data: page.items,
+    data: page?.items ?? NO_RELEASES,
     columns,
-    rowCount: page.total_count,
+    rowCount: page?.total_count ?? 0,
     query,
     onQueryChange,
     getRowId: (release) => release.version,
@@ -231,7 +235,7 @@ export function ReleasesTable({
       </div>
       <DataTable
         table={table}
-        loading={loading}
+        loading={!page || loading}
         className="min-h-0 flex-1"
         onRowClick={(row) =>
           router.push(releaseHref(projectId, row.original.version, scope))

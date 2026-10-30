@@ -15,11 +15,9 @@ export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
     routeTree,
     context: { queryClient },
-    // A loader awaits what its page cannot paint without, so the router keeps
-    // the old page rendered until that is in. `0` would flash the pending
-    // component on a fast network, which is worse than waiting.
-    defaultPendingMs: 300,
-    defaultPendingMinMs: 300,
+    // No pending timing here: loaders never wait, so a navigation commits at
+    // once and the page's own `pendingComponent` is what shows while its
+    // reads are in flight (see "Where the data comes from" in CLAUDE.md).
     // Hovering a link starts its reads. Whether a read is fresh enough to
     // skip is the query cache's decision, not the router's: with the router's
     // own 30s preload cache on top, a preload could hold a loader result that

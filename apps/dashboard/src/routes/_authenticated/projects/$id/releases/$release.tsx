@@ -1,6 +1,8 @@
-import { formatFilterQuery } from '@rustrak/ui';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import type { ReleaseSummary } from '@rustrak/client';
+import { cn, formatFilterQuery, Skeleton } from '@rustrak/ui';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { ISSUE_FILTER_VARIANTS } from '@/features/issue/model/issue-table';
 import { projectQueries } from '@/features/project/api/queries';
@@ -11,8 +13,8 @@ import {
   PERIOD_CHOICES,
   type PeriodChoice,
 } from '@/features/release/model/session-health';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { ReleaseFilters } from './-components/release-filters';
 import {
@@ -74,72 +76,95 @@ export const Route = createFileRoute(
     period: searchOneOf(search.period, PERIOD_CHOICES),
   }),
   loaderDeps: ({ search }) => search,
-  // The release is awaited; the panels around it are started, each landing
-  // on its own.
-  loader: async ({ context: { queryClient }, params, deps }) => {
+  // The page waits for the release; the panels around it land on their own.
+  loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = Number.parseInt(params.id, 10);
     const reads = releaseReads(projectId, params.release, deps);
-    void queryClient.prefetchQuery(reads.project);
-    void queryClient.prefetchQuery(reads.series);
-    void queryClient.prefetchQuery(reads.newIssues);
-    void queryClient.prefetchQuery(reads.environments);
+    void queryClient.query(reads.release).catch(noop);
+    void queryClient.query(reads.project).catch(noop);
+    void queryClient.query(reads.series).catch(noop);
+    void queryClient.query(reads.newIssues).catch(noop);
+    void queryClient.query(reads.environments).catch(noop);
+    // The title's project name.
+    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
     // The environment filter's choices.
-    void queryClient.prefetchQuery(projectQueries.environments(projectId));
-    const [project, release] = await Promise.all([
-      queryClient.query({
-        ...projectQueries.detail(projectId),
-        staleTime: 'static',
-      }),
-      queryClient.query({ ...reads.release, staleTime: 'static' }),
-    ]);
-    return { project, release };
+    void queryClient.query(projectQueries.environments(projectId)).catch(noop);
   },
-  head: ({ loaderData, params }) => {
-    const t = translator('projectPages');
-    if (!loaderData) {
-      return { meta: [{ title: t('projectNotFound') }] };
-    }
-    const { project, release } = loaderData;
-    return {
-      meta: [
-        {
-          title: t('releaseDetail.meta.title', {
-            release: release.version,
-            project: project.name,
-          }),
-        },
-        {
-          name: 'description',
-          content: t('releaseDetail.meta.description', {
-            release: params.release,
-          }),
-        },
-      ],
-    };
-  },
+  pendingComponent: ReleaseLoading,
   component: ReleaseDetailPage,
 });
 
+/**
+ * The page follows its scope a beat behind: a new environment or window
+ * keeps the release on screen, dimmed, until its figures for the new scope
+ * are in. The filters read the live address.
+ */
 function ReleaseDetailPage() {
+  const tPages = useTranslations('projectPages');
+  const params = Route.useParams();
+  const live = Route.useSearch();
+  const search = useDeferredValue(live);
+  const projectId = Number.parseInt(params.id, 10);
+  const { data: release } = useSuspenseQuery(
+    releaseReads(projectId, params.release, search).release,
+  );
+  const project = useQuery(projectQueries.detail(projectId)).data;
+  usePageTrail([{ label: release.version, mono: true }]);
+
+  return (
+    <>
+      {project ? (
+        <title>
+          {tPages('releaseDetail.meta.title', {
+            release: release.version,
+            project: project.name,
+          })}
+        </title>
+      ) : null}
+      <ReleaseScreen
+        release={release}
+        search={search}
+        loading={search !== live}
+      />
+    </>
+  );
+}
+
+/** The same page while the release loads; its panels fill in on their own. */
+function ReleaseLoading() {
+  return (
+    <PageLoading>
+      <ReleaseScreen search={Route.useSearch()} loading={false} />
+    </PageLoading>
+  );
+}
+
+function ReleaseScreen({
+  release,
+  search,
+  loading,
+}: {
+  release?: ReleaseSummary;
+  /** The scope the figures are read for. */
+  search: ReleaseSearch;
+  loading: boolean;
+}) {
   const t = useTranslations('releases.detail');
   const params = Route.useParams();
-  const search = Route.useSearch();
+  const live = Route.useSearch();
   const navigate = Route.useNavigate();
   const projectId = Number.parseInt(params.id, 10);
   const reads = releaseReads(projectId, params.release, search);
-  const { choice, interval } = reads;
-  const environment = search.environment;
-  const { data: release } = useSuspenseQuery(reads.release);
+  const { interval } = reads;
   const project = useQuery(reads.project);
   const series = useQuery(reads.series);
   const newIssues = useQuery(reads.newIssues);
   const environments = useQuery(reads.environments);
-  usePageTrail([{ label: release.version, mono: true }]);
 
   const issuesHref = `/projects/${projectId}/issues?${new URLSearchParams({
     view: 'all',
     q: formatFilterQuery(
-      [{ id: 'release', value: [release.version] }],
+      [{ id: 'release', value: [params.release] }],
       '',
       ISSUE_FILTER_VARIANTS,
     ),
@@ -152,7 +177,10 @@ function ReleaseDetailPage() {
         scope={
           <ReleaseFilters
             projectId={projectId}
-            scope={{ environment, period: choice }}
+            scope={{
+              environment: live.environment,
+              period: live.period ?? DEFAULT_PERIOD,
+            }}
             onChange={(change) =>
               navigate({
                 search: (prev) => ({
@@ -178,10 +206,20 @@ function ReleaseDetailPage() {
 
       {/* The issue page's shape: the release's figures and what it broke
           in the reading column, its facts in the rail beside it. */}
-      <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
+      <div
+        aria-busy={loading}
+        className={cn(
+          'flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto',
+          loading && 'opacity-60',
+        )}
+      >
         <main className="min-w-0 flex-1 lg:overflow-y-auto">
           <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
-            <ReleaseKpis release={release} project={project} />
+            {release ? (
+              <ReleaseKpis release={release} project={project} />
+            ) : (
+              <Skeleton className="h-[7.25rem] rounded-2xl" />
+            )}
             <SessionsPanel read={series} intervalHours={interval} />
             <NewIssuesPanel
               projectId={projectId}
@@ -192,7 +230,15 @@ function ReleaseDetailPage() {
         </main>
         <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
           <RailBlock title={t('details')}>
-            <ReleaseDetails release={release} />
+            {release ? (
+              <ReleaseDetails release={release} />
+            ) : (
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+            )}
           </RailBlock>
           <RailBlock title={t('environments')}>
             <ReleaseEnvironments read={environments} />

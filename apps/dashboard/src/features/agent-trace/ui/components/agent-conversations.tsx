@@ -9,6 +9,7 @@ import {
   cn,
   focusRingInset,
   formatSpanDuration,
+  Skeleton,
   Tag,
   Text,
 } from '@rustrak/ui';
@@ -27,6 +28,8 @@ import { Link } from '@/shared/ui/components/link';
  */
 type AgentConversationSummary = AgentsConversationsResponse['items'][number];
 
+const SKELETON_ROWS = [0, 1, 2, 3, 4, 5, 6, 7];
+
 export function ConversationsList({
   projectId,
   page,
@@ -35,7 +38,8 @@ export function ConversationsList({
   onPageChange,
 }: {
   projectId: number;
-  page: AgentsConversationsResponse;
+  /** Absent while the first page loads: the list draws skeleton rows. */
+  page?: AgentsConversationsResponse;
   currentPage: number;
   loading: boolean;
   onPageChange: (page: number) => void;
@@ -44,7 +48,16 @@ export function ConversationsList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel">
-      {page.items.length === 0 ? (
+      {!page ? (
+        <ul className="min-h-0 flex-1 divide-y divide-border-divider overflow-hidden">
+          {SKELETON_ROWS.map((row) => (
+            <li key={row} className="flex flex-col gap-1.5 px-4 py-3">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3.5 w-72" />
+            </li>
+          ))}
+        </ul>
+      ) : page.items.length === 0 ? (
         <Text variant="meta" tone="subtle" className="px-4 py-16 text-center">
           {t('empty')}
         </Text>
@@ -64,7 +77,7 @@ export function ConversationsList({
           ))}
         </ul>
       )}
-      {page.total_pages > 1 ? (
+      {page && page.total_pages > 1 ? (
         <div className="flex shrink-0 items-center justify-between gap-2 border-border-divider border-t px-4 py-2">
           <Text variant="meta" tone="subtle">
             {t('pageOf', { page: currentPage, total: page.total_pages })}

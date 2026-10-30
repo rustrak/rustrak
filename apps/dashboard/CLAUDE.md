@@ -161,38 +161,96 @@ export const issueQueries = {
   throws the failure as an `ApiError` carrying the `RustrakError` whole.
   `ApiError` is the registered `defaultError`, so `query.error.error` is typed.
 
-### Loaders: await what the page cannot paint without, start the rest
+### Loaders start reads and never wait
+
+**A click navigates at once, and the page shows its own skeleton while its
+reads are in flight.** A loader that awaits makes the router keep the
+*previous* page on screen for the whole wait, with nothing saying the click
+registered. So a loader is an event handler: it starts every read the page
+will make, as early as possible (a hovered link runs it too), and returns
+nothing.
 
 ```ts
-loader: async ({ context: { queryClient }, params, deps }) => {
-  void queryClient.prefetchQuery(issueQueries.stats(id, deps.period));   // a panel
-  return queryClient.query({ ...issueQueries.list(id, deps), staleTime: 'static' });
+loader: ({ context: { queryClient }, params, deps }) => {
+  const id = Number.parseInt(params.id, 10);
+  void queryClient.query(issueQueries.list(id, deps)).catch(noop);
+  void queryClient.query(issueQueries.stats(id, deps.period)).catch(noop);
 },
+pendingComponent: IssuesLoading,
+component: IssuesPage,
 ```
 
-- **Critical reads**: `queryClient.query({ ...options, staleTime: 'static' })`.
-  `static` returns what is cached without waiting for a refetch, so revisiting
-  is instant; the component's subscription refetches it behind the page if it
-  is stale. A failure throws into the route's error boundary (`RouteError`),
-  which renders it through `LoadFailure`. What the loader returns is what
-  `head` reads.
-- **Secondary reads** (a chart, a rail, a panel that can arrive later):
-  `void queryClient.prefetchQuery(options)`. Never awaited: awaiting nine reads
-  made the agents page as slow as the slowest, and one timing out failed it all.
-- **Only the open tab's reads.** A tab the reader is not on is not fetched.
+- **No `async`, no `await`, no return value.** `queryClient.query` respects
+  `staleTime`, so a fresh entry is not refetched. `.catch(noop)` because the
+  failure belongs to the component that reads it, not to the loader.
+  `prefetchQuery` and `ensureQueryData` are deprecated in Query; do not use
+  them.
+- **Every read the page makes is started here**, critical or not, so nothing
+  waits for the component to render first. Only the open tab's reads: a tab
+  the reader is not on is not fetched.
 - `loaderDeps` holds exactly the search keys the loader reads.
+- A redirect that depends on data (an issue opening on its latest event) is
+  a component that suspends on the read and renders `<Navigate replace />`,
+  not a `beforeLoad` that awaits it.
 
-### Components: subscribe to what the loader started
+### Components decide what the page waits for
 
-- Critical: `useSuspenseQuery(options)`. The loader already filled it, so it
-  never suspends on a navigation; it keeps the screen current afterwards.
-- Secondary: `useQuery(options)` rendered through `QueryState`
-  (`shared/ui/components/query-state.tsx`): its placeholder while pending, its
-  `LoadFailure` when it failed, the data otherwise. A panel that used to
-  degrade (an issue with no tags renders like a failed tags read) reads
-  `query.data ?? fallback` instead, on purpose and visibly.
+- **What the page cannot paint without**: `useSuspenseQuery(options)`. It
+  picks up the read the loader started; the route's `pendingComponent` is
+  shown until it lands, and a failure goes to the route's error boundary
+  (`RouteError`, which renders it through `LoadFailure`). A missing record is
+  `throw notFound()` from the component.
+- **What can arrive later** (a chart, a rail, a panel): `useQuery(options)`
+  rendered through `QueryState` (`shared/ui/components/query-state.tsx`):
+  its placeholder while pending, its `LoadFailure` when it failed, the data
+  otherwise. A panel that used to degrade (an issue with no tags renders like
+  a failed tags read) reads `query.data ?? fallback` instead, on purpose and
+  visibly.
 - Screen-local reads with no route (a dialog's preview, the command bar's
   search): `useQuery` in the component, with `enabled` for "not yet".
+
+### Every route that suspends has its own skeleton
+
+`pendingComponent` is the route's own Suspense fallback, mounted in the frame
+after the click. Without one the suspension climbs to the boundary above and
+blanks a whole layout. `route-loading.test.ts` fails a route that suspends
+without one.
+
+- **The page's chrome is real, only the data is skeleton.** The header with
+  its static title and tabs renders as itself; `Skeleton` from `@rustrak/ui`
+  stands where data goes, at the size of what replaces it. A list renders its
+  real table with no page: `DataTable` draws skeleton rows under the real
+  header (`IssuesTable` takes `page?` for this).
+- Share the layout between the page and its skeleton: one screen component
+  that takes the data as optional props, rendered by the page with it and by
+  the `pendingComponent` without (`routes/.../issues/index.tsx`).
+- Wrap it in `PageLoading` (`shared/ui/components/page-loading.tsx`): it
+  announces the wait once, and draws no box, so the skeleton lays out like the
+  page it stands for.
+
+### The same route at a new address shows the previous one, dimmed
+
+A filter, a page, a tab, the next event: the route stays, so its skeleton must
+not flash on every keystroke. The component reads the address through
+`useDeferredValue`, the documented React pattern for showing stale content
+while fresh content loads:
+
+```ts
+const live = Route.useSearch();
+const search = useDeferredValue(live);
+const { data: page } = useSuspenseQuery(issueQueries.list(id, search));
+// `search !== live` while the next page loads: rows stay, dimmed.
+```
+
+Controls read `live`, so they answer the click at once; data reads the
+deferred value. Never the router's `isLoading` or `status`: it is never
+pending for this, because loaders do not wait.
+
+### Titles
+
+A page renders its own `<title>`, which React 19 hoists into the document and
+keeps current as its data changes. There is no route `head` and no
+`<HeadContent />`: `head` can only read loader data, and loaders return none.
 
 ### Writes: `mutationOptions` factories in `features/<slice>/api/mutations.ts`
 
@@ -249,8 +307,6 @@ then UTC.
 
 - No date or number formatting library. Everything goes through `use-intl`'s
   `useFormatter`, and the option sets are named once in `shared/i18n/config.ts`.
-- `translator()` is the same catalogue outside React, for a route's `head`.
-  TanStack resolves titles before a component tree exists.
 - A new user-facing sentence goes in **all five** `messages/*.json`.
   `locale-completeness` and `message-keys` fail the build otherwise.
 
@@ -260,8 +316,9 @@ then UTC.
 [archunit](https://github.com/lukasniessen/archunitts). They run in `pnpm test`
 and cover layer direction, slice isolation, barrel files, the portable core,
 `routes/`'s shape, locale completeness, the client `Result` shape, the version
-staying behind the gate, that nothing imports Next any more, and that the API
-prefix list has not drifted between Vite and the server.
+staying behind the gate, that nothing imports Next any more, that the API
+prefix list has not drifted between Vite and the server, and that routes load
+behind their own skeleton without making the router wait.
 
 **Read the rule before working around it.** Each file documents what it protects
 and why it exists.

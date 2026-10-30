@@ -19,6 +19,9 @@ import { failureTone } from '@/features/transaction/model/endpoints';
 
 const column = createDataTableColumnHelper<TransactionStatsResponse>();
 
+/** One empty list, so the table's data is stable while the first page loads. */
+const NO_ENDPOINTS: TransactionStatsResponse[] = [];
+
 /** The id a row is known by: its name and op, which make the endpoint. */
 function endpointId(row: { transaction_name: string; op: string | null }) {
   return `${row.op ?? ''} ${row.transaction_name}`;
@@ -44,7 +47,8 @@ export function EndpointsTable({
   environments,
   period,
 }: {
-  page: TransactionsGetStatsResponse;
+  /** Absent while the first page loads: the table draws skeleton rows. */
+  page?: TransactionsGetStatsResponse;
   query: DataTableQuery;
   onQueryChange: (
     updater: (previous: DataTableQuery) => DataTableQuery,
@@ -221,9 +225,9 @@ export function EndpointsTable({
   );
 
   const table = useDataTable({
-    data: page.items,
+    data: page?.items ?? NO_ENDPOINTS,
     columns,
-    rowCount: page.total_count,
+    rowCount: page?.total_count ?? 0,
     query,
     onQueryChange,
     getRowId: endpointId,
@@ -257,7 +261,7 @@ export function EndpointsTable({
       </div>
       <DataTable
         table={table}
-        loading={loading}
+        loading={!page || loading}
         className="min-h-0 flex-1"
         onRowClick={(row) => onOpen(row.original)}
         empty={{ title: t('emptyWindow') }}

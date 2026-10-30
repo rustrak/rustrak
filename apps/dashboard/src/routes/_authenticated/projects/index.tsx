@@ -1,13 +1,14 @@
 import type { ProjectsListResponse } from '@rustrak/client';
-import { Button, NewIcon, Page, PageHeader } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { Button, cn, NewIcon, Page, PageHeader, Skeleton } from '@rustrak/ui';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Navigate } from '@tanstack/react-router';
+import { type ReactNode, useDeferredValue } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { ProjectsGrid } from '@/features/project/ui/components/projects-grid';
-import { translator } from '@/shared/i18n/intl';
 import { searchPage } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 
 /**
  * Window for the per-row stats.
@@ -18,18 +19,6 @@ import { Link } from '@/shared/ui/components/link';
 const STATS_PERIOD = '24h';
 
 export const Route = createFileRoute('/_authenticated/projects/')({
-  head: () => {
-    const t = translator('projectPages');
-    return {
-      meta: [
-        { title: t('projectsList.meta.title') },
-        {
-          name: 'description',
-          content: t('projectsList.meta.description'),
-        },
-      ],
-    };
-  },
   validateSearch: (search: Record<string, unknown>) => ({
     page: searchPage(search.page),
   }),
@@ -37,8 +26,10 @@ export const Route = createFileRoute('/_authenticated/projects/')({
   // One request, stats included: the server aggregates the whole page in two
   // queries. Asking per row would be 20 round trips for a table that renders
   // above the fold.
-  loader: ({ context: { queryClient }, deps }) =>
-    queryClient.query({ ...projectsPage(deps.page), staleTime: 'static' }),
+  loader: ({ context: { queryClient }, deps }) => {
+    void queryClient.query(projectsPage(deps.page)).catch(noop);
+  },
+  pendingComponent: ProjectsLoading,
   component: ProjectsPage,
 });
 
@@ -50,17 +41,23 @@ function projectsPage(page: number) {
   });
 }
 
+/**
+ * The cards follow the address a beat behind: the next page keeps the
+ * current one on screen, dimmed, until it is in.
+ */
 function ProjectsPage() {
-  const t = useTranslations('projectPages');
   const tProjects = useTranslations('projects');
   const format = useFormatter();
-  const page = Route.useSearch({ select: (search) => search.page ?? 1 });
+  const live = Route.useSearch({ select: (search) => search.page ?? 1 });
+  const page = useDeferredValue(live);
   const { data: projects } = useSuspenseQuery(projectsPage(page));
 
   // Deleting the last card on the last page leaves that page empty, and an
   // empty page renders "no projects" with no way back. Send the browser to
-  // the last page that exists, as the releases list does.
-  if (page > 1 && page > projects.total_pages) {
+  // the last page that exists, as the releases list does. Only once the
+  // cards on screen are the address's: an older page's answer must not
+  // overrule a page the reader has since asked for.
+  if (page === live && page > 1 && page > projects.total_pages) {
     return (
       <Navigate
         to="/projects"
@@ -71,10 +68,57 @@ function ProjectsPage() {
   }
 
   return (
+    <ProjectsScreen summary={projectsSummary(projects, tProjects, format)}>
+      <div
+        aria-busy={page !== live}
+        className={cn(
+          'flex flex-1 flex-col gap-4',
+          page !== live && 'opacity-60',
+        )}
+      >
+        <ProjectsGrid
+          page={projects}
+          currentPage={page}
+          loading={page !== live}
+        />
+      </div>
+    </ProjectsScreen>
+  );
+}
+
+/** The same header, with a card's outline where each project goes. */
+function ProjectsLoading() {
+  return (
+    <PageLoading>
+      <ProjectsScreen
+        summary={[<Skeleton key="summary" className="h-4 w-48" />]}
+      >
+        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2 2xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, card) => (
+            // Placeholder cards have no identity beyond their position.
+            // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+            <Skeleton key={card} className="h-36 rounded-2xl" />
+          ))}
+        </div>
+      </ProjectsScreen>
+    </PageLoading>
+  );
+}
+
+function ProjectsScreen({
+  summary,
+  children,
+}: {
+  summary: ReactNode[];
+  children: ReactNode;
+}) {
+  const t = useTranslations('projectPages');
+  return (
     <div className="flex h-full flex-col">
+      <title>{t('projectsList.meta.title')}</title>
       <PageHeader
         title={t('projectsList.title')}
-        summary={projectsSummary(projects, tProjects, format)}
+        summary={summary}
         actions={
           <Button
             variant="primary"
@@ -85,9 +129,7 @@ function ProjectsPage() {
           </Button>
         }
       />
-      <Page>
-        <ProjectsGrid page={projects} currentPage={page} />
-      </Page>
+      <Page>{children}</Page>
     </div>
   );
 }

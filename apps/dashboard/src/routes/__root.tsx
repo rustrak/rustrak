@@ -1,9 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
-import {
-  createRootRouteWithContext,
-  HeadContent,
-  Outlet,
-} from '@tanstack/react-router';
+import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
 
 /**
  * Everything above routing.
@@ -15,9 +11,10 @@ import {
  * on a route change and a toast raised by a mutation would be unmounted by the
  * navigation that mutation triggered.
  *
- * `<HeadContent />` is what makes `head` on a route reach the document. It is
- * the browser tab's title and nothing else here: there is no crawler to serve,
- * because there is no page in this application that is not behind a login.
+ * No `<HeadContent />` and no route `head`: a page titles the tab with its
+ * own `<title>`, which React hoists into the document and keeps current as
+ * its data changes. A `head` could only read loader data, and loaders here
+ * return none.
  *
  * The context carries the one `QueryClient`, so every loader reads and fills
  * the same cache the components subscribe to.
@@ -29,10 +26,5 @@ export const Route = createRootRouteWithContext<{
 });
 
 function RootLayout() {
-  return (
-    <>
-      <HeadContent />
-      <Outlet />
-    </>
-  );
+  return <Outlet />;
 }

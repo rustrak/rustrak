@@ -1,15 +1,18 @@
 import type { AlertType } from '@rustrak/client';
 import { PageHeader } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { alertQueries } from '@/features/alert/api/queries';
 import { alertTypes } from '@/features/alert/model/alert-types';
 import { alertHref, alertsHref } from '@/features/alert/model/rule-summary';
-import { RuleEditor } from '@/features/alert/ui/components/rule-editor/rule-editor';
+import {
+  RuleEditor,
+  RuleEditorSkeleton,
+} from '@/features/alert/ui/components/rule-editor/rule-editor';
 import { projectQueries } from '@/features/project/api/queries';
-import { translator } from '@/shared/i18n/intl';
 import { searchOneOf } from '@/shared/lib/search-params';
+import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
@@ -21,22 +24,14 @@ export const Route = createFileRoute('/_authenticated/projects/$id/alerts/new')(
     validateSearch: (search: Record<string, unknown>) => ({
       type: searchOneOf(search.type, TYPES),
     }),
-    head: () => ({
-      meta: [{ title: translator('alerts')('overview.newMetaTitle') }],
-    }),
-    loader: async ({ context: { queryClient }, params }) => {
+    loader: ({ context: { queryClient }, params }) => {
       const projectId = Number.parseInt(params.id, 10);
-      await Promise.all([
-        queryClient.query({
-          ...alertQueries.integrations(),
-          staleTime: 'static',
-        }),
-        queryClient.query({
-          ...projectQueries.environments(projectId),
-          staleTime: 'static',
-        }),
-      ]);
+      void queryClient.query(alertQueries.integrations()).catch(noop);
+      void queryClient
+        .query(projectQueries.environments(projectId))
+        .catch(noop);
     },
+    pendingComponent: NewAlertLoading,
     component: NewAlertPage,
   },
 );
@@ -55,6 +50,7 @@ function NewAlertPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <title>{t('overview.newMetaTitle')}</title>
       <PageHeader
         title={t('overview.new')}
         summary={[t('overview.newSummary')]}
@@ -69,5 +65,22 @@ function NewAlertPage() {
         onCancel={() => router.push(alertsHref(projectId))}
       />
     </div>
+  );
+}
+
+function NewAlertLoading() {
+  const t = useTranslations('alerts');
+  usePageTrail([{ label: t('overview.new') }]);
+  return (
+    <PageLoading>
+      <div className="flex h-full flex-col">
+        <title>{t('overview.newMetaTitle')}</title>
+        <PageHeader
+          title={t('overview.new')}
+          summary={[t('overview.newSummary')]}
+        />
+        <RuleEditorSkeleton />
+      </div>
+    </PageLoading>
   );
 }
