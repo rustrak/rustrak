@@ -32,12 +32,21 @@ Global admins implicitly have full access to every project, so they don't need e
 Registration is **invite-only** — there is no open sign-up. Only admins can invite.
 
 1. Go to **Settings → Team**
-2. Under **Invite a member**, enter an email and pick a global role
-3. Click **Invite** — the invite link is copied to your clipboard automatically
+2. Under **Invite a member**, enter an email, pick a global role, and optionally turn on **Send invite by email**
+3. Click **Invite** — the invite link is copied to your clipboard either way
 
-No email is sent. **Share the link yourself** (chat, email, etc.). You can re-copy it any time from the **Pending invitations** list, and revoke it there too.
+By default no email is sent and you **share the link yourself** (chat, email, etc.). If email delivery is configured (see below), you can flip on **Send invite by email**: the invitation lands in the invitee's inbox with the link, the inviting admin's address, the granted role, and the expiry time. The link is still copied to your clipboard as a fallback, and the pending-invitations list shows whether each invitation was delivered — undelivered ones get a **resend** button.
 
 Invitation links expire after 48 hours and can only be used once.
+
+### Email delivery
+
+The **Send invite by email** switch is only usable when a mail transport is configured. Two sources work, in this order of preference:
+
+1. **An email alert integration** — any enabled email integration under **Settings → Alerts** carries its own SMTP settings (host, port, username, password, from address). The first enabled one is used.
+2. **Server environment variables** — `SMTP_HOST`, `SMTP_PORT` (defaults to 587; port 465 uses implicit TLS), `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM`.
+
+If neither is configured the switch is greyed out. Sending is best-effort: if the mail server rejects the invitation email, the invitation is still created (marked "not sent") and you can copy the link manually or hit resend later — an explicit resend, however, fails loudly if the mail server is unreachable.
 
 ### Accepting an invitation
 
@@ -79,6 +88,22 @@ curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"email":"teammate@example.com","role":"member"}' \
   http://localhost:8080/api/invitations
 
+# Same, but also email the invite (requires configured SMTP — 400 otherwise)
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"teammate@example.com","role":"member","send_email":true}' \
+  http://localhost:8080/api/invitations
+
+# Whether email delivery is available, and where it would come from
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8080/api/invitations/email-status
+
+# Re-send an undelivered invitation email (add "force":true to re-send a delivered one)
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"force":false}' \
+  http://localhost:8080/api/invitations/TOKEN/resend
+
 # Add a user to a project as an editor
 curl -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -96,4 +121,6 @@ You can also manage all of this from an AI assistant via the [MCP server](/sdks/
 | Viewer tries to resolve/delete an issue | `403 Forbidden` |
 | Non-admin calls a team or invitation endpoint | `403 Forbidden` |
 | `POST /auth/register` (open sign-up) | `403 Forbidden` — invite-only |
+| `send_email: true` with no SMTP configured | `400 Bad Request` — the `send_email` field is named in `error.fields` |
+| Resend for an expired or already-accepted invitation | `400 Bad Request` |
 | Remove the last admin of an instance or project | `409 Conflict` |

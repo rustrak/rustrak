@@ -1,5 +1,5 @@
 import { TeamIcon } from '@rustrak/ui';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
@@ -38,6 +38,17 @@ export const Route = createFileRoute('/_authenticated/settings/team')({
       queryClient.query({ ...userQueries.team(), staleTime: 'static' }),
       queryClient.query({ ...userQueries.invitations(), staleTime: 'static' }),
     ]);
+    // Email capability only decides one switch's enabled state, so a failed
+    // read is caught here: the page renders with the switch disabled instead
+    // of failing the route over a status probe.
+    try {
+      await queryClient.query({
+        ...userQueries.emailStatus(),
+        staleTime: 'static',
+      });
+    } catch {
+      // Degrade below: the component reads "unavailable" from the miss.
+    }
   },
   component: TeamPage,
 });
@@ -81,6 +92,10 @@ function TeamPage() {
 function TeamRoster({ currentUserId }: { currentUserId: number }) {
   const { data: members } = useSuspenseQuery(userQueries.team());
   const { data: invitations } = useSuspenseQuery(userQueries.invitations());
+  // Not a suspense read on purpose: the loader usually has this cached, but
+  // when the probe failed the page must still render — `undefined` reads as
+  // "cannot send email" and the invite form keeps its switch disabled.
+  const { data: emailStatus } = useQuery(userQueries.emailStatus());
 
   const pendingInvitations = invitations.filter(
     (invitation) => invitation.status === 'pending',
@@ -88,7 +103,7 @@ function TeamRoster({ currentUserId }: { currentUserId: number }) {
 
   return (
     <>
-      <InviteForm />
+      <InviteForm emailAvailable={emailStatus?.available ?? false} />
       <TeamMembersList members={members} currentUserId={currentUserId} />
       <PendingInvitations invitations={pendingInvitations} />
     </>

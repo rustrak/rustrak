@@ -436,13 +436,16 @@
     },
     "invite": {
       "title": "Invite a member",
-      "description": "The invite link is copied to your clipboard when created. No email is sent — share the link with the new member yourself.",
+      "description": "The invite link is copied to your clipboard when created. With email delivery configured the invite email goes straight to the new member; without it, share the link yourself.",
       "emailLabel": "Email",
       "roleLabel": "Role",
       "roleAria": "Invite role",
       "fieldEmail": "That email address",
       "inviting": "Inviting...",
-      "submit": "Invite"
+      "submit": "Invite",
+      "sendEmailLabel": "Send a verification email",
+      "sendEmailAria": "Send a verification email",
+      "sendEmailUnavailable": "Configure an email integration (or a global SMTP) to send invite emails"
     },
     "toast": {
       "createFailed": "Failed to create invitation",
@@ -460,7 +463,14 @@
       "revoked": "Invitation revoked",
       "revokeFailed": "Failed to revoke invitation",
       "roleUpdated": "Role updated",
-      "roleUpdateFailed": "Failed to update role"
+      "roleUpdateFailed": "Failed to update role",
+      "emailSent": "Invitation email sent",
+      "emailSentHint": "The invite email is on its way — the link is also on your clipboard.",
+      "emailFailed": "Invitation created, but the email failed",
+      "emailFailedHint": "Delivery failed — copy the invite link and share it yourself.",
+      "resendSent": "Invite email resent",
+      "resendSentHint": "A fresh invite email is on its way to {email}.",
+      "resendFailed": "Failed to resend the invite email"
     },
     "member": {
       "updatedDescription": "{email} is now {role}."
@@ -497,7 +507,10 @@
       "empty": "No pending invitations",
       "expires": "Expires {date}",
       "copyAria": "Copy invite link for {email}",
-      "revokeAria": "Revoke invitation for {email}"
+      "revokeAria": "Revoke invitation for {email}",
+      "emailSent": "Email sent",
+      "emailNotSent": "No email sent",
+      "resendAria": "Resend invite email for {email}"
     },
     "table": {
       "email": "Email",

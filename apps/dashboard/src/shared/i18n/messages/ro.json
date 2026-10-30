@@ -436,13 +436,16 @@
     },
     "invite": {
       "title": "Invită un membru",
-      "description": "Linkul de invitație este copiat în clipboard la creare. Nu se trimite niciun e-mail — distribuie tu linkul noului membru.",
+      "description": "Linkul de invitație este copiat în clipboard la creare. Când livrarea prin e-mail este configurată, e-mailul de invitație pleacă direct către noul membru; altfel, distribuie linkul tu însuți.",
       "emailLabel": "E-mail",
       "roleLabel": "Rol",
       "roleAria": "Rol pentru invitație",
       "fieldEmail": "Această adresă de e-mail",
       "inviting": "Se invită...",
-      "submit": "Invită"
+      "submit": "Invită",
+      "sendEmailLabel": "Trimite un e-mail de verificare",
+      "sendEmailAria": "Trimite un e-mail de verificare",
+      "sendEmailUnavailable": "Configurează o integrare de e-mail (sau un SMTP global) pentru a trimite e-mailuri de invitație"
     },
     "toast": {
       "createFailed": "Crearea invitației a eșuat",
@@ -460,7 +463,14 @@
       "revoked": "Invitație retrasă",
       "revokeFailed": "Retragerea invitației a eșuat",
       "roleUpdated": "Rol actualizat",
-      "roleUpdateFailed": "Actualizarea rolului a eșuat"
+      "roleUpdateFailed": "Actualizarea rolului a eșuat",
+      "emailSent": "E-mail de invitație trimis",
+      "emailSentHint": "E-mailul de invitație este pe drum — linkul este și în clipboard.",
+      "emailFailed": "Invitație creată, dar e-mailul a eșuat",
+      "emailFailedHint": "Livrarea a eșuat — copiază linkul de invitație și distribuie-l tu însuți.",
+      "resendSent": "E-mail de invitație retrimis",
+      "resendSentHint": "Un nou e-mail de invitație pleacă către {email}.",
+      "resendFailed": "Retrimitera e-mailului de invitație a eșuat"
     },
     "member": {
       "updatedDescription": "{email} are acum rolul {role}."
@@ -497,7 +507,10 @@
       "empty": "Nicio invitație în așteptare",
       "expires": "Expiră la {date}",
       "copyAria": "Copiază linkul de invitație pentru {email}",
-      "revokeAria": "Retrage invitația pentru {email}"
+      "revokeAria": "Retrage invitația pentru {email}",
+      "emailSent": "E-mail trimis",
+      "emailNotSent": "Fără e-mail trimis",
+      "resendAria": "Retrimite e-mailul de invitație către {email}"
     },
     "table": {
       "email": "E-mail",

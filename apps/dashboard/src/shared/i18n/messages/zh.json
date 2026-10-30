@@ -436,13 +436,16 @@
     },
     "invite": {
       "title": "邀请成员",
-      "description": "创建后邀请链接会自动复制到剪贴板。不会发送任何邮件——请自行将链接分享给新成员。",
+      "description": "创建邀请时会把邀请链接复制到剪贴板。配置了邮件发送后，邀请邮件会直接发给新成员；否则请自行分享链接。",
       "emailLabel": "邮箱",
       "roleLabel": "角色",
       "roleAria": "邀请角色",
       "fieldEmail": "该邮箱地址",
       "inviting": "正在邀请…",
-      "submit": "邀请"
+      "submit": "邀请",
+      "sendEmailLabel": "发送验证邮件",
+      "sendEmailAria": "发送验证邮件",
+      "sendEmailUnavailable": "配置邮件集成（或全局 SMTP）后才能发送邀请邮件"
     },
     "toast": {
       "createFailed": "创建邀请失败",
@@ -460,7 +463,14 @@
       "revoked": "邀请已撤销",
       "revokeFailed": "撤销邀请失败",
       "roleUpdated": "角色已更新",
-      "roleUpdateFailed": "更新角色失败"
+      "roleUpdateFailed": "更新角色失败",
+      "emailSent": "邀请邮件已发送",
+      "emailSentHint": "邀请邮件正在路上——链接同时已复制到剪贴板。",
+      "emailFailed": "邀请已创建，但邮件发送失败",
+      "emailFailedHint": "邮件投递失败——请复制邀请链接并自行分享。",
+      "resendSent": "邀请邮件已重发",
+      "resendSentHint": "新的邀请邮件正在发往 {email}。",
+      "resendFailed": "重发邀请邮件失败"
     },
     "member": {
       "updatedDescription": "{email} 现在是{role}。"
@@ -497,7 +507,10 @@
       "empty": "没有待处理的邀请",
       "expires": "过期时间 {date}",
       "copyAria": "复制 {email} 的邀请链接",
-      "revokeAria": "撤销 {email} 的邀请"
+      "revokeAria": "撤销 {email} 的邀请",
+      "emailSent": "邮件已发送",
+      "emailNotSent": "未发送邮件",
+      "resendAria": "向 {email} 重发邀请邮件"
     },
     "table": {
       "email": "邮箱",

@@ -65,6 +65,25 @@ pub fn redact_slack_bot_token(channel_type: ChannelType, config: &mut serde_json
     }
 }
 
+/// Redacts the SMTP password in an email channel's config before sending the
+/// channel over the API. Replaces `config.smtp_password` with `"****"` when
+/// `channel_type == email`.
+///
+/// Mirrors `redact_slack_bot_token`: the update path recognises the
+/// redacted marker and keeps the stored password instead of persisting it.
+pub fn redact_email_smtp_password(channel_type: ChannelType, config: &mut serde_json::Value) {
+    if channel_type == ChannelType::Email {
+        if let Some(obj) = config.as_object_mut() {
+            if obj.contains_key("smtp_password") {
+                obj.insert(
+                    "smtp_password".to_string(),
+                    serde_json::Value::String("****".to_string()),
+                );
+            }
+        }
+    }
+}
+
 // =============================================================================
 // Routing Override Validation
 // =============================================================================
@@ -170,6 +189,7 @@ fn channel_to_safe_json(channel: &crate::models::AlertIntegration) -> serde_json
     let mut value = serde_json::to_value(channel).unwrap_or_default();
     if let Some(config) = value.get_mut("credentials") {
         redact_slack_bot_token(channel.provider_type, config);
+        redact_email_smtp_password(channel.provider_type, config);
     }
     value
 }
@@ -1010,6 +1030,41 @@ mod tests {
         // Using ChannelType::Webhook — should not redact
         redact_slack_bot_token(ChannelType::Webhook, &mut config);
         assert_eq!(config["token"], "xoxb-real-secret");
+    }
+
+    #[test]
+    fn test_redact_email_smtp_password_replaces_password() {
+        let mut config = serde_json::json!({
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 587,
+            "smtp_username": "user",
+            "smtp_password": "hunter2",
+            "from_address": "alerts@example.com"
+        });
+        redact_email_smtp_password(ChannelType::Email, &mut config);
+        assert_eq!(config["smtp_password"], "****");
+        // Other credential fields untouched
+        assert_eq!(config["smtp_host"], "smtp.example.com");
+        assert_eq!(config["smtp_username"], "user");
+        assert_eq!(config["from_address"], "alerts@example.com");
+    }
+
+    #[test]
+    fn test_redact_email_smtp_password_noop_when_key_absent() {
+        let mut config = serde_json::json!({
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 587
+        });
+        redact_email_smtp_password(ChannelType::Email, &mut config);
+        // must NOT synthesise a password key that wasn't there
+        assert!(config.get("smtp_password").is_none());
+    }
+
+    #[test]
+    fn test_redact_email_smtp_password_noop_for_non_email_channel() {
+        let mut config = serde_json::json!({"smtp_password": "hunter2"});
+        redact_email_smtp_password(ChannelType::Webhook, &mut config);
+        assert_eq!(config["smtp_password"], "hunter2");
     }
 
     // -------------------------------------------------------------------------

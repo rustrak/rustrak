@@ -2220,6 +2220,7 @@
           "Invitations"
         ],
         "summary": "POST /api/invitations — create an invitation (admin only)",
+        "description": "With `send_email: true` the invite link is emailed to the recipient; the\nmailer used is the first enabled email integration, falling back field by\nfield to the global SMTP_* environment. A send failure still creates the\ninvitation (201, `email_sent_at: null`) so the link remains copyable from\nthe pending list — email delivery is a side effect, not a precondition.",
         "operationId": "invitations.create",
         "requestBody": {
           "content": {
@@ -2243,7 +2244,7 @@
             }
           },
           "400": {
-            "description": "Invalid role",
+            "description": "Invalid role, or send_email requested while no SMTP source is configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -2274,6 +2275,53 @@
           },
           "409": {
             "description": "Email already a user or pending invite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/invitations/email-status": {
+      "get": {
+        "tags": [
+          "Invitations"
+        ],
+        "summary": "GET /api/invitations/email-status — is email delivery configured (admin)",
+        "description": "Drives the invite form's \"send verification email\" switch: it is only\noffered when this reports available. Reports the source without any\ncredential detail.",
+        "operationId": "invitations.emailStatus",
+        "responses": {
+          "200": {
+            "description": "Whether invitation emails can be sent, and from which source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -2334,6 +2382,110 @@
           },
           "404": {
             "description": "Pending invitation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/invitations/{token}/resend": {
+      "post": {
+        "tags": [
+          "Invitations"
+        ],
+        "summary": "POST /api/invitations/{token}/resend — re-send the invitation email (admin)",
+        "description": "Unlike the create path this is an explicit user action on an existing\ninvitation, so a failed send surfaces as a 500 instead of degrading to\nmanual sharing. `force: true` is required when an email was already\ndelivered, so accidental double-sends are a deliberate choice.",
+        "operationId": "invitations.resend",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Invitation token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ResendInvitation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email sent (or re-sent)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invitation expired or used, already emailed without force, or no SMTP source configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invitation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The SMTP send failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -15065,6 +15217,10 @@
           "role": {
             "$ref": "#/components/schemas/UserRole",
             "description": "Global role the invited user will receive (`admin` | `member`)."
+          },
+          "send_email": {
+            "type": "boolean",
+            "description": "When true, the server emails the invite link instead of returning it\nfor manual sharing. Only valid while an SMTP source is configured;\nthe handler rejects the request otherwise. Serde default keeps the\npre-email API shape (absent = manual share) working unchanged."
           }
         }
       },
@@ -15248,6 +15404,24 @@
       "DifUploadBody": {
         "type": "object",
         "description": "Multipart legacy debug file upload: one `file` part holding a zip."
+      },
+      "EmailStatusResponse": {
+        "type": "object",
+        "description": "GET /api/invitations/email-status answer.",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "ErrorDetail": {
         "type": "object",
@@ -15797,6 +15971,14 @@
           },
           "email": {
             "type": "string"
+          },
+          "email_sent_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When SMTP accepted the invitation email; NULL shows a manual-share or\nfailed-send invitation so the UI can offer copy/resend."
           },
           "expires_at": {
             "type": "string",
@@ -17608,6 +17790,16 @@
           },
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "ResendInvitation": {
+        "type": "object",
+        "description": "Request body for re-sending an invitation email.",
+        "properties": {
+          "force": {
+            "type": "boolean",
+            "description": "Re-send even when an email was already delivered (e.g. it landed in\nspam and the recipient asks for a fresh copy)."
           }
         }
       },

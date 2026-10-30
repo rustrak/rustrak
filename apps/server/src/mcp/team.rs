@@ -32,12 +32,27 @@ pub struct InviteArgs {
     email: String,
     /// Global role the invited user will receive: admin or member
     role: String,
+    /// Email the invite link to the recipient instead of returning it for
+    /// manual sharing. Requires an enabled email integration or global SMTP
+    /// configuration; the call fails with a field error when unconfigured.
+    #[serde(default)]
+    send_email: bool,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InvitationArgs {
     /// Invitation token to revoke
     token: String,
+}
+
+/// Arguments for re-sending an invitation email.
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct ResendInvitationArgs {
+    /// Invitation token to re-send
+    token: String,
+    /// Re-send even when an email was already delivered (e.g. it landed in
+    /// spam and the recipient asks for a fresh copy)
+    force: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -101,12 +116,20 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Invite a person by email with a global role. Returns a single-use, expiring invite token; share the link `<app-url>/invite/<token>` manually (no email is sent). Requires an admin token.",
+        description = "Invite a person by email with a global role. By default returns a single-use, expiring invite token to share as the link `<app-url>/invite/<token>`. With send_email=true the link is emailed to the recipient instead (their mailbox receiving it is the address verification); email delivery must be configured via an enabled email integration or the global SMTP_* environment. Requires an admin token.",
         annotations(destructive_hint = false)
     )]
     async fn create_invitation(&self, Parameters(a): Parameters<InviteArgs>) -> CallToolResult {
         reply(async {
-            invitations::create_invitation(self.pool(), self.actor(), web::Json(args(&a)?)).await
+            let mut create_args: crate::models::CreateInvitation = args(&a)?;
+            create_args.send_email = a.send_email;
+            invitations::create_invitation(
+                self.pool(),
+                self.actor(),
+                self.config(),
+                web::Json(create_args),
+            )
+            .await
         })
         .await
     }
@@ -127,6 +150,29 @@ impl RustrakMcp {
         done(
             invitations::revoke_invitation(self.pool(), self.actor(), web::Path::from(a.token)),
             "Invitation revoked.".to_string(),
+        )
+        .await
+    }
+
+    #[tool(
+        description = "Re-send the invitation email for a pending invitation. Needs force=true when an email was already delivered. Fails when email delivery is not configured or the SMTP send fails. Requires an admin token.",
+        annotations(destructive_hint = false)
+    )]
+    async fn resend_invitation(
+        &self,
+        Parameters(a): Parameters<ResendInvitationArgs>,
+    ) -> CallToolResult {
+        done(
+            invitations::resend_invitation(
+                self.pool(),
+                self.actor(),
+                self.config(),
+                web::Path::from(a.token),
+                Some(web::Json(crate::routes::invitations::ResendInvitation {
+                    force: a.force.unwrap_or(false),
+                })),
+            ),
+            "Invitation email sent.".to_string(),
         )
         .await
     }
