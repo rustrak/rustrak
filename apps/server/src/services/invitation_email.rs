@@ -39,6 +39,10 @@ pub struct ResolvedMailer {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EmailStatusResponse {
     pub available: bool,
+    /// `source: null` is a real answer (no SMTP anywhere), never an omitted
+    /// field, so the schema keeps it required even though serde models it
+    /// as an Option (see openapi_contract_test).
+    #[cfg_attr(feature = "openapi", schema(required))]
     pub source: Option<&'static str>,
 }
 
@@ -284,6 +288,41 @@ pub async fn mark_email_sent(pool: &DbPool, token: &str, sent_at: DateTime<Utc>)
         .bind(sent_at)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+/// Atomically claims the right to deliver this invitation's email: the
+/// conditional UPDATE only goes through while `email_sent_at` is still
+/// null, so of two overlapping resends exactly one can be in flight
+/// without `force`. `Some` hands back the claimed timestamp, which the
+/// caller must pass to `release_email_delivery` when the send fails.
+pub async fn claim_email_delivery(pool: &DbPool, token: &str) -> AppResult<Option<DateTime<Utc>>> {
+    let claimed_at = Utc::now();
+    let result = sqlx::query(
+        "UPDATE invitations SET email_sent_at = $1 WHERE token = $2 AND email_sent_at IS NULL",
+    )
+    .bind(claimed_at)
+    .bind(token)
+    .execute(pool)
+    .await?;
+    Ok((result.rows_affected() > 0).then_some(claimed_at))
+}
+
+/// Restores the undelivered state after a failed send. Guarded by the
+/// claimed timestamp so it can never clear a delivery someone else made
+/// meanwhile (a concurrent `force` resend, for example).
+pub async fn release_email_delivery(
+    pool: &DbPool,
+    token: &str,
+    claimed_at: DateTime<Utc>,
+) -> AppResult<()> {
+    sqlx::query(
+        "UPDATE invitations SET email_sent_at = NULL WHERE token = $1 AND email_sent_at = $2",
+    )
+    .bind(token)
+    .bind(claimed_at)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

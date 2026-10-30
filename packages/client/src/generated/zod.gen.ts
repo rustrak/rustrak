@@ -547,7 +547,7 @@ export const zDifUploadBody = z.record(z.string(), z.unknown());
  */
 export const zEmailStatusResponse = z.object({
     available: z.boolean(),
-    source: z.string().nullish()
+    source: z.string().nullable()
 });
 
 /**
@@ -2060,7 +2060,7 @@ export const zInvitationInfoResponse = z.object({
 export const zInvitationResponse = z.object({
     created_at: z.iso.datetime({ offset: true }),
     email: z.string(),
-    email_sent_at: z.iso.datetime({ offset: true }).nullish(),
+    email_sent_at: z.iso.datetime({ offset: true }).nullable(),
     expires_at: z.iso.datetime({ offset: true }),
     role: zUserRole,
     status: z.string(),

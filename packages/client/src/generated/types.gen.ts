@@ -752,7 +752,12 @@ export type DifUploadBody = {
  */
 export type EmailStatusResponse = {
     available: boolean;
-    source?: string | null;
+    /**
+     * `source: null` is a real answer (no SMTP anywhere), never an omitted
+     * field, so the schema keeps it required even though serde models it
+     * as an Option (see openapi_contract_test).
+     */
+    source: string | null;
 };
 
 export type ErrorDetail = {
@@ -1009,9 +1014,11 @@ export type InvitationResponse = {
     email: string;
     /**
      * When SMTP accepted the invitation email; NULL shows a manual-share or
-     * failed-send invitation so the UI can offer copy/resend.
+     * failed-send invitation so the UI can offer copy/resend. Null is a real
+     * value here, never an omission, so the schema keeps it required even
+     * though serde models it as an Option (see openapi_contract_test).
      */
-    email_sent_at?: string | null;
+    email_sent_at: string | null;
     expires_at: string;
     role: UserRole;
     status: string;
@@ -3964,7 +3971,7 @@ export type InvitationsResendData = {
 
 export type InvitationsResendErrors = {
     /**
-     * Invitation expired or used, already emailed without force, or no SMTP source configured
+     * Invitation expired or used, already emailed without force, a delivery already in progress, or no SMTP source configured
      */
     400: ErrorResponse;
     /**

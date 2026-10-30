@@ -2445,7 +2445,7 @@
             }
           },
           "400": {
-            "description": "Invitation expired or used, already emailed without force, or no SMTP source configured",
+            "description": "Invitation expired or used, already emailed without force, a delivery already in progress, or no SMTP source configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -15409,7 +15409,8 @@
         "type": "object",
         "description": "GET /api/invitations/email-status answer.",
         "required": [
-          "available"
+          "available",
+          "source"
         ],
         "properties": {
           "available": {
@@ -15419,7 +15420,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "`source: null` is a real answer (no SMTP anywhere), never an omitted\nfield, so the schema keeps it required even though serde models it\nas an Option (see openapi_contract_test)."
           }
         }
       },
@@ -15962,7 +15964,8 @@
           "role",
           "status",
           "expires_at",
-          "created_at"
+          "created_at",
+          "email_sent_at"
         ],
         "properties": {
           "created_at": {
@@ -15978,7 +15981,7 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When SMTP accepted the invitation email; NULL shows a manual-share or\nfailed-send invitation so the UI can offer copy/resend."
+            "description": "When SMTP accepted the invitation email; NULL shows a manual-share or\nfailed-send invitation so the UI can offer copy/resend. Null is a real\nvalue here, never an omission, so the schema keeps it required even\nthough serde models it as an Option (see openapi_contract_test)."
           },
           "expires_at": {
             "type": "string",

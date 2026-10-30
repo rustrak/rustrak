@@ -130,6 +130,8 @@ pub async fn create_invitation(
     let mut email_sent_at: Option<DateTime<Utc>> = None;
     if let Some(mailer) = &mailer {
         // Best effort: a failed send leaves the invitation usable by hand.
+        // No delivery claim is needed here: the token is secret until this
+        // response returns, so nothing can race a brand-new invitation.
         match deliver_invitation(pool.get_ref(), &config, mailer, &invitation).await {
             Ok(sent_at) => email_sent_at = Some(sent_at),
             Err(e) => {
@@ -178,7 +180,7 @@ pub async fn email_status(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult
     params(("token" = String, Path, description = "Invitation token")),
     responses(
         (status = 200, description = "Email sent (or re-sent)", body = InvitationResponse),
-        (status = 400, description = "Invitation expired or used, already emailed without force, or no SMTP source configured", body = crate::error::ErrorResponse),
+        (status = 400, description = "Invitation expired or used, already emailed without force, a delivery already in progress, or no SMTP source configured", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
         (status = 404, description = "Invitation not found", body = crate::error::ErrorResponse),
@@ -232,7 +234,40 @@ pub async fn resend_invitation(
         },
     )?;
 
-    let sent_at = deliver_invitation(pool.get_ref(), &config, &mailer, &invitation).await?;
+    // Claim the right to deliver before sending: the claim is a conditional
+    // UPDATE that only succeeds while `email_sent_at` is still null, so two
+    // concurrent resends cannot both pass the check above and send twice. A
+    // lost claim means a delivery is already in flight. `force` bypasses the
+    // claim by design: it is the admin asking for a deliberate extra copy.
+    let claim = if force {
+        None
+    } else {
+        match invitation_email::claim_email_delivery(pool.get_ref(), &token).await? {
+            Some(claimed_at) => Some(claimed_at),
+            None => {
+                return Err(AppError::Validation(
+                    "An invitation email delivery is already in progress".to_string(),
+                ));
+            }
+        }
+    };
+
+    let sent_at = match deliver_invitation(pool.get_ref(), &config, &mailer, &invitation).await {
+        Ok(sent_at) => sent_at,
+        // Hand the row back before surfacing the failure, so a retry or the
+        // manual-share fallback still sees an undelivered invitation. The
+        // release only clears the timestamp while it is still ours, which
+        // keeps it from clobbering a concurrent force resend's real delivery.
+        Err(error) => {
+            if let Some(claimed_at) = claim {
+                // Best effort: the send error is the one that matters.
+                let _ =
+                    invitation_email::release_email_delivery(pool.get_ref(), &token, claimed_at)
+                        .await;
+            }
+            return Err(error);
+        }
+    };
     let mut invitation = invitation;
     invitation.email_sent_at = Some(sent_at);
 

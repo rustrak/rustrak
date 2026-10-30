@@ -22,6 +22,8 @@ import {
 
 interface PendingInvitationsProps {
   invitations: InvitationResponse[];
+  /** Whether any mail transport exists; without one resending can only fail. */
+  emailAvailable: boolean;
 }
 
 /**
@@ -39,7 +41,10 @@ async function handleCopy(invitation: InvitationResponse, t: Translate) {
   }
 }
 
-export function PendingInvitations({ invitations }: PendingInvitationsProps) {
+export function PendingInvitations({
+  invitations,
+  emailAvailable,
+}: PendingInvitationsProps) {
   const t = useTranslations('user');
   const format = useFormatter();
   const revoke = useMutation(userMutations.revokeInvitation());
@@ -62,7 +67,8 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
    * Re-deliver the invite email. The button only exists on rows with no
    * delivered email (`email_sent_at` null) — the server would demand
    * `force` for a delivered one, and this state is what "send it again"
-   * means without asking anyone.
+   * means without asking anyone. It stays disabled while no transport is
+   * configured: a click could only ever come back as a server error.
    */
   const handleResend = (invitation: InvitationResponse) => {
     resend.mutate(
@@ -129,7 +135,7 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
                     size="sm"
                     icon={RefreshIcon}
                     onClick={() => handleResend(invitation)}
-                    disabled={resend.isPending}
+                    disabled={resend.isPending || !emailAvailable}
                     aria-label={t('pending.resendAria', {
                       email: invitation.email,
                     })}

@@ -94,7 +94,10 @@ pub struct InvitationResponse {
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     /// When SMTP accepted the invitation email; NULL shows a manual-share or
-    /// failed-send invitation so the UI can offer copy/resend.
+    /// failed-send invitation so the UI can offer copy/resend. Null is a real
+    /// value here, never an omission, so the schema keeps it required even
+    /// though serde models it as an Option (see openapi_contract_test).
+    #[cfg_attr(feature = "openapi", schema(required))]
     pub email_sent_at: Option<DateTime<Utc>>,
 }
 

@@ -11,12 +11,15 @@ use chrono::Utc;
 use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
 use rustrak::db::DbPool;
 use rustrak::models::{
-    CreateAuthToken, CreateProject, CreateUserRequest, Issue, ProjectRole, User, UserRole,
+    CreateAuthToken, CreateInvitation, CreateProject, CreateUserRequest, Issue, ProjectRole, User,
+    UserRole,
 };
 use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
+use rustrak::services::invitation_email;
 use rustrak::services::{
-    AuthTokenService, IssueService, ProjectMemberService, ProjectService, UsersService,
+    AuthTokenService, InvitationService, IssueService, ProjectMemberService, ProjectService,
+    UsersService,
 };
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -920,7 +923,7 @@ async fn seed_email_integration(pool: &DbPool, credentials: Value) {
         "INSERT INTO alert_integrations (name, provider_type, credentials, is_enabled, failure_count) VALUES ($1, 'email', $2, TRUE, 0)",
     )
     .bind("test-mailer")
-    .bind(credentials.to_string())
+    .bind(credentials)
     .execute(pool)
     .await
     .expect("email integration seeded");
@@ -1219,4 +1222,45 @@ async fn resend_after_a_delivered_email_requires_force() {
         .as_array()
         .expect("field errors present");
     assert_eq!(fields[0]["field"], "send_email");
+}
+
+/// Greptile P2: two overlapping resend requests must not both deliver. The
+/// claim is an atomic conditional UPDATE, so exactly one request wins; a
+/// lost claim is rejected, and a release makes the row claimable again.
+#[actix_web::test]
+async fn email_delivery_claim_prevents_double_send() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+
+    let invitation = InvitationService::create(
+        &db.pool,
+        CreateInvitation {
+            email: "invitee@example.com".to_string(),
+            role: "member".to_string(),
+            send_email: false,
+        },
+        admin.id,
+    )
+    .await
+    .expect("invitation created");
+
+    let first = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("first claim");
+    assert!(first.is_some(), "the first claim must win");
+
+    let second = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("second claim");
+    assert!(second.is_none(), "a lost race must not be granted a claim");
+
+    // A failed send gives the row back only while the claim still holds.
+    invitation_email::release_email_delivery(&db.pool, &invitation.token, first.unwrap())
+        .await
+        .expect("release");
+
+    let third = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("claim after release");
+    assert!(third.is_some(), "release must make the row claimable again");
 }
