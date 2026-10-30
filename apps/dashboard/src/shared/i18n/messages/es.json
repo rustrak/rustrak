@@ -434,13 +434,16 @@
     },
     "invite": {
       "title": "Invitar a un miembro",
-      "description": "El enlace de invitación se copia en tu portapapeles al crearlo. No se envía ningún correo — comparte tú mismo el enlace con el nuevo miembro.",
+      "description": "El enlace de invitación se copia al portapapeles al crearla. Con el envío de correo configurado, el correo de invitación llega directamente al nuevo miembro; sin ello, comparte el enlace tú mismo.",
       "emailLabel": "Correo electrónico",
       "roleLabel": "Rol",
       "roleAria": "Rol de la invitación",
       "fieldEmail": "esa dirección de correo",
       "inviting": "Invitando...",
-      "submit": "Invitar"
+      "submit": "Invitar",
+      "sendEmailLabel": "Enviar un correo de verificación",
+      "sendEmailAria": "Enviar un correo de verificación",
+      "sendEmailUnavailable": "Configura una integración de correo (o un SMTP global) para enviar correos de invitación"
     },
     "toast": {
       "createFailed": "No se pudo crear la invitación",
@@ -458,7 +461,14 @@
       "revoked": "Invitación revocada",
       "revokeFailed": "No se pudo revocar la invitación",
       "roleUpdated": "Rol actualizado",
-      "roleUpdateFailed": "No se pudo actualizar el rol"
+      "roleUpdateFailed": "No se pudo actualizar el rol",
+      "emailSent": "Correo de invitación enviado",
+      "emailSentHint": "El correo de invitación va en camino — el enlace también está en tu portapapeles.",
+      "emailFailed": "Invitación creada, pero el correo falló",
+      "emailFailedHint": "La entrega falló — copia el enlace de invitación y compártelo tú mismo.",
+      "resendSent": "Correo de invitación reenviado",
+      "resendSentHint": "Un nuevo correo de invitación va en camino a {email}.",
+      "resendFailed": "No se pudo reenviar el correo de invitación"
     },
     "member": {
       "updatedDescription": "{email} ahora es {role}."
@@ -495,7 +505,10 @@
       "empty": "No hay invitaciones pendientes",
       "expires": "Expira el {date}",
       "copyAria": "Copiar el enlace de invitación de {email}",
-      "revokeAria": "Revocar la invitación de {email}"
+      "revokeAria": "Revocar la invitación de {email}",
+      "emailSent": "Correo enviado",
+      "emailNotSent": "Sin correo enviado",
+      "resendAria": "Reenviar correo de invitación a {email}"
     },
     "table": {
       "email": "Correo electrónico",

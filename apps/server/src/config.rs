@@ -214,6 +214,35 @@ impl Config {
             .or_else(|| self.public_url.clone())
             .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
     }
+
+    /// Whether an emailed link built by [`Config::dashboard_url`] can be
+    /// opened by its recipient. Without `DASHBOARD_URL` or `PUBLIC_URL` the
+    /// URL falls back to the bind address, and the default bind host is the
+    /// unspecified `0.0.0.0` — a wildcard, not a location. Sending a link
+    /// nobody can reach would stamp the row as delivered while the invitee
+    /// got an error page, so email delivery refuses it instead.
+    pub fn emailed_links_are_reachable(&self) -> bool {
+        if self.dashboard.url.is_some() || self.public_url.is_some() {
+            return true;
+        }
+        !is_unspecified_host(&self.host)
+    }
+}
+
+/// Whether a bind host is a wildcard: any IPv4 `0.x` address or the IPv6
+/// unspecified form. IPv4 keeps its four-dotted-quad shape check, so `0`
+/// alone or `01.2.3.4` are not mistaken for it.
+fn is_unspecified_host(host: &str) -> bool {
+    let host = host.trim();
+    if host == "::" || host == ":" {
+        return true;
+    }
+    let parts: Vec<&str> = host.split('.').collect();
+    parts.len() == 4
+        && parts[0] == "0"
+        && parts.iter().all(|part| {
+            !part.is_empty() && part.len() <= 3 && part.bytes().all(|b| b.is_ascii_digit())
+        })
 }
 
 impl TelemetryConfig {

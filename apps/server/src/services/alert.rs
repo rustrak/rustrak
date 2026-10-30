@@ -22,6 +22,46 @@ fn event_alert_id(project_id: i32, event_id: Uuid, alert_type: &AlertType) -> St
     format!("event-{project_id}-{event_id}-{alert_type}")
 }
 
+/// The credential key this provider redacts in API responses, and the exact
+/// marker value the redaction writes. `None` for providers whose credentials
+/// are returned unredacted, so carry-over never fires for them.
+fn redacted_secret_key(
+    provider_type: crate::models::ProviderType,
+) -> Option<(&'static str, &'static str)> {
+    match provider_type {
+        crate::models::ProviderType::Slack => Some(("token", "xoxb-****")),
+        crate::models::ProviderType::Email => Some(("smtp_password", "****")),
+        crate::models::ProviderType::Webhook | crate::models::ProviderType::CustomWebhook => None,
+    }
+}
+
+/// Merges an incoming credentials patch over the stored one so that keys the
+/// API redacted round-trip as "keep the stored secret" instead of persisting
+/// the marker.
+///
+/// The update form reads a redacted config (`"smtp_password": "****"`), and a
+/// naive whole-object update would store that marker and break SMTP auth or
+/// Slack delivery. When the incoming value for a redacted key is exactly the
+/// marker, the stored secret is carried over; a value the user actually typed
+/// (including clearing the key) is respected as-is.
+fn carry_over_redacted_secrets(
+    provider_type: crate::models::ProviderType,
+    incoming: &mut serde_json::Value,
+    stored: &serde_json::Value,
+) {
+    let Some((key, marker)) = redacted_secret_key(provider_type) else {
+        return;
+    };
+    let (Some(obj), Some(stored_obj)) = (incoming.as_object_mut(), stored.as_object()) else {
+        return;
+    };
+    if obj.get(key).and_then(|v| v.as_str()) == Some(marker) {
+        if let Some(secret) = stored_obj.get(key) {
+            obj.insert(key.to_string(), secret.clone());
+        }
+    }
+}
+
 /// What a rule's filters read from the event that triggered it.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct EventFacts<'a> {
@@ -132,6 +172,14 @@ impl AlertService {
             dispatcher.validate_config(credentials)?;
         }
 
+        // Redacted secrets survive an edit: the dashboard can only read the
+        // marker (channels are never returned with live secrets), so a patch
+        // carrying the marker means "keep what is stored", not "store ****".
+        let mut credentials = input.credentials;
+        if let Some(ref mut incoming) = credentials {
+            carry_over_redacted_secrets(existing.provider_type, incoming, &existing.credentials);
+        }
+
         let integration = sqlx::query_as::<_, AlertIntegration>(
             r#"
             UPDATE alert_integrations
@@ -147,7 +195,7 @@ impl AlertService {
         )
         .bind(id)
         .bind(&input.name)
-        .bind(&input.credentials)
+        .bind(&credentials)
         .bind(input.is_enabled)
         .fetch_one(pool)
         .await
@@ -1193,6 +1241,60 @@ fn next_attempt_count(previous: i32) -> i32 {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_carry_over_restores_redacted_smtp_password() {
+        let stored = json!({
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 587,
+            "smtp_username": "user",
+            "smtp_password": "hunter2",
+            "from_address": "alerts@example.com"
+        });
+        // What the dashboard round-trips after a GET: marker for the secret.
+        let mut incoming = json!({
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 587,
+            "smtp_username": "user",
+            "smtp_password": "****",
+            "from_address": "alerts@example.com"
+        });
+        carry_over_redacted_secrets(crate::models::ProviderType::Email, &mut incoming, &stored);
+        assert_eq!(incoming["smtp_password"], "hunter2");
+    }
+
+    #[test]
+    fn test_carry_over_respects_a_newly_typed_password() {
+        let stored = json!({"smtp_password": "hunter2"});
+        let mut incoming = json!({"smtp_password": "new-secret"});
+        carry_over_redacted_secrets(crate::models::ProviderType::Email, &mut incoming, &stored);
+        assert_eq!(incoming["smtp_password"], "new-secret");
+    }
+
+    #[test]
+    fn test_carry_over_restores_redacted_slack_token() {
+        let stored = json!({"method": "bot_token", "token": "xoxb-real"});
+        let mut incoming = json!({"method": "bot_token", "token": "xoxb-****"});
+        carry_over_redacted_secrets(crate::models::ProviderType::Slack, &mut incoming, &stored);
+        assert_eq!(incoming["token"], "xoxb-real");
+    }
+
+    #[test]
+    fn test_carry_over_noop_for_unredacted_providers() {
+        let stored = json!({"webhook_url": "https://example.com/hook"});
+        let mut incoming = json!({"webhook_url": "https://example.com/other"});
+        carry_over_redacted_secrets(crate::models::ProviderType::Webhook, &mut incoming, &stored);
+        assert_eq!(incoming["webhook_url"], "https://example.com/other");
+    }
+
+    #[test]
+    fn test_carry_over_marker_without_stored_key_stays_marker() {
+        // Stored row predates the key (direct DB insert): nothing to restore.
+        let stored = json!({"smtp_host": "smtp.example.com"});
+        let mut incoming = json!({"smtp_host": "smtp.example.com", "smtp_password": "****"});
+        carry_over_redacted_secrets(crate::models::ProviderType::Email, &mut incoming, &stored);
+        assert_eq!(incoming["smtp_password"], "****");
+    }
 
     #[test]
     fn test_issue_url_uses_numeric_project_id_not_slug() {

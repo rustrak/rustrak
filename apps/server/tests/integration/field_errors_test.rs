@@ -393,6 +393,7 @@ async fn inviting_an_existing_user_blames_email() {
         CreateInvitation {
             email: "taken@example.com".to_string(),
             role: "member".to_string(),
+            send_email: false,
         },
         admin.id,
     )
@@ -412,6 +413,7 @@ async fn inviting_a_pending_email_blames_email() {
         CreateInvitation {
             email: "pending@example.com".to_string(),
             role: "member".to_string(),
+            send_email: false,
         },
         admin.id,
     )
@@ -423,6 +425,7 @@ async fn inviting_a_pending_email_blames_email() {
         CreateInvitation {
             email: "pending@example.com".to_string(),
             role: "member".to_string(),
+            send_email: false,
         },
         admin.id,
     )

@@ -11,12 +11,15 @@ use chrono::Utc;
 use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
 use rustrak::db::DbPool;
 use rustrak::models::{
-    CreateAuthToken, CreateProject, CreateUserRequest, Issue, ProjectRole, User, UserRole,
+    CreateAuthToken, CreateInvitation, CreateProject, CreateUserRequest, Issue, ProjectRole, User,
+    UserRole,
 };
 use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
+use rustrak::services::invitation_email;
 use rustrak::services::{
-    AuthTokenService, IssueService, ProjectMemberService, ProjectService, UsersService,
+    AuthTokenService, InvitationService, IssueService, ProjectMemberService, ProjectService,
+    UsersService,
 };
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -908,4 +911,476 @@ async fn viewer_cannot_mutate_new_issue_endpoints_but_editor_can() {
     assert_eq!(body["deleted"], 1);
     assert!(IssueService::get_by_id(&db.pool, issue.id).await.is_err());
     assert!(IssueService::get_by_id(&db.pool, issue2.id).await.is_ok());
+}
+
+// ===========================================================================
+// Invitation email delivery
+// ===========================================================================
+
+/// Inserts an enabled email integration with the given credentials object.
+async fn seed_email_integration(pool: &DbPool, credentials: Value) {
+    sqlx::query(
+        "INSERT INTO alert_integrations (name, provider_type, credentials, is_enabled, failure_count) VALUES ($1, 'email', $2, TRUE, 0)",
+    )
+    .bind("test-mailer")
+    .bind(credentials)
+    .execute(pool)
+    .await
+    .expect("email integration seeded");
+}
+
+/// Returns true when the process has a global SMTP_HOST configured; tests
+/// that depend on "no mailer anywhere" must skip on such machines because
+/// the global environment alone would satisfy resolve_mailer.
+fn global_smtp_configured() -> bool {
+    std::env::var("SMTP_HOST").is_ok()
+}
+
+#[actix_web::test]
+async fn email_status_reports_integration_when_configured() {
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    seed_email_integration(&db.pool, json!({"smtp_host": "127.0.0.1", "smtp_port": 1})).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::get()
+        .uri("/api/invitations/email-status")
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["available"], true);
+    assert_eq!(body["source"], "integration");
+}
+
+#[actix_web::test]
+async fn email_status_reports_unavailable_without_configuration() {
+    if global_smtp_configured() {
+        eprintln!("skipping: SMTP_HOST is configured on this machine");
+        return;
+    }
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::get()
+        .uri("/api/invitations/email-status")
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["available"], false);
+    assert_eq!(body["source"], Value::Null);
+}
+
+#[actix_web::test]
+async fn email_status_requires_admin() {
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let member = seed_user(&db.pool, "member@x.com", UserRole::Member).await;
+    let member_token = seed_token_for(&db.pool, member.id).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::get()
+        .uri("/api/invitations/email-status")
+        .insert_header(bearer(&member_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 403, "email-status is admin-only");
+}
+
+#[actix_web::test]
+async fn send_email_without_configuration_is_400_blaming_send_email() {
+    if global_smtp_configured() {
+        eprintln!("skipping: SMTP_HOST is configured on this machine");
+        return;
+    }
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::post()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .set_json(json!({ "email": "b@x.com", "role": "member", "send_email": true }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400, "unconfigured email delivery must 400");
+    let body: Value = test::read_body_json(resp).await;
+    let fields = body["error"]["fields"]
+        .as_array()
+        .expect("field errors present");
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0]["field"], "send_email");
+    assert_eq!(fields[0]["code"], "invalid");
+
+    // Nothing was created: the failure happened before the INSERT.
+    let req = test::TestRequest::get()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let body: Value = test::read_body_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_else(|| body.as_array().cloned().unwrap_or_default());
+    assert!(
+        items.is_empty(),
+        "rejected request must not leave an invitation behind"
+    );
+}
+
+#[actix_web::test]
+async fn send_email_with_dead_smtp_still_creates_the_invitation() {
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    // Port 1 on loopback refuses instantly: deterministic send failure with
+    // no DNS and no waiting.
+    seed_email_integration(&db.pool, json!({"smtp_host": "127.0.0.1", "smtp_port": 1})).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::post()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .set_json(json!({ "email": "b@x.com", "role": "member", "send_email": true }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 201, "invitation survives a failed send");
+    let body: Value = test::read_body_json(resp).await;
+    assert!(body["token"].as_str().is_some_and(|t| !t.is_empty()));
+    assert_eq!(
+        body["email_sent_at"],
+        Value::Null,
+        "failed send leaves email_sent_at null so the UI offers manual copy"
+    );
+}
+
+#[actix_web::test]
+async fn manual_invitations_report_null_email_sent_at() {
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::post()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .set_json(json!({ "email": "manual@x.com", "role": "member" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 201);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["email_sent_at"], Value::Null);
+
+    // And the list view carries the same shape.
+    let req = test::TestRequest::get()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let body: Value = test::read_body_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_else(|| body.as_array().cloned().unwrap_or_default());
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["email_sent_at"], Value::Null);
+}
+
+#[actix_web::test]
+async fn resend_unknown_token_is_404() {
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::post()
+        .uri("/api/invitations/not-a-real-token/resend")
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 404);
+}
+
+#[actix_web::test]
+async fn resend_expired_invitation_is_400() {
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::post()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .set_json(json!({ "email": "exp@x.com", "role": "member" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let body: Value = test::read_body_json(resp).await;
+    let token = body["token"].as_str().unwrap().to_string();
+
+    // Age the invitation past its expiry directly (a bound value works on
+    // both the sqlite TEXT and postgres TIMESTAMPTZ column).
+    let past = Utc::now() - chrono::Duration::hours(1);
+    sqlx::query("UPDATE invitations SET expires_at = $1")
+        .bind(past)
+        .execute(&db.pool)
+        .await
+        .expect("expiry aged");
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/invitations/{}/resend", token))
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400, "resending an expired invitation is 400");
+    let body: Value = test::read_body_json(resp).await;
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("expired or already used")),
+        "message names the real reason"
+    );
+}
+
+#[actix_web::test]
+async fn resend_after_a_delivered_email_requires_force() {
+    if global_smtp_configured() {
+        eprintln!("skipping: SMTP_HOST is configured on this machine");
+        return;
+    }
+    let db = TestDb::new().await;
+    let config = create_test_config();
+
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+
+    let app = build_app!(db.pool.clone(), config);
+    let req = test::TestRequest::post()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .set_json(json!({ "email": "sent@x.com", "role": "member" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let body: Value = test::read_body_json(resp).await;
+    let token = body["token"].as_str().unwrap().to_string();
+
+    // Mark the invitation as already emailed (the delivery itself is covered
+    // by the dead-SMTP create test above).
+    sqlx::query("UPDATE invitations SET email_sent_at = CURRENT_TIMESTAMP")
+        .execute(&db.pool)
+        .await
+        .expect("delivery stamped");
+
+    // Without force: 400 blaming the force field.
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/invitations/{}/resend", token))
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+    let body: Value = test::read_body_json(resp).await;
+    let fields = body["error"]["fields"]
+        .as_array()
+        .expect("field errors present");
+    assert_eq!(fields[0]["field"], "force");
+    assert_eq!(fields[0]["code"], "invalid");
+
+    // With force: the explicit resend proceeds to the mailer check, which —
+    // with no SMTP configured here — 400s blaming send_email instead of
+    // silently pretending a mail went out.
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/invitations/{}/resend", token))
+        .insert_header(bearer(&admin_token))
+        .set_json(json!({ "force": true }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+    let body: Value = test::read_body_json(resp).await;
+    let fields = body["error"]["fields"]
+        .as_array()
+        .expect("field errors present");
+    assert_eq!(fields[0]["field"], "send_email");
+}
+
+/// Greptile P2: two overlapping resend requests must not both deliver. The
+/// claim is an atomic conditional UPDATE, so exactly one request wins; a
+/// lost claim is rejected, and a release makes the row claimable again.
+#[actix_web::test]
+async fn email_delivery_claim_prevents_double_send() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+
+    let invitation = InvitationService::create(
+        &db.pool,
+        CreateInvitation {
+            email: "invitee@example.com".to_string(),
+            role: "member".to_string(),
+            send_email: false,
+        },
+        admin.id,
+    )
+    .await
+    .expect("invitation created");
+
+    let first = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("first claim");
+    assert!(first.is_some(), "the first claim must win");
+
+    let second = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("second claim");
+    assert!(second.is_none(), "a lost race must not be granted a claim");
+
+    // A failed send gives the row back only while the claim still holds.
+    invitation_email::release_email_delivery(&db.pool, &invitation.token, first.unwrap())
+        .await
+        .expect("release");
+
+    let third = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("claim after release");
+    assert!(third.is_some(), "release must make the row claimable again");
+}
+
+/// Success path: a delivered invitation stamps `email_sent_at`, the stamp
+/// reaches the response, and a following list read proves it is persisted,
+/// not only set in memory. The transport is the `test-seams` capture, so
+/// this asserts the real render (recipient, link, sender) without SMTP.
+/// An abandoned claim must stop blocking ordinary resends once it is older
+/// than the stale horizon, or a crashed process would strand an invitation.
+#[actix_web::test]
+async fn stale_delivery_claims_stop_blocking_resend() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+
+    let invitation = InvitationService::create(
+        &db.pool,
+        CreateInvitation {
+            email: "stale@example.com".to_string(),
+            role: "member".to_string(),
+            send_email: false,
+        },
+        admin.id,
+    )
+    .await
+    .expect("invitation created");
+
+    // Take the claim, then age it far past the horizon: what a crashed
+    // attempt would leave behind.
+    let first = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("claim");
+    assert!(first.is_some());
+    let ancient = Utc::now() - chrono::Duration::days(30);
+    sqlx::query("UPDATE invitations SET email_delivery_claimed_at = $1 WHERE token = $2")
+        .bind(ancient)
+        .bind(&invitation.token)
+        .execute(&db.pool)
+        .await
+        .expect("claim aged");
+
+    let reclaimed = invitation_email::claim_email_delivery(&db.pool, &invitation.token)
+        .await
+        .expect("claim after expiry");
+    assert!(
+        reclaimed.is_some(),
+        "a stale claim must not block a resend forever"
+    );
+}
+
+#[cfg(feature = "test-seams")]
+#[actix_web::test]
+async fn send_email_success_path_persists_email_sent_at() {
+    let db = TestDb::new().await;
+    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
+    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    seed_email_integration(
+        &db.pool,
+        json!({"smtp_host": "smtp.test", "smtp_port": 587, "from_address": "invites@example.com"}),
+    )
+    .await;
+
+    let invitation = InvitationService::create(
+        &db.pool,
+        CreateInvitation {
+            email: "invitee@example.com".to_string(),
+            role: "member".to_string(),
+            send_email: true,
+        },
+        admin.id,
+    )
+    .await
+    .expect("invitation created");
+
+    let mailer = invitation_email::resolve_mailer(&db.pool)
+        .await
+        .expect("mailer")
+        .expect("integration configured by seed");
+    let captured = rustrak::services::mail::CapturedMail::new();
+    let invite_url = format!("http://rustrak.test/invite/{}", invitation.token);
+    let sent_at = invitation_email::send_invitation_mail_with_transport(
+        &captured,
+        &mailer,
+        &invitation,
+        &invite_url,
+        "admin@x.com",
+    )
+    .await
+    .expect("capture transport accepts");
+
+    // The captured message carries the real render: recipient, sender, link.
+    let sent = captured.sent();
+    assert_eq!(sent.len(), 1, "exactly one message handed to the transport");
+    assert!(sent[0].contains("invitee@example.com"), "recipient header");
+    assert!(sent[0].contains("invites@example.com"), "configured sender");
+    assert!(sent[0].contains("rustrak.test/invite/"), "the invite link");
+
+    invitation_email::mark_email_sent(&db.pool, &invitation.token, sent_at)
+        .await
+        .expect("stamp persisted");
+
+    // A fresh list read proves the stamp is persisted, not only in memory.
+    let app = build_app!(db.pool.clone(), create_test_config());
+    let req = test::TestRequest::get()
+        .uri("/api/invitations")
+        .insert_header(bearer(&admin_token))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let body: Value = test::read_body_json(resp).await;
+    let items = body["items"]
+        .as_array()
+        .cloned()
+        .or_else(|| body.as_array().cloned())
+        .expect("list array");
+    let seeded = items
+        .iter()
+        .find(|row| row["token"] == json!(invitation.token))
+        .expect("seeded invitation listed");
+    assert!(
+        seeded["email_sent_at"].is_string(),
+        "email_sent_at persisted and serialised: {seeded}"
+    );
 }

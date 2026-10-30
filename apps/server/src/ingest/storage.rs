@@ -319,6 +319,23 @@ pub async fn prepare_ingest_dir(base_dir: &Path) -> AppResult<()> {
 
 fn sync_parent_directory(path: &Path) -> AppResult<()> {
     if let Some(parent) = path.parent() {
+        // 目录句柄按平台区分：POSIX 直接 File::open 目录做 fsync；
+        // Windows 必须带 FILE_FLAG_BACKUP_SEMANTICS 才能打开目录句柄，
+        // 且 FlushFileBuffers 要求写权限，否则会拿到 os error 5（拒绝访问）。
+        #[cfg(windows)]
+        let directory = {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(parent)
+                .map_err(|e| {
+                    AppError::Internal(format!("Failed to open ingest directory: {}", e))
+                })?
+        };
+        #[cfg(not(windows))]
         let directory = std::fs::File::open(parent)
             .map_err(|e| AppError::Internal(format!("Failed to open ingest directory: {}", e)))?;
         directory

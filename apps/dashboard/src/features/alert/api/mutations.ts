@@ -14,7 +14,12 @@ export const alertMutations = {
     mutationOptions({
       mutationFn: (body: CreateAlertIntegration) =>
         orThrow(api().alertChannels.create({ body })),
-      meta: { invalidates: [alertQueries.integrations().queryKey] },
+      meta: {
+        invalidates: [
+          alertQueries.integrations().queryKey,
+          ['invitations', 'email-status'],
+        ],
+      },
     }),
   // The integration is the variable, not a parameter: a list of them, or a
   // rule's channels tested together, is one mutation rather than one per row.
@@ -27,7 +32,13 @@ export const alertMutations = {
         id: number;
         body: UpdateAlertIntegration;
       }) => orThrow(api().alertChannels.update({ path: { id }, body })),
-      meta: { invalidates: [alertQueries.integrations().queryKey] },
+      // Enable/disable moves the invite form's delivery switch too.
+      meta: {
+        invalidates: [
+          alertQueries.integrations().queryKey,
+          ['invitations', 'email-status'],
+        ],
+      },
     }),
   /**
    * Rules in any project may route to the integration and lose it, and no key
@@ -38,7 +49,11 @@ export const alertMutations = {
       mutationFn: (id: number) =>
         orThrow(api().alertChannels.delete({ path: { id } })),
       meta: {
-        invalidates: [alertQueries.integrations().queryKey, ['projects']],
+        invalidates: [
+          alertQueries.integrations().queryKey,
+          ['invitations', 'email-status'],
+          ['projects'],
+        ],
       },
     }),
   /** Sends a sample alert through the integration; records nothing. */
