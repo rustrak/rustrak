@@ -13,9 +13,11 @@ import {
   type QueryField,
   useDataTable,
 } from '@rustrak/ui';
-import { type ReactNode, useMemo, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { type ReactNode, useMemo } from 'react';
+import { useTranslations } from 'use-intl';
 import { failureTone } from '@/features/transaction/model/endpoints';
+import { RelativeTime } from '@/shared/ui/components/relative-time';
+import { useColumnFormatter } from '@/shared/ui/hooks/use-column-formatter';
 
 const column = createDataTableColumnHelper<TransactionStatsResponse>();
 
@@ -61,9 +63,7 @@ export function EndpointsTable({
   period: ReactNode;
 }) {
   const t = useTranslations('performance');
-  const format = useFormatter();
-  // The clock the relative times are read against, taken once per page.
-  const [now] = useState(() => Date.now());
+  const format = useColumnFormatter();
 
   const columns = useMemo(() => {
     const duration = (ms: number) => (
@@ -202,13 +202,13 @@ export function EndpointsTable({
             className="text-fg-secondary"
             title={format.dateTime(new Date(getValue()), 'dateTime')}
           >
-            {format.relativeTime(new Date(getValue()), { now: new Date(now) })}
+            <RelativeTime at={getValue()} />
           </span>
         ),
         meta: { label: t('columns.lastSeen'), width: 128, ...figure },
       }),
     ]);
-  }, [t, format, now]);
+  }, [t, format]);
 
   const fields = useMemo<QueryField[]>(
     () => [

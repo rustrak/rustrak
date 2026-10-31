@@ -108,3 +108,31 @@ export function clearOnUserChange(
     queryClient.clear();
   });
 }
+
+/**
+ * Moves the relative-time clock forward when a read succeeds, so a time
+ * fetched after the page loaded does not read as "in 3 minutes". The move runs
+ * in a microtask, before the new data renders: TanStack Query tells React a
+ * tick later (`setTimeout`, its default `notifyManager` scheduler; the tests
+ * fail if that order changes). Reads that land in the same tick move it once.
+ *
+ * Every success counts, `setQueryData` included: an optimistic update is data
+ * on screen too, and it is read against the same clock.
+ *
+ * Returns the unsubscribe. `main.tsx` keeps it for the life of the app.
+ */
+export function refreshNowOnData(
+  queryClient: QueryClient,
+  clock: { refreshNow(): void },
+): () => void {
+  let queued = false;
+  return queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.action.type !== 'success') return;
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      clock.refreshNow();
+    });
+  });
+}

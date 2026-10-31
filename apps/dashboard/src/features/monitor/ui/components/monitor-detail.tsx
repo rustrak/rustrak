@@ -1,7 +1,7 @@
 import type { MonitorEnvironmentStats, MonitorResponse } from '@rustrak/client';
 import { cn, TimeSeriesChart } from '@rustrak/ui';
 import type { ReactNode } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { checkInFill } from '@/features/monitor/lib/check-in-fill';
 import { formatRunDuration } from '@/features/monitor/lib/duration';
 import {
@@ -27,10 +27,11 @@ export function MonitorFigures({
 }) {
   const t = useTranslations('crons');
   const format = useFormatter();
+  const now = useNow().getTime();
   const buckets = stats.flatMap((env) => env.buckets);
   const last = lastCheckIn(monitor);
   const next = nextCheckIn(monitor);
-  const late = next !== null && Date.parse(next) < Date.now();
+  const late = next !== null && Date.parse(next) < now;
   const lastRun = newestRun(monitor);
   const rate = successRate(buckets);
   const duration = windowDuration(buckets);

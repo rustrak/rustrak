@@ -12,10 +12,12 @@ import {
   Text,
   TimeIcon,
 } from '@rustrak/ui';
-import type { useFormatter, useTranslations } from 'use-intl';
+import { useNow, type useTranslations } from 'use-intl';
 import type { Assignable } from '@/features/issue/model/assignable';
 import { SEEN_WINDOWS } from '@/features/issue/model/issue-table';
 import { Link } from '@/shared/ui/components/link';
+import { RelativeTime } from '@/shared/ui/components/relative-time';
+import type { ColumnFormatter } from '@/shared/ui/hooks/use-column-formatter';
 
 export type { Assignable } from '@/features/issue/model/assignable';
 
@@ -51,10 +53,9 @@ const NEW_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 interface ColumnContext {
   projectId: number;
   t: ReturnType<typeof useTranslations<'issues'>>;
-  format: ReturnType<typeof useFormatter>;
+  format: ColumnFormatter;
   members: Assignable[];
   me: number;
-  now: number;
 }
 
 const column = createDataTableColumnHelper<IssueResponse>();
@@ -73,17 +74,11 @@ export function issueColumns({
   format,
   members,
   me,
-  now,
 }: ColumnContext): DataTableColumnDef<IssueResponse>[] {
   const seenOptions: FilterOption[] = SEEN_WINDOWS.map((value) => ({
     value,
     label: t(`table.windows.${value}`),
   }));
-  const relative = (iso: string) =>
-    format.relativeTime(new Date(iso), {
-      now: new Date(now),
-      style: 'narrow',
-    });
 
   return column.columns([
     column.accessor('title', {
@@ -95,7 +90,6 @@ export function issueColumns({
         <IssueCell
           issue={row.original}
           href={`/projects/${projectId}/issues/${row.original.id}`}
-          now={now}
           t={t}
         />
       ),
@@ -234,7 +228,7 @@ export function issueColumns({
       header: t('columns.lastSeen'),
       cell: ({ getValue }) => (
         <span title={format.dateTime(new Date(getValue()), 'precise')}>
-          {relative(getValue())}
+          <RelativeTime at={getValue()} style="narrow" />
         </span>
       ),
       meta: {
@@ -251,7 +245,7 @@ export function issueColumns({
       header: t('columns.age'),
       cell: ({ getValue }) => (
         <span title={format.dateTime(new Date(getValue()), 'precise')}>
-          {relative(getValue())}
+          <RelativeTime at={getValue()} style="narrow" />
         </span>
       ),
       meta: {
@@ -289,15 +283,14 @@ function issueBadge(
 function IssueCell({
   issue,
   href,
-  now,
   t,
 }: {
   issue: IssueResponse;
   /** The title is a real link, so it opens in a new tab like any other. */
   href: string;
-  now: number;
   t: ColumnContext['t'];
 }) {
+  const now = useNow().getTime();
   const badge = issueBadge(issue, now);
 
   return (

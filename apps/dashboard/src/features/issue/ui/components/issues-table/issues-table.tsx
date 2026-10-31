@@ -28,9 +28,10 @@ import { useMutation } from '@tanstack/react-query';
 import type { Row } from '@tanstack/react-table';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
 import type { IssueView } from '@/features/issue/model/issue-table';
+import { useColumnFormatter } from '@/shared/ui/hooks/use-column-formatter';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { DeleteIssuesDialog } from './delete-issues-dialog';
 import { type Assignable, issueColumns } from './issue-columns';
@@ -85,15 +86,13 @@ export function IssuesTable({
   releases,
 }: IssuesTableProps) {
   const t = useTranslations('issues');
-  const format = useFormatter();
+  const format = useColumnFormatter();
   const router = useRouter();
   const [deleting, setDeleting] = useState<IssueResponse[] | null>(null);
-  // The clock the relative times are read against, taken once per page.
-  const [now] = useState(() => Date.now());
 
   const columns = useMemo(
-    () => issueColumns({ projectId, t, format, members, me, now }),
-    [projectId, t, format, members, me, now],
+    () => issueColumns({ projectId, t, format, members, me }),
+    [projectId, t, format, members, me],
   );
 
   const fields = useMemo<QueryField[]>(

@@ -1,6 +1,5 @@
 import type { AlertHistory, AlertHistoryDay } from '@rustrak/client';
 import { BarsChart, cn, Tag, type TagTone, Text } from '@rustrak/ui';
-import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { Link } from '@/shared/ui/components/link';
 import { ProviderIcon } from './provider-icon';
@@ -57,7 +56,6 @@ export function HistoryTable({
   ruleHref?: (ruleId: number) => string;
 }) {
   const t = useTranslations('alerts.history');
-  const [now] = useState(() => Date.now());
 
   if (history.length === 0) {
     return (
@@ -96,7 +94,6 @@ export function HistoryTable({
               row={row}
               ruleNames={ruleNames}
               ruleHref={ruleHref}
-              now={now}
             />
           ))}
         </tbody>
@@ -110,13 +107,11 @@ function HistoryRow({
   row,
   ruleNames,
   ruleHref,
-  now,
 }: {
   projectId: number;
   row: AlertHistory;
   ruleNames?: Map<number, string>;
   ruleHref?: (ruleId: number) => string;
-  now: number;
 }) {
   const t = useTranslations('alerts.history');
   const format = useFormatter();
@@ -177,7 +172,7 @@ function HistoryRow({
       </td>
       <td className={cn(cell, 'text-right text-fg-subtle tabular-nums')}>
         <time dateTime={row.created_at} title={format.dateTime(at, 'precise')}>
-          {format.relativeTime(at, { now: new Date(now) })}
+          {format.relativeTime(at)}
         </time>
       </td>
     </tr>

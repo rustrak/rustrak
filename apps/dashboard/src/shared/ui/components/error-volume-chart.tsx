@@ -19,7 +19,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import {
   bucketWidth,
   type TimeAxis,
@@ -31,6 +31,10 @@ import {
   ChartTooltipRow,
   ChartTooltipSurface,
 } from '@/shared/ui/components/chart-tooltip';
+import {
+  type ColumnFormatter,
+  useColumnFormatter,
+} from '@/shared/ui/hooks/use-column-formatter';
 
 /**
  * Stack order, bottom to top. Errors sit on the baseline so the segment that
@@ -202,9 +206,11 @@ function bucketLabel(
  *
  * `useFormatter` is a hook, and this is a builder rather than a component, so
  * it cannot reach for one itself. The component that calls it already threads
- * the translator through for the same reason.
+ * the translator through for the same reason. It is the column formatter,
+ * which keeps its identity when `now` moves, so the tooltip is not rebuilt
+ * after every read.
  */
-type Formatter = ReturnType<typeof useFormatter>;
+type Formatter = ColumnFormatter;
 
 function makeTooltip(
   bucketMs: number | null,
@@ -274,7 +280,7 @@ export function ErrorVolumeChart({
   intervalHours,
   height = 260,
 }: ErrorVolumeChartProps) {
-  const format = useFormatter();
+  const format = useColumnFormatter();
   const t = useTranslations('charts');
 
   const series = useMemo(

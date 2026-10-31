@@ -9,8 +9,10 @@ import {
   Tag,
   useDataTable,
 } from '@rustrak/ui';
-import { type ReactNode, useMemo, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { type ReactNode, useMemo } from 'react';
+import { useTranslations } from 'use-intl';
+import { RelativeTime } from '@/shared/ui/components/relative-time';
+import { useColumnFormatter } from '@/shared/ui/hooks/use-column-formatter';
 
 const column = createDataTableColumnHelper<AgentTraceSummary>();
 
@@ -47,9 +49,7 @@ export function AgentTracesTable({
   scope: ReactNode;
 }) {
   const t = useTranslations('agents');
-  const format = useFormatter();
-  // The clock the relative times are read against, taken once per page.
-  const [now] = useState(() => Date.now());
+  const format = useColumnFormatter();
 
   const columns = useMemo(() => {
     const figure = { align: 'end' as const };
@@ -166,7 +166,7 @@ export function AgentTracesTable({
             className="text-fg-subtle tabular-nums"
             title={format.dateTime(new Date(getValue()), 'dateTime')}
           >
-            {format.relativeTime(new Date(getValue()), { now: new Date(now) })}
+            <RelativeTime at={getValue()} />
           </span>
         ),
         meta: {
@@ -177,7 +177,7 @@ export function AgentTracesTable({
         },
       }),
     ]);
-  }, [t, format, now]);
+  }, [t, format]);
 
   const fields = useMemo<QueryField[]>(
     () => [

@@ -20,7 +20,7 @@ export interface IntlSnapshot {
   messages: Messages;
   formats: Formats;
   /**
-   * One "now" for the whole session.
+   * One shared "now", moved forward each time a read succeeds.
    *
    * Without it every `format.relativeTime` call reaches for its own
    * `new Date()`, which next-intl warned about (`ENVIRONMENT_FALLBACK`) for a
@@ -28,10 +28,17 @@ export interface IntlSnapshot {
    * against two different clocks, so a list of timestamps can disagree with
    * itself at a boundary.
    *
-   * Relative times therefore do not tick on their own. That is the right
-   * default for a dashboard whose rows are minutes to weeks old; a surface
-   * that genuinely needs a live clock asks for one with
+   * It moves to the browser's clock whenever a read succeeds (`refreshNow`),
+   * so data fetched later is not read against an older clock. Between reads
+   * it stays put, so relative times do not tick on their own. That is the
+   * right default for a dashboard whose rows are minutes to weeks old; a
+   * surface that genuinely needs a live clock asks for one with
    * `useNow({updateInterval})`.
+   *
+   * Never build a query key from it: each success moves it, and the new key
+   * would fetch again. A table's columns do not close over it either: they
+   * use `useColumnFormatter` and `RelativeTime`, or every cell remounts on
+   * each success.
    */
   now: Date;
 }
@@ -49,6 +56,8 @@ export interface IntlStore {
   ensure(): Promise<IntlSnapshot>;
   /** Re-resolve, after the reader changed their language or their zone. */
   reload(): Promise<IntlSnapshot>;
+  /** Move `now` to the present. A no-op before `ensure()` has settled. */
+  refreshNow(): void;
   /** The resolved configuration. Throws before `ensure()` has settled. */
   snapshot(): IntlSnapshot;
   subscribe(listener: () => void): () => void;
@@ -95,6 +104,11 @@ export function createIntlStore(deps: IntlDependencies): IntlStore {
     },
     reload() {
       return start();
+    },
+    refreshNow() {
+      if (!current) return;
+      current = { ...current, now: new Date() };
+      for (const listener of listeners) listener();
     },
     snapshot() {
       if (!current) {

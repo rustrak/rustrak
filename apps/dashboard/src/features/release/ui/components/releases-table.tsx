@@ -9,8 +9,10 @@ import {
   type QueryField,
   useDataTable,
 } from '@rustrak/ui';
-import { type ReactNode, useMemo, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { type ReactNode, useMemo } from 'react';
+import { useTranslations } from 'use-intl';
+import { RelativeTime } from '@/shared/ui/components/relative-time';
+import { useColumnFormatter } from '@/shared/ui/hooks/use-column-formatter';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { AdoptionBar, HealthRate, VersionName } from './release-figures';
 
@@ -68,14 +70,10 @@ export function ReleasesTable({
   scope: ReleaseScope;
 }) {
   const t = useTranslations('releases');
-  const format = useFormatter();
+  const format = useColumnFormatter();
   const router = useRouter();
-  // The clock the relative times are read against, taken once per page.
-  const [now] = useState(() => Date.now());
 
   const columns = useMemo(() => {
-    const relative = (iso: string) =>
-      format.relativeTime(new Date(iso), { now: new Date(now) });
     const count = (value: number) => (
       <span
         className={
@@ -108,7 +106,7 @@ export function ReleasesTable({
                     'dateTime',
                   )}
                 >
-                  {relative(release.date_created)}
+                  <RelativeTime at={release.date_created} />
                 </span>
                 {release.environments.length > 0
                   ? ` · ${release.environments.join(', ')}`
@@ -172,7 +170,7 @@ export function ReleasesTable({
               className="text-fg-secondary"
               title={format.dateTime(new Date(last), 'dateTime')}
             >
-              {relative(last)}
+              <RelativeTime at={last} />
             </span>
           ) : (
             <span className="text-fg-ghost">–</span>
@@ -181,7 +179,7 @@ export function ReleasesTable({
         meta: { label: t('columns.lastEvent'), width: 128, ...figure },
       }),
     ]);
-  }, [t, format, now]);
+  }, [t, format]);
 
   const fields = useMemo<QueryField[]>(
     () => [
