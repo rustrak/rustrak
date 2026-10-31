@@ -1,11 +1,15 @@
 import type { RustrakError, UserResponse } from '@rustrak/client';
 import { Err, Ok } from '@rustrak/client';
-import { describe, expect, it } from 'vitest';
+import { notifyManager, QueryObserver } from '@tanstack/react-query';
+import { createFormatter, type Messages } from 'use-intl';
+import { describe, expect, it, vi } from 'vitest';
+import { createIntlStore } from '@/shared/i18n/intl';
 import {
   ApiError,
   clearOnUserChange,
   createQueryClient,
   orThrow,
+  refreshNowOnData,
 } from './query';
 import { createSessionStore } from './session';
 
@@ -118,5 +122,110 @@ describe('clearOnUserChange', () => {
     store.set(user(1));
 
     expect(client.getQueryData(['team'])).toEqual(['alice']);
+  });
+});
+
+describe('refreshNowOnData', () => {
+  it('moves the clock when a read succeeds', async () => {
+    const client = createQueryClient();
+    const clock = { refreshNow: vi.fn() };
+    refreshNowOnData(client, clock);
+
+    await client.query({ queryKey: ['team'], queryFn: () => ['alice'] });
+
+    expect(clock.refreshNow).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves it when a read fails', async () => {
+    const client = createQueryClient();
+    const clock = { refreshNow: vi.fn() };
+    refreshNowOnData(client, clock);
+
+    await client
+      .query({
+        queryKey: ['team'],
+        queryFn: () => orThrow(Promise.resolve(Err(down))),
+      })
+      .catch(() => undefined);
+
+    expect(clock.refreshNow).not.toHaveBeenCalled();
+  });
+
+  it('moves it once for updates that land in the same tick', async () => {
+    const client = createQueryClient();
+    const clock = { refreshNow: vi.fn() };
+    refreshNowOnData(client, clock);
+
+    client.setQueryData(['a'], 1);
+    client.setQueryData(['b'], 2);
+    await Promise.resolve();
+
+    expect(clock.refreshNow).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves it again for an update in a later tick', async () => {
+    const client = createQueryClient();
+    const clock = { refreshNow: vi.fn() };
+    refreshNowOnData(client, clock);
+
+    client.setQueryData(['a'], 1);
+    await Promise.resolve();
+    client.setQueryData(['b'], 2);
+    await Promise.resolve();
+
+    expect(clock.refreshNow).toHaveBeenCalledTimes(2);
+  });
+
+  // `useSuspenseQuery` throws this promise, and React renders again once it
+  // resolves. The clock must already have moved by then.
+  it('moves it before a suspended page renders again', async () => {
+    const client = createQueryClient();
+    const clock = { refreshNow: vi.fn() };
+    refreshNowOnData(client, clock);
+    const options = { queryKey: ['monitor'], queryFn: () => 'data' };
+
+    await new QueryObserver(client, options).fetchOptimistic(options);
+
+    expect(clock.refreshNow).toHaveBeenCalledTimes(1);
+  });
+
+  // The whole path but React: the page must never see the new data against
+  // the old clock, or a check-in from a minute ago reads "in 33 minutes".
+  it('moves it before the new data reaches the page', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    let unsubscribe = () => {};
+    try {
+      vi.setSystemTime(new Date('2026-01-01T06:00:00Z'));
+      const intl = createIntlStore({
+        readSession: async () => ({ state: 'anonymous' }),
+        browserLanguages: () => ['en'],
+        loadMessages: async () => ({}) as Messages,
+      });
+      await intl.ensure();
+      const client = createQueryClient();
+      refreshNowOnData(client, intl);
+
+      vi.setSystemTime(new Date('2026-01-01T06:34:00Z'));
+      const observer = new QueryObserver(client, {
+        queryKey: ['monitor'],
+        queryFn: () => '2026-01-01T06:33:00Z',
+      });
+      const seen = new Promise<string>((resolve) => {
+        unsubscribe = observer.subscribe(
+          // Wrapped as `useQuery` wraps its listener.
+          notifyManager.batchCalls((result) => {
+            if (!result.data) return;
+            const { now } = intl.snapshot();
+            const format = createFormatter({ locale: 'en', now });
+            resolve(format.relativeTime(new Date(result.data)));
+          }),
+        );
+      });
+
+      expect(await seen).toBe('1 minute ago');
+    } finally {
+      unsubscribe();
+      vi.useRealTimers();
+    }
   });
 });

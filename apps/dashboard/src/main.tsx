@@ -7,7 +7,11 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { clearOnUserChange, createQueryClient } from '@/shared/api/query';
+import {
+  clearOnUserChange,
+  createQueryClient,
+  refreshNowOnData,
+} from '@/shared/api/query';
 import { session } from '@/shared/api/session';
 import { intl } from '@/shared/i18n/intl';
 import { Messages } from '@/shared/i18n/provider';
@@ -16,7 +20,9 @@ import { Toaster } from '@/shared/ui/components/toaster';
 import { createAppRouter } from './router';
 
 const queryClient = createQueryClient();
+// Both subscriptions last as long as the app, so nothing unsubscribes them.
 clearOnUserChange(queryClient, session);
+refreshNowOnData(queryClient, intl);
 const router = createAppRouter(queryClient);
 
 /**

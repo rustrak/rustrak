@@ -102,6 +102,36 @@ describe('createIntlStore', () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 
+  it('moves now to the present and tells the provider', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-01-01T06:00:00Z'));
+      const listener = vi.fn();
+      const store = createIntlStore(deps());
+      const before = await store.ensure();
+      store.subscribe(listener);
+
+      vi.setSystemTime(new Date('2026-01-01T06:34:00Z'));
+      store.refreshNow();
+
+      expect(store.snapshot().now).toEqual(new Date('2026-01-01T06:34:00Z'));
+      expect(store.snapshot().messages).toBe(before.messages);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('has nothing to refresh before it is resolved', () => {
+    const listener = vi.fn();
+    const store = createIntlStore(deps());
+    store.subscribe(listener);
+
+    store.refreshNow();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('carries the named formats for the resolved zone', async () => {
     const store = createIntlStore(
       deps({ readSession: async () => user({ timezone: 'Europe/Madrid' }) }),

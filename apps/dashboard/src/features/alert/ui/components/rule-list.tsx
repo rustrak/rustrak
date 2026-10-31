@@ -4,7 +4,6 @@ import type {
   AlertType,
 } from '@rustrak/client';
 import { cn, focusRingInset, Skeleton, Switch, Text } from '@rustrak/ui';
-import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import {
   alertHref,
@@ -70,7 +69,6 @@ export function RulesTable({
   const format = useFormatter();
   const frequency = useFrequency();
   const conditions = useConditionLabels();
-  const [now] = useState(() => Date.now());
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel">
@@ -149,9 +147,7 @@ export function RulesTable({
                 </span>
                 <span className="text-fg-subtle text-meta tabular-nums lg:text-right">
                   {rule.last_triggered_at
-                    ? format.relativeTime(new Date(rule.last_triggered_at), {
-                        now: new Date(now),
-                      })
+                    ? format.relativeTime(new Date(rule.last_triggered_at))
                     : t('list.neverTriggered')}
                 </span>
               </Link>
