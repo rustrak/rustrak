@@ -543,6 +543,21 @@ export const zDifAssembleFile = z.object({
 export const zDifUploadBody = z.record(z.string(), z.unknown());
 
 /**
+ * The wire form of the email-status `source` field: the only values it
+ * takes besides `null`, typed as an enum so the generated client names the
+ * set instead of accepting any string.
+ */
+export const zEmailSourceKind = z.enum(['integration', 'global']);
+
+/**
+ * GET /api/invitations/email-status answer.
+ */
+export const zEmailStatusResponse = z.object({
+    available: z.boolean(),
+    source: zEmailSourceKind.nullable()
+});
+
+/**
  * Response for API (full detail)
  */
 export const zEventDetailResponse = z.object({
@@ -1347,6 +1362,13 @@ export const zIssueGitHub = z.object({
 });
 
 /**
+ * Request body for re-sending an invitation email.
+ */
+export const zResendInvitation = z.object({
+    force: z.boolean().optional()
+});
+
+/**
  * How the last retention cleanup went.
  */
 export const zRetentionRun = z.object({
@@ -2025,7 +2047,8 @@ export const zUserRole = z.enum(['admin', 'member']);
 
 export const zCreateInvitation = z.object({
     email: z.string(),
-    role: zUserRole
+    role: zUserRole,
+    send_email: z.boolean().optional()
 });
 
 /**
@@ -2044,6 +2067,7 @@ export const zInvitationInfoResponse = z.object({
 export const zInvitationResponse = z.object({
     created_at: z.iso.datetime({ offset: true }),
     email: z.string(),
+    email_sent_at: z.iso.datetime({ offset: true }).nullable(),
     expires_at: z.iso.datetime({ offset: true }),
     role: zUserRole,
     status: z.string(),
@@ -2404,6 +2428,11 @@ export const zInvitationsCreateBody = zCreateInvitation;
  */
 export const zInvitationsCreateResponse = zInvitationResponse;
 
+/**
+ * Whether invitation emails can be sent, and from which source
+ */
+export const zInvitationsEmailStatusResponse = zEmailStatusResponse;
+
 export const zInvitationsRevokePath = z.object({
     token: z.string()
 });
@@ -2412,6 +2441,17 @@ export const zInvitationsRevokePath = z.object({
  * Invitation revoked
  */
 export const zInvitationsRevokeResponse = z.void();
+
+export const zInvitationsResendBody = zResendInvitation.nullable();
+
+export const zInvitationsResendPath = z.object({
+    token: z.string()
+});
+
+/**
+ * Email sent (or re-sent)
+ */
+export const zInvitationsResendResponse = zInvitationResponse;
 
 export const zOauthGetAuthorizationQuery = z.object({
     response_type: z.string(),

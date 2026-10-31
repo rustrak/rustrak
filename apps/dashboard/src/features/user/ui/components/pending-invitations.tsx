@@ -5,6 +5,7 @@ import {
   CloseIcon,
   CopyIcon,
   EmptyIcon,
+  RefreshIcon,
   Tag,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
@@ -21,6 +22,8 @@ import {
 
 interface PendingInvitationsProps {
   invitations: InvitationResponse[];
+  /** Whether any mail transport exists; without one resending can only fail. */
+  emailAvailable: boolean;
 }
 
 /**
@@ -38,10 +41,14 @@ async function handleCopy(invitation: InvitationResponse, t: Translate) {
   }
 }
 
-export function PendingInvitations({ invitations }: PendingInvitationsProps) {
+export function PendingInvitations({
+  invitations,
+  emailAvailable,
+}: PendingInvitationsProps) {
   const t = useTranslations('user');
   const format = useFormatter();
   const revoke = useMutation(userMutations.revokeInvitation());
+  const resend = useMutation(userMutations.resendInvitation());
   const isPending = revoke.isPending;
 
   const handleRevoke = (invitation: InvitationResponse) => {
@@ -54,6 +61,32 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
           description: error.error.message,
         }),
     });
+  };
+
+  /**
+   * Re-deliver the invite email. The button only exists on rows a resend can
+   * actually deliver: no delivered email (`email_sent_at` null — the server
+   * would demand `force` for a delivered one) and an unexpired link (the
+   * server rejects an expired one, and a button that always fails is noise).
+   * It stays disabled while no transport is configured: a click could only
+   * ever come back as a server error.
+   */
+  const handleResend = (invitation: InvitationResponse) => {
+    resend.mutate(
+      { token: invitation.token },
+      {
+        onSuccess: () =>
+          toast.success(t('toast.resendSent'), {
+            description: t('toast.resendSentHint', {
+              email: invitation.email,
+            }),
+          }),
+        onError: (error) =>
+          toast.error(t('toast.resendFailed'), {
+            description: error.error.message,
+          }),
+      },
+    );
   };
 
   return (
@@ -82,6 +115,14 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
                     ? t('roles.admin')
                     : t('roles.member')}
                 </Tag>
+                <Tag
+                  variant="soft"
+                  tone={invitation.email_sent_at ? 'brand' : 'neutral'}
+                >
+                  {invitation.email_sent_at
+                    ? t('pending.emailSent')
+                    : t('pending.emailNotSent')}
+                </Tag>
               </span>
             }
             description={t('pending.expires', {
@@ -89,6 +130,19 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
             })}
             actions={
               <>
+                {!invitation.email_sent_at &&
+                  new Date(invitation.expires_at).getTime() > Date.now() && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={RefreshIcon}
+                      onClick={() => handleResend(invitation)}
+                      disabled={resend.isPending || !emailAvailable}
+                      aria-label={t('pending.resendAria', {
+                        email: invitation.email,
+                      })}
+                    />
+                  )}
                 <Button
                   variant="ghost"
                   size="sm"

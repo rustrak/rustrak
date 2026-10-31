@@ -179,14 +179,28 @@ export const userMutations = {
       meta: { invalidates: [userQueries.members(projectId).queryKey] },
     }),
   /**
-   * Invite an email with a role. No email is sent: the token builds the link
-   * the admin shares. An address that already has an account or an invite
-   * comes back as a `conflict` naming `email`, for the email input.
+   * Invite an email with a role, optionally delivering the link by email.
+   * Asking for delivery with no SMTP source configured comes back as a
+   * `validation` naming `send_email` — the form keeps its switch disabled
+   * in that state. An address that already has an account or an invite comes
+   * back as a `conflict` naming `email`, for the email input.
    */
   invite: () =>
     mutationOptions({
       mutationFn: (input: CreateInvitation) =>
         orThrow(api().invitations.create({ body: input })),
+      meta: { invalidates: [userQueries.invitations().queryKey] },
+    }),
+  /**
+   * Email an invitation again. Only reached for rows with no delivered email:
+   * the server would demand `force` for an already-delivered one, and
+   * re-mailing that is the recipient's request ("it landed in spam"), not a
+   * bulk click — so the dashboard leaves force to the API, never the list.
+   */
+  resendInvitation: () =>
+    mutationOptions({
+      mutationFn: (input: { token: string }) =>
+        orThrow(api().invitations.resend({ path: { token: input.token } })),
       meta: { invalidates: [userQueries.invitations().queryKey] },
     }),
   /** The token is a variable: one mutation serves every pending row. */

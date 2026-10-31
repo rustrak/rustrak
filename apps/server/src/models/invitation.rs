@@ -44,6 +44,13 @@ pub struct Invitation {
     pub invited_by: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub accepted_at: Option<DateTime<Utc>>,
+    /// When SMTP accepted the invitation email for this address. NULL means
+    /// the link is still shareable by hand (manual mode, or the send failed).
+    pub email_sent_at: Option<DateTime<Utc>>,
+    /// When a delivery attempt claimed this invitation, or NULL when no send is
+    /// in flight. Internal claim state: never exposed in
+    /// [`InvitationResponse`], only consulted by the delivery helpers.
+    pub email_delivery_claimed_at: Option<DateTime<Utc>>,
 }
 
 impl Invitation {
@@ -64,6 +71,15 @@ pub struct CreateInvitation {
     /// Global role the invited user will receive (`admin` | `member`).
     #[cfg_attr(feature = "openapi", schema(value_type = crate::models::UserRole))]
     pub role: String,
+    /// When true, the server also emails the invite link to the recipient.
+    /// The response still carries `token` for manual sharing either way.
+    /// Only valid while an SMTP source is configured and the invite link is
+    /// reachable (a configured public/dashboard URL, or a bind host that is
+    /// not a wildcard); the handler rejects the request otherwise. Serde
+    /// default keeps the pre-email API shape (absent = manual share) working
+    /// unchanged.
+    #[serde(default)]
+    pub send_email: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +100,12 @@ pub struct InvitationResponse {
     pub status: String,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+    /// When SMTP accepted the invitation email; NULL shows a manual-share or
+    /// failed-send invitation so the UI can offer copy/resend. Null is a real
+    /// value here, never an omission, so the schema keeps it required even
+    /// though serde models it as an Option (see openapi_contract_test).
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub email_sent_at: Option<DateTime<Utc>>,
 }
 
 impl From<Invitation> for InvitationResponse {
@@ -95,6 +117,7 @@ impl From<Invitation> for InvitationResponse {
             status: i.status,
             expires_at: i.expires_at,
             created_at: i.created_at,
+            email_sent_at: i.email_sent_at,
         }
     }
 }
@@ -114,6 +137,8 @@ mod tests {
             invited_by: Some(1),
             created_at: Utc::now(),
             accepted_at: None,
+            email_sent_at: None,
+            email_delivery_claimed_at: None,
         }
     }
 

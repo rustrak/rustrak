@@ -434,13 +434,16 @@
     },
     "invite": {
       "title": "Inviter un membre",
-      "description": "Le lien d’invitation est copié dans votre presse-papiers lors de sa création. Aucun e-mail n’est envoyé — partagez vous-même le lien avec le nouveau membre.",
+      "description": "Le lien d'invitation est copié dans le presse-papiers à la création. Lorsque l'envoi d'e-mails est configuré, l'e-mail d'invitation part directement vers le nouveau membre ; sinon, partagez le lien vous-même.",
       "emailLabel": "E-mail",
       "roleLabel": "Rôle",
       "roleAria": "Rôle de l’invitation",
       "fieldEmail": "Cet e-mail",
       "inviting": "Invitation en cours...",
-      "submit": "Inviter"
+      "submit": "Inviter",
+      "sendEmailLabel": "Envoyer un e-mail de vérification",
+      "sendEmailAria": "Envoyer un e-mail de vérification",
+      "sendEmailUnavailable": "Configurez une intégration e-mail (ou un SMTP global) pour envoyer des e-mails d'invitation"
     },
     "toast": {
       "createFailed": "Échec de la création de l’invitation",
@@ -458,7 +461,14 @@
       "revoked": "Invitation révoquée",
       "revokeFailed": "Échec de la révocation de l’invitation",
       "roleUpdated": "Rôle mis à jour",
-      "roleUpdateFailed": "Échec de la mise à jour du rôle"
+      "roleUpdateFailed": "Échec de la mise à jour du rôle",
+      "emailSent": "E-mail d'invitation envoyé",
+      "emailSentHint": "L'e-mail d'invitation est en route — le lien est aussi dans votre presse-papiers.",
+      "emailFailed": "Invitation créée, mais l'e-mail a échoué",
+      "emailFailedHint": "L'envoi a échoué — copiez le lien d'invitation et partagez-le vous-même.",
+      "resendSent": "E-mail d'invitation renvoyé",
+      "resendSentHint": "Un nouvel e-mail d'invitation part vers {email}.",
+      "resendFailed": "Échec du renvoi de l'e-mail d'invitation"
     },
     "member": {
       "updatedDescription": "{email} est maintenant {role}."
@@ -495,7 +505,10 @@
       "empty": "Aucune invitation en attente",
       "expires": "Expire le {date}",
       "copyAria": "Copier le lien d’invitation de {email}",
-      "revokeAria": "Révoquer l’invitation de {email}"
+      "revokeAria": "Révoquer l’invitation de {email}",
+      "emailSent": "E-mail envoyé",
+      "emailNotSent": "Aucun e-mail envoyé",
+      "resendAria": "Renvoyer l'e-mail d'invitation à {email}"
     },
     "table": {
       "email": "E-mail",

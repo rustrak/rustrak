@@ -1289,7 +1289,9 @@ where
     test::call_service(app, req).await
 }
 
-#[cfg(feature = "sqlite")]
+// 断言的 free_disk_bytes 只有 unix（statvfs）才返回数值，
+// Windows 上按服务端约定恒为 None——用例随平台收口。
+#[cfg(all(feature = "sqlite", unix))]
 #[actix_web::test]
 async fn an_old_database_reports_the_space_a_compaction_gives_back() {
     // TestDb's file has SQLite's default, auto_vacuum = NONE.
