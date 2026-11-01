@@ -1,52 +1,32 @@
 # Source Maps
 
-Source maps let Rustrak translate minified JavaScript stack traces into their original source locations. When source maps are uploaded, errors show the real file name, line number, and source code, not the minified bundle.
-
-## Before and after
+Source maps turn a minified JavaScript stack trace back into your code: the real file, line, function name and source lines. Upload them when you build, and every error from that build shows readable frames.
 
 Without source maps:
 
-```bash
-Error: {"type":"Unknown","message":"Unknown Error"}
-
-04  ?
-    app:///_next/server/chunks/ssr/_0bwf~zv._.js:2:239718
-
-03  ?
-    app:///_next/server/chunks/ssr/apps_myapp_src_lib_actions_invoices_ts_09hq4k7._.js:2:5956
-
-02  process.processTicksAndRejections
-    node:internal/process/task_queues:103:5
-
-01  Module.k [as generateMetadata]
-    app:///_next/server/chunks/ssr/[root-of-the-server]__0fitma~._.js:2:5672
-```
-
-With source maps:
-
-```bash
+```text
 Error: Invoice not found
-
-04  getPostedInvoice
-    src/lib/actions/invoices.ts:84
-
-03  fetchInvoiceData
-    src/app/invoices/[id]/page.tsx:31
-
-02  process.processTicksAndRejections
-    node:internal/process/task_queues:103:5
-
-01  generateMetadata
-    src/app/invoices/[id]/page.tsx:12
+  ?  app:///_next/server/chunks/ssr/_0bwf~zv._.js:2:239718
+  ?  app:///_next/server/chunks/ssr/apps_myapp_src_lib_actions_invoices_ts_09hq4k7._.js:2:5956
 ```
 
-Same error. One is debuggable, the other isn't.
+With them:
 
-## How to enable source maps
+```text
+Error: Invoice not found
+  getPostedInvoice  src/lib/actions/invoices.ts:84
+  fetchInvoiceData  src/app/invoices/[id]/page.tsx:31
+```
 
-Source maps are uploaded automatically by the Sentry JavaScript SDK when you use the `sourceMapsPlugin` (or the Vite/webpack equivalent). No changes to your error tracking code are needed.
+Rustrak takes uploads from the same tools as Sentry: the bundler plugins and `sentry-cli`. Hermes and Metro maps from React Native work too.
 
-### Vite
+## How a frame finds its map
+
+Sentry's tools give each built file and its map a shared **debug ID**. The SDK sends the debug IDs of the loaded files with every event (`debug_meta`), and Rustrak uses them to pick the right map for each frame. Matching is by debug ID only, so the files must go through Sentry's plugin or `sentry-cli sourcemaps inject` before you deploy them.
+
+## Upload from your bundler
+
+Turn on source maps in the build and add Sentry's plugin, pointed at Rustrak.
 
 ```javascript
 // vite.config.js
@@ -54,237 +34,90 @@ import { defineConfig } from 'vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 export default defineConfig({
-  build: {
-    sourcemap: true, // required
-  },
+  build: { sourcemap: true },
   plugins: [
     sentryVitePlugin({
-      org: 'anything',           // any value works, Rustrak ignores it
-      project: 'my-project',     // must match your Rustrak project slug
-      authToken: 'your-api-token',
-      url: 'http://localhost:8080', // your Rustrak server URL
+      org: 'anything',
+      project: 'storefront',
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      url: 'https://rustrak.example.com',
     }),
   ],
 });
 ```
-
-### webpack
 
 ```javascript
 // webpack.config.js
 const { sentryWebpackPlugin } = require('@sentry/webpack-plugin');
 
 module.exports = {
-  devtool: 'source-map', // required
+  devtool: 'source-map',
   plugins: [
     sentryWebpackPlugin({
       org: 'anything',
-      project: 'my-project',
-      authToken: 'your-api-token',
-      url: 'http://localhost:8080',
+      project: 'storefront',
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      url: 'https://rustrak.example.com',
     }),
   ],
 };
 ```
 
-### SvelteKit
+Framework SDKs wrap these plugins and call the server option `sentryUrl` instead of `url`: `@sentry/nextjs`, `@sentry/sveltekit` and others. With `@sentry/sveltekit` v10 the options sit at the root of `sentrySvelteKit({ ... })`; the older `sourceMapsUploadOptions` object is deprecated.
 
-`@sentry/sveltekit` wraps the Vite plugin, but **names the server URL option
-`sentryUrl`, not `url`**, and the options go at the root level:
+Uploads happen only in production builds (`vite build`), never in the dev server.
 
-```javascript
-// vite.config.js
-import { sentrySvelteKit } from '@sentry/sveltekit';
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig, loadEnv } from 'vite';
+## Upload with sentry-cli
 
-export default defineConfig(({ mode }) => {
-  // Vite does NOT populate process.env in config files, see note below
-  const env = loadEnv(mode, process.cwd(), '');
+For any other build, inject the debug IDs and upload the output folder:
 
-  return {
-    plugins: [
-      sentrySvelteKit({
-        org: 'anything',                  // ignored by Rustrak
-        project: 'my-project',            // must match your Rustrak project slug
-        authToken: env.SENTRY_AUTH_TOKEN,
-        sentryUrl: 'http://localhost:8080', // NOT `url` in this SDK
-      }),
-      sveltekit(),
-    ],
-  };
-});
+```bash
+export SENTRY_URL=https://rustrak.example.com
+export SENTRY_AUTH_TOKEN=<api token>
+export SENTRY_ORG=anything
+export SENTRY_PROJECT=storefront
+
+sentry-cli sourcemaps inject ./dist
+sentry-cli sourcemaps upload ./dist
 ```
 
-> Older examples nest these under `sourceMapsUploadOptions: { ... }`. That whole
-> object is deprecated as of `@sentry/sveltekit` v10. Move the options to the root
-> level, and rename `url` to `sentryUrl` while you're there.
+Deploy the injected files, not the ones from before `inject`.
 
-**Vite does not load `.env` files into `process.env` when evaluating
-`vite.config.js`.** If you set `SENTRY_AUTH_TOKEN` in a `.env` and read it via
-`process.env`, you'll get `undefined` and the upload is silently skipped. Either use
-Vite's `loadEnv` helper as shown above, or put the values in a
-**`.env.sentry-build-plugin`** file, which the Sentry plugin reads automatically from
-the current working directory.
+## The options
 
-Source maps are only uploaded during production builds (`vite build`), never in
-`vite dev`.
+| Option | Env var | What Rustrak does with it |
+|---|---|---|
+| `url` (`sentryUrl`) | `SENTRY_URL` | Where the upload goes. Must be your Rustrak server |
+| `authToken` | `SENTRY_AUTH_TOKEN` | An [API token](/usage/tokens) from **Settings → API Tokens** |
+| `project` | `SENTRY_PROJECT` | The project's slug or numeric ID. Must exist |
+| `org` | `SENTRY_ORG` | Ignored. Any non-empty value |
 
-## What `org` and `project` mean in Rustrak
+Rustrak has no organizations, and the DSN carries none. The option exists because the tools check that an organization exists before uploading; Rustrak answers that check for any name.
 
-| Option | Env var | Does Rustrak care? |
-| --- | --- | --- |
-| `org` | `SENTRY_ORG` | **No.** Any non-empty string works. |
-| `project` | `SENTRY_PROJECT` | **Yes.** Must match an existing Rustrak project's slug (or its numeric ID). |
-| `url` (`sentryUrl` in framework SDKs) | `SENTRY_URL` | **Yes.** Must point at your Rustrak server. |
-| `authToken` | `SENTRY_AUTH_TOKEN` | **Yes.** A Rustrak API token from **Settings → API Tokens**. |
+An explicit option wins over its environment variable.
 
-### Why `org` is ignored
+**The DSN does not decide where source maps go.** It sends events. Without `url`, the plugin uploads to `sentry.io`. Without `authToken`, it skips the upload and the build still succeeds.
 
-Rustrak has no organizations, and this is by design rather than a missing feature.
-
-In Sentry, an organization separates different customers sharing one server. It
-groups projects, users, and billing, and it decides which uploaded files each
-customer is allowed to see. Rustrak is self-hosted: everything on the server is
-already yours, so there is nothing to separate.
-
-The error reporting protocol never sends an organization either. Your DSN is
-`key@host/project_id`, with no organization in it. So the project, not the
-organization, is what identifies your data.
-
-The reason the option exists at all is that `sentry-cli` checks that the
-organization exists before it starts uploading. Rustrak answers that check with
-whatever slug you sent, and the upload proceeds. Set it to anything you like, or
-leave it as your company name so the config reads sensibly.
-
-### Why `project` is not ignored
-
-The upload happens in two parts, and only the second one looks at your project.
-The files themselves are uploaded first, and that step succeeds no matter what
-`project` says. The final step attaches those files to a project, and that is
-where a wrong value fails with `404 project not found`.
-
-The build does not fail when this happens, so the only symptom is that your stack
-traces stay minified. See the troubleshooting section below.
-
-Every option can be set through its environment variable instead of the config
-file; the explicit option wins when both are present.
-
-> **The `url` must point to Rustrak.** Source map upload is a separate channel from
-> error reporting: your DSN controls where **events** go, but the build plugin
-> decides where **source maps** go. If you leave `url` unset, the plugin uploads to
-> Sentry's hosted service (`sentry.io`) by default; pointing the DSN at Rustrak does
-> not change this. And if `authToken` is missing, the upload is **silently skipped**
-> and the build still succeeds. Other SDKs use the same two options under different
-> names (e.g. `sentryUrl` for `@sentry/nextjs`, `--url` for `sentry-cli`).
-
-## How the upload works
-
-The SDK uploads source maps in three steps during your build:
-
-1. **Capability check**: The SDK asks the server what chunk sizes it accepts.
-2. **Chunk upload**: Source map files are split into chunks and uploaded. Each chunk is keyed by its SHA-1 hash (content-addressable storage).
-3. **Assembly**: The SDK tells the server which chunks form a complete artifact bundle. The server assembles the ZIP and confirms.
-
-From your perspective: run `vite build` (or `webpack`) and it happens automatically.
-
-Because the upload runs **during the build**, the credentials (`authToken` / `url`)
-have to be available at build time. If you build in Docker or CI, pass the token to
-the build itself: a variable set only on the running container comes too late, and
-the upload is silently skipped.
+The upload runs during the build, so the token and URL must be there at build time. In Docker or CI, pass them to the build step: a variable set only on the running container comes too late.
 
 ## Storage
 
-Source maps are stored on disk in `/data/sourcemaps` by default. That is inside
-the image's `/data` volume, so with the volume the installation guide mounts
-(`-v rustrak_data:/data`) they persist across restarts and upgrades with no
-configuration.
+Source maps are stored on disk under `/data/sourcemaps`, inside the `/data` volume from the [installation](/getting-started/installation), so they survive restarts and upgrades. To keep them elsewhere, mount a volume and point `SOURCEMAP_STORAGE_PATH` at it. The directory must be writable by the server.
 
-To keep them somewhere else, such as a separate volume or a network share,
-mount it and point `SOURCEMAP_STORAGE_PATH` at it:
+## Stack trace still minified?
 
-```yaml
-services:
-  server:
-    volumes:
-      - sourcemap_data:/data/sourcemaps
-    environment:
-      - SOURCEMAP_STORAGE_PATH=/data/sourcemaps
+1. **Does the build write `.map` files?** `build.sourcemap: true` in Vite, `devtool: 'source-map'` in webpack.
+2. **Did the upload run?** The plugin logs it. No log at all usually means `authToken` is missing.
+3. **Did it go to Rustrak?** Without `url`, it went to `sentry.io`.
+4. **`404 project not found` at the end of the upload?** `project` does not match a Rustrak project. The files go up first and are attached to the project last, so this fails only at the end, and the build still passes.
+5. **Are the deployed files the injected ones?** Each needs its `//# debugId=` comment.
+6. **Is the error from a build after the upload?** Maps apply to events from files with those debug IDs.
 
-volumes:
-  sourcemap_data:
-```
-
-The directory must be writable by the Rustrak process.
-
-**Sizing estimate:** Each source map chunk is ~2MB. A typical app with 50 source files uses ~100MB. Scale as needed.
-
-## Multiple instances: shared volume required
-
-Running several Rustrak instances behind a load balancer requires PostgreSQL (SQLite has a single writer), and **all instances must share the same `SOURCEMAP_STORAGE_PATH`**. Chunks uploaded to one instance need to be readable by any other instance.
-
-Mount a shared network volume (NFS, AWS EFS, etc.) and set the same `SOURCEMAP_STORAGE_PATH` on every instance:
-
-```yaml
-# docker-compose.yml (multi-server example)
-services:
-  rustrak:
-    image: rustrak/rustrak-server:postgres
-    volumes:
-      - sourcemaps_nfs:/var/lib/rustrak/sourcemaps
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - SOURCEMAP_STORAGE_PATH=/var/lib/rustrak/sourcemaps
-```
-
-Single-server deployments don't need to worry about this.
-
-## Troubleshooting: stack trace is still minified
-
-Work through this checklist:
-
-**1. Is `sourcemap: true` (or `devtool: 'source-map'`) enabled in your build config?**
-
-The SDK plugin can only upload source maps that your bundler actually generates. Check your build output for `.map` files.
-
-**2. Did the upload succeed during the build?**
-
-The plugin logs upload progress. Look for output like:
-
-```
-[sentry] Uploading source maps...
-[sentry] Artifact bundle assembled successfully
-```
-
-- **No upload output at all** → the upload was skipped, almost always because
-  `authToken` is missing. The build still succeeds, so this is easy to miss.
-- **It uploaded, but errors are still minified** → check `url`. If it isn't set,
-  source maps go to `sentry.io` by default, not to Rustrak. The DSN does not control
-  this.
-- **`404 project not found` during assembly** → your `project` / `SENTRY_PROJECT`
-  doesn't match any Rustrak project. Chunks upload fine (that step ignores the
-  project), then the final assembly step rejects them. Use the exact project slug
-  shown in the dashboard URL. Note that `org` is *not* the problem here, since
-  Rustrak ignores it entirely.
-
-Confirm what actually landed on the server:
+List what the server holds for a project:
 
 ```bash
-# the `anything` segment is the org, which Rustrak ignores
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/0/projects/anything/my-project/files/source-maps/
+curl -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+  "$SENTRY_URL/api/0/projects/_/storefront/files/source-maps/"
 ```
 
-An empty `data` array means no source maps were ever uploaded for that project.
-
-**3. Is `SOURCEMAP_STORAGE_PATH` writable and persistent?**
-
-The default path, `/data/sourcemaps`, persists as long as `/data` is a volume. If you set `SOURCEMAP_STORAGE_PATH`, make sure that path is a mounted volume too, or its contents go when the container is recreated.
-
-**4. Are `debug_meta` entries present in the event?**
-
-The Sentry SDK attaches `debug_meta.images` to each event, linking stack frames to the correct source map via a `debug_id`. If your SDK version doesn't emit `debug_meta`, source map lookup won't work. Use `@sentry/browser` 7.x or later.
-
-**5. Multi-server deployment: are all instances using a shared volume?**
-
-If chunks were uploaded to instance A but the event was processed by instance B, the source map won't be found. See the shared volume section above.
+Each entry shows a debug ID and whether it is a `minified_source` or a `source_map`. The server assembles an upload in the background, so a list taken right after the upload can be empty for a few seconds.
