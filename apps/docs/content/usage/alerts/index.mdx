@@ -1,49 +1,46 @@
 # Alerts
 
-Get notified when errors happen in your applications. Rustrak supports multiple notification channels and per-project alert rules.
+An alert tells your team when something happens in a project: a new issue, a regression, a user's feedback. It has two parts:
 
-## How it works
+- **Channels** say where to send: Slack, email, a webhook or a custom webhook. They are shared by every project and live in **Settings → Integrations**.
+- **Alerts** say when to send and to which channels. Each project has its own, under **Alerts** in its sidebar.
 
-Alerts have two components:
+<InteractiveDemo src="/demos/alerts.openshowcase" />
 
-1. **Notification Channels** (Global): Where to send alerts (Slack, Email, Webhooks, Custom Webhooks)
-2. **Alert Rules** (Per-Project): When to trigger alerts and which channels to use
+## Add a channel
 
-## Setting up notification channels
+Go to **Settings → Integrations**, pick a provider and fill in its form. Each channel has a **Test** button that sends a sample alert, so you can check it before any alert uses it.
 
-Channels are configured globally in **Settings** → **Global Alerts**.
+### Slack
+
+Two ways to connect:
+
+- **Incoming webhook**: create one in Slack ([Incoming Webhooks](https://api.slack.com/messaging/webhooks)) and paste its `https://hooks.slack.com/...` URL. Messages go to the channel the webhook was made for.
+- **Bot token**: paste a token starting with `xoxb-`. Each alert then names the Slack channel to post in (`#alerts` or an ID like `C1234567890`), so one bot serves many channels.
+
+### Email
+
+Give the SMTP host, port, username, password and sender address. Port `465` uses TLS from the start; any other port uses STARTTLS. Recipients are chosen on each alert, not on the channel. For Gmail, use an [app password](https://support.google.com/accounts/answer/185833).
+
+The server can also take SMTP defaults from the environment: `SMTP_HOST`, `SMTP_PORT` (default `587`), `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM`.
 
 ### Webhook
 
-Send JSON payloads to any HTTP endpoint.
-
-1. Go to **Settings** → **Global Alerts**
-2. Click **Configure** on Webhooks
-3. Enter:
-   - **Name**: e.g., "Production Alerts"
-   - **URL**: Your webhook endpoint
-   - **Secret** (optional): For HMAC signature verification
-4. Click **Create Webhook**
-
-#### Webhook payload
+Rustrak POSTs a JSON payload to your URL. The URL is optional on the channel: leave it blank and each alert supplies its own. Add a secret to sign requests.
 
 ```json
 {
   "alert_id": "1-550e8400-1706140800000",
   "alert_type": "new_issue",
-  "triggered_at": "2024-01-25T12:00:00.000Z",
-  "project": {
-    "id": 1,
-    "name": "My Project",
-    "slug": "my-project"
-  },
+  "triggered_at": "2026-01-25T12:00:00.000Z",
+  "project": { "id": 1, "name": "Storefront", "slug": "storefront" },
   "issue": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "short_id": "MY-PROJECT-42",
-    "title": "TypeError: Cannot read property 'x' of undefined",
+    "short_id": "STOREFRONT-42",
+    "title": "TypeError: Cannot read properties of undefined (reading 'price')",
     "level": "error",
-    "first_seen": "2024-01-25T11:55:00Z",
-    "last_seen": "2024-01-25T12:00:00Z",
+    "first_seen": "2026-01-25T11:55:00Z",
+    "last_seen": "2026-01-25T12:00:00Z",
     "event_count": 5
   },
   "issue_url": "https://rustrak.example.com/projects/1/issues/550e8400-e29b-41d4-a716-446655440000",
@@ -51,59 +48,37 @@ Send JSON payloads to any HTTP endpoint.
 }
 ```
 
-#### Webhook headers
+`alert_type` is `new_issue`, `regression`, `unmute` or `new_feedback`. `issue.level` can be absent.
 
-| Header | Description |
-|--------|-------------|
+Every request carries these headers:
+
+| Header | Value |
+|---|---|
 | `Content-Type` | `application/json` |
-| `X-Rustrak-Timestamp` | Unix timestamp |
-| `X-Rustrak-Request-ID` | Unique alert ID |
-| `X-Rustrak-Signature` | `sha256=<hmac>` (if secret configured) |
+| `X-Rustrak-Timestamp` | Unix time in seconds |
+| `X-Rustrak-Request-ID` | The `alert_id` |
+| `X-Rustrak-Signature` | `sha256=<hex>`, only when the channel has a secret |
 
-#### Custom headers
-
-Both Webhook and Custom Webhook can send extra headers with every request, for an endpoint that wants an `Authorization` or an API key header. Add them under **Headers** in the integration dialog. An alert rule can add or replace headers for its own deliveries with `extra_headers` in its routing override.
-
-Up to 20 headers. Names have to be valid HTTP header names and each one can appear only once, whatever its case. `Content-Type`, `Content-Length`, `Host`, `Transfer-Encoding` and anything starting with `X-Rustrak-` are reserved and get rejected, so a custom header can never replace the signature.
-
-#### Verifying signatures
-
-If you configure a secret, verify the `X-Rustrak-Signature` header:
+The signature is an HMAC-SHA256 of the timestamp, a dot and the raw body, keyed with the secret. Verify it against the body exactly as received:
 
 ```javascript
 const crypto = require('crypto');
 
-function verifySignature(payload, signature, secret) {
+function verify(rawBody, timestamp, signature, secret) {
   const expected = 'sha256=' + crypto
     .createHmac('sha256', secret)
-    .update(payload)
+    .update(`${timestamp}.${rawBody}`)
     .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected)
-  );
+  return signature.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 ```
 
-### Custom Webhook
+Reject requests whose timestamp is too old to stop replays.
 
-POST a request body that you compose yourself, in whatever shape the receiving
-endpoint expects. The body is JSON with alert fields in it, rendered from a
-[Minijinja](https://docs.rs/minijinja) template over the alert payload, so a
-service with its own fixed message schema can be fed without Rustrak carrying
-an integration per service. The plain Webhook integration is unchanged; Custom
-Webhook is its own provider.
+### Custom webhook
 
-1. Go to **Settings** → **Global Alerts**
-2. Click **Configure** on Custom Webhook
-3. Enter:
-   - **Name**: what this destination is, e.g. "Ops chat bridge"
-   - **Message body**: the JSON your endpoint expects. **Start from** drops in
-     the shape a known service wants; **Insert field** puts an alert value at
-     the caret. The preview underneath shows what will be sent
-   - **Webhook URL**: optional, since a per-rule override can supply it
-   - **Secret** (optional): for the same HMAC header the plain Webhook sends
-4. Click **Create Custom Webhook**
+POSTs a JSON body you write yourself, for an endpoint that expects its own shape: a chat bot, a ticketing system. Write the body under **Message body**: **Start from** loads a known shape (Slack and compatible, Discord, Teams, WeCom, DingTalk, Feishu), **Insert field** adds an alert value at the cursor, and the preview below shows what will be sent.
 
 ```json
 {
@@ -111,155 +86,33 @@ Webhook is its own provider.
 }
 ```
 
-Values are escaped for wherever you put them. Inside a string, a title with a
-quote or a newline stays inside the string; standing alone, a number stays a
-number and a string is quoted. There is no filter to remember. The full field
-list, the rules and more examples are on the
-[message body template](/usage/alerts/message-body-template) page.
+Values are escaped for wherever you put them, and the body must render to valid JSON, which is checked when you save. The fields, rules and examples are on [Message body template](/usage/alerts/message-body-template). It signs requests the same way as the webhook.
 
-The rendered result must be valid JSON. That is checked when you save, not
-only when an alert fires: the template is rendered against a sample payload,
-once with every field populated and once with the issue level absent, and the
-integration is rejected if either render fails. Syntax errors and unknown
-fields are caught the same way.
+A delivery counts as sent when the endpoint answers 2xx; the response body is never read for meaning. Some services answer `200` while refusing the message, so press **Test** after setting one up: it shows exactly what the endpoint answered. A WeCom or DingTalk bot with a custom keyword refuses any message without that keyword, so put the keyword in the body's fixed text.
 
-Rendering is bounded, because a template runs on the notification worker once
-per delivery. A template that spends more than the instruction budget, or whose
-body renders past 1 MiB, fails with that reason instead of running. Response
-bodies larger than 64 KiB are rejected rather than buffered, and a 2xx whose
-body cannot be read at all is recorded as a failure rather than assumed
-delivered.
+### Extra headers
 
-#### How a delivery is judged
+Webhook and custom webhook channels can send extra headers, such as an `Authorization` your endpoint asks for. Up to 20; each name once, whatever its case. `Content-Type`, `Content-Length`, `Host`, `Transfer-Encoding` and anything starting with `X-Rustrak-` are reserved.
 
-By the HTTP status. A 2xx is a delivery; the response body is never
-interpreted. That is what Grafana's Custom Payload, Uptime Kuma's Custom Body
-and Alertmanager's webhook receiver all do, and it means Rustrak never has to
-guess what a field in someone else's response means.
+## Create an alert
 
-Some services answer `200` even when they refuse the message and put the real
-outcome in the body. **Press Test after configuring**: the result shows exactly
-what the endpoint answered, so a refusal is visible rather than silent.
+Open a project, go to **Alerts** and click **New alert**:
 
-A WeCom or DingTalk bot configured with a **custom keyword** (自定义关键词)
-refuses any message whose text does not contain that keyword, so put the
-keyword in the body's static text. A bot restricted by **IP allowlist**
-refuses based on the source address of the Rustrak server instead, and no
-template change helps there. In both cases Test shows you the refusal.
+| Field | What it does |
+|---|---|
+| **When** | **New issue**, **Regression** (a resolved issue comes back), **Reactivated** or **New feedback** |
+| **Environments** | Only events from these. **All** by default |
+| **Level** | Only events at this level or higher. An event with no level counts as `error` |
+| **After this many events** | New issues only: wait until the issue has this many events, then alert once |
+| **Notify** | One or more channels. Email asks for recipients, a Slack bot for a channel, and a webhook can take its own URL here |
+| **At most** | How often this alert can notify about the same issue: every time, every 5 minutes, once an hour, once a day, or any number of minutes |
 
-### Slack
+The summary on the right reads the alert back in a sentence before you save. **Send a test** sends a sample through the chosen channels.
 
-Send alerts to Slack channels.
+**Reactivated** is meant for an archived issue that starts happening again, but Rustrak never takes an issue out of the archive on its own yet, so this alert does not fire today.
 
-1. Create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) in Slack
-2. Go to **Settings** → **Global Alerts**
-3. Click **Configure** on Slack
-4. Enter:
-   - **Name**: e.g., "Slack Alerts"
-   - **Webhook URL**: The Slack webhook URL
-   - **Channel** (optional): Override default channel
-5. Click **Create Slack Integration**
+After this many events: `10` together with **production** keeps a one-off error on someone's laptop from paging anyone.
 
-### Email (SMTP)
+## Manage alerts
 
-Send alerts via email.
-
-1. Go to **Settings** → **Global Alerts**
-2. Click **Configure** on Email
-3. Enter:
-   - **Name**: e.g., "Email Alerts"
-   - **Recipients**: Comma-separated email addresses
-   - **SMTP Host**: e.g., `smtp.gmail.com`
-   - **Port**: `587` (STARTTLS) or `465` (SSL)
-   - **Username/Password**: SMTP credentials
-   - **From Address**: Sender email
-4. Click **Create Email Channel**
-
-**Note**: For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833).
-
-## Testing channels
-
-Before creating alert rules, test your channels:
-
-1. Go to **Settings** → **Global Alerts**
-2. Click **Configure** on a channel
-3. Click **Test**
-4. Check that you received the test notification
-
-## Creating alert rules
-
-Alert rules define when to send notifications for a specific project.
-
-1. Open a project
-2. Click the **bell icon** in the header
-3. Click **Add Alert Rule**
-4. Configure:
-   - **Name**: e.g., "Notify team on new issues"
-   - **Trigger**: When to alert
-   - **Channels**: Where to send (select one or more)
-   - **Filters**: Which issues are worth it (level, environments, number of events)
-   - **Cooldown**: Minimum time between alerts for the same issue
-5. Click **Create Rule**
-
-### Trigger types
-
-| Trigger | Description |
-|---------|-------------|
-| **New Issue** | When an issue is first detected |
-| **Regression** | When a resolved issue reappears |
-| **Unmute** | When a muted issue is unmuted |
-
-### Filters
-
-A rule without filters fires for every issue its trigger sees. Each filter narrows it:
-
-| Filter | Fires when |
-|--------|------------|
-| **Level** | The event is at least this level (`error or above` skips warnings and info). An event with no level counts as `error`. |
-| **Environments** | The event's environment is one of these. Empty means every environment. |
-| **Minimum events** | New Issue rules only: the issue reaches this many events. It fires once, on the event that reaches the count, instead of on the first one. |
-
-`Minimum events: 10` together with `Environments: production` is what keeps a one-off error on a laptop from ever reaching anyone.
-
-### Cooldown
-
-Prevents alert fatigue by limiting how often alerts fire for the same issue.
-
-- **0 minutes**: Alert on every event (not recommended)
-- **5 minutes**: Wait 5 minutes before alerting again
-- **60 minutes**: Good for high-traffic issues
-
-## Managing rules
-
-### Enable/disable
-
-Toggle the switch next to a rule to enable or disable it without deleting.
-
-### Edit
-
-Click the edit icon to modify a rule's name, channels, or cooldown.
-
-### Delete
-
-Click the delete icon and confirm to remove a rule.
-
-## Best practices
-
-### Channel organization
-
-- **Webhook**: For custom integrations, PagerDuty, Opsgenie
-- **Custom Webhook**: For an endpoint that expects its own message shape
-- **Slack**: For team awareness
-- **Email**: For on-call or compliance
-
-### Alert rules
-
-- Create a **New Issue** rule for all projects
-- Use **Regression** for production projects
-- Set appropriate cooldowns to avoid alert fatigue
-
-### Testing
-
-1. Create channels with test endpoints first (e.g., [webhook.site](https://webhook.site))
-2. Verify payloads are correct
-3. Update to production endpoints
+Each alert has its own page with what it does in one sentence, an **Active** switch to pause it without deleting it, **Edit** and **Delete**. The **Deliveries** tab lists every alert sent, with the reason when one failed or was skipped.

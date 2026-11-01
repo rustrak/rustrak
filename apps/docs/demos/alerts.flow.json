@@ -1,0 +1,15 @@
+{
+  "title": "Create an alert",
+  "url": "http://localhost:8090/projects/1/alerts",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "New alert" } },
+    { "action": "click", "target": { "role": "link", "name": "New alert" }, "hotspot": false },
+    { "action": "wait", "for": { "role": "button", "name": "Create alert" } },
+    { "action": "fill", "target": { "role": "textbox", "name": "e.g. New issues in production by email" }, "value": "New issues in production" },
+    { "action": "click", "target": { "role": "button", "name": "production" }, "tooltip": "Only errors from production" },
+    { "action": "click", "target": { "role": "switch", "name": "Slack #shop-alerts slack" }, "tooltip": "Pick where it goes" },
+    { "action": "click", "target": { "role": "button", "name": "Create alert" }, "tooltip": "Save it. The summary reads back what it will do" },
+    { "action": "wait", "for": { "role": "heading", "name": "New issues in production" } }
+  ]
+}
