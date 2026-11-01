@@ -1,0 +1,43 @@
+# User Feedback
+
+User feedback is what people using your app write to you from inside it: "the page went blank when I paid". Rustrak collects it per project under **User Feedback**, next to **Issues**.
+
+## Sending feedback
+
+Use the Sentry SDK's feedback widget, or send feedback from your own form. In JavaScript:
+
+```javascript
+Sentry.init({
+  dsn: 'YOUR_DSN',
+  integrations: [Sentry.feedbackIntegration()],
+});
+```
+
+The widget adds a button to your pages that opens a form with a message, a name, an email and an optional screenshot. From your own form, call:
+
+```javascript
+Sentry.captureFeedback({
+  message: 'The page went blank when I pressed Place order.',
+  name: 'Grace Lin',
+  email: 'grace@example.com',
+  associatedEventId: eventId, // optional: the error it is about
+});
+```
+
+Rustrak also takes the older formats: the `user_report` envelope item and `POST /api/0/projects/{org}/{project}/user-feedback/`. The crash-report dialog that `Sentry.showReportDialog()` opens is not supported.
+
+A feedback needs a message of at most 4,096 characters. One with an empty or longer message is dropped. Screenshots are kept up to 10 MB each.
+
+## Reading it
+
+<InteractiveDemo src="/demos/user-feedback.openshowcase" />
+
+**User Feedback** has three mailboxes: **Inbox**, **Resolved** and **Spam**. Each row shows who sent it, the message and the page it came from. Open one to see the whole message, when it arrived, its screenshots and a link to the error it is about when the SDK sent one.
+
+Resolve feedback once you have dealt with it, or mark it as spam. Either moves it out of the inbox and opens the next one. Underneath, each feedback is an issue: **Open as an issue** shows it on the issue page, with its activity feed and assignee.
+
+Feedback linked to an error also appears on that error's issue page, under **User Feedback**, so whoever fixes the error reads what the user saw.
+
+## Alerts
+
+Add an [alert rule](/usage/alerts) on **New feedback** to hear about each new feedback in Slack, by email or through a webhook.
