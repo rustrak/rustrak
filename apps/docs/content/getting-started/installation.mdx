@@ -1,13 +1,10 @@
 # Installation
 
-Rustrak is one container. It ingests events, answers the API and serves the
-dashboard, all on port `8080`. There is nothing to configure for the
-dashboard.
+Rustrak is one container. It takes events, answers the API and serves the dashboard, all on port `8080`.
 
 ## Docker
 
-The default image stores everything in SQLite, so no database has to run next
-to it:
+The default image keeps everything in SQLite, so no database runs next to it:
 
 ```bash
 docker run -d \
@@ -20,45 +17,21 @@ docker run -d \
   rustrak/rustrak-server:latest
 ```
 
-Open **http://localhost:8080** and sign in with the credentials from
-`CREATE_SUPERUSER`. The sign-in page is `/login`.
+Open `http://localhost:8080` and sign in with the email and password from `CREATE_SUPERUSER`.
 
-- **`rustrak_data`** holds the database and uploaded source maps. Keep it, and
-  the data survives restarts and upgrades
-- **`SESSION_SECRET_KEY`** signs the session cookie. Keep the same value across
-  restarts, or everyone is signed out
-- **`PUBLIC_URL`** is the address your SDKs send events to and the host
-  written into every DSN. Set it to your public address in production
+- `rustrak_data` holds the database and uploaded source maps. Keep the volume and the data survives restarts and upgrades.
+- `SESSION_SECRET_KEY` signs the session cookie. Keep the same value across restarts, or everyone is signed out.
+- `CREATE_SUPERUSER` is `email:password`. It creates the first account only while the database has no users; after that it is ignored, so changing it does not change a password.
+- `PUBLIC_URL` is the address your SDKs and your browser reach. It becomes the host in every DSN. Without it, DSNs carry the bind address (`0.0.0.0:8080`), which nothing can reach.
 
-SQLite suits personal projects, small teams and up to about 1,000 events an
-hour. For more, use [PostgreSQL](#postgresql).
+SQLite suits personal projects, small teams and up to about 1,000 events an hour. For more, use [PostgreSQL](#postgresql).
 
 ## Docker Compose
 
-The same setup as a Compose file. This is the `docker-compose.yml` at the root
-of the repository:
-
-```yaml
-services:
-  server:
-    image: rustrak/rustrak-server:latest
-    ports:
-      - "8080:8080"
-    environment:
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
-      - CREATE_SUPERUSER=${CREATE_SUPERUSER}
-      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
-    volumes:
-      - rustrak_data:/data
-    restart: unless-stopped
-
-volumes:
-  rustrak_data:
-```
-
-Create a `.env` next to it and start it:
+The repository's [`docker-compose.yml`](https://github.com/rustrak/rustrak/blob/main/docker-compose.yml) runs the same setup. Download it and put a `.env` next to it:
 
 ```bash
+curl -O https://raw.githubusercontent.com/rustrak/rustrak/main/docker-compose.yml
 cat > .env <<EOF
 SESSION_SECRET_KEY=$(openssl rand -hex 32)
 CREATE_SUPERUSER=admin@example.com:changeme123
@@ -67,99 +40,47 @@ EOF
 docker compose up -d
 ```
 
-`CREATE_SUPERUSER` is `email:password` and is only used while no user exists.
-`PUBLIC_URL` is the address SDKs reach, e.g. `https://rustrak.example.com`.
-Compose refuses to start without `SESSION_SECRET_KEY`.
+Compose refuses to start without `SESSION_SECRET_KEY`. The file also reads these, all optional:
 
-> **Reverse proxy?** Behind Traefik, nginx or Caddy, delete the `ports` block
-> and let the proxy reach the container on `8080`. Set `PUBLIC_URL` to your
-> public host. See [Reverse proxy](/configuration/production#reverse-proxy).
+| Variable | Default | What it does |
+|---|---|---|
+| `SERVER_PORT` | `8080` | Host port mapped to the container's `8080` |
+| `RUSTRAK_METRICS` | `off` | Serves Prometheus metrics on `/metrics`, without authentication |
+| `OIDC_*` | empty | [Single sign-on](/configuration/sso) |
+
+Behind Traefik, nginx or Caddy on the same Docker network, delete the `ports` block and let the proxy reach the container on `8080`. See [Reverse proxy](/configuration/production#reverse-proxy).
 
 ## PostgreSQL
 
-For higher volume or concurrent writes, use the `postgres` image and a
-PostgreSQL database. The repository ships this as `docker-compose.postgres.yml`:
-
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: rustrak
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?generate one with openssl rand -hex 16}
-      POSTGRES_DB: rustrak
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rustrak -d rustrak"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  server:
-    image: rustrak/rustrak-server:postgres
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=postgres://rustrak:${POSTGRES_PASSWORD}@postgres:5432/rustrak
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?generate one with openssl rand -hex 32}
-      - CREATE_SUPERUSER=${CREATE_SUPERUSER}
-      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
-    volumes:
-      # Uploaded source maps. The database lives in PostgreSQL.
-      - rustrak_data:/data
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-  rustrak_data:
-```
-
-Add a database password to the `.env` above and start it:
+For higher volume or concurrent writes, use the `postgres` image with a PostgreSQL database. [`docker-compose.postgres.yml`](https://github.com/rustrak/rustrak/blob/main/docker-compose.postgres.yml) runs both. Add a database password to the `.env` above and start it:
 
 ```bash
+curl -O https://raw.githubusercontent.com/rustrak/rustrak/main/docker-compose.postgres.yml
 echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" >> .env
 docker compose -f docker-compose.postgres.yml up -d
 ```
- To use a database you
-already run, drop the `postgres` service and point `DATABASE_URL` at it. See
-[Database backends](/configuration/database).
+
+`POSTGRES_USER` and `POSTGRES_DB` default to `rustrak`. The `rustrak_data` volume still holds uploaded source maps; the events live in PostgreSQL.
+
+To use a database you already run, take the `rustrak/rustrak-server:postgres` image on its own and set `DATABASE_URL`:
+
+```bash
+-e DATABASE_URL=postgres://user:password@db.example.com:5432/rustrak
+```
+
+See [Database backends](/configuration/database).
 
 ## The dashboard
 
-It is compiled into the image and served from `/`, on the same origin as the
-API, so there is no second container and no address to configure. The whole
-image, dashboard included, is about 20 MB, and the server idles under 100 MB
-of memory.
+The dashboard is compiled into the image and served from `/`, on the same origin as the API. There is nothing to configure for it. Two cases need something extra:
 
-Two cases need something extra:
-
-- **No dashboard at all.** Set `RUSTRAK_DASHBOARD=off` and the server answers
-  the API only
-- **The dashboard on a different host from your data.** Run the server with
-  `RUSTRAK_DASHBOARD=off` and put `rustrak/rustrak-ui` (about 30 MB) on the
-  other host. See
-  [Dashboard on its own host](/configuration/production#dashboard-on-its-own-host)
+- **No dashboard.** Set `RUSTRAK_DASHBOARD=off` and the server answers the API only.
+- **The dashboard on another host.** Run the server with `RUSTRAK_DASHBOARD=off` and put `rustrak/rustrak-ui` (about 30 MB) on the other host. See [Dashboard on its own host](/configuration/production#dashboard-on-its-own-host).
 
 ## Telemetry
 
-The server sends one anonymous report every six hours: version, platform and
-health counters, never your data. Set `RUSTRAK_TELEMETRY=off` to turn it off.
-[Telemetry](/configuration/telemetry) lists every field.
+The server sends one anonymous report every six hours: version, platform and health counters, never your data. Set `RUSTRAK_TELEMETRY=off` to turn it off. [Telemetry](/configuration/telemetry) lists every field.
 
-## First admin user
+## Next
 
-`CREATE_SUPERUSER` creates the first account on startup, in the format
-`email:password`. It only does so when the database has no users yet; after
-that it is ignored, so changing it does not change a password.
-
-## Verify the installation
-
-1. Open http://localhost:8080 (or your `PUBLIC_URL`) and sign in
-2. You should see an empty project list
-
-You're ready to [capture your first error](/getting-started/quickstart).
+Sign in. An empty project list means the server is up. [Create your first project](/getting-started/quickstart) and send it an event.

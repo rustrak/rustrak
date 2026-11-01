@@ -57,3 +57,6 @@ react-doctor-report.json
 # Storybook static builds
 storybook-static/
 /.idea
+
+# OpenShowcase editable recordings; the exported .openshowcase lives in apps/docs/public/demos
+*.osrec

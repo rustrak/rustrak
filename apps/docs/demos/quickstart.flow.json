@@ -1,0 +1,15 @@
+{
+  "title": "Create a project",
+  "url": "http://localhost:8090/projects",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "New Project" } },
+    { "action": "click", "target": { "role": "link", "name": "New Project" }, "hotspot": false },
+    { "action": "wait", "for": { "role": "button", "name": "Create Project" } },
+    { "action": "click", "target": { "role": "button", "name": "node Node.js" }, "tooltip": "Pick the platform you want to monitor" },
+    { "action": "fill", "target": { "role": "textbox", "name": "Project name" }, "value": "Newsletter" },
+    { "action": "click", "target": { "role": "button", "name": "Create Project" }, "hotspot": false },
+    { "action": "wait", "for": { "role": "button", "name": "Copy DSN" } },
+    { "action": "click", "target": { "role": "button", "name": "Copy DSN" }, "tooltip": "Copy the DSN. It is all your Sentry SDK needs", "zoom": 1.8 }
+  ]
+}

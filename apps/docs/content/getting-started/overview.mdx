@@ -1,76 +1,52 @@
 # Overview
 
-Rustrak is a lightweight, self-hosted error tracking system. It speaks the Sentry protocol, so any Sentry SDK you already use can send to it: change the DSN and you are done.
+Rustrak is a self-hosted error tracker that speaks the Sentry protocol. Any Sentry SDK you already use can send to it: change the DSN and nothing else.
 
 <Video src="/videos/overview.webm" autoPlay loop muted playsInline />
 
-## Why Rustrak?
-
-- **Self-hosted**: Your data stays on your servers
-- **Lightweight**: about 20 MB image, under 100 MB of memory idle
-- **Fast**: Under 50ms ingestion latency
-- **Simple**: One container, no complex configuration
-- **Free**: No per-event pricing, no limits
-
 ## How it works
 
-```
-Your App → Sentry SDK → Rustrak server → SQLite or PostgreSQL
+```text
+Your app → Sentry SDK → Rustrak server → SQLite or PostgreSQL
                          (API + dashboard on :8080)
 ```
 
-Your application sends errors using any Sentry SDK. Rustrak receives them, groups similar errors into issues, and stores everything in the database. You view and manage issues in the dashboard, which the same server serves.
+The SDK sends events to the server. The server groups them into issues and stores them in the database. The dashboard is compiled into the same server, so one process on one port answers both the API and the UI.
+
+It is one container of about 20 MB that idles under 100 MB of memory, with ingestion under 50 ms. A VPS with 512 MB to 1 GB runs it comfortably. There is no per-event pricing and no event limit.
 
 ## Database backends
 
-Rustrak ships two Docker image variants, each compiled for a different database backend. Both include the dashboard.
+Each Docker image is compiled for one database. Both include the dashboard.
 
-| Image tag | Backend | Use case |
-|-----------|---------|----------|
-| `latest`, `vX.Y.Z` | **SQLite** | Personal projects, low traffic, zero-ops setup |
-| `postgres`, `vX.Y.Z-postgres` | **PostgreSQL** | Production, teams, high throughput |
+| Image tag | Backend | Use it for |
+|-----------|---------|------------|
+| `latest`, `vX.Y.Z` | SQLite | Personal projects and low traffic. Nothing else to run |
+| `postgres`, `vX.Y.Z-postgres` | PostgreSQL | Teams, high volume, concurrent writes |
 
-SQLite is the default: no external service needed. PostgreSQL is available for deployments that need concurrent writes or high volume.
+SQLite is the default. [Database backends](/configuration/database) compares the two.
 
-## Deployment
+## What it tracks
 
-One container, one port, one process:
+- Errors and exceptions, with stack traces and source context, grouped into [issues](/usage/issues) that you resolve, mute or reopen
+- [Source maps](/usage/source-maps) for JavaScript, including Hermes and React Native, and [debug files](/usage/debug-files) for Android, JVM and iOS
+- Transactions and spans
+- Release health and sessions
+- [Logs](/usage/logs)
+- [Crons](/usage/crons): missed, failed and overrunning scheduled jobs
+- [AI agent](/usage/agents) traces
+- User feedback, with its screenshots
 
-```bash
-docker run -d -p 8080:8080 \
-  -v rustrak_data:/data \
-  -e SESSION_SECRET_KEY=$(openssl rand -hex 32) \
-  -e CREATE_SUPERUSER=admin@example.com:your-secure-password \
-  rustrak/rustrak-server:latest
-```
+Around it: [alerts](/usage/alerts) to Slack, email and webhooks, [teams and roles](/usage/team), [API tokens](/usage/tokens), [GitHub](/configuration/github) and [GitLab](/configuration/gitlab) integration, [single sign-on](/configuration/sso), [storage and retention](/usage/storage) and an [MCP server](/sdks/mcp) for AI assistants.
 
-Open **http://localhost:8080** and sign in. The dashboard is compiled to static files and served by the same process that answers `/api`, so there is no second image and no API address to configure. The browser and the API share one origin, which is what keeps the session cookie first-party.
+## What it does not track
 
-The whole thing idles under 100 MB of memory, which makes it comfortable on:
-- a VPS with 512MB–1GB
-- edge deployments
-- cost-conscious setups
+The server accepts these from an SDK and drops them:
 
-**The dashboard is optional.** Set `RUSTRAK_DASHBOARD=off` and the server answers the API and nothing else. Point any Sentry SDK at it and never open a UI.
-
-## What's included
-
-- Error and exception tracking, with stack traces and source context
-- Issue grouping, deduplication and states (open, resolved, muted)
-- Source maps for JavaScript, including Hermes and React Native
-- Performance: transactions and spans
-- Release health and session tracking
-- Logs and AI agent traces
-- Alerts to Slack, email, webhooks and custom webhooks
-- Teams, roles and API tokens
-- Storage usage and retention
-
-## What's not included
-
-- Attachments
+- Attachments on error events
 - Session replays
 - Profiling
 
-## Next steps
+## Next
 
-Ready to get started? [Install Rustrak](/getting-started/installation) in a few minutes.
+[Install Rustrak](/getting-started/installation), then follow the [quickstart](/getting-started/quickstart) to your first issue.

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "1.5.0",
+    "@rustrak/openshowcase-player-react": "0.4.1",
     "@scalar/api-reference-react": "0.9.86",
     "@tailwindcss/typography": "0.5.20",
     "class-variance-authority": "0.7.1",
