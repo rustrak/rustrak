@@ -1,0 +1,34 @@
+---
+version: v0.23.0
+title: GitHub Issue Templates
+description: GitHub issues open from an editable draft with the event, and templates set their labels, title prefix and footer
+date: 2026-11-01
+tags: [server, dashboard, github]
+---
+
+## GitHub issue drafts
+
+Creating a GitHub issue from an issue now opens a form with the issue
+already written, the way Sentry writes it. Edit anything before it is opened.
+
+- The description links back to the Rustrak issue and carries the latest
+  event's exceptions in a code block, cut to fit GitHub's size limit
+- The assignee is the GitHub login of the Rustrak issue's assignee, when they
+  have one
+- Clearing the description opens the issue with an empty one
+
+## Issue templates
+
+Labels, a title prefix and a description footer that every GitHub issue
+Rustrak opens starts with, including the ones opened automatically.
+
+- Set them for the whole instance in the GitHub integration settings
+- A project can add its own in its repository settings: its labels join the
+  instance's, and its title prefix or footer replaces the instance's
+- GitHub creates any label that does not exist yet
+
+## Fixes
+
+- Times fetched after the dashboard loaded no longer read as "in 3 minutes",
+  and table cells keep their relative times current
+  ([@rookbreezy](https://github.com/rookbreezy))
