@@ -360,8 +360,10 @@ Every method, grouped as it hangs off the client.
 | `github.getProjectRepository({ path })` | `GET /api/projects/{project_id}/github` |  |
 | `github.installed({ query })` | `GET /api/github/installed` | GitHub sends the browser here after the app is installed on an account. |
 | `github.issue({ path })` | `GET /api/projects/{project_id}/issues/{issue_id}/github` | The issue's links, the commits that may have caused it, and who owns its culprit file. |
+| `github.issueDraft({ path })` | `GET /api/projects/{project_id}/issues/{issue_id}/github/draft` | What creating a GitHub issue sends by default, with the templates applied, for the person to edit first. |
 | `github.linkIssue({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/github/links` | Links an existing GitHub issue or pull request. |
 | `github.manifest({ body })` | `POST /api/github/manifest` | What the dashboard posts to GitHub so GitHub creates an app already configured for this server. |
+| `github.putIssueTemplate({ body })` | `PUT /api/github/issue-template` | The labels, title prefix and body footer every GitHub issue starts with, before a project's own. |
 | `github.putMyLogin({ body })` | `PUT /api/github/me` |  |
 | `github.putProjectRepository({ path, body })` | `PUT /api/projects/{project_id}/github` |  |
 | `github.repositories({ query })` | `GET /api/github/repositories` | The repositories a project can point at, for whoever may change that project's settings. |

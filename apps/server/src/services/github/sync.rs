@@ -14,13 +14,13 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::client::GitHubClient;
-use super::{parse_issue_reference, GitHubService};
+use super::{event_text, parse_issue_reference, GitHubService};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::alert::RuleConditions;
-use crate::models::github::{GitHubApp, IssueLink};
+use crate::models::github::{CreateGitHubIssue, GitHubApp, GitHubIssueDraft, IssueLink};
 use crate::models::{AlertType, Issue, Project};
-use crate::services::{AlertService, IssueSocialService};
+use crate::services::{AlertService, EventService, IssueSocialService};
 
 /// Runs a sync in the background and logs, rather than surfaces, a failure.
 // ponytail: fire-and-forget, no retry; a durable queue if lost syncs matter.
@@ -48,30 +48,44 @@ async fn project_installation(
         .map(|repo| (app, repo.installation_id, repo.repo_full_name)))
 }
 
-fn issue_body(project: &Project, issue: &Issue, dashboard_url: &str) -> String {
+/// What creating a GitHub issue sends unless told otherwise, as Sentry
+/// writes it: a link back, then the latest event's exceptions in a code
+/// block, with the project's and the instance's templates applied.
+pub async fn draft(
+    pool: &DbPool,
+    project: &Project,
+    issue: &Issue,
+    dashboard_url: &str,
+) -> AppResult<GitHubIssueDraft> {
+    let template = GitHubService::effective_issue_template(pool, project.id).await?;
     let url = AlertService::build_issue_url(dashboard_url, project.id, issue.id);
-    let mut body = format!("**{}**", issue.short_id(&project.slug));
-    if !issue.culprit.is_empty() {
-        body.push_str(&format!(" in `{}`", issue.culprit));
+    let mut body = format!("Rustrak Issue: [{}]({url})", issue.short_id(&project.slug));
+    let mut text = EventService::latest_for_issue(pool, issue.id)
+        .await?
+        .map(|event| event_text(&event.data))
+        .unwrap_or_default();
+    if text.is_empty() && !issue.calculated_value.is_empty() {
+        text = format!("{}: {}", issue.calculated_type, issue.calculated_value);
     }
-    body.push_str("\n\n");
-    if !issue.calculated_value.is_empty() {
-        body.push_str(&format!(
-            "```\n{}: {}\n```\n\n",
-            issue.calculated_type,
-            issue
-                .calculated_value
-                .chars()
-                .take(2000)
-                .collect::<String>()
-        ));
+    if !text.is_empty() {
+        // GitHub refuses a body over 65536 characters.
+        let text: String = text.chars().take(60_000).collect();
+        body.push_str(&format!("\n\n```\n{text}\n```"));
     }
-    body.push_str(&format!(
-        "{} events since {}.\n\n[Open in Rustrak]({url})",
-        issue.digested_event_count,
-        issue.first_seen.format("%Y-%m-%d %H:%M UTC")
-    ));
-    body
+    if !template.body_footer.is_empty() {
+        body.push_str(&format!("\n\n{}", template.body_footer));
+    }
+    let assignee = match (issue.assigned_to, issue.assignee_type.as_deref()) {
+        (Some(user_id), None | Some("user")) => github_login(pool, user_id).await?,
+        _ => None,
+    };
+    Ok(GitHubIssueDraft {
+        title: format!("{}{}", template.title_prefix, issue.title()),
+        body,
+        labels: template.labels,
+        assignee,
+        assignees: Vec::new(),
+    })
 }
 
 async fn record_link(
@@ -101,22 +115,27 @@ pub async fn create_issue(
     pool: &DbPool,
     project: &Project,
     issue: &Issue,
-    title: Option<String>,
-    body: Option<String>,
+    input: CreateGitHubIssue,
     user_id: Option<i32>,
     dashboard_url: &str,
 ) -> AppResult<IssueLink> {
     let (app, installation_id, repo) = project_installation(pool, project.id)
         .await?
         .ok_or_else(|| AppError::Validation("This project has no GitHub repository".into()))?;
-    let title = title
+    let draft = draft(pool, project, issue, dashboard_url).await?;
+    let title = input
+        .title
         .filter(|t| !t.trim().is_empty())
-        .unwrap_or_else(|| issue.title());
-    let body = body
+        .unwrap_or(draft.title);
+    let body = input
+        .body
         .filter(|b| !b.trim().is_empty())
-        .unwrap_or_else(|| issue_body(project, issue, dashboard_url));
+        .unwrap_or(draft.body);
+    let labels = input.labels.unwrap_or(draft.labels);
+    let assignee = input.assignee.or(draft.assignee);
+    let assignee = assignee.as_deref().map(str::trim).filter(|a| !a.is_empty());
     let remote = GitHubClient::new(&app)
-        .create_issue(installation_id, &repo, &title, &body)
+        .create_issue(installation_id, &repo, &title, &body, &labels, assignee)
         .await?;
     let link = GitHubService::add_link(pool, issue.id, &repo, &remote).await?;
     record_link(pool, issue.id, user_id, &link, "created").await;
@@ -415,10 +434,8 @@ pub async fn auto_create(
     // Hidden in the body and new to this run, so only the issue this run
     // opened carries it; a pasted link to the Rustrak issue does not.
     let marker = format!("<!-- rustrak:{} -->", Uuid::new_v4());
-    let body = format!(
-        "{}\n\n{marker}",
-        issue_body(&project, &issue, &dashboard_url)
-    );
+    let draft = draft(&pool, &project, &issue, &dashboard_url).await?;
+    let body = format!("{}\n\n{marker}", draft.body);
     // Only this event reaches the count, so a failure is retried here rather
     // than left for a later event. GitHub has no idempotency key and a failed
     // attempt may have opened the issue anyway (an answer lost), so a retry
@@ -445,7 +462,14 @@ pub async fn auto_create(
                 Some(opened) => opened,
                 None => {
                     client
-                        .create_issue(installation_id, &repo, &issue.title(), &body)
+                        .create_issue(
+                            installation_id,
+                            &repo,
+                            &draft.title,
+                            &body,
+                            &draft.labels,
+                            draft.assignee.as_deref(),
+                        )
                         .await?
                 }
             };

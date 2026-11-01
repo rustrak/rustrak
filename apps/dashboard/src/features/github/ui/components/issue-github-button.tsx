@@ -1,10 +1,16 @@
-import type { IssueLink } from '@rustrak/client';
-import { useMutation } from '@tanstack/react-query';
+import type {
+  CreateGitHubIssue,
+  GitHubIssueDraft,
+  IssueLink,
+} from '@rustrak/client';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { ChevronDown, Link2, Loader2, Plus, Unlink } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
+import { githubQueries } from '@/features/github/api/queries';
+import { parseLabels } from '@/features/github/lib/labels';
 import { cn } from '@/shared/lib/utils';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Button, buttonVariants } from '@/shared/ui/components/shadcn/button';
@@ -24,6 +30,8 @@ import {
   DropdownMenuTrigger,
 } from '@/shared/ui/components/shadcn/dropdown-menu';
 import { Input } from '@/shared/ui/components/shadcn/input';
+import { Label } from '@/shared/ui/components/shadcn/label';
+import { Textarea } from '@/shared/ui/components/shadcn/textarea';
 
 interface IssueGitHubButtonProps {
   projectId: number;
@@ -45,6 +53,7 @@ export function IssueGitHubButton({
 }: IssueGitHubButtonProps) {
   const t = useTranslations('github');
   const [linking, setLinking] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [reference, setReference] = useState('');
   const failed = (failure: string) => (error: Error) =>
     toast.error(failure, { description: error.message });
@@ -107,7 +116,7 @@ export function IssueGitHubButton({
         <DropdownMenuContent align="start" className="w-56">
           {canLink && (
             <>
-              <DropdownMenuItem onClick={() => create.mutate()}>
+              <DropdownMenuItem onClick={() => setCreating(true)}>
                 <Plus className="mr-2 size-4" />
                 {t('issue.create')}
               </DropdownMenuItem>
@@ -129,6 +138,27 @@ export function IssueGitHubButton({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t('issue.createTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('issue.createDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          {creating && (
+            <CreateIssueDraft
+              projectId={projectId}
+              issueId={issueId}
+              isPending={isPending}
+              onSubmit={(input) =>
+                create.mutate(input, { onSuccess: () => setCreating(false) })
+              }
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={linking} onOpenChange={setLinking}>
         <DialogContent className="sm:max-w-md">
@@ -166,5 +196,120 @@ export function IssueGitHubButton({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** Reads the draft the server would send, then lets the reader edit it. */
+function CreateIssueDraft({
+  projectId,
+  issueId,
+  isPending,
+  onSubmit,
+}: {
+  projectId: number;
+  issueId: string;
+  isPending: boolean;
+  onSubmit: (input: CreateGitHubIssue) => void;
+}) {
+  const draft = useQuery(githubQueries.draft(projectId, issueId));
+  if (draft.isError) {
+    return <p className="text-sm text-destructive">{draft.error.message}</p>;
+  }
+  if (!draft.data) {
+    return <Loader2 className="mx-auto size-5 animate-spin" />;
+  }
+  return (
+    <CreateIssueForm
+      draft={draft.data}
+      isPending={isPending}
+      onSubmit={onSubmit}
+    />
+  );
+}
+
+function CreateIssueForm({
+  draft,
+  isPending,
+  onSubmit,
+}: {
+  draft: GitHubIssueDraft;
+  isPending: boolean;
+  onSubmit: (input: CreateGitHubIssue) => void;
+}) {
+  const t = useTranslations('github');
+  // Starts from the draft and is the reader's from then on.
+  // react-doctor-disable-next-line react-doctor/no-derived-useState
+  const [title, setTitle] = useState(draft.title);
+  // react-doctor-disable-next-line react-doctor/no-derived-useState
+  const [body, setBody] = useState(draft.body);
+  // react-doctor-disable-next-line react-doctor/no-derived-useState
+  const [labels, setLabels] = useState(draft.labels.join(', '));
+  // react-doctor-disable-next-line react-doctor/no-derived-useState
+  const [assignee, setAssignee] = useState(draft.assignee ?? '');
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit({
+          title,
+          body,
+          labels: parseLabels(labels),
+          assignee: assignee.trim(),
+        });
+      }}
+    >
+      <div className="space-y-1.5">
+        <Label htmlFor="github-issue-title">{t('issue.titleField')}</Label>
+        <Input
+          id="github-issue-title"
+          autoFocus
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="github-issue-body">{t('issue.bodyField')}</Label>
+        <Textarea
+          id="github-issue-body"
+          className="max-h-80 font-mono text-xs"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="github-issue-labels">{t('issue.labelsField')}</Label>
+        <Input
+          id="github-issue-labels"
+          value={labels}
+          placeholder="bug, rustrak"
+          onChange={(e) => setLabels(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="github-issue-assignee">
+          {t('issue.assigneeField')}
+        </Label>
+        {/* Free text with GitHub's choices as suggestions: a repository
+            GitHub could not list still takes a login. */}
+        <Input
+          id="github-issue-assignee"
+          list="github-issue-assignees"
+          value={assignee}
+          placeholder="octocat"
+          onChange={(e) => setAssignee(e.target.value)}
+        />
+        <datalist id="github-issue-assignees">
+          {(draft.assignees ?? []).map((login) => (
+            <option key={login} value={login} />
+          ))}
+        </datalist>
+      </div>
+      <DialogFooter>
+        <Button type="submit" disabled={isPending || !title.trim()}>
+          {t('issue.createSubmit')}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

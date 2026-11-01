@@ -13,7 +13,7 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::github::{
     CodeMapping, CreateGitHubIssue, GitHubApp, GitHubAppInfo, GitHubStatus, IssueGitHub,
-    LinkGitHubIssue, ManifestRequest, ManifestResponse, UpdateProjectRepository,
+    IssueTemplate, LinkGitHubIssue, ManifestRequest, ManifestResponse, UpdateProjectRepository,
 };
 use crate::models::{Issue, Project};
 use crate::services::access::{self, Action};
@@ -75,7 +75,52 @@ pub async fn status(
         app: app.as_ref().map(GitHubAppInfo::from),
         installations: GitHubService::installations(pool.get_ref()).await?,
         webhook_url: format!("{}/api/github/webhook", public_base(&config)),
+        issue_template: GitHubService::issue_template(pool.get_ref()).await?,
     }))
+}
+
+/// Trims what a person typed, and drops empty and repeated labels.
+fn clean_template(template: IssueTemplate) -> IssueTemplate {
+    let mut labels: Vec<String> = Vec::new();
+    for label in template.labels {
+        let label = label.trim().to_string();
+        if !label.is_empty() && !labels.contains(&label) {
+            labels.push(label);
+        }
+    }
+    IssueTemplate {
+        labels,
+        title_prefix: template.title_prefix,
+        body_footer: template.body_footer.trim().to_string(),
+    }
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    put,
+    path = "/api/github/issue-template",
+    operation_id = "github.putIssueTemplate",
+    tag = "GitHub",
+    request_body = IssueTemplate,
+    responses(
+        (status = 200, description = "Template saved", body = IssueTemplate),
+        (status = 400, description = "Invalid request", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// PUT /api/github/issue-template: the labels, title prefix and body footer
+/// every GitHub issue starts with, before a project's own.
+pub async fn put_issue_template(
+    pool: web::Data<DbPool>,
+    body: web::Json<IssueTemplate>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    require_admin(&actor)?;
+    GitHubService::require_app(pool.get_ref()).await?;
+    let template = clean_template(body.into_inner());
+    GitHubService::set_issue_template(pool.get_ref(), &template).await?;
+    Ok(HttpResponse::Ok().json(template))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -417,6 +462,14 @@ pub async fn put_project_repository(
         &conditions,
     )
     .await?;
+    if let Some(template) = body.issue_template.clone() {
+        GitHubService::set_project_issue_template(
+            pool.get_ref(),
+            project_id,
+            &clean_template(template),
+        )
+        .await?;
+    }
     Ok(HttpResponse::Ok()
         .json(GitHubService::project_repository(pool.get_ref(), project_id).await?))
 }
@@ -582,6 +635,57 @@ pub async fn issue_github(
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/projects/{project_id}/issues/{issue_id}/github/draft",
+    operation_id = "github.issueDraft",
+    tag = "GitHub",
+    params(
+        ("project_id" = i32, Path, description = "Project ID"),
+        ("issue_id" = uuid::Uuid, Path, description = "Issue ID"),
+    ),
+    responses(
+        (status = 200, description = "Title, body and labels to start from", body = crate::models::github::GitHubIssueDraft),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// GET .../github/draft: what creating a GitHub issue sends by default, with
+/// the templates applied, for the person to edit first.
+pub async fn github_issue_draft(
+    pool: web::Data<DbPool>,
+    config: web::Data<Config>,
+    path: web::Path<(i32, Uuid)>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    let (project_id, issue_id) = path.into_inner();
+    let (project, issue) = require_issue(
+        pool.get_ref(),
+        &actor,
+        project_id,
+        issue_id,
+        Action::MutateIssue,
+    )
+    .await?;
+    let mut draft = sync::draft(pool.get_ref(), &project, &issue, &config.dashboard_url()).await?;
+    // Choices only: a GitHub that does not answer leaves a free text field.
+    if let (Some(app), Some(repo)) = (
+        GitHubService::app(pool.get_ref()).await?,
+        GitHubService::project_repository_row(pool.get_ref(), project_id).await?,
+    ) {
+        match GitHubClient::new(&app)
+            .assignees(repo.installation_id, &repo.repo_full_name)
+            .await
+        {
+            Ok(assignees) => draft.assignees = assignees,
+            Err(e) => log::warn!("Could not list GitHub assignees: {e}"),
+        }
+    }
+    Ok(HttpResponse::Ok().json(draft))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/projects/{project_id}/issues/{issue_id}/github/issues",
     operation_id = "github.createIssue",
@@ -617,13 +721,19 @@ pub async fn create_github_issue(
         Action::MutateIssue,
     )
     .await?;
-    let body = body.into_inner();
+    let mut input = body.into_inner();
+    input.labels = input.labels.map(|labels| {
+        clean_template(IssueTemplate {
+            labels,
+            ..Default::default()
+        })
+        .labels
+    });
     let link = sync::create_issue(
         pool.get_ref(),
         &project,
         &issue,
-        body.title,
-        body.body,
+        input,
         actor.user_id(),
         &config.dashboard_url(),
     )
@@ -847,6 +957,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/projects/{project_id}/issues/{issue_id}/github")
             .route("", web::get().to(issue_github))
+            .route("/draft", web::get().to(github_issue_draft))
             .route("/issues", web::post().to(create_github_issue))
             .route("/links", web::post().to(link_github_issue))
             .route("/links/{link_id}", web::delete().to(unlink_github_issue)),
@@ -859,6 +970,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/callback", web::get().to(callback))
             .route("/installed", web::get().to(installed))
             .route("/repositories", web::get().to(repositories))
+            .route("/issue-template", web::put().to(put_issue_template))
             .service(
                 // GitHub sends up to 25 MB; `installation` events list every
                 // repository and outgrow actix's 256 KiB default.

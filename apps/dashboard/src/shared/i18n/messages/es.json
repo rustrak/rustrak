@@ -2328,7 +2328,14 @@
       "unlinkFailed": "No se pudo desenlazar el issue de GitHub",
       "linkTitle": "Enlazar un issue de GitHub",
       "linkDescription": "Pega la URL de un issue de GitHub, o su número con # delante (por ejemplo, #42) si está en el repositorio de este proyecto.",
-      "linkSubmit": "Enlazar"
+      "linkSubmit": "Enlazar",
+      "createTitle": "Crear issue en GitHub",
+      "createDescription": "Parte del último evento y de las plantillas de GitHub. Edita lo que quieras antes de crearlo.",
+      "titleField": "Título",
+      "bodyField": "Descripción",
+      "labelsField": "Labels, separadas por comas",
+      "createSubmit": "Crear issue",
+      "assigneeField": "Asignado (usuario de GitHub)"
     },
     "code": {
       "connect": "Conecta este proyecto con GitHub",
@@ -2366,6 +2373,18 @@
         "owners": "Code owners",
         "ownersDescription": "Quién es dueño del código que falla, según CODEOWNERS."
       }
+    },
+    "template": {
+      "section": "Plantilla de issues de GitHub",
+      "instanceDescription": "Con lo que empieza cada issue de GitHub que abre Rustrak, en todos los proyectos. Cada proyecto puede añadir la suya encima.",
+      "projectDescription": "Se aplica encima de la plantilla de la instancia: estas labels se suman a las suyas, y un prefijo o pie definido aquí sustituye al suyo.",
+      "labels": "Labels",
+      "labelsDescription": "Separadas por comas. GitHub crea las que aún no existan.",
+      "titlePrefix": "Prefijo del título",
+      "titlePrefixDescription": "Se pone delante del título del issue.",
+      "bodyFooter": "Pie de la descripción",
+      "bodyFooterDescription": "Markdown que se añade al final de la descripción, por ejemplo personas a mencionar.",
+      "saveFailed": "No se pudo guardar la plantilla"
     }
   },
   "conditions": {

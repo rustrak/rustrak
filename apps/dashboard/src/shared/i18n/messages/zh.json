@@ -2328,7 +2328,14 @@
       "unlinkFailed": "无法取消关联 GitHub Issue",
       "linkTitle": "关联 GitHub Issue",
       "linkDescription": "粘贴 GitHub Issue 的 URL，或输入前面加 # 的编号（例如 #42），用于此项目仓库中的 Issue。",
-      "linkSubmit": "关联"
+      "linkSubmit": "关联",
+      "createTitle": "创建 GitHub issue",
+      "createDescription": "基于最新事件和 GitHub 模板生成，创建前可以修改任何内容。",
+      "titleField": "标题",
+      "bodyField": "描述",
+      "labelsField": "标签，用逗号分隔",
+      "createSubmit": "创建 issue",
+      "assigneeField": "负责人（GitHub 用户名）"
     },
     "code": {
       "connect": "将此项目连接到 GitHub",
@@ -2366,6 +2373,18 @@
         "owners": "代码所有者",
         "ownersDescription": "根据 CODEOWNERS 显示出错代码的负责人。"
       }
+    },
+    "template": {
+      "section": "GitHub issue 模板",
+      "instanceDescription": "Rustrak 在所有项目中打开的每个 GitHub issue 的开头内容。项目可以在此之上添加自己的模板。",
+      "projectDescription": "叠加在实例模板之上：这里的标签会与实例标签合并，这里设置的标题前缀或页脚会替换实例的设置。",
+      "labels": "标签",
+      "labelsDescription": "用逗号分隔。尚不存在的标签会由 GitHub 创建。",
+      "titlePrefix": "标题前缀",
+      "titlePrefixDescription": "放在 issue 标题之前。",
+      "bodyFooter": "描述页脚",
+      "bodyFooterDescription": "追加到描述末尾的 Markdown，例如要提及的人。",
+      "saveFailed": "无法保存模板"
     }
   },
   "conditions": {

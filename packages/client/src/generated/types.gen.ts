@@ -643,9 +643,17 @@ export type CreateAuthToken = {
 
 export type CreateGitHubIssue = {
     /**
-     * Defaults to a summary with the culprit and a link back.
+     * A GitHub login. Defaults to the Rustrak assignee's; `""` sends none.
+     */
+    assignee?: string | null;
+    /**
+     * Defaults to a link back and the latest event's exceptions.
      */
     body?: string | null;
+    /**
+     * Defaults to the templates' labels; `[]` sends none.
+     */
+    labels?: Array<string> | null;
     /**
      * Defaults to the Rustrak issue's title.
      */
@@ -932,6 +940,24 @@ export type GitHubInstallation = {
     suspended: boolean;
 };
 
+/**
+ * `GET .../github/draft`: what creating a GitHub issue sends by default, for
+ * the person to edit first.
+ */
+export type GitHubIssueDraft = {
+    /**
+     * The Rustrak assignee's GitHub login, if they set one.
+     */
+    assignee: string | null;
+    /**
+     * The logins GitHub lets the repository's issues be assigned to.
+     */
+    assignees: Array<string>;
+    body: string;
+    labels: Array<string>;
+    title: string;
+};
+
 export type GitHubLogin = {
     /**
      * The person's GitHub username; `null` clears it.
@@ -956,6 +982,10 @@ export type GitHubRepository = {
 export type GitHubStatus = {
     app: GitHubAppInfo | null;
     installations: Array<GitHubInstallation>;
+    /**
+     * What every GitHub issue starts with; `{}` until an admin sets it.
+     */
+    issue_template: IssueTemplate;
     /**
      * The address GitHub delivers webhooks to.
      */
@@ -1152,6 +1182,23 @@ export type IssueTagValue = {
      */
     name: string;
     value: string;
+};
+
+/**
+ * What a GitHub issue Rustrak opens starts with. A project's template goes
+ * on top of the instance's: its labels add to them, and its title prefix
+ * and body footer replace theirs unless empty.
+ */
+export type IssueTemplate = {
+    /**
+     * Markdown appended to the body, e.g. `cc @acme/oncall`.
+     */
+    body_footer?: string;
+    labels?: Array<string>;
+    /**
+     * Put before the Rustrak issue's title, e.g. `[Rustrak] `.
+     */
+    title_prefix?: string;
 };
 
 /**
@@ -1535,6 +1582,10 @@ export type ProjectRepository = {
     default_branch: string;
     html_url: string;
     installation_id: number;
+    /**
+     * Goes on top of the instance's template.
+     */
+    issue_template: IssueTemplate;
     project_id: number;
     repo_full_name: string;
 };
@@ -2548,6 +2599,7 @@ export type UpdateProjectRepository = {
     auto_create_issues?: boolean | null;
     code_mappings?: Array<CodeMapping> | null;
     installation_id: number;
+    issue_template?: IssueTemplate | null;
     repo_full_name: string;
 };
 
@@ -3407,6 +3459,39 @@ export type GithubInstalledErrors = {
 };
 
 export type GithubInstalledError = GithubInstalledErrors[keyof GithubInstalledErrors];
+
+export type GithubPutIssueTemplateData = {
+    body: IssueTemplate;
+    path?: never;
+    query?: never;
+    url: '/api/github/issue-template';
+};
+
+export type GithubPutIssueTemplateErrors = {
+    /**
+     * Invalid request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+};
+
+export type GithubPutIssueTemplateError = GithubPutIssueTemplateErrors[keyof GithubPutIssueTemplateErrors];
+
+export type GithubPutIssueTemplateResponses = {
+    /**
+     * Template saved
+     */
+    200: IssueTemplate;
+};
+
+export type GithubPutIssueTemplateResponse = GithubPutIssueTemplateResponses[keyof GithubPutIssueTemplateResponses];
 
 export type GithubManifestData = {
     body: ManifestRequest;
@@ -6188,6 +6273,48 @@ export type GithubIssueResponses = {
 };
 
 export type GithubIssueResponse = GithubIssueResponses[keyof GithubIssueResponses];
+
+export type GithubIssueDraftData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+        /**
+         * Issue ID
+         */
+        issue_id: string;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/issues/{issue_id}/github/draft';
+};
+
+export type GithubIssueDraftErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type GithubIssueDraftError = GithubIssueDraftErrors[keyof GithubIssueDraftErrors];
+
+export type GithubIssueDraftResponses = {
+    /**
+     * Title, body and labels to start from
+     */
+    200: GitHubIssueDraft;
+};
+
+export type GithubIssueDraftResponse = GithubIssueDraftResponses[keyof GithubIssueDraftResponses];
 
 export type GithubCreateIssueData = {
     body: CreateGitHubIssue;

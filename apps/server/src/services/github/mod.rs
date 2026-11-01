@@ -13,8 +13,8 @@ use uuid::Uuid;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::github::{
-    CodeMapping, GitHubApp, GitHubInstallation, IssueLink, ProjectRepository, ProjectRepositoryRow,
-    RepoCommit,
+    CodeMapping, GitHubApp, GitHubInstallation, IssueLink, IssueTemplate, ProjectRepository,
+    ProjectRepositoryRow, RepoCommit,
 };
 
 pub use client::GitHubClient;
@@ -94,6 +94,38 @@ impl GitHubService {
         Ok(())
     }
 
+    /// The instance's issue template; the empty one without an app.
+    pub async fn issue_template(pool: &DbPool) -> AppResult<IssueTemplate> {
+        let stored: Option<String> =
+            sqlx::query_scalar("SELECT issue_template FROM github_app WHERE id = 1")
+                .fetch_optional(pool)
+                .await?;
+        Ok(stored
+            .as_deref()
+            .map(IssueTemplate::parse)
+            .unwrap_or_default())
+    }
+
+    pub async fn set_issue_template(pool: &DbPool, template: &IssueTemplate) -> AppResult<()> {
+        sqlx::query("UPDATE github_app SET issue_template = $1 WHERE id = 1")
+            .bind(serde_json::to_string(template).map_err(|e| AppError::Internal(e.to_string()))?)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    /// The project's template on top of the instance's.
+    pub async fn effective_issue_template(
+        pool: &DbPool,
+        project_id: i32,
+    ) -> AppResult<IssueTemplate> {
+        let project = Self::project_repository_row(pool, project_id)
+            .await?
+            .map(|row| IssueTemplate::parse(&row.issue_template))
+            .unwrap_or_default();
+        Ok(Self::issue_template(pool).await?.with(&project))
+    }
+
     pub async fn touch_webhook(pool: &DbPool) -> AppResult<()> {
         sqlx::query("UPDATE github_app SET last_webhook_at = $1 WHERE id = 1")
             .bind(Utc::now())
@@ -168,7 +200,8 @@ impl GitHubService {
     ) -> AppResult<Option<ProjectRepositoryRow>> {
         Ok(sqlx::query_as::<_, ProjectRepositoryRow>(
             r#"SELECT project_id, installation_id, repo_full_name, default_branch, code_mappings,
-                      auto_create_issues, auto_create_conditions, codeowners, codeowners_synced_at
+                      auto_create_issues, auto_create_conditions, codeowners, codeowners_synced_at,
+                      issue_template
                FROM project_repositories WHERE project_id = $1"#,
         )
         .bind(project_id)
@@ -199,6 +232,7 @@ impl GitHubService {
             auto_create_conditions: serde_json::from_str(&row.auto_create_conditions)
                 .unwrap_or_else(|_| serde_json::json!({})),
             codeowners_synced_at: row.codeowners_synced_at,
+            issue_template: IssueTemplate::parse(&row.issue_template),
         }))
     }
 
@@ -244,6 +278,19 @@ impl GitHubService {
         .bind(Utc::now())
         .execute(pool)
         .await?;
+        Ok(())
+    }
+
+    pub async fn set_project_issue_template(
+        pool: &DbPool,
+        project_id: i32,
+        template: &IssueTemplate,
+    ) -> AppResult<()> {
+        sqlx::query("UPDATE project_repositories SET issue_template = $1 WHERE project_id = $2")
+            .bind(serde_json::to_string(template).map_err(|e| AppError::Internal(e.to_string()))?)
+            .bind(project_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -497,6 +544,75 @@ impl GitHubService {
 // ------------------------------------------------------------- pure rules
 
 /// Verifies `X-Hub-Signature-256` (`sha256=<hex>`) in constant time.
+/// The event as Sentry writes it into an issue it opens on GitHub: each
+/// exception as `Type: value` with its last five in-app frames, or else the
+/// message.
+pub fn event_text(data: &serde_json::Value) -> String {
+    let exceptions = data["exception"]["values"]
+        .as_array()
+        .or_else(|| data["exception"].as_array());
+    let Some(exceptions) = exceptions.filter(|e| !e.is_empty()) else {
+        let message = data["logentry"]["formatted"]
+            .as_str()
+            .or_else(|| data["logentry"]["message"].as_str())
+            .or_else(|| data["message"].as_str())
+            .or_else(|| data["message"]["formatted"].as_str());
+        return message.unwrap_or_default().to_string();
+    };
+    exceptions
+        .iter()
+        .map(|exc| {
+            let mut out = format!(
+                "{}: {}",
+                exc["type"].as_str().unwrap_or_default(),
+                exc["value"].as_str().unwrap_or_default()
+            );
+            let all = exc["stacktrace"]["frames"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let in_app: Vec<_> = all.iter().filter(|f| f["in_app"] != false).collect();
+            let frames = if in_app.is_empty() {
+                all.iter().collect()
+            } else {
+                in_app
+            };
+            let shown = &frames[frames.len().saturating_sub(5)..];
+            if shown.len() < all.len() {
+                out.push_str(&format!(
+                    "\n({} additional frame(s) were not displayed)\n...",
+                    all.len() - shown.len()
+                ));
+            }
+            for frame in shown {
+                out.push('\n');
+                out.push_str(&frame_text(frame));
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// Sentry's `frames/default.txt`.
+fn frame_text(frame: &serde_json::Value) -> String {
+    let mut out = match (frame["filename"].as_str(), frame["module"].as_str()) {
+        (Some(file), _) => format!("  File \"{file}\""),
+        (None, Some(module)) => format!("  Module \"{module}\""),
+        _ => "  ?".to_string(),
+    };
+    if let Some(line) = frame["lineno"].as_i64() {
+        out.push_str(&format!(", line {line}"));
+    }
+    if let Some(function) = frame["function"].as_str() {
+        out.push_str(&format!(", in {function}"));
+    }
+    if let Some(code) = frame["context_line"].as_str() {
+        out.push_str(&format!("\n    {}", code.trim()));
+    }
+    out
+}
+
 pub fn verify_signature(secret: &str, body: &[u8], header: &str) -> bool {
     let Some(hex_signature) = header.strip_prefix("sha256=") else {
         return false;

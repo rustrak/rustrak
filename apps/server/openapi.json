@@ -1502,6 +1502,72 @@
         ]
       }
     },
+    "/api/github/issue-template": {
+      "put": {
+        "tags": [
+          "GitHub"
+        ],
+        "summary": "PUT /api/github/issue-template: the labels, title prefix and body footer\nevery GitHub issue starts with, before a project's own.",
+        "operationId": "github.putIssueTemplate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueTemplate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Template saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/github/manifest": {
       "post": {
         "tags": [
@@ -7014,6 +7080,84 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IssueGitHub"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/issues/{issue_id}/github/draft": {
+      "get": {
+        "tags": [
+          "GitHub"
+        ],
+        "summary": "GET .../github/draft: what creating a GitHub issue sends by default, with\nthe templates applied, for the person to edit first.",
+        "operationId": "github.issueDraft",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Issue ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Title, body and labels to start from",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubIssueDraft"
                 }
               }
             }
@@ -15036,12 +15180,29 @@
       "CreateGitHubIssue": {
         "type": "object",
         "properties": {
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A GitHub login. Defaults to the Rustrak assignee's; `\"\"` sends none."
+          },
           "body": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Defaults to a summary with the culprit and a link back."
+            "description": "Defaults to a link back and the latest event's exceptions."
+          },
+          "labels": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Defaults to the templates' labels; `[]` sends none."
           },
           "title": {
             "type": [
@@ -15632,6 +15793,45 @@
           }
         }
       },
+      "GitHubIssueDraft": {
+        "type": "object",
+        "description": "`GET .../github/draft`: what creating a GitHub issue sends by default, for\nthe person to edit first.",
+        "required": [
+          "title",
+          "body",
+          "labels",
+          "assignee",
+          "assignees"
+        ],
+        "properties": {
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Rustrak assignee's GitHub login, if they set one."
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The logins GitHub lets the repository's issues be assigned to."
+          },
+          "body": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
       "GitHubLogin": {
         "type": "object",
         "required": [
@@ -15682,7 +15882,8 @@
         "required": [
           "app",
           "installations",
-          "webhook_url"
+          "webhook_url",
+          "issue_template"
         ],
         "properties": {
           "app": {
@@ -15700,6 +15901,10 @@
             "items": {
               "$ref": "#/components/schemas/GitHubInstallation"
             }
+          },
+          "issue_template": {
+            "$ref": "#/components/schemas/IssueTemplate",
+            "description": "What every GitHub issue starts with; `{}` until an admin sets it."
           },
           "webhook_url": {
             "type": "string",
@@ -16204,6 +16409,26 @@
           },
           "value": {
             "type": "string"
+          }
+        }
+      },
+      "IssueTemplate": {
+        "type": "object",
+        "description": "What a GitHub issue Rustrak opens starts with. A project's template goes\non top of the instance's: its labels add to them, and its title prefix\nand body footer replace theirs unless empty.",
+        "properties": {
+          "body_footer": {
+            "type": "string",
+            "description": "Markdown appended to the body, e.g. `cc @acme/oncall`."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title_prefix": {
+            "type": "string",
+            "description": "Put before the Rustrak issue's title, e.g. `[Rustrak] `."
           }
         }
       },
@@ -17011,7 +17236,8 @@
           "auto_create_issues",
           "auto_create_conditions",
           "codeowners_rules",
-          "codeowners_synced_at"
+          "codeowners_synced_at",
+          "issue_template"
         ],
         "properties": {
           "auto_create_conditions": {
@@ -17051,6 +17277,10 @@
           "installation_id": {
             "type": "integer",
             "format": "int64"
+          },
+          "issue_template": {
+            "$ref": "#/components/schemas/IssueTemplate",
+            "description": "Goes on top of the instance's template."
           },
           "project_id": {
             "type": "integer",
@@ -19490,6 +19720,16 @@
           "installation_id": {
             "type": "integer",
             "format": "int64"
+          },
+          "issue_template": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IssueTemplate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "repo_full_name": {
             "type": "string"

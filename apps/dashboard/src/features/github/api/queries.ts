@@ -57,6 +57,20 @@ export const githubQueries = {
           }),
         ),
     }),
+  /** What creating a GitHub issue sends, templates applied, to edit first. */
+  draft: (projectId: number, issueId: string) =>
+    queryOptions({
+      queryKey: [...githubQueries.all(projectId), 'draft', issueId],
+      queryFn: ({ signal }) =>
+        orThrow(
+          api().github.issueDraft({
+            path: { project_id: projectId, issue_id: issueId },
+            signal,
+          }),
+        ),
+      // Read when the dialog opens, never kept: the latest event changes.
+      gcTime: 0,
+    }),
   issue: (projectId: number, issueId: string) =>
     queryOptions({
       queryKey: [...githubQueries.all(projectId), 'issue', issueId],

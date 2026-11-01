@@ -73,6 +73,53 @@ pub struct GitHubStatus {
     pub installations: Vec<GitHubInstallation>,
     /// The address GitHub delivers webhooks to.
     pub webhook_url: String,
+    /// What every GitHub issue starts with; `{}` until an admin sets it.
+    pub issue_template: IssueTemplate,
+}
+
+/// What a GitHub issue Rustrak opens starts with. A project's template goes
+/// on top of the instance's: its labels add to them, and its title prefix
+/// and body footer replace theirs unless empty.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct IssueTemplate {
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// Put before the Rustrak issue's title, e.g. `[Rustrak] `.
+    #[serde(default)]
+    pub title_prefix: String,
+    /// Markdown appended to the body, e.g. `cc @acme/oncall`.
+    #[serde(default)]
+    pub body_footer: String,
+}
+
+impl IssueTemplate {
+    /// Parses a stored template; anything unreadable is the empty one.
+    pub fn parse(stored: &str) -> Self {
+        serde_json::from_str(stored).unwrap_or_default()
+    }
+
+    /// `self` (the instance's) with `project`'s on top.
+    pub fn with(&self, project: &IssueTemplate) -> Self {
+        let mut labels = self.labels.clone();
+        for label in &project.labels {
+            if !labels.contains(label) {
+                labels.push(label.clone());
+            }
+        }
+        let pick = |own: &String, base: &String| {
+            if own.is_empty() {
+                base.clone()
+            } else {
+                own.clone()
+            }
+        };
+        Self {
+            labels,
+            title_prefix: pick(&project.title_prefix, &self.title_prefix),
+            body_footer: pick(&project.body_footer, &self.body_footer),
+        }
+    }
 }
 
 /// Maps a path as it appears in a stack trace to the path in the repository.
@@ -96,6 +143,7 @@ pub struct ProjectRepositoryRow {
     pub auto_create_conditions: String,
     pub codeowners: Option<String>,
     pub codeowners_synced_at: Option<DateTime<Utc>>,
+    pub issue_template: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -117,6 +165,8 @@ pub struct ProjectRepository {
     pub codeowners_rules: Option<usize>,
     #[cfg_attr(feature = "openapi", schema(required))]
     pub codeowners_synced_at: Option<DateTime<Utc>>,
+    /// Goes on top of the instance's template.
+    pub issue_template: IssueTemplate,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,6 +183,8 @@ pub struct UpdateProjectRepository {
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub auto_create_conditions: Option<serde_json::Value>,
+    #[serde(default)]
+    pub issue_template: Option<IssueTemplate>,
 }
 
 /// A repository an installation can reach.
@@ -193,9 +245,30 @@ pub struct CreateGitHubIssue {
     /// Defaults to the Rustrak issue's title.
     #[serde(default)]
     pub title: Option<String>,
-    /// Defaults to a summary with the culprit and a link back.
+    /// Defaults to a link back and the latest event's exceptions.
     #[serde(default)]
     pub body: Option<String>,
+    /// Defaults to the templates' labels; `[]` sends none.
+    #[serde(default)]
+    pub labels: Option<Vec<String>>,
+    /// A GitHub login. Defaults to the Rustrak assignee's; `""` sends none.
+    #[serde(default)]
+    pub assignee: Option<String>,
+}
+
+/// `GET .../github/draft`: what creating a GitHub issue sends by default, for
+/// the person to edit first.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GitHubIssueDraft {
+    pub title: String,
+    pub body: String,
+    pub labels: Vec<String>,
+    /// The Rustrak assignee's GitHub login, if they set one.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub assignee: Option<String>,
+    /// The logins GitHub lets the repository's issues be assigned to.
+    pub assignees: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

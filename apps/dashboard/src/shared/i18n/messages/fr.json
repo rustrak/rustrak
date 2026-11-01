@@ -2328,7 +2328,14 @@
       "unlinkFailed": "Impossible de délier le ticket GitHub",
       "linkTitle": "Lier un ticket GitHub",
       "linkDescription": "Collez l'URL d'un ticket GitHub, ou son numéro précédé de # (par exemple #42) s'il est dans le dépôt de ce projet.",
-      "linkSubmit": "Lier"
+      "linkSubmit": "Lier",
+      "createTitle": "Créer une issue GitHub",
+      "createDescription": "Part du dernier événement et des modèles GitHub. Modifiez ce que vous voulez avant de la créer.",
+      "titleField": "Titre",
+      "bodyField": "Description",
+      "labelsField": "Labels, séparés par des virgules",
+      "createSubmit": "Créer l'issue",
+      "assigneeField": "Assigné (nom d’utilisateur GitHub)"
     },
     "code": {
       "connect": "Connecter ce projet à GitHub",
@@ -2366,6 +2373,18 @@
         "owners": "Code owners",
         "ownersDescription": "Qui possède le code en échec, d’après CODEOWNERS."
       }
+    },
+    "template": {
+      "section": "Modèle d'issue GitHub",
+      "instanceDescription": "Ce par quoi commence chaque issue GitHub ouverte par Rustrak, dans tous les projets. Un projet peut ajouter le sien par-dessus.",
+      "projectDescription": "S'ajoute au modèle de l'instance : ces labels rejoignent les siens, et un préfixe ou un pied défini ici remplace le sien.",
+      "labels": "Labels",
+      "labelsDescription": "Séparés par des virgules. GitHub crée ceux qui n'existent pas encore.",
+      "titlePrefix": "Préfixe du titre",
+      "titlePrefixDescription": "Placé avant le titre de l'issue.",
+      "bodyFooter": "Pied de la description",
+      "bodyFooterDescription": "Markdown ajouté à la fin de la description, par exemple les personnes à mentionner.",
+      "saveFailed": "Impossible d'enregistrer le modèle"
     }
   },
   "conditions": {
