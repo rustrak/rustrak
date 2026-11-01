@@ -1,12 +1,8 @@
 # Storage
 
-Rustrak accumulates data fast — every error event, transaction, span, and source map adds up. The **Storage** page lets an admin see exactly what the instance is holding and reclaim space by deleting old data, much like a server's disk-cleanup tools.
+Every error, transaction, log and source map takes disk space. **Settings → Storage** shows what the instance holds, sets how long each kind of data is kept, and deletes old data. Only instance admins see it, since every cleanup deletes for good.
 
-Storage is **instance-admin only**. Members never see it, and every cleanup is destructive, so it lives behind the admin gate.
-
-## Where to find it
-
-Go to **Settings → Storage** (visible only to admins).
+<InteractiveDemo src="/demos/storage.openshowcase" />
 
 ## Usage
 
@@ -33,7 +29,7 @@ What a cleanup does:
 - Removes any **issue** left with zero events, and keeps the event counts on projects and issues in sync.
 - Deletes the **source maps no upload references** any more, for example the ones a deleted project left behind. Referenced files are never touched.
 - Works in small batches, each committed on its own, so ingestion keeps working. If the server restarts mid-cleanup, what was already deleted stays deleted and the next run finishes the rest. If the server was down at run time, it runs once when it comes back.
-- On SQLite, gives the space it freed back to the disk once the deletes are done, a few megabytes at a time, so the database file shrinks. This needs a database Rustrak created with incremental auto-vacuum, which every new one is; an older file reuses the freed space for new data but keeps its size until it is compacted once, with the **Compact database** button on this page (see [Reclaiming disk space](/configuration/database#reclaiming-disk-space)).
+- On SQLite, gives the space it freed back to the disk once the deletes are done, a few megabytes at a time, so the database file shrinks. This needs a database Rustrak created with incremental auto-vacuum, which every new one is; an older file reuses the freed space for new data but keeps its size until it is compacted once, with the **Compact database** button on this page (see [Reclaiming disk space](/configuration/database#reclaiming-disk-space)). Compaction needs free disk space about the size of the database and blocks writes while it runs: errors that arrive meanwhile are kept and processed afterwards, but logs, traces and sessions are lost. Run it at a quiet time.
 
 > **Warning:** Deleted data is gone for good. Check what the panel says will go before you save.
 
@@ -123,7 +119,7 @@ You can also drive all of this from an AI assistant via the [MCP server](/sdks/m
 | Situation | Result |
 |---|---|
 | Member opens **Settings → Storage** or calls a storage endpoint | `403 Forbidden` |
-| Preview (cleanup or source-map GC) | Counts only — nothing is deleted |
+| Preview (cleanup or source-map GC) | Counts only; nothing is deleted |
 | Start a cleanup | `202 Accepted`; it runs in the background |
 | Start a cleanup while one is running | `409 Conflict` |
 | Server restarts during a cleanup | Batches already deleted stay deleted; run it again for the rest |
