@@ -89,7 +89,7 @@ RUSTRAK_DASHBOARD_DIR=/srv/rustrak-dashboard
 
 ### The update check
 
-The dashboard compares the running server's version against the release feed published on GitHub Pages, and shows a notice when a newer one exists. The request is made by each reader's browser. Nothing about the instance is sent: it is a plain `GET` for a public JSON file, and a blocked or unreachable feed simply means no notice appears.
+The dashboard compares the running server's version against the release feed published on GitHub Pages, and shows a notice when a newer one exists. The request is made by each reader's browser. Nothing about the instance is sent: it is a plain `GET` for a public JSON file, and a blocked or unreachable feed means no notice appears.
 
 ## Security
 
@@ -152,6 +152,9 @@ and troubleshooting.
 | `DATABASE_URL` | `sqlite:///data/rustrak.db` | Database connection string. Required only for PostgreSQL |
 | `DATABASE_MAX_CONNECTIONS` | `10` | Maximum pool connections |
 | `DATABASE_MIN_CONNECTIONS` | `1` | Minimum pool connections |
+| `DATABASE_ACQUIRE_TIMEOUT_SECS` | `5` | How long a request waits for a free connection before failing |
+| `DATABASE_IDLE_TIMEOUT_SECS` | `600` | How long an unused connection stays open |
+| `DATABASE_MAX_LIFETIME_SECS` | `1800` | How long a connection lives before it is replaced |
 
 ### DATABASE_URL
 
@@ -201,6 +204,9 @@ counted in the project's `rate_limited_event_count`.
 | `INGEST_DIR` | `/tmp/rustrak/ingest` | Temporary event storage |
 | `SOURCEMAP_STORAGE_PATH` | `/data/sourcemaps` | Directory for source map chunk storage |
 | `SOURCEMAP_CACHE_MB` | `64` | Memory kept for parsed source maps across events |
+| `MAX_CHUNK_SIZE_BYTES` | `10485760` (10 MiB) | Largest single chunk a source map or debug file upload may send |
+| `SESSION_FLUSH_INTERVAL_SECS` | `30` | How often release health counts are written to the database |
+| `SESSION_CARDINALITY_CAP` | `10000` | Release and environment pairs tracked per project; more are counted together as `<overflow>` |
 
 ### SOURCEMAP_STORAGE_PATH
 
@@ -209,10 +215,6 @@ Where Rustrak stores source map chunks uploaded by Sentry SDKs. The default is i
 ```bash
 SOURCEMAP_STORAGE_PATH=/var/lib/rustrak/sourcemaps
 ```
-
-**Storage sizing:** Each source map chunk is typically around 2MB. Multiply by the number of distinct source files across all your deployments. A typical JavaScript app with 50 source files uses around 100MB.
-
-**Multi-server deployments:** All server instances must read and write from the same `SOURCEMAP_STORAGE_PATH`. Mount a shared volume (NFS, EFS, a network filesystem) and point every instance at it. Without this, chunks uploaded to one instance won't be visible to others during bundle assembly.
 
 ### SOURCEMAP_CACHE_MB
 
@@ -241,6 +243,7 @@ Global SMTP settings for email notifications. Channels can override these.
 | Variable | Description |
 |----------|-------------|
 | `CREATE_SUPERUSER` | Create admin user on startup (`email:password`) |
+| `RUSTRAK_BOOTSTRAP_TOKEN` | Set to anything to create an API token on startup |
 
 ```bash
 CREATE_SUPERUSER="admin@example.com:secure-password"
@@ -248,7 +251,13 @@ CREATE_SUPERUSER="admin@example.com:secure-password"
 
 Only creates the user if the database has no users yet. After that it is ignored.
 
+`RUSTRAK_BOOTSTRAP_TOKEN` creates one API token when the instance has none, for automation that needs the API before anyone signs in. The token is printed once to the server's standard error, not to the log, so copy it from the first start's output.
+
 ## Prometheus metrics
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RUSTRAK_METRICS` | `off` | `on` serves Prometheus metrics on `/metrics` |
 
 `RUSTRAK_METRICS=on` enables `GET /metrics` on the server's existing port. It is off by default (the route returns 404); only `on` and `off` are accepted. This is independent of anonymous telemetry and does not send data anywhere.
 
