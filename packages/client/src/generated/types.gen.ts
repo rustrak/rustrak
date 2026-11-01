@@ -647,8 +647,9 @@ export type CreateGitHubIssue = {
      */
     assignee?: string | null;
     /**
-     * Defaults to a link back and the latest event's exceptions, else its
-     * message, else the issue's `type: value`; `""` sends an empty one.
+     * Defaults to a link back, the latest event's exceptions (else its
+     * message, else the issue's `type: value`) and the templates' body
+     * footer; `""` sends an empty one.
      */
     body?: string | null;
     /**
@@ -1193,7 +1194,8 @@ export type IssueTagValue = {
  */
 export type IssueTemplate = {
     /**
-     * Markdown appended to the body, e.g. `cc @acme/oncall`.
+     * Markdown appended to the body, e.g. `cc @acme/oncall`. At most 10000
+     * characters.
      */
     body_footer?: string;
     labels?: Array<string>;

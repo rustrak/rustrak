@@ -95,6 +95,21 @@ fn clean_template(template: IssueTemplate) -> IssueTemplate {
     }
 }
 
+/// The longest body footer a template keeps, well inside GitHub's 65536
+/// characters so the event still fits beside it.
+const MAX_FOOTER_CHARS: usize = 10_000;
+
+/// A template to save: cleaned, and refused with a footer too long for GitHub.
+fn savable_template(template: IssueTemplate) -> AppResult<IssueTemplate> {
+    let template = clean_template(template);
+    if template.body_footer.chars().count() > MAX_FOOTER_CHARS {
+        return Err(AppError::Validation(format!(
+            "The body footer is longer than {MAX_FOOTER_CHARS} characters"
+        )));
+    }
+    Ok(template)
+}
+
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/github/issue-template",
@@ -118,7 +133,7 @@ pub async fn put_issue_template(
 ) -> AppResult<HttpResponse> {
     require_admin(&actor)?;
     GitHubService::require_app(pool.get_ref()).await?;
-    let template = clean_template(body.into_inner());
+    let template = savable_template(body.into_inner())?;
     GitHubService::set_issue_template(pool.get_ref(), &template).await?;
     Ok(HttpResponse::Ok().json(template))
 }
@@ -446,6 +461,12 @@ pub async fn put_project_repository(
         .clone()
         .unwrap_or_else(|| serde_json::json!({}));
     crate::models::alert::RuleConditions::parse(&conditions)?;
+    // Checked before anything is saved, so a refused template saves nothing.
+    let template = body
+        .issue_template
+        .clone()
+        .map(savable_template)
+        .transpose()?;
     let app = GitHubService::require_app(pool.get_ref()).await?;
     // Asking GitHub proves the installation reaches the repository.
     let repo = GitHubClient::new(&app)
@@ -462,13 +483,8 @@ pub async fn put_project_repository(
         &conditions,
     )
     .await?;
-    if let Some(template) = body.issue_template.clone() {
-        GitHubService::set_project_issue_template(
-            pool.get_ref(),
-            project_id,
-            &clean_template(template),
-        )
-        .await?;
+    if let Some(template) = template {
+        GitHubService::set_project_issue_template(pool.get_ref(), project_id, &template).await?;
     }
     Ok(HttpResponse::Ok()
         .json(GitHubService::project_repository(pool.get_ref(), project_id).await?))

@@ -1170,6 +1170,34 @@ async fn templates(db: &TestDb, project_id: i32, project_template: Value) {
     assert_eq!(body["issue_template"], project_template);
 }
 
+/// A footer that alone fills GitHub's limit would fail every issue it opens.
+#[actix_web::test]
+async fn a_footer_too_long_for_github_is_refused() {
+    let db = TestDb::new().await;
+    let github = FakeGitHub::start().await;
+    let token = token(&db).await;
+    let project = project(&db).await;
+    connect(&db, &github, project.id).await;
+    let app = app!(db);
+    let footer = "x".repeat(10_001);
+
+    let req = test::TestRequest::put()
+        .uri("/api/github/issue-template")
+        .insert_header(bearer(&token))
+        .set_json(json!({ "body_footer": footer }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 400);
+    let req = test::TestRequest::put()
+        .uri(&format!("/api/projects/{}/github", project.id))
+        .insert_header(bearer(&token))
+        .set_json(json!({
+            "installation_id": 99, "repo_full_name": "acme/web",
+            "issue_template": { "body_footer": footer },
+        }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 400);
+}
+
 #[actix_web::test]
 async fn the_draft_carries_the_event_and_both_templates() {
     let db = TestDb::new().await;

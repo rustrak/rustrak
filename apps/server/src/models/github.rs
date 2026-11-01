@@ -89,7 +89,8 @@ pub struct IssueTemplate {
     /// Put before the Rustrak issue's title, e.g. `[Rustrak] `.
     #[serde(default)]
     pub title_prefix: String,
-    /// Markdown appended to the body, e.g. `cc @acme/oncall`.
+    /// Markdown appended to the body, e.g. `cc @acme/oncall`. At most 10000
+    /// characters.
     #[serde(default)]
     pub body_footer: String,
 }
@@ -246,8 +247,9 @@ pub struct CreateGitHubIssue {
     /// Defaults to the Rustrak issue's title.
     #[serde(default)]
     pub title: Option<String>,
-    /// Defaults to a link back and the latest event's exceptions, else its
-    /// message, else the issue's `type: value`; `""` sends an empty one.
+    /// Defaults to a link back, the latest event's exceptions (else its
+    /// message, else the issue's `type: value`) and the templates' body
+    /// footer; `""` sends an empty one.
     #[serde(default)]
     pub body: Option<String>,
     /// Defaults to the templates' labels; `[]` sends none.

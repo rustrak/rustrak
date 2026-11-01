@@ -15192,7 +15192,7 @@
               "string",
               "null"
             ],
-            "description": "Defaults to a link back and the latest event's exceptions, else its\nmessage, else the issue's `type: value`; `\"\"` sends an empty one."
+            "description": "Defaults to a link back, the latest event's exceptions (else its\nmessage, else the issue's `type: value`) and the templates' body\nfooter; `\"\"` sends an empty one."
           },
           "labels": {
             "type": [
@@ -16418,7 +16418,7 @@
         "properties": {
           "body_footer": {
             "type": "string",
-            "description": "Markdown appended to the body, e.g. `cc @acme/oncall`."
+            "description": "Markdown appended to the body, e.g. `cc @acme/oncall`. At most 10000\ncharacters."
           },
           "labels": {
             "type": "array",
