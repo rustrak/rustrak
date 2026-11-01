@@ -1,0 +1,11 @@
+{
+  "title": "A tour of Rustrak",
+  "url": "http://localhost:8090/projects",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "Storefront", "exact": true } },
+    { "action": "click", "target": { "role": "link", "name": "Storefront", "exact": true }, "tooltip": "Each app you monitor is a project" },
+    { "action": "wait", "for": { "role": "heading", "name": "Open issues" } },
+    { "action": "scroll", "target": { "role": "heading", "name": "Latency" } }
+  ]
+}
