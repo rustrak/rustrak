@@ -3,6 +3,7 @@ export default {
   projects: 'Projects',
   issues: 'Issues',
   'user-feedback': 'User Feedback',
+  releases: 'Releases',
   logs: 'Logs',
   crons: 'Crons',
   agents: 'AI Agents',

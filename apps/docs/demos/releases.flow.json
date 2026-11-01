@@ -1,0 +1,10 @@
+{
+  "title": "Check a release",
+  "url": "http://localhost:8090/projects/1/releases",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "heading", "name": "Releases" } },
+    { "action": "click", "target": { "text": "storefront@2.15.0" }, "tooltip": "Open a release to see how it is doing" },
+    { "action": "wait", "for": { "text": "Crash-free sessions" } }
+  ]
+}
