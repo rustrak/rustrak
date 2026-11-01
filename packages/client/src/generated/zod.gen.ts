@@ -483,7 +483,9 @@ export const zCreateAuthToken = z.object({
 });
 
 export const zCreateGitHubIssue = z.object({
+    assignee: z.string().nullish(),
     body: z.string().nullish(),
+    labels: z.array(z.string()).nullish(),
     title: z.string().nullish()
 });
 
@@ -677,6 +679,18 @@ export const zGitHubInstallation = z.object({
     suspended: z.boolean()
 });
 
+/**
+ * `GET .../github/draft`: what creating a GitHub issue sends by default, for
+ * the person to edit first.
+ */
+export const zGitHubIssueDraft = z.object({
+    assignee: z.string().nullable(),
+    assignees: z.array(z.string()),
+    body: z.string(),
+    labels: z.array(z.string()),
+    title: z.string()
+});
+
 export const zGitHubLogin = z.object({
     login: z.string().nullable()
 });
@@ -690,15 +704,6 @@ export const zGitHubRepository = z.object({
     html_url: z.string(),
     installation_id: z.int(),
     private: z.boolean()
-});
-
-/**
- * `GET /api/github`: everything the integrations page needs in one answer.
- */
-export const zGitHubStatus = z.object({
-    app: zGitHubAppInfo.nullable(),
-    installations: z.array(zGitHubInstallation),
-    webhook_url: z.string()
 });
 
 /**
@@ -886,6 +891,27 @@ export const zIssueTagValue = z.object({
     last_seen: z.iso.datetime({ offset: true }),
     name: z.string(),
     value: z.string()
+});
+
+/**
+ * What a GitHub issue Rustrak opens starts with. A project's template goes
+ * on top of the instance's: its labels add to them, and its title prefix
+ * and body footer replace theirs unless empty.
+ */
+export const zIssueTemplate = z.object({
+    body_footer: z.string().optional(),
+    labels: z.array(z.string()).optional(),
+    title_prefix: z.string().optional()
+});
+
+/**
+ * `GET /api/github`: everything the integrations page needs in one answer.
+ */
+export const zGitHubStatus = z.object({
+    app: zGitHubAppInfo.nullable(),
+    installations: z.array(zGitHubInstallation),
+    issue_template: zIssueTemplate,
+    webhook_url: z.string()
 });
 
 /**
@@ -1119,6 +1145,7 @@ export const zProjectRepository = z.object({
     default_branch: z.string(),
     html_url: z.string(),
     installation_id: z.int(),
+    issue_template: zIssueTemplate,
     project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     repo_full_name: z.string()
 });
@@ -1971,6 +1998,7 @@ export const zUpdateProjectRepository = z.object({
     auto_create_issues: z.boolean().nullish(),
     code_mappings: z.array(zCodeMapping).nullish(),
     installation_id: z.int(),
+    issue_template: zIssueTemplate.nullish(),
     repo_full_name: z.string()
 });
 
@@ -2294,6 +2322,13 @@ export const zGithubCallbackQuery = z.object({
 export const zGithubInstalledQuery = z.object({
     installation_id: z.int()
 });
+
+export const zGithubPutIssueTemplateBody = zIssueTemplate;
+
+/**
+ * Template saved
+ */
+export const zGithubPutIssueTemplateResponse = zIssueTemplate;
 
 export const zGithubManifestBody = zManifestRequest;
 
@@ -3150,6 +3185,16 @@ export const zGithubIssuePath = z.object({
  * Links, suspect commits and owners
  */
 export const zGithubIssueResponse = zIssueGitHub;
+
+export const zGithubIssueDraftPath = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    issue_id: z.uuid()
+});
+
+/**
+ * Title, body and labels to start from
+ */
+export const zGithubIssueDraftResponse = zGitHubIssueDraft;
 
 export const zGithubCreateIssueBody = zCreateGitHubIssue;
 

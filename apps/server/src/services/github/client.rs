@@ -282,16 +282,44 @@ impl<'a> GitHubClient<'a> {
         repo: &str,
         title: &str,
         body: &str,
+        labels: &[String],
+        assignee: Option<&str>,
     ) -> AppResult<RemoteIssue> {
+        let mut issue = json!({ "title": title, "body": body });
+        if !labels.is_empty() {
+            issue["labels"] = json!(labels);
+        }
+        if let Some(assignee) = assignee {
+            issue["assignees"] = json!([assignee]);
+        }
         let answer = self
             .as_installation(
                 installation_id,
                 Method::POST,
                 &format!("/repos/{repo}/issues"),
-                Some(&json!({ "title": title, "body": body })),
+                Some(&issue),
             )
             .await?;
         Ok(RemoteIssue::from_json(&answer))
+    }
+
+    /// The logins `repo`'s issues can be assigned to.
+    // ponytail: first 100 only; page through them if a repository has more.
+    pub async fn assignees(&self, installation_id: i64, repo: &str) -> AppResult<Vec<String>> {
+        let answer = self
+            .as_installation(
+                installation_id,
+                Method::GET,
+                &format!("/repos/{repo}/assignees?per_page=100"),
+                None,
+            )
+            .await?;
+        Ok(answer
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|user| user["login"].as_str().map(String::from))
+            .collect())
     }
 
     /// The issues opened in `repo` since `since`, newest first, each with

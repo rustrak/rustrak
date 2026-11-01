@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
 import { unreachableFromGitHub } from '@/features/github/lib/webhook-url';
+import { IssueTemplateFields } from '@/features/github/ui/components/issue-template-fields';
 import { cn } from '@/shared/lib/utils';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
@@ -443,7 +444,36 @@ function Connected({
         ))}
       </SettingSection>
 
+      <InstanceIssueTemplate saved={status.issue_template} />
+
       {login}
     </>
+  );
+}
+
+/** The template every project's GitHub issues start with. */
+function InstanceIssueTemplate({
+  saved,
+}: {
+  saved: GitHubStatus['issue_template'];
+}) {
+  const t = useTranslations('github');
+  const { mutate, isPending } = useMutation({
+    ...githubMutations.setIssueTemplate(),
+    onError: (error) =>
+      toast.error(t('template.saveFailed'), { description: error.message }),
+  });
+  return (
+    <SettingSection
+      title={t('template.section')}
+      description={t('template.instanceDescription')}
+    >
+      <IssueTemplateFields
+        key={JSON.stringify(saved)}
+        saved={saved}
+        disabled={isPending}
+        onSave={(template) => mutate(template)}
+      />
+    </SettingSection>
   );
 }

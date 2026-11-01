@@ -224,6 +224,9 @@ async fn answer(
             "number": 12, "title": "Login is broken", "state": "open",
             "html_url": "https://github.com/acme/web/issues/12",
         })),
+        ("GET", "/repos/acme/web/assignees") => {
+            HttpResponse::Ok().json(json!([{ "login": "alice" }, { "login": "octocat" }]))
+        }
         ("GET", "/repos/acme/web/contents/.github/CODEOWNERS") => {
             HttpResponse::Ok().body("* @acme/all\n/src/api/ @acme/backend\n")
         }
@@ -966,8 +969,7 @@ async fn a_github_issue_created_by_hand_closes_when_resolved_meanwhile() {
                 &pool,
                 &project,
                 &issue,
-                None,
-                None,
+                Default::default(),
                 None,
                 "http://rustrak",
             )
@@ -1003,8 +1005,7 @@ async fn a_github_issue_created_by_hand_for_a_resolved_issue_stays_open() {
         &db.pool,
         &project,
         &issue,
-        None,
-        None,
+        Default::default(),
         None,
         "http://rustrak",
     )
@@ -1140,6 +1141,188 @@ async fn creating_a_github_issue_links_it() {
         body["links"][0]["url"],
         "https://github.com/acme/web/issues/7"
     );
+}
+
+/// The instance's template, then the project's on top of it: the project's
+/// labels add to the instance's, its non-empty texts replace them.
+async fn templates(db: &TestDb, project_id: i32, project_template: Value) {
+    let token = token(db).await;
+    let app = app!(db);
+    let req = test::TestRequest::put()
+        .uri("/api/github/issue-template")
+        .insert_header(bearer(&token))
+        .set_json(json!({
+            "labels": ["bug"], "title_prefix": "[Rustrak] ", "body_footer": "  cc @acme/oncall\n",
+        }))
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(body["labels"], json!(["bug"]));
+    // Indentation is markdown; only the trailing blank is dropped.
+    assert_eq!(body["body_footer"], "  cc @acme/oncall");
+    let req = test::TestRequest::put()
+        .uri(&format!("/api/projects/{project_id}/github"))
+        .insert_header(bearer(&token))
+        .set_json(json!({
+            "installation_id": 99, "repo_full_name": "acme/web", "issue_template": project_template,
+        }))
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(body["issue_template"], project_template);
+}
+
+/// A footer that alone fills GitHub's limit would fail every issue it opens.
+#[actix_web::test]
+async fn a_footer_too_long_for_github_is_refused() {
+    let db = TestDb::new().await;
+    let github = FakeGitHub::start().await;
+    let token = token(&db).await;
+    let project = project(&db).await;
+    connect(&db, &github, project.id).await;
+    let app = app!(db);
+    let footer = "x".repeat(10_001);
+
+    let req = test::TestRequest::put()
+        .uri("/api/github/issue-template")
+        .insert_header(bearer(&token))
+        .set_json(json!({ "body_footer": footer }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 400);
+    let req = test::TestRequest::put()
+        .uri(&format!("/api/projects/{}/github", project.id))
+        .insert_header(bearer(&token))
+        .set_json(json!({
+            "installation_id": 99, "repo_full_name": "acme/web",
+            "issue_template": { "body_footer": footer },
+        }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 400);
+}
+
+#[actix_web::test]
+async fn the_draft_carries_the_event_and_both_templates() {
+    let db = TestDb::new().await;
+    let github = FakeGitHub::start().await;
+    let token = token(&db).await;
+    let project = project(&db).await;
+    connect(&db, &github, project.id).await;
+    templates(
+        &db,
+        project.id,
+        json!({ "labels": ["web"], "title_prefix": "", "body_footer": "" }),
+    )
+    .await;
+    digest(&db, project.id, "production").await;
+    let issue_id: uuid::Uuid = sqlx::query_scalar("SELECT id FROM issues WHERE project_id = $1")
+        .bind(project.id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    let alice = rustrak::services::UsersService::create_user_with_password_hash(
+        &db.pool,
+        "alice@acme.dev",
+        "unused",
+        rustrak::models::UserRole::Member,
+    )
+    .await
+    .unwrap();
+    sqlx::query("UPDATE users SET github_login = 'alice' WHERE id = $1")
+        .bind(alice.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let issue = IssueService::assign(&db.pool, issue_id, Some(alice.id), Some("user"))
+        .await
+        .unwrap();
+    let app = app!(db);
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/api/projects/{}/issues/{}/github/draft",
+            project.id, issue.id
+        ))
+        .insert_header(bearer(&token))
+        .to_request();
+    let draft: Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(draft["title"], "[Rustrak] TypeError: x is undefined");
+    assert_eq!(draft["labels"], json!(["bug", "web"]));
+    let body = draft["body"].as_str().unwrap();
+    assert!(
+        body.starts_with(&format!(
+            "Rustrak Issue: [WEB-1](https://rustrak.example.com/projects/{}/issues/{})",
+            project.id, issue.id
+        )),
+        "{body}"
+    );
+    assert!(
+        body.contains("```\nTypeError: x is undefined\n```"),
+        "{body}"
+    );
+    assert!(body.ends_with("cc @acme/oncall"), "{body}");
+    // The Rustrak assignee's login, among those GitHub lets the issue have.
+    assert_eq!(draft["assignee"], "alice");
+    assert_eq!(draft["assignees"], json!(["alice", "octocat"]));
+}
+
+#[actix_web::test]
+async fn a_github_issue_opens_with_the_templates_unless_the_request_says_otherwise() {
+    let db = TestDb::new().await;
+    let github = FakeGitHub::start().await;
+    let token = token(&db).await;
+    let project = project(&db).await;
+    connect(&db, &github, project.id).await;
+    templates(
+        &db,
+        project.id,
+        json!({ "labels": [], "title_prefix": "[web] ", "body_footer": "" }),
+    )
+    .await;
+    let issue = issue(&db, project.id, "/app/lib/db.ts").await;
+    let app = app!(db);
+    let uri = format!(
+        "/api/projects/{}/issues/{}/github/issues",
+        project.id, issue.id
+    );
+
+    let req = test::TestRequest::post()
+        .uri(&uri)
+        .insert_header(bearer(&token))
+        .set_json(json!({}))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 201);
+    let sent = github.wait_for("POST", "/repos/acme/web/issues").await;
+    assert_eq!(sent.body["title"], "[web] TypeError: x is undefined");
+    assert_eq!(sent.body["labels"], json!(["bug"]));
+    assert!(sent.body.get("assignees").is_none(), "{:?}", sent.body);
+
+    // Another issue: GitHub answers #7 again, and one issue links #7 once.
+    let other = self::issue(&db, project.id, "/app/lib/db.ts").await;
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/projects/{}/issues/{}/github/issues",
+            project.id, other.id
+        ))
+        .insert_header(bearer(&token))
+        .set_json(json!({ "title": "Mine", "body": "Text", "labels": [], "assignee": "octocat" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 201);
+    let sent = github.calls().pop().unwrap();
+    assert_eq!(sent.body["title"], "Mine");
+    assert_eq!(sent.body["body"], "Text");
+    assert!(sent.body.get("labels").is_none(), "{:?}", sent.body);
+    assert_eq!(sent.body["assignees"], json!(["octocat"]));
+
+    // A description the person cleared stays empty.
+    let third = self::issue(&db, project.id, "/app/lib/db.ts").await;
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/projects/{}/issues/{}/github/issues",
+            project.id, third.id
+        ))
+        .insert_header(bearer(&token))
+        .set_json(json!({ "title": "Mine", "body": "" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 201);
+    assert_eq!(github.calls().pop().unwrap().body["body"], "");
 }
 
 /// Its status and assignees do not sync (the app is not subscribed to pull
@@ -2075,6 +2258,30 @@ async fn a_new_issue_opens_a_github_issue_when_the_project_asks() {
 
     let sent = github.wait_for("POST", "/repos/acme/web/issues").await;
     assert_eq!(sent.body["title"], "TypeError: x is undefined");
+}
+
+#[actix_web::test]
+async fn an_automatic_github_issue_uses_the_templates() {
+    let db = TestDb::new().await;
+    let github = FakeGitHub::start().await;
+    let project = project(&db).await;
+    connect(&db, &github, project.id).await;
+    templates(
+        &db,
+        project.id,
+        json!({ "labels": ["web"], "title_prefix": "", "body_footer": "" }),
+    )
+    .await;
+    auto_create(&db, project.id, json!({})).await;
+
+    digest(&db, project.id, "production").await;
+
+    let sent = github.wait_for("POST", "/repos/acme/web/issues").await;
+    assert_eq!(sent.body["title"], "[Rustrak] TypeError: x is undefined");
+    assert_eq!(sent.body["labels"], json!(["bug", "web"]));
+    let body = sent.body["body"].as_str().unwrap();
+    assert!(body.contains("TypeError: x is undefined\n```"), "{body}");
+    assert!(body.contains("cc @acme/oncall"), "{body}");
 }
 
 #[actix_web::test]

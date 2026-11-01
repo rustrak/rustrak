@@ -2328,7 +2328,14 @@
       "unlinkFailed": "Could not unlink the GitHub issue",
       "linkTitle": "Link a GitHub issue",
       "linkDescription": "Paste a GitHub issue URL, or its number with a # in front (for example, #42) for an issue in this project's repository.",
-      "linkSubmit": "Link"
+      "linkSubmit": "Link",
+      "createTitle": "Create a GitHub issue",
+      "createDescription": "Starts from the latest event and the GitHub templates. Edit anything before it is opened.",
+      "titleField": "Title",
+      "bodyField": "Description",
+      "labelsField": "Labels, separated by commas",
+      "createSubmit": "Create issue",
+      "assigneeField": "Assignee (GitHub username)"
     },
     "code": {
       "connect": "Connect this project to GitHub",
@@ -2366,6 +2373,18 @@
         "owners": "Code owners",
         "ownersDescription": "Who owns the failing code, from CODEOWNERS."
       }
+    },
+    "template": {
+      "section": "GitHub issue template",
+      "instanceDescription": "What every GitHub issue Rustrak opens starts with, in every project. A project can add its own on top.",
+      "projectDescription": "Added on top of the instance's template: these labels join its labels, and a title prefix or footer set here replaces its own.",
+      "labels": "Labels",
+      "labelsDescription": "Separated by commas. GitHub creates any that do not exist yet.",
+      "titlePrefix": "Title prefix",
+      "titlePrefixDescription": "Put before the issue's title.",
+      "bodyFooter": "Description footer",
+      "bodyFooterDescription": "Markdown added at the end of the description, for example people to mention.",
+      "saveFailed": "Could not save the template"
     }
   },
   "conditions": {

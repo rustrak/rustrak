@@ -20,6 +20,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
 import { githubQueries } from '@/features/github/api/queries';
 import { savableMappings } from '@/features/github/lib/code-mappings';
+import { IssueTemplateFields } from '@/features/github/ui/components/issue-template-fields';
 import {
   conditionsFromForm,
   formFromConditions,
@@ -84,6 +85,7 @@ export function RepositorySettings({
     code_mappings?: CodeMapping[];
     auto_create_issues?: boolean;
     auto_create_conditions?: AlertRuleResponse['conditions'];
+    issue_template?: ProjectRepository['issue_template'];
   }) =>
     setRepository.mutate({
       installation_id:
@@ -95,6 +97,7 @@ export function RepositorySettings({
         changes.auto_create_issues ?? repository?.auto_create_issues,
       auto_create_conditions:
         changes.auto_create_conditions ?? repository?.auto_create_conditions,
+      issue_template: changes.issue_template ?? repository?.issue_template,
     });
 
   // Without the list the page still works for a repository already chosen:
@@ -272,6 +275,18 @@ export function RepositorySettings({
                 </span>
               </div>
             </SettingRow>
+          </SettingSection>
+
+          <SettingSection
+            title={t('template.section')}
+            description={t('template.projectDescription')}
+          >
+            <IssueTemplateFields
+              key={JSON.stringify(repository.issue_template)}
+              saved={repository.issue_template}
+              disabled={isPending}
+              onSave={(issue_template) => save({ issue_template })}
+            />
           </SettingSection>
 
           <SettingSection title={t('repository.danger')} destructive>

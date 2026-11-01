@@ -2328,7 +2328,14 @@
       "unlinkFailed": "Issue-ul GitHub nu a putut fi dezlegat",
       "linkTitle": "Leagă un issue GitHub",
       "linkDescription": "Lipește URL-ul unui issue GitHub, sau numărul lui precedat de # (de exemplu, #42) dacă este în depozitul acestui proiect.",
-      "linkSubmit": "Leagă"
+      "linkSubmit": "Leagă",
+      "createTitle": "Creează un issue GitHub",
+      "createDescription": "Pornește de la ultimul eveniment și de la șabloanele GitHub. Modifică orice înainte de a-l deschide.",
+      "titleField": "Titlu",
+      "bodyField": "Descriere",
+      "labelsField": "Etichete, separate prin virgulă",
+      "createSubmit": "Creează issue",
+      "assigneeField": "Responsabil (utilizator GitHub)"
     },
     "code": {
       "connect": "Conectează acest proiect la GitHub",
@@ -2366,6 +2373,18 @@
         "owners": "Code owners",
         "ownersDescription": "Cine deține codul care eșuează, din CODEOWNERS."
       }
+    },
+    "template": {
+      "section": "Șablon pentru issue-uri GitHub",
+      "instanceDescription": "Cu ce începe fiecare issue GitHub deschis de Rustrak, în toate proiectele. Un proiect își poate adăuga propriul șablon peste.",
+      "projectDescription": "Se aplică peste șablonul instanței: aceste etichete se adaugă la ale sale, iar un prefix sau subsol setat aici îl înlocuiește pe al său.",
+      "labels": "Etichete",
+      "labelsDescription": "Separate prin virgulă. GitHub le creează pe cele care nu există încă.",
+      "titlePrefix": "Prefix pentru titlu",
+      "titlePrefixDescription": "Pus înaintea titlului issue-ului.",
+      "bodyFooter": "Subsolul descrierii",
+      "bodyFooterDescription": "Markdown adăugat la finalul descrierii, de exemplu persoane de menționat.",
+      "saveFailed": "Șablonul nu a putut fi salvat"
     }
   },
   "conditions": {
