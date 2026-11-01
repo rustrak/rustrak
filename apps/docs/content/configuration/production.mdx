@@ -68,7 +68,7 @@ was loaded from: the public host, through the proxy, like every other request.
 
 ### One hostname
 
-The simple case, and now the default one. Everything lives behind one name:
+The usual case. Everything lives behind one name:
 
 ```yaml
 # docker-compose.yml
@@ -290,6 +290,7 @@ database. Back up that volume too.
 - [ ] Database SSL enabled
 - [ ] Rate limits set
 - [ ] Health checks monitored
+- [ ] `RUSTRAK_METRICS` off, or `/metrics` reachable only from your network
 - [ ] Backup strategy in place
 - [ ] Restart policies configured
 - [ ] Admin user created
