@@ -647,7 +647,8 @@ export type CreateGitHubIssue = {
      */
     assignee?: string | null;
     /**
-     * Defaults to a link back and the latest event's exceptions; `""` sends an empty one.
+     * Defaults to a link back and the latest event's exceptions, else its
+     * message, else the issue's `type: value`; `""` sends an empty one.
      */
     body?: string | null;
     /**

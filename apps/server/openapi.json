@@ -15192,7 +15192,7 @@
               "string",
               "null"
             ],
-            "description": "Defaults to a link back and the latest event's exceptions; `\"\"` sends an empty one."
+            "description": "Defaults to a link back and the latest event's exceptions, else its\nmessage, else the issue's `type: value`; `\"\"` sends an empty one."
           },
           "labels": {
             "type": [

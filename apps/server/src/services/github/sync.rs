@@ -437,9 +437,6 @@ pub async fn auto_create(
             return Ok(());
         }
         let opened = async {
-            // Read in each attempt, so a failed read is retried with the rest.
-            let draft = draft(&pool, &project, &issue, &dashboard_url).await?;
-            let body = format!("{}\n\n{marker}", draft.body);
             let found = match remote.take() {
                 Some(known) => Some(known),
                 None if attempt > 0 => client
@@ -453,6 +450,11 @@ pub async fn auto_create(
             let opened = match found {
                 Some(opened) => opened,
                 None => {
+                    // Read only to open one, and again in each attempt, so a
+                    // failed read is retried and never blocks linking one
+                    // GitHub already opened.
+                    let draft = draft(&pool, &project, &issue, &dashboard_url).await?;
+                    let body = format!("{}\n\n{marker}", draft.body);
                     client
                         .create_issue(
                             installation_id,
