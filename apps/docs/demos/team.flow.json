@@ -1,0 +1,11 @@
+{
+  "title": "Invite a teammate",
+  "url": "http://localhost:8090/settings/team",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "textbox", "name": "Email" } },
+    { "action": "fill", "target": { "role": "textbox", "name": "Email" }, "value": "lena@linden.example" },
+    { "action": "click", "target": { "role": "button", "name": "Invite", "exact": true }, "tooltip": "Invite them. The link is copied for you to share" },
+    { "action": "wait", "for": { "role": "button", "name": "Copy invite link for lena@linden.example" } }
+  ]
+}

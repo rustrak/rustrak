@@ -1,99 +1,70 @@
 # Team & Access
 
-Rustrak supports multiple users on a single instance, with role-based access control over actions and projects. Invite teammates, give them their own login, and scope what they can see and do.
+One Rustrak serves a whole team. Each person has their own login, and roles decide which projects they see and what they can do there.
 
 ## Roles
 
-There are two layers of roles.
+There are two layers.
 
-### Global role
+**Instance role.** Every user is an **Admin** or a **Member**. Admins see every project and manage the team. Members see only the projects they were added to.
 
-Every user has one global role:
+The first account, created by `CREATE_SUPERUSER`, is the primary user: it cannot be demoted or removed, so the instance can never be locked out.
 
-- **Admin** — full access to every project plus team management (invite/remove users, change roles).
-- **Member** — can only see and act on projects they are explicitly added to.
+**Project role.** Members get a role on each project they join:
 
-The **primary user** (the first account, created during bootstrap) is special: it can never be demoted or deleted, so an instance can't be locked out.
-
-### Per-project role
-
-Members are granted access to individual projects with a per-project role:
-
-| Role | Can do |
+| Role | Can |
 |---|---|
-| **Viewer** | Read issues, events, and project details |
-| **Editor** | Everything a viewer can, plus resolve/mute/delete issues and update the project |
-| **Admin** | Everything an editor can, plus delete the project and manage its members |
+| **Viewer** | Read issues, events and the project |
+| **Editor** | Also resolve, archive and delete issues, and change the project |
+| **Admin** | Also delete the project and manage its members |
 
-Global admins implicitly have full access to every project, so they don't need explicit membership.
+Instance admins have full access to every project without being added.
 
-## Inviting people
+## Invite someone
 
-Registration is **invite-only** — there is no open sign-up. Only admins can invite.
+<InteractiveDemo src="/demos/team.openshowcase" />
 
-1. Go to **Settings → Team**
-2. Under **Invite a member**, enter an email and pick a global role
-3. Click **Invite** — the invite link is copied to your clipboard automatically
+There is no open sign-up; only admins invite.
 
-No email is sent. **Share the link yourself** (chat, email, etc.). You can re-copy it any time from the **Pending invitations** list, and revoke it there too.
+1. Go to **Settings → Members**.
+2. Under **Invite a member**, enter the email and pick **Member** or **Admin**.
+3. Click **Invite**. The invitation link is copied to your clipboard.
 
-Invitation links expire after 48 hours and can only be used once.
+Rustrak sends no email: share the link yourself. **Pending invitations** lets you copy it again or revoke it. A link works once and expires after 48 hours.
 
-### Accepting an invitation
+The invitee opens the link, sets a password and is signed in, with the email and role from the invitation.
 
-The invitee opens the link (`/invite/<token>`), sets a password, and is logged in — their email and global role come from the invitation.
+With [single sign-on](/configuration/sso), people can also sign in through your identity provider.
 
-## Managing the team
+## Manage the team
 
-From **Settings → Team** (admins only) you can:
+In **Settings → Members**, the **Actions** menu next to each person changes their instance role or removes them. Removing a user revokes their access and their API tokens. You cannot remove yourself, the primary user or the last admin.
 
-- **Change a user's global role** between admin and member
-- **Remove a user** — this revokes their access and tokens (with a confirmation step)
+## Project members
 
-You cannot remove yourself, the primary user, or the last remaining admin.
+Open a project's **Settings → Members** to add someone with a project role, change their role or remove them. A project always keeps at least one admin. Whoever creates a project becomes its admin.
 
-## Managing project members
+## API
 
-Open a project and use **Members** to control who can access it:
-
-- **Add a member** — pick a user and a per-project role (viewer/editor/admin)
-- **Change a member's role**
-- **Remove a member**
-
-The last admin of a project cannot be removed. When a member creates a project, they automatically become its admin.
-
-## API access and tokens
-
-API tokens are scoped to the user who created them — a token inherits that user's projects and permissions. See [API Tokens](/usage/tokens).
-
-Admins can manage the team over the API too:
+[API tokens](/usage/tokens) act as the user who made them, with that user's projects and permissions. Admins can manage the team over the API:
 
 ```bash
-# List the team (admin token required)
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/team
+# The team
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/team"
 
-# Invite a member — returns a single-use invite token
-curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"teammate@example.com","role":"member"}' \
-  http://localhost:8080/api/invitations
+# Invite someone; the response holds the invitation token
+curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
+  -d '{"email": "lena@example.com", "role": "member"}' "$RUSTRAK_URL/api/invitations"
 
-# Add a user to a project as an editor
-curl -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":2,"role":"editor"}' \
-  http://localhost:8080/api/projects/1/members
+# Add user 2 to project 1 as an editor
+curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
+  -d '{"user_id": 2, "role": "editor"}' "$RUSTRAK_URL/api/projects/1/members"
 ```
 
-You can also manage all of this from an AI assistant via the [MCP server](/sdks/mcp).
-
-## Behavior reference
-
-| Situation | Result |
+| Situation | Answer |
 |---|---|
-| Member opens a project they don't belong to | `404 Not Found` (existence is not leaked) |
-| Viewer tries to resolve/delete an issue | `403 Forbidden` |
-| Non-admin calls a team or invitation endpoint | `403 Forbidden` |
-| `POST /auth/register` (open sign-up) | `403 Forbidden` — invite-only |
-| Remove the last admin of an instance or project | `409 Conflict` |
+| A member opens a project they are not in | `404`, so the project's existence does not leak |
+| A viewer resolves or deletes an issue | `403` |
+| A non-admin calls a team or invitation endpoint | `403` |
+| `POST /auth/register` | `403`: sign-up is by invitation only |
+| Removing the last admin of the instance or a project | `409` |
