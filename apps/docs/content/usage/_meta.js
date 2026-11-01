@@ -4,6 +4,7 @@ export default {
   issues: 'Issues',
   'user-feedback': 'User Feedback',
   releases: 'Releases',
+  performance: 'Performance',
   logs: 'Logs',
   crons: 'Crons',
   agents: 'AI Agents',

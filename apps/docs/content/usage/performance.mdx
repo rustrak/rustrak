@@ -1,0 +1,42 @@
+# Performance
+
+Performance shows how long each endpoint or page load takes, how often it runs and how often it fails, from the transactions your SDK sends.
+
+<InteractiveDemo src="/demos/performance.openshowcase" />
+
+## Turn on tracing
+
+Set a sample rate in the SDK. `1.0` sends every transaction, `0.2` one in five:
+
+```javascript
+Sentry.init({
+  dsn: 'YOUR_DSN',
+  tracesSampleRate: 0.2,
+});
+```
+
+```python
+sentry_sdk.init(dsn="YOUR_DSN", traces_sample_rate=0.2)
+```
+
+The SDK names each transaction after the route or page (`POST /api/orders`, `/checkout`) and records spans inside it: database queries, outgoing HTTP calls, cache reads. Rustrak also accepts spans sent on their own, outside a transaction.
+
+## The endpoint list
+
+**Performance** groups transactions by name and operation (`http.server`, `pageload`) into endpoints:
+
+| Column | What it is |
+|---|---|
+| **Time spent** | This endpoint's share of the total time of all endpoints. Start here: it is where speeding up pays off most |
+| **Calls** | Transactions in the window |
+| **Average** | Mean duration |
+| **p95** | 95% of calls were faster than this |
+| **Failures** | Share of calls whose trace status is not `ok` |
+
+The window button (`14d` by default) and the environment filter narrow the numbers. Search the list by name.
+
+## An endpoint's page
+
+Click an endpoint to see calls per minute, p50 and p95, failures and time spent, then latency and calls over time, and the slowest samples of the window.
+
+Open a sample to see its trace: the transaction and its spans as a waterfall. Click a span for its operation, description, duration, start, status and self time (its duration minus its children's). The request, tags and user the SDK attached are next to the trace.

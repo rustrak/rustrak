@@ -1,0 +1,12 @@
+{
+  "title": "Find a slow endpoint",
+  "url": "http://localhost:8090/projects/2/performance",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "heading", "name": "Performance" } },
+    { "action": "click", "target": { "text": "POST /api/orders" }, "tooltip": "Start with the endpoint that takes the most time" },
+    { "action": "wait", "for": { "text": "Slowest samples" } },
+    { "action": "click", "target": { "role": "link", "name": "1.25 s" }, "tooltip": "Open a slow call to see where the time went" },
+    { "action": "wait", "for": { "role": "tree", "name": "Trace of POST /api/orders" } }
+  ]
+}
