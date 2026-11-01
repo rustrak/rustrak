@@ -1,156 +1,70 @@
 # Logs
 
-Beyond errors, your app emits a stream of **structured logs** — "user signed up", "cache miss", "payment gateway slow". Rustrak stores these as standalone **Logs**, separate from Issues, so you can see what your app was doing without it having to crash first.
+Logs are the structured lines your app writes as it runs: "order created", "carrier quote took 900 ms". Rustrak keeps them per project under **Logs**, apart from issues, so you can see what the app was doing before something broke. They are not grouped: every line is stored and shown as it came.
 
-Logs use Sentry's **log** item type, so any Sentry SDK with logging enabled sends them to Rustrak unchanged.
+<InteractiveDemo src="/demos/logs.openshowcase" />
 
-## What's a log?
+## Send logs
 
-A log is a single structured line with a severity **level**, a text **body**, and any **attributes** you attach:
-
-```javascript
-Sentry.logger.info('User signed up', {
-  userId: user.id,
-  plan: 'pro',
-  referrer: 'google',
-});
-```
-
-That one call produces a log with:
-
-- **level** — `info`
-- **body** — `User signed up`
-- **attributes** — `userId`, `plan`, `referrer` (each keeps its type: number, string, boolean…)
-- **timestamp** — when it happened
-- **trace_id / span_id** — if emitted inside an active span, so the log ties back to a request
-
-Unlike errors, logs are **not grouped**. Each one is stored and shown as-is, newest first.
-
-## Where to find them
-
-Open a project and click **Logs** in the sidebar. You get a table with:
-
-| Column | What it shows |
-|--------|---------------|
-| **Level** | `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
-| **Message** | The log body |
-| **Trace** | Short trace ID (if the log belongs to a trace) |
-| **Time** | When the log was emitted |
-
-Click any row to expand it and see the full timestamp, `trace_id`, `span_id`, severity number, and the complete list of attributes with their types. Use the level buttons at the top to filter (e.g. only `error` and `fatal`).
-
-## Sending logs from your SDK
-
-Logging is **off by default** in Sentry SDKs — enable it in `Sentry.init`, then call the logger.
-
-### Node.js / JavaScript
+Logs are off by default in Sentry SDKs. Turn them on in `Sentry.init` and use the SDK's logger:
 
 ```javascript
 import * as Sentry from '@sentry/node';
 
 Sentry.init({
-  dsn: 'http://<sentry_key>@localhost:8080/<project_id>',
-  enableLogs: true, // required — opts into the log item type
+  dsn: 'YOUR_DSN',
+  enableLogs: true,
 });
 
-const { logger } = Sentry;
-
-logger.trace('Entering checkout state machine', { step: 1 });
-logger.debug('Cache miss', { key: 'products:popular', hit: false });
-logger.info('User signed up', { userId: 4172, plan: 'pro' });
-logger.warn('Payment gateway slow', { gateway: 'stripe', latencyMs: 1830 });
-logger.error('Failed to charge card', { code: 'insufficient_funds' });
-logger.fatal('DB connection pool exhausted', { waiting: 57 });
+Sentry.logger.info('Order created', { orderId: 9182, total: 54.9 });
+Sentry.logger.warn('Carrier quote slow', { carrier: 'dhl', ms: 1830 });
+Sentry.logger.error('Payment webhook signature mismatch');
 ```
 
-The SDK **batches** logs and flushes them periodically (and on `Sentry.flush()` before exit). They appear in the Logs table within a few seconds.
+Rustrak takes Sentry's `log` envelope item, so any SDK version that sends logs works. Older JavaScript SDKs put the switch under `_experiments: { enableLogs: true }`. The SDK sends logs in batches, so they show up a few seconds later; call `Sentry.flush()` before a script exits.
 
-> **Tip:** Requires a Sentry SDK version with the logs feature (`@sentry/node` v9.17+ / v10+). Older SDKs simply won't send the `log` item type.
-
-### Correlating logs with traces
-
-If you emit a log inside an active span, the SDK attaches the `trace_id` and `span_id` automatically — so you can filter every log from a single request:
-
-```javascript
-await Sentry.startSpan(
-  { name: 'POST /api/checkout', op: 'http.server' },
-  async () => {
-    logger.info('Order placed', { orderId: 9182 });
-    // ...this log carries the span's trace_id + span_id
-  },
-);
-```
+Each line keeps its level, message, timestamp and attributes, each attribute with its type. A line written inside an active span also carries the span's trace and span IDs.
 
 ## Levels
 
-Rustrak maps each level to an OTel **severity number**, which is what it sorts and filters on:
+| Level | Severity number |
+|---|---|
+| `trace` | 1 |
+| `debug` | 5 |
+| `info` | 9 |
+| `warn` | 13 |
+| `error` | 17 |
+| `fatal` | 21 |
 
-| Level | Severity | Use it for |
-|-------|----------|------------|
-| `trace` | 1 | Very fine-grained step-by-step detail |
-| `debug` | 5 | Diagnostic info while developing |
-| `info` | 9 | Normal, expected events |
-| `warn` | 13 | Something unusual but recoverable |
-| `error` | 17 | A failure that needs attention |
-| `fatal` | 21 | The app can't continue |
+A line sent without a level is stored as `info`. An unknown level is kept as sent, with no severity number.
 
-## API access
+## Find a line
 
-Logs are read-only over the API. List them with a bearer token:
+**Logs** shows the newest lines first, with a chart of the volume by level above them.
+
+- Type in the search bar to find lines whose message contains the text, ignoring case.
+- `level:error` keeps one level; `trace:<trace id>` keeps one trace.
+- The window button (`14d` by default) sets how far back to look.
+
+Click a line to open it: the full time, severity, trace ID and every attribute. **Logs in this trace** lists the other lines from the same request.
+
+## API
+
+Read logs with an [API token](/usage/tokens):
 
 ```bash
-# Newest logs for a project
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/logs"
-
-# Filter by level, page through results
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/logs?level=error&page=2&per_page=50"
-
-# All logs from one trace
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/logs?trace_id=abc123..."
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" \
+  "$RUSTRAK_URL/api/projects/3/logs?level=error&query=renewal&period=7d&per_page=50"
 ```
 
-Each log in the response keeps the attributes exactly as the SDK sent them (the OTel typed map), with denormalized fields surfaced for filtering:
-
-```json
-{
-  "items": [
-    {
-      "id": "0c9b…",
-      "level": "info",
-      "severity_number": 9,
-      "body": "User signed up",
-      "trace_id": "abc123…",
-      "span_id": "def456…",
-      "attributes": {
-        "userId": { "value": 4172, "type": "integer" },
-        "plan": { "value": "pro", "type": "string" }
-      },
-      "timestamp": "2026-06-26T10:30:00Z",
-      "ingested_at": "2026-06-26T10:30:01Z"
-    }
-  ],
-  "total_count": 1240,
-  "page": 1,
-  "per_page": 50,
-  "total_pages": 25
-}
-```
-
-You can also browse logs from an AI assistant via the [MCP server](/sdks/mcp) (`list_logs`).
-
-## Managing storage
-
-Logs count toward your instance storage and are included in retention cleanup. An admin can delete old logs from **Settings → Storage** along with events, transactions, and spans — see [Storage](/usage/storage).
-
-## Behavior reference
-
-| Situation | Result |
+| Parameter | What it does |
 |---|---|
-| SDK without `enableLogs: true` | No logs sent — the Logs table stays empty |
-| Log emitted outside any span | Stored with `trace_id` / `span_id` empty |
-| Log emitted inside a span | Carries the span's `trace_id` + `span_id` |
-| Unknown / custom level | Stored as-is with `severity_number` null |
-| Storage cleanup older than N days | Old logs are removed with the rest of the data |
+| `level` | One level |
+| `trace_id` | One trace |
+| `query` | Message contains this text, ignoring case |
+| `period` | Window such as `24h`, `7d`, `14d`. All time when absent |
+| `page`, `per_page` | Pagination. `per_page` is 20 by default, at most 100 |
+
+`GET /api/projects/{id}/logs/{log_id}` returns one line and `GET /api/projects/{id}/logs/volume` the counts behind the chart. The [MCP server](/sdks/mcp) reads logs too.
+
+Logs count toward storage and are removed by retention like the rest of the data. See [Storage](/usage/storage).
