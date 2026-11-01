@@ -1,0 +1,63 @@
+# Releases
+
+A release is a version of your app. Tag your events with it and Rustrak tells you, per version, how many sessions crashed and which issues it brought.
+
+<InteractiveDemo src="/demos/releases.openshowcase" />
+
+## Tag events with a release
+
+Set `release` when you initialize the SDK:
+
+```javascript
+Sentry.init({
+  dsn: 'YOUR_DSN',
+  release: 'storefront@2.15.0',
+});
+```
+
+A release shows up under **Releases** as soon as an event or a session carries it. There is nothing to create first.
+
+Use the `package@version` form Sentry recommends: the dashboard shows the package and the version apart. A version cannot be empty, `.`, `..` or `latest`, cannot contain `/`, `\`, tabs or line breaks, and is at most 200 characters.
+
+## Release health
+
+Release health counts sessions: one per page load or app start, marked as crashed when it ends in an unhandled error. Turn on session tracking in your SDK to send them. Without sessions, a release still lists its events and new issues, and the health columns show `–`.
+
+| Column | What it is |
+|---|---|
+| **Adoption** | This release's share of all sessions in the window |
+| **Crash-free** | Sessions that did not crash |
+| **Crash-free users** | Users who had no crashed session. Needs the SDK to send a user with each session |
+| **Sessions** | Sessions in the window |
+| **New issues** | Issues first seen in this release |
+| **Events** | Error events tagged with this release |
+
+The window button (`14d` by default) and the **Environment** filter narrow every number. Search the list by version.
+
+## A release's page
+
+Click a release to open it. It shows the same numbers against the project average, healthy and crashed sessions over time, the issues first seen in this release, and each environment the release ran in. **View its issues** opens the issue list filtered to this release.
+
+A release is **Unreleased** until it gets a release date (see below). The numbers do not depend on it.
+
+## Create releases from CI
+
+To give a release a commit and a release date, create it from your deploy pipeline with an [API token](/usage/tokens):
+
+```bash
+# Create the release (the organization part of the path is ignored)
+curl -X POST "$RUSTRAK_URL/api/0/projects/_/storefront/releases/" \
+  -H "Authorization: Bearer $RUSTRAK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "storefront@2.16.0", "ref": "a1b2c3d"}'
+
+# Finalize it: set the release date
+curl -X PUT "$RUSTRAK_URL/api/0/projects/_/storefront/releases/storefront@2.16.0/" \
+  -H "Authorization: Bearer $RUSTRAK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"dateReleased": "2026-11-01T20:00:00Z"}'
+```
+
+The commands `sentry-cli releases new`, `finalize`, `set-commits`, `deploys` and `list` do not work against Rustrak yet: they call Sentry's organization-level release endpoints, which Rustrak does not serve. `sentry-cli sourcemaps upload` does work; see [Source maps](/usage/source-maps).
+
+A release also drives [Resolve in next release](/usage/issues#resolve-archive-reopen): an issue resolved that way reopens only when an event arrives from a different release.

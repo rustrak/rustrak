@@ -1,0 +1,19 @@
+---
+description: "The files to give an AI assistant so it knows Rustrak, and how to connect one to your server."
+---
+
+# Docs for AI assistants
+
+An assistant may not know Rustrak yet, or know an older version. Give it one of these files and it answers from the current docs.
+
+| File | What it holds | Give it when |
+|---|---|---|
+| [`/llms.txt`](/llms.txt) | An index of every page, one line each, with a link to its Markdown | The assistant can fetch pages on its own |
+| [`/llms-full.txt`](/llms-full.txt) | Every page in one file, about 230 KB | You paste the docs in, or the assistant cannot browse |
+| [`/openapi.json`](/openapi.json) | Every API endpoint, with its parameters and schemas | It writes code against the Rustrak API |
+
+Every page also has a Markdown version at the same address with `.md` added, such as [`/usage/issues.md`](/usage/issues.md). Each HTML page links to it, and to `/llms.txt`, from its `<head>`, so an agent reading the site finds them on its own.
+
+## Connect an assistant to your server
+
+The files above teach an assistant about Rustrak. To let it read your own issues, events and logs, turn on the [MCP server](/sdks/mcp) built into Rustrak and connect the assistant to it.

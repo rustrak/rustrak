@@ -302,13 +302,13 @@
     "clearSelection": "Golește selecția",
     "empty": {
       "title": "Nu s-au găsit probleme",
-      "allResolved": "Toate problemele sunt rezolvate sau amuțite",
+      "allResolved": "Toate problemele sunt rezolvate sau arhivate",
       "noFiltered": "Nicio problemă ({filter})"
     },
     "filters": {
       "open": "Deschise",
       "resolved": "Rezolvate",
-      "muted": "Amuțite",
+      "muted": "Arhivate",
       "all": "Toate"
     },
     "deleteDialog": {
@@ -333,7 +333,7 @@
       "commentFailed": "Adăugarea comentariului a eșuat",
       "statusResolved": "a marcat această problemă ca fiind rezolvată",
       "statusReopened": "a redeschis această problemă",
-      "statusMuted": "a amuțit această problemă",
+      "statusMuted": "a arhivat această problemă",
       "statusChanged": "a schimbat starea în {status}",
       "priorityChanged": "a setat prioritatea la {priority}",
       "regression": "a detectat o regresie",
@@ -396,7 +396,7 @@
       "views": {
         "open": "Deschise",
         "resolved": "Rezolvate",
-        "muted": "Amuțite",
+        "muted": "Arhivate",
         "all": "Toate"
       }
     },

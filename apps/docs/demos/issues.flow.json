@@ -1,0 +1,12 @@
+{
+  "title": "Resolve an issue",
+  "url": "http://localhost:8090/projects/1/issues",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "heading", "name": "Issues" } },
+    { "action": "click", "target": { "role": "link", "name": "TypeError: Cannot read properties of undefined (reading 'price')" }, "tooltip": "Open the issue to see what happened" },
+    { "action": "wait", "for": { "role": "button", "name": "Resolve", "exact": true } },
+    { "action": "click", "target": { "role": "button", "name": "Resolve", "exact": true }, "tooltip": "Mark it fixed. It reopens if the error comes back", "zoom": 1.8 },
+    { "action": "wait", "for": { "role": "button", "name": "Unresolve R" } }
+  ]
+}

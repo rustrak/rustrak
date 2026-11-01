@@ -16,6 +16,13 @@ order.
 |---|---|---|---|
 | 0.14.x | 0.15.x | The dashboard container goes away, telemetry arrives, going back needs a backup | [Upgrade to 0.15](/upgrading/0-15) |
 
+## For API client and MCP users
+
+Two releases changed what code that talks to Rustrak uses, with nothing to do on the server:
+
+- **0.19**: `@rustrak/client` is generated from the server's OpenAPI spec. Every method takes one `{ path, query, body }` object, and several methods and types were renamed. See [@rustrak/client](/sdks/client).
+- **0.19**: the MCP server moved inside Rustrak, at `/mcp`. The separate `@rustrak/mcp` package is no longer published; see [MCP server](/sdks/mcp) to connect an assistant to the built-in one.
+
 ## Versions you cannot skip
 
 None so far. Any 0.x release can be upgraded to any later one directly, as
@@ -45,7 +52,7 @@ work together.
    restart never upgrades you by surprise.
 3. **Read the guides** between your version and the target.
 4. **Upgrade, then check** that the server started, that you can sign in, and
-   that events still arrive. Settings, About shows the running version.
+   that events still arrive. **Settings → About** shows the running version.
 
 ## Going back
 

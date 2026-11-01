@@ -1,0 +1,12 @@
+{
+  "title": "Code behind an issue",
+  "url": "http://localhost:8090/projects/1/issues",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "TypeError: Cannot read properties of undefined (reading 'price')" } },
+    { "action": "click", "target": { "role": "link", "name": "TypeError: Cannot read properties of undefined (reading 'price')" }, "tooltip": "The linked GitHub issue, suspect commits and owners sit beside the error" },
+    { "action": "wait", "for": { "role": "heading", "name": "Code" } },
+    { "action": "click", "target": { "role": "link", "name": "Stack Trace" }, "tooltip": "Every frame opens its line on GitHub" },
+    { "action": "wait", "for": { "role": "link", "name": "Open in GitHub", "nth": 0 } }
+  ]
+}

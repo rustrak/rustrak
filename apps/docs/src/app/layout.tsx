@@ -66,7 +66,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <Head />
+      <Head>
+        {/* The index of the whole site for agents (llmstxt.org, v2). */}
+        <link rel="describedby" href="/llms.txt" />
+      </Head>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans`}>
         {children}
       </body>

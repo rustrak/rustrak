@@ -1,0 +1,10 @@
+{
+  "title": "Check a cron monitor",
+  "url": "http://localhost:8090/projects/3/crons",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "New monitor" } },
+    { "action": "click", "target": { "role": "link", "name": "issue-invoices", "exact": false, "nth": 0 }, "tooltip": "Open the failing monitor" },
+    { "action": "wait", "for": { "role": "heading", "name": "issue-invoices" } }
+  ]
+}

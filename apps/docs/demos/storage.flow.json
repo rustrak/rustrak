@@ -1,0 +1,12 @@
+{
+  "title": "Set data retention",
+  "url": "http://localhost:8090/settings/storage",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "button", "name": "Configure retention" } },
+    { "action": "click", "target": { "role": "button", "name": "Configure retention" }, "hotspot": false },
+    { "action": "click", "target": { "role": "combobox", "name": "Errors Error events, and the issues left with none" }, "hotspot": false },
+    { "action": "click", "target": { "role": "option", "name": "7 days" }, "tooltip": "Keep errors for a week" },
+    { "action": "wait", "for": { "text": "The next cleanup will delete", "exact": false } }
+  ]
+}

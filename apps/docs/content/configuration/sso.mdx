@@ -190,7 +190,7 @@ Rustrak asks for `openid email profile` by default. If your provider only
 releases groups behind a requestable scope, add it to `OIDC_SCOPES`, for
 example `OIDC_SCOPES="openid email profile groups"`; others need a
 provider-specific client scope or claim mapping instead. A claim the provider
-does not send is an empty group list — with `OIDC_ADMIN_GROUPS` set, that
+does not send is an empty group list. With `OIDC_ADMIN_GROUPS` set, that
 demotes the account to `member` on its next SSO login. Check the token's
 groups before turning the mapping on.
 

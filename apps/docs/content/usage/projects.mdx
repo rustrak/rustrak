@@ -1,91 +1,61 @@
 # Projects
 
-Projects are how you organize your applications in Rustrak. Each project has its own DSN, issues, and events.
+A project is one application you monitor: a web app, an API, a worker. Each has its own DSN, issues, logs and the rest. The [quickstart](/getting-started/quickstart) shows how to create one.
 
-## Creating a project
+## Create a project
 
-<Video src="/videos/create-project.webm" autoPlay loop muted playsInline />
+Go to **Projects → New Project**, pick the platform, give it a name and click **Create Project**. The slug is generated from the name; click **Edit slug** to choose your own. Two projects cannot share a slug.
 
-1. Log in to the dashboard
-2. Click **New Project**
-3. Enter a name (e.g., "my-app")
-4. Click **Create**
-
-Your project gets:
-- A unique **DSN** for SDK configuration
-- A **slug** based on the name (e.g., "my-app")
-- An auto-assigned **ID**
+Rustrak then opens **Settings → SDK** with the DSN, the install command and a setup snippet for the platform you picked.
 
 ## The DSN
 
-<Video src="/videos/copy-dsn.webm" autoPlay loop muted playsInline />
+The DSN is the address a Sentry SDK sends to. It holds the project's public key and ID:
 
-The DSN (Data Source Name) is what you give to Sentry SDKs:
-
-```
-http://<sentry_key>@<host>:<port>/<project_id>
+```text
+http://32159c3edfd340c28869ce39e4faaa48@rustrak.example.com/4
 ```
 
-Example:
-```
-http://a1b2c3d4-e5f6-7890-abcd-ef1234567890@localhost:8080/1
-```
+The host comes from the server's [`PUBLIC_URL`](/configuration/environment#public_url). Find the DSN any time under the project's **Settings → SDK**.
 
-Copy it from project settings and use it in your app:
+## Settings
 
-```javascript
-Sentry.init({
-  dsn: 'YOUR_DSN_HERE',
-});
-```
+Open a project's settings from **Settings** at the bottom of its sidebar.
 
-## Project slug
+| Page | What is there |
+|---|---|
+| **General** | Name, slug and platform, and **Remove Project** |
+| **Members** | Who can see the project, and with which role. See [Team & access](/usage/team) |
+| **SDK** | The DSN and the setup snippet |
+| **Data** | Which products the project keeps, and its event limits |
+| **Repository** | The [GitHub](/configuration/github) repository linked to the project |
+| **Alerts** | The project's [alerts](/usage/alerts) |
 
-The slug appears in issue IDs:
+The slug is in every issue's short ID (`STOREFRONT-1`), so renaming it renames those. The DSN and dashboard links use the numeric ID and keep working.
 
-- Project "My App" → slug `my-app`
-- Issue short ID: `MY-APP-1`, `MY-APP-42`
+## Turn products off
 
-## Deleting a project
+<InteractiveDemo src="/demos/projects.openshowcase" />
 
-**Warning**: This permanently deletes all issues and events.
+**Settings → Data → Products** lists what the project keeps: User Feedback, Releases, Performance, Logs, Crons and Agents. Issues are always on. Turning a product off removes it from the sidebar and drops its data as it arrives: the SDK keeps sending, Rustrak stops storing. What is already stored stays and shows again when you turn it back on. Turning Performance off turns Agents off too, since AI spans travel inside performance data.
 
-1. Open project settings
-2. Click **Delete Project**
-3. Confirm
+Drag the products, or use the arrows, to set the order the sidebar lists them in.
 
-## Best practices
+## Event limits
 
-### Naming
+**Settings → Data → Event limits** caps how many events the project stores per minute and per hour. Past a limit, Rustrak answers `429` and the SDK waits before sending more. Leave a field empty to use the server's limit, set in **Settings → Instance**; a project's limit can only be lower than the server's. The page also counts the events dropped by a limit.
 
-Use clear names:
-- `frontend-web`
-- `api-server`
-- `mobile-ios`
+## Remove a project
 
-### Environment separation
+**Settings → General → Remove Project** deletes the project with all its issues and events. It cannot be undone.
 
-**Option 1: Separate projects** (for large teams)
-- `myapp-production`
-- `myapp-staging`
+## One project or several
 
-**Option 2: Tags** (simpler)
+Make one project per application: the web front end, the API and the mobile app each get their own. Keep environments of the same app in one project and tell them apart with the SDK's `environment` option; every page filters by environment.
+
 ```javascript
 Sentry.init({
   dsn: 'YOUR_DSN',
-  environment: process.env.NODE_ENV,
+  environment: 'production',
 });
 ```
-
-Filter by environment in the dashboard.
-
-### When to create separate projects
-
-Create separate projects when:
-- Different applications (web, mobile, API)
-- Different teams own different codebases
-- Compliance requires data separation
-
-Use one project when:
-- Same codebase, different environments
-- Small team managing everything

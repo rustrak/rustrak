@@ -1,0 +1,14 @@
+{
+  "title": "Triage user feedback",
+  "url": "http://localhost:8090/projects/1/feedback",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "heading", "name": "Grace Lin" } },
+    { "action": "click", "target": { "role": "button", "name": "Hiro Tanaka 20 hours ago Delivery dates in the basket show yesterday as the earliest slot. shop.linden.example/cart" }, "tooltip": "Pick a report to read it" },
+    { "action": "wait", "for": { "role": "heading", "name": "Hiro Tanaka" } },
+    { "action": "click", "target": { "role": "button", "name": "Resolve R" }, "tooltip": "Resolve it once it is handled" },
+    { "action": "wait", "for": { "role": "heading", "name": "Anonymous" } },
+    { "action": "click", "target": { "role": "tab", "name": "Resolved" }, "tooltip": "It waits under Resolved" },
+    { "action": "wait", "for": { "role": "heading", "name": "Hiro Tanaka" } }
+  ]
+}

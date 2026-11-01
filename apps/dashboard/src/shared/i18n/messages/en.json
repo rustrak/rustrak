@@ -302,13 +302,13 @@
     "clearSelection": "Clear selection",
     "empty": {
       "title": "No issues found",
-      "allResolved": "All issues are resolved or muted",
+      "allResolved": "All issues are resolved or archived",
       "noFiltered": "No {filter} issues"
     },
     "filters": {
       "open": "Open",
       "resolved": "Resolved",
-      "muted": "Muted",
+      "muted": "Archived",
       "all": "All"
     },
     "deleteDialog": {
@@ -333,7 +333,7 @@
       "commentFailed": "Failed to add comment",
       "statusResolved": "marked this issue as resolved",
       "statusReopened": "reopened this issue",
-      "statusMuted": "muted this issue",
+      "statusMuted": "archived this issue",
       "statusChanged": "changed status to {status}",
       "priorityChanged": "set priority to {priority}",
       "regression": "detected a regression",
@@ -396,7 +396,7 @@
       "views": {
         "open": "Open",
         "resolved": "Resolved",
-        "muted": "Muted",
+        "muted": "Archived",
         "all": "All"
       }
     },

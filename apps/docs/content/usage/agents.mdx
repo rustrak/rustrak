@@ -1,37 +1,19 @@
-# AI Agent Monitoring
+# AI Agents
 
-If your app calls an LLM or runs an AI agent, Rustrak can track it — runs, tool calls, token usage, model breakdowns, and a per-trace waterfall. There's nothing extra to install: turn on your Sentry SDK's AI instrumentation and it shows up automatically.
+If your app calls an LLM or runs an AI agent, **Agents** shows each run: the model calls and tool calls inside it, how many tokens they used, how long they took and which failed. It reads the same data as Sentry's AI Agent Monitoring, so there is nothing to install on the server.
 
-## Where to find it
+<InteractiveDemo src="/demos/agents.openshowcase" />
 
-Open a project and click **Agents** in the sidebar. Until your app sends any AI activity, you'll see an empty state with a setup pointer. Once data arrives, the page shows:
+## Send AI data
 
-- **Agent Runs** — how many agent runs happened per time interval
-- **Duration** — average and p95 run time
-- **LLM Calls by Model** — which models get called the most
-- **Tokens Used by Model** — which models use the most tokens
-- **Tool Calls by Tool** — which tools your agents call the most
-- **Traces** — one row per run: agent name(s), duration, total tokens, tool calls
-
-Click a trace to open its **waterfall**: every step of that run (LLM calls, tool calls, handoffs) laid out in order, with duration, tokens, model, and tool name for each.
-
-There's deliberately no cost/spend widget — per-model pricing changes too often to estimate reliably, so Rustrak shows exact token counts instead of a guess.
-
-### Handoffs between agents
-
-If one agent hands off to another mid-run, the Traces table lists every agent involved, not just the first — so handoffs are visible instead of hidden. A run with no identifiable agent name shows as **(unnamed agent)**.
-
-## Sending data from your SDK
-
-Enable your Sentry SDK's AI integration — Rustrak reads the same data Sentry's own AI Agent Monitoring does, so there's no server-side setup.
-
-### Node.js — Vercel AI SDK
+Turn on your Sentry SDK's AI integration and tracing. With the Vercel AI SDK in Node.js:
 
 ```javascript
 import * as Sentry from '@sentry/node';
 
 Sentry.init({
-  dsn: 'http://<sentry_key>@localhost:8080/<project_id>',
+  dsn: 'YOUR_DSN',
+  tracesSampleRate: 1.0,
   integrations: [Sentry.vercelAIIntegration()],
 });
 ```
@@ -40,75 +22,44 @@ Sentry.init({
 import { generateText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 
-await Sentry.startSpan({ name: 'research_agent', op: 'gen_ai.invoke_agent' }, async () => {
-  const result = await generateText({
-    model: openai('gpt-4o'),
-    tools: { webSearch /* ... */ },
-    prompt: 'Research the latest Rust release',
-  });
-});
+await Sentry.startSpan({ name: 'research_agent', op: 'gen_ai.invoke_agent' }, () =>
+  generateText({ model: openai('gpt-4o'), tools: { webSearch }, prompt: 'Find the latest Rust release' }),
+);
 ```
 
-`vercelAIIntegration()` automatically instruments every LLM call and tool call — you don't need to tag anything by hand beyond wrapping the run in a span, as above.
+The integration records every model call and tool call. Wrap a run in a `gen_ai.invoke_agent` span to name the agent. Other SDKs have their own AI integrations, such as Python's for OpenAI, Anthropic and LangChain; any of them works.
 
-### Other SDKs
+Rustrak treats a span as AI when its `op` starts with `gen_ai.` or `ai.`, or when it carries `gen_ai.operation.name`. AI spans travel inside your [performance](/usage/performance) data, so tracing must be on.
 
-Any Sentry SDK with AI/LLM auto-instrumentation enabled works the same way. Check your SDK's docs for its equivalent integration (e.g. Python's OpenAI/LangChain instrumentation).
+## Overview
 
-## API access
+The **Overview** tab sums up the window: agent runs, LLM calls, tool calls, tokens, average and p95 duration, and errors as a share of AI spans. Below it, runs and duration over time, then two tables:
 
-Agents data is read-only over the API:
+- **Models**: requests, errors, input and output tokens, average and p95 latency per model
+- **Tools**: calls, errors, average and p95 latency per tool
 
-```bash
-# Agent runs over time (default: all time, 1h buckets)
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/agents/runs?period_hours=168&interval_hours=6"
+Click a row in either table to see the runs that used that model or tool. Narrow everything with the environment filter, the window (last hour to 30 days, or all time) and the search bar, which takes `agent:`, `model:`, `tool:` and `status:`.
 
-# Avg/p95 duration over time
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/agents/duration"
+There is no cost widget on purpose: model prices change too often to estimate, so Rustrak shows exact token counts.
 
-# Top models by call count / token usage (default limit: 3)
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/agents/models/calls?limit=5"
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/agents/models/tokens?limit=5"
+## Traces
 
-# Top tools by call count
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/agents/tools"
+The **Traces** tab lists one row per run: the agents involved, duration, LLM calls, tool calls, tokens, errors and start time. A run with no agent name shows as **(unnamed agent)**.
 
-# Paginated traces table
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/projects/1/agents/traces?page=1&per_page=20"
-```
+Open a run to see its spans as a **Waterfall**, or switch to **Agents** to see which agents ran and handed off to each other. Click a span for its agent, model, tool, token counts (input, cached input, output, total), the messages sent and received, the system instructions, the tools offered and requested, and every attribute.
 
-A trace in the response looks like:
+When an LLM call has no response model, Rustrak uses the requested model.
 
-```json
-{
-  "trace_id": "6c1f...b2",
-  "agent_names": ["research_agent"],
-  "duration_ms": 842.3,
-  "total_tokens": 642,
-  "tool_call_count": 1,
-  "started_at": "2026-07-18T10:15:00Z"
-}
-```
+## Conversations
 
-To see the individual steps of one run, list its spans with `GET /api/projects/1/spans?trace_id=<trace_id>` — this is what powers the waterfall view.
+The **Conversations** tab groups runs that share a `gen_ai.conversation.id`, so you can read a chat turn by turn. Set that attribute on your agent spans to fill it.
 
-You can also pull this data from an AI assistant via the [MCP server](/sdks/mcp): `get_agent_runs`, `get_agent_duration`, `get_agent_models_by_calls`, `get_agent_models_by_tokens`, `get_agent_tools`, `list_agent_traces`.
+## Turn agents off
 
-## Managing storage
+A project that does not use AI can drop this data: **Settings → Products** turns Agents off. Rustrak then stops storing AI spans as they arrive; what is already stored stays. Turning Performance off turns Agents off too.
 
-Agent run data is made of spans, which count toward your instance storage. Unlike other data types, standalone AI spans aren't removed by the retention cleanup on the [Storage](/usage/storage) page yet — they're counted in the totals shown there, but a cleanup run won't reclaim their space.
+## API and storage
 
-## Behavior reference
+Every widget has an endpoint under `/api/projects/{id}/agents/`: `summary`, `runs`, `duration`, `models`, `models/calls`, `models/tokens`, `tools`, `tools/stats`, `traces`, `conversations` and `conversations/{id}`. They take `period_hours`, and the time series also take `interval_hours`. The [MCP server](/sdks/mcp) reads the same data.
 
-| Situation | Result |
-|---|---|
-| SDK has no AI instrumentation enabled | Agents page stays empty; nothing else is affected |
-| A run has no identifiable agent name | Shown as **(unnamed agent)** |
-| A run hands off between multiple agents | All of them are listed, earliest first |
-| Model name missing from an LLM call | Falls back to the requested model name |
+AI spans count toward [storage](/usage/storage). Spans sent inside a transaction are removed with it by retention cleanup; spans sent on their own are not removed by cleanup yet.

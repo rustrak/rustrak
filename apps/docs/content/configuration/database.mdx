@@ -138,8 +138,9 @@ Check the result with
 
 ### Limitations
 
-- Single writer: not suitable for multi-instance deployments
-- Recommended max: ~1,000 events/hour for reliable performance
+SQLite has one writer at a time. It suits up to about 1,000 events an hour reliably; above that, use PostgreSQL.
+
+Whichever backend you choose, run one Rustrak process per database.
 
 ---
 
@@ -244,6 +245,8 @@ psql -h localhost -U rustrak rustrak < backup.sql
 | `vX.Y.Z` | SQLite | amd64, arm64 |
 | `postgres` | PostgreSQL | amd64, arm64 |
 | `vX.Y.Z-postgres` | PostgreSQL | amd64, arm64 |
+| `next` | SQLite, latest pre-release | amd64, arm64 |
+| `next-postgres` | PostgreSQL, latest pre-release | amd64, arm64 |
 
 ---
 
