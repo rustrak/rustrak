@@ -1152,11 +1152,13 @@ async fn templates(db: &TestDb, project_id: i32, project_template: Value) {
         .uri("/api/github/issue-template")
         .insert_header(bearer(&token))
         .set_json(json!({
-            "labels": ["bug"], "title_prefix": "[Rustrak] ", "body_footer": "cc @acme/oncall",
+            "labels": ["bug"], "title_prefix": "[Rustrak] ", "body_footer": "  cc @acme/oncall\n",
         }))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body["labels"], json!(["bug"]));
+    // Indentation is markdown; only the trailing blank is dropped.
+    assert_eq!(body["body_footer"], "  cc @acme/oncall");
     let req = test::TestRequest::put()
         .uri(&format!("/api/projects/{project_id}/github"))
         .insert_header(bearer(&token))
@@ -1280,6 +1282,19 @@ async fn a_github_issue_opens_with_the_templates_unless_the_request_says_otherwi
     assert_eq!(sent.body["body"], "Text");
     assert!(sent.body.get("labels").is_none(), "{:?}", sent.body);
     assert_eq!(sent.body["assignees"], json!(["octocat"]));
+
+    // A description the person cleared stays empty.
+    let third = self::issue(&db, project.id, "/app/lib/db.ts").await;
+    let req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/projects/{}/issues/{}/github/issues",
+            project.id, third.id
+        ))
+        .insert_header(bearer(&token))
+        .set_json(json!({ "title": "Mine", "body": "" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 201);
+    assert_eq!(github.calls().pop().unwrap().body["body"], "");
 }
 
 /// Its status and assignees do not sync (the app is not subscribed to pull

@@ -73,7 +73,8 @@ pub struct GitHubStatus {
     pub installations: Vec<GitHubInstallation>,
     /// The address GitHub delivers webhooks to.
     pub webhook_url: String,
-    /// What every GitHub issue starts with; `{}` until an admin sets it.
+    /// What every GitHub issue starts with. Until an admin sets it: no
+    /// labels, an empty title prefix and an empty body footer.
     pub issue_template: IssueTemplate,
 }
 
@@ -245,7 +246,7 @@ pub struct CreateGitHubIssue {
     /// Defaults to the Rustrak issue's title.
     #[serde(default)]
     pub title: Option<String>,
-    /// Defaults to a link back and the latest event's exceptions.
+    /// Defaults to a link back and the latest event's exceptions; `""` sends an empty one.
     #[serde(default)]
     pub body: Option<String>,
     /// Defaults to the templates' labels; `[]` sends none.

@@ -243,7 +243,7 @@ function CreateIssueForm({
   // react-doctor-disable-next-line react-doctor/no-derived-useState
   const [body, setBody] = useState(draft.body);
   // react-doctor-disable-next-line react-doctor/no-derived-useState
-  const [labels, setLabels] = useState(draft.labels.join(', '));
+  const [labels, setLabels] = useState(() => draft.labels.join(', '));
   // react-doctor-disable-next-line react-doctor/no-derived-useState
   const [assignee, setAssignee] = useState(draft.assignee ?? '');
   return (

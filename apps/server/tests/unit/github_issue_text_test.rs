@@ -50,3 +50,26 @@ fn a_message_event_shows_its_message() {
     assert_eq!(event_text(&json!({ "message": "disk full" })), "disk full");
     assert_eq!(event_text(&json!({})), "");
 }
+
+#[test]
+fn the_body_fences_the_event_longer_than_any_backticks_in_it() {
+    use rustrak::services::github::issue_body;
+    assert_eq!(issue_body("Head", "", ""), "Head");
+    assert_eq!(
+        issue_body("Head", "E: v", "cc"),
+        "Head\n\n```\nE: v\n```\n\ncc"
+    );
+    assert_eq!(
+        issue_body("Head", "E: see ```code```", ""),
+        "Head\n\n````\nE: see ```code```\n````"
+    );
+}
+
+#[test]
+fn the_body_cuts_the_event_to_fit_github() {
+    use rustrak::services::github::{issue_body, MAX_BODY_CHARS};
+    let footer = "f".repeat(10_000);
+    let body = issue_body("Head", &"e".repeat(100_000), &footer);
+    assert_eq!(body.chars().count(), MAX_BODY_CHARS);
+    assert!(body.ends_with(&format!("\n```\n\n{footer}")));
+}

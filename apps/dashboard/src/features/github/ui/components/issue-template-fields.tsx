@@ -21,7 +21,7 @@ export function IssueTemplateFields({
   const t = useTranslations('github');
   // A draft of `saved`; a new saved value remounts this component.
   // react-doctor-disable-next-line react-doctor/no-derived-useState
-  const [labels, setLabels] = useState((saved.labels ?? []).join(', '));
+  const [labels, setLabels] = useState(() => (saved.labels ?? []).join(', '));
   // react-doctor-disable-next-line react-doctor/no-derived-useState
   const [prefix, setPrefix] = useState(saved.title_prefix ?? '');
   // react-doctor-disable-next-line react-doctor/no-derived-useState

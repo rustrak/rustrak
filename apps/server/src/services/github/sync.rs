@@ -14,7 +14,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::client::GitHubClient;
-use super::{event_text, parse_issue_reference, GitHubService};
+use super::{event_text, issue_body, parse_issue_reference, GitHubService};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::alert::RuleConditions;
@@ -59,7 +59,7 @@ pub async fn draft(
 ) -> AppResult<GitHubIssueDraft> {
     let template = GitHubService::effective_issue_template(pool, project.id).await?;
     let url = AlertService::build_issue_url(dashboard_url, project.id, issue.id);
-    let mut body = format!("Rustrak Issue: [{}]({url})", issue.short_id(&project.slug));
+    let header = format!("Rustrak Issue: [{}]({url})", issue.short_id(&project.slug));
     let mut text = EventService::latest_for_issue(pool, issue.id)
         .await?
         .map(|event| event_text(&event.data))
@@ -67,14 +67,7 @@ pub async fn draft(
     if text.is_empty() && !issue.calculated_value.is_empty() {
         text = format!("{}: {}", issue.calculated_type, issue.calculated_value);
     }
-    if !text.is_empty() {
-        // GitHub refuses a body over 65536 characters.
-        let text: String = text.chars().take(60_000).collect();
-        body.push_str(&format!("\n\n```\n{text}\n```"));
-    }
-    if !template.body_footer.is_empty() {
-        body.push_str(&format!("\n\n{}", template.body_footer));
-    }
+    let body = issue_body(&header, &text, &template.body_footer);
     let assignee = match (issue.assigned_to, issue.assignee_type.as_deref()) {
         (Some(user_id), None | Some("user")) => github_login(pool, user_id).await?,
         _ => None,
@@ -127,10 +120,8 @@ pub async fn create_issue(
         .title
         .filter(|t| !t.trim().is_empty())
         .unwrap_or(draft.title);
-    let body = input
-        .body
-        .filter(|b| !b.trim().is_empty())
-        .unwrap_or(draft.body);
+    // An empty body is one the person cleared, not one left out.
+    let body = input.body.unwrap_or(draft.body);
     let labels = input.labels.unwrap_or(draft.labels);
     let assignee = input.assignee.or(draft.assignee);
     let assignee = assignee.as_deref().map(str::trim).filter(|a| !a.is_empty());
@@ -434,8 +425,6 @@ pub async fn auto_create(
     // Hidden in the body and new to this run, so only the issue this run
     // opened carries it; a pasted link to the Rustrak issue does not.
     let marker = format!("<!-- rustrak:{} -->", Uuid::new_v4());
-    let draft = draft(&pool, &project, &issue, &dashboard_url).await?;
-    let body = format!("{}\n\n{marker}", draft.body);
     // Only this event reaches the count, so a failure is retried here rather
     // than left for a later event. GitHub has no idempotency key and a failed
     // attempt may have opened the issue anyway (an answer lost), so a retry
@@ -448,6 +437,9 @@ pub async fn auto_create(
             return Ok(());
         }
         let opened = async {
+            // Read in each attempt, so a failed read is retried with the rest.
+            let draft = draft(&pool, &project, &issue, &dashboard_url).await?;
+            let body = format!("{}\n\n{marker}", draft.body);
             let found = match remote.take() {
                 Some(known) => Some(known),
                 None if attempt > 0 => client

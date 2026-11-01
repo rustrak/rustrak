@@ -647,7 +647,7 @@ export type CreateGitHubIssue = {
      */
     assignee?: string | null;
     /**
-     * Defaults to a link back and the latest event's exceptions.
+     * Defaults to a link back and the latest event's exceptions; `""` sends an empty one.
      */
     body?: string | null;
     /**
@@ -983,7 +983,8 @@ export type GitHubStatus = {
     app: GitHubAppInfo | null;
     installations: Array<GitHubInstallation>;
     /**
-     * What every GitHub issue starts with; `{}` until an admin sets it.
+     * What every GitHub issue starts with. Until an admin sets it: no
+     * labels, an empty title prefix and an empty body footer.
      */
     issue_template: IssueTemplate;
     /**

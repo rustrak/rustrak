@@ -91,7 +91,7 @@ fn clean_template(template: IssueTemplate) -> IssueTemplate {
     IssueTemplate {
         labels,
         title_prefix: template.title_prefix,
-        body_footer: template.body_footer.trim().to_string(),
+        body_footer: template.body_footer.trim_end().to_string(),
     }
 }
 

@@ -15192,7 +15192,7 @@
               "string",
               "null"
             ],
-            "description": "Defaults to a link back and the latest event's exceptions."
+            "description": "Defaults to a link back and the latest event's exceptions; `\"\"` sends an empty one."
           },
           "labels": {
             "type": [
@@ -15904,7 +15904,7 @@
           },
           "issue_template": {
             "$ref": "#/components/schemas/IssueTemplate",
-            "description": "What every GitHub issue starts with; `{}` until an admin sets it."
+            "description": "What every GitHub issue starts with. Until an admin sets it: no\nlabels, an empty title prefix and an empty body footer."
           },
           "webhook_url": {
             "type": "string",

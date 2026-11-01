@@ -544,6 +544,40 @@ impl GitHubService {
 // ------------------------------------------------------------- pure rules
 
 /// Verifies `X-Hub-Signature-256` (`sha256=<hex>`) in constant time.
+/// GitHub refuses an issue body over 65536 characters; the rest is room for
+/// the marker an automatic issue carries.
+pub const MAX_BODY_CHARS: usize = 65_000;
+
+/// The issue body: `header`, then `event` in a code block cut to fit, then
+/// `footer`. The fence is longer than any run of backticks in the event, so
+/// the event cannot close it.
+pub fn issue_body(header: &str, event: &str, footer: &str) -> String {
+    let footer = if footer.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n{footer}")
+    };
+    let mut body = header.to_string();
+    if !event.is_empty() {
+        let longest = event
+            .split(|c| c != '`')
+            .map(str::len)
+            .max()
+            .unwrap_or_default();
+        let fence = "`".repeat((longest + 1).max(3));
+        // "\n\n" fence "\n" event "\n" fence
+        let overhead = 4 + 2 * fence.len();
+        let room = MAX_BODY_CHARS
+            .saturating_sub(header.chars().count() + footer.chars().count() + overhead);
+        if room > 0 {
+            let event: String = event.chars().take(room).collect();
+            body.push_str(&format!("\n\n{fence}\n{event}\n{fence}"));
+        }
+    }
+    body.push_str(&footer);
+    body
+}
+
 /// The event as Sentry writes it into an issue it opens on GitHub: each
 /// exception as `Type: value` with its last five in-app frames, or else the
 /// message.
@@ -567,9 +601,9 @@ pub fn event_text(data: &serde_json::Value) -> String {
                 exc["type"].as_str().unwrap_or_default(),
                 exc["value"].as_str().unwrap_or_default()
             );
-            let all = exc["stacktrace"]["frames"]
+            let all: &[serde_json::Value] = exc["stacktrace"]["frames"]
                 .as_array()
-                .cloned()
+                .map(Vec::as_slice)
                 .unwrap_or_default();
             let in_app: Vec<_> = all.iter().filter(|f| f["in_app"] != false).collect();
             let frames = if in_app.is_empty() {
