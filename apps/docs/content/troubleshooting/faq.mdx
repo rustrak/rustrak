@@ -8,12 +8,12 @@ Any Sentry SDK. Rustrak implements the Sentry protocol, so you can use the offic
 
 ### What does Rustrak cover?
 
-- **Errors**: grouping into issues, stack traces with [source maps](/usage/source-maps), and [alerts](/usage/alerts)
-- **Performance**: transactions and spans
-- **Releases and sessions**: release health from SDK sessions
-- **Logs** and **AI agent traces**
+- **Errors**: grouping into [issues](/usage/issues), stack traces with [source maps](/usage/source-maps) and [debug files](/usage/debug-files), and [alerts](/usage/alerts)
+- **[Performance](/usage/performance)**: transactions and spans
+- **[Releases](/usage/releases)**: release health from SDK sessions
+- **[Logs](/usage/logs)**, **[Crons](/usage/crons)**, **[user feedback](/usage/user-feedback)** and **[AI agent](/usage/agents) traces**
 
-It does not support session replays.
+It does not support session replays or profiling.
 
 ### How much resources does Rustrak need?
 
@@ -23,7 +23,7 @@ so it adds nothing under load.
 
 ### Can I migrate from Sentry?
 
-Yes, just change your DSN. Your SDK code stays the same:
+Yes: change your DSN. Your SDK code stays the same:
 
 ```javascript
 // Before
@@ -75,9 +75,10 @@ Back up the database and the source maps. See
 
 ### How long are events stored?
 
-Indefinitely, until you delete them. An admin can remove old data by age and
-type under Settings, [Storage](/usage/storage). There is no automatic retention
-yet.
+Until you say otherwise: by default everything is kept. An admin sets how long
+errors, transactions and logs are kept under **Settings → Storage**, and a
+scheduled cleanup deletes what is older. Old data can also be deleted by hand
+there. See [Storage](/usage/storage).
 
 ### Can I export my data?
 
@@ -131,15 +132,15 @@ Sentry.init({
 });
 ```
 
-Or mute issues in the dashboard.
+Or [archive](/usage/issues#resolve-archive-reopen) the issue in the dashboard.
 
 ## Features
 
 ### Does Rustrak support alerts?
 
-Yes. New issues and regressions can notify Slack, email, a webhook, or a
-custom webhook whose JSON body you write, for services with their own
-message format.
+Yes. New issues, regressions and user feedback can notify Slack, email, a
+webhook, or a custom webhook whose JSON body you write, for services with
+their own message format.
 See [Alerts](/usage/alerts).
 
 ### Is there multi-user support?
