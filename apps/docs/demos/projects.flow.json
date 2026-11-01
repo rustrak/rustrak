@@ -1,0 +1,10 @@
+{
+  "title": "Turn a product off",
+  "url": "http://localhost:8090/projects/3/settings/data",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "switch", "name": "Agents" } },
+    { "action": "click", "target": { "role": "switch", "name": "Agents" }, "tooltip": "Turn off what this project does not use. It leaves the sidebar" },
+    { "action": "wait", "for": { "text": "Saved" } }
+  ]
+}
