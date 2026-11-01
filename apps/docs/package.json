@@ -3,8 +3,8 @@
   "version": "0.16.8",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001",
-    "build": "node scripts/generate-versions.mjs && next build && pagefind --site out --output-path out/_pagefind",
+    "dev": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-llms.mjs && next dev --port 3001",
+    "build": "node scripts/generate-versions.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-llms.mjs && next build && pagefind --site out --output-path out/_pagefind",
     "start": "next start"
   },
   "dependencies": {

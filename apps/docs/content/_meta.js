@@ -67,6 +67,7 @@ export default {
       'api-reference': { title: 'API Reference', href: '/api-reference' },
       architecture: { title: 'Architecture', href: '/reference/architecture' },
       contributing: { title: 'Contributing', href: '/reference/contributing' },
+      llms: { title: 'Docs for AI assistants', href: '/reference/llms' },
     },
   },
 };

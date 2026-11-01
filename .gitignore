@@ -60,3 +60,8 @@ storybook-static/
 
 # OpenShowcase editable recordings; the exported .openshowcase lives in apps/docs/public/demos
 *.osrec
+
+# Generated from apps/docs/content by apps/docs/scripts/generate-llms.mjs
+apps/docs/public/llms.txt
+apps/docs/public/llms-full.txt
+apps/docs/public/**/*.md

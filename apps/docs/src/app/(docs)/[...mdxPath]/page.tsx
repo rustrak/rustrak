@@ -33,7 +33,14 @@ export const dynamicParams = false;
 export async function generateMetadata(props: PageProps) {
   const params = await props.params;
   const { metadata } = await importPage(params.mdxPath);
-  return metadata;
+  // The page's Markdown twin, written by scripts/generate-llms.mjs, so an agent
+  // reading the HTML can find the clean version (llmstxt.org, v2).
+  return {
+    ...metadata,
+    alternates: {
+      types: { 'text/markdown': `/${params.mdxPath.join('/')}.md` },
+    },
+  };
 }
 
 type PageProps = {
