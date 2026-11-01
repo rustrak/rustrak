@@ -302,13 +302,13 @@
     "clearSelection": "Borrar selección",
     "empty": {
       "title": "No se encontraron problemas",
-      "allResolved": "Todos los problemas están resueltos o silenciados",
+      "allResolved": "Todos los problemas están resueltos o archivados",
       "noFiltered": "Sin problemas ({filter})"
     },
     "filters": {
       "open": "Abiertos",
       "resolved": "Resueltos",
-      "muted": "Silenciados",
+      "muted": "Archivados",
       "all": "Todos"
     },
     "deleteDialog": {
@@ -333,7 +333,7 @@
       "commentFailed": "No se pudo añadir el comentario",
       "statusResolved": "marcó este problema como resuelto",
       "statusReopened": "reabrió este problema",
-      "statusMuted": "silenció este problema",
+      "statusMuted": "archivó este problema",
       "statusChanged": "cambió el estado a {status}",
       "priorityChanged": "estableció la prioridad en {priority}",
       "regression": "detectó una regresión",
@@ -396,7 +396,7 @@
       "views": {
         "open": "Abiertos",
         "resolved": "Resueltos",
-        "muted": "Silenciados",
+        "muted": "Archivados",
         "all": "Todos"
       }
     },

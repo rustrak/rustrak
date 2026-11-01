@@ -8,11 +8,11 @@ Each issue has a short ID: the project slug in capitals and a number, such as `S
 
 ## The issue list
 
-Open a project to see its issues. The tabs split them by state: **Open**, **Resolved**, **Muted** and **All**.
+Open a project to see its issues. The tabs split them by state: **Open**, **Resolved**, **Archived** and **All**.
 
 The bar above the table searches the error type, message, transaction and culprit, ignoring case, and filters by any column (priority, assignee, level and so on), by environment or by release. Start typing and it suggests the keys and their values.
 
-Select rows with the checkboxes to resolve, mute, assign or delete several issues at once. Deleting removes the issue and all its events, and cannot be undone.
+Select rows with the checkboxes to resolve, archive, assign or delete several issues at once. Deleting removes the issue and all its events, and cannot be undone.
 
 ## The issue page
 
@@ -26,13 +26,13 @@ Click an issue to open it. The page shows one event at a time, the latest first,
 
 The sidebar holds what belongs to the issue rather than to one event: status, priority, assignee, event and user counts, the release where it was first and last seen, tag breakdowns, the linked [GitHub](/configuration/github) issue, and an **Activity** feed where your team can leave comments.
 
-## Resolve, mute, reopen
+## Resolve, archive, reopen
 
 | Action | Shortcut | What happens |
 |---|---|---|
 | **Resolve** | `R` | The issue moves to **Resolved**. A new event reopens it as **Regressed**. |
 | **Resolve in next release** | | Stays resolved while events keep arriving from the release it was resolved in. An event from a newer release reopens it. Events with no release count as the same release. |
-| **Archive** | `E` | The issue moves to **Muted**. It keeps counting events but sends no alerts and never reopens on its own. **Unarchive** brings it back. |
+| **Archive** | `E` | The issue moves to **Archived**. It keeps counting events but sends no alerts and never reopens on its own. **Unarchive** brings it back. |
 
 **Resolve in next release** is under the arrow next to **Resolve**.
 

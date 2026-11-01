@@ -302,13 +302,13 @@
     "clearSelection": "清除选择",
     "empty": {
       "title": "未找到问题",
-      "allResolved": "所有问题都已解决或静音",
+      "allResolved": "所有问题都已解决或归档",
       "noFiltered": "没有{filter}的问题"
     },
     "filters": {
       "open": "未解决",
       "resolved": "已解决",
-      "muted": "已静音",
+      "muted": "已归档",
       "all": "全部"
     },
     "deleteDialog": {
@@ -333,7 +333,7 @@
       "commentFailed": "添加评论失败",
       "statusResolved": "将此问题标记为已解决",
       "statusReopened": "重新打开了此问题",
-      "statusMuted": "静音了此问题",
+      "statusMuted": "归档了此问题",
       "statusChanged": "将状态改为 {status}",
       "priorityChanged": "将优先级设为 {priority}",
       "regression": "检测到回归",
@@ -396,7 +396,7 @@
       "views": {
         "open": "未解决",
         "resolved": "已解决",
-        "muted": "已静音",
+        "muted": "已归档",
         "all": "全部"
       }
     },
