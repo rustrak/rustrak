@@ -1,126 +1,73 @@
 # Issues
 
-Rustrak groups similar errors into **Issues**. This reduces noise and helps you focus on what matters.
+Every error an SDK sends is an event. Rustrak groups events caused by the same bug into one issue, so a crash that happens 500 times is one row with a count of 500, not 500 rows.
 
-<Video src="/videos/issues-overview.webm" autoPlay loop muted playsInline />
+<InteractiveDemo src="/demos/issues.openshowcase" />
 
-## What's an issue?
+Each issue has a short ID: the project slug in capitals and a number, such as `STOREFRONT-1`. Click it on the issue page to copy it.
 
-An Issue represents a unique error type. When the same error happens multiple times, each occurrence is an **Event** belonging to that Issue.
+## The issue list
 
-```
-Issue: TypeError in checkout.js
-├── Event #1 - Jan 15, 10:30 AM
-├── Event #2 - Jan 15, 10:45 AM
-├── Event #3 - Jan 15, 11:02 AM
-└── Event #4 - Jan 15, 11:15 AM
-```
+Open a project to see its issues. The tabs split them by state: **Open**, **Resolved**, **Muted** and **All**.
 
-## Issue ID
+The bar above the table searches the error type, message, transaction and culprit, ignoring case, and filters by any column (priority, assignee, level and so on), by environment or by release. Start typing and it suggests the keys and their values.
 
-Each issue has a human-readable ID:
+Select rows with the checkboxes to resolve, mute, assign or delete several issues at once. Deleting removes the issue and all its events, and cannot be undone.
 
-```
-PROJECT-SLUG-NUMBER
-```
+## The issue page
 
-Examples: `MY-APP-1`, `API-SERVER-42`
+Click an issue to open it. The page shows one event at a time, the latest first, and the arrows next to **Event N of M** move through the rest. For each event you get:
+
+- **Highlights**: level, handled or not, transaction, URL, environment, release
+- **Stack Trace**, with the source lines when the SDK sends them or a [source map](/usage/source-maps) or [debug file](/usage/debug-files) supplies them
+- **Breadcrumbs**: what the app did before the error
+- **Tags** and **Context**: user, browser, OS and whatever your code added
+- **Event Details** and the **Raw JSON** as the SDK sent it
+
+The sidebar holds what belongs to the issue rather than to one event: status, priority, assignee, event and user counts, the release where it was first and last seen, tag breakdowns, the linked [GitHub](/configuration/github) issue, and an **Activity** feed where your team can leave comments.
+
+## Resolve, mute, reopen
+
+| Action | Shortcut | What happens |
+|---|---|---|
+| **Resolve** | `R` | The issue moves to **Resolved**. A new event reopens it as **Regressed**. |
+| **Resolve in next release** | | Stays resolved while events keep arriving from the release it was resolved in. An event from a newer release reopens it. Events with no release count as the same release. |
+| **Archive** | `E` | The issue moves to **Muted**. It keeps counting events but sends no alerts and never reopens on its own. **Unarchive** brings it back. |
+
+**Resolve in next release** is under the arrow next to **Resolve**.
+
+The issue page has more shortcuts: `B` bookmarks the issue, `I` assigns it to you, `Shift+C` copies its link.
+
+## Priority
+
+A new issue takes its priority from the event's level: `fatal` and `error` are **High**, `warning` is **Medium**, `info` and `debug` are **Low**, anything else is **Medium**. Change it from the sidebar; your choice sticks.
 
 ## How grouping works
 
-Events are grouped by a key calculated from:
+Two events land in the same issue when they get the same grouping key. By default the key is the exception's type and message, for every exception in a chained error, plus the transaction name. An event without an exception uses its message instead.
 
-1. **Custom fingerprint** (if you set one)
-2. **Exception type + message + transaction**
-3. **Log message + transaction**
-4. **Fallback**
+Before comparing messages, Rustrak replaces the parts that change from one occurrence to the next (numbers, dates, hex values, UUIDs and similar) with placeholders. `Order 1234 not found` and `Order 5678 not found` are one issue. The issue title keeps the real text.
 
-This means:
-- Same error = one issue (multiple events)
-- Different code path = different issue
-- Different transaction = different issue
+The stack trace does not take part. The same error thrown from two places is one issue; two different errors from the same line are two.
 
-## Issue states
+## Custom fingerprints
 
-| State | Description |
-|-------|-------------|
-| **Open** | Needs attention |
-| **Resolved** | Fixed (reopens if error recurs) |
-| **Muted** | Ignored (won't reopen) |
-
-### Resolving issues
-
-<Video src="/videos/resolve-issue.webm" autoPlay loop muted playsInline />
-
-1. Click on an issue
-2. Click **Resolve**
-
-If the same error happens again, Rustrak reopens it automatically.
-
-### Muting issues
-
-For known issues you don't want to track:
-
-1. Click on an issue
-2. Click **Mute**
-
-Muted issues won't reopen even if the error recurs.
-
-## Issue detail
-
-<Video src="/videos/issue-detail.webm" autoPlay loop muted playsInline />
-
-Click an issue to see:
-
-- **Stack trace** – Where the error happened
-- **Breadcrumbs** – What happened before the error
-- **Tags** – Environment, browser, custom tags
-- **Context** – User info, custom data
-- **Events** – All occurrences
-
-## Custom grouping
-
-Control how errors are grouped with fingerprints:
+To group differently, set a fingerprint in the SDK. Events with the same fingerprint share an issue, whatever their message:
 
 ```javascript
-// Group all network errors together
 Sentry.captureException(error, {
-  fingerprint: ['network-error', endpoint],
-});
-
-// Include default grouping plus user ID
-Sentry.captureException(error, {
-  fingerprint: ['{{ default }}', userId],
+  fingerprint: ['payment-gateway-timeout'],
 });
 ```
 
-### Special values
+`{{ default }}` stands for the default grouping key, so you can split an issue further instead of replacing the key:
 
-- `{{ default }}` – Default grouping key
-- `{{ transaction }}` – Transaction name
-- `{{ type }}` – Exception type
-- `{{ value }}` – Exception message
-
-### Common patterns
-
-**Group by endpoint:**
 ```javascript
-fingerprint: ['api-error', '/api/users']
+Sentry.captureException(error, {
+  fingerprint: ['{{ default }}', region],
+});
 ```
 
-**Separate by environment:**
-```javascript
-fingerprint: ['{{ default }}', process.env.NODE_ENV]
-```
+`{{ default }}` is the only variable Rustrak understands. Sentry's `{{ transaction }}`, `{{ type }}` and the rest are taken as literal text, so pass the value yourself instead. An empty fingerprint falls back to default grouping.
 
-## Tips
-
-### Too many issues?
-
-- Use custom fingerprints for similar errors
-- Group by endpoint instead of full message
-
-### Unrelated errors grouped together?
-
-- Add transaction to fingerprint
-- Use more specific fingerprints
+Fingerprints only affect events sent after you add them. Issues that already exist keep their events.
