@@ -1,0 +1,12 @@
+{
+  "title": "Create an API token",
+  "url": "http://localhost:8090/settings/tokens",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "button", "name": "New Token" } },
+    { "action": "click", "target": { "role": "button", "name": "New Token" }, "hotspot": false },
+    { "action": "fill", "target": { "role": "textbox", "name": "Description (optional)" }, "value": "CI deploy" },
+    { "action": "click", "target": { "role": "button", "name": "Create Token" }, "tooltip": "Create it, then copy it into your CI secrets" },
+    { "action": "wait", "for": { "role": "heading", "name": "Token Created" } }
+  ]
+}

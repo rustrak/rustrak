@@ -1,77 +1,29 @@
 # API Tokens
 
-API tokens let you access Rustrak programmatically—for scripts, CI/CD, or custom integrations.
+An API token lets a script, a CI job or another tool use Rustrak's API: `sentry-cli` uploading [source maps](/usage/source-maps), a deploy creating a [release](/usage/releases), an AI assistant through the [MCP server](/sdks/mcp).
 
-**Note**: API tokens are different from the DSN key. The DSN is for SDKs to send events. API tokens are for reading data and managing Rustrak.
+It is not the DSN. The DSN only sends events; a token reads data and changes things.
 
-## Creating a token
+## Create a token
 
-<Video src="/videos/create-token.webm" autoPlay loop muted playsInline />
+<InteractiveDemo src="/demos/tokens.openshowcase" />
 
-1. Go to **Settings** → **API Tokens**
-2. Click **Create Token**
-3. Enter a description (e.g., "CI/CD Pipeline")
-4. Click **Create**
-5. **Copy the token immediately**—it won't be shown again
+Go to **Settings → API Tokens**, click **New Token**, give it a description that says where it is used ("CI deploy") and click **Create Token**. Copy it from the dialog. You can copy it again later from the token list.
 
-## Using tokens
+A token acts as the user who created it: it sees the same projects and can do the same things. Removing that user deletes their tokens.
 
-Include the token in the `Authorization` header:
+## Use it
+
+Send it in the `Authorization` header:
 
 ```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/projects
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/projects"
 ```
 
-### In code
+Tools that speak Sentry's API, like `sentry-cli` and the bundler plugins, take it as `SENTRY_AUTH_TOKEN`. The [API reference](/api-reference) lists every endpoint.
 
-```javascript
-const response = await fetch('http://localhost:8080/api/projects', {
-  headers: {
-    'Authorization': `Bearer ${process.env.RUSTRAK_TOKEN}`,
-  },
-});
-```
+## Manage tokens
 
-```python
-import requests
-import os
+**Settings → API Tokens** lists your tokens with when each was created and last used. Delete one to revoke it at once. To rotate a token, create the new one, update whatever uses it, then delete the old one.
 
-response = requests.get(
-    'http://localhost:8080/api/projects',
-    headers={'Authorization': f'Bearer {os.environ["RUSTRAK_TOKEN"]}'}
-)
-```
-
-## Managing tokens
-
-### List tokens
-
-Go to **Settings** → **API Tokens** or:
-
-```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/tokens
-```
-
-### Delete a token
-
-1. Go to **Settings** → **API Tokens**
-2. Click delete on the token
-3. Confirm
-
-## Security tips
-
-- **Store in environment variables**, not code
-- **Use descriptive names**: "GitHub Actions Deploy" vs "Token 1"
-- **Rotate periodically**: Create new token, update systems, delete old
-- **Delete unused tokens**
-
-## Troubleshooting
-
-### 401 Unauthorized
-
-Check:
-- Token format is 40 hex characters
-- Header format: `Authorization: Bearer YOUR_TOKEN`
-- Token hasn't been deleted
+A `401` means the header is missing or malformed, or the token was deleted. A token is 40 hexadecimal characters.
