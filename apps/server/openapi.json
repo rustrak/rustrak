@@ -10,7 +10,7 @@
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
     },
-    "version": "0.22.2"
+    "version": "0.23.0"
   },
   "paths": {
     "/api/0/issues/{issue_id}/": {

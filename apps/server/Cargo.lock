@@ -4551,7 +4551,7 @@ dependencies = [
 
 [[package]]
 name = "rustrak"
-version = "0.22.2"
+version = "0.23.0"
 dependencies = [
  "actix-cors",
  "actix-files",

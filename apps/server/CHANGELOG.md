@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.23.0
+
+### Minor Changes
+
+- [`c0c4d6b`](https://github.com/rustrak/rustrak/commit/c0c4d6b63b7336faaee85d0507a5ffa053a8bb00) Thanks [@AbianS](https://github.com/AbianS)! - GitHub issues opened from Rustrak start from a draft you can edit: the title, a description with a link back and the latest event in a code block, labels and the assignee's GitHub login. Issue templates set labels, a title prefix and a description footer for the whole instance and for each project, and issues opened automatically use them too. Recent times in the dashboard no longer read as future times (@rookbreezy).
+
 ## 0.22.2
 
 ### Patch Changes
