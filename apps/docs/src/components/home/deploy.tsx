@@ -50,14 +50,21 @@ const STATS = [
 
 export function Deploy() {
   const [db, setDb] = useState<Db>('sqlite');
-  const [copied, setCopied] = useState(false);
+  // The command that was copied, not a flag: a copy that lands after the tab
+  // changed then confirms nothing on the tab now shown.
+  const [copiedText, setCopiedText] = useState<string | null>(null);
   const text = COMMANDS[db].join('\n');
+  const copied = copiedText === text;
 
   const copy = () => {
-    navigator.clipboard.writeText(text).then(
+    // `clipboard` is missing outside secure contexts.
+    navigator.clipboard?.writeText(text).then(
       () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1600);
+        setCopiedText(text);
+        setTimeout(
+          () => setCopiedText((current) => (current === text ? null : current)),
+          1600,
+        );
       },
       () => {},
     );
@@ -93,10 +100,7 @@ export function Deploy() {
             <SegmentedControl
               aria-label="Database"
               value={db}
-              onValueChange={(value) => {
-                setDb(value as Db);
-                setCopied(false);
-              }}
+              onValueChange={(value) => setDb(value as Db)}
             >
               <SegmentedItem value="sqlite">SQLite</SegmentedItem>
               <SegmentedItem value="postgres">PostgreSQL</SegmentedItem>
