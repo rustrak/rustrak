@@ -101,7 +101,7 @@ export function ReadingRail({
         style={{ top: NAV_OFFSET }}
       >
         <div
-          className="h-full origin-left bg-primary"
+          className="h-full origin-left bg-surface-brand"
           style={{ transform: `scaleX(${progress})` }}
         />
       </div>
@@ -109,27 +109,29 @@ export function ReadingRail({
       {items.length > 0 && (
         <nav
           aria-label="On this page"
-          className="sticky hidden max-h-[calc(100vh-9rem)] overflow-y-auto lg:block"
+          className="sticky hidden max-h-[calc(100vh-9rem)] overflow-y-auto xl:block"
           style={{ top: `calc(${NAV_OFFSET} + 3.5rem)` }}
         >
-          <p className="eyebrow">Contents</p>
+          <p className="font-mono text-mono text-fg-meta uppercase tracking-wider">
+            Contents
+          </p>
           {/* The block is anchored by one short horizontal rule under its
               label. Everything that used to run vertically here — a bar down
               the list, a divider against the text — has gone: beside a page
               already framed by two vertical rules, a third and a fourth stop
               reading as structure and start reading as a fence. */}
-          <span aria-hidden className="mt-3 block h-px w-8 bg-primary" />
+          <span aria-hidden className="mt-3 block h-px w-8 bg-surface-brand" />
           <ul className="mt-4 space-y-0.5">
             {items.map((item) => (
               <li key={item.id}>
                 <a
                   href={`#${item.id}`}
                   className={cn(
-                    'group/toc relative block py-1.5 pl-4 text-[12.5px] leading-snug transition-colors',
+                    'group/toc relative block py-1.5 pl-4 text-meta transition-colors',
                     item.depth > 2 && 'pl-7',
                     activeId === item.id
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
+                      ? 'text-fg'
+                      : 'text-fg-subtle hover:text-fg',
                   )}
                 >
                   {/* A dot, not a bar. It marks one line without joining the
@@ -139,8 +141,8 @@ export function ReadingRail({
                     className={cn(
                       'absolute left-0 top-[0.95em] size-1.5 rounded-full transition-colors',
                       activeId === item.id
-                        ? 'bg-primary'
-                        : 'bg-transparent group-hover/toc:bg-foreground/25',
+                        ? 'bg-surface-brand'
+                        : 'bg-transparent group-hover/toc:bg-fg/25',
                     )}
                   />
                   {item.value}

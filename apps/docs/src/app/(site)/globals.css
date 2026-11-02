@@ -1,0 +1,426 @@
+@import "tailwindcss";
+@import "nextra-theme-docs/style.css";
+@import "@rustrak/ui/tokens.css";
+@import "@rustrak/ui/base.css";
+@import "../display.css";
+
+/* The design system's classes are read from its source, as the landing does. */
+@source "../../../../../packages/ui/src";
+
+/*
+ * Everything outside the landing: the docs, the blog, the changelog and the
+ * roadmap. They speak the product's design system too (`@rustrak/ui`'s
+ * tokens, Inter, the charcoal surfaces), and Nextra is re-pointed at it rather
+ * than replaced: its primary colour and background come from `<Head>` in
+ * `layout.tsx`, and it is locked to dark like the landing.
+ */
+
+/* Nextra ships its own preflight, which sets the page's font from its own
+   variables and outranks `base.css`. Point those at the tokens' faces. */
+:root {
+  --x-default-font-family: var(--font-sans);
+  --x-default-mono-font-family: var(--font-mono);
+}
+
+/* Links in the docs body are the brand colour, in both themes. */
+.nextra-content a:not(.not-prose *) {
+  color: var(--fg-brand);
+}
+
+.nextra-sidebar-container a[aria-current="true"],
+.nextra-sidebar-container a[aria-current="page"],
+.nextra-toc a[aria-current="true"] {
+  color: var(--fg-brand);
+}
+
+/* ── Changelog ─────────────────────────────────────────────────────────────
+   The body of a release, rendered from Markdown to an HTML string at build
+   time (see `lib/changelog.ts`), so it arrives as bare tags with no classes on
+   it. Written here rather than as a `prose-*` class stack on the element for
+   the ordinary reason: the stack this replaced ran to twenty-two utilities on
+   one line and was unreadable, and none of it could be reasoned about without
+   mentally rendering it first.
+
+   The type is a step smaller than the docs' prose. A release note is a list of
+   facts being scanned for one of them, not a page being read, and at
+   documentation size a five-section entry runs three screens deep.
+
+   ── The colour, which is the part that was wrong ───────────────────────────
+
+   This was `--fg-subtle`, and that single declaration was most of why
+   the page was hard to read. `--fg-subtle` is the token for metadata:
+   dates, counts, labels. It is chosen to recede. Painting the body of
+   every release in it meant the actual content of the page was the quietest
+   thing on it, and the effect compounded with the measure: a 95-character line
+   of receding grey is a paragraph the eye slides off rather than reads.
+
+   It now mixes towards the background from `--fg` instead, the same
+   move `.blog-prose` already makes and for the same reason: a long read set in
+   the full heading colour is harsher than it looks in a screenshot, most of all
+   in dark mode. 80% is a step firmer than the blog's 84% mix because this type
+   is 1.5px smaller and small type needs the contrast back.
+
+   The measure is capped in `release-article.tsx` rather than here, because it
+   is a property of the column the prose sits in and not of the prose. */
+.changelog-prose p,
+.changelog-prose li {
+  font-size: 15px;
+  line-height: 1.7;
+  color: color-mix(in oklab, var(--fg) 80%, var(--surface-canvas));
+}
+
+/* The release's one-line summary, between the title and the first section. It
+   sits a step above the body, larger and in the full foreground, because it
+   is the sentence that decides whether the reader keeps going, and it was
+   previously indistinguishable from the prose underneath it. */
+.changelog-lead {
+  max-width: 58ch;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: color-mix(in oklab, var(--fg) 88%, var(--surface-canvas));
+}
+
+.changelog-prose p + p {
+  margin-top: 0.9rem;
+}
+
+.changelog-prose ul,
+.changelog-prose ol {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.changelog-prose p + ul,
+.changelog-prose p + ol {
+  margin-top: 0.85rem;
+}
+
+.changelog-prose ul {
+  list-style: none;
+  padding: 0;
+}
+
+/* A short rule rather than a bullet. A disc at this size reads as punctuation
+   attached to the first word; a rule sitting in its own gutter gives every
+   item the same left edge, which is what makes a fifteen-item release
+   scannable at all. */
+.changelog-prose ul > li {
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.changelog-prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.82em;
+  width: 0.45rem;
+  height: 1px;
+  background: color-mix(in oklab, var(--fg) 32%, transparent);
+}
+
+.changelog-prose ol {
+  padding-left: 1.15rem;
+}
+
+.changelog-prose ul ul {
+  margin-top: 0.5rem;
+}
+
+.changelog-prose strong {
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.changelog-prose a {
+  color: var(--fg-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, var(--fg-brand) 40%, transparent);
+}
+
+.changelog-prose a:hover {
+  text-decoration-color: var(--fg-brand);
+}
+
+.changelog-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 0.1em 0.34em;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  color: var(--fg);
+  /* Identifiers like `POST /api/projects?stats_period=24h` are the one thing
+     here long enough to push the column sideways on a phone. */
+  overflow-wrap: anywhere;
+}
+
+/* The third level, which a handful of entries reach. It gets the same mono
+   label treatment as a section heading, one step quieter, so the hierarchy
+   keeps going instead of falling back to bold body text. */
+.changelog-prose h3 {
+  margin-top: 1.4rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+
+.changelog-prose h3 + * {
+  margin-top: 0.6rem;
+}
+
+/* ── Blog ──────────────────────────────────────────────────────────────────
+   The body of a post. Unlike the changelog, this markup is Nextra's: the MDX
+   goes through `importPage`, so every element arrives already carrying the
+   docs theme's utilities (`x:text-3xl`, `x:border-b`, `x:text-slate-900`…).
+
+   These rules are unlayered and every one of them is a class plus an element,
+   so they outrank those utilities twice over — by layer and by specificity —
+   without a single `!important`. What they deliberately do not touch is
+   `figure.nextra-code`: the highlighting, the copy button and the scroll
+   container are the reason posts still go through Nextra at all, and they are
+   already right. */
+.blog-prose {
+  /* Not `--fg`. A long read set in the same value as a heading is
+     harsher than it looks in a screenshot, most of all in dark mode where the
+     text is near-white on near-black; a step towards the background is the
+     difference between a page you read and one you skim to get away from. */
+  color: color-mix(in oklab, var(--fg) 84%, var(--surface-canvas));
+  font-size: 16.5px;
+  line-height: 1.75;
+}
+
+/* Text keeps its measure; figures take the column.
+
+   This is what lets the frame be wide without the prose becoming unreadable.
+   A line of 16.5px text stops being comfortable somewhere around 75 characters
+   and the cell is wider than that, so every block that is *read* is capped
+   here — and every block that is *looked at* is exempted below, because a
+   diagram or a table gains from the room the text cannot use. */
+.blog-prose > * {
+  max-width: 46rem;
+}
+
+.blog-prose > figure,
+.blog-prose > table,
+.blog-prose > div:has(> svg[aria-roledescription]) {
+  max-width: none;
+}
+
+.blog-prose > :first-child {
+  margin-top: 0;
+}
+
+.blog-prose p {
+  margin-top: 1.25rem;
+}
+
+/* A section opens against a rule that spans the column, the same device the
+   changelog uses between its sections. Nextra hangs a border under its `h2`
+   and sets it three sizes up; both go, because a 30px heading inside a 16px
+   column is a poster, not a hierarchy. */
+.blog-prose h2 {
+  margin-top: 3rem;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: none;
+  padding-bottom: 0;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  color: var(--fg);
+}
+
+.blog-prose h3 {
+  margin-top: 2.25rem;
+  font-size: 1.0625rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--fg);
+}
+
+.blog-prose h4 {
+  margin-top: 1.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.blog-prose :is(h2, h3, h4) + * {
+  margin-top: 0.85rem;
+}
+
+/* The permalink Nextra appends to every heading. Hidden until the heading is
+   hovered, which is where a reader looks for it and nowhere else. */
+.blog-prose .subheading-anchor {
+  margin-left: 0.4rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.blog-prose :is(h2, h3, h4):hover .subheading-anchor,
+.blog-prose .subheading-anchor:focus-visible {
+  opacity: 1;
+}
+
+.blog-prose :is(ul, ol) {
+  margin-top: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.blog-prose ul {
+  list-style: none;
+  padding: 0;
+}
+
+/* The same short rule the changelog uses for a list item, one size up to sit
+   against 16.5px text. */
+.blog-prose ul > li {
+  position: relative;
+  padding-left: 1.25rem;
+}
+
+.blog-prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.85em;
+  width: 0.55rem;
+  height: 1px;
+  background: color-mix(in oklab, var(--fg) 34%, transparent);
+}
+
+.blog-prose ol {
+  padding-left: 1.3rem;
+}
+
+.blog-prose :is(ul, ol) :is(ul, ol) {
+  margin-top: 0.6rem;
+}
+
+.blog-prose strong {
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.blog-prose a {
+  color: var(--fg-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, var(--fg-brand) 40%, transparent);
+}
+
+.blog-prose a:hover {
+  text-decoration-color: var(--fg-brand);
+}
+
+/* Inline code only. The `:not(pre *)` is what keeps this away from the tokens
+   inside a highlighted block, where a background of its own would paint a box
+   around every keyword. */
+.blog-prose code:not(pre *) {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 0.12em 0.34em;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.blog-prose figure.nextra-code {
+  margin-top: 1.6rem;
+  margin-bottom: 1.6rem;
+}
+
+.blog-prose blockquote {
+  margin-top: 1.6rem;
+  border-left: 2px solid color-mix(in oklab, var(--fg-brand) 55%, transparent);
+  padding-left: 1rem;
+  color: var(--fg-subtle);
+}
+
+.blog-prose hr {
+  margin: 2.75rem 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* `display: block` turns the table into its own scroll container, which is the
+   only way a wide table stops taking the whole page sideways with it on a
+   phone. It costs the table nothing here: none of them rely on filling the
+   column. */
+.blog-prose table {
+  display: block;
+  overflow-x: auto;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 1.6rem;
+  border-collapse: collapse;
+  font-size: 14.5px;
+}
+
+.blog-prose :is(th, td) {
+  border: 1px solid var(--border-subtle);
+  padding: 0.5rem 0.8rem;
+  text-align: left;
+}
+
+.blog-prose th {
+  font-weight: 500;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 3%, transparent);
+}
+
+.blog-prose img {
+  margin-top: 1.6rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+/* ── Mermaid ───────────────────────────────────────────────────────────────
+   A rendered diagram, which arrives as a bare `<div>` with an `<svg>` in it
+   and no class to hook — hence the `:has()`.
+
+   What it arrives with is `useMaxWidth`, Mermaid's default: the svg is told to
+   fill its container whatever its natural size, so a `flowchart LR` whose
+   real width is 1530px was being squeezed into a 765px column at half scale.
+   Nothing overflowed and nothing was legible; the labels ended up smaller than
+   the footnotes.
+
+   So the scaling is refused and the overflow is made explicit. The diagram
+   draws at the size Mermaid measured it for, and if that is wider than the
+   column the figure scrolls — a diagram you can read half of and pan is worth
+   more than a whole one you cannot read at all.
+
+   The size itself is restored in `mermaid-fit.tsx`, because it is only in the
+   view box and CSS cannot read it. All this side does is stop clipping it and
+   give it somewhere to scroll. */
+.blog-prose div:has(> svg[aria-roledescription]) {
+  margin-top: 1.75rem;
+  margin-bottom: 1.75rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--fg) 2%, transparent);
+  overflow-x: auto;
+  /* The scroll container is what the reader pans, so it gets the affordance
+     of one rather than looking like a cropped image. */
+  overscroll-behavior-x: contain;
+}
+
+.blog-prose div:has(> svg[aria-roledescription]) > svg {
+  display: block;
+  /* Centred while it fits, flush left once it is being panned — `auto`
+     margins collapse to zero in an overflowing box, which is the behaviour
+     wanted in both cases. */
+  margin: 0 auto;
+}

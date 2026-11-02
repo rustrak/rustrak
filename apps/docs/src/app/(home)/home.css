@@ -1,0 +1,61 @@
+@import "tailwindcss";
+@import "@rustrak/ui/tokens.css";
+@import "@rustrak/ui/base.css";
+@import "../display.css";
+
+/* The design system's classes are read from its source, as the dashboard does. */
+@source "../../../../../packages/ui/src";
+
+@theme {
+  --color-code-fg: var(--code-fg);
+  --color-code-comment: var(--code-comment);
+  --color-code-keyword: var(--code-keyword);
+  --color-code-string: var(--code-string);
+  --color-code-function: var(--code-function);
+  --color-code-punctuation: var(--code-punctuation);
+}
+
+html {
+  background: var(--surface-canvas);
+}
+
+/* An app joining the flow fades in where it lands. */
+@keyframes flow-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+.flow-enter {
+  animation: flow-enter 0.6s ease-out both;
+}
+
+/*
+ * The app's tile flashes the moment its pulse leaves it. Same duration and
+ * delay as that pulse (set inline), so the flash and the light are one event.
+ */
+@keyframes flow-ping {
+  0% {
+    border-color: var(--sev-error);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--sev-error) 22%, transparent);
+  }
+  14%,
+  100% {
+    border-color: var(--border);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.flow-enter.flow-ping {
+  animation-name: flow-enter, flow-ping;
+  animation-timing-function: ease-out, linear;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: both, none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-enter,
+  .flow-enter.flow-ping {
+    animation: none;
+  }
+}

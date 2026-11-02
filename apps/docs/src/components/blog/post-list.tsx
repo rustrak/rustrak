@@ -1,78 +1,43 @@
+import { ArrowRightIcon } from '@rustrak/ui';
 import Link from 'next/link';
-import { formatDateShort, type Post, shortReadingTime } from '@/lib/blog';
-import { cn } from '@/lib/utils';
-import { GRID } from '../editorial/grid';
-import { BlurIn, Rule } from '../editorial/motion';
+import { formatDate, type Post, shortReadingTime } from '@/lib/blog';
+import { Reveal } from '../home/reveal';
 
 /**
- * One post as one band: date and subjects in the label column, the title
- * large in the reading column. The latest post gets a larger title and the
- * lime marker; everything else is the same shape.
+ * One post as one row: the date in a narrow column, the title, the summary
+ * and the subjects beside it. Rows sit on hairlines, nothing else frames them.
  */
-export function PostEntry({
-  post,
-  index,
-  latest,
-}: {
-  post: Post;
-  index: number;
-  latest: boolean;
-}) {
+export function PostEntry({ post, index }: { post: Post; index: number }) {
   return (
-    <article>
-      <Rule />
+    <Reveal as="li" delay={Math.min(index, 4) * 0.06}>
       <Link
         href={`/blog/${post.slug}`}
-        className={cn(GRID, 'group py-10 sm:py-14 lg:py-16')}
+        className="group grid gap-3 border-border-subtle border-t py-10 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-10"
       >
-        <BlurIn className="font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
-          <p className="flex items-baseline gap-3">
-            <span className="transition-colors duration-500 group-hover:text-primary">
-              {String(index).padStart(2, '0')}
-            </span>
-            <time dateTime={post.date}>{formatDateShort(post.date)}</time>
-            {latest ? <span className="text-primary">Latest</span> : null}
-          </p>
-          <p className="mt-2">
-            {shortReadingTime(post.readingTime)}
-            {post.tags.length > 0 ? (
-              <>
-                <span className="mx-2.5 opacity-50">/</span>
-                {post.tags.join(' · ')}
-              </>
-            ) : null}
-          </p>
-        </BlurIn>
-
-        <BlurIn index={1} className="mt-6 min-w-0 lg:mt-0">
-          <div className="transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-1.5">
-            <h2
-              className={cn(
-                'max-w-[22ch] tracking-[-0.03em] text-foreground',
-                latest
-                  ? 'text-[32px] leading-[1.05] sm:text-[48px]'
-                  : 'text-[26px] leading-[1.1] sm:text-[34px]',
-              )}
-            >
-              {post.title}
-            </h2>
-            {post.description ? (
-              <p className="mt-4 max-w-[56ch] text-[15.5px] leading-relaxed text-muted-foreground">
-                {post.description}
-              </p>
-            ) : null}
-            <span className="mt-6 inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase transition-colors duration-500 group-hover:text-primary">
-              Read
-              <span
-                aria-hidden
-                className="transition-transform duration-500 group-hover:translate-x-1"
-              >
-                →
-              </span>
-            </span>
-          </div>
-        </BlurIn>
+        <div className="flex flex-col gap-1 text-fg-meta text-meta">
+          <time dateTime={post.date}>{formatDate(post.date)}</time>
+          <span>{shortReadingTime(post.readingTime)}</span>
+        </div>
+        <div className="flex flex-col gap-3">
+          <h2 className="flex items-start gap-3 text-balance text-fg text-page-title transition-colors group-hover:text-fg-brand">
+            {post.title}
+            <ArrowRightIcon
+              aria-hidden
+              className="mt-1 size-5 shrink-0 -translate-x-1 opacity-0 transition-[opacity,translate] duration-moderate ease-standard group-hover:translate-x-0 group-hover:opacity-100"
+            />
+          </h2>
+          {post.description ? (
+            <p className="max-w-[60ch] text-pretty text-fg-subtle text-value">
+              {post.description}
+            </p>
+          ) : null}
+          {post.tags.length > 0 ? (
+            <p className="font-mono text-fg-meta text-mono-sm">
+              {post.tags.join(' · ')}
+            </p>
+          ) : null}
+        </div>
       </Link>
-    </article>
+    </Reveal>
   );
 }
