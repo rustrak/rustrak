@@ -225,25 +225,22 @@ impl Config {
     /// built dashboard on disk, the same two facts the router mounts on.
     /// Sending an unopenable link would stamp the row as delivered while the
     /// invitee got nothing, so the gate refuses instead.
-    pub fn emailed_links_are_reachable(&self) -> bool {
+    pub fn emailed_links_are_reachable(&self, dashboard_served: bool) -> bool {
         // `DASHBOARD_URL` says where the dashboard lives even when this
         // server does not serve it; without it the link's host is ours,
-        // and an API-only box — off, or with nothing built to serve — has
-        // no /invite page on it at all.
-        if self.dashboard.url.is_none() && !(self.dashboard.enabled && self.dashboard_is_built()) {
+        // and an API-only box — switch off, or nothing built — mounted no
+        // /invite page at all. `dashboard_served` is that mount decision,
+        // taken once by `main` from the same facts the router connects on,
+        // and handed to each request as app data: probing `dir` here would
+        // re-read an env-named path per request for an answer that cannot
+        // change while the process lives.
+        if self.dashboard.url.is_none() && !dashboard_served {
             return false;
         }
         if let Some(url) = self.dashboard.url.as_ref().or(self.public_url.as_ref()) {
             return is_http_url_with_host(url);
         }
         !is_unspecified_host(&self.host)
-    }
-
-    /// Whether the dashboard build this configuration would serve exists.
-    pub fn dashboard_is_built(&self) -> bool {
-        std::path::Path::new(&self.dashboard.dir)
-            .join("index.html")
-            .is_file()
     }
 }
 

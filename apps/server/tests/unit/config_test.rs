@@ -571,25 +571,10 @@ fn do_not_track_is_read_from_the_conventional_variable() {
 // =============================================================================
 
 /// Runs `body` with `DASHBOARD_URL`, `PUBLIC_URL`, `HOST` and `PORT` as given,
-/// restoring every link variable afterwards. The dashboard switch and
-/// directory join the pinning — the reachability gate consults them, so an
-/// inherited `RUSTRAK_DASHBOARD=off` must not decide these outcomes either;
-/// a built directory is pinned as the neutral ground the URL rules are read
-/// against.
+/// restoring every link variable afterwards.
 fn with_link_env<T>(
     dashboard_url: Option<&str>,
     public_url: Option<&str>,
-    body: impl FnOnce() -> T,
-) -> T {
-    with_link_env_at(dashboard_url, public_url, built_dashboard_dir(), body)
-}
-
-/// [`with_link_env`] with the dashboard directory chosen: a path with no
-/// `index.html` models the API-only build.
-fn with_link_env_at<T>(
-    dashboard_url: Option<&str>,
-    public_url: Option<&str>,
-    dashboard_dir: &std::path::Path,
     body: impl FnOnce() -> T,
 ) -> T {
     with_link_vars(
@@ -599,7 +584,6 @@ fn with_link_env_at<T>(
             ("PORT", Some("8080")),
             ("DASHBOARD_URL", dashboard_url),
             ("PUBLIC_URL", public_url),
-            ("RUSTRAK_DASHBOARD_DIR", dashboard_dir.to_str()),
         ],
         body,
     )
@@ -638,32 +622,15 @@ fn alert_links_fall_back_to_the_bind_address() {
     });
 }
 
-/// A dashboard build on disk, for the tests that need this server to be
-/// serving one. The gate reads `index.html` exactly as the router mounts on
-/// it, so the fixture has to be real; an empty directory models the
-/// nothing-built case.
-fn built_dashboard_dir() -> &'static std::path::Path {
-    static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-    DIR.get_or_init(|| {
-        let dir = std::env::temp_dir().join("rustrak-config-test-dashboard");
-        std::fs::create_dir_all(&dir).expect("fixture dashboard dir");
-        std::fs::write(dir.join("index.html"), b"<html></html>").expect("fixture shell");
-        dir
-    })
-    .as_path()
-}
-
 /// The environment variables both link helpers pin, saved and restored
 /// wholesale: leaving `RUSTRAK_DASHBOARD` or its directory inherited from
 /// the process would make the bind-gate cases depend on who ran the tests.
-const LINK_VARS: [&str; 7] = [
+const LINK_VARS: [&str; 5] = [
     "DATABASE_URL",
     "DASHBOARD_URL",
     "PUBLIC_URL",
     "HOST",
     "PORT",
-    "RUSTRAK_DASHBOARD",
-    "RUSTRAK_DASHBOARD_DIR",
 ];
 
 /// Runs `body` with the env vars set as given (absent means removed), then
@@ -692,14 +659,12 @@ fn with_link_vars<T>(values: &[(&str, Option<&str>)], body: impl FnOnce() -> T) 
 /// every variable afterwards. `with_link_env` pins the host to the wildcard;
 /// the IPv6 rules below need to choose it. A built dashboard (and the
 /// default switch) is pinned too: these cases pin the *host* rule, and a
-/// machine-wide `RUSTRAK_DASHBOARD=off` must not flip their answers.
 fn with_bind_env<T>(host: &str, body: impl FnOnce() -> T) -> T {
     with_link_vars(
         &[
             ("DATABASE_URL", Some("postgres://test:test@localhost/test")),
             ("HOST", Some(host)),
             ("PORT", Some("8080")),
-            ("RUSTRAK_DASHBOARD_DIR", built_dashboard_dir().to_str()),
         ],
         body,
     )
@@ -725,7 +690,7 @@ fn bind_host_falls_back_only_when_it_is_a_real_location() {
             let config = Config::from_env().expect("Config::from_env() should succeed");
             assert_eq!(config.dashboard_url(), expected_url, "HOST={host}");
             assert_eq!(
-                config.emailed_links_are_reachable(),
+                config.emailed_links_are_reachable(true),
                 reachable,
                 "reachable for HOST={host}"
             );
@@ -742,7 +707,7 @@ fn configured_urls_are_left_alone_by_the_ipv6_rule() {
     with_link_env(Some("http://[fd00::10]:8080/"), None, || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
         assert_eq!(config.dashboard_url(), "http://[fd00::10]:8080");
-        assert!(config.emailed_links_are_reachable());
+        assert!(config.emailed_links_are_reachable(true));
     });
 }
 
@@ -753,7 +718,7 @@ fn configured_urls_are_left_alone_by_the_ipv6_rule() {
 fn emailed_links_reject_a_url_without_a_host() {
     with_link_env(Some("https://?q=1"), None, || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(!config.emailed_links_are_reachable());
+        assert!(!config.emailed_links_are_reachable(true));
     });
 }
 
@@ -763,69 +728,47 @@ fn emailed_links_reject_a_url_without_a_host() {
 fn emailed_links_reject_the_expanded_ipv6_wildcard() {
     with_bind_env("0:0:0:0:0:0:0:0", || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(!config.emailed_links_are_reachable());
+        assert!(!config.emailed_links_are_reachable(true));
     });
 }
 
-/// When the link's host is this server's own address, the router's mount
-/// test is the gate's test: an API-only box serves no /invite page, whether
-/// the switch is off or nothing was built. `DASHBOARD_URL` states where the
-/// page lives and is trusted regardless — that is how the other-host
-/// deployment ships.
+/// The gate's only filesystem knowledge is the caller's mount decision —
+/// `main` derives it from the switch and the build once, and publishes it as
+/// app data. Without `DASHBOARD_URL` the link's host is this server, so an
+/// API-only process (false) must refuse; a served dashboard (true) may not.
+/// An explicit `DASHBOARD_URL` states where the page lives and is trusted
+/// regardless — that is how the other-host deployment ships.
 #[test]
 #[serial]
-fn an_api_only_server_rejects_emailed_links_without_dashboard_url() {
-    // Switch off, public URL pointing at this API-only box: refused.
-    with_link_vars(
-        &[
-            ("DATABASE_URL", Some("postgres://test:test@localhost/test")),
-            ("HOST", Some("127.0.0.1")),
-            ("PORT", Some("8080")),
-            ("PUBLIC_URL", Some("http://api.example.com")),
-            ("RUSTRAK_DASHBOARD", Some("off")),
-            ("RUSTRAK_DASHBOARD_DIR", built_dashboard_dir().to_str()),
-        ],
-        || {
-            let config = Config::from_env().expect("Config::from_env() should succeed");
-            assert!(!config.emailed_links_are_reachable());
-        },
-    );
-    // Switch on, no build on disk, same URL: refused — nothing serves
-    // /invite there.
-    with_link_env_at(
-        None,
-        Some("http://api.example.com"),
-        std::path::Path::new("does-not-exist"),
-        || {
-            let config = Config::from_env().expect("Config::from_env() should succeed");
-            assert!(!config.emailed_links_are_reachable());
-        },
-    );
-    // Same off switch, but the operator pointed DASHBOARD_URL elsewhere:
-    // accepted — the invite page exists, just not here.
-    with_link_vars(
-        &[
-            ("DATABASE_URL", Some("postgres://test:test@localhost/test")),
-            ("HOST", Some("127.0.0.1")),
-            ("PORT", Some("8080")),
-            ("DASHBOARD_URL", Some("https://ui.example.com")),
-            ("RUSTRAK_DASHBOARD", Some("off")),
-        ],
-        || {
-            let config = Config::from_env().expect("Config::from_env() should succeed");
-            assert!(config.emailed_links_are_reachable());
-        },
-    );
+fn emailed_links_require_a_served_dashboard_when_the_host_is_ours() {
+    with_link_env(None, Some("http://api.example.com"), || {
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert!(!config.emailed_links_are_reachable(false), "API-only");
+        assert!(
+            config.emailed_links_are_reachable(true),
+            "serving the build"
+        );
+    });
+    with_link_env(Some("https://ui.example.com"), None, || {
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert!(
+            config.emailed_links_are_reachable(false),
+            "DASHBOARD_URL anywhere"
+        );
+    });
 }
 /// Emailed invitation links carry the address to a stranger's browser, so
 /// the gate is stricter than the link builder: a wildcard bind host is not a
 /// location, and a URL without the scheme its docs require is not a link.
+/// Whether this process serves the dashboard (`main`'s mount decision,
+/// published as app data) is an argument now, not a filesystem probe: the
+/// cases pass it as their deployment would have it.
 #[test]
 #[serial]
 fn emailed_links_are_unreachable_on_the_wildcard_bind_host() {
     with_link_env(None, None, || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(!config.emailed_links_are_reachable());
+        assert!(!config.emailed_links_are_reachable(true));
     });
 }
 
@@ -834,7 +777,7 @@ fn emailed_links_are_unreachable_on_the_wildcard_bind_host() {
 fn emailed_links_are_reachable_through_a_configured_url() {
     with_link_env(None, Some("https://rustrak.example.com"), || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(config.emailed_links_are_reachable());
+        assert!(config.emailed_links_are_reachable(true));
     });
 }
 
@@ -850,7 +793,7 @@ fn emailed_links_reject_a_schemeless_dashboard_url() {
         Some("https://rustrak.example.com"),
         || {
             let config = Config::from_env().expect("Config::from_env() should succeed");
-            assert!(!config.emailed_links_are_reachable());
+            assert!(!config.emailed_links_are_reachable(true));
         },
     );
 }

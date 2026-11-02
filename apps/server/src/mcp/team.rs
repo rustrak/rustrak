@@ -127,6 +127,7 @@ impl RustrakMcp {
                 self.pool(),
                 self.actor(),
                 self.config(),
+                self.dashboard_served(),
                 web::Json(create_args),
             )
             .await
@@ -167,6 +168,7 @@ impl RustrakMcp {
                 self.pool(),
                 self.actor(),
                 self.config(),
+                self.dashboard_served(),
                 web::Path::from(a.token),
                 Some(web::Json(crate::routes::invitations::ResendInvitation {
                     force: a.force.unwrap_or(false),

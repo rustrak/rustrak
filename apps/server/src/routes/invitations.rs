@@ -20,6 +20,7 @@ use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{CreateInvitation, Invitation, InvitationResponse};
+use crate::routes::dashboard::DashboardServed;
 use crate::services::invitation_email::{self, ResolvedMailer};
 use crate::services::{InvitationService, UsersService};
 
@@ -156,6 +157,7 @@ pub async fn create_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,
     config: web::Data<Config>,
+    served: Option<web::Data<DashboardServed>>,
     body: web::Json<CreateInvitation>,
 ) -> AppResult<HttpResponse> {
     require_admin(&actor)?;
@@ -172,7 +174,7 @@ pub async fn create_invitation(
         // dashboard_url() falls back to the bind address, whose default
         // 0.0.0.0 is a wildcard nobody can visit: reject before writing the
         // row instead of stamping a delivery the invitee cannot redeem.
-        if !config.emailed_links_are_reachable() {
+        if !config.emailed_links_are_reachable(served.is_some_and(|s| s.0)) {
             return Err(AppError::Validation(
                 "The invite link would be unreachable: set DASHBOARD_URL or PUBLIC_URL to an http(s) address (the bind address is a wildcard)".to_string(),
             )
@@ -269,13 +271,16 @@ pub async fn create_invitation(
 pub async fn email_status(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
+    served: Option<web::Data<DashboardServed>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     require_admin(&actor)?;
 
-    let status =
-        invitation_email::email_status(pool.get_ref(), config.emailed_links_are_reachable())
-            .await?;
+    let status = invitation_email::email_status(
+        pool.get_ref(),
+        config.emailed_links_are_reachable(served.is_some_and(|s| s.0)),
+    )
+    .await?;
     Ok(HttpResponse::Ok().json(status))
 }
 
@@ -306,6 +311,7 @@ pub async fn resend_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,
     config: web::Data<Config>,
+    served: Option<web::Data<DashboardServed>>,
     path: web::Path<String>,
     body: Option<web::Json<ResendInvitation>>,
 ) -> AppResult<HttpResponse> {
@@ -333,7 +339,7 @@ pub async fn resend_invitation(
     }
 
     // Same reachability rule as create: never mail a link nobody can open.
-    if !config.emailed_links_are_reachable() {
+    if !config.emailed_links_are_reachable(served.is_some_and(|s| s.0)) {
         return Err(AppError::Validation(
             "The invite link would be unreachable: set DASHBOARD_URL or PUBLIC_URL to an http(s) address (the bind address is a wildcard)".to_string(),
         )
