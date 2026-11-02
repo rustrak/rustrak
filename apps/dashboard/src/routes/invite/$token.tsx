@@ -82,7 +82,7 @@ function Invite() {
   }
 
   return (
-    <div className="min-h-screen bg-card flex items-center justify-center p-8 lg:p-12">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-8 lg:p-12">
       <div className="w-full max-w-[420px] space-y-10">
         <div className="flex items-center">
           <RustrakWordmark className="h-[22px] w-auto" />

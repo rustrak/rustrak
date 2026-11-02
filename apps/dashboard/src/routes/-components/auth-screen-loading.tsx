@@ -11,7 +11,7 @@ import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 export function AuthScreenLoading({ wide = false }: { wide?: boolean }) {
   return (
     <PageLoading>
-      <div className="min-h-screen bg-card flex items-center justify-center p-8 lg:p-12">
+      <div className="min-h-screen bg-surface flex items-center justify-center p-8 lg:p-12">
         <div
           className={`w-full ${wide ? 'max-w-[460px]' : 'max-w-[420px]'} space-y-10`}
         >

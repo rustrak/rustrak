@@ -1,15 +1,14 @@
+import {
+  Field,
+  FieldHint,
+  FieldLabel,
+  Input,
+  Select,
+  SelectItem,
+} from '@rustrak/ui';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type FilterFields, levels } from '@/shared/lib/rule-conditions';
-import { Input } from '@/shared/ui/components/shadcn/input';
-import { Label } from '@/shared/ui/components/shadcn/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 
 /**
  * What keeps an automatic action quiet: the quietest level that counts, the
@@ -31,41 +30,37 @@ export function ConditionFilters({
   const [eventsDraft, setEventsDraft] = useState<string | null>(null);
   const set = (change: Partial<FilterFields>) =>
     onChange({ ...value, ...change });
+  const levelLabels: Record<string, string> = {
+    any: t('anyLevel'),
+    ...Object.fromEntries(
+      levels.map((level) => [level, t('levelOrAbove', { level })]),
+    ),
+  };
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="condition-level">{t('minLevel')}</Label>
+        <Field>
+          <FieldLabel>{t('minLevel')}</FieldLabel>
           <Select
+            id="condition-level"
             value={value.min_level}
+            items={levelLabels}
             onValueChange={(min_level) =>
               set({ min_level: min_level as FilterFields['min_level'] })
             }
             disabled={disabled}
           >
-            <SelectTrigger id="condition-level" className="w-full">
-              <SelectValue>
-                {(selected) =>
-                  selected === 'any'
-                    ? t('anyLevel')
-                    : t('levelOrAbove', { level: String(selected) })
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">{t('anyLevel')}</SelectItem>
-              {levels.map((level) => (
-                <SelectItem key={level} value={level}>
-                  {t('levelOrAbove', { level })}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {Object.entries(levelLabels).map(([level, label]) => (
+              <SelectItem key={level} value={level}>
+                {label}
+              </SelectItem>
+            ))}
           </Select>
-        </div>
+        </Field>
         {showMinEvents && (
-          <div className="space-y-2">
-            <Label htmlFor="condition-events">{t('minEvents')}</Label>
+          <Field>
+            <FieldLabel>{t('minEvents')}</FieldLabel>
             <Input
               id="condition-events"
               type="number"
@@ -82,11 +77,11 @@ export function ConditionFilters({
               }}
               onBlur={() => setEventsDraft(null)}
             />
-          </div>
+          </Field>
         )}
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="condition-environments">{t('environments')}</Label>
+      <Field>
+        <FieldLabel>{t('environments')}</FieldLabel>
         <Input
           id="condition-environments"
           placeholder="production"
@@ -94,8 +89,8 @@ export function ConditionFilters({
           disabled={disabled}
           onChange={(e) => set({ environments: e.target.value })}
         />
-        <p className="text-xs text-muted-foreground">{t('description')}</p>
-      </div>
+        <FieldHint>{t('description')}</FieldHint>
+      </Field>
     </div>
   );
 }

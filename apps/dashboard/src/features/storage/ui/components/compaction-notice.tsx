@@ -1,5 +1,13 @@
 import type { CleanupStatus, Compaction } from '@rustrak/client';
-import { Button, StorageIcon } from '@rustrak/ui';
+import {
+  Button,
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+  StorageIcon,
+} from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -7,15 +15,6 @@ import { useTranslations } from 'use-intl';
 import { storageMutations } from '@/features/storage/api/mutations';
 import { storageQueries } from '@/features/storage/api/queries';
 import { formatBytes } from '@/shared/lib/utils';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 
 /**
  * A row in the storage page's retention section, shown only on a SQLite file created before incremental mode, which never
@@ -103,19 +102,20 @@ function ConfirmDialog({
     });
 
   return (
-    <AlertDialog
+    <Dialog
+      alert
+      size="lg"
       open={open}
       onOpenChange={(o) => !isPending && onOpenChange(o)}
     >
-      <AlertDialogContent className="sm:max-w-lg">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('compaction.dialogTitle')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t('compaction.dialogDescription', {
-              size: formatBytes(compaction.reclaimable_bytes),
-            })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+      <DialogHeader
+        dismissible={false}
+        title={t('compaction.dialogTitle')}
+        description={t('compaction.dialogDescription', {
+          size: formatBytes(compaction.reclaimable_bytes),
+        })}
+      />
+      <DialogBody>
         <ul className="list-disc space-y-1.5 pl-5 text-value text-fg">
           <li className={room ? undefined : 'text-danger-fg'}>
             {free === null
@@ -130,20 +130,21 @@ function ConfirmDialog({
           <li>{t('compaction.pause')}</li>
           <li>{t('compaction.duration')}</li>
         </ul>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>
-            {t('cancel')}
-          </AlertDialogCancel>
-          <Button
-            variant="primary"
-            onClick={run}
-            loading={isPending}
-            disabled={!room}
-          >
-            {t('compaction.confirm')}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      </DialogBody>
+      <DialogFooter>
+        <DialogClose
+          disabled={isPending}
+          render={<Button variant="secondary">{t('cancel')}</Button>}
+        />
+        <Button
+          variant="primary"
+          onClick={run}
+          loading={isPending}
+          disabled={!room}
+        >
+          {t('compaction.confirm')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

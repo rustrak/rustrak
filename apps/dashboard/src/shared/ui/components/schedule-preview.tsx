@@ -1,5 +1,5 @@
 import type { Schedule } from '@rustrak/client';
-import { CalendarClock, Info, Loader2 } from 'lucide-react';
+import { CronsIcon, InfoIcon, SpinnerIcon } from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useSchedulePreview } from '@/shared/ui/hooks/use-schedule-preview';
 import { ScheduleText } from './schedule-text';
@@ -24,20 +24,20 @@ export function SchedulePreview({
   const runs = preview.runs ?? [];
 
   return (
-    <div className="rounded-lg border bg-card">
+    <div className="rounded-lg border bg-surface">
       <div className="flex items-center gap-2 border-b px-4 py-3">
-        <CalendarClock className="size-4 text-muted-foreground" />
+        <CronsIcon className="size-4 text-fg-subtle" />
         <h2 className="text-sm font-semibold">{t('preview.title')}</h2>
         {preview.pending && (
-          <Loader2 className="ml-auto size-3.5 animate-spin text-muted-foreground" />
+          <SpinnerIcon className="ml-auto size-3.5 animate-spin text-fg-subtle" />
         )}
       </div>
       {preview.invalid ? (
-        <p className="px-4 py-6 text-sm text-destructive">
+        <p className="px-4 py-6 text-sm text-danger-fg">
           {t('preview.invalid')}
         </p>
       ) : runs.length === 0 || schedule === null ? (
-        <p className="px-4 py-6 text-sm text-muted-foreground">
+        <p className="px-4 py-6 text-sm text-fg-subtle">
           {t(preview.failed ? 'preview.failed' : 'preview.empty')}
         </p>
       ) : (
@@ -55,8 +55,8 @@ export function SchedulePreview({
                   aria-hidden="true"
                   className={
                     index === 0
-                      ? 'size-1.5 rounded-full bg-primary'
-                      : 'size-1.5 rounded-full bg-muted-foreground/40'
+                      ? 'size-1.5 rounded-full bg-surface-brand'
+                      : 'size-1.5 rounded-full bg-fg-subtle/40'
                   }
                 />
                 {format.dateTime(new Date(run), {
@@ -70,8 +70,8 @@ export function SchedulePreview({
               </li>
             ))}
           </ol>
-          <p className="flex gap-1.5 border-t pt-3 text-xs text-muted-foreground">
-            <Info className="mt-0.5 size-3 shrink-0" />
+          <p className="flex gap-1.5 border-t pt-3 text-xs text-fg-subtle">
+            <InfoIcon className="mt-0.5 size-3 shrink-0" />
             {note ?? t('preview.timesIn', { timezone })}
           </p>
         </div>

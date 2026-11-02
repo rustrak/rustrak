@@ -38,7 +38,7 @@ const popover = tv({
      */
     title: [
       'border-border-subtle border-b px-3 pt-2.5 pb-2',
-      'font-mono text-column text-fg-meta uppercase',
+      'text-column text-fg-meta',
     ],
     /*
      * The keyboard footer, same as the menu's: every panel in the product ends

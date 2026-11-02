@@ -74,7 +74,7 @@ export function RulesTable({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel">
       <div
         className={cn(
-          'hidden shrink-0 gap-4 border-border-divider border-b px-4 py-2.5 font-mono text-column text-fg-meta uppercase lg:grid',
+          'hidden shrink-0 gap-4 border-border-divider border-b px-4 py-2.5 text-column text-fg-meta lg:grid',
           COLUMNS,
         )}
       >

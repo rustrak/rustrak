@@ -1,6 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { InvitationResponse, UserRole } from '@rustrak/client';
-import { Button, Input, NewIcon, Switch } from '@rustrak/ui';
+import {
+  Button,
+  Input,
+  NewIcon,
+  Select,
+  SelectItem,
+  Switch,
+} from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useId } from 'react';
 import { useForm } from 'react-hook-form';
@@ -10,7 +17,6 @@ import { z } from 'zod';
 import { userMutations } from '@/features/user/api/mutations';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import {
   Form,
   FormControl,
@@ -19,14 +25,8 @@ import {
   FormLabel,
   FormMessage,
   FormRootError,
-} from '@/shared/ui/components/shadcn/form';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
+} from '@/shared/ui/components/form';
+import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 
 const inviteSchema = z.object({
   email: z.email('Please enter a valid email address'),
@@ -189,38 +189,26 @@ export function InviteForm({ emailAvailable }: InviteFormProps) {
             <FormField
               control={form.control}
               name="role"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      if (value) field.onChange(value);
-                    }}
-                    disabled={isPending}
-                  >
-                    <FormControl>
-                      <SelectTrigger
-                        className="w-full"
-                        aria-label={t('invite.roleAria')}
-                      >
-                        <SelectValue>
-                          {(value) =>
-                            t(
-                              value === 'admin'
-                                ? 'roles.admin'
-                                : 'roles.member',
-                            )
-                          }
-                        </SelectValue>
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
+                  <FormControl>
+                    <Select<InviteFormData['role']>
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isPending}
+                      invalid={!!fieldState.error}
+                      aria-label={t('invite.roleAria')}
+                      items={{
+                        member: t('roles.member'),
+                        admin: t('roles.admin'),
+                      }}
+                    >
                       <SelectItem value="member">
                         {t('roles.member')}
                       </SelectItem>
                       <SelectItem value="admin">{t('roles.admin')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    </Select>
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

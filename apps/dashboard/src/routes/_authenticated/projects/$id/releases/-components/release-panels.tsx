@@ -490,9 +490,7 @@ export function RailBlock({
 }) {
   return (
     <section className="border-border-divider border-b px-5 py-4 last:border-b-0">
-      <h2 className="mb-3 font-mono text-column text-fg-meta uppercase">
-        {title}
-      </h2>
+      <h2 className="mb-3 text-column text-fg-meta">{title}</h2>
       {children}
     </section>
   );

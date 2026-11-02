@@ -1,4 +1,5 @@
-import { Kbd, SearchIcon } from '@rustrak/ui';
+import { Dialog as BaseDialog } from '@base-ui/react/dialog';
+import { Dialog, Kbd, SearchIcon } from '@rustrak/ui';
 import { Command as CommandPrimitive } from 'cmdk';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -8,15 +9,9 @@ import {
   PROJECT_COMMANDS,
 } from '@/shared/config/commands';
 import { filterCommand } from '@/shared/lib/command-score';
-import { Command } from '@/shared/ui/components/shadcn/command';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@/shared/ui/components/shadcn/dialog';
 import { useIsMobile } from '@/shared/ui/hooks/use-mobile';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { Command } from '../primitives/command';
 import { ResultsList } from '../results/results-list';
 import { CommandBarFooter } from './footer';
 import { ProjectPanel } from './project-panel';
@@ -195,74 +190,78 @@ export function CommandBarDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="top-[14vh] flex max-h-[76svh] w-[calc(100%-2rem)] translate-y-0 flex-col gap-0 overflow-hidden rounded-2xl! border border-border bg-surface-floating p-0 text-fg shadow-overlay ring-0 sm:max-w-[42rem]"
-        showCloseButton={false}
-      >
-        <DialogTitle className="sr-only">
-          {t('commands.dialogTitle')}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          {t('commands.dialogDescription')}
-        </DialogDescription>
+    // `xl` only lifts the size cap; the palette's own width and its place in
+    // the top third of the screen come from the classes.
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="xl"
+      className="mt-[calc(14vh-1.5rem)] max-h-[76svh] self-start rounded-2xl bg-surface-floating text-fg shadow-overlay sm:max-w-[42rem]"
+    >
+      {/* Named for the screen reader only: the search field is the palette's
+          visible heading, so `DialogHeader` would repeat it. */}
+      <BaseDialog.Title className="sr-only">
+        {t('commands.dialogTitle')}
+      </BaseDialog.Title>
+      <BaseDialog.Description className="sr-only">
+        {t('commands.dialogDescription')}
+      </BaseDialog.Description>
 
-        <Command
-          loop
-          filter={filterCommand}
-          value={selected}
-          onValueChange={setSelected}
-          className="min-h-0 flex-1 rounded-none! bg-transparent p-0"
-        >
-          {/* The field is the palette's top edge rather than a box inside it:
+      <Command
+        loop
+        filter={filterCommand}
+        value={selected}
+        onValueChange={setSelected}
+        className="flex-1"
+      >
+        {/* The field is the palette's top edge rather than a box inside it:
               no frame of its own, a rule under it, the way the design
               system's search fields sit in their surface. */}
-          <div className="flex h-14 shrink-0 items-center gap-3 border-border-divider border-b px-4">
-            <SearchIcon size="lg" className="text-fg-ghost" />
-            <CommandPrimitive.Input
-              ref={inputRef}
-              // Base UI parks focus on the dialog popup itself, and cmdk
-              // listens for arrow keys on its own root below that, so without
-              // this the palette opens with a dead keyboard. Enough on its own
-              // now that every open is a fresh mount.
-              autoFocus
-              value={query}
-              onValueChange={search}
-              onKeyDown={handleKeyDown}
-              className="h-full min-w-0 flex-1 bg-transparent text-fg text-section font-normal tracking-normal outline-none placeholder:text-fg-placeholder"
-              placeholder={t('commands.searchPlaceholder')}
-            />
-            <Kbd>esc</Kbd>
-          </div>
+        <div className="flex h-14 shrink-0 items-center gap-3 border-border-divider border-b px-4">
+          <SearchIcon size="lg" className="text-fg-ghost" />
+          <CommandPrimitive.Input
+            ref={inputRef}
+            // Base UI parks focus on the dialog popup itself, and cmdk
+            // listens for arrow keys on its own root below that, so without
+            // this the palette opens with a dead keyboard. Enough on its own
+            // now that every open is a fresh mount.
+            autoFocus
+            value={query}
+            onValueChange={search}
+            onKeyDown={handleKeyDown}
+            className="h-full min-w-0 flex-1 bg-transparent text-fg text-section font-normal tracking-normal outline-none placeholder:text-fg-placeholder"
+            placeholder={t('commands.searchPlaceholder')}
+          />
+          <Kbd>esc</Kbd>
+        </div>
 
-          {/* Fixed height so the list does not resize under the selection as
+        {/* Fixed height so the list does not resize under the selection as
               it shortens with the query. It gives way only when the dialog
               hits its own cap, which is the short-viewport case. */}
-          <div className="flex h-[26rem] min-h-0">
-            <ResultsList
-              ref={listRef}
-              projects={projects}
-              query={query}
+        <div className="flex h-[26rem] min-h-0">
+          <ResultsList
+            ref={listRef}
+            projects={projects}
+            query={query}
+            onNavigate={go}
+            onHighlight={highlight}
+          />
+
+          {showPreview && selectedProject ? (
+            <ProjectPanel
+              project={selectedProject}
+              focusIndex={panelIndex}
+              onFocusIndexChange={movePanel}
               onNavigate={go}
-              onHighlight={highlight}
+              onToggle={togglePanel}
             />
+          ) : null}
+        </div>
 
-            {showPreview && selectedProject ? (
-              <ProjectPanel
-                project={selectedProject}
-                focusIndex={panelIndex}
-                onFocusIndexChange={movePanel}
-                onNavigate={go}
-                onToggle={togglePanel}
-              />
-            ) : null}
-          </div>
-
-          {/* `canPreview`, so the hint is not advertising a Tab that does
+        {/* `canPreview`, so the hint is not advertising a Tab that does
               nothing on the viewports where the column cannot open. */}
-          <CommandBarFooter hasPreview={canPreview} previewOpen={showPreview} />
-        </Command>
-      </DialogContent>
+        <CommandBarFooter hasPreview={canPreview} previewOpen={showPreview} />
+      </Command>
     </Dialog>
   );
 }

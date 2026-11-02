@@ -137,7 +137,7 @@ right and the new number gets written down, or it is not.
 
 - add a `dark:` variant to a component. The semantic layer already handles the
   theme; a `dark:` in a recipe means a token is missing.
-- import `lucide-react` anywhere except `components/icon/adapters/lucide.tsx`.
+- import `@hugeicons/*` anywhere except `components/icon/adapters/`.
 - build classes with template literals. Tailwind extracts statically, so
   `bg-${name}` is a rule that is silently never generated.
 - start a parallel table, filter bar or chart. They exist: `data-table/`,

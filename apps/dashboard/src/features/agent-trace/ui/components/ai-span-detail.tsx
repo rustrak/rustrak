@@ -245,9 +245,7 @@ function Message({ speaker, content }: { speaker: string; content: string }) {
         ROLE_STYLE[speaker] ?? 'bg-surface',
       )}
     >
-      <span className="font-mono text-column text-fg-meta uppercase">
-        {speaker}
-      </span>
+      <span className="text-column text-fg-meta">{speaker}</span>
       {looksLikeJson(content) ? (
         <Payload value={content} bare />
       ) : (
@@ -292,7 +290,7 @@ function looksLikeJson(value: string): boolean {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="font-mono text-column text-fg-meta uppercase">{title}</h3>
+      <h3 className="text-column text-fg-meta">{title}</h3>
       {children}
     </section>
   );

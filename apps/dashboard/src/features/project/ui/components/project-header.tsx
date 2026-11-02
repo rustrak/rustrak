@@ -15,16 +15,14 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
         <h1 className="text-xl md:text-2xl font-extrabold tracking-tight truncate">
           {project.name}
         </h1>
-        <p className="text-muted-foreground mt-1 font-mono text-sm truncate">
+        <p className="text-fg-subtle mt-1 font-mono text-sm truncate">
           {project.slug}
         </p>
       </div>
 
       <div className="text-right shrink-0">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          {t('events')}
-        </p>
-        <p className="text-xl font-bold text-primary">
+        <p className="text-column text-fg-subtle">{t('events')}</p>
+        <p className="text-xl font-bold text-fg-brand">
           {format.number(project.digested_event_count)}
         </p>
       </div>

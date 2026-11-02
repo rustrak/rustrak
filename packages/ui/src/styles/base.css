@@ -11,8 +11,22 @@
     background-color: var(--surface-canvas);
     color: var(--fg);
     font-family: var(--font-sans);
+    /* Inter's optical-size axis: the Display cut for titles, the Text cut for
+       everything at reading size, chosen by the browser from the font size. */
+    font-optical-sizing: auto;
+    /* `cv11` is Inter's single-storey a: rounder and quieter in a dense row. */
+    font-feature-settings: "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* The parts of the page no component draws still belong to the design. */
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
+    caret-color: var(--fg-brand);
+  }
+
+  ::selection {
+    background-color: var(--ring-subtle);
+    color: var(--fg);
   }
 
   /*

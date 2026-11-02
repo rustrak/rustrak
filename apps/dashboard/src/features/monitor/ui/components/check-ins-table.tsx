@@ -46,7 +46,7 @@ export function CheckInsTable({
       <div className="overflow-x-auto">
         <table className="w-full text-body">
           <thead>
-            <tr className="border-border-divider border-y text-left font-mono text-column text-fg-meta uppercase">
+            <tr className="border-border-divider border-y text-left text-column text-fg-meta">
               <th className={cn(cell, 'font-normal')}>
                 {t('checkInColumns.status')}
               </th>

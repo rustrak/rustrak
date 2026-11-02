@@ -1,9 +1,15 @@
-import { Bell, Braces, Hash, Mail, Webhook } from 'lucide-react';
+import {
+  HashIcon,
+  MailIcon,
+  NotificationIcon,
+  PayloadIcon,
+  WebhookIcon,
+} from '@rustrak/ui';
 
 /**
  * The mark for an alert provider.
  *
- * `Bell` is the fallback rather than a missing glyph: the server may name a
+ * `NotificationIcon` is the fallback rather than a missing glyph: the server may name a
  * provider this build has never heard of, and a row with no icon reads as a
  * broken row instead of an unfamiliar one.
  */
@@ -16,14 +22,14 @@ export function ProviderIcon({
 }) {
   switch (type) {
     case 'slack':
-      return <Hash className={className} />;
+      return <HashIcon className={className} />;
     case 'email':
-      return <Mail className={className} />;
+      return <MailIcon className={className} />;
     case 'webhook':
-      return <Webhook className={className} />;
+      return <WebhookIcon className={className} />;
     case 'custom_webhook':
-      return <Braces className={className} />;
+      return <PayloadIcon className={className} />;
     default:
-      return <Bell className={className} />;
+      return <NotificationIcon className={className} />;
   }
 }

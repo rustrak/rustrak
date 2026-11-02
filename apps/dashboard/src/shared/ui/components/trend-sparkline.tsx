@@ -25,7 +25,7 @@ export function TrendSparkline({
   minScale = 1,
   label = '24h event trend',
   className = 'w-16 h-6 shrink-0',
-  barClassName = 'fill-muted-foreground/50',
+  barClassName = 'fill-fg-subtle/50',
 }: TrendSparklineProps) {
   if (trend.length === 0) {
     return null;

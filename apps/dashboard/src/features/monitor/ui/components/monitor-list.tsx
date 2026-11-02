@@ -48,7 +48,7 @@ export function MonitorList({
     >
       <div
         className={cn(
-          'hidden shrink-0 items-end gap-4 border-border-divider border-b px-4 py-2.5 font-mono text-column text-fg-meta uppercase md:grid',
+          'hidden shrink-0 items-end gap-4 border-border-divider border-b px-4 py-2.5 text-column text-fg-meta md:grid',
           COLUMNS,
         )}
       >

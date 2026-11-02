@@ -1,15 +1,5 @@
-import { Loader2 } from 'lucide-react';
+import { Button, Dialog, DialogFooter, DialogHeader } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 
 /**
  * The confirmation for deleting one issue or a ticked batch.
@@ -34,36 +24,28 @@ export function DeleteIssuesDialog({
   const t = useTranslations('issues');
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {t('deleteDialog.title', { count })}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {t('deleteDialog.description', { count })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>
-            {t('deleteDialog.cancel')}
-          </AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                {t('deleteDialog.deleting')}
-              </>
-            ) : (
-              t('deleteDialog.confirm')
-            )}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Dialog alert open={open} onOpenChange={onOpenChange}>
+      <DialogHeader
+        title={t('deleteDialog.title', { count })}
+        description={t('deleteDialog.description', { count })}
+        dismissible={false}
+      />
+      <DialogFooter>
+        <Button
+          variant="secondary"
+          disabled={isPending}
+          onClick={() => onOpenChange(false)}
+        >
+          {t('deleteDialog.cancel')}
+        </Button>
+        <Button
+          variant="danger-primary"
+          loading={isPending}
+          onClick={onConfirm}
+        >
+          {isPending ? t('deleteDialog.deleting') : t('deleteDialog.confirm')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

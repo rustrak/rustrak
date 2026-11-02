@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowUpRight, X } from 'lucide-react';
+import { ArrowRightIcon, CloseIcon, TrendUpIcon } from '@rustrak/ui';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { UpdateInfo } from '@/shared/lib/version';
@@ -167,7 +167,7 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
         <div
           aria-hidden="true"
           data-rustrak-idle
-          className="absolute bg-primary"
+          className="absolute bg-surface-brand"
           style={{
             left: pillX,
             top: 0,
@@ -191,7 +191,7 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
           }}
         >
           <div
-            className="absolute top-0 bg-primary"
+            className="absolute top-0 bg-surface-brand"
             style={{
               left: pillX,
               width: pill,
@@ -205,7 +205,7 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
             }}
           />
           <div
-            className="absolute left-0 w-full bg-primary"
+            className="absolute left-0 w-full bg-surface-brand"
             style={{
               top: HEIGHT,
               height: open ? expanded - HEIGHT : 0,
@@ -245,7 +245,7 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
         <div
           ref={headerRef}
           style={{ left: pillX, height: HEIGHT, width: 'fit-content' }}
-          className="pointer-events-auto absolute top-0 z-20 flex items-center gap-2 pr-3 pl-4 text-primary-foreground"
+          className="pointer-events-auto absolute top-0 z-20 flex items-center gap-2 pr-3 pl-4 text-fg-on-brand"
         >
           {/* 14px is the brand's absolute floor and the pill is the one place
               in the app that reaches it: any taller and the word crowds out the
@@ -260,16 +260,16 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
             type="button"
             onClick={handleDismiss}
             aria-label={t('dismiss', { version: info.latest })}
-            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-primary-foreground/20"
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-fg-on-brand/20"
           >
-            <X className="size-3" />
+            <CloseIcon className="size-3" />
           </button>
         </div>
 
         <div
           ref={bodyRef}
           style={{ top: HEIGHT + 2 }}
-          className={`absolute inset-x-0 z-20 flex flex-col items-center px-6 pt-1.5 pb-4 text-center text-primary-foreground ${
+          className={`absolute inset-x-0 z-20 flex flex-col items-center px-6 pt-1.5 pb-4 text-center text-fg-on-brand ${
             open ? 'pointer-events-auto' : 'pointer-events-none'
           }`}
         >
@@ -278,7 +278,7 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
             className="flex items-center gap-2.5 font-mono text-xs tabular-nums"
           >
             <span className="opacity-55">{info.current}</span>
-            <ArrowRight className="size-3.5 opacity-45" />
+            <ArrowRightIcon className="size-3.5 opacity-45" />
             <span className="text-sm font-semibold">{info.latest}</span>
           </div>
 
@@ -293,16 +293,16 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
 
           <div
             style={reveal(2)}
-            className="mt-3 w-full border-t border-primary-foreground/20 pt-3"
+            className="mt-3 w-full border-t border-fg-on-brand/20 pt-3"
           >
             <a
               href={info.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="group inline-flex items-center gap-1.5 rounded-full bg-primary-foreground px-4 py-1.5 text-[11px] font-semibold text-primary transition-opacity hover:opacity-90"
+              className="group inline-flex items-center gap-1.5 rounded-full bg-fg-on-brand px-4 py-1.5 text-[11px] font-semibold text-fg-brand transition-opacity hover:opacity-90"
             >
               {t('viewChangelog')}
-              <ArrowUpRight className="size-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              <TrendUpIcon className="size-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </a>{' '}
           </div>
         </div>

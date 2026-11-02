@@ -14,14 +14,14 @@ import type { ReactNode } from 'react';
  * window. Its filters scope every panel below at once, which is what sets
  * them apart from a table's own filters, that live with the table.
  *
- * One joined bar rather than separate buttons, so it reads as one control
- * that says what slice of the project you are looking at. Weight follows
- * meaning: a scope that is not set shows only its name, quietly; one that is
- * set shows its value, bright, with the brand dot.
+ * Separate controls side by side, each its own pill: joined into one bar
+ * they read as a single button with dividers. Weight follows meaning: a
+ * scope that is not set shows only its name, quietly; one that is set shows
+ * its value, bright, with the brand dot.
  */
 export function ScopeBar({ children }: { children: ReactNode }) {
   return (
-    <div className="flex w-full divide-x divide-border-divider rounded-md border border-border bg-surface sm:inline-flex sm:w-auto">
+    <div className="flex w-full flex-wrap gap-1.5 sm:inline-flex sm:w-auto">
       {children}
     </div>
   );
@@ -42,11 +42,15 @@ export function ScopeSegment({
   mono?: boolean;
   actions: MenuAction[];
 }) {
-  // Its own box: an open menu puts focus guards beside its trigger, and as
-  // siblings in the bar they took the divider and the last corner, shifting
-  // the bar by a pixel and squaring the end the menu opened from.
+  // Its own box: an open menu puts focus guards beside its trigger, and the
+  // box keeps them from taking part in the bar's gap.
   return (
-    <div className="flex min-w-0 flex-1 first:rounded-l-md last:rounded-r-md sm:max-w-48 sm:flex-none">
+    <div
+      className={cn(
+        'flex min-w-0 flex-1 rounded-lg border bg-surface sm:max-w-48 sm:flex-none',
+        active ? 'border-border-strong' : 'border-border-subtle',
+      )}
+    >
       <Menu
         align="end"
         actions={actions}

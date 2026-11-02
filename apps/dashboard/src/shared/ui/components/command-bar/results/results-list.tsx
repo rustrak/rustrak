@@ -12,10 +12,7 @@ import {
   SETTINGS_COMMANDS,
 } from '@/shared/config/commands';
 import { filterCommand } from '@/shared/lib/command-score';
-import {
-  CommandEmpty,
-  CommandList,
-} from '@/shared/ui/components/shadcn/command';
+import { CommandEmpty, CommandList } from '../primitives/command';
 import { Section } from '../primitives/section';
 import { ProjectBadge, ScopeBadge } from './badges';
 import { CommandRow, ROW_ICON } from './command-row';
@@ -124,8 +121,8 @@ export function ResultsList({
     ));
 
   return (
-    <CommandList ref={ref} className="max-h-none min-w-0 flex-1 p-1.5">
-      <CommandEmpty className="px-4 py-16 text-center text-body text-fg-subtle">
+    <CommandList ref={ref} className="min-w-0 flex-1 p-1.5">
+      <CommandEmpty className="px-4 py-16">
         {t('commands.noResultsFor', { query: query.trim() })}
       </CommandEmpty>
 

@@ -1,5 +1,10 @@
 import type { AttachmentInfo } from '@rustrak/client';
-import { ExternalLink, Mail, Paperclip, User } from 'lucide-react';
+import {
+  AttachmentIcon,
+  ExternalLinkIcon,
+  MailIcon,
+  MemberIcon,
+} from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
 import type { Feedback } from '@/features/event/lib/feedback';
 import { Link } from '@/shared/ui/components/link';
@@ -29,22 +34,22 @@ export function FeedbackSection({
       </p>
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-        <dt className="flex items-center gap-1.5 text-muted-foreground">
-          <User className="size-3.5" />
+        <dt className="flex items-center gap-1.5 text-fg-subtle">
+          <MemberIcon className="size-3.5" />
           {t('from')}
         </dt>
         <dd className="min-w-0 truncate">{feedback.name || t('anonymous')}</dd>
 
         {feedback.contactEmail && (
           <>
-            <dt className="flex items-center gap-1.5 text-muted-foreground">
-              <Mail className="size-3.5" />
+            <dt className="flex items-center gap-1.5 text-fg-subtle">
+              <MailIcon className="size-3.5" />
               {t('email')}
             </dt>
             <dd className="min-w-0 truncate">
               <a
                 href={`mailto:${feedback.contactEmail}`}
-                className="text-primary hover:underline"
+                className="text-fg-brand hover:underline"
               >
                 {feedback.contactEmail}
               </a>
@@ -54,8 +59,8 @@ export function FeedbackSection({
 
         {feedback.url && (
           <>
-            <dt className="flex items-center gap-1.5 text-muted-foreground">
-              <ExternalLink className="size-3.5" />
+            <dt className="flex items-center gap-1.5 text-fg-subtle">
+              <ExternalLinkIcon className="size-3.5" />
               {t('page')}
             </dt>
             <dd className="min-w-0 truncate font-mono text-xs leading-5">
@@ -85,8 +90,8 @@ export function FeedbackSection({
                   className="max-h-80 max-w-full rounded-md border object-contain transition-opacity group-hover:opacity-90"
                 />
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
-                  <Paperclip className="size-3.5" />
+                <span className="inline-flex items-center gap-1.5 text-sm text-fg-brand hover:underline">
+                  <AttachmentIcon className="size-3.5" />
                   {attachment.filename}
                 </span>
               )}
@@ -98,7 +103,7 @@ export function FeedbackSection({
       {errorHref && (
         <Link
           href={errorHref}
-          className="inline-flex text-sm font-medium text-primary hover:underline"
+          className="inline-flex text-sm font-medium text-fg-brand hover:underline"
         >
           {t('viewError')}
         </Link>

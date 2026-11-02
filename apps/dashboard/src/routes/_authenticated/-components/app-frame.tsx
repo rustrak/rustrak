@@ -37,7 +37,6 @@ import {
   SidebarUser,
   SignOutIcon,
   StorageIcon,
-  scopeEnter,
   TeamIcon,
   TokensIcon,
 } from '@rustrak/ui';
@@ -310,27 +309,26 @@ export function AppSidebar({ user }: { user: UserResponse }) {
     <Sidebar
       header={
         <>
-          <SidebarBrand render={<Link href="/projects" />} />
-          {/* The project card exists only inside a project: above them all
-              there is nothing to switch, and "All projects" in a card would
-              be a second way of saying the page you are on. It arrives with
-              the routes, as the first row of the same entrance. */}
-          <SidebarScope scope={scope} depth={depth}>
-            {project && !settingsMode ? (
-              <Menu
-                trigger={
-                  <SidebarProject
-                    name={project.name}
-                    detail={project.slug}
-                    tile={<ProjectLogo project={project} size={26} />}
-                    className={scopeEnter}
-                  />
-                }
-                actions={switcher}
-                popupClassName="w-64"
-              />
-            ) : null}
-          </SidebarScope>
+          {/* Inside a project the top row is its switcher; above them all
+              there is nothing to switch, and the row is the mark. */}
+          <SidebarBrand
+            render={<Link href="/projects" />}
+            switcher={
+              project && !settingsMode ? (
+                <Menu
+                  trigger={
+                    <SidebarProject
+                      name={project.name}
+                      detail={project.slug}
+                      tile={<ProjectLogo project={project} size={18} />}
+                    />
+                  }
+                  actions={switcher}
+                  popupClassName="w-64"
+                />
+              ) : undefined
+            }
+          />
           <CommandBar
             projects={toCommandProjects(projects)}
             trigger={(open, shortcut) => (

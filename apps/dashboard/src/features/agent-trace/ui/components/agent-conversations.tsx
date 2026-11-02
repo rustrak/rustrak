@@ -182,7 +182,7 @@ export function ConversationTranscript({
       {conversationTurns(spans).map((turn, index) => (
         <li key={turn.traceId} className="flex flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-fg-subtle text-meta">
-            <span className="font-mono text-column text-fg-meta uppercase">
+            <span className="text-column text-fg-meta">
               {t('turn', { number: index + 1 })}
             </span>
             {turn.startedAt ? (
@@ -250,9 +250,7 @@ function Bubble({
           : 'self-start bg-surface',
       )}
     >
-      <span className="font-mono text-column text-fg-meta uppercase">
-        {label}
-      </span>
+      <span className="text-column text-fg-meta">{label}</span>
       <p className="whitespace-pre-wrap break-words text-body text-fg">
         {children}
       </p>

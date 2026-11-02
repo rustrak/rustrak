@@ -1,6 +1,5 @@
-import { RefreshCw } from 'lucide-react';
+import { Button, RefreshIcon } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
  * A reload button for a screen rendered by a Server Component.
@@ -13,8 +12,11 @@ import { Button } from '@/shared/ui/components/shadcn/button';
 export function ReloadButton({ children }: { children?: string }) {
   const t = useTranslations('common');
   return (
-    <Button onClick={() => window.location.reload()}>
-      <RefreshCw className="mr-2 size-4" />
+    <Button
+      variant="primary"
+      icon={RefreshIcon}
+      onClick={() => window.location.reload()}
+    >
       {children ?? t('reload')}
     </Button>
   );

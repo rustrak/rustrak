@@ -48,7 +48,7 @@ function SentryEventPage() {
   }
 
   return (
-    <p className="p-8 text-sm text-muted-foreground">
+    <p className="p-8 text-sm text-fg-subtle">
       {t('event.feedback.errorNotFound')}
     </p>
   );

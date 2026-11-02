@@ -22,14 +22,14 @@ import {
 } from '@/features/alert/model/message-template';
 import { useIntegrationSubmit } from '@/features/alert/ui/hooks/use-integration-submit';
 import { useTemplatePreview } from '@/features/alert/ui/hooks/use-template-preview';
-import { SettingSection } from '@/shared/ui/components/setting-row';
 import {
   Form,
   FormControl,
   FormField,
   FormItem,
   FormMessage,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
+import { SettingSection } from '@/shared/ui/components/setting-row';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
 import { DeleteSection, TestRow } from '../fields/form-chrome';
@@ -52,7 +52,9 @@ const JsonTemplateEditor = lazy(() =>
 
 /** Same height and frame as the editor, so the page does not jump when the chunk lands. */
 function EditorSkeleton() {
-  return <Skeleton className="h-[26rem] rounded-md border border-input" />;
+  return (
+    <Skeleton className="h-[26rem] rounded-md border border-border-field" />
+  );
 }
 
 export function CustomWebhookForm({

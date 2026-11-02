@@ -1,3 +1,11 @@
+/**
+ * react-hook-form, wired to the design system's field anatomy: a label, the
+ * control, a hint, and the error that replaces the hint. The glue (ids,
+ * `aria-describedby`, `aria-invalid`) is react-hook-form's; every class is a
+ * token from `@rustrak/ui`, so a form reads like `Field` does in Storybook.
+ */
+
+import { cn } from '@rustrak/ui';
 import * as React from 'react';
 import {
   Controller,
@@ -8,8 +16,6 @@ import {
   useFormContext,
   useFormState,
 } from 'react-hook-form';
-import { cn } from '@/shared/lib/utils';
-import { Label } from '@/shared/ui/components/shadcn/label';
 
 const Form = FormProvider;
 
@@ -30,8 +36,9 @@ const FormField = <
 >({
   ...props
 }: ControllerProps<TFieldValues, TName>) => {
+  const value = React.useMemo(() => ({ name: props.name }), [props.name]);
   return (
-    <FormFieldContext.Provider value={{ name: props.name }}>
+    <FormFieldContext.Provider value={value}>
       <Controller {...props} />
     </FormFieldContext.Provider>
   );
@@ -70,29 +77,26 @@ const FormItemContext = React.createContext<FormItemContextValue>(
 
 function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
   const id = React.useId();
+  const value = React.useMemo(() => ({ id }), [id]);
 
   return (
-    <FormItemContext.Provider value={{ id }}>
+    <FormItemContext.Provider value={value}>
       <div
         data-slot="form-item"
-        className={cn('grid gap-2', className)}
+        className={cn('flex min-w-0 flex-col gap-1.5', className)}
         {...props}
       />
     </FormItemContext.Provider>
   );
 }
 
-function FormLabel({
-  className,
-  ...props
-}: React.ComponentProps<typeof Label>) {
-  const { error, formItemId } = useFormField();
+function FormLabel({ className, ...props }: React.ComponentProps<'label'>) {
+  const { formItemId } = useFormField();
 
   return (
-    <Label
+    <label
       data-slot="form-label"
-      data-error={!!error}
-      className={cn('data-[error=true]:text-destructive', className)}
+      className={cn('text-label text-fg-secondary', className)}
       htmlFor={formItemId}
       {...props}
     />
@@ -121,7 +125,7 @@ function FormDescription({ className, ...props }: React.ComponentProps<'p'>) {
     <p
       data-slot="form-description"
       id={formDescriptionId}
-      className={cn('text-muted-foreground text-sm', className)}
+      className={cn('text-hint text-fg-subtle', className)}
       {...props}
     />
   );
@@ -139,7 +143,7 @@ function FormMessage({ className, ...props }: React.ComponentProps<'p'>) {
     <p
       data-slot="form-message"
       id={formMessageId}
-      className={cn('text-destructive text-sm', className)}
+      className={cn('text-hint text-danger-fg', className)}
       {...props}
     >
       {body}
@@ -170,7 +174,7 @@ function FormRootError({ className, ...props }: React.ComponentProps<'p'>) {
     <p
       data-slot="form-root-error"
       role="alert"
-      className={cn('text-destructive text-sm', className)}
+      className={cn('text-hint text-danger-fg', className)}
       {...props}
     >
       {String(message)}

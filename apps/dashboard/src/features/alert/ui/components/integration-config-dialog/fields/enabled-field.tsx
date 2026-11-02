@@ -1,11 +1,7 @@
 import { Switch } from '@rustrak/ui';
 import { type FieldValues, type Path, useFormContext } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
-import {
-  FormControl,
-  FormField,
-  FormItem,
-} from '@/shared/ui/components/shadcn/form';
+import { FormControl, FormField, FormItem } from '@/shared/ui/components/form';
 import { FieldRow } from './form-chrome';
 
 /** Whether alerts go out on this integration. Identical for every provider. */

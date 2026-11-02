@@ -6,10 +6,17 @@ import type {
 import {
   Avatar,
   Button,
+  confirm,
   DeleteIcon,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
   Menu,
   MoreIcon,
   NewIcon,
+  Select,
+  SelectItem,
   Tag,
   TeamIcon,
 } from '@rustrak/ui';
@@ -26,31 +33,6 @@ import {
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/shared/ui/components/shadcn/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 
 interface MembersSettingsProps {
   projectId: number;
@@ -72,8 +54,6 @@ export function MembersSettings({
   // Only a manager sees the add-member dropdown it populates.
   const team = useQuery({ ...userQueries.team(), enabled: canManage });
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [removingMember, setRemovingMember] =
-    useState<ProjectMemberResponse | null>(null);
 
   const memberIds = new Set(members.map((m) => m.user_id));
   // Exclude users who are already members, and global admins — admins (including
@@ -110,13 +90,17 @@ export function MembersSettings({
     );
   };
 
-  const handleRemove = () => {
-    if (!removingMember) return;
-    remove.mutate(removingMember.user_id, {
-      onSuccess: () => {
-        toast.success(t('toast.removed'));
-        setRemovingMember(null);
-      },
+  const handleRemove = async (member: ProjectMemberResponse) => {
+    const ok = await confirm({
+      title: t('remove.title'),
+      description: t('remove.description', { email: member.email }),
+      tone: 'danger',
+      confirmLabel: t('remove.confirm'),
+      cancelLabel: t('cancel'),
+    });
+    if (!ok) return;
+    remove.mutate(member.user_id, {
+      onSuccess: () => toast.success(t('toast.removed')),
       onError: (error) =>
         toast.error(t('toast.removeFailed'), {
           description: error.error.message,
@@ -211,7 +195,7 @@ export function MembersSettings({
                         tone: 'danger',
                         separated: true,
                         disabled: isPending,
-                        onSelect: () => setRemovingMember(member),
+                        onSelect: () => handleRemove(member),
                       },
                     ]}
                   />
@@ -232,35 +216,6 @@ export function MembersSettings({
         teamFailed={team.isError}
         onSuccess={() => setShowAddDialog(false)}
       />
-
-      {/* Remove confirmation */}
-      <AlertDialog
-        open={!!removingMember}
-        onOpenChange={(open) => !open && setRemovingMember(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('remove.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('remove.description', {
-                email: removingMember?.email ?? '',
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRemove}
-              disabled={isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isPending ? t('remove.removing') : t('remove.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }
@@ -285,10 +240,8 @@ function AddMemberDialog({
   ...formProps
 }: AddMemberDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <AddMemberForm onOpenChange={onOpenChange} {...formProps} />
-      </DialogContent>
+    <Dialog open={open} onOpenChange={onOpenChange} size="md">
+      <AddMemberForm onOpenChange={onOpenChange} {...formProps} />
     </Dialog>
   );
 }
@@ -296,7 +249,7 @@ function AddMemberDialog({
 /**
  * The dialog body, and the only owner of the draft member.
  *
- * It lives inside `DialogContent` rather than beside it because Base UI
+ * It lives inside `Dialog`'s popup rather than beside it because Base UI
  * unmounts the portal once the close animation finishes. Mounting is
  * therefore the reset: every open starts from a fresh `userId` and `role`
  * with no effect clearing them, and the previous draft stays on screen
@@ -335,84 +288,76 @@ function AddMemberForm({
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>{t('addMember.title')}</DialogTitle>
-        <DialogDescription>{t('addMember.description')}</DialogDescription>
-      </DialogHeader>
+      <DialogHeader
+        title={t('addMember.title')}
+        description={t('addMember.description')}
+      />
 
-      <div className="space-y-4 py-1">
-        <div className="space-y-1.5">
-          <label htmlFor="add-member-user" className="text-label text-fg-muted">
+      <DialogBody className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="add-member-user"
+            className="text-label text-fg-secondary"
+          >
             {t('addMember.userLabel')}
           </label>
           <Select
-            value={userId}
-            onValueChange={(value) => setUserId(value ?? '')}
+            id="add-member-user"
+            aria-label={t('addMember.userAria')}
+            value={userId || null}
+            onValueChange={setUserId}
             disabled={isPending || availableUsers.length === 0}
+            items={Object.fromEntries(
+              availableUsers.map((u) => [String(u.id), u.email]),
+            )}
+            placeholder={
+              teamFailed
+                ? t('addMember.teamFailed')
+                : availableUsers.length === 0
+                  ? t('addMember.noUsers')
+                  : t('addMember.selectUser')
+            }
           >
-            <SelectTrigger
-              id="add-member-user"
-              className="w-full"
-              aria-label={t('addMember.userAria')}
-            >
-              <SelectValue
-                placeholder={
-                  teamFailed
-                    ? t('addMember.teamFailed')
-                    : availableUsers.length === 0
-                      ? t('addMember.noUsers')
-                      : t('addMember.selectUser')
-                }
-              >
-                {(value) =>
-                  availableUsers.find((u) => String(u.id) === value)?.email ??
-                  ''
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {availableUsers.map((user) => (
-                <SelectItem key={user.id} value={String(user.id)}>
-                  {user.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {availableUsers.map((user) => (
+              <SelectItem key={user.id} value={String(user.id)}>
+                {user.email}
+              </SelectItem>
+            ))}
           </Select>
         </div>
 
-        <div className="space-y-1.5">
-          <label htmlFor="add-member-role" className="text-label text-fg-muted">
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="add-member-role"
+            className="text-label text-fg-secondary"
+          >
             {t('addMember.roleLabel')}
           </label>
-          <Select
+          <Select<ProjectRole>
+            id="add-member-role"
+            aria-label={t('addMember.roleAria')}
             value={role}
-            onValueChange={(value) => {
-              if (value) setRole(value as ProjectRole);
-            }}
+            onValueChange={setRole}
             disabled={isPending}
+            items={Object.fromEntries(
+              PROJECT_ROLES.map((r) => [r.value, t(r.labelKey)]),
+            )}
           >
-            <SelectTrigger
-              id="add-member-role"
-              className="w-full"
-              aria-label={t('addMember.roleAria')}
-            >
-              <SelectValue>
-                {(value) => t(roleLabel(value as ProjectRole))}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {PROJECT_ROLES.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {t(r.labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {PROJECT_ROLES.map((r) => (
+              <SelectItem key={r.value} value={r.value}>
+                {t(r.labelKey)}
+              </SelectItem>
+            ))}
           </Select>
         </div>
-      </div>
+      </DialogBody>
 
       <DialogFooter>
-        <Button onClick={() => onOpenChange(false)} disabled={isPending}>
+        <Button
+          variant="secondary"
+          onClick={() => onOpenChange(false)}
+          disabled={isPending}
+        >
           {t('cancel')}
         </Button>
         <Button
