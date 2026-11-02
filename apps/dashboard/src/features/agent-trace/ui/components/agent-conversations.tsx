@@ -13,7 +13,6 @@ import {
   Tag,
   Text,
 } from '@rustrak/ui';
-import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import {
   conversationHref,
@@ -115,8 +114,6 @@ function ConversationRow({
 }) {
   const t = useTranslations('agents.conversations');
   const format = useFormatter();
-  // The clock the relative times are read against, taken once per row.
-  const [now] = useState(() => Date.now());
   // No time when none of its spans carried one.
   const last = conversation.last_seen ? new Date(conversation.last_seen) : null;
 
@@ -156,7 +153,7 @@ function ConversationRow({
               className="text-fg-subtle"
               title={format.dateTime(last, 'dateTime')}
             >
-              {format.relativeTime(last, { now: new Date(now) })}
+              {format.relativeTime(last)}
             </span>
           ) : null}
         </span>

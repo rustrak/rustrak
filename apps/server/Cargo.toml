@@ -1,6 +1,6 @@
 [package]
 name = "rustrak"
-version = "0.22.1"
+version = "0.23.0"
 edition = "2021"
 authors = ["Rustrak Team"]
 description = "Ultra-lightweight error tracking server compatible with Sentry SDKs"
@@ -8,7 +8,7 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 # Web framework (HTTP/2 is disabled until Actix moves to h2 0.4.)
-actix-web = { version = "4.17.0", default-features = false, features = [
+actix-web = { version = "4.18.1", default-features = false, features = [
     "macros",
     "compress-brotli",
     "compress-gzip",
@@ -29,7 +29,7 @@ actix-session = { version = "0.11", features = ["cookie-session"] }
 argon2 = "0.6.0"
 
 # Async runtime
-tokio = { version = "1.53.3", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 
 # Serialization
 serde = { version = "1.0.229", features = ["derive"] }
@@ -58,7 +58,7 @@ sqlx = { version = "0.9.0", features = [
 ] }
 
 # UUID generation
-uuid = { version = "1.28.0", features = ["v4", "serde"] }
+uuid = { version = "1.29.0", features = ["v4", "serde"] }
 
 # Slug generation
 slug = "0.1.6"
@@ -76,7 +76,7 @@ hex = "0.4.3"
 flate2 = "1.1.10"
 # brotli and zstd held at the versions actix-http 3.18 depends on; going past
 # them compiles a second copy of each. Bump together with actix-http.
-brotli = "9.0.0"
+brotli = "9.1.1"
 zstd = "0.14.3"
 
 # Async utilities
@@ -93,7 +93,7 @@ dynfmt = { version = "0.2", features = ["python", "curly"] }
 # Message parameterization for grouping. `fancy-regex` rather than `regex`
 # because Sentry's patterns lean on lookbehind and lookahead, which `regex`
 # does not support.
-fancy-regex = "0.19"
+fancy-regex = "0.20"
 
 # IP address handling (stored as string for SQLite compat)
 # ipnetwork removed - store IP as String for multi-DB support
@@ -126,21 +126,21 @@ url = "2.5.8"
 async-trait = "0.1.92"
 
 # MCP server at /mcp (stateless Streamable HTTP, protocol 2026-07-28)
-rmcp = { version = "3.5.1", features = ["transport-streamable-http-server"] }
+rmcp = { version = "3.8.0", features = ["transport-streamable-http-server"] }
 http = "1.5.0"
 http-body-util = "0.1.5"
 
 # Source map processing
 sourcemap = "9"
-zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }  # CVE-2025-29787 fixed in 2.3+; DO NOT lower below 2.3; no zstd (non-SPDX license)
+zip = { version = "9.1", default-features = false, features = ["deflate-flate2"] }  # CVE-2025-29787 fixed in 2.3+; DO NOT lower below 2.3; no zstd (non-SPDX license)
 # JVM deobfuscation: the crate Symbolicator remaps Android frames with
 proguard = "5.10"
 # Native (Apple) symbolication: the crates Symbolicator symbolicates with.
 # `symbolic-demangle` builds the Swift demangler from C++ (build-essential).
-symbolic-common = "12.18"
-symbolic-debuginfo = "12.18"
-symbolic-symcache = "12.18"
-symbolic-demangle = "12.18"
+symbolic-common = "13.9"
+symbolic-debuginfo = "13.9"
+symbolic-symcache = "13.9"
+symbolic-demangle = "13.9"
 actix-multipart = "0.8"
 sha1 = "0.11"
 tempfile = "3.27.0"
@@ -156,7 +156,7 @@ mimalloc = "0.1.52"
 # OpenAPI spec generation (optional, behind `openapi` feature flag)
 utoipa = { version = "6.0.0", features = ["actix_extras", "uuid", "chrono"], optional = true }
 utoipa-scalar = { version = "0.4.0", features = ["actix-web"], optional = true }
-croner = "4.0.1"
+croner = "4.0.2"
 
 [target.'cfg(unix)'.dependencies]
 # statvfs: free disk before a SQLite compaction. Already built for `zip`.
@@ -169,7 +169,7 @@ nix = { version = "0.31.3", default-features = false, features = ["fs"] }
 rustrak = { path = ".", default-features = false, features = ["test-seams"] }
 
 # Names the request type for helpers that drive an `init_service` app
-actix-http = "3.19.0"
+actix-http = "3.20.0"
 
 # Test framework & fixtures
 rstest = "0.28.0"
@@ -185,7 +185,7 @@ testcontainers = "0.27.3"
 testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
 
 # Sentry SDK for E2E tests
-sentry = { version = "0.49.3", features = ["test"] }
+sentry = { version = "0.49.5", features = ["test"] }
 
 # Property-based testing
 proptest = "1.12.0"
@@ -194,7 +194,7 @@ proptest = "1.12.0"
 pretty_assertions = "1.4.1"
 
 # Validates real responses against openapi.json (openapi_contract_test)
-jsonschema = "0.59.0"
+jsonschema = "0.60.2"
 
 # tempfile moved to [dependencies] (needed at runtime for assembly)
 

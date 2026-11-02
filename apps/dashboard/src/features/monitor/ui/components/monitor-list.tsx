@@ -1,7 +1,6 @@
 import type { MonitorEnvironmentStats, MonitorResponse } from '@rustrak/client';
 import { cn, focusRingInset, MuteIcon, Skeleton, Text } from '@rustrak/ui';
-import { useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { formatRunDuration } from '@/features/monitor/lib/duration';
 import { monitorHref } from '@/features/monitor/lib/href';
 import {
@@ -123,8 +122,7 @@ function MonitorRow({
 }) {
   const t = useTranslations('crons');
   const format = useFormatter();
-  // The clock "late" is read against, taken once per row.
-  const [now] = useState(() => Date.now());
+  const now = useNow().getTime();
   const last = lastCheckIn(monitor);
   const next = nextCheckIn(monitor);
   const lastRun = newestRun(monitor);

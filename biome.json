@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.9/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -56,12 +56,17 @@
       }
     }
   },
+  "markdown": {
+    "formatter": { "enabled": false },
+    "linter": { "enabled": false }
+  },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "correctness": {
         "noChildrenProp": "off",
+        "noComponentHookFactories": "off",
         "useExhaustiveDependencies": "off",
         "noUnsafeOptionalChaining": "off",
         "noSwitchDeclarations": "off",
@@ -79,10 +84,7 @@
           "level": "error",
           "options": {
             "strictCase": true,
-            "filenameCases": [
-              "kebab-case",
-              "export"
-            ],
+            "filenameCases": ["kebab-case", "export"],
             "requireAscii": true
           }
         },
@@ -134,9 +136,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "apps/dashboard/src/routes/**"
-      ],
+      "includes": ["apps/dashboard/src/routes/**"],
       "linter": {
         "rules": {
           "style": {
@@ -146,9 +146,7 @@
       }
     },
     {
-      "includes": [
-        "**/src/shared/ui/components/shadcn/**"
-      ],
+      "includes": ["**/src/shared/ui/components/shadcn/**"],
       "linter": {
         "rules": {
           "a11y": {
@@ -158,9 +156,7 @@
       }
     },
     {
-      "includes": [
-        "packages/ui/src/**"
-      ],
+      "includes": ["packages/ui/src/**"],
       "linter": {
         "rules": {
           "a11y": {
@@ -171,9 +167,7 @@
       }
     },
     {
-      "includes": [
-        "packages/ui/src/styles/base.css"
-      ],
+      "includes": ["packages/ui/src/styles/base.css"],
       "linter": {
         "rules": {
           "complexity": {

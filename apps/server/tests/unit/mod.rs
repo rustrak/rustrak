@@ -8,6 +8,7 @@ mod decompression_test;
 mod envelope_parser_test;
 mod gen_ai_aggregation_test;
 mod gen_ai_test;
+mod github_issue_text_test;
 mod grouping_test;
 mod grouping_v1_test;
 mod jvm_test;

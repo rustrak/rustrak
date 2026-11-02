@@ -7,17 +7,38 @@ allowBuilds:
   lightningcss: true
   msw: true
   sharp: true
-  '@sentry/cli': false
-  '@swc/core': false
+  "@sentry/cli": false
+  "@swc/core": false
   vue-demi: false
 
 minimumReleaseAgeExclude:
-  - '@hookform/resolvers@6.0.0'
+  - "@hookform/resolvers@6.0.0"
   - cronstrue@3.33.0
-  - framer-motion@14.4.0
-  - motion-dom@14.4.0
-  - motion@14.4.0
+  - framer-motion@14.4.0 || 14.8.0
+  - motion-dom@14.4.0 || 14.8.0
+  - motion@14.4.0 || 14.8.0
   - shadcn@4.22.1
+  - "@ai-sdk/gateway@4.0.130"
+  - "@ai-sdk/provider-utils@5.0.71"
+  - "@scalar/agent-chat@0.12.49"
+  - "@scalar/api-client@3.23.6"
+  - "@scalar/api-reference-react@0.9.86"
+  - "@scalar/api-reference@1.76.3"
+  - "@scalar/asyncapi-to-markdown@0.2.5"
+  - "@scalar/blocks@0.6.3"
+  - "@scalar/components@0.33.1"
+  - "@scalar/oas-utils@0.20.18"
+  - "@scalar/openapi-to-markdown@1.7.3"
+  - "@scalar/schemas@0.16.0"
+  - "@scalar/sidebar@0.12.6"
+  - "@scalar/snippetz@0.10.14"
+  - "@scalar/themes@0.20.0"
+  - "@scalar/types@0.26.0"
+  - "@scalar/workspace-store@0.69.3"
+  - ai@7.0.157
+  - lucide-react@1.65.0
+  - tailwind-variants@4.0.0
+  - tsdown@0.23.4
 
 overrides:
   nextra>zod: 4.3.5

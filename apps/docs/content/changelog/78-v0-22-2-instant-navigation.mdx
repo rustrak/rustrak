@@ -1,0 +1,29 @@
+---
+version: v0.22.2
+title: Instant Navigation
+description: Dashboard pages open on the click with their own skeleton, and cron runs that start just before their slot are no longer marked missed
+date: 2026-10-30
+tags: [server, dashboard, crons]
+---
+
+## Instant navigation
+
+The dashboard used to keep the previous page on screen until the new one had
+its data, with no sign that the click registered. Every page now opens at once.
+
+- Each page shows its own loading skeleton while its data arrives
+- Changing a filter, a page or the event you are looking at keeps the current
+  results on screen, dimmed, instead of flashing the skeleton
+- The projects and releases lists only send an out-of-range page to the last
+  one for the page you are actually on
+
+## Fixes
+
+- A crontab monitor run that starts up to 10 seconds before its slot, for
+  example from clock skew, now fills that slot instead of leaving it to be
+  marked missed. A new environment's first run fills the first slot after it
+  started. ([@rookbreezy](https://github.com/rookbreezy))
+
+## Improvements
+
+- Dependencies updated to their latest versions

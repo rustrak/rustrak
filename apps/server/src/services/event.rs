@@ -120,6 +120,16 @@ impl EventService {
         Ok((events, has_more))
     }
 
+    /// The issue's newest event, payload included.
+    pub async fn latest_for_issue(pool: &DbPool, issue_id: Uuid) -> AppResult<Option<Event>> {
+        Ok(sqlx::query_as::<_, Event>(
+            "SELECT * FROM events WHERE issue_id = $1 ORDER BY timestamp DESC, id DESC LIMIT 1",
+        )
+        .bind(issue_id)
+        .fetch_optional(pool)
+        .await?)
+    }
+
     /// Gets an event by ID
     pub async fn get_by_id(pool: &DbPool, id: Uuid) -> AppResult<Event> {
         let event = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = $1")

@@ -1,5 +1,17 @@
 # @rustrak/server
 
+## 0.23.0
+
+### Minor Changes
+
+- [`c0c4d6b`](https://github.com/rustrak/rustrak/commit/c0c4d6b63b7336faaee85d0507a5ffa053a8bb00) Thanks [@AbianS](https://github.com/AbianS)! - GitHub issues opened from Rustrak start from a draft you can edit: the title, a description with a link back and the latest event in a code block, labels and the assignee's GitHub login. Issue templates set labels, a title prefix and a description footer for the whole instance and for each project, and issues opened automatically use them too. Recent times in the dashboard no longer read as future times (@rookbreezy).
+
+## 0.22.2
+
+### Patch Changes
+
+- [`740c1a7`](https://github.com/rustrak/rustrak/commit/740c1a7b22d84e1401b5b3ca12146639e9ad17fb) Thanks [@AbianS](https://github.com/AbianS)! - The dashboard now responds to every click at once: each page shows its own skeleton while it loads, and changing a filter or a page keeps the current results on screen, dimmed, until the new ones arrive. A crontab monitor run that starts up to 10 seconds before its slot now fills that slot instead of marking it missed (@rookbreezy). Dependencies updated to their latest versions.
+
 ## 0.22.1
 
 ### Patch Changes

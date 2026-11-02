@@ -1,5 +1,5 @@
 import { extendTailwindMerge } from 'tailwind-merge';
-import type { TVConfig } from 'tailwind-variants';
+import type { TWMergeConfig } from 'tailwind-variants/config';
 import {
   colorTokens,
   durationTokens,
@@ -35,6 +35,6 @@ export const twMergeConfig = {
       duration: [{ duration: [...durationTokens] }],
     },
   },
-} satisfies NonNullable<TVConfig['twMergeConfig']>;
+} satisfies TWMergeConfig;
 
 export const twMerge = extendTailwindMerge(twMergeConfig);

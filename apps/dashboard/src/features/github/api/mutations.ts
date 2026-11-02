@@ -5,7 +5,11 @@
  * issue's activity log, which belongs to another slice: those invalidate the
  * project's whole scope rather than only the GitHub panel.
  */
-import type { UpdateProjectRepository } from '@rustrak/client';
+import type {
+  CreateGitHubIssue,
+  IssueTemplate,
+  UpdateProjectRepository,
+} from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
 import { projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
@@ -30,6 +34,13 @@ export const githubMutations = {
     mutationOptions({
       mutationFn: () => orThrow(api().github.disconnect()),
       meta: { invalidates: [githubQueries.root(), ['projects']] },
+    }),
+  /** What every GitHub issue starts with, before a project's own. */
+  setIssueTemplate: () =>
+    mutationOptions({
+      mutationFn: (template: IssueTemplate) =>
+        orThrow(api().github.putIssueTemplate({ body: template })),
+      meta: { invalidates: [githubQueries.root()] },
     }),
   setRepository: (projectId: number) =>
     mutationOptions({
@@ -62,11 +73,11 @@ export const githubMutations = {
     }),
   createIssue: (projectId: number, issueId: string) =>
     mutationOptions({
-      mutationFn: () =>
+      mutationFn: (input: CreateGitHubIssue) =>
         orThrow(
           api().github.createIssue({
             path: { project_id: projectId, issue_id: issueId },
-            body: {},
+            body: input,
           }),
         ),
       meta: { invalidates: [projectScope(projectId)] },

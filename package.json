@@ -24,14 +24,14 @@
     "update:monorepo": "pnpx npm-check-updates -i --deep --doctorInstall pnpm"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.4",
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
     "react-doctor": "0.9.18",
-    "turbo": "2.11.9",
+    "turbo": "2.11.10",
     "typescript": "6.0.3"
   },
-  "packageManager": "pnpm@12.14.0",
+  "packageManager": "pnpm@12.16.1",
   "engines": {
     "node": ">=22.18"
   }

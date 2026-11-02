@@ -1,4 +1,4 @@
-import { createTV } from 'tailwind-variants';
+import { createTV } from 'tailwind-variants/config';
 import { twMergeConfig } from './tw-merge';
 
 /**
