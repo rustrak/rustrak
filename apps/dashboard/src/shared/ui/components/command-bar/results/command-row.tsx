@@ -1,22 +1,5 @@
 import type { ReactNode } from 'react';
-import { cn } from '@/shared/lib/utils';
-import {
-  CommandItem,
-  CommandShortcut,
-} from '@/shared/ui/components/shadcn/command';
-
-/**
- * Selection styling, spelled out rather than left to the generated component.
- *
- * cmdk writes `data-selected="false"` on every row, and Tailwind's bare
- * `data-selected:` variant matches the attribute's *presence*, so the kit's
- * own `data-selected:bg-muted` paints the whole list. Hence the explicit
- * `=true` test, with the same surface and ink a highlighted menu item gets.
- */
-const SELECTED_ROW = cn(
-  'data-[selected=false]:bg-transparent!',
-  'data-[selected=true]:bg-surface-selected! data-[selected=true]:text-fg',
-);
+import { CommandItem } from '../primitives/command';
 
 /** The icon's ink, raised with the row like a menu item's. */
 export const ROW_ICON =
@@ -57,10 +40,7 @@ export function CommandRow({
       // cmdk drives selection from the keyboard only. Without this the pointer
       // moves over a row and nothing happens, which reads as a dead list.
       onPointerMove={onHover}
-      className={cn(
-        'h-10 gap-3 rounded-lg! px-3 text-control text-fg-muted transition-none',
-        SELECTED_ROW,
-      )}
+      className="h-10 gap-3 rounded-lg px-3"
     >
       <span className="flex size-5 shrink-0 items-center justify-center">
         {media}
@@ -74,13 +54,11 @@ export function CommandRow({
           {description}
         </span>
       </span>
-      {/* `CommandShortcut` is what makes the kit hide its own trailing
-          CheckIcon, which would otherwise take the far edge. */}
       {badge || trailing ? (
-        <CommandShortcut className="flex shrink-0 items-center gap-3 tracking-normal">
+        <span className="ms-auto flex shrink-0 items-center gap-3 text-fg-subtle text-hint group-data-[selected=true]/command-item:text-fg">
           {badge}
           {trailing}
-        </CommandShortcut>
+        </span>
       ) : null}
     </CommandItem>
   );

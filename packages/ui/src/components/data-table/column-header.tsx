@@ -47,7 +47,7 @@ const columnHeader = tv({
   slots: {
     trigger: [
       'group/header flex h-full w-full min-w-0 items-center gap-1.5',
-      'font-mono text-column text-fg-meta uppercase',
+      'text-column text-fg-meta',
       'select-none',
       interactiveTransition,
       // Base UI swallows `:active` on anything that opens a popup: it opens on
@@ -65,7 +65,7 @@ const columnHeader = tv({
     label: 'truncate',
     /* State indicators keep the brand colour: they report the query, and the
        query is what the page is about. */
-    arrow: 'shrink-0 font-medium text-fg-brand normal-case tracking-normal',
+    arrow: 'shrink-0 font-medium text-fg-brand',
     funnel: 'shrink-0 text-fg-brand',
     chevron: [
       'shrink-0 text-fg-ghost',

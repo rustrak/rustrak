@@ -11,6 +11,8 @@ import {
   Input,
   NewIcon,
   RefreshIcon,
+  Select,
+  SelectItem,
   Switch,
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -33,13 +35,6 @@ import {
   SettingSection,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 
 interface RepositorySettingsProps {
   projectId: number;
@@ -123,33 +118,26 @@ export function RepositorySettings({
   // Changes the linked repository, or picks the first one.
   const picker = (
     <Select
-      value={repository?.repo_full_name ?? ''}
+      id="github-repository"
+      aria-label={t('repository.repository')}
+      // The full name is what the box shows, so no `items` map is needed.
+      value={repository?.repo_full_name ?? null}
       onValueChange={(value) => {
         const repo = choices.find((r) => r.full_name === value);
         if (repo) save({ repo });
       }}
       disabled={isPending || choices.length === 0}
+      placeholder={
+        choices.length === 0
+          ? t('repository.noRepositories')
+          : t('repository.choose')
+      }
     >
-      <SelectTrigger
-        id="github-repository"
-        aria-label={t('repository.repository')}
-        className="w-full"
-      >
-        <SelectValue
-          placeholder={
-            choices.length === 0
-              ? t('repository.noRepositories')
-              : t('repository.choose')
-          }
-        />
-      </SelectTrigger>
-      <SelectContent>
-        {choices.map((repo) => (
-          <SelectItem key={repo.full_name} value={repo.full_name}>
-            {repo.full_name}
-          </SelectItem>
-        ))}
-      </SelectContent>
+      {choices.map((repo) => (
+        <SelectItem key={repo.full_name} value={repo.full_name}>
+          {repo.full_name}
+        </SelectItem>
+      ))}
     </Select>
   );
 

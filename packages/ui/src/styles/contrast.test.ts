@@ -72,23 +72,23 @@ describe('dark theme', () => {
   const on = (fg: string, bg: string) => round(ratio(fg, bg, dark));
 
   it('reads text on the canvas', () => {
-    expect(on('--fg', '--surface-canvas')).toBe(17.72);
-    expect(on('--fg-secondary', '--surface-canvas')).toBe(13.87);
-    expect(on('--fg-tertiary', '--surface-canvas')).toBe(9.95);
-    expect(on('--fg-muted', '--surface-canvas')).toBe(6.91);
-    expect(on('--fg-subtle', '--surface-canvas')).toBe(5.04);
+    expect(on('--fg', '--surface-canvas')).toBe(13.02);
+    expect(on('--fg-secondary', '--surface-canvas')).toBe(10.37);
+    expect(on('--fg-tertiary', '--surface-canvas')).toBe(7.57);
+    expect(on('--fg-muted', '--surface-canvas')).toBe(6.28);
+    expect(on('--fg-subtle', '--surface-canvas')).toBe(5.38);
   });
 
   it('reads text on a panel and on a surface', () => {
-    expect(on('--fg', '--surface-panel')).toBe(17.08);
-    expect(on('--fg', '--surface')).toBe(16.5);
-    expect(on('--fg-muted', '--surface')).toBe(6.43);
-    expect(on('--fg-subtle', '--surface')).toBe(4.7);
+    expect(on('--fg', '--surface-panel')).toBe(11.5);
+    expect(on('--fg', '--surface')).toBe(10.9);
+    expect(on('--fg-muted', '--surface')).toBe(5.26);
+    expect(on('--fg-subtle', '--surface')).toBe(4.51);
   });
 
   it('reads lime everywhere it lands', () => {
-    expect(on('--fg-brand', '--surface-canvas')).toBe(15.86);
-    expect(on('--fg-brand', '--surface')).toBe(14.77);
+    expect(on('--fg-brand', '--surface-canvas')).toBe(14.43);
+    expect(on('--fg-brand', '--surface')).toBe(12.08);
     // The primary button: near-black on lime, never white.
     expect(on('--fg-on-brand', '--surface-brand')).toBe(14.38);
   });
@@ -101,14 +101,14 @@ describe('dark theme', () => {
    * a black chip, invisible, and nothing else in the suite noticed.
    */
   it('reads the tooltip on its own chip', () => {
-    expect(on('--fg-on-tooltip', '--surface-tooltip')).toBe(14.65);
+    expect(on('--fg-on-tooltip', '--surface-tooltip')).toBe(11.71);
   });
 
   it('reads severity text on the surface it is written on', () => {
-    expect(on('--sev-error-fg', '--surface-panel')).toBe(6.87);
-    expect(on('--sev-error-fg', '--surface')).toBe(6.64);
-    expect(on('--sev-warning-fg', '--surface-panel')).toBe(8.43);
-    expect(on('--sev-warning-fg', '--surface')).toBe(8.14);
+    expect(on('--sev-error-fg', '--surface-panel')).toBe(5.73);
+    expect(on('--sev-error-fg', '--surface')).toBe(5.43);
+    expect(on('--sev-warning-fg', '--surface-panel')).toBe(7.03);
+    expect(on('--sev-warning-fg', '--surface')).toBe(6.66);
   });
 });
 
@@ -126,9 +126,9 @@ describe('dark theme · the supporting greys are below AA on purpose', () => {
   const on = (fg: string) => round(ratio(fg, '--surface-panel', dark));
 
   it('pins what each one costs', () => {
-    expect(on('--fg-meta')).toBe(3.48);
-    expect(on('--fg-ghost')).toBe(2.69);
-    expect(on('--fg-placeholder')).toBe(2.69);
+    expect(on('--fg-meta')).toBe(3.58);
+    expect(on('--fg-ghost')).toBe(2.45);
+    expect(on('--fg-placeholder')).toBe(2.45);
   });
 
   it('keeps everything above them at AA', () => {
@@ -154,30 +154,31 @@ describe('light theme', () => {
   const on = (fg: string, bg: string) => round(ratio(fg, bg, light));
 
   it('reads text on the canvas', () => {
-    expect(on('--fg', '--surface-canvas')).toBe(16.68);
-    expect(on('--fg-secondary', '--surface-canvas')).toBe(9.69);
-    expect(on('--fg-tertiary', '--surface-canvas')).toBe(7.11);
-    expect(on('--fg-muted', '--surface-canvas')).toBe(4.55);
+    expect(on('--fg', '--surface-canvas')).toBe(15.91);
+    expect(on('--fg-secondary', '--surface-canvas')).toBe(12.32);
+    expect(on('--fg-tertiary', '--surface-canvas')).toBe(8.95);
+    expect(on('--fg-muted', '--surface-canvas')).toBe(6.05);
   });
 
   /*
-   * This one assertion is the reason the light theme does not simply reuse the
-   * dashboard's `--primary`. That value with white on it is 2.05:1.
+   * The light theme's button is a bright lime carrying near-black ink, as in
+   * dark: white on a lime that bright would be about 1.5:1. Lime as *text*
+   * (`--fg-brand`) stays the deep olive, the only lime that reads on white.
    */
-  it('reads white on the light theme lime', () => {
-    expect(on('--fg-on-brand', '--surface-brand')).toBe(5.74);
-    expect(on('--fg-brand', '--surface-canvas')).toBe(5.4);
+  it('reads ink on the light theme lime, and lime text on the canvas', () => {
+    expect(on('--fg-on-brand', '--surface-brand')).toBe(12.32);
+    expect(on('--fg-brand', '--surface-canvas')).toBe(5.36);
   });
 
   it('reads the tooltip on its own chip', () => {
-    expect(on('--fg-on-tooltip', '--surface-tooltip')).toBe(17.74);
+    expect(on('--fg-on-tooltip', '--surface-tooltip')).toBe(17.04);
     // What it would be if the tooltip used `--fg` like every other surface.
     expect(on('--fg', '--surface-tooltip')).toBe(1);
   });
 
   it('reads severity text on a card', () => {
-    expect(on('--sev-error-fg', '--surface')).toBe(6.35);
-    expect(on('--sev-warning-fg', '--surface')).toBe(5.65);
+    expect(on('--sev-error-fg', '--surface')).toBe(5.98);
+    expect(on('--sev-warning-fg', '--surface')).toBe(5.32);
   });
 
   it('keeps the readable tones at AA', () => {

@@ -1,12 +1,11 @@
 import type { RustrakError } from '@rustrak/client';
-import { PlugZap } from 'lucide-react';
+import { IntegrationsIcon, Text } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
 import {
   describeError,
   errorGuidance,
   errorHeadline,
 } from '@/shared/lib/error-copy';
-import { Card, CardContent } from '@/shared/ui/components/shadcn/card';
 
 /**
  * A failed read reported **in place**, inside a page that otherwise rendered.
@@ -41,27 +40,30 @@ export function ServiceUnavailable({
 
   return (
     <div className="p-6 md:p-8">
-      <Card className="border-dashed bg-transparent shadow-none">
-        <CardContent className="flex flex-col items-center justify-center px-6 py-14 text-center">
-          <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-muted">
-            <PlugZap
-              className="size-5 text-muted-foreground"
-              aria-hidden="true"
-            />
-          </div>
-          <p className="text-base font-bold tracking-tight">
-            {title ?? errorHeadline(error, t)}
-          </p>
-          <p className="text-muted-foreground mt-2 text-sm leading-relaxed max-w-sm">
-            {describeError(error, t)}
-          </p>
-          {guidance ? (
-            <p className="text-muted-foreground/70 mt-4 text-xs leading-relaxed max-w-sm">
-              {guidance}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-center justify-center rounded-xl border border-border border-dashed px-6 py-14 text-center">
+        <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-surface-raised">
+          <IntegrationsIcon
+            className="size-5 text-fg-subtle"
+            aria-hidden="true"
+          />
+        </div>
+        <Text variant="section" render={<p />}>
+          {title ?? errorHeadline(error, t)}
+        </Text>
+        <Text tone="subtle" render={<p />} className="mt-2 max-w-sm">
+          {describeError(error, t)}
+        </Text>
+        {guidance ? (
+          <Text
+            variant="hint"
+            tone="meta"
+            render={<p />}
+            className="mt-4 max-w-sm"
+          >
+            {guidance}
+          </Text>
+        ) : null}
+      </div>
     </div>
   );
 }

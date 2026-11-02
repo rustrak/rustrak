@@ -62,7 +62,7 @@ export function TransactionP95Bars({
   const t = useTranslations('transactions');
   if (rows.length === 0) {
     return (
-      <p className="py-6 text-center text-sm text-muted-foreground">
+      <p className="py-6 text-center text-sm text-fg-subtle">
         {t('p95.empty')}
       </p>
     );
@@ -87,7 +87,7 @@ export function TransactionP95Bars({
               className="group block"
             >
               <div className="flex items-baseline gap-2">
-                <span className="truncate font-mono text-xs font-medium transition-colors group-hover:text-primary">
+                <span className="truncate font-mono text-xs font-medium transition-colors group-hover:text-fg-brand">
                   {routeLabel(row.transaction_name)}
                 </span>
                 <span className="ml-auto shrink-0 text-xs font-semibold tabular-nums">
@@ -97,7 +97,7 @@ export function TransactionP95Bars({
 
               {/* Square at the baseline, 4px rounded data-end: the same mark
                   the error-volume bars use, turned on its side. */}
-              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-sm bg-muted">
+              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-sm bg-surface-hover">
                 <div
                   className="h-full rounded-r-sm"
                   style={{

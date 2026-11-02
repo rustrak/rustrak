@@ -1,5 +1,5 @@
 import { Combobox } from '@base-ui/react/combobox';
-import { CheckIcon, ChevronDownIcon } from 'lucide-react';
+import { ChevronDownIcon, SelectedIcon } from '@rustrak/ui';
 import { useMemo } from 'react';
 import {
   listTimeZones,
@@ -62,22 +62,22 @@ export function TimeZoneCombobox({
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           placeholder={placeholder}
-          className="flex h-9 w-full items-center rounded-md border border-input bg-transparent py-2 pr-8 pl-2.5 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+          className="flex h-9 w-full items-center rounded-md border border-border-field bg-transparent py-2 pr-8 pl-2.5 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger aria-invalid:ring-3 aria-invalid:ring-danger/20 dark:bg-surface-hover/30 dark:aria-invalid:border-danger/50 dark:aria-invalid:ring-danger/40"
         />
         <Combobox.Icon
           render={
-            <ChevronDownIcon className="pointer-events-none absolute top-2.5 right-2 size-4 text-muted-foreground" />
+            <ChevronDownIcon className="pointer-events-none absolute top-2.5 right-2 size-4 text-fg-subtle" />
           }
         />
       </div>
 
       <Combobox.Portal>
         <Combobox.Positioner className="isolate z-50" sideOffset={4}>
-          <Combobox.Popup className="max-h-72 w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-md bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10">
+          <Combobox.Popup className="max-h-72 w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-md bg-surface-floating p-1 text-fg shadow-md ring-1 ring-fg/10">
             {/* `empty:p-0`, not `hidden`: Base UI keeps this mounted as the live
                 region that announces "no results", and its padding would
                 otherwise sit as a blank strip above every non-empty list. */}
-            <Combobox.Empty className="px-2 py-3 text-center text-sm text-muted-foreground empty:p-0">
+            <Combobox.Empty className="px-2 py-3 text-center text-sm text-fg-subtle empty:p-0">
               {noResults}
             </Combobox.Empty>
             <Combobox.List>
@@ -87,15 +87,15 @@ export function TimeZoneCombobox({
                   value={option}
                   className={cn(
                     'relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none',
-                    'data-highlighted:bg-accent data-highlighted:text-accent-foreground',
+                    'data-highlighted:bg-surface-hover data-highlighted:text-fg',
                   )}
                 >
                   <span className="flex-1 truncate">{option.value}</span>
-                  <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                  <span className="shrink-0 font-mono text-xs text-fg-subtle">
                     {option.offset}
                   </span>
                   <Combobox.ItemIndicator className="absolute right-2">
-                    <CheckIcon className="size-4" />
+                    <SelectedIcon className="size-4" />
                   </Combobox.ItemIndicator>
                 </Combobox.Item>
               )}

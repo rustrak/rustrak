@@ -2,6 +2,7 @@ import type { GitHubStatus } from '@rustrak/client';
 import {
   Button,
   CommitIcon,
+  confirm,
   ExternalLinkIcon,
   Field,
   FieldHint,
@@ -16,8 +17,7 @@ import {
   WarningIcon,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
@@ -31,16 +31,6 @@ import {
   SettingSection,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 
 /**
  * Posts the manifest to GitHub the only way GitHub accepts it: a form the
@@ -77,10 +67,8 @@ export function GitHubIntegration({
   login?: ReactNode;
 }) {
   const t = useTranslations('github');
-  const [confirming, setConfirming] = useState(false);
   const { mutate, isPending } = useMutation({
     ...githubMutations.disconnect(),
-    onSuccess: () => setConfirming(false),
     onError: (error) =>
       toast.error(t('connection.disconnectFailed'), {
         description: error.message,
@@ -88,7 +76,16 @@ export function GitHubIntegration({
   });
   const { app, installations } = status;
 
-  const disconnect = () => mutate();
+  const disconnect = async () => {
+    const ok = await confirm({
+      title: t('connection.disconnectTitle'),
+      description: t('connection.disconnectDescription'),
+      tone: 'danger',
+      confirmLabel: t('connection.disconnect'),
+      cancelLabel: t('cancel'),
+    });
+    if (ok) mutate();
+  };
 
   // Said before anything is created: an app GitHub cannot deliver to would
   // half work, and the fix is on this server, not on GitHub.
@@ -118,41 +115,12 @@ export function GitHubIntegration({
             title={t('connection.disconnect')}
             description={t('connection.disconnectDescription')}
           >
-            <Button
-              variant="danger"
-              disabled={isPending}
-              onClick={() => setConfirming(true)}
-            >
+            <Button variant="danger" disabled={isPending} onClick={disconnect}>
               {t('connection.disconnect')}
             </Button>
           </SettingRow>
         </SettingSection>
       ) : null}
-
-      <AlertDialog open={confirming} onOpenChange={setConfirming}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('connection.disconnectTitle')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('connection.disconnectDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={disconnect}
-              disabled={isPending}
-              className="bg-danger text-white hover:bg-danger-fg"
-            >
-              {t('connection.disconnect')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

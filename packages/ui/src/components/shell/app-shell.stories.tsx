@@ -72,7 +72,7 @@ const GROUPS = [
     label: 'Triage',
     routes: [
       { icon: IssuesIcon, label: 'Issues', count: '142' },
-      { icon: FeedbackIcon, label: 'Feedback' },
+      { icon: FeedbackIcon, label: 'Feedback', status: 'info' },
       { icon: ReleasesIcon, label: 'Releases' },
     ],
   },
@@ -81,7 +81,7 @@ const GROUPS = [
     routes: [
       { icon: PerformanceIcon, label: 'Performance' },
       { icon: LogsIcon, label: 'Logs' },
-      { icon: CronsIcon, label: 'Crons', count: '1', tone: 'warning' },
+      { icon: CronsIcon, label: 'Crons', status: 'warning' },
       { icon: NotificationIcon, label: 'Alerts' },
       { icon: AgentsIcon, label: 'Agents' },
     ],
@@ -93,11 +93,15 @@ function ShellSidebar({ active }: { active: string }) {
     <Sidebar
       header={
         <>
-          <SidebarBrand render={<a href="#home" />} />
-          <SidebarProject
-            name="storefront-web"
-            detail="JavaScript"
-            platform="JS"
+          <SidebarBrand
+            render={<a href="#home" />}
+            switcher={
+              <SidebarProject
+                name="storefront-web"
+                detail="JavaScript"
+                platform="JS"
+              />
+            }
           />
           <SidebarSearch />
         </>
@@ -147,7 +151,7 @@ function ShellSidebar({ active }: { active: string }) {
               icon={route.icon}
               label={route.label}
               count={'count' in route ? route.count : undefined}
-              tone={'tone' in route ? route.tone : undefined}
+              status={'status' in route ? route.status : undefined}
               active={route.label === active}
               render={<a href={`#${route.label.toLowerCase()}`} />}
             />
@@ -241,8 +245,8 @@ const ISSUES = [
 function IssueList() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-subtle bg-panel">
-      <div className="flex h-row-head shrink-0 items-center gap-3 border-b border-border-subtle bg-surface px-4">
-        <Text variant="column" tone="meta" className="w-12 shrink-0">
+      <div className="flex h-row-head shrink-0 items-center gap-4 border-b border-border-subtle bg-surface px-4">
+        <Text variant="column" tone="meta" className="w-16 shrink-0">
           Level
         </Text>
         <Text variant="column" tone="meta" className="flex-1">
@@ -260,14 +264,14 @@ function IssueList() {
         {ISSUES.map((issue) => (
           <div
             key={issue.title}
-            className="flex h-row items-center gap-3 border-b border-border-divider px-4 hover:bg-surface"
+            className="flex h-row items-center gap-4 border-b border-border-divider px-4 hover:bg-surface-hover"
           >
-            <span className="w-12 shrink-0">
+            <span className="w-16 shrink-0">
               <Tag tone={issue.tone}>{issue.level}</Tag>
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex min-w-0 items-center gap-2.5">
-                <Text variant="value" truncate className="font-semibold">
+                <Text variant="value" truncate className="font-medium">
                   {issue.title}
                 </Text>
                 {'tag' in issue && issue.tag ? (
@@ -293,64 +297,73 @@ function IssueList() {
   );
 }
 
-/** The list screen: the frame, a title, the views, and rows. */
+/**
+ * The list screen. Three bands and no more: the title with its facts and
+ * every control for the page on the same line, the tabs on the header's
+ * bottom rule, and the rows in their card.
+ */
 export const IssueListScreen: Story = {
   render: () => (
-    <Frame>
-      <PageHeader
-        title="Issues"
-        summary={['142 unresolved', '3 regressions', '12.4K events today']}
-        actions={
-          <Button variant="secondary" icon={SaveViewIcon}>
-            Save view
-          </Button>
-        }
-      />
-      <Page scroll={false}>
-        <div className="flex shrink-0 items-center justify-end gap-2">
-          <SegmentedControl defaultValue="24 h" aria-label="Time range">
-            {['1 h', '24 h', '7 d', '30 d'].map((range) => (
-              <SegmentedItem key={range} value={range}>
-                {range}
-              </SegmentedItem>
-            ))}
-          </SegmentedControl>
-          <Button variant="secondary" icon={ExportIcon}>
-            Export
-          </Button>
-          <Button variant="primary" icon={NewIcon}>
-            New project
-          </Button>
-        </div>
-
-        <Tabs defaultValue="unresolved" className="min-h-0 flex-1">
-          <TabList
-            meta={
-              <Text variant="mono-sm" tone="placeholder">
-                sort: events desc
-              </Text>
-            }
-          >
-            <Tab value="unresolved">
-              Unresolved
-              <Count>143</Count>
-            </Tab>
-            <Tab value="resolved">
-              Resolved
-              <Count>1.208</Count>
-            </Tab>
-            <Tab value="muted">
-              Muted
-              <Count>36</Count>
-            </Tab>
-          </TabList>
-          <TabPanel value="unresolved" className="flex min-h-0 flex-1">
-            <IssueList />
-          </TabPanel>
-          <TabPanel value="resolved" />
-          <TabPanel value="muted" />
-        </Tabs>
-      </Page>
+    <Frame
+      actions={
+        <Button variant="ghost" icon={SaveViewIcon}>
+          Save view
+        </Button>
+      }
+    >
+      <Tabs defaultValue="unresolved" className="flex min-h-0 flex-1 flex-col">
+        <PageHeader
+          title="Issues"
+          summary={['142 unresolved', '3 regressions', '12.4K events today']}
+          actions={
+            <>
+              <SegmentedControl defaultValue="24 h" aria-label="Time range">
+                {['1 h', '24 h', '7 d', '30 d'].map((range) => (
+                  <SegmentedItem key={range} value={range}>
+                    {range}
+                  </SegmentedItem>
+                ))}
+              </SegmentedControl>
+              <Button variant="secondary" icon={ExportIcon}>
+                Export
+              </Button>
+              <Button variant="primary" icon={NewIcon}>
+                New alert
+              </Button>
+            </>
+          }
+          tabs={
+            <TabList
+              meta={
+                <Text variant="meta" tone="meta">
+                  Sorted by events
+                </Text>
+              }
+            >
+              <Tab value="unresolved">
+                Unresolved
+                <Count>143</Count>
+              </Tab>
+              <Tab value="resolved">
+                Resolved
+                <Count>1.208</Count>
+              </Tab>
+              <Tab value="muted">
+                Muted
+                <Count>36</Count>
+              </Tab>
+            </TabList>
+          }
+        />
+        <TabPanel
+          value="unresolved"
+          className="flex min-h-0 flex-1 px-page-gutter py-5"
+        >
+          <IssueList />
+        </TabPanel>
+        <TabPanel value="resolved" />
+        <TabPanel value="muted" />
+      </Tabs>
     </Frame>
   ),
 };

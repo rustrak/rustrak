@@ -1,38 +1,32 @@
-import { Eye, EyeOff } from 'lucide-react';
+import { ConcealIcon, Input, InputAction, RevealIcon } from '@rustrak/ui';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@/shared/ui/components/shadcn/input-group';
 
 /** A password input with a button that shows what was typed. */
 export function PasswordInput({
   className,
   'data-slot': _formSlot,
+  size: _size,
   ...props
 }: Omit<React.ComponentProps<'input'>, 'type'> & { 'data-slot'?: string }) {
   const t = useTranslations('common');
   const [visible, setVisible] = useState(false);
 
   // `FormControl` clones its props onto this element. Its `data-slot` is
-  // dropped: the input's own slot is what lights the group's focus ring.
+  // dropped, and `className` goes to the box, as it went to the group before.
   return (
-    <InputGroup className={className} data-disabled={props.disabled}>
-      <InputGroupInput type={visible ? 'text' : 'password'} {...props} />
-      <InputGroupAddon align="inline-end">
-        <InputGroupButton
-          size="icon-xs"
+    <Input
+      type={visible ? 'text' : 'password'}
+      boxClassName={className}
+      action={
+        <InputAction
+          icon={visible ? ConcealIcon : RevealIcon}
           tabIndex={-1}
-          disabled={props.disabled}
           onClick={() => setVisible((prev) => !prev)}
           aria-label={visible ? t('hidePassword') : t('showPassword')}
-        >
-          {visible ? <EyeOff /> : <Eye />}
-        </InputGroupButton>
-      </InputGroupAddon>
-    </InputGroup>
+        />
+      }
+      {...props}
+    />
   );
 }

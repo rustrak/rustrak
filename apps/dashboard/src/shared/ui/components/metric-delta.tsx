@@ -1,5 +1,5 @@
 import type { MetricDelta } from '@rustrak/client';
-import { ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { ArrowRightIcon, TrendDownIcon, TrendUpIcon } from '@rustrak/ui';
 import { useFormatter } from 'use-intl';
 import { percentChange } from '@/shared/lib/chart-format';
 import { deltaTone, type Polarity } from '@/shared/lib/metric-tone';
@@ -23,11 +23,11 @@ export function MetricDeltaText({ metric, polarity }: MetricDeltaTextProps) {
   if (change === null) {
     // An em dash would be wrong here: this is "nothing to compare against",
     // not "zero change", and the two must not look alike.
-    return <span className="text-xs text-muted-foreground">&ndash;</span>;
+    return <span className="text-xs text-fg-subtle">&ndash;</span>;
   }
 
   const Arrow =
-    change === 0 ? ArrowRight : change > 0 ? ArrowUpRight : ArrowDownRight;
+    change === 0 ? ArrowRightIcon : change > 0 ? TrendUpIcon : TrendDownIcon;
 
   return (
     <span

@@ -1,15 +1,11 @@
-import { Loader2 } from 'lucide-react';
-import { useTranslations } from 'use-intl';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
+  Button,
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from '@rustrak/ui';
+import { useTranslations } from 'use-intl';
 
 /**
  * The confirmation for deleting one project or a ticked batch.
@@ -38,38 +34,31 @@ export function DeleteProjectsDialog({
   const subject = t('deleteDialog.subject', { count: targetName ? 1 : count });
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {targetName
-              ? t('deleteDialog.titleNamed', { name: targetName })
-              : t('deleteDialog.titleCount', { count })}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {t('deleteDialog.description', { subject })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>
-            {t('deleteDialog.cancel')}
-          </AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                {t('deleteDialog.deleting')}
-              </>
-            ) : (
-              t('deleteDialog.confirm')
-            )}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Dialog alert open={open} onOpenChange={onOpenChange}>
+      <DialogHeader
+        dismissible={false}
+        title={
+          targetName
+            ? t('deleteDialog.titleNamed', { name: targetName })
+            : t('deleteDialog.titleCount', { count })
+        }
+        description={t('deleteDialog.description', { subject })}
+      />
+      <DialogFooter>
+        <DialogClose
+          disabled={isPending}
+          render={
+            <Button variant="secondary">{t('deleteDialog.cancel')}</Button>
+          }
+        />
+        <Button
+          variant="danger-primary"
+          onClick={onConfirm}
+          loading={isPending}
+        >
+          {isPending ? t('deleteDialog.deleting') : t('deleteDialog.confirm')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

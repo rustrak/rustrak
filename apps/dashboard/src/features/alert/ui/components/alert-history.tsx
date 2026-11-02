@@ -70,7 +70,7 @@ export function HistoryTable({
     <div className="min-h-0 flex-1 overflow-auto">
       <table className="w-full text-meta">
         <thead className="sticky top-0 bg-panel">
-          <tr className="border-border-divider border-b text-left font-mono text-column text-fg-meta uppercase">
+          <tr className="border-border-divider border-b text-left text-column text-fg-meta">
             <th className={cn(cell, 'w-28 font-normal')}>
               {t('columns.status')}
             </th>

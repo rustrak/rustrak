@@ -7,7 +7,7 @@ import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
  * The full-viewport failure screen.
  *
  * Deliberately the same shape as `/login`: brand panel on the left,
- * content on the right against `bg-card`. Both are pages the user meets with
+ * content on the right against `bg-surface`. Both are pages the user meets with
  * no header and no navigation, so they are the two places the app has to
  * introduce itself rather than assume the chrome already did.
  *
@@ -52,9 +52,9 @@ export function ErrorScreen({
   return (
     <div className="min-h-screen flex">
       {/* Left panel, decorative. Hidden below lg, exactly like the login. */}
-      <div className="hidden lg:flex lg:w-1/2 bg-background flex-col justify-between p-12 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_hsl(var(--card)),_transparent_50%)]" />
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent z-10" />
+      <div className="hidden lg:flex lg:w-1/2 bg-panel flex-col justify-between p-12 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--surface),_transparent_50%)]" />
+        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-panel to-transparent z-10" />
 
         <Link href="/" className="relative z-20 flex items-center w-fit">
           <RustrakWordmark className="h-[22px] w-auto" />
@@ -66,9 +66,9 @@ export function ErrorScreen({
         <div className="relative z-20 max-w-xl">
           <h2 className="text-6xl xl:text-7xl font-extrabold tracking-tighter leading-[1.05] mb-8 text-balance">
             {statement}
-            <span className="text-primary">.</span>
+            <span className="text-fg-brand">.</span>
           </h2>
-          <p className="text-muted-foreground text-lg font-medium leading-relaxed max-w-md">
+          <p className="text-fg-subtle text-lg font-medium leading-relaxed max-w-md">
             {statementDescription}
           </p>
         </div>
@@ -77,13 +77,13 @@ export function ErrorScreen({
             login: a 404 is the one page an unauthenticated stranger can reach
             on any path they like, so a number printed here is a number handed
             to anyone who types a wrong URL. */}
-        <div className="relative z-20 flex items-end text-xs text-muted-foreground font-mono">
+        <div className="relative z-20 flex items-end text-xs text-fg-subtle font-mono">
           <p>&copy; {new Date().getFullYear()} Rustrak</p>
         </div>
       </div>
 
       {/* Right panel, the actionable half. */}
-      <div className="w-full lg:w-1/2 bg-card flex items-center justify-center p-8 lg:p-12">
+      <div className="w-full lg:w-1/2 bg-surface flex items-center justify-center p-8 lg:p-12">
         <div className="w-full max-w-[420px] space-y-8">
           {/* Brand, for the viewports where the left panel is gone. */}
           <div className="lg:hidden flex items-center">
@@ -92,13 +92,11 @@ export function ErrorScreen({
 
           <div className="space-y-3">
             <h1 className="text-3xl font-bold tracking-tight">{headline}</h1>
-            <p className="text-muted-foreground leading-relaxed">
-              {description}
-            </p>
+            <p className="text-fg-subtle leading-relaxed">{description}</p>
           </div>
 
           {guidance ? (
-            <p className="text-sm text-muted-foreground border-l-2 border-primary/40 pl-4 leading-relaxed">
+            <p className="text-sm text-fg-subtle border-l-2 border-border-brand/40 pl-4 leading-relaxed">
               {guidance}
             </p>
           ) : null}
@@ -108,7 +106,7 @@ export function ErrorScreen({
           ) : null}
 
           {detail ? (
-            <p className="text-xs text-muted-foreground/70 font-mono break-all">
+            <p className="text-xs text-fg-subtle/70 font-mono break-all">
               {detail}
             </p>
           ) : null}

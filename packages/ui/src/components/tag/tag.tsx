@@ -4,11 +4,12 @@ import { tv, type VariantProps } from '../../lib/tv';
 /**
  * A status label: ERROR, FATAL, REGRESSION, STABLE, Owner.
  *
- * It defaults to plain coloured text with no box, and that is a settled
+ * It defaults to a dot and a word with no box, and that is a settled
  * decision: an issue list is already a grid of rows and rules, and
- * putting a filled pill on every row turned severity into confetti. The colour
- * plus the uppercase mono setting is enough to read it as a label rather than
- * as prose, and it costs no width.
+ * putting a filled pill on every row turned severity into confetti. The dot
+ * is what the eye scans down a column; the word, in sentence case whatever
+ * case it was handed in, is what it reads. Tracked mono capitals made every
+ * row shout.
  *
  * `soft` brings the tinted background back for the one case that needs it: a
  * label sitting on its own, away from a column of its peers -- a role beside a
@@ -19,7 +20,7 @@ import { tv, type VariantProps } from '../../lib/tv';
  * survives the colour being unavailable.
  */
 const tag = tv({
-  base: 'inline-flex shrink-0 items-center font-mono text-tag uppercase',
+  base: 'inline-flex shrink-0 items-center gap-1.5 text-tag',
   variants: {
     tone: {
       error: 'text-sev-error-fg',
@@ -29,8 +30,8 @@ const tag = tv({
       neutral: 'text-fg-tertiary',
     },
     variant: {
-      text: '',
-      soft: 'h-5 rounded-xs px-1.5',
+      text: "before:size-1.5 before:shrink-0 before:rounded-pill before:bg-current before:content-['']",
+      soft: 'h-5 rounded-sm px-1.5',
     },
   },
   compoundVariants: [
@@ -51,7 +52,14 @@ export interface TagProps extends VariantProps<typeof tag> {
 }
 
 export function Tag({ tone, variant, className, children }: TagProps) {
-  return <span className={tag({ tone, variant, className })}>{children}</span>;
+  return (
+    <span className={tag({ tone, variant, className })}>
+      {/* `inline-block`, because `::first-letter` only reaches a block. */}
+      <span className="inline-block lowercase first-letter:uppercase">
+        {children}
+      </span>
+    </span>
+  );
 }
 
 Tag.displayName = 'Tag';

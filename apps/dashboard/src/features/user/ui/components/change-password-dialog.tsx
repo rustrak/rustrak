@@ -1,5 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button } from '@rustrak/ui';
+import {
+  Button,
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -8,17 +15,6 @@ import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { userMutations } from '@/features/user/api/mutations';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
-import { PasswordInput } from '@/shared/ui/components/password-input';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/shared/ui/components/shadcn/dialog';
 import {
   Form,
   FormControl,
@@ -27,7 +23,8 @@ import {
   FormLabel,
   FormMessage,
   FormRootError,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
+import { PasswordInput } from '@/shared/ui/components/password-input';
 
 type ChangePasswordFormData = {
   current_password: string;
@@ -110,52 +107,56 @@ export function ChangePasswordDialog() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger render={<Button>{t('account.password.change')}</Button>} />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t('account.password.change')}</DialogTitle>
-          <DialogDescription>
-            {t('account.password.dialogDescription')}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Button onClick={() => setOpen(true)}>
+        {t('account.password.change')}
+      </Button>
+      <Dialog open={open} onOpenChange={onOpenChange} size="md">
+        <DialogHeader
+          title={t('account.password.change')}
+          description={t('account.password.dialogDescription')}
+        />
 
         <Form {...form}>
           <form
             noValidate
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4"
+            className="flex min-h-0 flex-col"
           >
-            {FIELDS.map(([name, label, autoComplete]) => (
-              <FormField
-                key={name}
-                control={form.control}
-                name={name}
-                render={({ field }) => (
-                  <FormItem className="space-y-2">
-                    <FormLabel className="text-label text-fg-muted">
-                      {t(`account.password.${label}`)}
-                    </FormLabel>
-                    <FormControl>
-                      <PasswordInput
-                        autoComplete={autoComplete}
-                        disabled={isPending}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ))}
+            <DialogBody className="flex flex-col gap-4">
+              {FIELDS.map(([name, label, autoComplete]) => (
+                <FormField
+                  key={name}
+                  control={form.control}
+                  name={name}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t(`account.password.${label}`)}</FormLabel>
+                      <FormControl>
+                        <PasswordInput
+                          autoComplete={autoComplete}
+                          disabled={isPending}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ))}
 
-            {/* Where a failure that named no field of this form lands. */}
-            <FormRootError />
+              {/* Where a failure that named no field of this form lands. */}
+              <FormRootError />
+            </DialogBody>
 
             <DialogFooter>
               <DialogClose
                 disabled={isPending}
-                render={<Button>{t('account.password.cancel')}</Button>}
+                render={
+                  <Button variant="secondary">
+                    {t('account.password.cancel')}
+                  </Button>
+                }
               />
               <Button type="submit" variant="primary" loading={isPending}>
                 {isPending
@@ -165,7 +166,7 @@ export function ChangePasswordDialog() {
             </DialogFooter>
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }

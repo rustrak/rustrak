@@ -1,4 +1,4 @@
-import { fromLucide } from './adapters/lucide';
+import { fromHugeicons } from './adapters/hugeicons';
 import {
   ArrowDownRight,
   ArrowLeft,
@@ -9,6 +9,8 @@ import {
   Bookmark,
   BookOpen,
   Bot,
+  Braces,
+  Bug,
   CalendarClock,
   Check,
   ChevronDown,
@@ -18,6 +20,7 @@ import {
   ChevronsRight,
   ChevronsUpDown,
   ChevronUp,
+  Circle,
   CircleAlert,
   CircleCheck,
   CircleHelp,
@@ -31,11 +34,14 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Folder,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
+  Globe,
   GripVertical,
   HardDrive,
+  Hash,
   House,
   Inbox,
   KeyRound,
@@ -44,9 +50,12 @@ import {
   ListFilter,
   LoaderCircle,
   LogOut,
+  Mail,
   Menu,
   MessageSquare,
   Minus,
+  MousePointerClick,
+  Navigation,
   Palette,
   PanelLeft,
   PanelRight,
@@ -61,19 +70,23 @@ import {
   Search,
   Server,
   Settings,
+  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
   Star,
+  Terminal,
   Trash2,
   TriangleAlert,
   Undo2,
+  Unlink,
   User,
   Users,
   VolumeX,
+  Webhook,
   Wrench,
   X,
   Zap,
-} from './adapters/lucide-symbols';
+} from './adapters/hugeicons-symbols';
 import type { IconComponent } from './icon';
 
 /**
@@ -93,75 +106,78 @@ import type { IconComponent } from './icon';
 /* --- Navigation · the sidebar's destinations ----------------------------- */
 
 /** A project's front page. The house, because it is where you land. */
-export const OverviewIcon = fromLucide('OverviewIcon', House);
+export const OverviewIcon = fromHugeicons('OverviewIcon', House);
 /** Every project at once: the workspace, above any one of them. */
-export const ProjectsIcon = fromLucide('ProjectsIcon', LayoutDashboard);
-export const IssuesIcon = fromLucide('IssuesIcon', CircleAlert);
-export const ReleasesIcon = fromLucide('ReleasesIcon', Rocket);
-export const PerformanceIcon = fromLucide('PerformanceIcon', Zap);
-export const AgentsIcon = fromLucide('AgentsIcon', Bot);
-export const LogsIcon = fromLucide('LogsIcon', ScrollText);
-export const CronsIcon = fromLucide('CronsIcon', CalendarClock);
-export const FeedbackIcon = fromLucide('FeedbackIcon', MessageSquare);
-export const SettingsIcon = fromLucide('SettingsIcon', Settings);
-export const DocsIcon = fromLucide('DocsIcon', BookOpen);
-export const SignOutIcon = fromLucide('SignOutIcon', LogOut);
+export const ProjectsIcon = fromHugeicons('ProjectsIcon', LayoutDashboard);
+export const IssuesIcon = fromHugeicons('IssuesIcon', CircleAlert);
+export const ReleasesIcon = fromHugeicons('ReleasesIcon', Rocket);
+export const PerformanceIcon = fromHugeicons('PerformanceIcon', Zap);
+export const AgentsIcon = fromHugeicons('AgentsIcon', Bot);
+export const LogsIcon = fromHugeicons('LogsIcon', ScrollText);
+export const CronsIcon = fromHugeicons('CronsIcon', CalendarClock);
+export const FeedbackIcon = fromHugeicons('FeedbackIcon', MessageSquare);
+export const SettingsIcon = fromHugeicons('SettingsIcon', Settings);
+export const DocsIcon = fromHugeicons('DocsIcon', BookOpen);
+export const SignOutIcon = fromHugeicons('SignOutIcon', LogOut);
 
 /* --- Directions ----------------------------------------------------------- */
 
-export const ChevronRightIcon = fromLucide('ChevronRightIcon', ChevronRight);
-export const ChevronLeftIcon = fromLucide('ChevronLeftIcon', ChevronLeft);
-export const ChevronDownIcon = fromLucide('ChevronDownIcon', ChevronDown);
-export const ChevronUpIcon = fromLucide('ChevronUpIcon', ChevronUp);
+export const ChevronRightIcon = fromHugeicons('ChevronRightIcon', ChevronRight);
+export const ChevronLeftIcon = fromHugeicons('ChevronLeftIcon', ChevronLeft);
+export const ChevronDownIcon = fromHugeicons('ChevronDownIcon', ChevronDown);
+export const ChevronUpIcon = fromHugeicons('ChevronUpIcon', ChevronUp);
 /** The two-arrow chevron of a thing you can switch: the project card. */
-export const SelectorIcon = fromLucide('SelectorIcon', ChevronsUpDown);
-export const CollapsePanelIcon = fromLucide('CollapsePanelIcon', ChevronsLeft);
-export const ExpandPanelIcon = fromLucide('ExpandPanelIcon', ChevronsRight);
-export const PanelLeftIcon = fromLucide('PanelLeftIcon', PanelLeft);
-export const PanelRightIcon = fromLucide('PanelRightIcon', PanelRight);
+export const SelectorIcon = fromHugeicons('SelectorIcon', ChevronsUpDown);
+export const CollapsePanelIcon = fromHugeicons(
+  'CollapsePanelIcon',
+  ChevronsLeft,
+);
+export const ExpandPanelIcon = fromHugeicons('ExpandPanelIcon', ChevronsRight);
+export const PanelLeftIcon = fromHugeicons('PanelLeftIcon', PanelLeft);
+export const PanelRightIcon = fromHugeicons('PanelRightIcon', PanelRight);
 /** Out of where you are, up one level: from a project to all of them. */
-export const BackIcon = fromLucide('BackIcon', ArrowLeft);
-export const ArrowRightIcon = fromLucide('ArrowRightIcon', ArrowRight);
+export const BackIcon = fromHugeicons('BackIcon', ArrowLeft);
+export const ArrowRightIcon = fromHugeicons('ArrowRightIcon', ArrowRight);
 /** A figure that went up. In this product that is usually bad news. */
-export const TrendUpIcon = fromLucide('TrendUpIcon', ArrowUpRight);
-export const TrendDownIcon = fromLucide('TrendDownIcon', ArrowDownRight);
-export const CompareIcon = fromLucide('CompareIcon', ArrowLeftRight);
+export const TrendUpIcon = fromHugeicons('TrendUpIcon', ArrowUpRight);
+export const TrendDownIcon = fromHugeicons('TrendDownIcon', ArrowDownRight);
+export const CompareIcon = fromHugeicons('CompareIcon', ArrowLeftRight);
 
 /* --- Actions -------------------------------------------------------------- */
 
-export const SearchIcon = fromLucide('SearchIcon', Search);
-export const FilterIcon = fromLucide('FilterIcon', ListFilter);
-export const FacetsIcon = fromLucide('FacetsIcon', SlidersHorizontal);
-export const ColumnsIcon = fromLucide('ColumnsIcon', Columns3);
-export const NewIcon = fromLucide('NewIcon', Plus);
-export const RemoveIcon = fromLucide('RemoveIcon', Minus);
-export const CloseIcon = fromLucide('CloseIcon', X);
-export const CopyIcon = fromLucide('CopyIcon', Copy);
+export const SearchIcon = fromHugeicons('SearchIcon', Search);
+export const FilterIcon = fromHugeicons('FilterIcon', ListFilter);
+export const FacetsIcon = fromHugeicons('FacetsIcon', SlidersHorizontal);
+export const ColumnsIcon = fromHugeicons('ColumnsIcon', Columns3);
+export const NewIcon = fromHugeicons('NewIcon', Plus);
+export const RemoveIcon = fromHugeicons('RemoveIcon', Minus);
+export const CloseIcon = fromHugeicons('CloseIcon', X);
+export const CopyIcon = fromHugeicons('CopyIcon', Copy);
 /** Send a test: an alert channel's "try it". */
-export const TestIcon = fromLucide('TestIcon', Play);
+export const TestIcon = fromHugeicons('TestIcon', Play);
 /** Take a value over by hand: a slug that stops following its name. */
-export const EditIcon = fromLucide('EditIcon', Pencil);
-export const ExportIcon = fromLucide('ExportIcon', Download);
-export const RefreshIcon = fromLucide('RefreshIcon', RefreshCw);
-export const DeleteIcon = fromLucide('DeleteIcon', Trash2);
-export const OverflowIcon = fromLucide('OverflowIcon', EllipsisVertical);
+export const EditIcon = fromHugeicons('EditIcon', Pencil);
+export const ExportIcon = fromHugeicons('ExportIcon', Download);
+export const RefreshIcon = fromHugeicons('RefreshIcon', RefreshCw);
+export const DeleteIcon = fromHugeicons('DeleteIcon', Trash2);
+export const OverflowIcon = fromHugeicons('OverflowIcon', EllipsisVertical);
 /** The horizontal ellipsis, for a row's inline menu. */
-export const MoreIcon = fromLucide('MoreIcon', Ellipsis);
-export const MenuIcon = fromLucide('MenuIcon', Menu);
+export const MoreIcon = fromHugeicons('MoreIcon', Ellipsis);
+export const MenuIcon = fromHugeicons('MenuIcon', Menu);
 /** The handle a row is dragged by to reorder it. */
-export const DragIcon = fromLucide('DragIcon', GripVertical);
-export const AppearanceIcon = fromLucide('AppearanceIcon', Palette);
-export const ExternalLinkIcon = fromLucide('ExternalLinkIcon', ExternalLink);
-export const LinkIcon = fromLucide('LinkIcon', Link);
-export const AttachmentIcon = fromLucide('AttachmentIcon', Paperclip);
-export const AssignIcon = fromLucide('AssignIcon', Users);
-export const SaveViewIcon = fromLucide('SaveViewIcon', Bookmark);
-export const StarIcon = fromLucide('StarIcon', Star);
-export const CommentIcon = fromLucide('CommentIcon', MessageSquare);
-export const AutofixIcon = fromLucide('AutofixIcon', Sparkles);
-export const ConfigureIcon = fromLucide('ConfigureIcon', Wrench);
+export const DragIcon = fromHugeicons('DragIcon', GripVertical);
+export const AppearanceIcon = fromHugeicons('AppearanceIcon', Palette);
+export const ExternalLinkIcon = fromHugeicons('ExternalLinkIcon', ExternalLink);
+export const LinkIcon = fromHugeicons('LinkIcon', Link);
+export const AttachmentIcon = fromHugeicons('AttachmentIcon', Paperclip);
+export const AssignIcon = fromHugeicons('AssignIcon', Users);
+export const SaveViewIcon = fromHugeicons('SaveViewIcon', Bookmark);
+export const StarIcon = fromHugeicons('StarIcon', Star);
+export const CommentIcon = fromHugeicons('CommentIcon', MessageSquare);
+export const AutofixIcon = fromHugeicons('AutofixIcon', Sparkles);
+export const ConfigureIcon = fromHugeicons('ConfigureIcon', Wrench);
 /** The tick beside the option that is in effect: the current project. */
-export const SelectedIcon = fromLucide('SelectedIcon', Check);
+export const SelectedIcon = fromHugeicons('SelectedIcon', Check);
 
 /* --- Issue lifecycle ------------------------------------------------------
    The three verbs an issue understands. `resolve` is a plain check because it
@@ -169,45 +185,60 @@ export const SelectedIcon = fromLucide('SelectedIcon', Check);
    label; `mute` is the crossed speaker, which is what silencing looks like
    everywhere else. */
 
-export const ResolveIcon = fromLucide('ResolveIcon', Check);
-export const MuteIcon = fromLucide('MuteIcon', VolumeX);
-export const UnresolveIcon = fromLucide('UnresolveIcon', CircleX);
+export const ResolveIcon = fromHugeicons('ResolveIcon', Check);
+export const MuteIcon = fromHugeicons('MuteIcon', VolumeX);
+export const UnresolveIcon = fromHugeicons('UnresolveIcon', CircleX);
 /** Take it back: the action an undo toast carries. */
-export const UndoIcon = fromLucide('UndoIcon', Undo2);
+export const UndoIcon = fromHugeicons('UndoIcon', Undo2);
 
 /* --- Severity and status --------------------------------------------------
    `error` is the crossed circle, `warning` the triangle, `ok` the ticked
    circle. Shape, not only colour: severity has to survive being printed in
    grey. */
 
-export const ErrorIcon = fromLucide('ErrorIcon', CircleX);
-export const WarningIcon = fromLucide('WarningIcon', TriangleAlert);
-export const OkIcon = fromLucide('OkIcon', CircleCheck);
-export const InfoIcon = fromLucide('InfoIcon', CircleAlert);
+export const ErrorIcon = fromHugeicons('ErrorIcon', CircleX);
+export const WarningIcon = fromHugeicons('WarningIcon', TriangleAlert);
+export const OkIcon = fromHugeicons('OkIcon', CircleCheck);
+export const InfoIcon = fromHugeicons('InfoIcon', CircleAlert);
 /** "How does this work?": opens an explanation, never a setting. */
-export const HelpIcon = fromLucide('HelpIcon', CircleHelp);
-export const SpinnerIcon = fromLucide('SpinnerIcon', LoaderCircle);
-export const NotificationIcon = fromLucide('NotificationIcon', Bell);
-export const TimeIcon = fromLucide('TimeIcon', Clock);
-export const EmptyIcon = fromLucide('EmptyIcon', Inbox);
-export const WatchIcon = fromLucide('WatchIcon', Eye);
+export const HelpIcon = fromHugeicons('HelpIcon', CircleHelp);
+export const SpinnerIcon = fromHugeicons('SpinnerIcon', LoaderCircle);
+export const NotificationIcon = fromHugeicons('NotificationIcon', Bell);
+export const TimeIcon = fromHugeicons('TimeIcon', Clock);
+export const EmptyIcon = fromHugeicons('EmptyIcon', Inbox);
+export const WatchIcon = fromHugeicons('WatchIcon', Eye);
 /** A secret field's reveal toggle: what shows the value, and what hides it. */
-export const RevealIcon = fromLucide('RevealIcon', Eye);
-export const ConcealIcon = fromLucide('ConcealIcon', EyeOff);
+export const RevealIcon = fromHugeicons('RevealIcon', Eye);
+export const ConcealIcon = fromHugeicons('ConcealIcon', EyeOff);
 
 /* --- Entities -------------------------------------------------------------
    What the data is about, rather than which page shows it. */
 
-export const ReleaseIcon = fromLucide('ReleaseIcon', GitBranch);
-export const CommitIcon = fromLucide('CommitIcon', GitCommitHorizontal);
-export const MergeIcon = fromLucide('MergeIcon', GitMerge);
-export const EnvironmentIcon = fromLucide('EnvironmentIcon', Server);
-export const MemberIcon = fromLucide('MemberIcon', User);
-export const TeamIcon = fromLucide('TeamIcon', Users);
-export const IntegrationsIcon = fromLucide('IntegrationsIcon', Plug);
-export const StorageIcon = fromLucide('StorageIcon', HardDrive);
+export const ReleaseIcon = fromHugeicons('ReleaseIcon', GitBranch);
+export const CommitIcon = fromHugeicons('CommitIcon', GitCommitHorizontal);
+export const MergeIcon = fromHugeicons('MergeIcon', GitMerge);
+export const EnvironmentIcon = fromHugeicons('EnvironmentIcon', Server);
+export const MemberIcon = fromHugeicons('MemberIcon', User);
+export const TeamIcon = fromHugeicons('TeamIcon', Users);
+export const IntegrationsIcon = fromHugeicons('IntegrationsIcon', Plug);
+export const StorageIcon = fromHugeicons('StorageIcon', HardDrive);
 /** An API token: what lets something other than a person in. */
-export const TokensIcon = fromLucide('TokensIcon', KeyRound);
+export const TokensIcon = fromHugeicons('TokensIcon', KeyRound);
+export const PayloadIcon = fromHugeicons('PayloadIcon', Braces);
+export const HashIcon = fromHugeicons('HashIcon', Hash);
+export const MailIcon = fromHugeicons('MailIcon', Mail);
+export const WebhookIcon = fromHugeicons('WebhookIcon', Webhook);
+export const UnlinkIcon = fromHugeicons('UnlinkIcon', Unlink);
+export const SecurityIcon = fromHugeicons('SecurityIcon', ShieldAlert);
+export const FirstPageIcon = fromHugeicons('FirstPageIcon', ChevronsLeft);
+export const LastPageIcon = fromHugeicons('LastPageIcon', ChevronsRight);
+export const BugIcon = fromHugeicons('BugIcon', Bug);
+export const FolderIcon = fromHugeicons('FolderIcon', Folder);
+export const DotIcon = fromHugeicons('DotIcon', Circle);
+export const NetworkIcon = fromHugeicons('NetworkIcon', Globe);
+export const ClickIcon = fromHugeicons('ClickIcon', MousePointerClick);
+export const NavigationIcon = fromHugeicons('NavigationIcon', Navigation);
+export const ConsoleIcon = fromHugeicons('ConsoleIcon', Terminal);
 
 /**
  * The same icons reachable by name, for navigation and action bars that are
@@ -291,6 +322,21 @@ export const icons = {
   integrations: IntegrationsIcon,
   storage: StorageIcon,
   tokens: TokensIcon,
+  payload: PayloadIcon,
+  hash: HashIcon,
+  mail: MailIcon,
+  webhook: WebhookIcon,
+  unlink: UnlinkIcon,
+  security: SecurityIcon,
+  firstPage: FirstPageIcon,
+  lastPage: LastPageIcon,
+  bug: BugIcon,
+  folder: FolderIcon,
+  dot: DotIcon,
+  network: NetworkIcon,
+  click: ClickIcon,
+  navigation: NavigationIcon,
+  console: ConsoleIcon,
 } as const satisfies Record<string, IconComponent>;
 
 export type IconName = keyof typeof icons;

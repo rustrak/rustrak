@@ -1,34 +1,8 @@
+import { Checkbox, ChevronRightIcon } from '@rustrak/ui';
 import type { RowData } from '@tanstack/react-table';
-import { ChevronRight } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import { Checkbox } from '@/shared/ui/components/shadcn/checkbox';
 import { StopPropagation } from '@/shared/ui/components/stop-propagation';
 import { createAppColumnHelper } from './use-app-table';
-
-/**
- * The indeterminate state, drawn from outside the shadcn component.
- *
- * Base UI reports a partial selection as `aria-checked="mixed"` and nothing
- * else; the shadcn checkbox only styles `data-checked` and only ever renders a
- * tick, so a header covering one selected row out of twelve draws a full tick
- * and claims all of them are selected. These variants fill the box the same
- * way a checked one is filled, hide the tick, and put a dash in its place.
- *
- * `before:` and not `after:`, which the component already spends on widening
- * its hit area.
- */
-const MIXED = cn(
-  'aria-[checked=mixed]:border-primary aria-[checked=mixed]:bg-primary',
-  // The component carries a `dark:bg-input/30`, which sorts after a bare
-  // `aria-` variant and would otherwise win in dark mode and leave the box
-  // empty with an invisible dash inside it.
-  'dark:aria-[checked=mixed]:bg-primary',
-  'aria-[checked=mixed]:text-primary-foreground',
-  '[&[aria-checked=mixed]_svg]:hidden',
-  'aria-[checked=mixed]:before:absolute aria-[checked=mixed]:before:h-0.5',
-  'aria-[checked=mixed]:before:w-2 aria-[checked=mixed]:before:rounded-full',
-  'aria-[checked=mixed]:before:bg-current',
-);
 
 /**
  * The tick column, for tables with batch actions.
@@ -51,7 +25,6 @@ export function selectionColumn<TData extends RowData>(
     header: ({ table }) => (
       <StopPropagation>
         <Checkbox
-          className={MIXED}
           aria-label={t('selectAllPageRows')}
           checked={table.getIsAllPageRowsSelected()}
           indeterminate={
@@ -98,10 +71,10 @@ export function expandColumn<TData extends RowData>(
     maxSize: 36,
     header: () => <span className="sr-only">{t('expand')}</span>,
     cell: ({ row }) => (
-      <ChevronRight
+      <ChevronRightIcon
         aria-hidden="true"
         className={cn(
-          'size-4 text-muted-foreground transition-transform',
+          'size-4 text-fg-subtle transition-transform',
           row.getIsExpanded() && 'rotate-90',
         )}
       />

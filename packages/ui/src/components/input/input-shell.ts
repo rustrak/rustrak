@@ -40,7 +40,10 @@ export const inputShell = tv({
       'has-[textarea[readonly]]:border-transparent',
       'has-[textarea[readonly]]:bg-surface-disabled',
 
+      // `data-invalid` from the `invalid` prop, `aria-invalid` from a form
+      // library that marks the control itself.
       'has-[[data-invalid]]:border-danger',
+      'has-[[aria-invalid=true]]:border-danger',
 
       'has-[input:disabled]:border-border-subtle',
       'has-[input:disabled]:bg-surface-disabled',

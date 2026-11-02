@@ -141,6 +141,22 @@ function KpiPlaceholder() {
   );
 }
 
+/**
+ * No sessions at all: two cards of dashes would weigh as much as the figures
+ * beside them. One quiet note holds both places instead.
+ */
+function NoSessionsNote() {
+  const t = useTranslations('projectPages.overview');
+  return (
+    <div className="col-span-2 flex min-w-0 flex-col justify-center gap-1 rounded-2xl border border-dashed border-border-subtle px-4 py-3.5 sm:px-5">
+      <span className="truncate text-meta text-fg-meta">
+        {t('crashFreeSessions')} · {t('crashFreeUsers')}
+      </span>
+      <span className="text-value text-fg-subtle">{t('noSessions')}</span>
+    </div>
+  );
+}
+
 export function KpiRow({
   reads,
   filters,
@@ -216,37 +232,31 @@ export function KpiRow({
         </>
       )}
 
-      {health.data && trend.data ? (
+      {health.data?.total === 0 ? (
+        <NoSessionsNote />
+      ) : health.data && trend.data ? (
         <>
           <Kpi
             label={t('crashFreeSessions')}
             value={percent(health.data.crash_free_sessions_rate)}
-            footnote={
-              health.data.total === 0
-                ? t('noSessions')
-                : t('sessionsCount', {
-                    count: format.number(health.data.total, 'compact'),
-                  })
-            }
+            footnote={t('sessionsCount', {
+              count: format.number(health.data.total, 'compact'),
+            })}
             trend={
-              health.data.total === 0 ? null : (
-                <Sparkline
-                  values={trend.data.map((p) => p.crashed)}
-                  tone="danger"
-                  label={t('crashes')}
-                  className="hidden h-8 w-28 shrink-0 sm:block"
-                />
-              )
+              <Sparkline
+                values={trend.data.map((p) => p.crashed)}
+                tone="danger"
+                label={t('crashes')}
+                className="hidden h-8 w-28 shrink-0 sm:block"
+              />
             }
           />
           <Kpi
             label={t('crashFreeUsers')}
             value={percent(health.data.crash_free_users_rate)}
-            footnote={
-              health.data.total === 0
-                ? t('noSessions')
-                : t('activeReleases', { count: health.data.active_releases })
-            }
+            footnote={t('activeReleases', {
+              count: health.data.active_releases,
+            })}
           />
         </>
       ) : (

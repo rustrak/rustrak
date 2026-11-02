@@ -1,14 +1,6 @@
 import type { Row, RowData } from '@tanstack/react-table';
 import { Fragment, type ReactNode, useRef } from 'react';
 import { cn } from '@/shared/lib/utils';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/shared/ui/components/shadcn/table';
 import type { DataTableFeatures } from './features';
 import { HIDE_BELOW_CLASS, useColumnLayout, useVisibleTiers } from './sizing';
 import type { DataTableInstance } from './use-app-table';
@@ -22,10 +14,21 @@ const cssSafe = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, '_');
 /** Where a column reads its width. See `useColumnLayout` for what sets it. */
 const widthOf = (columnId: string) => `var(--col-${cssSafe(columnId)}-size)`;
 
-const HEADER_LABEL = 'text-xs font-semibold uppercase tracking-wider';
+const HEADER_LABEL = 'text-column';
 
-/** One duration for both halves of the header swap, so they read as one move. */
-const SWAP = 'transition-[transform,opacity] duration-200 ease-out';
+/**
+ * One duration for both halves of the header swap, so they read as one move.
+ * `translate`, not `transform`: Tailwind 4 compiles `translate-*` to the
+ * individual property, and naming `transform` would transition nothing.
+ */
+const SWAP = 'transition-[translate,opacity] duration-moderate ease-standard';
+
+/** Body rows: a divider under each but the last, the hover and the tick. */
+const BODY_ROW =
+  'border-border-divider border-b transition-colors last:border-b-0 hover:bg-surface-hover has-aria-expanded:bg-surface-hover data-[state=selected]:bg-surface-raised';
+
+/** The checkbox column hugs its box on the trailing side. */
+const CELL = 'align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0';
 
 const DENSITY = {
   compact: { head: 'h-8', cell: 'py-1.5' },
@@ -138,37 +141,30 @@ export function DataTable<TData extends RowData>({
     <div
       ref={container}
       className={cn(
-        'relative min-h-0 overflow-auto rounded-lg border',
-        // The shadcn Table brings its own scroll wrapper, which would nest a
-        // second scroll box inside this one and detach the sticky header from
-        // the element that actually scrolls.
-        '*:data-[slot=table-container]:h-full *:data-[slot=table-container]:overflow-visible',
+        'relative min-h-0 overflow-auto rounded-lg border border-border-subtle',
         isPending && 'pointer-events-none',
         className,
       )}
     >
-      <Table
+      <table
         style={{
           ...widthVars,
           width: totalWidth ? totalWidth + fillerWidth : undefined,
         }}
         className={cn(
-          'table-fixed',
+          'w-full table-fixed text-body text-fg',
           isPending && 'opacity-60 transition-opacity',
         )}
       >
-        <TableHeader
+        <thead
           className={cn(
             stickyHeader && 'sticky top-0 z-10',
             // Opaque, or the rows scroll through it.
-            'bg-background',
+            'bg-surface',
           )}
         >
           {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow
-              key={headerGroup.id}
-              className="bg-muted/40 hover:bg-muted/40"
-            >
+            <tr key={headerGroup.id} className="border-border-subtle border-b">
               {headerGroup.headers.map((header, index) => {
                 const meta = header.column.columnDef.meta;
                 // The tick column keeps its head while the rest slide away:
@@ -177,11 +173,12 @@ export function DataTable<TData extends RowData>({
                 // undo that.
                 const keepsTitle = Boolean(bulkActions) && index === 0;
                 return (
-                  <TableHead
+                  <th
                     key={header.id}
                     style={{ width: widthOf(header.column.id) }}
                     className={cn(
-                      'relative select-none text-muted-foreground',
+                      'relative px-2 text-left font-medium text-fg-subtle select-none',
+                      CELL,
                       spacing.head,
                       meta?.hideBelow && HIDE_BELOW_CLASS[meta.hideBelow],
                       meta?.className,
@@ -242,23 +239,21 @@ export function DataTable<TData extends RowData>({
                           // columns, and boundaries showing through it read as
                           // stray marks.
                           'absolute inset-y-0 z-30',
-                          // The header row is `bg-muted/40` over the header's
-                          // own `bg-background`. Repeating both, in that order,
-                          // is what keeps the swap from also being a change of
-                          // colour: only the contents move.
-                          'bg-background',
+                          // The header's own surface, so the swap is not also a
+                          // change of colour: only the contents move.
+                          'bg-surface',
                           SWAP,
                           showBulk
                             ? 'translate-y-0 opacity-100'
                             : '-translate-y-full opacity-0',
                         )}
                       >
-                        <div className="flex h-full items-center gap-2 bg-muted/40 pr-3 text-foreground">
+                        <div className="flex h-full items-center gap-2 pr-3 text-fg">
                           {bulkActions}
                         </div>
                       </div>
                     )}
-                  </TableHead>
+                  </th>
                 );
               })}
               {/* A `td`, not a `th`: this cell exists only so the rows reach
@@ -267,11 +262,11 @@ export function DataTable<TData extends RowData>({
                   linters here flag, and an empty trailing cell reads as what
                   it is. */}
               {fillerWidth > 0 && <td style={{ width: fillerWidth }} />}
-            </TableRow>
+            </tr>
           ))}
-        </TableHeader>
+        </thead>
 
-        <TableBody>
+        <tbody>
           {rows.map((row) => (
             <DataTableRow
               key={row.id}
@@ -284,8 +279,8 @@ export function DataTable<TData extends RowData>({
               renderDetail={renderDetail}
             />
           ))}
-        </TableBody>
-      </Table>
+        </tbody>
+      </table>
 
       {rows.length === 0 && empty}
     </div>
@@ -333,7 +328,7 @@ function DataTableRow<TData extends RowData>({
 
   return (
     <Fragment>
-      <TableRow
+      <tr
         data-state={row.getIsSelected() ? 'selected' : undefined}
         aria-expanded={renderDetail ? isExpanded : undefined}
         onClick={activate}
@@ -343,19 +338,22 @@ function DataTableRow<TData extends RowData>({
         tabIndex={onRowClick ? 0 : undefined}
         onKeyDown={onKeyDown}
         className={cn(
+          BODY_ROW,
           onRowClick &&
-            'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-          isExpanded && 'bg-muted/40 hover:bg-muted/40',
+            'cursor-pointer outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring',
+          isExpanded && 'bg-surface-raised hover:bg-surface-raised',
           getRowClassName?.(row),
         )}
       >
         {row.getAllCells().map((cell) => {
           const meta = cell.column.columnDef.meta;
           return (
-            <TableCell
+            <td
               key={cell.id}
               style={{ width: widthOf(cell.column.id) }}
               className={cn(
+                'p-2',
+                CELL,
                 // `max-w-0` is what lets `truncate` inside a cell measure
                 // against the column instead of the content, which is the
                 // difference between a growing column that ellipsises and one
@@ -368,21 +366,21 @@ function DataTableRow<TData extends RowData>({
               )}
             >
               <table.FlexRender cell={cell} />
-            </TableCell>
+            </td>
           );
         })}
         {fillerWidth > 0 && <td />}
-      </TableRow>
+      </tr>
 
       {detail && (
-        <TableRow className="hover:bg-transparent">
-          <TableCell
+        <tr className="border-border-divider border-b last:border-b-0">
+          <td
             colSpan={row.getAllCells().length + (fillerWidth > 0 ? 1 : 0)}
-            className="bg-muted/20 p-0"
+            className="bg-panel p-0"
           >
             {detail}
-          </TableCell>
-        </TableRow>
+          </td>
+        </tr>
       )}
     </Fragment>
   );

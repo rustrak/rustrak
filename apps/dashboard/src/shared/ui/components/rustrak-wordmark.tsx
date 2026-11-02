@@ -140,7 +140,7 @@ export function RustrakWordmark({
         <path key={d} d={d} className="fill-current" />
       ))}
       {!still && (
-        <g className={`fill-primary ${FILL}`}>
+        <g className={`fill-fg-brand ${FILL}`}>
           {LETTERS.map((d) => (
             <path key={d} d={d} />
           ))}

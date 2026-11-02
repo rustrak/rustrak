@@ -1,11 +1,16 @@
+import {
+  Button,
+  OverviewIcon,
+  RefreshIcon,
+  Text,
+  WarningIcon,
+} from '@rustrak/ui';
 import { useQueryErrorResetBoundary } from '@tanstack/react-query';
-import { AlertTriangle, Home, RefreshCw } from 'lucide-react';
 import { useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { ApiError } from '@/shared/api/query';
 import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
  * The error boundary of every route: a failed read (an {@link ApiError}) or
@@ -47,34 +52,27 @@ export function RouteError({
     <div className="flex-1 flex items-center justify-center px-6 py-20">
       <div className="max-w-md w-full text-center space-y-6">
         <div className="flex justify-center">
-          <div className="size-12 rounded-full bg-destructive/10 flex items-center justify-center">
-            <AlertTriangle
-              className="size-5 text-destructive"
-              aria-hidden="true"
-            />
+          <div className="flex size-12 items-center justify-center rounded-full bg-danger-surface">
+            <WarningIcon className="size-5 text-danger-fg" aria-hidden="true" />
           </div>
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-xl font-bold tracking-tight">
-            {t('main.headline')}
-          </h1>
-          <p className="text-muted-foreground text-sm leading-relaxed">
+          <h1 className="text-fg text-title">{t('main.headline')}</h1>
+          <Text tone="subtle" render={<p />}>
             {t('main.description')}
-          </p>
+          </Text>
         </div>
 
         <div className="flex justify-center gap-4">
-          <Button onClick={reset} variant="default">
-            <RefreshCw className="mr-2 size-4" />
+          <Button onClick={reset} variant="primary" icon={RefreshIcon}>
             {t('tryAgain')}
           </Button>
           <Button
-            variant="outline"
-            nativeButton={false}
+            variant="secondary"
+            icon={OverviewIcon}
             render={<Link href="/projects" />}
           >
-            <Home className="mr-2 size-4" />
             {t('goToProjects')}
           </Button>
         </div>

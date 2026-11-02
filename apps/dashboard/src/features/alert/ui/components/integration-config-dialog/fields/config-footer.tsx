@@ -1,7 +1,7 @@
 import { Button } from '@rustrak/ui';
 import { useFormState } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
-import { FormRootError } from '@/shared/ui/components/shadcn/form';
+import { FormRootError } from '@/shared/ui/components/form';
 
 /**
  * The bar a provider's form ends with, held to the bottom of the page.

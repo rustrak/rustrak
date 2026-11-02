@@ -1,11 +1,10 @@
 import type { AuthorizationInfo, AuthorizationRequest } from '@rustrak/client';
+import { Button, SecurityIcon } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { mcpMutations } from '@/features/mcp/api/mutations';
 import { navigableRedirect } from '@/features/mcp/lib/navigable-redirect';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 interface ConsentFormProps {
   request: AuthorizationRequest;
@@ -41,38 +40,44 @@ export function ConsentForm({ request, client, email }: ConsentFormProps) {
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-page-title text-fg">
           {t('title', { client: client.client_name })}
         </h1>
-        <p className="text-muted-foreground">{t('signedInAs', { email })}</p>
+        <p className="text-body text-fg-muted">{t('signedInAs', { email })}</p>
       </div>
 
-      <div className="space-y-3 rounded-lg border bg-muted/40 p-4 text-sm">
+      <div className="space-y-3 rounded-lg border border-border-subtle bg-surface p-4 text-body text-fg">
         <p className="font-medium">{t('canDo')}</p>
-        <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+        <ul className="list-disc space-y-1 pl-5 text-fg-muted">
           <li>{t('canRead')}</li>
           <li>{t('canAct')}</li>
         </ul>
       </div>
 
-      <dl className="space-y-2 text-sm">
+      <dl className="space-y-2 text-body">
         <div>
-          <dt className="text-muted-foreground">{t('clientId')}</dt>
-          <dd className="font-mono text-xs break-all">{client.client_id}</dd>
+          <dt className="text-fg-muted">{t('clientId')}</dt>
+          <dd className="break-all font-mono text-mono-sm text-fg">
+            {client.client_id}
+          </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">{t('returnsTo')}</dt>
-          <dd className="font-mono text-xs">{client.redirect_host}</dd>
+          <dt className="text-fg-muted">{t('returnsTo')}</dt>
+          <dd className="font-mono text-mono-sm text-fg">
+            {client.redirect_host}
+          </dd>
         </div>
       </dl>
 
-      <p className="flex gap-2 text-xs text-muted-foreground">
-        <ShieldAlert className="size-4 shrink-0" />
+      <p className="flex gap-2 text-hint text-fg-muted">
+        <SecurityIcon size="md" aria-hidden="true" className="shrink-0" />
         {t('warning')}
       </p>
 
       <div className="flex gap-3">
         <Button
+          variant="primary"
+          size="lg"
           className="flex-1"
           disabled={isPending}
           onClick={() => decide(true)}
@@ -80,7 +85,8 @@ export function ConsentForm({ request, client, email }: ConsentFormProps) {
           {t('approve')}
         </Button>
         <Button
-          variant="outline"
+          variant="secondary"
+          size="lg"
           className="flex-1"
           disabled={isPending}
           onClick={() => decide(false)}

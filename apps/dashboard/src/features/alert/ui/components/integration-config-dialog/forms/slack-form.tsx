@@ -12,8 +12,8 @@ import {
   slackFormSchema,
 } from '@/features/alert/model/integration-forms';
 import { useIntegrationSubmit } from '@/features/alert/ui/hooks/use-integration-submit';
+import { Form } from '@/shared/ui/components/form';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import { Form } from '@/shared/ui/components/shadcn/form';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
 import { DeleteSection, TestRow } from '../fields/form-chrome';

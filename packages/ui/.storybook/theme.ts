@@ -28,10 +28,10 @@ export const rustrakTheme = create({
   colorSecondary: '#c1f768',
 
   // The four surfaces, in the order they stack: canvas, panel, surface.
-  appBg: '#08090b', // --surface-canvas
-  appContentBg: '#0e0f11', // --surface-panel
-  appPreviewBg: '#08090b', // --surface-canvas
-  appBorderColor: '#212224', // --border over the panel
+  appBg: '#0f0f0f', // --surface-canvas
+  appContentBg: '#171717', // --surface-panel
+  appPreviewBg: '#0f0f0f', // --surface-canvas
+  appBorderColor: '#262626', // --border over the panel
   appBorderRadius: 8, // --radius-lg
   /*
    * The row you are pointing at in the sidebar.
@@ -43,19 +43,19 @@ export const rustrakTheme = create({
    * blue. This is `--surface-hover`, the same tint the product puts under a nav
    * row.
    */
-  appHoverBg: '#161719', // --surface-hover over the canvas
+  appHoverBg: '#1c1c1c', // --surface-hover over the canvas
 
-  fontBase: '"Geist", ui-sans-serif, system-ui, sans-serif',
+  fontBase: '"Inter", ui-sans-serif, system-ui, sans-serif',
   fontCode: '"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace',
 
-  textColor: '#f1f2f4', // --fg
-  textInverseColor: '#08090b', // --fg-inverse
-  textMutedColor: '#7e8084', // --fg-subtle
+  textColor: '#f1f1f1', // --fg
+  textInverseColor: '#0f0f0f', // --fg-inverse
+  textMutedColor: '#808080', // --fg-subtle
 
   // The toolbar over the story: the same surface a topbar uses.
-  barBg: '#121315', // --surface
-  barTextColor: '#7e8084', // --fg-subtle
-  barHoverColor: '#d6d7d9', // --fg-secondary
+  barBg: '#1b1b1b', // --surface
+  barTextColor: '#808080', // --fg-subtle
+  barHoverColor: '#d4d4d4', // --fg-secondary
   barSelectedColor: '#c1f768', // --fg-brand
 
   inputBg: '#121315', // --surface

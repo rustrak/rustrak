@@ -16,7 +16,6 @@ import { useProjectSlug } from '@/features/project/ui/hooks/use-project-slug';
 import { platformLabel } from '@/shared/config/platforms';
 import type { Translate } from '@/shared/lib/error-copy';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
-import { PlatformGrid } from '@/shared/ui/components/platform-grid';
 import {
   Form,
   FormControl,
@@ -25,7 +24,8 @@ import {
   FormLabel,
   FormMessage,
   FormRootError,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
+import { PlatformGrid } from '@/shared/ui/components/platform-grid';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { IdentityFields } from './identity-fields';
 

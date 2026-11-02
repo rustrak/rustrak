@@ -18,7 +18,7 @@ export function EventContext({ contexts, modules, user }: EventContextProps) {
 
   if (!hasContexts && !hasModules && !hasUser) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
+      <div className="text-center py-12 text-fg-subtle">
         {t('context.empty')}
       </div>
     );
@@ -84,10 +84,8 @@ function ContextSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-card border rounded-lg p-6 space-y-4">
-      <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-        {title}
-      </h4>
+    <div className="bg-surface border rounded-lg p-6 space-y-4">
+      <h4 className="text-column text-fg-subtle">{title}</h4>
       {children}
     </div>
   );
@@ -96,9 +94,7 @@ function ContextSection({
 function ContextItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1">
-      <p className="text-[10px] text-muted-foreground font-bold uppercase">
-        {label}
-      </p>
+      <p className="text-column text-fg-subtle">{label}</p>
       <p className="text-sm font-mono truncate">{value}</p>
     </div>
   );

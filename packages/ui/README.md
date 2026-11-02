@@ -1,6 +1,6 @@
 # @rustrak/ui
 
-The design system behind the Rustrak dashboard: pure grey, Geist, lime for the
+The design system behind the Rustrak dashboard: pure grey, Inter, lime for the
 one thing on the screen that is the point, and colour otherwise reserved for
 severity.
 
@@ -20,7 +20,7 @@ pnpm build       -w @rustrak/ui   # dist/ with ESM and types
 | Primitives | [Base UI](https://base-ui.com) 1.7 | Accessibility, focus management and positioning, with no opinion about how anything looks. It is also what shadcn/ui builds on now, so the patterns are the ones the ecosystem already knows. |
 | Styles | Tailwind 4.3 with `@theme` | The tokens are native CSS. Changing theme is rewriting variables, not recompiling. |
 | Variants | `tailwind-variants` 3 | Slots, compound variants and `tailwind-merge` built in. `cva` would mean wiring the merge by hand in every multi-part component. |
-| Icons | `lucide-react` behind an adapter | See below. |
+| Icons | Hugeicons (stroke-rounded, free set) behind an adapter | See below. |
 | Tests | Storybook 10 + Vitest 4 in real Chromium | Every story is a component test and every one goes through axe. |
 | Bundling | `tsdown` | ESM, types, `"use client"` in the banner, and every dependency external. |
 
@@ -98,7 +98,7 @@ in the diff instead of nowhere.
 
 ## Two type families, and the rule between them
 
-Geist for prose, Geist Mono for machine text. The second family is not a
+Inter for prose, Geist Mono for machine text. The second family is not a
 flourish: half of what this product shows was written by a machine and is read
 as an identifier — an event id, a release tag, a stack frame, a duration, a
 count that has to line up down a column.
@@ -106,7 +106,7 @@ count that has to line up down a column.
 > **If the value came out of the system and somebody might copy it out of the
 > page, it is mono.**
 
-One exception, and the design is explicit about it: a KPI is Geist at 24/600
+One exception, and the design is explicit about it: a KPI is Inter at 24/600
 with tabular figures. At that size mono stops reading as precision and starts
 reading as a terminal.
 
@@ -174,13 +174,14 @@ stories pin it.
 
 ## Icons go behind an adapter
 
-Today it is lucide. Tomorrow it may not be, and swapping it should not touch
-twenty components. Three layers:
+Today it is Hugeicons (it replaced lucide, and that swap touched no
+component). Three layers:
 
 ```
-components/icon/icon.tsx             the contract: IconComponent, sizes, stroke
-components/icon/adapters/lucide.tsx  the only file that imports lucide-react
-components/icon/icon-catalog.ts      Rustrak names: IssuesIcon, MuteIcon, …
+components/icon/icon.tsx                      the contract: IconComponent, sizes, stroke
+components/icon/adapters/hugeicons.tsx        the only file that renders @hugeicons/react
+components/icon/adapters/hugeicons-symbols.ts the only file that names upstream glyphs
+components/icon/icon-catalog.ts               Rustrak names: IssuesIcon, MuteIcon, …
 ```
 
 Components import from the catalogue, never from the library. The name says what
@@ -318,7 +319,7 @@ In `globals.css`:
 The `@source` is **not optional**: Tailwind only emits the utilities it sees, and
 this package's classes live in its own bundle.
 
-The fonts are the application's job. Geist and Geist Mono are on Google Fonts;
+The fonts are the application's job. Inter and Geist Mono are on Google Fonts;
 Storybook loads them from there in `.storybook/preview-head.html` for the
 stories and `.storybook/manager-head.html` for its own interface.
 
@@ -326,7 +327,7 @@ stories and `.storybook/manager-head.html` for its own interface.
 
 `.storybook/theme.ts` builds a theme from the same palette the components use,
 and `.storybook/manager.ts` applies it: the lime wordmark in the sidebar header,
-the four surfaces in the right stacking order, Geist and Geist Mono throughout,
+the four surfaces in the right stacking order, Inter and Geist Mono throughout,
 lime for selection and links. The docs pages get the same theme through
 `parameters.docs.theme`.
 

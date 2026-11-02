@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { codeTheme } from '@/shared/ui/components/code-theme';
 
 type HighlighterComponent = typeof import('react-syntax-highlighter').Prism;
 type HighlighterStyle = Record<string, React.CSSProperties>;
@@ -10,11 +11,8 @@ export interface SyntaxHighlighter {
   /** The chunk failed. Render the code as plain text rather than spinning. */
   failed: boolean;
   /**
-   * The canvas the chosen style expects, as a literal.
-   *
-   * Paired with `style` here rather than read off the theme at the call site:
-   * the two are picked by the same `isDark`, and letting them be decided in
-   * two places is how a dark block ends up on a white card mid theme-switch.
+   * The ground the code sits on. A token, like the theme's colours, so the
+   * block follows the theme switch with the page.
    */
   background: string;
 }
@@ -29,7 +27,9 @@ export interface SyntaxHighlighter {
  * would show a loading shimmer for a load that already ended, and the reader
  * would wait for a snippet that is never coming.
  */
-export function useSyntaxHighlighter(isDark: boolean): SyntaxHighlighter {
+// `_isDark` is kept for the callers' signature: the theme is made of CSS
+// variables now and follows the page on its own.
+export function useSyntaxHighlighter(_isDark?: boolean): SyntaxHighlighter {
   const [Highlighter, setHighlighter] = useState<HighlighterComponent | null>(
     null,
   );
@@ -39,14 +39,11 @@ export function useSyntaxHighlighter(isDark: boolean): SyntaxHighlighter {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([
-      import('react-syntax-highlighter').then((mod) => mod.Prism),
-      import('react-syntax-highlighter/dist/esm/styles/prism'),
-    ])
-      .then(([component, styles]) => {
+    import('react-syntax-highlighter')
+      .then((mod) => {
         if (cancelled) return;
-        setHighlighter(() => component);
-        setStyle((isDark ? styles.vscDarkPlus : styles.vs) as HighlighterStyle);
+        setHighlighter(() => mod.Prism);
+        setStyle(codeTheme);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -55,12 +52,12 @@ export function useSyntaxHighlighter(isDark: boolean): SyntaxHighlighter {
     return () => {
       cancelled = true;
     };
-  }, [isDark]);
+  }, []);
 
   return {
     Highlighter,
     style,
     failed,
-    background: isDark ? '#1e1e1e' : '#ffffff',
+    background: 'var(--surface-code)',
   };
 }

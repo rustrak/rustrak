@@ -1,5 +1,13 @@
 import type { AuthTokenResponse } from '@rustrak/client';
-import { Button, NewIcon, TokensIcon } from '@rustrak/ui';
+import {
+  Button,
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+  NewIcon,
+  TokensIcon,
+} from '@rustrak/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -13,15 +21,6 @@ import {
   SettingsEmpty,
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 import { CreateTokenDialog } from './create-token-dialog';
 import { TokenRows } from './token-rows';
 
@@ -171,33 +170,34 @@ export function TokensList({
 
       {footer}
 
-      <AlertDialog
+      <Dialog
+        alert
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('deleteDialog.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('deleteDialog.description')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={removal.isPending}>
-              {t('deleteDialog.cancel')}
-            </AlertDialogCancel>
-            <Button
-              variant="danger-primary"
-              onClick={confirmDelete}
-              disabled={removal.isPending}
-            >
-              {removal.isPending
-                ? t('deleteDialog.deleting')
-                : t('deleteDialog.confirm')}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <DialogHeader
+          dismissible={false}
+          title={t('deleteDialog.title')}
+          description={t('deleteDialog.description')}
+        />
+        <DialogFooter>
+          <DialogClose
+            disabled={removal.isPending}
+            render={
+              <Button variant="secondary">{t('deleteDialog.cancel')}</Button>
+            }
+          />
+          <Button
+            variant="danger-primary"
+            onClick={confirmDelete}
+            disabled={removal.isPending}
+          >
+            {removal.isPending
+              ? t('deleteDialog.deleting')
+              : t('deleteDialog.confirm')}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </>
   );
 }
