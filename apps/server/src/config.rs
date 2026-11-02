@@ -216,24 +216,34 @@ impl Config {
     }
 
     /// Whether an emailed link built by [`Config::dashboard_url`] can be
-    /// opened by its recipient. Two ways it cannot: the configured URL lacks
-    /// the scheme its docs require (a schemeless `dashboard.example.com`
-    /// reaches the invitee as text, not a link), or no URL is configured and
-    /// the bind host is the unspecified `0.0.0.0` — a wildcard, not a
-    /// location. Sending either would stamp the row as delivered while the
-    /// invitee got nothing openable, so email delivery refuses both.
+    /// opened by its recipient: its host carries a scheme, a non-empty
+    /// authority, and — when the link points at *this* server's address
+    /// (`PUBLIC_URL`, or the bind fallback) — a dashboard actually served
+    /// from it. `DASHBOARD_URL` is the operator's own promise about where
+    /// people open the invite page, trusted as stated; this server's
+    /// address is not a promise, so it must hold: the switch on and a
+    /// built dashboard on disk, the same two facts the router mounts on.
+    /// Sending an unopenable link would stamp the row as delivered while the
+    /// invitee got nothing, so the gate refuses instead.
     pub fn emailed_links_are_reachable(&self) -> bool {
         // `DASHBOARD_URL` says where the dashboard lives even when this
-        // server does not serve it. `PUBLIC_URL`, and the bind fallback,
-        // are the *API's* address: with the dashboard switched off there is
-        // no /invite page behind them, so an emailed link would 404.
-        if self.dashboard.url.is_none() && !self.dashboard.enabled {
+        // server does not serve it; without it the link's host is ours,
+        // and an API-only box — off, or with nothing built to serve — has
+        // no /invite page on it at all.
+        if self.dashboard.url.is_none() && !(self.dashboard.enabled && self.dashboard_is_built()) {
             return false;
         }
         if let Some(url) = self.dashboard.url.as_ref().or(self.public_url.as_ref()) {
-            return url.starts_with("http://") || url.starts_with("https://");
+            return is_http_url_with_host(url);
         }
         !is_unspecified_host(&self.host)
+    }
+
+    /// Whether the dashboard build this configuration would serve exists.
+    pub fn dashboard_is_built(&self) -> bool {
+        std::path::Path::new(&self.dashboard.dir)
+            .join("index.html")
+            .is_file()
     }
 }
 
@@ -249,12 +259,32 @@ fn host_for_url(host: &str) -> String {
     }
 }
 
+/// Whether a configured link URL is an `http(s)` URL with a non-empty
+/// authority: a scheme alone is not enough (`https://?q=1` names no host),
+/// and the invitee's browser cannot open a link that has nowhere to go.
+fn is_http_url_with_host(url: &str) -> bool {
+    let Some(rest) = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+    else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    !authority.is_empty()
+}
+
 /// Whether a bind host is a wildcard: any IPv4 `0.x` address or the IPv6
-/// unspecified form. IPv4 keeps its four-dotted-quad shape check, so `0`
-/// alone or `01.2.3.4` are not mistaken for it.
+/// unspecified form, in any spelling (`::`, the expanded all-zero form,
+/// or the lone `:` a URL would show bracketed). IPv4 keeps its
+/// four-dotted-quad shape check, so `0` alone or `01.2.3.4` are not
+/// mistaken for it.
 fn is_unspecified_host(host: &str) -> bool {
     let host = host.trim().trim_start_matches('[').trim_end_matches(']');
-    if host == "::" || host == ":" {
+    if host == ":"
+        || host
+            .parse::<std::net::Ipv6Addr>()
+            .is_ok_and(|ip| ip.is_unspecified())
+    {
         return true;
     }
     let parts: Vec<&str> = host.split('.').collect();

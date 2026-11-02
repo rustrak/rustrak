@@ -99,6 +99,11 @@ export function PendingInvitations({
    * as a server error.
    */
   const handleResend = (invitation: InvitationResponse) => {
+    // The timer keeps the row honest between clicks; the click itself
+    // rechecks. Between the last render and this event an invitation can
+    // have expired, and the server would answer it with a rejection the
+    // admin did not ask for.
+    if (new Date(invitation.expires_at).getTime() <= Date.now()) return;
     resend.mutate(
       { token: invitation.token },
       {

@@ -44,22 +44,78 @@ pub struct ResendInvitation {
     #[serde(default)]
     pub force: bool,
 }
-
-/// Sends the invite link for `invitation` through `mailer` and stamps the
-/// row with the delivery time.
-///
-/// The inviter is named by their email address; a deleted or unknown inviter
-/// degrades to a neutral phrase instead of blocking the send.
-/// `claimed_at` is the delivery claim this send holds, or `None` for a
-/// forced resend (which skips the claim). The helper owns that claim's
-/// fate: a failed send hands it back, a delivered one retires it with the
-/// stamp — and only it, never a claim a concurrent send still holds.
+/// Sends the invite link for `invitation` through `mailer`, owning
+/// `claimed_at`'s fate from here: *every* failure after the claim —
+/// including a database error before the message is ever built — releases
+/// it, so a send that never happened cannot block the invitation for the
+/// lease's full term. A release that fails is logged, not swallowed: the
+/// stale-claim horizon frees the row eventually, but an admin told
+/// "already in progress" deserves the line that says why.
 async fn deliver_invitation(
     pool: &DbPool,
     config: &Config,
     mailer: &ResolvedMailer,
     invitation: &Invitation,
     claimed_at: Option<DateTime<Utc>>,
+) -> AppResult<DateTime<Utc>> {
+    match deliver_inner(pool, config, mailer, invitation).await {
+        Ok(sent_at) => {
+            // Stamp and this attempt's claim retire together. A stamp
+            // failure after an accepted send stays a bookkeeping problem,
+            // not a delivery one: claiming undelivered would invite a resend
+            // of a link the inbox already holds. Log it and let the claim
+            // age out with the lease — releasing here would reopen exactly
+            // the duplicate the stamp rule closes.
+            if let Err(e) =
+                invitation_email::mark_email_sent(pool, &invitation.token, sent_at, claimed_at)
+                    .await
+            {
+                log::error!(
+                    "invitation email to {} was accepted but its delivery stamp failed: {e}",
+                    invitation.email
+                );
+            }
+            Ok(sent_at)
+        }
+        Err(e) => {
+            // A timeout is not a refusal: SMTP may already hold the
+            // message. Releasing the claim would let a plain resend mail a
+            // second copy, so the claim stands until the lease frees it (or
+            // force reclaims it), and the log says what is happening.
+            if invitation_email::send_outcome_is_unknown(&e) {
+                log::error!(
+                    "invitation email for {} timed out mid-send; its delivery claim is held until the lease expires, so a resend needs force: {e}",
+                    invitation.email,
+                );
+                return Err(e);
+            }
+            // Any other failure never reached acceptance: return the claim
+            // so the next attempt, or the manual-share fallback, sees an
+            // undelivered invitation.
+            if let Some(claimed_at) = claimed_at {
+                if let Err(release_err) =
+                    invitation_email::release_email_delivery(pool, &invitation.token, claimed_at)
+                        .await
+                {
+                    log::error!(
+                        "invitation email for {} failed ({e}); releasing its delivery claim failed too: {release_err}",
+                        invitation.email
+                    );
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
+/// The delivery itself: name the inviter, build the link, hand the message
+/// to SMTP. Every error from here is wrapped by the caller with the claim
+/// release.
+async fn deliver_inner(
+    pool: &DbPool,
+    config: &Config,
+    mailer: &ResolvedMailer,
+    invitation: &Invitation,
 ) -> AppResult<DateTime<Utc>> {
     let inviter_email = match invitation.invited_by {
         Some(user_id) => match UsersService::get_by_id(pool, user_id).await? {
@@ -71,40 +127,7 @@ async fn deliver_invitation(
 
     let invite_url = format!("{}/invite/{}", config.dashboard_url(), invitation.token);
 
-    let sent_at = match invitation_email::send_invitation_mail(
-        mailer,
-        invitation,
-        &invite_url,
-        &inviter_email,
-    )
-    .await
-    {
-        Ok(sent_at) => sent_at,
-        // A failed send hands the claim back before surfacing the error, so
-        // a retry or the manual-share fallback sees an undelivered invite.
-        Err(e) => {
-            if let Some(claimed_at) = claimed_at {
-                let _ =
-                    invitation_email::release_email_delivery(pool, &invitation.token, claimed_at)
-                        .await;
-            }
-            return Err(e);
-        }
-    };
-
-    // Once SMTP has the message, a stamp failure is a bookkeeping problem,
-    // not a delivery one: reporting it as undelivered invites a resend that
-    // sends the same link twice. The worst case here is the pending list
-    // showing no timestamp until the next delivery, so log and keep going.
-    if let Err(e) =
-        invitation_email::mark_email_sent(pool, &invitation.token, sent_at, claimed_at).await
-    {
-        log::error!(
-            "invitation email to {} was accepted but its delivery stamp failed: {e}",
-            invitation.email
-        );
-    }
-    Ok(sent_at)
+    invitation_email::send_invitation_mail(mailer, invitation, &invite_url, &inviter_email).await
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(

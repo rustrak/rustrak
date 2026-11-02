@@ -277,7 +277,7 @@ async fn send_with_transport(
 
     tokio::time::timeout(SEND_DEADLINE, transport.send_mail(message))
         .await
-        .map_err(|_| AppError::Internal("Timed out sending the invitation email".to_string()))?
+        .map_err(|_| send_timeout())?
         .map_err(|e| AppError::Internal(format!("Failed to send invitation email: {}", e)))?;
 
     Ok(Utc::now())
@@ -381,6 +381,26 @@ WHERE token = $1",
 /// the same invitation. It must stay well under [`STALE_CLAIM_AFTER`].
 const SEND_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
+/// The one message [`send_timeout`] builds. Shared with
+/// [`send_outcome_is_unknown`] as a constant so the producer and the test of
+/// the error cannot drift apart.
+const SEND_TIMEOUT_MESSAGE: &str =
+    "Timed out sending the invitation email; its delivery outcome is unknown";
+
+/// The error a send returns when the deadline elapsed mid-delivery. Distinct
+/// from a transport refusal, which is a known rejection: here SMTP may
+/// already hold the message, so callers must not treat the invitation as
+/// never emailed.
+pub fn send_timeout() -> AppError {
+    AppError::Internal(SEND_TIMEOUT_MESSAGE.to_string())
+}
+
+/// Whether `err` is [`send_timeout`]: the SMTP hand-off may have completed,
+/// so the delivery outcome is unknown rather than negative.
+pub fn send_outcome_is_unknown(err: &AppError) -> bool {
+    matches!(err.kind(), AppError::Internal(message) if message == SEND_TIMEOUT_MESSAGE)
+}
+
 /// How long a delivery claim is honoured before it is treated as abandoned.
 ///
 /// A claim is written seconds before the SMTP call it protects and cleared
@@ -452,6 +472,16 @@ mod tests {
             email_sent_at: None,
             email_delivery_claimed_at: None,
         }
+    }
+
+    #[test]
+    fn the_send_timeout_is_its_own_known_shape() {
+        let timeout = send_timeout();
+        assert!(send_outcome_is_unknown(&timeout));
+        // A refusal SMTP actually answered is known-negative: claim release
+        // after it is safe, so it must not classify as unknown.
+        let refused = AppError::Internal("Failed to send invitation email: closed".to_string());
+        assert!(!send_outcome_is_unknown(&refused));
     }
 
     #[test]

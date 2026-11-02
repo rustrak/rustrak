@@ -60,7 +60,10 @@ fn create_test_config() -> Config {
         dashboard: DashboardConfig {
             dir: "./static".to_string(),
             enabled: true,
-            url: None,
+            // Emailed invites are gated on a reachable link; these tests
+            // are about the mailer, so the config promises the dashboard
+            // URL an operator enabling the switch would set.
+            url: Some("http://dashboard.test".to_string()),
         },
         telemetry: rustrak::config::TelemetryConfig {
             enabled: false,
