@@ -212,7 +212,7 @@ impl Config {
             .url
             .clone()
             .or_else(|| self.public_url.clone())
-            .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
+            .unwrap_or_else(|| format!("http://{}:{}", host_for_url(&self.host), self.port))
     }
 
     /// Whether an emailed link built by [`Config::dashboard_url`] can be
@@ -223,9 +223,13 @@ impl Config {
     /// location. Sending either would stamp the row as delivered while the
     /// invitee got nothing openable, so email delivery refuses both.
     pub fn emailed_links_are_reachable(&self) -> bool {
-        // Validate the URL `dashboard_url()` would actually build the link
-        // from — `DASHBOARD_URL` wins over `PUBLIC_URL`, so a schemeless
-        // `DASHBOARD_URL` fails even when `PUBLIC_URL` would have been fine.
+        // `DASHBOARD_URL` says where the dashboard lives even when this
+        // server does not serve it. `PUBLIC_URL`, and the bind fallback,
+        // are the *API's* address: with the dashboard switched off there is
+        // no /invite page behind them, so an emailed link would 404.
+        if self.dashboard.url.is_none() && !self.dashboard.enabled {
+            return false;
+        }
         if let Some(url) = self.dashboard.url.as_ref().or(self.public_url.as_ref()) {
             return url.starts_with("http://") || url.starts_with("https://");
         }
@@ -233,11 +237,23 @@ impl Config {
     }
 }
 
+/// A bind host as it must appear inside a URL: an IPv6 literal (the only
+/// host syntax carrying colons) needs its RFC 2732 brackets, or the host and
+/// port cannot be told apart. Any bracketed input is already in that form.
+fn host_for_url(host: &str) -> String {
+    let host = host.trim();
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    }
+}
+
 /// Whether a bind host is a wildcard: any IPv4 `0.x` address or the IPv6
 /// unspecified form. IPv4 keeps its four-dotted-quad shape check, so `0`
 /// alone or `01.2.3.4` are not mistaken for it.
 fn is_unspecified_host(host: &str) -> bool {
-    let host = host.trim();
+    let host = host.trim().trim_start_matches('[').trim_end_matches(']');
     if host == "::" || host == ":" {
         return true;
     }

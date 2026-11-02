@@ -275,9 +275,9 @@ async fn send_with_transport(
     )
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    transport
-        .send_mail(message)
+    tokio::time::timeout(SEND_DEADLINE, transport.send_mail(message))
         .await
+        .map_err(|_| AppError::Internal("Timed out sending the invitation email".to_string()))?
         .map_err(|e| AppError::Internal(format!("Failed to send invitation email: {}", e)))?;
 
     Ok(Utc::now())
@@ -344,24 +344,50 @@ pub async fn send_invitation_mail(
     .await
 }
 
-/// Persists that the invitation email was accepted by SMTP, and retires this
-/// invitation's delivery claim in the same write: a completed send leaves
-/// nothing behind that could block a later resend.
-pub async fn mark_email_sent(pool: &DbPool, token: &str, sent_at: DateTime<Utc>) -> AppResult<()> {
-    sqlx::query("UPDATE invitations SET email_sent_at = $2, email_delivery_claimed_at = NULL WHERE token = $1")
-        .bind(token)
-        .bind(sent_at)
-        .execute(pool)
-        .await?;
+/// Persists that the invitation email was accepted by SMTP, and retires the
+/// delivery claim in the same write — only *this* attempt's claim:
+/// clearing the column unconditionally would release a claim a concurrent
+/// non-forced send still holds, and that send's later stamp would then let a
+/// third resend deliver the same invitation again. `claimed_at` is `None`
+/// for a forced send, which never claimed.
+pub async fn mark_email_sent(
+    pool: &DbPool,
+    token: &str,
+    sent_at: DateTime<Utc>,
+    claimed_at: Option<DateTime<Utc>>,
+) -> AppResult<()> {
+    sqlx::query(
+        "UPDATE invitations
+SET email_sent_at = $2,
+    email_delivery_claimed_at = CASE
+        WHEN email_delivery_claimed_at = $3 THEN NULL
+        ELSE email_delivery_claimed_at
+    END
+WHERE token = $1",
+    )
+    .bind(token)
+    .bind(sent_at)
+    .bind(claimed_at)
+    .execute(pool)
+    .await?;
     Ok(())
 }
+
+/// How long a delivery send is given before it is abandoned.
+///
+/// lettre's transport timeout covers each connect attempt, not a server that
+/// opens the connection and then stops answering, so without a bound here the
+/// claim's owner can outlive the lease below and two sends end up delivering
+/// the same invitation. It must stay well under [`STALE_CLAIM_AFTER`].
+const SEND_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// How long a delivery claim is honoured before it is treated as abandoned.
 ///
 /// A claim is written seconds before the SMTP call it protects and cleared
 /// just after it returns, so any real send is long gone by this horizon; what
-/// survives past it is a crashed process, not a delivery. The bound has to sit
-/// above the transport timeout, which is why it is generous rather than tight.
+/// survives past it is a crashed process, not a delivery. It sits above
+/// [`SEND_DEADLINE`] so a timed-out send releases the claim before the lease
+/// would expire on its own.
 const STALE_CLAIM_AFTER: chrono::Duration = chrono::Duration::hours(1);
 
 /// Atomically claims the right to deliver this invitation's email, recorded

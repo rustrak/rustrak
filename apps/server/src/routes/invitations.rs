@@ -50,11 +50,16 @@ pub struct ResendInvitation {
 ///
 /// The inviter is named by their email address; a deleted or unknown inviter
 /// degrades to a neutral phrase instead of blocking the send.
+/// `claimed_at` is the delivery claim this send holds, or `None` for a
+/// forced resend (which skips the claim). The helper owns that claim's
+/// fate: a failed send hands it back, a delivered one retires it with the
+/// stamp — and only it, never a claim a concurrent send still holds.
 async fn deliver_invitation(
     pool: &DbPool,
     config: &Config,
     mailer: &ResolvedMailer,
     invitation: &Invitation,
+    claimed_at: Option<DateTime<Utc>>,
 ) -> AppResult<DateTime<Utc>> {
     let inviter_email = match invitation.invited_by {
         Some(user_id) => match UsersService::get_by_id(pool, user_id).await? {
@@ -66,15 +71,34 @@ async fn deliver_invitation(
 
     let invite_url = format!("{}/invite/{}", config.dashboard_url(), invitation.token);
 
-    let sent_at =
-        invitation_email::send_invitation_mail(mailer, invitation, &invite_url, &inviter_email)
-            .await?;
+    let sent_at = match invitation_email::send_invitation_mail(
+        mailer,
+        invitation,
+        &invite_url,
+        &inviter_email,
+    )
+    .await
+    {
+        Ok(sent_at) => sent_at,
+        // A failed send hands the claim back before surfacing the error, so
+        // a retry or the manual-share fallback sees an undelivered invite.
+        Err(e) => {
+            if let Some(claimed_at) = claimed_at {
+                let _ =
+                    invitation_email::release_email_delivery(pool, &invitation.token, claimed_at)
+                        .await;
+            }
+            return Err(e);
+        }
+    };
 
     // Once SMTP has the message, a stamp failure is a bookkeeping problem,
     // not a delivery one: reporting it as undelivered invites a resend that
     // sends the same link twice. The worst case here is the pending list
     // showing no timestamp until the next delivery, so log and keep going.
-    if let Err(e) = invitation_email::mark_email_sent(pool, &invitation.token, sent_at).await {
+    if let Err(e) =
+        invitation_email::mark_email_sent(pool, &invitation.token, sent_at, claimed_at).await
+    {
         log::error!(
             "invitation email to {} was accepted but its delivery stamp failed: {e}",
             invitation.email
@@ -169,22 +193,22 @@ pub async fn create_invitation(
                 }
             };
         if let Some(claimed_at) = claim {
-            match deliver_invitation(pool.get_ref(), &config, mailer, &invitation).await {
+            match deliver_invitation(
+                pool.get_ref(),
+                &config,
+                mailer,
+                &invitation,
+                Some(claimed_at),
+            )
+            .await
+            {
                 Ok(sent_at) => email_sent_at = Some(sent_at),
-                Err(e) => {
-                    // Best effort: a failed send leaves the invitation usable
-                    // by hand, and the release unblocks a later resend.
-                    log::error!(
-                        "invitation email delivery failed for {} (invitation still created): {e}",
-                        invitation.email
-                    );
-                    let _ = invitation_email::release_email_delivery(
-                        pool.get_ref(),
-                        &invitation.token,
-                        claimed_at,
-                    )
-                    .await;
-                }
+                // Best effort: a failed send leaves the invitation usable
+                // by hand; deliver has already released the claim.
+                Err(e) => log::error!(
+                    "invitation email delivery failed for {} (invitation still created): {e}",
+                    invitation.email
+                ),
             }
         } else {
             // Someone claimed it between the INSERT and here. Harmless and
@@ -210,6 +234,7 @@ pub async fn create_invitation(
         (status = 200, description = "Whether invitation emails can be sent, and from which source", body = invitation_email::EmailStatusResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 500, description = "Reading the email integration or its stored credentials failed", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
@@ -320,22 +345,9 @@ pub async fn resend_invitation(
         }
     };
 
-    let sent_at = match deliver_invitation(pool.get_ref(), &config, &mailer, &invitation).await {
-        Ok(sent_at) => sent_at,
-        // Hand the row back before surfacing the failure, so a retry or the
-        // manual-share fallback still sees an undelivered invitation. The
-        // release only clears the timestamp while it is still ours, which
-        // keeps it from clobbering a concurrent force resend's real delivery.
-        Err(error) => {
-            if let Some(claimed_at) = claim {
-                // Best effort: the send error is the one that matters.
-                let _ =
-                    invitation_email::release_email_delivery(pool.get_ref(), &token, claimed_at)
-                        .await;
-            }
-            return Err(error);
-        }
-    };
+    // deliver releases the claim itself on a failed send, so the row is
+    // back to undelivered before the error surfaces to the caller.
+    let sent_at = deliver_invitation(pool.get_ref(), &config, &mailer, &invitation, claim).await?;
     let mut invitation = invitation;
     invitation.email_sent_at = Some(sent_at);
 

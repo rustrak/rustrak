@@ -9,6 +9,7 @@ import {
   Tag,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
@@ -41,12 +42,37 @@ async function handleCopy(invitation: InvitationResponse, t: Translate) {
   }
 }
 
+/**
+ * One timer for the whole list: the row that expires next is the only one
+ * whose render result changes at an exact time, and a stale button that
+ * survives until the next interaction promises a click the server will
+ * reject. When the earliest future expiry arrives, re-render and let the
+ * per-row checks fall where they now land.
+ */
+function useExpiryTick(invitations: InvitationResponse[]): void {
+  const [, setTick] = useState(0);
+  const now = Date.now();
+  const nextExpiry = invitations
+    .map((invitation) => new Date(invitation.expires_at).getTime())
+    .filter((time) => time > now)
+    .sort((a, b) => a - b)[0];
+  useEffect(() => {
+    if (nextExpiry === undefined) return;
+    const timer = setTimeout(
+      () => setTick((tick) => tick + 1),
+      nextExpiry - Date.now(),
+    );
+    return () => clearTimeout(timer);
+  }, [nextExpiry]);
+}
+
 export function PendingInvitations({
   invitations,
   emailAvailable,
 }: PendingInvitationsProps) {
   const t = useTranslations('user');
   const format = useFormatter();
+  useExpiryTick(invitations);
   const revoke = useMutation(userMutations.revokeInvitation());
   const resend = useMutation(userMutations.resendInvitation());
   const isPending = revoke.isPending;

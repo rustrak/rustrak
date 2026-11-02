@@ -639,6 +639,75 @@ fn alert_links_fall_back_to_the_bind_address() {
     });
 }
 
+/// Runs `body` with `HOST` as given and no configured link URL, restoring
+/// every variable afterwards. `with_link_env` pins the host to the wildcard;
+/// the IPv6 rules below need to choose it.
+fn with_bind_env<T>(host: &str, body: impl FnOnce() -> T) -> T {
+    const VARS: [&str; 5] = [
+        "DATABASE_URL",
+        "DASHBOARD_URL",
+        "PUBLIC_URL",
+        "HOST",
+        "PORT",
+    ];
+    let saved: Vec<_> = VARS.iter().map(|v| std::env::var(v).ok()).collect();
+    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
+    std::env::set_var("HOST", host);
+    std::env::set_var("PORT", "8080");
+    std::env::remove_var("DASHBOARD_URL");
+    std::env::remove_var("PUBLIC_URL");
+
+    let out = body();
+
+    for (var, value) in VARS.iter().zip(saved) {
+        match value {
+            Some(v) => std::env::set_var(var, v),
+            None => std::env::remove_var(var),
+        }
+    }
+    out
+}
+
+/// A bind host with no configured URL is only a location if it is routable,
+/// and an IPv6 literal needs its RFC 2732 brackets before a port can be
+/// appended at all: unbracketed, `http://{host}:{port}` is a URL whose host
+/// and port cannot be told apart (`http://:::1:8080`).
+#[test]
+#[serial]
+fn bind_host_falls_back_only_when_it_is_a_real_location() {
+    for (host, expected_url, reachable) in [
+        ("0.0.0.0", "http://0.0.0.0:8080", false),
+        ("::", "http://[::]:8080", false),
+        ("::1", "http://[::1]:8080", true),
+        ("fe80::1", "http://[fe80::1]:8080", true),
+        ("[::1]", "http://[::1]:8080", true),
+        ("127.0.0.1", "http://127.0.0.1:8080", true),
+        ("01.2.3.4", "http://01.2.3.4:8080", true),
+    ] {
+        with_bind_env(host, || {
+            let config = Config::from_env().expect("Config::from_env() should succeed");
+            assert_eq!(config.dashboard_url(), expected_url, "HOST={host}");
+            assert_eq!(
+                config.emailed_links_are_reachable(),
+                reachable,
+                "reachable for HOST={host}"
+            );
+        });
+    }
+}
+
+/// A bracketed IPv6 literal survives `url_from_env`'s trimming untouched:
+/// an operator who configured the URL already wrote a complete address,
+/// brackets and all, and the fallback builder must not double them.
+#[test]
+#[serial]
+fn configured_urls_are_left_alone_by_the_ipv6_rule() {
+    with_link_env(Some("http://[fd00::10]:8080/"), None, || {
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert_eq!(config.dashboard_url(), "http://[fd00::10]:8080");
+        assert!(config.emailed_links_are_reachable());
+    });
+}
 /// Emailed invitation links carry the address to a stranger's browser, so
 /// the gate is stricter than the link builder: a wildcard bind host is not a
 /// location, and a URL without the scheme its docs require is not a link.

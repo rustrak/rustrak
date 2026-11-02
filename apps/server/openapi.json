@@ -2395,6 +2395,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "Reading the email integration or its stored credentials failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [

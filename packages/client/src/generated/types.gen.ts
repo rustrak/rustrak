@@ -4000,6 +4000,10 @@ export type InvitationsEmailStatusErrors = {
      * Forbidden
      */
     403: ErrorResponse;
+    /**
+     * Reading the email integration or its stored credentials failed
+     */
+    500: ErrorResponse;
 };
 
 export type InvitationsEmailStatusError = InvitationsEmailStatusErrors[keyof InvitationsEmailStatusErrors];

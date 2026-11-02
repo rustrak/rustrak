@@ -1358,7 +1358,7 @@ async fn send_email_success_path_persists_email_sent_at() {
     assert!(sent[0].contains("invites@example.com"), "configured sender");
     assert!(sent[0].contains("rustrak.test/invite/"), "the invite link");
 
-    invitation_email::mark_email_sent(&db.pool, &invitation.token, sent_at)
+    invitation_email::mark_email_sent(&db.pool, &invitation.token, sent_at, None)
         .await
         .expect("stamp persisted");
 

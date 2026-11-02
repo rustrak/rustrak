@@ -141,8 +141,9 @@ function apiUrlSeenByNginx(value: string): {
   };
 }
 
-// 源码 spawn 的是 POSIX `sh`，Windows 上不存在该可执行文件，
-// 用例随平台收口（Linux CI 与 Docker 镜像不受影响）。
+// The script under test is sourced with POSIX `sh`, which Windows does not
+// ship: the case belongs to the platforms that run it, the same ones that
+// build the image.
 describe.skipIf(process.platform === 'win32')(
   'the standalone dashboard image reads RUSTRAK_API_URL the way an operator writes it',
   () => {

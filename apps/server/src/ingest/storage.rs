@@ -319,9 +319,10 @@ pub async fn prepare_ingest_dir(base_dir: &Path) -> AppResult<()> {
 
 fn sync_parent_directory(path: &Path) -> AppResult<()> {
     if let Some(parent) = path.parent() {
-        // 目录句柄按平台区分：POSIX 直接 File::open 目录做 fsync；
-        // Windows 必须带 FILE_FLAG_BACKUP_SEMANTICS 才能打开目录句柄，
-        // 且 FlushFileBuffers 要求写权限，否则会拿到 os error 5（拒绝访问）。
+        // Syncing a directory handle is per-platform work: POSIX opens a
+        // directory directly, while Windows needs FILE_FLAG_BACKUP_SEMANTICS
+        // to open one at all, and a handle that may be flushed (write access)
+        // or CreateFile answers with ERROR_ACCESS_DENIED.
         #[cfg(windows)]
         let directory = {
             use std::os::windows::fs::OpenOptionsExt;
