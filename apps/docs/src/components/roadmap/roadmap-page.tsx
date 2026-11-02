@@ -1,56 +1,67 @@
-import { GRID } from '../editorial/grid';
-import { PageHead } from '../editorial/motion';
+import { Button } from '@rustrak/ui';
+import { fetchRoadmap, PROJECT_URL } from '@/lib/roadmap';
+import { Backdrop, PageIntro } from '../editorial/intro';
 import { Shell } from '../editorial/shell';
-import { GITHUB } from '../landing/links';
-import { UPDATED } from './data';
-import { Overview } from './overview';
-import { Stages } from './stages';
+import { Reveal, Words } from '../home/reveal';
+import { RoadmapLive } from './live';
 
-const updated = new Date(`${UPDATED}T00:00:00Z`).toLocaleDateString('en-GB', {
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
+/* Written out rather than imported from `home/chrome`: this is a server
+   module, and a constant from a client module arrives as a reference. */
+const ISSUES = 'https://github.com/AbianS/rustrak/issues/new';
 
 /**
- * The public roadmap: a title, the whole plan on one line, then the stages in
- * order. No dates; order is the only promise it makes.
+ * The public roadmap: the intro, the whole plan as a board, each horizon in
+ * full, and a way to ask for what is missing. All of it is the GitHub project
+ * (`lib/roadmap.ts`): fetched at build so the page ships drawn, then again in
+ * the browser so it shows the project as it is now.
  */
-export function RoadmapPage() {
+export async function RoadmapPage() {
+  // A build that cannot reach GitHub still builds; the browser fetches anyway.
+  const initial = await fetchRoadmap().catch(() => []);
+
   return (
     <Shell>
-      <PageHead
-        title="Roadmap"
-        meta={`Updated ${updated}`}
-        lead={
-          <p>
-            <span className="text-foreground">
-              What we are building now, and what comes after it.
-            </span>{' '}
-            In order of priority, not on a calendar.
-          </p>
+      <PageIntro
+        eyebrow="Roadmap"
+        title="What we are building next."
+        lead="In order of priority, not on a calendar. What is in flight now, what comes after it, and what we are still thinking about."
+        meta={
+          <a href={PROJECT_URL} className="transition-colors hover:text-fg">
+            Live from GitHub Projects ↗
+          </a>
         }
       />
 
-      <div className="mx-auto max-w-[1440px] px-5 pb-20 sm:px-10 lg:pb-28">
-        <Overview />
-      </div>
+      <RoadmapLive initial={initial} />
 
-      <Stages />
-
-      <div className={`${GRID} pb-32 lg:pb-44`}>
-        <p className="text-[15px] text-muted-foreground lg:col-start-2">
-          Missing something?{' '}
-          <a
-            href={`${GITHUB}/issues/new`}
-            className="text-foreground underline decoration-foreground/30 underline-offset-4 transition-colors duration-300 hover:decoration-primary"
-          >
-            Open an issue
-          </a>
-          .
-        </p>
-      </div>
+      <section className="mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 sm:py-32">
+        <Reveal y={48}>
+          <Backdrop dim>
+            <div className="flex flex-col items-center px-6 py-24 text-center sm:py-28">
+              <Words
+                text="Missing something?"
+                delay={0.3}
+                className="text-balance text-fg text-headline"
+              />
+              <Reveal delay={0.55}>
+                <p className="mt-5 max-w-md text-pretty text-fg-secondary text-lead">
+                  The roadmap follows what people running Rustrak ask for. Tell
+                  us what you need.
+                </p>
+              </Reveal>
+              <Reveal delay={0.7} className="mt-8">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  render={<a href={ISSUES} />}
+                >
+                  Open an issue
+                </Button>
+              </Reveal>
+            </div>
+          </Backdrop>
+        </Reveal>
+      </section>
     </Shell>
   );
 }

@@ -37,6 +37,11 @@
       "cache": false,
       "persistent": true
     },
+    "docs#dev": {
+      "dependsOn": ["@rustrak/ui#build"],
+      "cache": false,
+      "persistent": true
+    },
     "@rustrak/dashboard#dev": {
       "dependsOn": ["@rustrak/client#build", "@rustrak/ui#build"],
       "cache": false,

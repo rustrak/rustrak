@@ -1,29 +1,27 @@
 import Link from 'next/link';
 import { formatDate, type Post } from '@/lib/blog';
-import { cn } from '@/lib/utils';
-import { GRID } from '../editorial/grid';
-import { BlurIn, Rule } from '../editorial/motion';
+import { Reveal } from '../home/reveal';
 
 function Neighbour({ post, label }: { post: Post; label: string }) {
   return (
-    <Link href={`/blog/${post.slug}`} className="group block py-6">
-      <span className="font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase transition-colors duration-500 group-hover:text-primary">
+    <Link
+      href={`/blog/${post.slug}`}
+      className="group flex h-full flex-col gap-3 rounded-2xl border border-border-subtle bg-panel p-6 transition-colors hover:border-border"
+    >
+      <span className="font-mono text-fg-meta text-mono-sm uppercase tracking-wider">
         {label}
       </span>
-      <span className="mt-3 block max-w-[24ch] text-[24px] leading-[1.15] tracking-[-0.025em] text-foreground transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-1.5 sm:text-[30px]">
+      <span className="text-balance text-fg text-section transition-colors group-hover:text-fg-brand">
         {post.title}
       </span>
-      <time
-        dateTime={post.date}
-        className="mt-3 block font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase"
-      >
+      <time dateTime={post.date} className="mt-auto text-fg-meta text-meta">
         {formatDate(post.date)}
       </time>
     </Link>
   );
 }
 
-/** The posts either side of this one, in the reading column. */
+/** The posts either side of this one, as two cards under the text. */
 export function PostNeighbours({
   older,
   newer,
@@ -34,25 +32,20 @@ export function PostNeighbours({
   if (!older && !newer) return null;
 
   return (
-    <nav aria-label="More posts">
-      <Rule />
-      <div className={cn(GRID, 'pt-10 pb-28 lg:pb-40')}>
-        <p className="font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
-          Keep reading
-        </p>
-        <div className="mt-4 divide-y divide-rule lg:mt-0 lg:-translate-y-6">
-          {newer ? (
-            <BlurIn>
-              <Neighbour post={newer} label="Newer ↑" />
-            </BlurIn>
-          ) : null}
-          {older ? (
-            <BlurIn index={1}>
-              <Neighbour post={older} label="Older ↓" />
-            </BlurIn>
-          ) : null}
-        </div>
-      </div>
+    <nav
+      aria-label="More posts"
+      className="mx-auto grid w-full max-w-[47rem] gap-4 px-6 pb-28 sm:grid-cols-2"
+    >
+      {newer ? (
+        <Reveal>
+          <Neighbour post={newer} label="Newer" />
+        </Reveal>
+      ) : null}
+      {older ? (
+        <Reveal delay={0.08} className={newer ? undefined : 'sm:col-start-2'}>
+          <Neighbour post={older} label="Older" />
+        </Reveal>
+      ) : null}
     </nav>
   );
 }
