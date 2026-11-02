@@ -1,12 +1,6 @@
+import { Select, SelectItem } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
 import { presetsWith } from '@/features/storage/model/retention';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 
 const FOREVER = 'forever';
 
@@ -31,28 +25,26 @@ export function KeepForSelect({
       ? t('keep.forever')
       : t('keep.days', { count: Number(option) });
 
+  const options = presetsWith(value).map((days) =>
+    days === null ? FOREVER : String(days),
+  );
+
   return (
     <Select
+      id={id}
+      aria-label={label}
       value={value === null ? FOREVER : String(value)}
-      onValueChange={(option) => {
-        if (option === null) return;
-        onChange(option === FOREVER ? null : Number(option));
-      }}
+      onValueChange={(option) =>
+        onChange(option === FOREVER ? null : Number(option))
+      }
+      items={Object.fromEntries(options.map((o) => [o, name(o)]))}
       disabled={disabled}
     >
-      <SelectTrigger id={id} className="w-full" aria-label={label}>
-        <SelectValue>{(option: string) => name(option)}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {presetsWith(value).map((days) => {
-          const option = days === null ? FOREVER : String(days);
-          return (
-            <SelectItem key={option} value={option}>
-              {name(option)}
-            </SelectItem>
-          );
-        })}
-      </SelectContent>
+      {options.map((option) => (
+        <SelectItem key={option} value={option}>
+          {name(option)}
+        </SelectItem>
+      ))}
     </Select>
   );
 }

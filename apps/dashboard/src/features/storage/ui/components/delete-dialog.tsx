@@ -5,7 +5,19 @@ import type {
   ProjectStorage,
   SourceMapGcResult,
 } from '@rustrak/client';
-import { Button } from '@rustrak/ui';
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+  Field,
+  FieldLabel,
+  Select,
+  SelectItem,
+} from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -22,23 +34,6 @@ import {
 } from '@/features/storage/model/retention';
 import { ApiError } from '@/shared/api/query';
 import { formatBytes } from '@/shared/lib/utils';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
-import { Checkbox } from '@/shared/ui/components/shadcn/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 import { ImpactLine } from './impact-line';
 
 const OLDER_THAN = [1, 7, 14, 30, 90, 180, 365] as const;
@@ -66,25 +61,25 @@ export function DeleteDialog({
   const cleanup = useMutation(storageMutations.cleanup());
   const isPending = gc.isPending || cleanup.isPending;
   return (
-    <AlertDialog
+    <Dialog
+      alert
+      size="lg"
       open={open}
       onOpenChange={(o) => !isPending && onOpenChange(o)}
     >
-      <AlertDialogContent className="sm:max-w-lg">
-        {open && (
-          <Editor
-            projects={projects}
-            isPending={isPending}
-            gc={gc.mutateAsync}
-            cleanup={cleanup.mutateAsync}
-            onDone={(job) => {
-              if (job) onStarted(job);
-              onOpenChange(false);
-            }}
-          />
-        )}
-      </AlertDialogContent>
-    </AlertDialog>
+      {open && (
+        <Editor
+          projects={projects}
+          isPending={isPending}
+          gc={gc.mutateAsync}
+          cleanup={cleanup.mutateAsync}
+          onDone={(job) => {
+            if (job) onStarted(job);
+            onOpenChange(false);
+          }}
+        />
+      )}
+    </Dialog>
   );
 }
 
@@ -137,64 +132,66 @@ function Editor({
 
   return (
     <>
-      <AlertDialogHeader>
-        <AlertDialogTitle>{t('delete.title')}</AlertDialogTitle>
-        <AlertDialogDescription>
-          {t('delete.description')}
-        </AlertDialogDescription>
-      </AlertDialogHeader>
+      <DialogHeader
+        dismissible={false}
+        title={t('delete.title')}
+        description={t('delete.description')}
+      />
 
-      <fieldset className="m-0 min-w-0 space-y-1 border-0 p-0">
-        <legend className="mb-1.5 text-value font-medium text-fg">
-          {t('delete.what')}
-        </legend>
-        {KINDS.map((kind) => (
+      <DialogBody className="space-y-4">
+        <fieldset className="m-0 min-w-0 space-y-1 border-0 p-0">
+          <legend className="mb-1.5 text-value font-medium text-fg">
+            {t('delete.what')}
+          </legend>
+          {KINDS.map((kind) => (
+            <Choice
+              key={kind}
+              checked={kinds.includes(kind)}
+              onChange={(checked) =>
+                setKinds((ks) =>
+                  checked ? [...ks, kind] : ks.filter((k) => k !== kind),
+                )
+              }
+              title={t(`kind.${kind}`)}
+              hint={t(`kindHint.${kind}`)}
+              disabled={isPending}
+            />
+          ))}
           <Choice
-            key={kind}
-            checked={kinds.includes(kind)}
-            onChange={(checked) =>
-              setKinds((ks) =>
-                checked ? [...ks, kind] : ks.filter((k) => k !== kind),
-              )
-            }
-            title={t(`kind.${kind}`)}
-            hint={t(`kindHint.${kind}`)}
+            checked={sourceMaps}
+            onChange={setSourceMaps}
+            title={t('delete.sourceMaps')}
+            hint={t('delete.sourceMapsHint')}
             disabled={isPending}
           />
-        ))}
-        <Choice
-          checked={sourceMaps}
-          onChange={setSourceMaps}
-          title={t('delete.sourceMaps')}
-          hint={t('delete.sourceMapsHint')}
+        </fieldset>
+
+        <Scope
+          days={days}
+          onDays={setDays}
+          project={project}
+          onProject={setProject}
+          projects={projects}
           disabled={isPending}
         />
-      </fieldset>
 
-      <Scope
-        days={days}
-        onDays={setDays}
-        project={project}
-        onProject={setProject}
-        projects={projects}
-        disabled={isPending}
-      />
+        <ImpactLine
+          state={nothingChosen ? 'ready' : state}
+          sentence={
+            !nothingChosen && parts.length > 0
+              ? t('delete.impact', { parts: parts.join(', '), size })
+              : null
+          }
+          nothing={t(nothingChosen ? 'delete.pickOne' : 'delete.nothing')}
+          onRetry={retry}
+        />
+      </DialogBody>
 
-      <ImpactLine
-        state={nothingChosen ? 'ready' : state}
-        sentence={
-          !nothingChosen && parts.length > 0
-            ? t('delete.impact', { parts: parts.join(', '), size })
-            : null
-        }
-        nothing={t(nothingChosen ? 'delete.pickOne' : 'delete.nothing')}
-        onRetry={retry}
-      />
-
-      <AlertDialogFooter>
-        <AlertDialogCancel disabled={isPending}>
-          {t('cancel')}
-        </AlertDialogCancel>
+      <DialogFooter>
+        <DialogClose
+          disabled={isPending}
+          render={<Button variant="secondary">{t('cancel')}</Button>}
+        />
         <Button
           variant="danger-primary"
           onClick={run}
@@ -205,7 +202,7 @@ function Editor({
             ? t('delete.action', { size })
             : t('delete.actionIdle')}
         </Button>
-      </AlertDialogFooter>
+      </DialogFooter>
     </>
   );
 }
@@ -228,6 +225,7 @@ function Choice({
     <label className="flex cursor-pointer items-start gap-3 rounded-md px-1 py-1.5">
       <Checkbox
         className="mt-0.5"
+        aria-label={title}
         checked={checked}
         onCheckedChange={(next) => onChange(next === true)}
         disabled={disabled}
@@ -302,54 +300,44 @@ function Scope({
   );
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <label className="space-y-1.5 text-value">
-        <span className="font-medium">{t('delete.olderThan')}</span>
+      <Field>
+        <FieldLabel nativeLabel={false}>{t('delete.olderThan')}</FieldLabel>
         <Select
           value={String(days)}
-          onValueChange={(v) => v && onDays(Number(v))}
+          onValueChange={(v) => onDays(Number(v))}
+          items={Object.fromEntries(
+            OLDER_THAN.map((d) => [String(d), t('keep.days', { count: d })]),
+          )}
           disabled={disabled}
         >
-          <SelectTrigger className="w-full">
-            <SelectValue>
-              {(v: string) => t('keep.days', { count: Number(v) })}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {OLDER_THAN.map((d) => (
-              <SelectItem key={d} value={String(d)}>
-                {t('keep.days', { count: d })}
-              </SelectItem>
-            ))}
-          </SelectContent>
+          {OLDER_THAN.map((d) => (
+            <SelectItem key={d} value={String(d)}>
+              {t('keep.days', { count: d })}
+            </SelectItem>
+          ))}
         </Select>
-      </label>
-      <label className="space-y-1.5 text-value">
-        <span className="font-medium">{t('delete.in')}</span>
+      </Field>
+      <Field>
+        <FieldLabel nativeLabel={false}>{t('delete.in')}</FieldLabel>
         <Select
           value={project}
-          onValueChange={(v) => v && onProject(v)}
+          onValueChange={onProject}
+          items={{
+            [ALL]: t('delete.allProjects'),
+            ...Object.fromEntries(
+              byName.map((p) => [String(p.project_id), p.project_name]),
+            ),
+          }}
           disabled={disabled}
         >
-          <SelectTrigger className="w-full">
-            <SelectValue>
-              {(v: string) =>
-                v === ALL
-                  ? t('delete.allProjects')
-                  : (byName.find((p) => String(p.project_id) === v)
-                      ?.project_name ?? v)
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>{t('delete.allProjects')}</SelectItem>
-            {byName.map((p) => (
-              <SelectItem key={p.project_id} value={String(p.project_id)}>
-                {p.project_name}
-              </SelectItem>
-            ))}
-          </SelectContent>
+          <SelectItem value={ALL}>{t('delete.allProjects')}</SelectItem>
+          {byName.map((p) => (
+            <SelectItem key={p.project_id} value={String(p.project_id)}>
+              {p.project_name}
+            </SelectItem>
+          ))}
         </Select>
-      </label>
+      </Field>
     </div>
   );
 }

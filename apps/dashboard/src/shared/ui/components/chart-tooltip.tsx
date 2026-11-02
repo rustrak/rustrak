@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
  */
 export function ChartTooltipSurface({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
+    <div className="rounded-md border bg-surface-floating px-2.5 py-1.5 text-xs shadow-md">
       {children}
     </div>
   );
@@ -37,17 +37,15 @@ export function ChartTooltipRow({
           style={{ background: color }}
         />
       ) : null}
-      <span className="text-muted-foreground">{label}</span>
-      <span className="ml-auto font-medium tabular-nums text-popover-foreground">
-        {value}
-      </span>
+      <span className="text-fg-subtle">{label}</span>
+      <span className="ml-auto font-medium tabular-nums text-fg">{value}</span>
     </div>
   );
 }
 
 /** Muted caption line, normally the bucket timestamp. */
 export function ChartTooltipCaption({ children }: { children: ReactNode }) {
-  return <p className="mt-1 text-muted-foreground">{children}</p>;
+  return <p className="mt-1 text-fg-subtle">{children}</p>;
 }
 
 /**
@@ -66,7 +64,7 @@ export function ChartLegend({
       {items.map((item) => (
         <li
           key={item.label}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          className="flex items-center gap-1.5 text-xs text-fg-subtle"
         >
           <span
             aria-hidden

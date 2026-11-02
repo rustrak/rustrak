@@ -1,18 +1,15 @@
 import type { ProjectResponse } from '@rustrak/client';
-import { Button, DeleteIcon, Spinner } from '@rustrak/ui';
+import {
+  Button,
+  DeleteIcon,
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from '@rustrak/ui';
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'use-intl';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 
 /**
  * Removing the project, behind a confirmation that names it.
@@ -59,37 +56,24 @@ export function DangerZone({
         </SettingRow>
       </SettingSection>
 
-      <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('dangerZone.deleteTitle', { name: project.name })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('dangerZone.deleteDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('dangerZone.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={remove}
-              disabled={isPending}
-              className="bg-danger text-white hover:bg-danger-fg"
-            >
-              {isPending ? (
-                <>
-                  <Spinner size="md" label={t('dangerZone.deleting')} />
-                  {t('dangerZone.deleting')}
-                </>
-              ) : (
-                t('dangerZone.confirm')
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Dialog alert open={isOpen} onOpenChange={setIsOpen}>
+        <DialogHeader
+          dismissible={false}
+          title={t('dangerZone.deleteTitle', { name: project.name })}
+          description={t('dangerZone.deleteDescription')}
+        />
+        <DialogFooter>
+          <DialogClose
+            disabled={isPending}
+            render={
+              <Button variant="secondary">{t('dangerZone.cancel')}</Button>
+            }
+          />
+          <Button variant="danger-primary" onClick={remove} loading={isPending}>
+            {isPending ? t('dangerZone.deleting') : t('dangerZone.confirm')}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </>
   );
 }

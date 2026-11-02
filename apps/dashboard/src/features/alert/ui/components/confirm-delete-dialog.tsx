@@ -1,14 +1,5 @@
+import { Button, Dialog, DialogFooter, DialogHeader } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 
 /**
  * The confirmation before an alert rule or an integration is deleted.
@@ -34,25 +25,24 @@ export function ConfirmDeleteDialog({
   const t = useTranslations('alerts');
 
   return (
-    <AlertDialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>
-            {t('common.cancel')}
-          </AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            {isPending ? t('common.deleting') : t('common.delete')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Dialog alert open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogHeader
+        title={title}
+        description={description}
+        dismissible={false}
+      />
+      <DialogFooter>
+        <Button variant="secondary" disabled={isPending} onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
+        <Button
+          variant="danger-primary"
+          loading={isPending}
+          onClick={onConfirm}
+        >
+          {isPending ? t('common.deleting') : t('common.delete')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }

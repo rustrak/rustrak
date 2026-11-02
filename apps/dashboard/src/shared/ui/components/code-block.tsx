@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react';
+import { SpinnerIcon } from '@rustrak/ui';
 import type { SyntaxHighlighter } from '@/shared/ui/hooks/use-syntax-highlighter';
 
 /**
@@ -38,8 +38,8 @@ export function CodeBlock({
   }
 
   return (
-    <div className="flex h-24 animate-pulse items-center justify-center bg-muted p-4">
-      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+    <div className="flex h-24 animate-pulse items-center justify-center bg-surface-hover p-4">
+      <SpinnerIcon className="size-4 animate-spin text-fg-subtle" />
     </div>
   );
 }

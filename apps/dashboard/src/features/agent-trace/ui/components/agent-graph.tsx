@@ -131,9 +131,7 @@ function Uses({
   if (uses.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-column text-fg-meta uppercase">
-        {title}
-      </span>
+      <span className="text-column text-fg-meta">{title}</span>
       <ul className="flex flex-col gap-1">
         {uses.map((use) => (
           <li key={use.name} className="flex items-center gap-2 text-meta">

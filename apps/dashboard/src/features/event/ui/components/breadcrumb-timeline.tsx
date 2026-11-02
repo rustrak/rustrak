@@ -1,14 +1,13 @@
 import {
-  Circle,
-  CircleAlert,
-  Database,
-  Globe,
-  Info,
-  type LucideIcon,
-  MousePointerClick,
-  Navigation,
-  Terminal,
-} from 'lucide-react';
+  ClickIcon,
+  ConsoleIcon,
+  DotIcon,
+  type IconComponent,
+  InfoIcon,
+  NavigationIcon,
+  NetworkIcon,
+  StorageIcon,
+} from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
 import type { GroupedBreadcrumb } from '@/features/event/lib/breadcrumbs';
 import { cn } from '@/shared/lib/utils';
@@ -18,16 +17,16 @@ function crumbIcon(crumb: {
   category?: string;
   type?: string;
   level?: string;
-}): LucideIcon {
+}): IconComponent {
   const c = `${crumb.category ?? ''} ${crumb.type ?? ''}`.toLowerCase();
-  if (c.includes('navigation')) return Navigation;
-  if (/http|xhr|fetch|request/.test(c)) return Globe;
-  if (/console|debug/.test(c)) return Terminal;
-  if (/ui|click|touch/.test(c)) return MousePointerClick;
-  if (/query|sql|\bdb\b/.test(c)) return Database;
-  if (crumb.level === 'error' || /error|exception/.test(c)) return CircleAlert;
-  if (c.includes('info')) return Info;
-  return Circle;
+  if (c.includes('navigation')) return NavigationIcon;
+  if (/http|xhr|fetch|request/.test(c)) return NetworkIcon;
+  if (/console|debug/.test(c)) return ConsoleIcon;
+  if (/ui|click|touch/.test(c)) return ClickIcon;
+  if (/query|sql|\bdb\b/.test(c)) return StorageIcon;
+  if (crumb.level === 'error' || /error|exception/.test(c)) return InfoIcon;
+  if (c.includes('info')) return InfoIcon;
+  return DotIcon;
 }
 
 function levelColor(level?: string): string {

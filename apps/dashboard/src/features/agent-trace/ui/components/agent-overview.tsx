@@ -172,7 +172,7 @@ function Breakdown<T>({
     <div className="overflow-x-auto">
       <table className="w-full text-body">
         <thead>
-          <tr className="border-border-divider border-y font-mono text-column text-fg-meta uppercase">
+          <tr className="border-border-divider border-y text-column text-fg-meta">
             <th className={cn(cell, 'text-left font-normal')}>{nameLabel}</th>
             {columns.map((c) => (
               <th key={c.label} className={cn(cell, 'text-right font-normal')}>

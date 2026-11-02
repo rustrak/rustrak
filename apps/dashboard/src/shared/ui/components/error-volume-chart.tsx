@@ -334,7 +334,7 @@ export function ErrorVolumeChart({
   if (!chartData.some((p) => p.total > 0)) {
     return (
       <div
-        className="flex items-center justify-center text-sm text-muted-foreground"
+        className="flex items-center justify-center text-sm text-fg-subtle"
         style={{ height }}
       >
         {t('noEvents')}
@@ -402,7 +402,7 @@ export function ErrorVolumeChart({
       </ResponsiveContainer>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ChartLegend items={series} />
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-fg-subtle">
           {t('dashedLine', { count: Math.round(mean) })}
         </span>
       </div>

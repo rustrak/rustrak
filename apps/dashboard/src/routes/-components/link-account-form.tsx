@@ -1,12 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Button, Field, FieldLabel, Input, Text } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { userMutations } from '@/features/user/api/mutations';
 import { SERVER_ERROR_PATH } from '@/shared/lib/form-errors';
-import { Link } from '@/shared/ui/components/link';
-import { Button } from '@/shared/ui/components/shadcn/button';
 import {
   Form,
   FormControl,
@@ -15,9 +14,8 @@ import {
   FormLabel,
   FormMessage,
   FormRootError,
-} from '@/shared/ui/components/shadcn/form';
-import { Input } from '@/shared/ui/components/shadcn/input';
-import { Label } from '@/shared/ui/components/shadcn/label';
+} from '@/shared/ui/components/form';
+import { Link } from '@/shared/ui/components/link';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 type LinkFormData = { password: string };
@@ -69,35 +67,31 @@ export function LinkAccountForm({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">{t('link.title')}</h1>
-        <p className="text-muted-foreground">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-fg text-page-title">{t('link.title')}</h1>
+        <Text render={<p />} tone="muted">
           {t('link.description', { email, provider })}
-        </p>
+        </Text>
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-          {t('link.emailLabel')}
-        </Label>
-        <Input value={email} readOnly disabled className="bg-background" />
-      </div>
+      <Field>
+        <FieldLabel>{t('link.emailLabel')}</FieldLabel>
+        <Input value={email} readOnly disabled />
+      </Field>
 
       <Form {...form}>
         <form
           noValidate
           onSubmit={form.handleSubmit(onSubmit)}
-          className="space-y-4"
+          className="flex flex-col gap-4"
         >
           <FormField
             control={form.control}
             name="password"
             render={({ field }) => (
-              <FormItem className="space-y-2">
-                <FormLabel className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {t('link.passwordLabel')}
-                </FormLabel>
+              <FormItem>
+                <FormLabel>{t('link.passwordLabel')}</FormLabel>
                 <FormControl>
                   <Input
                     type="password"
@@ -116,8 +110,10 @@ export function LinkAccountForm({
 
           <Button
             type="submit"
-            className="w-full font-extrabold uppercase tracking-widest text-xs py-6 mt-2"
-            disabled={isPending}
+            variant="primary"
+            size="lg"
+            className="mt-2 w-full"
+            loading={isPending}
           >
             {isPending ? t('link.submitting') : t('link.submit')}
           </Button>
@@ -126,8 +122,8 @@ export function LinkAccountForm({
 
       <Button
         variant="ghost"
+        size="lg"
         className="w-full"
-        nativeButton={false}
         render={<Link href="/login" />}
       >
         {t('link.cancel')}

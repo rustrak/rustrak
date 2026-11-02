@@ -1,15 +1,19 @@
-import { Button, CopyIcon, Input, NewIcon, SelectedIcon } from '@rustrak/ui';
-import { useState } from 'react';
-import { useTranslations } from 'use-intl';
 import {
+  Button,
+  CopyIcon,
   Dialog,
-  DialogContent,
-  DialogDescription,
+  DialogBody,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/shared/ui/components/shadcn/dialog';
+  Field,
+  FieldHint,
+  FieldLabel,
+  Input,
+  NewIcon,
+  SelectedIcon,
+} from '@rustrak/ui';
+import { useState } from 'react';
+import { useTranslations } from 'use-intl';
 
 export const TOKEN_DESCRIPTION_MAX_LENGTH = 200;
 
@@ -59,24 +63,22 @@ export function CreateTokenDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger
-        render={
-          <Button variant="primary" icon={NewIcon}>
-            {t('create.trigger')}
-          </Button>
-        }
-      />
-      <DialogContent>
+    <>
+      <Button
+        variant="primary"
+        icon={NewIcon}
+        onClick={() => onOpenChange(true)}
+      >
+        {t('create.trigger')}
+      </Button>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         {newToken ? (
           <>
-            <DialogHeader>
-              <DialogTitle>{t('create.createdTitle')}</DialogTitle>
-              <DialogDescription>
-                {t('create.createdDescription')}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
+            <DialogHeader
+              title={t('create.createdTitle')}
+              description={t('create.createdDescription')}
+            />
+            <DialogBody>
               <div className="flex items-center gap-2 rounded-lg border border-border-subtle bg-surface p-3">
                 <code className="flex-1 break-all font-mono text-mono text-fg">
                   {newToken}
@@ -93,7 +95,7 @@ export function CreateTokenDialog({
               <p className="mt-2 text-hint text-fg-subtle">
                 {t('create.copyAgainHint')}
               </p>
-            </div>
+            </DialogBody>
             <DialogFooter>
               <Button variant="primary" onClick={onDone}>
                 {t('create.done')}
@@ -102,20 +104,14 @@ export function CreateTokenDialog({
           </>
         ) : (
           <>
-            <DialogHeader>
-              <DialogTitle>{t('create.title')}</DialogTitle>
-              <DialogDescription>{t('create.description')}</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <label
-                  htmlFor="description"
-                  className="block text-value font-medium text-fg"
-                >
-                  {t('create.descriptionLabel')}
-                </label>
+            <DialogHeader
+              title={t('create.title')}
+              description={t('create.description')}
+            />
+            <DialogBody>
+              <Field>
+                <FieldLabel>{t('create.descriptionLabel')}</FieldLabel>
                 <Input
-                  id="description"
                   placeholder={t('create.descriptionPlaceholder')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -126,12 +122,12 @@ export function CreateTokenDialog({
                   maxLength={TOKEN_DESCRIPTION_MAX_LENGTH + 10}
                   invalid={!isValid}
                 />
-                <p className="text-hint text-fg-subtle">
+                <FieldHint>
                   {t('create.charCount', {
                     count: trimmed.length,
                     max: TOKEN_DESCRIPTION_MAX_LENGTH,
                   })}
-                </p>
+                </FieldHint>
                 {!isValid && (
                   <p className="text-meta text-danger-fg">
                     {t('create.descriptionTooLong', {
@@ -139,8 +135,8 @@ export function CreateTokenDialog({
                     })}
                   </p>
                 )}
-              </div>
-            </div>
+              </Field>
+            </DialogBody>
             <DialogFooter>
               <Button
                 variant="ghost"
@@ -159,7 +155,7 @@ export function CreateTokenDialog({
             </DialogFooter>
           </>
         )}
-      </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }

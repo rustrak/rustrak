@@ -4,22 +4,15 @@ import type {
   RetentionResponse,
   RetentionSettings,
 } from '@rustrak/client';
-import { useFormatter, useTranslations } from 'use-intl';
-import { KINDS, WINDOW_FIELD } from '@/features/storage/model/retention';
 import {
   Dialog,
-  DialogContent,
-  DialogDescription,
+  DialogBody,
   DialogHeader,
-  DialogTitle,
-} from '@/shared/ui/components/shadcn/dialog';
-import {
   Select,
-  SelectContent,
   SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
+} from '@rustrak/ui';
+import { useFormatter, useTranslations } from 'use-intl';
+import { KINDS, WINDOW_FIELD } from '@/features/storage/model/retention';
 import { useRetentionDraft } from '../hooks/use-retention-draft';
 import { KeepForSelect } from './keep-for-select';
 import { RetentionFooter } from './retention-footer';
@@ -46,20 +39,18 @@ export function RetentionDialog({
   onDone: (job: CleanupStatus | null) => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        {open && (
-          <Editor
-            retention={retention}
-            projects={projects}
-            onDone={(job) => {
-              onDone(job);
-              onOpenChange(false);
-            }}
-            onCancel={() => onOpenChange(false)}
-          />
-        )}
-      </DialogContent>
+    <Dialog size="lg" open={open} onOpenChange={onOpenChange}>
+      {open && (
+        <Editor
+          retention={retention}
+          projects={projects}
+          onDone={(job) => {
+            onDone(job);
+            onOpenChange(false);
+          }}
+          onCancel={() => onOpenChange(false)}
+        />
+      )}
     </Dialog>
   );
 }
@@ -85,63 +76,65 @@ function Editor({
 
   return (
     <>
-      <DialogHeader>
-        <DialogTitle>{t('dialog.title')}</DialogTitle>
-        <DialogDescription>{t('dialog.description')}</DialogDescription>
-      </DialogHeader>
+      <DialogHeader
+        title={t('dialog.title')}
+        description={t('dialog.description')}
+      />
 
-      <div className="divide-y divide-border-divider rounded-md border border-border-subtle">
-        <div className="flex items-center justify-between gap-4 bg-surface-hover px-3 py-2 text-label text-fg-meta">
-          <span>{t('dialog.kindColumn')}</span>
-          <span className="w-44">{t('dialog.keepColumn')}</span>
-        </div>
-        {KINDS.map((kind) => (
-          <div
-            key={kind}
-            className="flex items-center justify-between gap-4 px-3 py-2.5"
-          >
-            <label htmlFor={`keep-${kind}`} className="min-w-0">
-              <span className="block text-value font-medium text-fg">
-                {t(`kind.${kind}`)}
-              </span>
-              <span className="block text-hint text-fg-subtle">
-                {t(`kindHint.${kind}`)}
-              </span>
-            </label>
-            <div className="w-44 shrink-0">
-              <KeepForSelect
-                id={`keep-${kind}`}
-                value={draft.defaults[WINDOW_FIELD[kind]]}
-                onChange={(days) =>
-                  setDraft((d) => ({
-                    ...d,
-                    defaults: { ...d.defaults, [WINDOW_FIELD[kind]]: days },
-                  }))
-                }
-                disabled={isPending}
-              />
-            </div>
+      <DialogBody className="space-y-4">
+        <div className="divide-y divide-border-divider rounded-md border border-border-subtle">
+          <div className="flex items-center justify-between gap-4 bg-surface-hover px-3 py-2 text-label text-fg-meta">
+            <span>{t('dialog.kindColumn')}</span>
+            <span className="w-44">{t('dialog.keepColumn')}</span>
           </div>
-        ))}
-      </div>
+          {KINDS.map((kind) => (
+            <div
+              key={kind}
+              className="flex items-center justify-between gap-4 px-3 py-2.5"
+            >
+              <label htmlFor={`keep-${kind}`} className="min-w-0">
+                <span className="block text-value font-medium text-fg">
+                  {t(`kind.${kind}`)}
+                </span>
+                <span className="block text-hint text-fg-subtle">
+                  {t(`kindHint.${kind}`)}
+                </span>
+              </label>
+              <div className="w-44 shrink-0">
+                <KeepForSelect
+                  id={`keep-${kind}`}
+                  value={draft.defaults[WINDOW_FIELD[kind]]}
+                  onChange={(days) =>
+                    setDraft((d) => ({
+                      ...d,
+                      defaults: { ...d.defaults, [WINDOW_FIELD[kind]]: days },
+                    }))
+                  }
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
 
-      <p className="-mt-2 text-hint text-fg-subtle">
-        {t('dialog.foreverHint')}
-      </p>
+        <p className="-mt-2 text-hint text-fg-subtle">
+          {t('dialog.foreverHint')}
+        </p>
 
-      <div className="space-y-1.5">
-        <p className="text-value font-medium text-fg">{t('dialog.runs')}</p>
-        <Schedule
-          settings={draft}
-          onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
-          disabled={isPending}
-        />
-        {custom > 0 && (
-          <p className="text-hint text-fg-subtle">
-            {t('dialog.customProjects', { count: custom })}
-          </p>
-        )}
-      </div>
+        <div className="space-y-1.5">
+          <p className="text-value font-medium text-fg">{t('dialog.runs')}</p>
+          <Schedule
+            settings={draft}
+            onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            disabled={isPending}
+          />
+          {custom > 0 && (
+            <p className="text-hint text-fg-subtle">
+              {t('dialog.customProjects', { count: custom })}
+            </p>
+          )}
+        </div>
+      </DialogBody>
 
       <RetentionFooter
         impact={impact}
@@ -178,57 +171,46 @@ function Schedule({
   return (
     <div className="flex flex-wrap items-center gap-2 text-value">
       <Select
+        className="w-36"
+        aria-label={t('dialog.frequency')}
         value={settings.frequency}
-        onValueChange={(v) =>
-          v && onChange({ frequency: v as RetentionSettings['frequency'] })
-        }
+        onValueChange={(v) => onChange({ frequency: v })}
+        items={{ daily: t('schedule.daily'), weekly: t('schedule.weekly') }}
         disabled={disabled}
       >
-        <SelectTrigger className="w-36" aria-label={t('dialog.frequency')}>
-          <SelectValue>{(v: string) => t(`schedule.${v}`)}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="daily">{t('schedule.daily')}</SelectItem>
-          <SelectItem value="weekly">{t('schedule.weekly')}</SelectItem>
-        </SelectContent>
+        <SelectItem value="daily">{t('schedule.daily')}</SelectItem>
+        <SelectItem value="weekly">{t('schedule.weekly')}</SelectItem>
       </Select>
       {settings.frequency === 'weekly' && (
         <Select
+          className="w-36"
+          aria-label={t('dialog.weekday')}
           value={String(settings.weekday)}
-          onValueChange={(v) => v && onChange({ weekday: Number(v) })}
+          onValueChange={(v) => onChange({ weekday: Number(v) })}
+          items={Object.fromEntries(WEEKDAYS.map((d) => [d, weekday(d)]))}
           disabled={disabled}
         >
-          <SelectTrigger className="w-36" aria-label={t('dialog.weekday')}>
-            <SelectValue>{(v: string) => weekday(Number(v))}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {WEEKDAYS.map((d) => (
-              <SelectItem key={d} value={String(d)}>
-                {weekday(d)}
-              </SelectItem>
-            ))}
-          </SelectContent>
+          {WEEKDAYS.map((d) => (
+            <SelectItem key={d} value={String(d)}>
+              {weekday(d)}
+            </SelectItem>
+          ))}
         </Select>
       )}
       <span className="text-fg-subtle">{t('dialog.at')}</span>
       <Select
+        className="w-32 tabular-nums"
+        aria-label={t('dialog.hour')}
         value={String(settings.hour)}
-        onValueChange={(v) => v && onChange({ hour: Number(v) })}
+        onValueChange={(v) => onChange({ hour: Number(v) })}
+        items={Object.fromEntries(HOURS.map((h) => [h, hour(h)]))}
         disabled={disabled}
       >
-        <SelectTrigger
-          className="w-32 tabular-nums"
-          aria-label={t('dialog.hour')}
-        >
-          <SelectValue>{(v: string) => hour(Number(v))}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {HOURS.map((h) => (
-            <SelectItem key={h} value={String(h)}>
-              {hour(h)}
-            </SelectItem>
-          ))}
-        </SelectContent>
+        {HOURS.map((h) => (
+          <SelectItem key={h} value={String(h)}>
+            {hour(h)}
+          </SelectItem>
+        ))}
       </Select>
     </div>
   );

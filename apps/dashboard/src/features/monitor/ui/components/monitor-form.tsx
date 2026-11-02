@@ -1,8 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { MonitorResponse } from '@rustrak/client';
-import { Skeleton } from '@rustrak/ui';
+import { Button, Input, Skeleton } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { type Path, useForm, useFormContext, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -18,10 +17,6 @@ import {
 } from '@/features/monitor/model/monitor-form';
 import type { ApiError } from '@/shared/api/query';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
-import { Link } from '@/shared/ui/components/link';
-import { ScheduleField } from '@/shared/ui/components/schedule-field';
-import { SchedulePreview } from '@/shared/ui/components/schedule-preview';
-import { Button } from '@/shared/ui/components/shadcn/button';
 import {
   Form,
   FormControl,
@@ -31,13 +26,12 @@ import {
   FormLabel,
   FormMessage,
   FormRootError,
-} from '@/shared/ui/components/shadcn/form';
-import { Input } from '@/shared/ui/components/shadcn/input';
+} from '@/shared/ui/components/form';
+import { Link } from '@/shared/ui/components/link';
+import { ScheduleField } from '@/shared/ui/components/schedule-field';
+import { SchedulePreview } from '@/shared/ui/components/schedule-preview';
 import { TimeZoneCombobox } from '@/shared/ui/components/time-zone-combobox';
 import { useRouter } from '@/shared/ui/hooks/use-router';
-
-const LABEL =
-  'text-xs font-bold uppercase tracking-widest text-muted-foreground';
 
 /**
  * Creates a monitor, or edits one. A full page rather than a dialog: the
@@ -171,16 +165,11 @@ export function MonitorForm({
             </div>
           </Section>
 
-          <div className="flex items-center justify-end gap-2 border-t pt-6">
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href={cancelHref} />}
-            >
+          <div className="flex items-center justify-end gap-2 border-border-subtle border-t pt-6">
+            <Button variant="secondary" render={<Link href={cancelHref} />}>
               {t('form.cancel')}
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending && <Loader2 className="animate-spin" />}
+            <Button variant="primary" type="submit" loading={isPending}>
               {t(monitor ? 'form.save' : 'form.create')}
             </Button>
           </div>
@@ -204,7 +193,7 @@ export function MonitorFormSkeleton() {
   const field = (key: number) => (
     <div key={key} className="flex flex-col gap-2">
       <Skeleton className="h-3.5 w-24" />
-      <Skeleton className="h-9 w-full" />
+      <Skeleton className="h-control-lg w-full" />
     </div>
   );
   return (
@@ -240,7 +229,7 @@ function Section({
 }) {
   return (
     <section className="space-y-4">
-      <h2 className="text-sm font-semibold">{title}</h2>
+      <h2 className="text-card-title text-fg">{title}</h2>
       {children}
     </section>
   );
@@ -268,7 +257,7 @@ function TextField({
       name={name}
       render={({ field }) => (
         <FormItem>
-          <FormLabel className={LABEL}>{label}</FormLabel>
+          <FormLabel>{label}</FormLabel>
           <FormControl>
             <Input
               placeholder={placeholder}
@@ -314,7 +303,7 @@ function NumberField({
       name={name}
       render={({ field }) => (
         <FormItem>
-          <FormLabel className={LABEL}>{label}</FormLabel>
+          <FormLabel>{label}</FormLabel>
           <div className="flex items-center gap-2">
             <FormControl>
               <Input
@@ -322,16 +311,16 @@ function NumberField({
                 inputMode="numeric"
                 min={1}
                 disabled={disabled}
-                className="w-28 tabular-nums"
+                boxClassName="w-28"
+                className="tabular-nums"
                 name={field.name}
-                ref={field.ref}
                 onBlur={field.onBlur}
                 value={Number.isNaN(field.value) ? '' : field.value}
                 onChange={(event) => field.onChange(event.target.valueAsNumber)}
               />
             </FormControl>
             {suffix && (
-              <span className="text-sm text-muted-foreground">{suffix}</span>
+              <span className="text-meta text-fg-subtle">{suffix}</span>
             )}
           </div>
           {hint && <FormDescription>{hint}</FormDescription>}
@@ -370,7 +359,7 @@ function ScheduleFields({ disabled }: { disabled: boolean }) {
         name="timezone"
         render={({ field }) => (
           <FormItem className="max-w-xs">
-            <FormLabel className={LABEL}>{t('form.timezone')}</FormLabel>
+            <FormLabel>{t('form.timezone')}</FormLabel>
             <FormControl>
               <TimeZoneCombobox
                 value={field.value}

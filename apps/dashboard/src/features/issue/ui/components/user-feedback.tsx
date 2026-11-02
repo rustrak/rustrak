@@ -1,7 +1,7 @@
+import { Button } from '@rustrak/ui';
 import { useSuspenseInfiniteQuery } from '@tanstack/react-query';
 import { useFormatter, useTranslations } from 'use-intl';
 import { issueQueries } from '@/features/issue/api/queries';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
  * The feedback users sent about an error issue, newest first: the first page
@@ -31,26 +31,26 @@ export function UserFeedback({
 
   return (
     <div className="space-y-3">
-      <ul className="divide-y">
+      <ul className="divide-y divide-border-divider">
         {reports.map((report) => (
           <li key={report.id} className="py-3 first:pt-0 last:pb-0">
-            <div className="flex items-baseline gap-2 text-sm">
-              <span className="font-medium truncate">
+            <div className="flex items-baseline gap-2 text-body">
+              <span className="truncate font-medium text-fg">
                 {report.name || t('anonymous')}
               </span>
               {report.email && (
                 <a
                   href={`mailto:${report.email}`}
-                  className="truncate text-muted-foreground hover:underline"
+                  className="truncate text-fg-muted hover:underline"
                 >
                   {report.email}
                 </a>
               )}
-              <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+              <span className="ml-auto shrink-0 text-meta text-fg-meta">
                 {format.relativeTime(new Date(report.created_at))}
               </span>
             </div>
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+            <p className="mt-1 whitespace-pre-wrap break-words text-body text-fg-secondary">
               {report.comments}
             </p>
           </li>
@@ -59,9 +59,9 @@ export function UserFeedback({
 
       {hasNextPage && (
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
-          disabled={isFetchingNextPage}
+          loading={isFetchingNextPage}
           onClick={() => fetchNextPage()}
         >
           {t('showOlder', {
@@ -70,7 +70,7 @@ export function UserFeedback({
         </Button>
       )}
       {isFetchNextPageError && (
-        <p className="text-xs text-destructive">{t('showOlderFailed')}</p>
+        <p className="text-meta text-danger-fg">{t('showOlderFailed')}</p>
       )}
     </div>
   );

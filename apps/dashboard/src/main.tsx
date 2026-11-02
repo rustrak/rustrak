@@ -1,7 +1,8 @@
-import '@fontsource-variable/geist';
+import '@fontsource-variable/inter/opsz.css';
 import '@fontsource-variable/geist-mono';
 import './styles.css';
 
+import { DialogProvider } from '@rustrak/ui';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { RouterProvider } from '@tanstack/react-router';
@@ -62,7 +63,10 @@ async function bootstrap() {
             navigation, or going back would refetch what was just on screen. */}
         <QueryClientProvider client={queryClient}>
           <Messages>
-            <RouterProvider router={router} />
+            {/* Hosts `confirm()` and `alert()` from @rustrak/ui. */}
+            <DialogProvider>
+              <RouterProvider router={router} />
+            </DialogProvider>
             <Toaster />
           </Messages>
           {/* Dropped from production builds by the package itself. */}

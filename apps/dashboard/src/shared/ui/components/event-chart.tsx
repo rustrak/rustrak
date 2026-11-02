@@ -35,11 +35,11 @@ function ChartTooltip(props: {
   }
   const point = payload[0].payload;
   return (
-    <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
-      <p className="font-medium text-popover-foreground">
+    <div className="rounded-md border bg-surface-floating px-2.5 py-1.5 text-xs shadow-md">
+      <p className="font-medium text-fg">
         {t('eventCount', { count: point.count })}
       </p>
-      <p className="text-muted-foreground">
+      <p className="text-fg-subtle">
         {format.dateTime(new Date(point.t), axis.captionFormat, axis.zone)}
       </p>
     </div>

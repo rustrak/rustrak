@@ -24,7 +24,7 @@ import {
   FormLabel,
   FormMessage,
   FormRootError,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 type LoginFormData = {

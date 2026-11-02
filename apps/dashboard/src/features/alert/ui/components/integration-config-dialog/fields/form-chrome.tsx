@@ -2,8 +2,8 @@ import type { AlertIntegration } from '@rustrak/client';
 import { Button, DeleteIcon, Input, TestIcon } from '@rustrak/ui';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
+import { useFormField } from '@/shared/ui/components/form';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import { useFormField } from '@/shared/ui/components/shadcn/form';
 
 /*
  * The parts a provider's form is built from, now that it is a settings page

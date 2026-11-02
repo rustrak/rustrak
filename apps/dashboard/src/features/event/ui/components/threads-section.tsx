@@ -1,3 +1,4 @@
+import { Select, SelectItem, Tag } from '@rustrak/ui';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -9,14 +10,6 @@ import {
   type Thread,
 } from '@/features/event/lib/format-stack-trace';
 import { CopyAsDropdown } from '@/shared/ui/components/copy-as-dropdown';
-import { Badge } from '@/shared/ui/components/shadcn/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 import { type FrameSourceUrl, StackFrameItem } from './stack-frame-item';
 
 interface ThreadsSectionProps {
@@ -51,7 +44,7 @@ export function ThreadsSection({
 
   if (threads.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
+      <div className="py-12 text-center text-body text-fg-muted">
         {t('stackTrace.empty')}
       </div>
     );
@@ -84,6 +77,13 @@ export function ThreadsSection({
       ]
     : [{ label: t('copy.json'), value: JSON.stringify(activeThread, null, 2) }];
 
+  const threadItems = Object.fromEntries(
+    threads.map((thread, i) => [
+      threadKey(thread, i),
+      `${threadLabel(thread, t)}${thread.crashed ? t('threads.crashedSuffix') : ''}`,
+    ]),
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -93,40 +93,34 @@ export function ThreadsSection({
             onValueChange={(value) => {
               if (value) setActiveKey(value);
             }}
+            items={threadItems}
+            aria-label={t('threads.thread')}
+            className="w-65"
           >
-            <SelectTrigger className="w-[260px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {threads.map((thread, i) => (
-                <SelectItem
-                  key={threadKey(thread, i)}
-                  value={threadKey(thread, i)}
-                >
-                  {threadLabel(thread, t)}
-                  {thread.crashed ? t('threads.crashedSuffix') : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {Object.entries(threadItems).map(([key, label]) => (
+              <SelectItem key={key} value={key}>
+                {label}
+              </SelectItem>
+            ))}
           </Select>
         ) : (
-          <p className="text-sm font-semibold">
+          <p className="font-semibold text-body text-fg">
             {activeThread ? threadLabel(activeThread, t) : t('threads.thread')}
           </p>
         )}
 
         <div className="flex items-center gap-2">
           {activeThread?.crashed && (
-            <Badge variant="destructive">{t('threads.crashed')}</Badge>
+            <Tag tone="error" variant="soft">
+              {t('threads.crashed')}
+            </Tag>
           )}
           {activeThread?.current && (
-            <Badge variant="outline">{t('threads.current')}</Badge>
+            <Tag variant="soft">{t('threads.current')}</Tag>
           )}
-          {activeThread?.main && (
-            <Badge variant="outline">{t('threads.main')}</Badge>
-          )}
+          {activeThread?.main && <Tag variant="soft">{t('threads.main')}</Tag>}
           {activeThread?.state && (
-            <Badge variant="secondary">{activeThread.state}</Badge>
+            <Tag variant="soft">{activeThread.state}</Tag>
           )}
           <CopyAsDropdown formats={copyFormats} />
         </div>
@@ -134,12 +128,10 @@ export function ThreadsSection({
 
       {matchedException && (
         <div className="space-y-1">
-          <h3 className="text-lg font-bold text-destructive">
+          <h3 className="text-section text-sev-error-fg">
             {matchedException.type}
           </h3>
-          <p className="text-sm text-muted-foreground">
-            {matchedException.value}
-          </p>
+          <p className="text-body text-fg-muted">{matchedException.value}</p>
         </div>
       )}
 
@@ -158,7 +150,7 @@ export function ThreadsSection({
           })}
         </div>
       ) : (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="py-12 text-center text-body text-fg-muted">
           {t('stackTrace.emptyForThread')}
         </div>
       )}

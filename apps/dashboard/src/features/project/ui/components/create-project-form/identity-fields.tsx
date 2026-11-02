@@ -13,7 +13,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
 import type { CreateProjectFormData } from './create-project-form';
 
 /**

@@ -1,6 +1,5 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button, ChevronLeftIcon, ChevronRightIcon } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
  * The footer of a paginated table: what is on screen, and the way to the rest.
@@ -36,7 +35,7 @@ export function TablePagination({
 
   return (
     <div className="shrink-0 flex flex-col sm:flex-row items-center justify-between gap-2 pt-4">
-      <span className="text-sm text-muted-foreground">
+      <span className="text-body text-fg-subtle">
         {totalCount > 0
           ? t('showingRange', {
               start: startIndex,
@@ -48,28 +47,26 @@ export function TablePagination({
 
       <div className="flex items-center gap-2">
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
+          icon={ChevronLeftIcon}
           aria-label={t('previousPage')}
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1 || disabled}
-        >
-          <ChevronLeft className="size-4" aria-hidden="true" />
-        </Button>
+        />
 
-        <span className="text-sm px-2">
+        <span className="px-2 text-body text-fg">
           {t('pageOf', { current: currentPage, total: totalPages })}
         </span>
 
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
+          icon={ChevronRightIcon}
           aria-label={t('nextPage')}
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages || disabled}
-        >
-          <ChevronRight className="size-4" aria-hidden="true" />
-        </Button>
+        />
       </div>
     </div>
   );

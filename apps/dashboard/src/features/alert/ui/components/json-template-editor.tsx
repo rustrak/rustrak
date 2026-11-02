@@ -40,13 +40,17 @@ import {
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import {
-  BracesIcon,
-  ChevronDownIcon,
-  CircleQuestionMarkIcon,
-  LayoutTemplateIcon,
-  PlusIcon,
-  WandSparklesIcon,
-} from 'lucide-react';
+  AutofixIcon,
+  Button,
+  ColumnsIcon,
+  HelpIcon,
+  Menu,
+  MenuActions,
+  MenuGroup,
+  MenuGroupLabel,
+  NewIcon,
+  PayloadIcon,
+} from '@rustrak/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { expressionAt } from '@/features/alert/lib/template-completion';
@@ -61,16 +65,6 @@ import {
 } from '@/features/alert/model/message-template';
 import type { TemplatePreview } from '@/features/alert/ui/hooks/use-template-preview';
 import { cn } from '@/shared/lib/utils';
-import { Button, buttonVariants } from '@/shared/ui/components/shadcn/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/shared/ui/components/shadcn/dropdown-menu';
 
 /**
  * The message body is a template that renders to JSON, which is two languages
@@ -353,7 +347,7 @@ export function JsonTemplateEditor({
   return (
     <div
       data-disabled={disabled || undefined}
-      className="group/editor overflow-hidden rounded-md border border-input bg-transparent text-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 data-disabled:opacity-50"
+      className="group/editor overflow-hidden rounded-md border border-border-field bg-canvas transition-[border-color,box-shadow] duration-fast focus-within:border-border-brand focus-within:ring-2 focus-within:ring-ring-subtle data-disabled:opacity-50"
     >
       <EditorToolbar
         disabled={disabled}
@@ -415,117 +409,87 @@ function EditorToolbar({
   }, [variables]);
 
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-input bg-muted/30 px-1.5 py-1">
+    <div className="flex items-center justify-between gap-2 border-border-subtle border-b bg-surface-raised px-1.5 py-1">
       <div className="flex items-center gap-0.5">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="xs" disabled={disabled}>
-                <LayoutTemplateIcon />
-                {t('startFrom')}
-                <ChevronDownIcon
-                  data-icon="inline-end"
-                  className="opacity-60"
-                />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start" className="w-72">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                {t('startFrom')}
-              </DropdownMenuLabel>
-              {presets.map((preset) => (
-                <DropdownMenuItem
-                  key={preset.id}
-                  onClick={() => onPreset(preset)}
-                  className="flex-col items-start gap-0 py-1.5"
-                >
-                  <span className="text-sm">{preset.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {t(`presets.${preset.descriptionKey}`)}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Menu
+          trigger={
+            <Button
+              variant="ghost"
+              size="xs"
+              icon={ColumnsIcon}
+              menu
+              disabled={disabled}
+            >
+              {t('startFrom')}
+            </Button>
+          }
+          popupClassName="w-72"
+        >
+          <MenuGroup>
+            <MenuGroupLabel>{t('startFrom')}</MenuGroupLabel>
+            <MenuActions
+              actions={presets.map((preset) => ({
+                id: preset.id,
+                label: preset.name,
+                hint: t(`presets.${preset.descriptionKey}`),
+                onSelect: () => onPreset(preset),
+              }))}
+            />
+          </MenuGroup>
+        </Menu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="xs"
-                disabled={disabled || !caretPlaced}
-                title={caretPlaced ? undefined : t('insertFieldHint')}
-              >
-                <PlusIcon />
-                {t('insertField')}
-                <ChevronDownIcon
-                  data-icon="inline-end"
-                  className="opacity-60"
-                />
-              </Button>
-            }
-          />
-          <DropdownMenuContent
-            align="start"
-            className="max-h-[min(28rem,70vh)] w-80 overflow-y-auto"
-          >
-            {TEMPLATE_VARIABLE_GROUPS.map((group, index) => (
-              <DropdownMenuGroup key={group}>
-                {index > 0 && <DropdownMenuSeparator />}
-                <DropdownMenuLabel className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  {t(`groups.${group}`)}
-                </DropdownMenuLabel>
-                {(byGroup.get(group) ?? []).map((variable) => (
-                  <DropdownMenuItem
-                    key={variable.path}
-                    onClick={() => onInsert(variable)}
-                    className="items-baseline gap-3 py-1.5"
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col gap-0">
-                      <span className="font-mono text-xs text-foreground">
-                        {variable.path}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {t(`variables.${variable.descriptionKey}`)}
-                      </span>
-                    </span>
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
-                      {variable.detail}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Menu
+          trigger={
+            <Button
+              variant="ghost"
+              size="xs"
+              icon={NewIcon}
+              menu
+              disabled={disabled || !caretPlaced}
+              title={caretPlaced ? undefined : t('insertFieldHint')}
+            >
+              {t('insertField')}
+            </Button>
+          }
+          popupClassName="max-h-[min(28rem,70vh)] w-80"
+        >
+          {TEMPLATE_VARIABLE_GROUPS.map((group, index) => (
+            <MenuGroup key={group}>
+              {index > 0 && (
+                <div aria-hidden="true" className="my-1 h-px bg-border" />
+              )}
+              <MenuGroupLabel>{t(`groups.${group}`)}</MenuGroupLabel>
+              <MenuActions
+                actions={(byGroup.get(group) ?? []).map((variable) => ({
+                  id: variable.path,
+                  label: variable.path,
+                  hint: `${t(`variables.${variable.descriptionKey}`)} · ${variable.detail}`,
+                  onSelect: () => onInsert(variable),
+                }))}
+              />
+            </MenuGroup>
+          ))}
+        </Menu>
       </div>
 
       <div className="flex items-center gap-0.5">
         <Button
-          type="button"
           variant="ghost"
-          size="icon-xs"
+          size="xs"
+          icon={AutofixIcon}
           disabled={disabled}
           onClick={onFormat}
           aria-label={t('format')}
           title={t('format')}
-        >
-          <WandSparklesIcon />
-        </Button>
-        <a
-          href={helpHref}
-          target="_blank"
-          rel="noreferrer"
+        />
+        <Button
+          variant="ghost"
+          size="xs"
+          icon={HelpIcon}
           aria-label={t('help')}
           title={t('help')}
-          className={cn(buttonVariants({ variant: 'ghost', size: 'icon-xs' }))}
-        >
-          <CircleQuestionMarkIcon />
-        </a>
+          render={<a href={helpHref} target="_blank" rel="noreferrer" />}
+        />
       </div>
     </div>
   );
@@ -546,12 +510,12 @@ function PreviewPanel({ preview }: { preview: TemplatePreview }) {
   const rendered = 'rendered' in preview ? preview.rendered : undefined;
 
   return (
-    <div className="border-t border-input">
+    <div className="border-border-subtle border-t">
       <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1">
-        <span className="flex items-baseline gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          <BracesIcon className="size-3 self-center" />
+        <span className="flex items-baseline gap-1.5 text-column text-fg-meta">
+          <PayloadIcon size="sm" className="self-center" />
           {t('preview')}
-          <span className="font-normal normal-case tracking-normal text-muted-foreground/70">
+          <span className="font-sans text-hint text-fg-ghost normal-case">
             · {t('previewSample')}
           </span>
         </span>
@@ -560,13 +524,11 @@ function PreviewPanel({ preview }: { preview: TemplatePreview }) {
 
       <div className="relative max-h-48 overflow-auto px-3 pb-2.5">
         {preview.status === 'idle' ? (
-          <p className="py-2 text-xs text-muted-foreground/70">
-            {t('previewIdle')}
-          </p>
+          <p className="py-2 text-meta text-fg-ghost">{t('previewIdle')}</p>
         ) : rendered ? (
           <pre
             className={cn(
-              'whitespace-pre-wrap break-all font-mono text-xs leading-relaxed transition-opacity duration-200',
+              'whitespace-pre-wrap break-all font-mono text-mono-sm leading-relaxed transition-opacity duration-fast',
               preview.status === 'rendering' && 'opacity-50',
               preview.status === 'error' && 'opacity-40',
             )}
@@ -574,7 +536,7 @@ function PreviewPanel({ preview }: { preview: TemplatePreview }) {
             {highlightJson(rendered)}
           </pre>
         ) : (
-          <p className="py-2 text-xs text-muted-foreground/70">
+          <p className="py-2 text-meta text-fg-ghost">
             {preview.status === 'rendering' ? t('previewRendering') : null}
           </p>
         )}
@@ -583,7 +545,7 @@ function PreviewPanel({ preview }: { preview: TemplatePreview }) {
       {preview.status === 'error' && (
         <div
           role="alert"
-          className="animate-in fade-in slide-in-from-top-1 border-t border-destructive/20 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-destructive"
+          className="animate-drop-in border-border-subtle border-t bg-danger-surface px-3 py-2 text-meta text-danger-fg"
         >
           {preview.error}
         </div>
@@ -599,23 +561,23 @@ function PreviewStatus({ preview }: { preview: TemplatePreview }) {
 
   const tone = {
     rendering: {
-      dot: 'bg-muted-foreground/60 animate-pulse',
-      text: 'text-muted-foreground',
+      dot: 'animate-pulse bg-fg-ghost',
+      text: 'text-fg-muted',
       label: t('previewRendering'),
     },
     ok: {
-      dot: 'bg-emerald-500',
-      text: 'text-muted-foreground',
+      dot: 'bg-success',
+      text: 'text-fg-muted',
       label: t('previewOk'),
     },
     error: {
-      dot: 'bg-destructive',
-      text: 'text-destructive',
+      dot: 'bg-danger',
+      text: 'text-danger-fg',
       label: t('previewError'),
     },
     unavailable: {
-      dot: 'bg-muted-foreground/40',
-      text: 'text-muted-foreground',
+      dot: 'bg-fg-disabled',
+      text: 'text-fg-muted',
       label: t('previewUnavailable'),
     },
   }[preview.status];
@@ -623,14 +585,14 @@ function PreviewStatus({ preview }: { preview: TemplatePreview }) {
   return (
     <span
       className={cn(
-        'flex items-center gap-1.5 text-[11px] transition-colors duration-200',
+        'flex items-center gap-1.5 text-hint transition-colors duration-fast',
         tone.text,
       )}
       aria-live="polite"
     >
       <span
         className={cn(
-          'size-1.5 rounded-full transition-colors duration-300',
+          'size-1.5 rounded-pill transition-colors duration-fast',
           tone.dot,
         )}
       />
@@ -656,7 +618,7 @@ function tokenStyle(match: RegExpMatchArray): React.CSSProperties {
   if (number !== undefined || bool !== undefined) {
     return { color: 'var(--chart-4)' };
   }
-  return { color: 'var(--muted-foreground)' };
+  return { color: 'var(--fg-subtle)' };
 }
 
 function highlightJson(text: string): React.ReactNode[] {
@@ -788,14 +750,14 @@ function decorate(view: EditorView, unknownLabel: string): DecorationSet {
  * body is one flat grey block and the point of using an editor is lost.
  */
 const jsonHighlight = HighlightStyle.define([
-  { tag: tags.propertyName, color: 'var(--chart-1, #7dd3fc)' },
-  { tag: tags.string, color: 'var(--chart-2, #a5d6a7)' },
-  { tag: tags.number, color: 'var(--chart-4, #f0b37e)' },
-  { tag: tags.bool, color: 'var(--chart-4, #f0b37e)' },
-  { tag: tags.null, color: 'var(--muted-foreground)' },
-  { tag: tags.separator, color: 'var(--muted-foreground)' },
-  { tag: tags.brace, color: 'var(--muted-foreground)' },
-  { tag: tags.squareBracket, color: 'var(--muted-foreground)' },
+  { tag: tags.propertyName, color: 'var(--chart-1)' },
+  { tag: tags.string, color: 'var(--chart-2)' },
+  { tag: tags.number, color: 'var(--chart-4)' },
+  { tag: tags.bool, color: 'var(--chart-4)' },
+  { tag: tags.null, color: 'var(--fg-subtle)' },
+  { tag: tags.separator, color: 'var(--fg-subtle)' },
+  { tag: tags.brace, color: 'var(--fg-subtle)' },
+  { tag: tags.squareBracket, color: 'var(--fg-subtle)' },
 ]);
 
 const editorTheme = EditorView.theme({
@@ -805,7 +767,7 @@ const editorTheme = EditorView.theme({
     fontFamily: 'var(--font-mono, ui-monospace, monospace)',
     padding: '8px 0',
     minHeight: '11rem',
-    caretColor: 'var(--foreground)',
+    caretColor: 'var(--fg)',
   },
   '.cm-scroller': {
     maxHeight: '22rem',
@@ -816,19 +778,19 @@ const editorTheme = EditorView.theme({
   '.cm-gutters': {
     background: 'transparent',
     border: 'none',
-    borderRight: '1px solid var(--border)',
-    color: 'var(--muted-foreground)',
+    borderRight: '1px solid var(--border-subtle)',
+    color: 'var(--fg-subtle)',
     paddingRight: '2px',
     userSelect: 'none',
   },
   '.cm-lintRange-error': {
     backgroundImage: 'none',
-    textDecoration: 'underline wavy var(--destructive)',
+    textDecoration: 'underline wavy var(--danger-fg)',
     textUnderlineOffset: '3px',
   },
   '.cm-tooltip-lint': { maxWidth: 'min(28rem, 85vw)' },
   '.cm-diagnostic-error': {
-    borderLeftColor: 'var(--destructive)',
+    borderLeftColor: 'var(--danger-fg)',
     fontFamily: 'inherit',
   },
   '.cm-lineNumbers .cm-gutterElement': {
@@ -836,19 +798,23 @@ const editorTheme = EditorView.theme({
     minWidth: '1.5rem',
   },
   '.cm-activeLine': {
-    background: 'color-mix(in oklch, var(--foreground) 4%, transparent)',
+    background: 'color-mix(in oklch, var(--fg) 4%, transparent)',
   },
   '.cm-activeLineGutter': {
     background: 'transparent',
-    color: 'var(--foreground)',
+    color: 'var(--fg)',
   },
-  '.cm-placeholder': { color: 'var(--muted-foreground)' },
-  '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--foreground)' },
-  '.cm-selectionBackground, ::selection': { background: 'var(--accent)' },
-  '&.cm-focused .cm-selectionBackground': { background: 'var(--accent)' },
+  '.cm-placeholder': { color: 'var(--fg-subtle)' },
+  '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--fg)' },
+  '.cm-selectionBackground, ::selection': {
+    background: 'var(--surface-selected)',
+  },
+  '&.cm-focused .cm-selectionBackground': {
+    background: 'var(--surface-selected)',
+  },
   '.cm-template-expression': {
-    color: 'var(--primary)',
-    background: 'color-mix(in oklch, var(--primary) 10%, transparent)',
+    color: 'var(--fg-brand)',
+    background: 'color-mix(in oklch, var(--fg-brand) 10%, transparent)',
     borderRadius: '3px',
   },
   '.cm-field-pill': {
@@ -861,10 +827,10 @@ const editorTheme = EditorView.theme({
     fontFamily: 'var(--font-mono, ui-monospace, monospace)',
     fontSize: '11px',
     fontWeight: '500',
-    color: 'var(--primary)',
-    background: 'color-mix(in oklch, var(--primary) 12%, transparent)',
+    color: 'var(--fg-brand)',
+    background: 'color-mix(in oklch, var(--fg-brand) 12%, transparent)',
     boxShadow:
-      'inset 0 0 0 1px color-mix(in oklch, var(--primary) 28%, transparent)',
+      'inset 0 0 0 1px color-mix(in oklch, var(--fg-brand) 28%, transparent)',
     cursor: 'default',
     userSelect: 'none',
     whiteSpace: 'nowrap',
@@ -872,22 +838,22 @@ const editorTheme = EditorView.theme({
     transition: 'background-color 150ms, box-shadow 150ms',
   },
   '.cm-field-pill:hover': {
-    background: 'color-mix(in oklch, var(--primary) 20%, transparent)',
+    background: 'color-mix(in oklch, var(--fg-brand) 20%, transparent)',
     boxShadow:
-      'inset 0 0 0 1px color-mix(in oklch, var(--primary) 45%, transparent)',
+      'inset 0 0 0 1px color-mix(in oklch, var(--fg-brand) 45%, transparent)',
   },
   '.cm-field-pill-unknown': {
-    color: 'var(--destructive)',
-    background: 'color-mix(in oklch, var(--destructive) 10%, transparent)',
+    color: 'var(--danger-fg)',
+    background: 'color-mix(in oklch, var(--danger-fg) 10%, transparent)',
     boxShadow:
-      'inset 0 0 0 1px color-mix(in oklch, var(--destructive) 40%, transparent)',
+      'inset 0 0 0 1px color-mix(in oklch, var(--danger-fg) 40%, transparent)',
     textDecoration: 'underline dotted',
     textUnderlineOffset: '2px',
   },
   '.cm-field-pill-unknown:hover': {
-    background: 'color-mix(in oklch, var(--destructive) 16%, transparent)',
+    background: 'color-mix(in oklch, var(--danger-fg) 16%, transparent)',
     boxShadow:
-      'inset 0 0 0 1px color-mix(in oklch, var(--destructive) 55%, transparent)',
+      'inset 0 0 0 1px color-mix(in oklch, var(--danger-fg) 55%, transparent)',
   },
   '@keyframes cm-field-pill-in': {
     from: { transform: 'scale(0.9)', opacity: '0' },
@@ -907,16 +873,16 @@ const editorTheme = EditorView.theme({
   },
   '.cm-tooltip': {
     fontFamily: 'var(--font-sans, system-ui, sans-serif)',
-    background: 'var(--popover)',
-    color: 'var(--popover-foreground)',
-    border: '1px solid var(--border)',
+    background: 'var(--surface-floating)',
+    color: 'var(--fg)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '8px',
-    boxShadow: '0 8px 24px -8px rgb(0 0 0 / 0.25)',
+    boxShadow: 'var(--shadow-overlay)',
     fontSize: '12px',
   },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    background: 'var(--accent)',
-    color: 'var(--accent-foreground)',
+    background: 'var(--surface-selected)',
+    color: 'var(--fg)',
   },
   '.cm-tooltip-autocomplete > ul > li': {
     padding: '4px 10px',
@@ -929,14 +895,14 @@ const editorTheme = EditorView.theme({
     fontFamily: 'var(--font-mono, ui-monospace, monospace)',
   },
   '.cm-completionDetail': {
-    color: 'var(--muted-foreground)',
+    color: 'var(--fg-subtle)',
     fontStyle: 'normal',
     fontFamily: 'inherit',
     whiteSpace: 'nowrap',
   },
   '.cm-completionInfo': {
-    background: 'var(--popover)',
-    border: '1px solid var(--border)',
+    background: 'var(--surface-floating)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '8px',
     padding: '6px 8px',
     maxWidth: '18rem',

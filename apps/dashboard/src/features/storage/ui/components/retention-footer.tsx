@@ -1,5 +1,12 @@
 import type { CleanupCounts, ProjectStorage } from '@rustrak/client';
-import { Button } from '@rustrak/ui';
+import {
+  Button,
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
+} from '@rustrak/ui';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -7,16 +14,6 @@ import {
   impactState,
   removedParts,
 } from '@/features/storage/model/retention';
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
-import { DialogFooter } from '@/shared/ui/components/shadcn/dialog';
 import { ImpactLine } from './impact-line';
 
 /**
@@ -48,16 +45,20 @@ export function RetentionFooter({
 
   return (
     <>
-      <ImpactLine
-        state={impactState(impact)}
-        sentence={
-          parts.length > 0
-            ? t('dialog.impact', { parts: parts.join(', '), size })
-            : null
-        }
-        nothing={t('dialog.noImpact')}
-        onRetry={onRetry}
-      />
+      {/* Under the editor's own body, outside its scroll: what goes stays
+          in sight while the periods above it change. */}
+      <DialogBody className="flex-none">
+        <ImpactLine
+          state={impactState(impact)}
+          sentence={
+            parts.length > 0
+              ? t('dialog.impact', { parts: parts.join(', '), size })
+              : null
+          }
+          nothing={t('dialog.noImpact')}
+          onRetry={onRetry}
+        />
+      </DialogBody>
       <DialogFooter>
         <Button variant="ghost" onClick={onCancel} disabled={isPending}>
           {t('cancel')}
@@ -78,33 +79,32 @@ export function RetentionFooter({
         </Button>
       </DialogFooter>
 
-      <AlertDialog
+      <Dialog
+        alert
         open={confirming}
         onOpenChange={(open) => !isPending && setConfirming(open)}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('dialog.confirmTitle', { size })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('dialog.confirmDescription', { parts: parts.join(', ') })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('cancel')}
-            </AlertDialogCancel>
-            <Button
-              variant="danger-primary"
-              onClick={() => onSave(true)}
-              loading={isPending}
-            >
-              {t('dialog.confirmAction', { size })}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <DialogHeader
+          dismissible={false}
+          title={t('dialog.confirmTitle', { size })}
+          description={t('dialog.confirmDescription', {
+            parts: parts.join(', '),
+          })}
+        />
+        <DialogFooter>
+          <DialogClose
+            disabled={isPending}
+            render={<Button variant="secondary">{t('cancel')}</Button>}
+          />
+          <Button
+            variant="danger-primary"
+            onClick={() => onSave(true)}
+            loading={isPending}
+          >
+            {t('dialog.confirmAction', { size })}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </>
   );
 }

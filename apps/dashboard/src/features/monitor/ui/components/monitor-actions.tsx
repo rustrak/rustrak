@@ -2,6 +2,10 @@ import type { MonitorResponse } from '@rustrak/client';
 import {
   Button,
   DeleteIcon,
+  Dialog,
+  DialogClose,
+  DialogFooter,
+  DialogHeader,
   EditIcon,
   Menu,
   MoreIcon,
@@ -15,16 +19,6 @@ import { useTranslations } from 'use-intl';
 import { monitorMutations } from '@/features/monitor/api/mutations';
 import { monitorHref } from '@/features/monitor/lib/href';
 import { Link } from '@/shared/ui/components/link';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
@@ -102,33 +96,30 @@ export function MonitorActions({
         ]}
       />
 
-      <AlertDialog
+      <Dialog
+        alert
         open={confirming}
         onOpenChange={(open) => !open && !isPending && setConfirming(false)}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('actions.deleteTitle', { monitor: monitor.name })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('actions.deleteDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('actions.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={remove}
-              disabled={isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isPending ? t('actions.deleting') : t('actions.confirmDelete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <DialogHeader
+          dismissible={false}
+          title={t('actions.deleteTitle', { monitor: monitor.name })}
+          description={t('actions.deleteDescription')}
+        />
+        <DialogFooter>
+          <DialogClose
+            disabled={isPending}
+            render={<Button variant="secondary">{t('actions.cancel')}</Button>}
+          />
+          <Button
+            variant="danger-primary"
+            onClick={remove}
+            disabled={isPending}
+          >
+            {isPending ? t('actions.deleting') : t('actions.confirmDelete')}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
