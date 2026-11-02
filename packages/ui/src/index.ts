@@ -61,7 +61,7 @@ export { Wordmark } from './components/brand/wordmark';
 
 /* --- Icons --------------------------------------------------------------- */
 
-export { fromLucide } from './components/icon/adapters/lucide';
+export { fromHugeicons } from './components/icon/adapters/hugeicons';
 export type {
   IconComponent,
   IconProps,
@@ -161,6 +161,8 @@ export type { InputShellSize } from './components/input/input-shell';
 export { inputShell } from './components/input/input-shell';
 export type { PopoverProps } from './components/popover/popover';
 export { Popover } from './components/popover/popover';
+export type { SelectItemProps, SelectProps } from './components/select/select';
+export { Select, SelectItem } from './components/select/select';
 export type { SwitchProps } from './components/switch/switch';
 export { Switch } from './components/switch/switch';
 

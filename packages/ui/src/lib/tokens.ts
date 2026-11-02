@@ -17,6 +17,8 @@ export const colorTokens = [
   'black',
   'canvas',
   'panel',
+  'aside',
+  'code',
   'surface',
   'surface-raised',
   'surface-hover',

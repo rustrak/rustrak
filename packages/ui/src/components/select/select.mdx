@@ -1,0 +1,53 @@
+import { Canvas, Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import {
+  Cover,
+  DocPage,
+  Guarantee,
+  Guarantees,
+  Rule,
+  Section,
+} from '../../docs/blocks';
+import * as SelectStories from './select.stories';
+
+<Meta of={SelectStories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="Select"
+  lede="One value out of a short, closed list."
+  note="The box is the text field's box; the panel is the menu's panel."
+/>
+
+<Section n="01" title="States">
+
+<Canvas of={SelectStories.States} sourceState="none" />
+
+<Rule>
+  Pass `items` so the closed box reads as a label, not as the raw value. A list
+  long enough to need searching is a combobox, not a select.
+</Rule>
+
+</Section>
+
+<Section n="02" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="PicksFromTheKeyboard">
+    Enter opens it, a click on an option chooses it, and the box shows the
+    chosen label.
+  </Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="03" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

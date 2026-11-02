@@ -93,7 +93,7 @@ const queryBar = tv({
       dropIn,
     ],
     list: 'min-h-0 flex-1 overflow-x-hidden overflow-y-auto',
-    groupLabel: 'px-2.5 pt-2 pb-1 font-mono text-column text-fg-meta uppercase',
+    groupLabel: 'px-2.5 pt-2 pb-1 text-column text-fg-meta',
     option: [
       'flex h-menu-item shrink-0 cursor-default items-center gap-2.5',
       'rounded-sm px-2.5 text-control text-fg-muted select-none',

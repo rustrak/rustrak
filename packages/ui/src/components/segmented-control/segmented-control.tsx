@@ -44,7 +44,7 @@ const segmented = tv({
   slots: {
     root: [
       'relative inline-flex h-control-md shrink-0 items-center gap-0.5',
-      'rounded-md border border-border bg-surface p-0.5',
+      'rounded-lg bg-surface-active p-0.5',
       'has-data-disabled:opacity-60',
     ],
     /*
@@ -53,15 +53,15 @@ const segmented = tv({
      * appearing on one child and disappearing from another.
      */
     chip: [
-      'pointer-events-none absolute top-0.5 bottom-0.5 left-0 rounded-xs',
-      'bg-surface-chip',
+      'pointer-events-none absolute top-0.5 bottom-0.5 left-0 rounded-md',
+      'bg-surface-floating shadow-raised',
       slideTransition,
     ],
     item: [
-      'relative z-10 flex h-control-xs shrink-0 items-center rounded-xs px-2.75',
+      'relative z-10 flex h-control-xs shrink-0 items-center justify-center rounded-md px-3',
       'text-meta whitespace-nowrap text-fg-subtle',
       'hover:text-fg-secondary',
-      'data-checked:font-semibold data-checked:text-fg',
+      'data-checked:font-medium data-checked:text-fg',
       'data-disabled:text-fg-disabled data-disabled:hover:text-fg-disabled',
       interactiveTransition,
       focusRing,
