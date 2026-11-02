@@ -1,7 +1,6 @@
-import { ArrowUpRight, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDownIcon, ChevronRightIcon, TrendUpIcon } from '@rustrak/ui';
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTranslations } from 'use-intl';
 import {
   buildFrameContextLines,
@@ -9,6 +8,7 @@ import {
   type StackFrame,
 } from '@/features/event/lib/format-stack-trace';
 import { cn } from '@/shared/lib/utils';
+import { codeTheme } from '@/shared/ui/components/code-theme';
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   js: 'javascript',
@@ -78,7 +78,7 @@ export function StackFrameItem({
   const contextLines = buildFrameContextLines(frame);
   const vars = frameVariables(frame);
   const hasContext = contextLines.length > 0 || vars !== null;
-  const Chevron = isExpanded ? ChevronDown : ChevronRight;
+  const Chevron = isExpanded ? ChevronDownIcon : ChevronRightIcon;
   // Library frames are not in the repository; only the app's own link out.
   const href = frame.in_app ? sourceUrl?.(frame) : null;
 
@@ -110,7 +110,7 @@ export function StackFrameItem({
             aria-label={t('openInGitHub')}
             className="px-3 py-2.5 text-fg-subtle hover:text-fg"
           >
-            <ArrowUpRight className="size-4" />
+            <TrendUpIcon className="size-4" />
           </a>
         )}
       </div>
@@ -168,8 +168,10 @@ function FrameSource({
   language: string;
 }) {
   return (
-    // Dark in both themes: the highlighter paints a dark palette.
-    <div className="overflow-x-auto border-border-divider border-t bg-zinc-900 py-1.5 font-mono text-mono-sm leading-relaxed">
+    // The code's own ground (`bg-code`): sunk into the frame card in dark,
+    // paper inside the grey card in light. The highlighter's colours are
+    // tokens too, so both follow the theme.
+    <div className="overflow-x-auto border-border-divider border-t bg-code py-1.5 font-mono text-mono-sm leading-relaxed">
       {lines.map((line, i) => (
         // Deliberately not `line.lineNumber`. `buildFrameContextLines`
         // clamps its start at 0 when `pre_context` is longer than
@@ -194,9 +196,7 @@ function FrameVariables({ vars }: { vars: Record<string, unknown> }) {
   const t = useTranslations('events');
   return (
     <div className="space-y-1.5 border-border-divider border-t px-4 py-3">
-      <p className="font-mono text-column text-fg-meta uppercase">
-        {t('stackTrace.variables')}
-      </p>
+      <p className="text-column text-fg-meta">{t('stackTrace.variables')}</p>
       <dl className="space-y-1">
         {Object.entries(vars).map(([key, value]) => (
           <div key={key} className="flex gap-2 font-mono text-mono-sm">
@@ -249,7 +249,7 @@ function CodeLine({
       <div className="flex-1 py-0.5 pr-4 overflow-x-auto">
         <SyntaxHighlighter
           language={language}
-          style={vscDarkPlus}
+          style={codeTheme}
           customStyle={{
             margin: 0,
             padding: 0,

@@ -234,10 +234,8 @@ export function RuleEditor({
         </div>
 
         {/* The rail: the sentence the form adds up to, and what to do with it. */}
-        <aside className="flex flex-col gap-4 border-border-divider bg-panel px-5 py-5 max-lg:border-t lg:w-88 lg:shrink-0 lg:border-l xl:w-96">
-          <h2 className="font-mono text-column text-fg-meta uppercase">
-            {t('editor.summary')}
-          </h2>
+        <aside className="flex flex-col gap-4 border-border-divider bg-aside px-5 py-5 max-lg:border-t lg:w-88 lg:shrink-0 lg:border-l xl:w-96">
+          <h2 className="text-column text-fg-meta">{t('editor.summary')}</h2>
           <p className="text-body text-fg-secondary leading-relaxed">
             <RuleSentence
               rule={{
@@ -300,10 +298,8 @@ export function RuleEditorSkeleton() {
           </Row>
         ))}
       </div>
-      <aside className="flex flex-col gap-4 border-border-divider bg-panel px-5 py-5 max-lg:border-t lg:w-88 lg:shrink-0 lg:border-l xl:w-96">
-        <h2 className="font-mono text-column text-fg-meta uppercase">
-          {t('editor.summary')}
-        </h2>
+      <aside className="flex flex-col gap-4 border-border-divider bg-aside px-5 py-5 max-lg:border-t lg:w-88 lg:shrink-0 lg:border-l xl:w-96">
+        <h2 className="text-column text-fg-meta">{t('editor.summary')}</h2>
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-2/3" />

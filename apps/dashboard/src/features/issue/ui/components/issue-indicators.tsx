@@ -23,7 +23,7 @@ function Pill({
     <span
       title={title}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground/80',
+        'inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-fg/80',
         className,
       )}
     >
@@ -77,11 +77,11 @@ export function PriorityIndicator({
 }
 
 const LEVEL_STYLES: Record<string, string> = {
-  fatal: 'bg-red-500/10 text-red-600 dark:text-red-400',
-  error: 'bg-red-500/10 text-red-600 dark:text-red-400',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  info: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  debug: 'bg-muted text-muted-foreground',
+  fatal: 'bg-sev-error-surface text-sev-error-fg',
+  error: 'bg-sev-error-surface text-sev-error-fg',
+  warning: 'bg-sev-warning-surface text-sev-warning-fg',
+  info: 'bg-sev-info-surface text-sev-info-fg',
+  debug: 'bg-surface-chip text-fg-subtle',
 };
 
 /**
@@ -100,12 +100,12 @@ export function LevelBadge({
     return null;
   }
   const style =
-    LEVEL_STYLES[level.toLowerCase()] ?? 'bg-muted text-muted-foreground';
+    LEVEL_STYLES[level.toLowerCase()] ?? 'bg-surface-hover text-fg-subtle';
   return (
     <span
       title={t('levelTitle', { level })}
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide',
+        'inline-flex items-center rounded-full px-2 py-0.5 text-tag',
         style,
         className,
       )}

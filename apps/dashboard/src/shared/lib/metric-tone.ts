@@ -17,10 +17,8 @@ export type Polarity = 'up-is-bad' | 'up-is-good';
  */
 export function deltaTone(change: number, polarity: Polarity): string {
   if (change === 0) {
-    return 'text-muted-foreground';
+    return 'text-fg-subtle';
   }
   const isGood = polarity === 'up-is-good' ? change > 0 : change < 0;
-  return isGood
-    ? 'text-green-600 dark:text-green-400'
-    : 'text-red-600 dark:text-red-400';
+  return isGood ? 'text-success-fg' : 'text-sev-error-fg';
 }
