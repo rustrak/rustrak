@@ -50,4 +50,6 @@ test('conventional prefixes come off the title', () => {
     'Evaluate a storage server',
   );
   assert.equal(cleanTitle('Sentry sync'), 'Sentry sync');
+  // Only the known prefixes are dropped, not any word before a colon.
+  assert.equal(cleanTitle('API: rate limits'), 'API: rate limits');
 });

@@ -52,9 +52,15 @@ type RawItem = {
 
 /** `feat(sourcemaps): pluggable…` reads as `Pluggable…` on a roadmap. */
 export function cleanTitle(title: string): string {
-  const bare = title.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '');
+  const bare = title.replace(
+    /^(feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert|rfc)(\([^)]*\))?!?:\s*/i,
+    '',
+  );
   return bare.charAt(0).toUpperCase() + bare.slice(1);
 }
+
+/** The id an item's card carries, so the board can link to it. */
+export const anchor = (item: RoadmapItem) => `item-${item.id}`;
 
 /** A single-select's option name, or null when the field is unset. */
 function option(fields: RawField[], name: string): string | null {

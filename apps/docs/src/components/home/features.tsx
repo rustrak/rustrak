@@ -5,7 +5,7 @@ import * as m from 'motion/react-m';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
 import { EASE, VIEW } from '../landing/motion';
-import { CONTAINER, SectionHead } from './chrome';
+import { SectionHead } from './chrome';
 import { highlight } from './code';
 import {
   AlertsScreen,
@@ -16,9 +16,7 @@ import {
   Scaled,
 } from './product';
 import { Reveal } from './reveal';
-
-/** One image behind every product shot on the page, always treated the same. */
-export const BACKDROP = '/home/lime-swirl.jpg';
+import { BACKDROP, CONTAINER } from './site';
 
 interface Point {
   title: string;
@@ -40,11 +38,13 @@ function Feature({
   points,
   href,
   designWidth,
+  interactive,
   children,
 }: {
   index: number;
   layout: 'wide' | 'left' | 'right';
   designWidth?: number;
+  interactive?: boolean;
   eyebrow: string;
   title: string;
   lead: string;
@@ -105,6 +105,7 @@ function Feature({
       >
         <Showcase
           designWidth={designWidth}
+          interactive={interactive}
           className={cn('aspect-[5/4]', layout === 'right' && 'lg:order-2')}
         >
           {children}
@@ -163,6 +164,7 @@ export function Showcase({
     >
       <Image
         fill
+        sizes="100vw"
         src={BACKDROP}
         alt=""
         className="scale-110 object-cover blur-2xl saturate-[0.85]"
@@ -324,6 +326,7 @@ export function Features() {
         title="Keep your SDK. Change one line."
         lead="Rustrak speaks the Sentry protocol, so the official SDKs you already ship talk to it as they are. Point the DSN at your server; point it back to roll back."
         designWidth={600}
+        interactive
         href="/getting-started/quickstart"
         points={[
           {

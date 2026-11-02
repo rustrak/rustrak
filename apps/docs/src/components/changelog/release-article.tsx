@@ -25,10 +25,15 @@ export function ReleaseArticle({ release }: { release: Release }) {
   return (
     <article
       id={release.anchor}
-      className="grid scroll-mt-24 gap-8 border-border-subtle border-t py-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] lg:gap-16"
+      className="relative grid scroll-mt-24 gap-8 border-border-subtle border-t py-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] lg:gap-16"
     >
-      {/* The filename, kept as a second anchor so old deep links still land. */}
-      <span id={release.slug} aria-hidden className="hidden" />
+      {/* The filename, kept as a second anchor so old deep links still land.
+          Absolute: it needs a box to scroll to, but no cell in the grid. */}
+      <span
+        id={release.slug}
+        aria-hidden
+        className="absolute top-0 scroll-mt-24"
+      />
 
       <header className="flex flex-col gap-3 lg:sticky lg:top-28 lg:self-start">
         <Reveal y={16}>

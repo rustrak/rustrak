@@ -2,13 +2,14 @@ import { Button, StarIcon } from '@rustrak/ui';
 import { MotionConfig } from 'motion/react';
 import Image from 'next/image';
 import { SmoothScroll } from '../landing/smooth-scroll';
-import { CONTAINER, Footer, GITHUB, Nav, START } from './chrome';
+import { Footer, Nav } from './chrome';
 import { Compare } from './compare';
 import { Deploy } from './deploy';
-import { BACKDROP, Features } from './features';
+import { Features } from './features';
 import { Flow } from './flow';
 import { Hero } from './hero';
 import { Reveal, Words } from './reveal';
+import { BACKDROP, CONTAINER, GITHUB, START } from './site';
 
 /** The SDKs that already talk to Rustrak, named rather than drawn as logos. */
 const SDKS = [
@@ -82,6 +83,7 @@ function Closing() {
         >
           <Image
             fill
+            sizes="100vw"
             src={BACKDROP}
             alt=""
             className="scale-110 object-cover blur-2xl saturate-[0.85]"
@@ -100,6 +102,7 @@ function Closing() {
               </p>
             </Reveal>
             <Reveal delay={0.75} className="mt-10 flex items-center gap-3">
+              {/* react-doctor-disable-next-line react-doctor/anchor-has-content */}
               <Button variant="primary" size="lg" render={<a href={START} />}>
                 Get started
               </Button>
@@ -107,6 +110,7 @@ function Closing() {
                 variant="secondary"
                 size="lg"
                 icon={StarIcon}
+                /* react-doctor-disable-next-line react-doctor/anchor-has-content */
                 render={<a href={GITHUB} />}
               >
                 Star on GitHub

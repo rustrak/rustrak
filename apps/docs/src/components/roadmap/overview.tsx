@@ -3,15 +3,13 @@
 import { Tag } from '@rustrak/ui';
 import { useLenis } from 'lenis/react';
 import * as m from 'motion/react-m';
-import { HORIZONS, type RoadmapItem } from '@/lib/roadmap';
+import { anchor, HORIZONS, type RoadmapItem } from '@/lib/roadmap';
 import { Backdrop } from '../editorial/intro';
 import { EASE, VIEW } from '../landing/motion';
 import { useSmoothScrolling } from '../landing/smooth-scroll';
 
 /** Cards shown per column before the rest folds into a count. */
 const PER_COLUMN = 4;
-
-export const anchor = (item: RoadmapItem) => `item-${item.id}`;
 
 /**
  * The whole roadmap as a board on the landing's lime backdrop: a column per

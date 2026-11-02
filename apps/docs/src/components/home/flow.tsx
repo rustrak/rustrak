@@ -405,8 +405,8 @@ export function Flow() {
   }, []);
   const [visible, setVisible] = useState(false);
 
-  // Nothing runs while the section is off screen: the canvas stops drawing,
-  // the flashes pause and the apps stop moving.
+  // Off screen the canvas stops drawing and the apps stop moving. The CSS
+  // flashes keep running: pausing them would drift them off the canvas clock.
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
@@ -565,11 +565,10 @@ export function Flow() {
       <Reveal y={48} className="mx-auto w-full max-w-[96rem] px-6">
         <div
           ref={stage}
-          data-paused={visible ? undefined : ''}
           // On a phone the drawing is cropped rather than shrunk: shown at
           // well over twice the screen's width, with the reporting apps, the
           // wall and the start of the bundle in view.
-          className="flow-stage relative aspect-[1200/440] w-full max-lg:-ml-[60%] max-lg:w-[240%] sm:max-lg:-ml-[25%] sm:max-lg:w-[150%]"
+          className="relative aspect-[1200/440] w-full max-lg:-ml-[60%] max-lg:w-[240%] sm:max-lg:-ml-[25%] sm:max-lg:w-[150%]"
         >
           <svg
             aria-hidden

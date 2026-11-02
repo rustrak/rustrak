@@ -4,10 +4,9 @@ import { Button, StarIcon } from '@rustrak/ui';
 import * as m from 'motion/react-m';
 import Image from 'next/image';
 import { EASE } from '../landing/motion';
-import { CONTAINER, GITHUB, START } from './chrome';
-import { BACKDROP } from './features';
 import { AppFrame, OverviewScreen, Scaled } from './product';
 import { Reveal, Words } from './reveal';
+import { BACKDROP, CONTAINER, GITHUB, START } from './site';
 
 /**
  * The claim, then the product on a landscape.
@@ -34,6 +33,7 @@ export function Hero() {
           </p>
         </Reveal>
         <Reveal delay={0.7} className="mt-10 flex items-center gap-3">
+          {/* react-doctor-disable-next-line react-doctor/anchor-has-content */}
           <Button variant="primary" size="lg" render={<a href={START} />}>
             Get started
           </Button>
@@ -41,6 +41,7 @@ export function Hero() {
             variant="secondary"
             size="lg"
             icon={StarIcon}
+            /* react-doctor-disable-next-line react-doctor/anchor-has-content */
             render={<a href={GITHUB} />}
           >
             Star on GitHub

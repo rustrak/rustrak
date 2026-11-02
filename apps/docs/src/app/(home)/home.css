@@ -59,8 +59,3 @@ html {
     animation: none;
   }
 }
-
-/* Off screen, every pulse and flash holds still (see `Flow`). */
-.flow-stage[data-paused] * {
-  animation-play-state: paused !important;
-}

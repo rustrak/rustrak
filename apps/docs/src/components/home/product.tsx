@@ -85,6 +85,11 @@ import { highlight } from './code';
 
 /* ------------------------------------------------------------------------ */
 /* Scaling                                                                   */
+/** Built once: a formatter is costly to make and every render reuses it. */
+const NUMBER = new Intl.NumberFormat('en');
+const COMPACT = new Intl.NumberFormat('en', { notation: 'compact' });
+const DAY = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
+
 /* ------------------------------------------------------------------------ */
 
 /**
@@ -287,7 +292,7 @@ interface Issue {
 
 const t = (values: number[]) => values;
 
-export const ISSUES: Issue[] = [
+const ISSUES: Issue[] = [
   {
     id: 'CHECKOUT-API-4F',
     title: "TypeError: Cannot read properties of undefined (reading 'total')",
@@ -725,6 +730,9 @@ function RailBlock({
  * the event navigator, and the event's sections) beside the issue's rail.
  * `rail={false}` drops the rail, for a window too narrow for it.
  */
+// A static screenshot of one page, read top to bottom: splitting it would
+// only scatter the layout across helpers nothing else uses.
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function IssueScreen({
   rail = 'open',
   at = 'top',
@@ -812,9 +820,7 @@ export function IssueScreen({
                 <dl className="flex flex-col items-end">
                   <dt className="text-fg-meta text-hint">Events</dt>
                   <dd className="text-fg text-section tabular-nums">
-                    {new Intl.NumberFormat('en').format(
-                      DAILY.reduce((sum, d) => sum + d.events, 0),
-                    )}
+                    {NUMBER.format(DAILY.reduce((sum, d) => sum + d.events, 0))}
                   </dd>
                 </dl>
               </header>
@@ -827,11 +833,7 @@ export function IssueScreen({
                   xKey="t"
                   height={140}
                   formatX={dayLabel}
-                  formatY={(v) =>
-                    new Intl.NumberFormat('en', { notation: 'compact' }).format(
-                      v,
-                    )
-                  }
+                  formatY={(v) => COMPACT.format(v)}
                   label="Events, last 30 days"
                 />
               </div>
@@ -1281,8 +1283,7 @@ const percent = (value: number, digits: number) =>
     maximumFractionDigits: digits,
   }).format(value);
 
-const compact = (value: number) =>
-  new Intl.NumberFormat('en', { notation: 'compact' }).format(value);
+const compact = (value: number) => COMPACT.format(value);
 
 /** `failureTone` in features/transaction/model/endpoints.ts. */
 function failureClass(rate: number) {
@@ -1591,10 +1592,7 @@ const VOLUME = ERRORS.map((error, index) => ({
   info: INFOS[index],
 }));
 
-const dayLabel = (value: string | number) =>
-  new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(
-    new Date(value),
-  );
+const dayLabel = (value: string | number) => DAY.format(new Date(value));
 
 /** `MetricDeltaText` with `polarity="up-is-bad"`. */
 function Delta({ change }: { change: number }) {
@@ -1752,7 +1750,7 @@ export function OverviewScreen() {
         </div>
         <Panel
           title="Errors over time"
-          description={`${new Intl.NumberFormat('en').format(total)} events in this window`}
+          description={`${NUMBER.format(total)} events in this window`}
           actions={
             <Button variant="ghost" size="sm" icon={CompareIcon}>
               Compare
@@ -1770,9 +1768,7 @@ export function OverviewScreen() {
             height={280}
             stacked
             formatX={dayLabel}
-            formatY={(v) =>
-              new Intl.NumberFormat('en', { notation: 'compact' }).format(v)
-            }
+            formatY={(v) => COMPACT.format(v)}
             label="Errors over time"
           />
         </Panel>

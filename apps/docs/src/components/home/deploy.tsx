@@ -9,9 +9,10 @@ import {
   SelectedIcon,
 } from '@rustrak/ui';
 import { useState } from 'react';
-import { CONTAINER, SectionHead } from './chrome';
+import { SectionHead } from './chrome';
 import { Showcase } from './features';
 import { Reveal } from './reveal';
+import { CONTAINER } from './site';
 
 /** Verbatim from content/getting-started/installation.mdx. */
 const COMMANDS = {
@@ -53,9 +54,13 @@ export function Deploy() {
   const text = COMMANDS[db].join('\n');
 
   const copy = () => {
-    void navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1600);
+      },
+      () => {},
+    );
   };
 
   return (
@@ -88,7 +93,10 @@ export function Deploy() {
             <SegmentedControl
               aria-label="Database"
               value={db}
-              onValueChange={(value) => setDb(value as Db)}
+              onValueChange={(value) => {
+                setDb(value as Db);
+                setCopied(false);
+              }}
             >
               <SegmentedItem value="sqlite">SQLite</SegmentedItem>
               <SegmentedItem value="postgres">PostgreSQL</SegmentedItem>

@@ -4,8 +4,9 @@ import { cn } from '@rustrak/ui';
 import * as m from 'motion/react-m';
 import type { ReactNode } from 'react';
 import { EASE, VIEW } from '../landing/motion';
-import { CONTAINER, SectionHead } from './chrome';
+import { SectionHead } from './chrome';
 import { Reveal } from './reveal';
+import { CONTAINER } from './site';
 
 /**
  * Facts only, each checkable:
@@ -110,26 +111,30 @@ function Bar({
           {value}
         </span>
       </div>
-      <div className="flex h-3 overflow-hidden rounded-pill bg-surface">
-        <m.span
-          className={cn(
-            'h-full min-w-1',
-            brand ? 'rounded-pill bg-surface-brand' : 'bg-fg-ghost',
-          )}
-          initial={{ width: '0%' }}
-          whileInView={{ width: `${(amount / max) * 100}%` }}
+      <div className="h-3 overflow-hidden rounded-pill bg-surface">
+        {/* Drawn at full size and uncovered left to right: a clip animates
+            without relayout, where a width would reflow every frame. */}
+        <m.div
+          className="flex h-full"
+          initial={{ clipPath: 'inset(0 100% 0 0)' }}
+          whileInView={{ clipPath: 'inset(0 0% 0 0)' }}
           viewport={VIEW}
           transition={GROW}
-        />
-        {hatched ? (
-          <m.span
-            className="h-full bg-[repeating-linear-gradient(135deg,var(--fg-ghost)_0_2px,transparent_2px_6px)]"
-            initial={{ width: '0%' }}
-            whileInView={{ width: `${(hatched / max) * 100}%` }}
-            viewport={VIEW}
-            transition={{ ...GROW, delay: GROW.delay + 0.4 }}
+        >
+          <span
+            className={cn(
+              'h-full min-w-1',
+              brand ? 'rounded-pill bg-surface-brand' : 'bg-fg-ghost',
+            )}
+            style={{ width: `${(amount / max) * 100}%` }}
           />
-        ) : null}
+          {hatched ? (
+            <span
+              className="h-full bg-[repeating-linear-gradient(135deg,var(--fg-ghost)_0_2px,transparent_2px_6px)]"
+              style={{ width: `${(hatched / max) * 100}%` }}
+            />
+          ) : null}
+        </m.div>
       </div>
     </div>
   );

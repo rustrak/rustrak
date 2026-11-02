@@ -1,10 +1,15 @@
 'use client';
 
 import { ArrowRightIcon, Tag, type TagTone } from '@rustrak/ui';
-import { HORIZONS, type Horizon, type RoadmapItem } from '@/lib/roadmap';
+import {
+  anchor,
+  HORIZONS,
+  type Horizon,
+  type RoadmapItem,
+} from '@/lib/roadmap';
 import { cn } from '@/lib/utils';
 import { Reveal, Words } from '../home/reveal';
-import { anchor, Live } from './overview';
+import { Live } from './overview';
 
 const COPY: Record<Horizon, string> = {
   Now: 'Being built right now.',

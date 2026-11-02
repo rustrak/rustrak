@@ -60,6 +60,7 @@ export function Words({
     >
       {text.split(' ').map((word, i) => (
         // Pieces of a fixed string: position is the identity.
+        // react-doctor-disable-next-line react-doctor/no-array-index-as-key
         <Fragment key={`${i}-${word}`}>
           {i > 0 ? ' ' : null}
           <span

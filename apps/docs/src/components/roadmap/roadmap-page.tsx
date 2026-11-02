@@ -53,6 +53,7 @@ export async function RoadmapPage() {
                 <Button
                   variant="primary"
                   size="lg"
+                  /* react-doctor-disable-next-line react-doctor/anchor-has-content */
                   render={<a href={ISSUES} />}
                 >
                   Open an issue
