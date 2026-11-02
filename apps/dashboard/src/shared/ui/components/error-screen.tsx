@@ -53,7 +53,7 @@ export function ErrorScreen({
     <div className="min-h-screen flex">
       {/* Left panel, decorative. Hidden below lg, exactly like the login. */}
       <div className="hidden lg:flex lg:w-1/2 bg-panel flex-col justify-between p-12 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_hsl(var(--card)),_transparent_50%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--surface),_transparent_50%)]" />
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-panel to-transparent z-10" />
 
         <Link href="/" className="relative z-20 flex items-center w-fit">

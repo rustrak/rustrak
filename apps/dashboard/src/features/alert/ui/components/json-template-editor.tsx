@@ -396,6 +396,17 @@ function EditorToolbar({
   onFormat: () => void;
 }) {
   const t = useTranslations('alerts.customWebhook');
+  // The Button renders its icon inside this anchor; the label is on the
+  // anchor too, so the link has a name of its own.
+  const helpLink = (
+    // biome-ignore lint/a11y/useAnchorContent: Button renders its icon into it, and the anchor carries aria-label.
+    <a
+      href={helpHref}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={t('help')}
+    />
+  );
 
   // One pass over the fields, grouped for the menu.
   const byGroup = useMemo(() => {
@@ -488,7 +499,7 @@ function EditorToolbar({
           icon={HelpIcon}
           aria-label={t('help')}
           title={t('help')}
-          render={<a href={helpHref} target="_blank" rel="noreferrer" />}
+          render={helpLink}
         />
       </div>
     </div>

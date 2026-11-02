@@ -67,6 +67,8 @@ export interface SelectProps<Value extends string> {
   name?: string;
   id?: string;
   'aria-label'?: string;
+  /** The hint or error that describes it, as a form field passes it. */
+  'aria-describedby'?: string;
   className?: string;
   /** `SelectItem`s. */
   children: ReactNode;
@@ -103,6 +105,7 @@ export function Select<Value extends string>({
       <BaseSelect.Trigger
         id={id}
         aria-label={aria['aria-label']}
+        aria-describedby={aria['aria-describedby']}
         aria-invalid={invalid || undefined}
         data-invalid={invalid || undefined}
         className={styles.trigger({ className })}

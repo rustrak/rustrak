@@ -314,6 +314,7 @@ function NumberField({
                 boxClassName="w-28"
                 className="tabular-nums"
                 name={field.name}
+                ref={field.ref}
                 onBlur={field.onBlur}
                 value={Number.isNaN(field.value) ? '' : field.value}
                 onChange={(event) => field.onChange(event.target.valueAsNumber)}
