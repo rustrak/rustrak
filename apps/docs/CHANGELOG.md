@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.0
+
+### Minor Changes
+
+- [`498bb9a`](https://github.com/rustrak/rustrak/commit/498bb9af72fd39938485bfac2e14693eed1ba9ea) Thanks [@AbianS](https://github.com/AbianS)! - Redesign the website (landing, docs and blog) on the product design system: @rustrak/ui components, Inter and Geist Mono, platform icons.
+
 ## 0.16.8
 
 ### Patch Changes
