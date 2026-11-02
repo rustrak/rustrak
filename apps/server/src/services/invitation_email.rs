@@ -98,17 +98,24 @@ pub async fn resolve_mailer(pool: &DbPool) -> AppResult<Option<ResolvedMailer>> 
     Ok(None)
 }
 
-/// The admin-facing view of resolve_mailer, without leaking any credential.
-pub async fn email_status(pool: &DbPool) -> AppResult<EmailStatusResponse> {
+/// The admin-facing view of `resolve_mailer`, without leaking any credential.
+///
+/// `links_reachable` comes from [`crate::config::Config::emailed_links_are_reachable`]:
+/// a mailer the create and resend endpoints would themselves refuse is not an
+/// available capability, and offering it anyway is how the UI ends up with a
+/// switch that greys out nothing yet fails on every click.
+pub async fn email_status(pool: &DbPool, links_reachable: bool) -> AppResult<EmailStatusResponse> {
     match resolve_mailer(pool).await? {
-        Some(mailer) => Ok(EmailStatusResponse {
+        Some(mailer) if links_reachable => Ok(EmailStatusResponse {
             available: true,
             source: Some(match mailer.source {
                 EmailSource::Integration => "integration",
                 EmailSource::Global => "global",
             }),
         }),
-        None => Ok(EmailStatusResponse {
+        // No mailer, or one the send endpoints would reject: same answer,
+        // different cause — the log names the mailer's absence precisely.
+        _ => Ok(EmailStatusResponse {
             available: false,
             source: None,
         }),

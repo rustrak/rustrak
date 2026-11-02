@@ -443,7 +443,7 @@
       "submit": "Invită",
       "sendEmailLabel": "Trimite un e-mail de verificare",
       "sendEmailAria": "Trimite un e-mail de verificare",
-      "sendEmailUnavailable": "Configurează o integrare de e-mail (sau un SMTP global) pentru a trimite e-mailuri de invitație"
+      "sendEmailUnavailable": "Configurează o integrare de e-mail (sau un SMTP global) și DASHBOARD_URL sau PUBLIC_URL pentru a trimite e-mailuri de invitație"
     },
     "toast": {
       "createFailed": "Crearea invitației a eșuat",

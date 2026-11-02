@@ -68,8 +68,9 @@ export function PendingInvitations({
    * actually deliver: no delivered email (`email_sent_at` null — the server
    * would demand `force` for a delivered one) and an unexpired link (the
    * server rejects an expired one, and a button that always fails is noise).
-   * It stays disabled while no transport is configured: a click could only
-   * ever come back as a server error.
+   * It stays disabled while delivery is unavailable — no transport, or a link
+   * address the server would itself refuse: a click could only ever come back
+   * as a server error.
    */
   const handleResend = (invitation: InvitationResponse) => {
     resend.mutate(

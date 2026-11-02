@@ -639,6 +639,44 @@ fn alert_links_fall_back_to_the_bind_address() {
     });
 }
 
+/// Emailed invitation links carry the address to a stranger's browser, so
+/// the gate is stricter than the link builder: a wildcard bind host is not a
+/// location, and a URL without the scheme its docs require is not a link.
+#[test]
+#[serial]
+fn emailed_links_are_unreachable_on_the_wildcard_bind_host() {
+    with_link_env(None, None, || {
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert!(!config.emailed_links_are_reachable());
+    });
+}
+
+#[test]
+#[serial]
+fn emailed_links_are_reachable_through_a_configured_url() {
+    with_link_env(None, Some("https://rustrak.example.com"), || {
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert!(config.emailed_links_are_reachable());
+    });
+}
+
+/// A schemeless `DASHBOARD_URL` would reach the invitee as text, not a
+/// clickable link, and the row would still be stamped as delivered: the gate
+/// rejects it even when `PUBLIC_URL` alone would have been fine, because
+/// `DASHBOARD_URL` is the one the link is built from.
+#[test]
+#[serial]
+fn emailed_links_reject_a_schemeless_dashboard_url() {
+    with_link_env(
+        Some("dashboard.example.com"),
+        Some("https://rustrak.example.com"),
+        || {
+            let config = Config::from_env().expect("Config::from_env() should succeed");
+            assert!(!config.emailed_links_are_reachable());
+        },
+    );
+}
+
 // =============================================================================
 // OpenID Connect Config Tests
 // =============================================================================

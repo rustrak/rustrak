@@ -216,14 +216,18 @@ impl Config {
     }
 
     /// Whether an emailed link built by [`Config::dashboard_url`] can be
-    /// opened by its recipient. Without `DASHBOARD_URL` or `PUBLIC_URL` the
-    /// URL falls back to the bind address, and the default bind host is the
-    /// unspecified `0.0.0.0` — a wildcard, not a location. Sending a link
-    /// nobody can reach would stamp the row as delivered while the invitee
-    /// got an error page, so email delivery refuses it instead.
+    /// opened by its recipient. Two ways it cannot: the configured URL lacks
+    /// the scheme its docs require (a schemeless `dashboard.example.com`
+    /// reaches the invitee as text, not a link), or no URL is configured and
+    /// the bind host is the unspecified `0.0.0.0` — a wildcard, not a
+    /// location. Sending either would stamp the row as delivered while the
+    /// invitee got nothing openable, so email delivery refuses both.
     pub fn emailed_links_are_reachable(&self) -> bool {
-        if self.dashboard.url.is_some() || self.public_url.is_some() {
-            return true;
+        // Validate the URL `dashboard_url()` would actually build the link
+        // from — `DASHBOARD_URL` wins over `PUBLIC_URL`, so a schemeless
+        // `DASHBOARD_URL` fails even when `PUBLIC_URL` would have been fine.
+        if let Some(url) = self.dashboard.url.as_ref().or(self.public_url.as_ref()) {
+            return url.starts_with("http://") || url.starts_with("https://");
         }
         !is_unspecified_host(&self.host)
     }

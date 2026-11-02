@@ -443,7 +443,7 @@
       "submit": "Inviter",
       "sendEmailLabel": "Envoyer un e-mail de vérification",
       "sendEmailAria": "Envoyer un e-mail de vérification",
-      "sendEmailUnavailable": "Configurez une intégration e-mail (ou un SMTP global) pour envoyer des e-mails d'invitation"
+      "sendEmailUnavailable": "Configurez une intégration e-mail (ou un SMTP global), puis DASHBOARD_URL ou PUBLIC_URL pour envoyer des e-mails d'invitation"
     },
     "toast": {
       "createFailed": "Échec de la création de l’invitation",

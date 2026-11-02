@@ -127,7 +127,7 @@ pub async fn create_invitation(
         // row instead of stamping a delivery the invitee cannot redeem.
         if !config.emailed_links_are_reachable() {
             return Err(AppError::Validation(
-                "The invite link would use the unreachable bind address; set DASHBOARD_URL or PUBLIC_URL to email invitations".to_string(),
+                "The invite link would be unreachable: set DASHBOARD_URL or PUBLIC_URL to an http(s) address (the bind address is a wildcard)".to_string(),
             )
             .with_field("send_email", FieldErrorCode::Invalid));
         }
@@ -155,7 +155,19 @@ pub async fn create_invitation(
         // path's own double-click guard against two near-simultaneous
         // "invite with email" posts from one admin.
         let claim =
-            invitation_email::claim_email_delivery(pool.get_ref(), &invitation.token).await?;
+            match invitation_email::claim_email_delivery(pool.get_ref(), &invitation.token).await {
+                Ok(claim) => claim,
+                // The row is already committed: a claim failure must not
+                // 500 an invitation the next retry could only 409. Skip the
+                // mail — the link stays copyable — like the held-claim branch.
+                Err(e) => {
+                    log::error!(
+                        "invitation email claim failed for {} (invitation still created): {e}",
+                        invitation.email
+                    );
+                    None
+                }
+            };
         if let Some(claimed_at) = claim {
             match deliver_invitation(pool.get_ref(), &config, mailer, &invitation).await {
                 Ok(sent_at) => email_sent_at = Some(sent_at),
@@ -206,10 +218,16 @@ pub async fn create_invitation(
 /// Drives the invite form's "send verification email" switch: it is only
 /// offered when this reports available. Reports the source without any
 /// credential detail.
-pub async fn email_status(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
+pub async fn email_status(
+    pool: web::Data<DbPool>,
+    config: web::Data<Config>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
     require_admin(&actor)?;
 
-    let status = invitation_email::email_status(pool.get_ref()).await?;
+    let status =
+        invitation_email::email_status(pool.get_ref(), config.emailed_links_are_reachable())
+            .await?;
     Ok(HttpResponse::Ok().json(status))
 }
 
@@ -269,7 +287,7 @@ pub async fn resend_invitation(
     // Same reachability rule as create: never mail a link nobody can open.
     if !config.emailed_links_are_reachable() {
         return Err(AppError::Validation(
-            "The invite link would use the unreachable bind address; set DASHBOARD_URL or PUBLIC_URL to email invitations".to_string(),
+            "The invite link would be unreachable: set DASHBOARD_URL or PUBLIC_URL to an http(s) address (the bind address is a wildcard)".to_string(),
         )
         .with_field("send_email", FieldErrorCode::Invalid));
     }
