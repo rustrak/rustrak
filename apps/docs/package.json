@@ -1,6 +1,6 @@
 {
   "name": "docs",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "private": true,
   "scripts": {
     "dev": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-llms.mjs && next dev --port 3001",
