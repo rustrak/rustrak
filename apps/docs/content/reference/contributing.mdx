@@ -1,14 +1,14 @@
 # Contributing
 
-How to contribute to Rustrak.
+How to set up Rustrak locally and get a change merged.
 
 ## Setup
 
 ### Prerequisites
 
-- Rust, current stable
-- Node.js 22+
-- pnpm 10+
+- Rust through `rustup`. The version is pinned in `rust-toolchain.toml` (1.98), and `rustup` installs it on the first `cargo` command
+- Node.js 22.18 or later
+- pnpm 12
 - Docker, optional: only for PostgreSQL or to build images
 
 ### Clone and install
@@ -48,13 +48,12 @@ builds the server.
 ```
 rustrak/
 ├── apps/
-│   ├── server/         # Rust server: API, ingest, and the dashboard from static/
+│   ├── server/         # Rust server: API, ingest, MCP, and the dashboard from static/
 │   ├── dashboard/      # React SPA, compiled into apps/server/static
 │   └── docs/           # Documentation site
 ├── packages/
 │   ├── ui/             # Design system
 │   ├── client/         # TypeScript API client
-│   ├── mcp/            # MCP server over the client
 │   ├── test-sentry/    # CLI that sends test events
 │   └── benchmarks/     # Load and throughput benchmarks
 ├── scripts/
@@ -66,27 +65,28 @@ rustrak/
 
 ### Branches
 
-- `main` – Stable release
-- `feat/*` – New features
-- `fix/*` – Bug fixes
+- `main`: stable releases
+- `next`: pre-releases
+- `feat/*`, `fix/*`, `docs/*`: your work, branched from `main`
 
 ### Commits
 
-Use conventional commits:
+Use conventional commits, in English:
 
 ```
-feat: Add issue muting
-fix: Correct rate limit calculation
-docs: Update deployment guide
+feat: archive issues from the list
+fix: count rate-limited events once
+docs: document user feedback
 ```
+
+A change users will notice comes with a changeset (`pnpm changeset`). Name `@rustrak/server`; the client and dashboard follow, since all three share one version.
 
 ### Pull requests
 
-1. Create feature branch
-2. Make changes
-3. Run tests
-4. Submit PR
-5. Address feedback
+1. Branch from `main`
+2. Make the change, with its tests
+3. Run `pnpm run ci`, which runs what CI runs
+4. Open the pull request
 
 ## Server (Rust)
 
@@ -106,10 +106,14 @@ cargo clippy
 
 ### Migrations
 
+Each backend has its own set, in `migrations/sqlite` and `migrations/postgres`. Add a migration to both:
+
 ```bash
-sqlx migrate add description
-sqlx migrate run
+sqlx migrate add -r --source migrations/sqlite description
+sqlx migrate add -r --source migrations/postgres description
 ```
+
+The server runs pending migrations at startup.
 
 ## Dashboard
 
@@ -146,8 +150,7 @@ The server needs no change: it accepts any well-formed language tag, so a locale
 ### Run locally
 
 ```bash
-cd apps/docs
-pnpm dev
+pnpm dev:docs   # http://localhost:3001
 ```
 
 ### Add pages
@@ -158,8 +161,4 @@ pnpm dev
 
 ## Getting help
 
-- **Issues**: Report bugs
-- **Discussions**: Ask questions
-- **Docs**: Check documentation first
-
-Thanks for contributing!
+Report a bug or ask a question in [GitHub issues](https://github.com/rustrak/rustrak/issues).

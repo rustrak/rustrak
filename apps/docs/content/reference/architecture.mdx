@@ -1,6 +1,6 @@
 # Architecture
 
-How Rustrak is designed and why.
+How Rustrak is built, and why.
 
 ## Overview
 
@@ -32,8 +32,8 @@ answers `/api/projects` hands out `/`, so:
   session cookie is first-party and the dashboard needs no CORS
 - The dashboard costs nothing at runtime: the server reads the files once at
   startup
-- Paths under `/api`, `/auth`, `/health`, `/docs` and `/api-docs` always get an
-  API answer, never the dashboard page
+- Paths under `/api`, `/auth`, `/health`, `/docs`, `/api-docs`, `/metrics`,
+  `/mcp` and `/.well-known` always get an API answer, never the dashboard page
 
 The dashboard stays optional. `RUSTRAK_DASHBOARD=off` makes the server
 API-only, and a server built without a dashboard (a plain `cargo build`) serves
@@ -68,9 +68,9 @@ Rustrak implements the Sentry envelope protocol:
 ### Server (Rust)
 
 Responsibilities:
-- Receive events, transactions, spans, sessions and logs from SDKs
+- Receive events, transactions, spans, sessions, logs, check-ins and user feedback from SDKs
 - Group errors into issues
-- Apply source maps to JavaScript stack traces
+- Apply source maps and debug files to stack traces
 - Store data in SQLite or PostgreSQL
 - Provide the REST API
 - Serve the dashboard
@@ -99,7 +99,7 @@ Uploaded source maps are files on disk under `SOURCEMAP_STORAGE_PATH`
 A React single-page application in `apps/dashboard`, compiled into the server
 image:
 - Projects, issues and events (stack traces, breadcrumbs, context)
-- Performance, releases, logs and AI agent traces
+- User feedback, releases, performance, logs, crons and AI agent traces
 - Alerts, team, tokens and storage settings
 
 ## Authentication
@@ -109,6 +109,7 @@ image:
 | Session | Dashboard | Sign in at `/login` → httpOnly cookie |
 | Bearer Token | API access | `Authorization: Bearer <token>` |
 | SentryAuth | SDK ingestion | DSN `sentry_key` |
+| OAuth | AI assistants on `/mcp` | An access token from Rustrak's own authorization server |
 
 ## Deployment options
 
@@ -145,18 +146,4 @@ For keeping the machine that holds your data free of any frontend.
 on the server to the `ui` address so alert links open it. See
 [Dashboard on its own host](/configuration/production#dashboard-on-its-own-host).
 
-### Several servers
-
-```
-         ┌─────────────┐
-SDKs → LB│  Server x N │→ PostgreSQL
-         └─────────────┘
-                │
-          shared volume for source maps
-```
-
-Running more than one server needs PostgreSQL, since SQLite is a single file
-on one machine. Every instance needs the same `SESSION_SECRET_KEY`, so a
-session cookie from one is valid on the others, and the same
-`SOURCEMAP_STORAGE_PATH` on a shared volume, so a source map uploaded to one
-instance can be read by all of them.
+Whichever you pick, run one server process per database.

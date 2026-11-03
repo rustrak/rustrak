@@ -23,7 +23,7 @@ The body field is a small JSON editor rather than a plain text box.
 
 | What | How it works |
 |---|---|
-| **Start from** | Drops in the shape a known service expects: Slack-compatible, Discord, Microsoft Teams, WeCom, DingTalk, Feishu, or a typed body for your own API. Replacing a body you had written shows an **Undo** toast. |
+| **Start from** | Drops in the shape a known service expects: one line of text and a link, Slack-compatible, Discord, Microsoft Teams, WeCom (text or markdown), DingTalk, Feishu, or a typed body for your own API. Replacing a body you had written shows an **Undo** toast. |
 | **Insert field** | Puts a field at the caret. Typing `{{` offers the same list inline, with a one-line description and the sample value of each field. |
 | **Pills** | An inserted field is drawn as one object: it is deleted in one keystroke and never edited from inside. A pill turns red when it names a field the alert does not have. |
 | **Preview** | Under the editor, the body rendered against a sample alert, byte for byte what a delivery would send. It updates a moment after you stop typing. |
@@ -184,7 +184,18 @@ same way.
 }
 ```
 
-**DingTalk group bot** (钉钉) takes the same shape. Its `access_token` goes in
+The WeCom markdown preset uses `"msgtype": "markdown"`:
+
+```json
+{
+  "msgtype": "markdown",
+  "markdown": {
+    "content": "### {{ issue.title }}\n> Project: {{ project.name }}\n> Level: {{ issue.level }}\n> [View issue]({{ issue_url }})"
+  }
+}
+```
+
+**DingTalk group bot** (钉钉) takes the same shape as WeCom text. Its `access_token` goes in
 the URL, so paste the full URL from the bot settings into **Webhook URL**.
 
 **Feishu / Lark group bot** (飞书) uses `msg_type`, not `msgtype`:

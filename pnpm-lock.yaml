@@ -224,7 +224,7 @@ importers:
         version: 5.3.0
       '@hookform/resolvers':
         specifier: 6.0.2
-        version: 6.0.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1))(zod@4.6.7)
+        version: 6.0.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.5.0(typescript@6.0.3))(zod@4.6.7)
       '@lezer/highlight':
         specifier: 1.2.5
         version: 1.2.5
@@ -331,6 +331,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
+      '@rustrak/openshowcase-player-react':
+        specifier: 0.5.0
+        version: 0.5.0(react@19.3.1)(typescript@6.0.3)
       '@rustrak/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -3309,6 +3312,17 @@ packages:
     resolution: {integrity: sha512-IoIgQLpK1DbOcQf1vX+i5oe5LXypsCVb1j/mU6BLAbOGmXH4E+j4kMfgZRwPYUohVBurNyVMgIKVM5dR6xA0kA==}
     cpu: [x64]
     os: [win32]
+
+  '@rustrak/openshowcase-player-core@0.5.0':
+    resolution: {integrity: sha512-uXMSxj4P4xxbwiVOrK7PUc4eT5LJb4X0Fy2P3RSCLReg9MD9CK8ED+iCLDUuVitQBYH9gnmTBir5llqcao79fg==}
+
+  '@rustrak/openshowcase-player-react@0.5.0':
+    resolution: {integrity: sha512-5iUhrVvkDMhwcFkVjGC/qOnEtxq6TD+N1GRJsd5OGCYRriOnuVTKLhS2WhqwQGfUfNcH0yxH+eXh8tg7CC+XqA==}
+    peerDependencies:
+      react: '>=18'
+
+  '@rustrak/openshowcase-schema@0.5.0':
+    resolution: {integrity: sha512-WHBQMI3I5iEIclx9iiMJIafMq3jeZrIeQivlX03p+YFUb3HutYmkw686+N5IeLMpQDr/KjMY5qOnBlRkoaBcOQ==}
 
   '@scalar/agent-chat@0.12.49':
     resolution: {integrity: sha512-ol4VbQSCAfRPsHitueK8G6pj0YRhTXqLqVY5ADn9WTKW7F0UVgjfq8HU8gg0Q6R43fBdmk74eVfI7DojAdBbxg==}
@@ -7918,6 +7932,14 @@ packages:
     resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
     hasBin: true
 
+  valibot@1.5.0:
+    resolution: {integrity: sha512-nil6AkP2TChWL43Z5uJ6GTxX01CUA+g8LWUM+N/rB9NBbkUMaUsi9PUNzlUPgoKASgmx9f7eGOYpJ04/fSa6FQ==}
+    peerDependencies:
+      typescript: '>=5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   verkit@0.5.0:
     resolution: {integrity: sha512-u4J1hr6Y+C/hit34GwL3eIcUf3wngT8TlYUjK7tk0jxydKLAq3sYvifjdTDA6U3KCKRcQCQDGf/srjxfZF3l7g==}
     engines: {node: '>=18.12.0'}
@@ -9100,7 +9122,7 @@ snapshots:
 
   '@hey-api/types@0.1.4': {}
 
-  '@hookform/resolvers@6.0.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1))(zod@4.6.7)':
+  '@hookform/resolvers@6.0.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1))(valibot@1.5.0(typescript@6.0.3))(zod@4.6.7)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.91.0(@types/react@19.3.0)(react@19.3.1)
@@ -9108,6 +9130,7 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       ajv: 8.20.0
       ajv-formats: 2.1.1(ajv@8.20.0)
+      valibot: 1.5.0(typescript@6.0.3)
       zod: 4.6.7
 
   '@hugeicons/core-free-icons@4.4.0': {}
@@ -10427,6 +10450,26 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.64.9':
     optional: true
+
+  '@rustrak/openshowcase-player-core@0.5.0(typescript@6.0.3)':
+    dependencies:
+      '@rustrak/openshowcase-schema': 0.5.0(typescript@6.0.3)
+    transitivePeerDependencies:
+      - typescript
+
+  '@rustrak/openshowcase-player-react@0.5.0(react@19.3.1)(typescript@6.0.3)':
+    dependencies:
+      '@rustrak/openshowcase-player-core': 0.5.0(typescript@6.0.3)
+      '@rustrak/openshowcase-schema': 0.5.0(typescript@6.0.3)
+      react: 19.3.1
+    transitivePeerDependencies:
+      - typescript
+
+  '@rustrak/openshowcase-schema@0.5.0(typescript@6.0.3)':
+    dependencies:
+      valibot: 1.5.0(typescript@6.0.3)
+    transitivePeerDependencies:
+      - typescript
 
   '@scalar/agent-chat@0.12.49(supports-color@8.1.1)(tailwindcss@4.3.3)(typescript@6.0.3)(zod@4.6.7)':
     dependencies:
@@ -16141,6 +16184,10 @@ snapshots:
   util-deprecate@1.0.2: {}
 
   uuid@11.1.0: {}
+
+  valibot@1.5.0(typescript@6.0.3):
+    optionalDependencies:
+      typescript: 6.0.3
 
   verkit@0.5.0: {}
 

@@ -49,7 +49,10 @@ export default function RootLayout({
       <Head
         color={{ hue: 83, saturation: 90, lightness: 69 }}
         backgroundColor={{ dark: 'rgb(22,22,22)', light: 'rgb(22,22,22)' }}
-      />
+      >
+        {/* The index of the whole site for agents (llmstxt.org, v2). */}
+        <link rel="describedby" href="/llms.txt" />
+      </Head>
       <body>{children}</body>
     </html>
   );

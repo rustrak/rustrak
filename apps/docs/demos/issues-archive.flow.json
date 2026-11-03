@@ -1,0 +1,16 @@
+{
+  "title": "Archive an issue",
+  "url": "http://localhost:8090/projects/3/issues",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "StripeCardError: Your card was declined." } },
+    { "action": "click", "target": { "role": "link", "name": "StripeCardError: Your card was declined." }, "tooltip": "A declined card is expected, not a bug to fix" },
+    { "action": "wait", "for": { "role": "button", "name": "Archive E" } },
+    { "action": "click", "target": { "role": "button", "name": "Archive E" }, "tooltip": "Archive it: it keeps counting events but stops alerting and never reopens", "zoom": 1.8 },
+    { "action": "wait", "for": { "role": "button", "name": "Unarchive" } },
+    { "action": "click", "target": { "role": "link", "name": "Issues", "nth": 0 }, "hotspot": false },
+    { "action": "wait", "for": { "role": "tab", "name": "Archived" } },
+    { "action": "click", "target": { "role": "tab", "name": "Archived" }, "tooltip": "Archived issues wait here. Unarchive one to bring it back" },
+    { "action": "wait", "for": { "role": "link", "name": "StripeCardError: Your card was declined." } }
+  ]
+}

@@ -1,180 +1,83 @@
 # Quickstart
 
-## Prerequisites
+From a running server to your first issue. You need Rustrak [installed](/getting-started/installation) and the account from `CREATE_SUPERUSER`.
 
-- Rustrak installed and running ([Installation guide](/getting-started/installation))
-- Admin user created
-- An application to track errors (we'll use a simple example)
+## Create a project
 
-## Step 1: Log in
+Sign in, then go to **Projects → New Project**. Pick the platform you want to monitor, give the project a name and click **Create Project**.
 
-Open http://localhost:8080 (or your `PUBLIC_URL`) and sign in with your admin credentials.
+<InteractiveDemo src="/demos/quickstart.openshowcase" />
 
-## Step 2: Create a project
+Rustrak opens the project's **Settings → SDK** page. It has the DSN, the install command for the platform you picked and a setup snippet with the DSN already filled in. The DSN looks like this:
 
-1. Click **New Project**
-2. Enter a name (e.g., "my-app")
-3. Click **Create**
-
-## Step 3: Copy your DSN
-
-After creating the project, you'll see a DSN (Data Source Name). It looks like this:
-
-```
-http://a1b2c3d4e5f6@localhost:8080/1
+```text
+http://32159c3edfd340c28869ce39e4faaa48@localhost:8080/4
 ```
 
-Copy it. You'll need it in the next step.
+If the host in the DSN is `0.0.0.0`, the server has no `PUBLIC_URL`. Set it to the address your applications reach, for example `https://rustrak.example.com`, and restart. See [`PUBLIC_URL`](/configuration/environment#public_url).
 
-> **Production deployment?** If your DSN shows `0.0.0.0` instead of your domain, set `PUBLIC_URL=https://rustrak.example.com` in your server environment. See [Environment Variables](/configuration/environment#public_url).
+## Send an event
 
-## Step 4: Install a Sentry SDK
-
-Rustrak works with any Sentry SDK. Pick your language:
+Rustrak works with the official Sentry SDKs, so install the one for your language:
 
 ```bash
-# JavaScript / Node.js
-npm install @sentry/browser
-# or
-npm install @sentry/node
-
-# Python
-pip install sentry-sdk
-
-# Go
+npm install @sentry/node         # Node.js (@sentry/browser in the browser)
+pip install sentry-sdk           # Python
 go get github.com/getsentry/sentry-go
-
-# Rust
-cargo add sentry
+cargo add sentry                 # Rust
 ```
 
-## Step 5: Initialize the SDK
-
-Add this to your application's entry point:
+Initialize it with your DSN and capture something:
 
 ```javascript
-// JavaScript (browser or Node.js)
-import * as Sentry from '@sentry/browser'; // or '@sentry/node'
+import * as Sentry from '@sentry/node';
 
-Sentry.init({
-  dsn: 'YOUR_DSN_HERE', // paste your DSN
-});
+Sentry.init({ dsn: 'YOUR_DSN' });
+
+Sentry.captureException(new Error('Something went wrong'));
 ```
 
 ```python
-# Python
 import sentry_sdk
 
-sentry_sdk.init(dsn="YOUR_DSN_HERE")
-```
+sentry_sdk.init(dsn="YOUR_DSN")
 
-```go
-// Go
-import "github.com/getsentry/sentry-go"
-
-sentry.Init(sentry.ClientOptions{
-    Dsn: "YOUR_DSN_HERE",
-})
-```
-
-```rust
-// Rust
-let _guard = sentry::init("YOUR_DSN_HERE");
-```
-
-## Step 6: Trigger a test error
-
-Send a test message to verify everything works:
-
-```javascript
-// JavaScript
-Sentry.captureMessage("Hello from Rustrak!");
-```
-
-```python
-# Python
-sentry_sdk.capture_message("Hello from Rustrak!")
-```
-
-```go
-// Go
-sentry.CaptureMessage("Hello from Rustrak!")
-```
-
-```rust
-// Rust
-sentry::capture_message("Hello from Rustrak!", sentry::Level::Info);
-```
-
-## Step 7: Check the dashboard
-
-Go back to your Rustrak dashboard. You should see your first issue:
-
-1. Click on your project
-2. You'll see an issue titled "Hello from Rustrak!"
-3. Click on it to see the full details
-
-**Congratulations!** You've successfully set up error tracking.
-
-## Step 8: Capture a real error
-
-Now try capturing an actual exception:
-
-```javascript
-// JavaScript
-try {
-  throw new Error("Something went wrong!");
-} catch (error) {
-  Sentry.captureException(error);
-}
-```
-
-```python
-# Python
 try:
-    raise ValueError("Something went wrong!")
-except Exception as e:
+    1 / 0
+except ZeroDivisionError as e:
     sentry_sdk.capture_exception(e)
 ```
 
-Check the dashboard again: you'll see a new issue with a full stack trace.
+```go
+import (
+    "errors"
+    "time"
 
-## Step 9: Add context
+    "github.com/getsentry/sentry-go"
+)
 
-Make debugging easier by adding user and custom context:
+sentry.Init(sentry.ClientOptions{Dsn: "YOUR_DSN"})
+defer sentry.Flush(2 * time.Second)
 
-```javascript
-// Set user info
-Sentry.setUser({
-  id: "123",
-  email: "user@example.com",
-});
-
-// Add custom tags
-Sentry.setTag("feature", "checkout");
-
-// Add breadcrumbs
-Sentry.addBreadcrumb({
-  category: "user",
-  message: "User clicked checkout",
-  level: "info",
-});
+sentry.CaptureException(errors.New("something went wrong"))
 ```
 
-## Step 10: Resolve the test issue
+```rust
+let _guard = sentry::init("YOUR_DSN");
 
-1. Go to your test issue in the dashboard
-2. Click **Resolve**
-3. The issue moves to the resolved state
+sentry::capture_message("Something went wrong", sentry::Level::Error);
+```
 
-If the same error happens again, Rustrak will reopen it automatically.
+The SDKs send in the background. A script that exits right away can quit before the event leaves: Go needs the `Flush` above, and in Node.js call `await Sentry.flush()` before exiting. Python and Rust flush on exit.
 
----
+## Find the issue
 
-## Next steps
+Open the project in the dashboard. The event shows up as an issue on its **Issues** list, with its stack trace. Events with the same exception type and message land in the same issue, so sending it again raises the count instead of adding a row.
 
-You're all set! Here's what to explore next:
+Click **Resolve** on the issue when you have fixed it. If the error happens again, Rustrak reopens it as a regression.
 
-- [Projects](/usage/projects) – Organize your applications
-- [Issues](/usage/issues) – Understand grouping and states
-- [Production Checklist](/configuration/production) – Go live safely
+## Next
+
+- [Issues](/usage/issues): grouping, states and what an issue shows
+- [Alerts](/usage/alerts): get told when a new issue appears
+- [Production checklist](/configuration/production): before real traffic reaches it
