@@ -14,6 +14,7 @@ export function InteractiveDemo({ src }: { src: string }) {
     <OpenShowcaseDemo
       src={src.startsWith('/') ? `${basePath}${src}` : src}
       appearance="dark"
+      startWhenVisible
       // The player draws its own window frame; a border here doubles it.
       className="my-6 w-full"
     />
