@@ -36,13 +36,13 @@ const text = tv({
       code: 'font-mono text-code tabular-nums',
       mono: 'font-mono text-mono tabular-nums',
       'mono-sm': 'font-mono text-mono-sm tabular-nums',
-      column: 'font-mono text-column tabular-nums uppercase',
+      column: 'text-column tabular-nums',
       badge: 'font-mono text-badge tabular-nums',
-      tag: 'font-mono text-tag uppercase',
+      tag: 'text-tag',
       kbd: 'font-mono text-kbd',
       /*
        * The two figures are the exception to the mono rule, and the design
-       * is explicit about it: a KPI is set in Geist at 24/600 with tabular
+       * is explicit about it: a KPI is set in Inter at 24/600 with tabular
        * figures. At that size mono stops reading as precision and starts
        * reading as a terminal, and the thousands separator opens a hole in
        * the middle of the number. Tabular figures already give the alignment,

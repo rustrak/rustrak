@@ -1,3 +1,4 @@
+import { Button, Text } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -5,7 +6,6 @@ import { userQueries } from '@/features/user/api/queries';
 import { Link } from '@/shared/ui/components/link';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
 import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
-import { Button } from '@/shared/ui/components/shadcn/button';
 import { AuthScreenLoading } from './-components/auth-screen-loading';
 import { LinkAccountForm } from './-components/link-account-form';
 
@@ -43,10 +43,10 @@ function LinkAccount() {
   }
 
   return (
-    <div className="min-h-screen bg-card flex items-center justify-center p-8 lg:p-12">
-      <div className="w-full max-w-[420px] space-y-10">
+    <main className="flex min-h-screen items-center justify-center bg-canvas p-8 lg:p-12">
+      <div className="flex w-full max-w-[25rem] flex-col gap-10">
         <div className="flex items-center">
-          <RustrakWordmark className="h-[22px] w-auto" />
+          <RustrakWordmark className="h-[22px] w-auto text-fg" />
         </div>
 
         {link.data ? (
@@ -55,21 +55,21 @@ function LinkAccount() {
             provider={link.data.provider_name}
           />
         ) : (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-fg text-page-title">
                 {t('link.expiredTitle')}
               </h1>
-              <p className="text-muted-foreground">
+              <Text render={<p />} tone="muted">
                 {t('link.expiredDescription')}
-              </p>
+              </Text>
             </div>
-            <Button nativeButton={false} render={<Link href="/login" />}>
+            <Button variant="primary" render={<Link href="/login" />}>
               {t('link.backToLogin')}
             </Button>
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }

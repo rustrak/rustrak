@@ -10,9 +10,9 @@ import { PageLoading } from '@/shared/ui/components/page-loading';
 export function EventLoading() {
   return (
     <PageLoading>
-      <div className="flex flex-col h-full bg-background">
+      <div className="flex flex-col h-full bg-panel">
         {/* Header band */}
-        <header className="shrink-0 bg-card border-b">
+        <header className="shrink-0 bg-surface border-b">
           <div className="w-full px-4 md:px-8 py-3 space-y-2">
             <Skeleton className="h-3 w-40" />
             <div className="flex items-start justify-between gap-6">
@@ -51,7 +51,7 @@ export function EventLoading() {
             <div className="w-full px-4 md:px-8 py-5 space-y-5">
               {/* Trends */}
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
-                <div className="rounded-lg border bg-card p-4 flex gap-5">
+                <div className="rounded-lg border bg-surface p-4 flex gap-5">
                   <div className="shrink-0 space-y-3">
                     <div className="space-y-1">
                       <Skeleton className="h-2.5 w-12" />
@@ -64,7 +64,7 @@ export function EventLoading() {
                   </div>
                   <Skeleton className="flex-1 h-[130px]" />
                 </div>
-                <div className="rounded-lg border bg-card p-4 space-y-3">
+                <div className="rounded-lg border bg-surface p-4 space-y-3">
                   <Skeleton className="h-2.5 w-10" />
                   {Array.from({ length: 4 }).map((_, i) => (
                     <Skeleton key={i} className="h-2 w-full" />
@@ -82,7 +82,7 @@ export function EventLoading() {
               </div>
 
               {/* Sections */}
-              <div className="rounded-lg border bg-card p-4 space-y-5">
+              <div className="rounded-lg border bg-surface p-4 space-y-5">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="space-y-3">
                     <Skeleton className="h-4 w-40" />
@@ -94,7 +94,7 @@ export function EventLoading() {
           </main>
 
           {/* Right rail */}
-          <aside className="hidden lg:block w-[320px] shrink-0 border-l bg-card">
+          <aside className="hidden lg:block w-80 shrink-0 border-l border-border-divider bg-aside">
             <div className="p-4 space-y-2 border-b">
               <div className="flex justify-between">
                 <Skeleton className="h-4 w-20" />

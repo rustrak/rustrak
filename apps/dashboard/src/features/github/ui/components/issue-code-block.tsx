@@ -1,5 +1,5 @@
 import type { IssueGitHub } from '@rustrak/client';
-import { GitCommitHorizontal } from 'lucide-react';
+import { CommitIcon } from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
@@ -59,7 +59,7 @@ export function IssueCodeBlock({
               rel="noreferrer"
               className="flex gap-2 rounded-md p-1.5 -mx-1.5 hover:bg-surface-hover"
             >
-              <GitCommitHorizontal className="size-4 mt-0.5 shrink-0 text-fg-subtle" />
+              <CommitIcon className="size-4 mt-0.5 shrink-0 text-fg-subtle" />
               <div className="min-w-0 text-sm">
                 <p className="truncate">{commit.message.split('\n')[0]}</p>
                 <p className="text-xs text-fg-subtle truncate">

@@ -97,7 +97,7 @@ export function ProjectPanel({
         </div>
       </div>
 
-      <p className="shrink-0 px-2.5 pt-2 pb-1.5 font-mono text-column text-fg-meta uppercase">
+      <p className="shrink-0 px-2.5 pt-2 pb-1.5 text-column text-fg-meta">
         {PROJECT_PAGE_COUNT} {t('commands.pages')}
       </p>
 

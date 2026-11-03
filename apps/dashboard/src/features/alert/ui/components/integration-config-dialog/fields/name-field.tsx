@@ -6,7 +6,7 @@ import {
   FormField,
   FormItem,
   FormMessage,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
 import { FieldRow } from './form-chrome';
 
 /**

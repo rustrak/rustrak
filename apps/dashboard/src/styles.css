@@ -1,8 +1,8 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-/* The design system's tokens. Additive on purpose: the reset that closes the
-   system (`@rustrak/ui/styles.css`) comes in the day the last shadcn utility
-   below has gone. Until then both vocabularies compile side by side. */
+/* The design system's tokens and base styles: the only colour, type, radius
+   and motion vocabulary the dashboard speaks. Tailwind's own namespaces stay
+   open (the closing reset in `@rustrak/ui/styles.css` is not imported), so a
+   layout utility like `gap-4` still compiles. */
 @import "@rustrak/ui/tokens.css";
 @import "@rustrak/ui/base.css";
 
@@ -13,95 +13,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * The shadcn vocabulary, bridged onto the design system.
- *
- * Every name the existing screens use (`bg-card`, `text-muted-foreground`,
- * `border-input`) resolves to a semantic token of `@rustrak/ui`, so the screens
- * not yet rebuilt already wear the new palette, follow the same theme switch,
- * and can be moved one at a time. What the design system already publishes --
- * `border`, `ring`, `chart-*`, `sev-*`, the fonts and the radii -- is not
- * redeclared here: it comes from the tokens above.
- *
- * This block shrinks as pages move over, and goes when it is empty.
- */
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-status-ok: var(--status-ok);
-  --color-input: var(--input);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-}
-
-:root {
-  /* Still read by a few components by name. The faces are self-hosted through
-     `@fontsource-variable/*` (imported in `main.tsx`). */
-  --font-geist-sans: var(--font-sans);
-  --font-geist-mono: var(--font-mono);
-  --radius: 0.5rem;
-
-  /* The page is the sheet, not the frame around it. */
-  --background: var(--surface-panel);
-  --foreground: var(--fg);
-  --card: var(--surface);
-  --card-foreground: var(--fg);
-  --popover: var(--surface-floating);
-  --popover-foreground: var(--fg);
-  --primary: var(--surface-brand);
-  --primary-foreground: var(--fg-on-brand);
-  --secondary: var(--surface-active);
-  --secondary-foreground: var(--fg);
-  --muted: var(--surface-hover);
-  --muted-foreground: var(--fg-subtle);
-  --accent: var(--surface-hover);
-  --accent-foreground: var(--fg);
-  --input: var(--border-field);
-  --destructive: var(--danger);
-
-  --sidebar: var(--surface-canvas);
-  --sidebar-foreground: var(--fg);
-  --sidebar-primary: var(--surface-brand);
-  --sidebar-primary-foreground: var(--fg-on-brand);
-  --sidebar-accent: var(--surface-hover);
-  --sidebar-accent-foreground: var(--fg);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
-
-  /* A healthy run, the counterpart of `--sev-error` on a cron timeline.
-     Never the only signal: every tick also names its status. */
-  --status-ok: oklch(0.627 0.17 149);
-}
-
-.dark {
-  --status-ok: oklch(0.7 0.16 149);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-canvas text-fg;
   }
 }
 
@@ -110,31 +27,6 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
-}
-
-/*
- * shadcn's Card, worn as the design system's card, from outside: the same
- * radius, hairline and flat surface as `SettingSection`, and its title in the
- * card-title step. Unlayered on purpose, so it beats the utilities baked into
- * the CLI output. It goes with the rest of the bridge once no screen uses Card.
- */
-[data-slot="card"] {
-  border-radius: var(--radius-2xl);
-  border-color: var(--border-subtle);
-  background-color: var(--surface);
-  box-shadow: none;
-}
-
-[data-slot="card-title"] {
-  font-size: var(--text-card-title);
-  line-height: var(--text-card-title--line-height);
-  font-weight: var(--text-card-title--font-weight);
-  color: var(--fg);
-}
-
-[data-slot="card-description"] {
-  font-size: var(--text-meta);
-  color: var(--fg-subtle);
 }
 
 /*

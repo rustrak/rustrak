@@ -260,7 +260,7 @@ function IssueRail({
           the reading column with no way to unfold it, so there it is always
           shown, whatever was folded on a wider screen. */}
       {folded ? (
-        <div className="hidden w-12 shrink-0 justify-center border-border-divider border-l bg-panel pt-3 lg:flex">
+        <div className="hidden w-12 shrink-0 justify-center border-border-divider border-l bg-aside pt-3 lg:flex">
           <Tooltip content={tCommon('showSidebar')} side="left">
             <Button
               variant="ghost"
@@ -295,11 +295,11 @@ function RailBody({
     <aside
       aria-label={title}
       className={cn(
-        'border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88',
+        'border-border-divider bg-aside max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88',
         folded && 'lg:hidden',
       )}
     >
-      <div className="sticky top-0 z-10 hidden h-11 items-center justify-between border-border-divider border-b bg-panel ps-5 pe-3 lg:flex">
+      <div className="sticky top-0 z-10 hidden h-11 items-center justify-between border-border-divider border-b bg-aside ps-5 pe-3 lg:flex">
         <span className="text-card-title text-fg">{title}</span>
         <Tooltip content={tCommon('hideSidebar')} side="left">
           <Button

@@ -1,3 +1,4 @@
+import { Select, SelectItem } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useId } from 'react';
 import { toast } from 'sonner';
@@ -6,13 +7,6 @@ import { userMutations } from '@/features/user/api/mutations';
 import { intl } from '@/shared/i18n/intl';
 import { isLocale, LOCALES } from '@/shared/i18n/routing';
 import { SettingRow } from '@/shared/ui/components/setting-row';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
@@ -53,8 +47,8 @@ export function LanguageSelector() {
   const isPending = save.isPending;
   const fieldId = useId();
 
-  const switchTo = (next: string | null) => {
-    if (!isLocale(next ?? undefined) || next === locale) return;
+  const switchTo = (next: string) => {
+    if (!isLocale(next) || next === locale) return;
     save.mutate(
       { language: next },
       { onError: () => toast.error(t('saveFailed')) },
@@ -68,22 +62,19 @@ export function LanguageSelector() {
       htmlFor={fieldId}
     >
       <Select
+        id={fieldId}
         value={locale}
         onValueChange={switchTo}
         // The re-render is a server round trip. Without the pending state a
         // slow response reads as a dead control and invites a second pick.
         disabled={isPending}
+        items={Object.fromEntries(LOCALES.map((l) => [l, t(l)]))}
       >
-        <SelectTrigger id={fieldId} className="w-full">
-          <SelectValue>{(value) => t(String(value))}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {LOCALES.map((candidate) => (
-            <SelectItem key={candidate} value={candidate}>
-              {t(candidate)}
-            </SelectItem>
-          ))}
-        </SelectContent>
+        {LOCALES.map((candidate) => (
+          <SelectItem key={candidate} value={candidate}>
+            {t(candidate)}
+          </SelectItem>
+        ))}
       </Select>
     </SettingRow>
   );

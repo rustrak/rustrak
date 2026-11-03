@@ -15,7 +15,7 @@ import type { IconComponent } from '../icon/icon';
 import { inputShell } from './input-shell';
 
 export interface InputProps
-  extends Omit<ComponentPropsWithoutRef<'input'>, 'size'>,
+  extends Omit<ComponentPropsWithRef<'input'>, 'size'>,
     Omit<VariantProps<typeof inputShell>, 'multiline'> {
   /** A symbol or icon glued to the start: a search glass, a unit. */
   leading?: ReactNode;

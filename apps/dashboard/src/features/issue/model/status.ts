@@ -41,24 +41,24 @@ export function statusDisplay(
 
   switch (issue.status) {
     case 'resolved':
-      return { labelKey: 'issueStatus.resolved', dot: 'bg-emerald-500' };
+      return { labelKey: 'issueStatus.resolved', dot: 'bg-success' };
     case 'ignored':
       return {
         labelKey: substatusKey ?? 'issueStatus.ignored',
-        dot: 'bg-muted-foreground/40',
+        dot: 'bg-fg-disabled',
       };
     default:
       return {
         labelKey: substatusKey ?? 'issueStatus.unresolved',
-        dot: 'bg-muted-foreground',
+        dot: 'bg-fg-subtle',
       };
   }
 }
 
 const PRIORITY_META: Record<IssuePriority, IssueIndicator> = {
-  high: { labelKey: 'issueStatus.high', dot: 'bg-red-500' },
-  medium: { labelKey: 'issueStatus.medium', dot: 'bg-amber-500' },
-  low: { labelKey: 'issueStatus.low', dot: 'bg-sky-500' },
+  high: { labelKey: 'issueStatus.high', dot: 'bg-sev-error' },
+  medium: { labelKey: 'issueStatus.medium', dot: 'bg-sev-warning' },
+  low: { labelKey: 'issueStatus.low', dot: 'bg-chart-1' },
 };
 
 /**

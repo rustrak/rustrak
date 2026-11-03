@@ -1,26 +1,25 @@
 import {
-  BellIcon,
-  BotIcon,
+  AgentsIcon,
+  AppearanceIcon,
   BugIcon,
-  CalendarClockIcon,
-  DatabaseIcon,
+  CronsIcon,
+  FeedbackIcon,
   FolderIcon,
-  GaugeIcon,
+  type IconComponent,
   InfoIcon,
-  KeyIcon,
-  KeyRoundIcon,
-  LayoutDashboardIcon,
-  type LucideIcon,
-  MessageSquareIcon,
-  PaletteIcon,
-  PlugIcon,
-  PlusIcon,
-  RocketIcon,
-  ScrollTextIcon,
+  IntegrationsIcon,
+  LogsIcon,
+  MemberIcon,
+  NewIcon,
+  NotificationIcon,
+  PerformanceIcon,
+  ProjectsIcon,
+  ReleasesIcon,
   SettingsIcon,
-  UserIcon,
-  UsersIcon,
-} from 'lucide-react';
+  StorageIcon,
+  TeamIcon,
+  TokensIcon,
+} from '@rustrak/ui';
 
 /**
  * A row in the command bar.
@@ -36,7 +35,7 @@ export type CommandLink = {
   labelKey: string;
   href: string;
   descriptionKey: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   keywords?: string[];
 };
 
@@ -75,7 +74,7 @@ const PROJECT_PAGES: ProjectPage[] = [
     labelKey: 'commands.overview',
     segment: '',
     descriptionKey: 'commands.overviewDescription',
-    icon: LayoutDashboardIcon,
+    icon: ProjectsIcon,
     keywords: ['overview', 'dashboard', 'home'],
   },
   {
@@ -89,21 +88,21 @@ const PROJECT_PAGES: ProjectPage[] = [
     labelKey: 'commands.feedback',
     segment: '/feedback',
     descriptionKey: 'commands.feedbackDescription',
-    icon: MessageSquareIcon,
+    icon: FeedbackIcon,
     keywords: ['feedback', 'user reports', 'widget'],
   },
   {
     labelKey: 'commands.releases',
     segment: '/releases',
     descriptionKey: 'commands.releasesDescription',
-    icon: RocketIcon,
+    icon: ReleasesIcon,
     keywords: ['releases', 'deploys', 'versions', 'health', 'sessions'],
   },
   {
     labelKey: 'commands.performance',
     segment: '/performance',
     descriptionKey: 'commands.performanceDescription',
-    icon: GaugeIcon,
+    icon: PerformanceIcon,
     keywords: [
       'performance',
       'apm',
@@ -117,21 +116,21 @@ const PROJECT_PAGES: ProjectPage[] = [
     labelKey: 'commands.agents',
     segment: '/agents',
     descriptionKey: 'commands.agentsDescription',
-    icon: BotIcon,
+    icon: AgentsIcon,
     keywords: ['agents', 'ai', 'llm', 'traces'],
   },
   {
     labelKey: 'commands.logs',
     segment: '/logs',
     descriptionKey: 'commands.logsDescription',
-    icon: ScrollTextIcon,
+    icon: LogsIcon,
     keywords: ['logs', 'stream'],
   },
   {
     labelKey: 'commands.crons',
     segment: '/crons',
     descriptionKey: 'commands.cronsDescription',
-    icon: CalendarClockIcon,
+    icon: CronsIcon,
     keywords: ['crons', 'monitors', 'check-ins', 'heartbeat', 'scheduled jobs'],
   },
 ];
@@ -153,21 +152,21 @@ const PROJECT_SETTINGS_PAGES: ProjectPage[] = [
     labelKey: 'commands.alerts',
     segment: '/alerts',
     descriptionKey: 'commands.alertsDescription',
-    icon: BellIcon,
+    icon: NotificationIcon,
     keywords: ['rules', 'notifications'],
   },
   {
     labelKey: 'commands.members',
     segment: '/settings/members',
     descriptionKey: 'commands.membersDescription',
-    icon: UsersIcon,
+    icon: TeamIcon,
     keywords: ['access', 'roles', 'permissions'],
   },
   {
     labelKey: 'commands.clientKeys',
     segment: '/settings/client-keys',
     descriptionKey: 'commands.clientKeysDescription',
-    icon: KeyRoundIcon,
+    icon: TokensIcon,
     keywords: ['dsn', 'sdk', 'setup', 'install'],
   },
 ];
@@ -194,7 +193,7 @@ export const PROJECT_COMMANDS: CommandLink[] = [
     labelKey: 'commands.newProject',
     href: '/projects/new',
     descriptionKey: 'commands.newProjectDescription',
-    icon: PlusIcon,
+    icon: NewIcon,
     keywords: ['create', 'add'],
   },
 ];
@@ -205,42 +204,42 @@ export const SETTINGS_COMMANDS: CommandLink[] = [
     labelKey: 'commands.apiTokens',
     href: '/settings/tokens',
     descriptionKey: 'commands.apiTokensDescription',
-    icon: KeyIcon,
+    icon: TokensIcon,
     keywords: ['auth', 'bearer', 'secret'],
   },
   {
     labelKey: 'commands.integrations',
     href: '/settings/integrations',
     descriptionKey: 'commands.integrationsDescription',
-    icon: PlugIcon,
+    icon: IntegrationsIcon,
     keywords: ['slack', 'webhook', 'custom webhook', 'email'],
   },
   {
     labelKey: 'commands.team',
     href: '/settings/team',
     descriptionKey: 'commands.teamDescription',
-    icon: UsersIcon,
+    icon: TeamIcon,
     keywords: ['invite', 'people'],
   },
   {
     labelKey: 'commands.storage',
     href: '/settings/storage',
     descriptionKey: 'commands.storageDescription',
-    icon: DatabaseIcon,
+    icon: StorageIcon,
     keywords: ['retention', 'cleanup', 'source maps', 'disk'],
   },
   {
     labelKey: 'commands.account',
     href: '/settings/profile',
     descriptionKey: 'commands.accountDescription',
-    icon: UserIcon,
+    icon: MemberIcon,
     keywords: ['profile', 'password', 'me', 'logout'],
   },
   {
     labelKey: 'commands.appearance',
     href: '/settings/preferences',
     descriptionKey: 'commands.appearanceDescription',
-    icon: PaletteIcon,
+    icon: AppearanceIcon,
     keywords: ['theme', 'dark', 'light'],
   },
   {

@@ -1,7 +1,7 @@
+import { Button } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
 import { ErrorScreen } from '@/shared/ui/components/error-screen';
 import { Link } from '@/shared/ui/components/link';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 /**
  * The verdict for a token that buys nothing: never issued, malformed, expired,
@@ -33,7 +33,7 @@ export function InvitationUnavailable() {
       description={t('unavailable.description')}
       guidance={t('unavailable.guidance')}
       actions={
-        <Button nativeButton={false} render={<Link href="/login" />}>
+        <Button variant="primary" render={<Link href="/login" />}>
           {t('unavailable.goToLogin')}
         </Button>
       }

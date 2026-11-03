@@ -1,11 +1,11 @@
 import type { EventDetailResponse } from '@rustrak/client';
-import { Check, Copy } from 'lucide-react';
+import { Button, CopyIcon, SelectedIcon } from '@rustrak/ui';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { isNonEmpty } from '@/features/event/lib/event-payload';
 import { copyToClipboard } from '@/shared/lib/clipboard';
-import { Button } from '@/shared/ui/components/shadcn/button';
+import { cn } from '@/shared/lib/utils';
 
 interface EventDetailsProps {
   event: EventDetailResponse;
@@ -26,6 +26,7 @@ function DetailRow({
 }: DetailRowProps) {
   const t = useTranslations('events');
   const common = useTranslations('common');
+  const mcp = useTranslations('settings.mcp');
   const [copied, setCopied] = useState(false);
 
   if (value === null || value === undefined || value === '') return null;
@@ -50,29 +51,25 @@ function DetailRow({
   };
 
   return (
-    <div className="flex items-start gap-4 py-2 border-b border-dotted last:border-b-0">
-      <span className="w-1/4 text-sm text-muted-foreground shrink-0">
-        {label}
-      </span>
-      <div className="flex-1 flex items-center gap-2 min-w-0">
+    <div className="flex items-start gap-4 border-border-divider border-b py-2 last:border-b-0">
+      <span className="w-1/4 shrink-0 text-body text-fg-muted">{label}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <span
-          className={`text-sm break-all ${mono ? 'font-mono text-xs' : ''}`}
+          className={cn(
+            'break-all text-fg-secondary',
+            mono ? 'font-mono text-mono-sm' : 'text-body',
+          )}
         >
           {displayValue}
         </span>
         {copyable && (
           <Button
             variant="ghost"
-            size="sm"
+            size="xs"
+            icon={copied ? SelectedIcon : CopyIcon}
+            aria-label={mcp('copyLabel', { label })}
             onClick={handleCopy}
-            className="h-6 w-6 p-0 shrink-0"
-          >
-            {copied ? (
-              <Check className="size-3 text-primary" />
-            ) : (
-              <Copy className="size-3" />
-            )}
-          </Button>
+          />
         )}
       </div>
     </div>
@@ -87,10 +84,10 @@ interface SectionProps {
 function Section({ title, children }: SectionProps) {
   return (
     <div className="space-y-2">
-      <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-        {title}
-      </h4>
-      <div className="bg-card rounded-lg border p-4">{children}</div>
+      <h4 className="text-column text-fg-meta">{title}</h4>
+      <div className="rounded-xl border border-border-subtle bg-panel p-4">
+        {children}
+      </div>
     </div>
   );
 }
@@ -246,9 +243,7 @@ function KeyValueGroup({
 
   return (
     <div className="mt-4">
-      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
-        {title}
-      </p>
+      <p className="mb-2 text-column text-fg-meta">{title}</p>
       {Object.entries(values).map(([key, value]) => (
         <DetailRow key={key} label={key} value={value} mono />
       ))}

@@ -18,9 +18,9 @@ import {
   applyServerFieldErrors,
   SERVER_ERROR_PATH,
 } from '@/shared/lib/form-errors';
+import { Form, FormRootError } from '@/shared/ui/components/form';
 import { PlatformPicker } from '@/shared/ui/components/platform-picker';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import { Form, FormRootError } from '@/shared/ui/components/shadcn/form';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { DangerZone } from './danger-zone';
 import { SavableRow } from './savable-row';

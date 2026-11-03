@@ -1,12 +1,12 @@
 import { Input, Spinner } from '@rustrak/ui';
 import type { Path, UseFormReturn } from 'react-hook-form';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 import {
   FormControl,
   FormField,
   FormItem,
   FormMessage,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
+import { SettingRow } from '@/shared/ui/components/setting-row';
 import type { GeneralSettingsFormData } from './general-settings-form';
 
 /**

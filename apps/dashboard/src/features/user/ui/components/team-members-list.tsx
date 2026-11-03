@@ -2,15 +2,14 @@ import type { TeamMemberResponse, UserRole } from '@rustrak/client';
 import {
   Avatar,
   Button,
+  confirm,
   DeleteIcon,
   Menu,
   MoreIcon,
-  Spinner,
   Tag,
   TeamIcon,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
@@ -19,16 +18,6 @@ import {
   SettingsEmpty,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/ui/components/shadcn/alert-dialog';
 
 interface TeamMembersListProps {
   members: TeamMemberResponse[];
@@ -56,8 +45,6 @@ export function TeamMembersList({
   const updateRole = useMutation(userMutations.updateRole());
   const remove = useMutation(userMutations.removeFromTeam());
   const isPending = updateRole.isPending || remove.isPending;
-  const [memberToDelete, setMemberToDelete] =
-    useState<TeamMemberResponse | null>(null);
 
   const handleRoleChange = (member: TeamMemberResponse, role: UserRole) => {
     updateRole.mutate(
@@ -83,14 +70,18 @@ export function TeamMembersList({
     );
   };
 
-  const handleConfirmDelete = () => {
-    if (!memberToDelete) return;
-    const member = memberToDelete;
+  const handleDelete = async (member: TeamMemberResponse) => {
+    const ok = await confirm({
+      title: t('removeMember.title', { email: member.email }),
+      description: t('removeMember.description'),
+      tone: 'danger',
+      confirmLabel: t('remove.confirm'),
+      cancelLabel: t('cancel'),
+    });
+    if (!ok) return;
     remove.mutate(member.id, {
-      onSuccess: () => {
-        toast.success(t('toast.removed'), { description: member.email });
-        setMemberToDelete(null);
-      },
+      onSuccess: () =>
+        toast.success(t('toast.removed'), { description: member.email }),
       onError: (error) =>
         toast.error(t('toast.removeFailed'), {
           description: error.error.message,
@@ -184,7 +175,7 @@ export function TeamMembersList({
                         tone: 'danger',
                         separated: true,
                         disabled: isPending,
-                        onSelect: () => setMemberToDelete(member),
+                        onSelect: () => handleDelete(member),
                       },
                     ]}
                   />
@@ -194,43 +185,6 @@ export function TeamMembersList({
           );
         })
       )}
-
-      <AlertDialog
-        open={memberToDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setMemberToDelete(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('removeMember.title', { email: memberToDelete?.email ?? '' })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('removeMember.description')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>
-              {t('cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              disabled={isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isPending ? (
-                <>
-                  <Spinner size="md" label={t('remove.removing')} />
-                  {t('remove.removing')}
-                </>
-              ) : (
-                t('remove.confirm')
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </SettingSection>
   );
 }

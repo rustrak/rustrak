@@ -33,7 +33,7 @@ import { Tooltip } from '../tooltip/tooltip';
 import { useSidebar } from './sidebar-context';
 
 /**
- * The sidebar: 244 px open, a 64 px rail collapsed.
+ * The sidebar: 256 px open, a 64 px rail collapsed.
  *
  * It is not a panel. It is drawn straight on the canvas -- no fill of its own,
  * no border -- and the pages sit beside it on a sheet that is one step
@@ -50,7 +50,7 @@ import { useSidebar } from './sidebar-context';
  */
 const sidebar = tv({
   base: [
-    'flex w-sidebar shrink-0 flex-col overflow-hidden bg-canvas px-3 pt-4 pb-3',
+    'flex w-sidebar shrink-0 flex-col overflow-hidden bg-canvas px-3 pt-3.5 pb-2.5',
     // Collapsing covers 180 px: the longest distance in the system, so it gets
     // the longest duration the system uses day to day.
     'transition-[width] duration-slow ease-standard',
@@ -134,18 +134,26 @@ Sidebar.displayName = 'Sidebar';
 /* ------------------------------------------------------------------------- */
 
 export interface SidebarBrandProps
-  extends Omit<useRender.ComponentProps<'a'>, 'children'> {}
+  extends Omit<useRender.ComponentProps<'a'>, 'children'> {
+  /**
+   * Takes the mark's place: the project switcher (`SidebarProject`), so the
+   * first row says where you are rather than what the product is called.
+   */
+  switcher?: ReactNode;
+}
 
 /**
- * The mark, and the toggle that collapses the sidebar.
+ * The top row: the mark -- or the project switcher in its place -- and the
+ * toggle that collapses the sidebar.
  *
  * The toggle sits at the end and is exactly the rail's width, so collapsing
- * leaves it where the eye already is. The mark fades out rather than being
- * squeezed: it is never drawn smaller than its floor.
+ * leaves it where the eye already is. Everything before it fades out rather
+ * than being squeezed: it is never drawn smaller than its floor.
  */
 export function SidebarBrand({
   className,
   render,
+  switcher,
   ...props
 }: SidebarBrandProps) {
   const { collapsed, toggle } = useSidebar();
@@ -175,9 +183,26 @@ export function SidebarBrand({
 
   return (
     <div
-      className={cn('relative flex h-9 shrink-0 justify-end pb-2', className)}
+      className={cn(
+        'relative flex shrink-0 justify-end',
+        switcher ? 'h-10 pb-2' : 'h-9 pb-2',
+        className,
+      )}
     >
-      {mark}
+      {switcher ? (
+        <div
+          // Faded out on the rail, and out of the tab order with it.
+          inert={collapsed}
+          className={cn(
+            'absolute start-0 top-0 end-rail-item-w flex min-w-0',
+            label({ collapsed }),
+          )}
+        >
+          {switcher}
+        </div>
+      ) : (
+        mark
+      )}
       <Tooltip content={`${toggleLabel} (⌘B)`} side="right">
         <button
           type="button"
@@ -185,14 +210,15 @@ export function SidebarBrand({
           aria-label={toggleLabel}
           aria-expanded={!collapsed}
           className={cn(
-            'flex h-7 w-rail-item-w shrink-0 items-center justify-center',
-            'rounded-md text-fg-subtle hover:bg-surface-hover hover:text-fg',
+            'flex shrink-0 items-center justify-center rounded-md',
+            'text-fg-subtle hover:bg-surface-hover hover:text-fg',
+            switcher ? 'h-8 w-rail-item-w' : 'h-7 w-rail-item-w',
             interactiveTransition,
             focusRing,
             'max-md:hidden',
           )}
         >
-          <PanelLeftIcon size="xl" />
+          <PanelLeftIcon size="2xl" />
         </button>
       </Tooltip>
     </div>
@@ -207,21 +233,13 @@ SidebarBrand.displayName = 'SidebarBrand';
 
 const projectCard = tv({
   base: [
-    'flex h-project-card w-full shrink-0 items-center gap-2.5 rounded-xl',
-    'border ps-1.75 pe-2.5 text-start',
-    'hover:bg-surface-hover data-popup-open:bg-surface-hover',
+    'flex h-nav-item max-w-full shrink-0 items-center gap-2 rounded-lg',
+    'ps-3 pe-2 text-start',
+    'hover:bg-surface-hover data-popup-open:bg-surface-active',
     interactiveTransition,
     pressScaleTrigger,
     focusRing,
   ],
-  variants: {
-    // Collapsed, the card dissolves into the rail: the frame goes and the
-    // tile is what is left, in the same place it already was.
-    collapsed: {
-      true: 'border-transparent bg-transparent',
-      false: 'border-border-subtle bg-surface-raised',
-    },
-  },
 });
 
 export interface SidebarProjectProps
@@ -262,42 +280,39 @@ export function SidebarProject({
       {
         type: 'button',
         'aria-label': detail ? `${name} · ${detail}` : name,
-        className: projectCard({ collapsed, className }),
+        className: projectCard({ className }),
         children: (
           <>
             {/* Keyed by the name, so switching scope replays the swap: the
                 tile and the name hand over in place. */}
             <span
               key={name}
-              className={cn('flex size-avatar shrink-0', swapAnimation)}
+              className={cn('flex size-avatar-xs shrink-0', swapAnimation)}
             >
               {tile ?? (
                 <Avatar
                   shape="square"
-                  size="sm"
+                  size="xs"
                   tone="brand"
                   name={name}
                   initials={platform}
                 />
               )}
             </span>
-            <span className={cn('flex flex-1 flex-col', label({ collapsed }))}>
+            <span className={cn('flex min-w-0 flex-col', label({ collapsed }))}>
+              {/* One line, like every other row: the detail stays in the
+                  accessible name and the menu, not under the name. */}
               <Text
                 key={name}
                 variant="value"
                 truncate
-                className={cn('font-semibold', swapAnimation)}
+                className={cn('font-medium', swapAnimation)}
               >
                 {name}
               </Text>
-              {detail ? (
-                <Text variant="hint" tone="subtle" truncate>
-                  {detail}
-                </Text>
-              ) : null}
             </span>
             <SelectorIcon
-              size="lg"
+              size="md"
               className={cn('shrink-0 text-fg-subtle', label({ collapsed }))}
             />
           </>
@@ -325,8 +340,8 @@ const row = tv({
     // 12 px in, so the 16 px icon is centred in the 40 px rail and does not
     // move when the column narrows around it.
     'relative flex h-nav-item w-full shrink-0 items-center gap-2.5',
-    'rounded-lg px-3 text-value font-medium text-fg-muted',
-    'hover:bg-surface-hover hover:text-fg',
+    'rounded-lg px-3 text-value text-fg-tertiary',
+    'hover:bg-surface-hover hover:text-fg-secondary',
     interactiveTransition,
     scopeEnter,
     // A nav row does not sink on press: shrinking a full-width row reads as a
@@ -334,7 +349,7 @@ const row = tv({
     focusRing,
   ],
   variants: {
-    active: { true: 'bg-surface-selected text-fg hover:bg-surface-selected' },
+    active: { true: 'bg-surface-active text-fg hover:bg-surface-active' },
   },
 });
 
@@ -373,7 +388,21 @@ export type SidebarItemProps = SidebarItemMark &
     /** A count that needs looking at -- a failing cron -- is drawn in amber. */
     tone?: 'default' | 'warning';
     active?: boolean;
+    /** A dot at the end of the row: something here wants looking at. */
+    status?: 'error' | 'warning' | 'info' | 'brand';
   };
+
+const statusDot = tv({
+  base: 'size-1.5 shrink-0 rounded-pill',
+  variants: {
+    status: {
+      error: 'bg-sev-error',
+      warning: 'bg-sev-warning',
+      info: 'bg-chart-1',
+      brand: 'bg-surface-brand',
+    },
+  },
+});
 
 /**
  * A route.
@@ -392,6 +421,7 @@ export function SidebarItem({
   count,
   tone = 'default',
   active,
+  status,
   className,
   render,
   ...props
@@ -417,6 +447,12 @@ export function SidebarItem({
             >
               {count}
             </Count>
+            {status ? (
+              <span
+                aria-hidden="true"
+                className={cn(statusDot({ status }), label({ collapsed }))}
+              />
+            ) : null}
             {hasCount && tone === 'warning' ? (
               <span aria-hidden="true" className={railDot({ collapsed })} />
             ) : null}
@@ -468,8 +504,8 @@ export function SidebarGroup({ label: text, children }: SidebarGroupProps) {
     <div className={cn('flex shrink-0 flex-col gap-px', scopeGroup)}>
       <div
         className={cn(
-          'relative mt-3.5 flex h-7 shrink-0 items-center px-2.5',
-          'text-hint font-medium text-fg-meta',
+          'relative mt-4 flex h-7 shrink-0 items-center px-2.5',
+          'text-label font-normal text-fg-subtle',
           scopeEnter,
         )}
       >
@@ -625,6 +661,27 @@ SidebarScope.displayName = 'SidebarScope';
 /* Search                                                                    */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * A field, not a route: its own box, a step lighter than the sidebar with a
+ * hairline, so it cannot be mistaken for one more link. On the rail the box
+ * dissolves and the lens is left in line with the route icons.
+ */
+const searchField = tv({
+  base: [
+    'relative mb-2 flex h-nav-item w-full shrink-0 items-center gap-2.5',
+    'rounded-lg border px-2.75 text-value text-fg-meta',
+    'hover:text-fg-subtle',
+    interactiveTransition,
+    focusRing,
+  ],
+  variants: {
+    collapsed: {
+      true: 'border-transparent hover:bg-surface-hover',
+      false: 'border-border-subtle bg-panel hover:border-border',
+    },
+  },
+});
+
 export interface SidebarSearchProps
   extends Omit<ComponentPropsWithoutRef<'button'>, 'children'> {
   label?: string;
@@ -656,10 +713,7 @@ export function SidebarSearch({
       <button
         type="button"
         aria-label={text}
-        className={cn(
-          row({ className: 'font-normal text-fg-subtle' }),
-          className,
-        )}
+        className={cn(searchField({ collapsed }), className)}
         {...props}
       >
         <SearchIcon size="xl" className="shrink-0" />
@@ -729,7 +783,7 @@ export function SidebarUser({
   const { collapsed } = useSidebar();
 
   return (
-    <div className="mt-2.5 w-full border-t border-border-divider pt-2.5">
+    <div className="mt-1 w-full">
       <Menu
         side={collapsed ? 'right' : 'top'}
         align={collapsed ? 'end' : 'start'}

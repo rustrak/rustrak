@@ -1,9 +1,8 @@
-import { AlertCircle, Check, Copy } from 'lucide-react';
+import { Button, CopyIcon, InfoIcon, SelectedIcon } from '@rustrak/ui';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { copyToClipboard } from '@/shared/lib/clipboard';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 interface EventTagsProps {
   tags: Record<string, string> | undefined;
@@ -17,6 +16,7 @@ interface TagRowProps {
 function TagRow({ tagKey, tagValue }: TagRowProps) {
   const t = useTranslations('events');
   const common = useTranslations('common');
+  const mcp = useTranslations('settings.mcp');
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -32,26 +32,24 @@ function TagRow({ tagKey, tagValue }: TagRowProps) {
   };
 
   return (
-    <div className="flex items-center gap-4 py-3 border-b last:border-b-0 hover:bg-muted/30 transition-colors group">
+    <div className="group flex items-center gap-4 border-border-divider border-b px-4 py-3 last:border-b-0 hover:bg-surface-hover">
       <div className="w-1/3 min-w-0">
-        <span className="text-sm font-medium text-muted-foreground truncate block">
+        <span className="block truncate font-medium text-body text-fg-muted">
           {tagKey}
         </span>
       </div>
-      <div className="flex-1 min-w-0 flex items-center gap-2">
-        <span className="font-mono text-sm truncate">{tagValue}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate font-mono text-mono-sm text-fg-secondary">
+          {tagValue}
+        </span>
         <Button
           variant="ghost"
-          size="sm"
+          size="xs"
+          icon={copied ? SelectedIcon : CopyIcon}
+          aria-label={mcp('copyLabel', { label: tagKey })}
           onClick={handleCopy}
-          className="h-6 w-6 p-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          {copied ? (
-            <Check className="size-3 text-primary" />
-          ) : (
-            <Copy className="size-3" />
-          )}
-        </Button>
+          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+        />
       </div>
     </div>
   );
@@ -63,11 +61,9 @@ export function EventTags({ tags }: EventTagsProps) {
   if (!tags || Object.keys(tags).length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <AlertCircle className="size-12 text-muted-foreground/50 mb-4" />
-        <p className="text-muted-foreground">{t('tags.emptyTitle')}</p>
-        <p className="text-sm text-muted-foreground/70 mt-1">
-          {t('tags.emptyHint')}
-        </p>
+        <InfoIcon size="2xl" className="mb-4 text-fg-ghost" />
+        <p className="text-body text-fg-muted">{t('tags.emptyTitle')}</p>
+        <p className="mt-1 text-body text-fg-subtle">{t('tags.emptyHint')}</p>
       </div>
     );
   }
@@ -141,21 +137,17 @@ export function EventTags({ tags }: EventTagsProps) {
     <div className="space-y-6">
       {sections.map((section) => (
         <div key={section.key} className="space-y-2">
-          <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            {t(section.labelKey)}
-          </h4>
-          <div className="bg-card rounded-lg border">
-            <div className="px-4">
-              {Object.entries(section.tags).map(([key, value]) => (
-                <TagRow key={key} tagKey={key} tagValue={value} />
-              ))}
-            </div>
+          <h4 className="text-column text-fg-meta">{t(section.labelKey)}</h4>
+          <div className="overflow-hidden rounded-xl border border-border-subtle bg-panel">
+            {Object.entries(section.tags).map(([key, value]) => (
+              <TagRow key={key} tagKey={key} tagValue={value} />
+            ))}
           </div>
         </div>
       ))}
 
       {/* Summary */}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-meta text-fg-meta">
         {t('tags.attachedCount', { count: Object.keys(tags).length })}
       </p>
     </div>

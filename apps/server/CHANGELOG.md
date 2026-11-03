@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.24.0
+
+### Minor Changes
+
+- [`a53f4e1`](https://github.com/rustrak/rustrak/commit/a53f4e1479c750c3a86738e3825e03891f2b0bf3) Thanks [@AbianS](https://github.com/AbianS)! - The dashboard adopts a new visual identity: charcoal surfaces with a soft light theme, Inter for text, Hugeicons, and every screen moved onto the @rustrak/ui design system.
+
 ## 0.23.0
 
 ### Minor Changes

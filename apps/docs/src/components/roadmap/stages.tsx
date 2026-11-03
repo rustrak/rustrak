@@ -1,183 +1,180 @@
 'use client';
 
-import { AnimatePresence } from 'motion/react';
-import * as m from 'motion/react-m';
-import { useState } from 'react';
+import { ArrowRightIcon, Tag, type TagTone } from '@rustrak/ui';
+import {
+  anchor,
+  HORIZONS,
+  type Horizon,
+  type RoadmapItem,
+} from '@/lib/roadmap';
 import { cn } from '@/lib/utils';
-import { GRID } from '../editorial/grid';
-import { BlurIn, MaskIn, Rule } from '../editorial/motion';
-import { EASE, VIEW } from '../landing/motion';
-import { type Item, STAGES, type Stage, slug } from './data';
+import { Reveal, Words } from '../home/reveal';
+import { Live } from './overview';
 
-export function Stages() {
+const COPY: Record<Horizon, string> = {
+  Now: 'Being built right now.',
+  Next: 'Planned to follow.',
+  Later: 'Further out. Not decided yet.',
+};
+
+/** The project's Status options, coloured by how close to shipping they are. */
+const STATUS_TONE: Record<string, TagTone> = {
+  'In progress': 'brand',
+  'In review': 'info',
+  'In design': 'warning',
+  Exploring: 'neutral',
+  Shipped: 'brand',
+};
+
+/** How many shipped items the closing section lists. */
+const SHIPPED = 6;
+
+export function Stages({
+  open,
+  shipped,
+}: {
+  open: RoadmapItem[];
+  shipped: RoadmapItem[];
+}) {
+  const recent = [...shipped]
+    .sort((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? ''))
+    .slice(0, SHIPPED);
+
   return (
-    <div>
-      {STAGES.map((stage, index) => (
-        <StageBand key={stage.label} stage={stage} live={index === 0} />
+    <div className="mx-auto flex w-full max-w-6xl flex-col px-6">
+      {HORIZONS.map((horizon, index) => (
+        <Section
+          key={horizon}
+          id={`horizon-${horizon}`}
+          eyebrow={`${String(index + 1).padStart(2, '0')} ${horizon}`}
+          title={COPY[horizon]}
+          live={index === 0}
+          quiet={horizon === 'Later'}
+          items={open.filter((item) => item.horizon === horizon)}
+        />
       ))}
+      {recent.length > 0 ? (
+        <Section
+          id="shipped"
+          eyebrow="Shipped"
+          title="Recently shipped."
+          items={recent}
+        />
+      ) : null}
     </div>
   );
 }
 
-function StageBand({ stage, live }: { stage: Stage; live: boolean }) {
+/**
+ * One horizon, laid out like a landing feature: the head on the left, held
+ * while its items scroll past on the right.
+ */
+function Section({
+  id,
+  eyebrow,
+  title,
+  items,
+  live,
+  quiet,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  items: RoadmapItem[];
+  live?: boolean;
+  quiet?: boolean;
+}) {
   return (
-    <section className="relative">
-      <Rule />
+    <section
+      id={id}
+      className="grid scroll-mt-24 gap-10 border-border-subtle border-t py-20 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-16"
+    >
+      <header className="flex flex-col gap-5 lg:sticky lg:top-28 lg:self-start">
+        <Reveal y={12} className="flex items-center gap-2.5">
+          {live ? <Live /> : null}
+          <p className="font-mono text-fg-brand text-mono uppercase tracking-wider">
+            {eyebrow}
+          </p>
+        </Reveal>
+        <Words
+          text={title}
+          delay={0.1}
+          className={cn(
+            'text-balance text-headline',
+            quiet ? 'text-fg-subtle' : 'text-fg',
+          )}
+        />
+        <Reveal delay={0.3}>
+          <p className="text-fg-meta text-meta">
+            {items.length} {items.length === 1 ? 'item' : 'items'}
+          </p>
+        </Reveal>
+      </header>
 
-      <div className={cn(GRID, 'pt-10 pb-20 sm:pt-14 lg:pt-16 lg:pb-32')}>
-        <header className="lg:sticky lg:top-28 lg:self-start">
-          <div className="flex items-start gap-3">
-            <MaskIn>
-              <h2
-                className={cn(
-                  'text-[52px] leading-[0.85] tracking-[-0.055em] sm:text-[64px] lg:text-[96px]',
-                  stage.quiet ? 'text-foreground/45' : 'text-foreground',
-                )}
-              >
-                {stage.label}
-              </h2>
-            </MaskIn>
-            <span className="mt-1 font-mono text-[11px] text-muted-foreground lg:mt-2.5">
-              {String(stage.items.length).padStart(2, '0')}
-            </span>
-          </div>
-          <m.p
-            className="mt-4 flex items-center gap-2.5 text-[14px] text-muted-foreground lg:mt-6 lg:text-[15px]"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={VIEW}
-            transition={{ duration: 1.2, ease: EASE, delay: 0.35 }}
-          >
-            {live ? <Live /> : null}
-            {stage.blurb}
-          </m.p>
-        </header>
-
-        <ol className="mt-2 lg:-mt-5">
-          {stage.items.map((item, i) => (
-            <Row key={item.title} item={item} index={i} quiet={stage.quiet} />
+      {items.length > 0 ? (
+        <ol className="flex flex-col gap-3">
+          {items.map((item, i) => (
+            <Row key={item.id} item={item} index={i} quiet={quiet} />
           ))}
         </ol>
-      </div>
+      ) : (
+        <p className="text-fg-subtle text-value">Nothing here yet.</p>
+      )}
     </section>
   );
 }
 
-/**
- * One item. Rows with a `detail` open in place; the rest are plain. The hover
- * nudge and the lime number are the same on both, so the list reads as one.
- */
+/** One item as a card, opening the issue or pull request on GitHub. */
 function Row({
   item,
   index,
   quiet,
 }: {
-  item: Item;
+  item: RoadmapItem;
   index: number;
   quiet?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const openable = Boolean(item.detail);
-
-  const head = (
-    <>
-      <span className="pt-[0.4em] font-mono text-[11px] text-muted-foreground transition-colors duration-500 group-hover:text-primary">
-        {String(index + 1).padStart(2, '0')}
-      </span>
-      <span className="block transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-1.5">
-        <span
-          className={cn(
-            'block text-[19px] leading-snug tracking-[-0.015em] sm:text-[22px]',
-            quiet ? 'text-foreground/55' : 'text-foreground',
-          )}
-        >
-          {item.title}
-        </span>
-        <span className="mt-2 block max-w-[48ch] text-[15px] leading-relaxed text-muted-foreground">
-          {item.note}
-        </span>
-      </span>
-      <span className="flex items-center gap-4 pt-[0.45em]">
-        <span className="hidden font-mono text-[10.5px] tracking-[0.16em] text-muted-foreground uppercase sm:inline">
-          {item.area}
-        </span>
-        <span
-          aria-hidden
-          className={cn(
-            'relative size-3 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            open && 'rotate-45',
-            !openable && 'invisible',
-          )}
-        >
-          <span className="absolute inset-x-0 top-1/2 h-px bg-foreground/60" />
-          <span className="absolute inset-y-0 left-1/2 w-px bg-foreground/60" />
-        </span>
-      </span>
-    </>
-  );
-
   return (
-    <BlurIn
+    <Reveal
       as="li"
-      id={slug(item.title)}
-      index={index}
-      className="scroll-mt-32 border-rule not-first:border-t"
+      delay={0.15 + Math.min(index, 5) * 0.06}
+      className="rounded-2xl border border-border-subtle bg-panel transition-colors hover:border-border"
     >
-      {openable ? (
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-expanded={open}
-          className="group grid w-full cursor-pointer grid-cols-[2.75rem_1fr_auto] py-6 text-left sm:py-7"
-        >
-          {head}
-        </button>
-      ) : (
-        <div className="group grid grid-cols-[2.75rem_1fr_auto] py-6 sm:py-7">
-          {head}
-        </div>
-      )}
-
-      <AnimatePresence initial={false}>
-        {open ? (
-          /* Opening to `height: auto` has no transform equivalent, and the
-             reflow is the point: the rows below have to make room. */
-          <m.div
-            // react-doctor-disable-next-line react-doctor/no-layout-property-animation
-            initial={{ height: 0, opacity: 0 }}
-            // react-doctor-disable-next-line react-doctor/no-layout-property-animation
-            animate={{ height: 'auto', opacity: 1 }}
-            // react-doctor-disable-next-line react-doctor/no-layout-property-animation
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.6, ease: EASE }}
-            className="overflow-hidden"
+      <a
+        id={anchor(item)}
+        href={item.url}
+        target="_blank"
+        rel="noreferrer"
+        className="group flex scroll-mt-32 items-start justify-between gap-6 p-6"
+      >
+        <span className="flex min-w-0 flex-col gap-3">
+          <span
+            className={cn(
+              'text-balance text-section transition-colors group-hover:text-fg-brand',
+              quiet ? 'text-fg-subtle' : 'text-fg',
+            )}
           >
-            <div className="grid grid-cols-[2.75rem_1fr] pb-8">
-              <p className="col-start-2 max-w-[56ch] border-l border-primary/60 pl-4 text-[15px] leading-relaxed text-foreground/80">
-                {item.detail}
-                {item.href ? (
-                  <a
-                    href={item.href}
-                    className="mt-3 block font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase transition-colors hover:text-primary"
-                  >
-                    Follow on GitHub →
-                  </a>
-                ) : null}
-              </p>
-            </div>
-          </m.div>
-        ) : null}
-      </AnimatePresence>
-    </BlurIn>
-  );
-}
-
-/** A small lime dot that breathes: the one stage that is moving. */
-function Live() {
-  return (
-    <span className="relative flex size-1.5">
-      <span className="absolute -inset-1 animate-pulse rounded-full bg-primary/25 motion-reduce:animate-none" />
-      <span className="relative size-1.5 rounded-full bg-primary" />
-    </span>
+            {item.title}
+          </span>
+          <span className="flex flex-wrap items-center gap-3">
+            {item.status ? (
+              <Tag tone={STATUS_TONE[item.status] ?? 'neutral'}>
+                {item.status}
+              </Tag>
+            ) : null}
+            {item.area ? <Tag variant="soft">{item.area}</Tag> : null}
+            {item.number ? (
+              <span className="font-mono text-fg-meta text-mono-sm">
+                #{item.number}
+              </span>
+            ) : null}
+          </span>
+        </span>
+        <ArrowRightIcon
+          aria-hidden
+          className="mt-1 size-4 shrink-0 -rotate-45 text-fg-subtle transition-[color,translate] group-hover:translate-x-0.5 group-hover:text-fg-brand"
+        />
+      </a>
+    </Reveal>
   );
 }

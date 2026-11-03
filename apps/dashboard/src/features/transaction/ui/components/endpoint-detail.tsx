@@ -234,7 +234,7 @@ export function SlowestSamples({
   return (
     <table className="w-full text-meta">
       <thead>
-        <tr className="text-left font-mono text-column text-fg-meta uppercase">
+        <tr className="text-left text-column text-fg-meta">
           <th className="px-5 pb-2 font-normal">{t('duration')}</th>
           <th className="hidden pb-2 font-normal md:table-cell">
             {t('environment')}

@@ -11,15 +11,15 @@ export function Toaster() {
       toastOptions={{
         classNames: {
           toast:
-            'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
-          description: 'group-[.toast]:text-muted-foreground',
+            'group toast group-[.toaster]:bg-panel group-[.toaster]:text-fg group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+          description: 'group-[.toast]:text-fg-subtle',
           actionButton:
-            'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
+            'group-[.toast]:bg-surface-brand group-[.toast]:text-fg-on-brand',
           cancelButton:
-            'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
+            'group-[.toast]:bg-surface-hover group-[.toast]:text-fg-subtle',
           error:
-            'group-[.toaster]:bg-destructive group-[.toaster]:text-destructive-foreground group-[.toaster]:border-destructive',
-          success: 'group-[.toaster]:border-green-500',
+            'group-[.toaster]:bg-danger group-[.toaster]:text-fg-inverse group-[.toaster]:border-danger',
+          success: 'group-[.toaster]:border-success',
         },
       }}
     />

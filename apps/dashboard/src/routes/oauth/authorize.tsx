@@ -80,7 +80,7 @@ function Authorize() {
   if (client.isLoading) return <AuthScreenLoading wide />;
 
   return (
-    <div className="min-h-screen bg-card flex items-center justify-center p-8 lg:p-12">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-8 lg:p-12">
       <div className="w-full max-w-[460px] space-y-10">
         <RustrakWordmark className="h-[22px] w-auto" />
 
@@ -95,9 +95,9 @@ function Authorize() {
             <h1 className="text-3xl font-bold tracking-tight">
               {t('failedTitle')}
             </h1>
-            <p className="text-muted-foreground">{t('failedDescription')}</p>
+            <p className="text-fg-subtle">{t('failedDescription')}</p>
             {client.isError && (
-              <p className="text-sm font-mono text-muted-foreground">
+              <p className="text-sm font-mono text-fg-subtle">
                 {client.error.error.message}
               </p>
             )}

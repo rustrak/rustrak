@@ -7,14 +7,14 @@ import {
   useFormContext,
 } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 import {
   FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/shared/ui/components/shadcn/form';
+} from '@/shared/ui/components/form';
+import { SettingRow } from '@/shared/ui/components/setting-row';
 
 /**
  * The extra HTTP headers a webhook request carries, as name/value rows: an

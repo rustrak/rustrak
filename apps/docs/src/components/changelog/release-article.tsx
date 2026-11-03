@@ -1,118 +1,102 @@
+import { Tag, type TagTone } from '@rustrak/ui';
 import {
   formatReleaseDate,
   type Release,
   type SectionKind,
 } from '@/lib/release';
 import { cn } from '@/lib/utils';
-import { GRID } from '../editorial/grid';
-import { BlurIn, MaskIn, Rule } from '../editorial/motion';
+import { Reveal } from '../home/reveal';
 
-const KIND_TICK: Record<SectionKind, string> = {
-  shipped: 'bg-primary',
-  improved: 'bg-foreground/40',
-  fixed: 'bg-[var(--sev-warning)]',
-  documented: 'bg-foreground/25',
+const KIND_TONE: Record<SectionKind, TagTone> = {
+  shipped: 'brand',
+  improved: 'neutral',
+  fixed: 'warning',
+  documented: 'info',
 };
 
 /**
- * One release as one band, the roadmap's stage layout: the version large in a
- * sticky left column, the notes in the reading column. A patch is drawn a step
+ * One release, laid out like a landing feature: the version held on the left
+ * while its notes scroll past in a card on the right. A patch is drawn a step
  * quieter than a minor, so the shape of the history shows while scrolling.
  */
 export function ReleaseArticle({ release }: { release: Release }) {
   const minor = release.channel === 'minor';
-  let number = 0;
 
   return (
-    <article id={release.anchor} className="scroll-mt-24">
-      {/* The filename, kept as a second anchor so old deep links still land. */}
-      <span id={release.slug} aria-hidden className="block scroll-mt-24" />
-      <Rule />
+    <article
+      id={release.anchor}
+      className="relative grid scroll-mt-24 gap-8 border-border-subtle border-t py-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] lg:gap-16"
+    >
+      {/* The filename, kept as a second anchor so old deep links still land.
+          Absolute: it needs a box to scroll to, but no cell in the grid. */}
+      <span
+        id={release.slug}
+        aria-hidden
+        className="absolute top-0 scroll-mt-24"
+      />
 
-      <div className={cn(GRID, 'pt-10 pb-16 sm:pt-14 lg:pt-16 lg:pb-28')}>
-        <header className="lg:sticky lg:top-28 lg:self-start">
-          <MaskIn>
-            <a
-              href={`#${release.anchor}`}
-              className={cn(
-                'block text-[44px] leading-[0.9] tracking-[-0.05em] tabular-nums transition-colors hover:text-primary sm:text-[56px] lg:text-[72px]',
-                minor ? 'text-foreground' : 'text-foreground/55',
-              )}
-            >
-              {release.version}
-            </a>
-          </MaskIn>
-          <BlurIn className="mt-5 space-y-1.5 font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
-            <p>
-              <time dateTime={release.date}>
-                {formatReleaseDate(release.date)}
-              </time>
-              <span className="mx-2.5 opacity-50">/</span>
-              <span className={cn(minor && 'text-primary')}>
-                {release.channel === 'seed' ? 'early' : release.channel}
-              </span>
+      <header className="flex flex-col gap-3 lg:sticky lg:top-28 lg:self-start">
+        <Reveal y={16}>
+          <a
+            href={`#${release.anchor}`}
+            className={cn(
+              'text-headline tabular-nums transition-colors hover:text-fg-brand',
+              minor ? 'text-fg' : 'text-fg-subtle',
+            )}
+          >
+            {release.version}
+          </a>
+        </Reveal>
+        <Reveal delay={0.1} className="flex flex-wrap items-center gap-3">
+          <time dateTime={release.date} className="text-fg-meta text-meta">
+            {formatReleaseDate(release.date)}
+          </time>
+          <Tag variant="soft" tone={minor ? 'brand' : 'neutral'}>
+            {release.channel === 'seed' ? 'early' : release.channel}
+          </Tag>
+        </Reveal>
+        {release.tags.length > 0 ? (
+          <Reveal delay={0.15}>
+            <p className="font-mono text-fg-meta text-mono-sm">
+              {release.tags.join(' · ')}
             </p>
-            {release.tags.length > 0 ? (
-              <p className="normal-case tracking-[0.06em] opacity-80">
-                {release.tags.join('  ·  ')}
-              </p>
-            ) : null}
-          </BlurIn>
-        </header>
+          </Reveal>
+        ) : null}
+      </header>
 
-        <div className="mt-8 min-w-0 lg:mt-0">
-          <BlurIn>
-            <h2 className="max-w-[24ch] text-[26px] leading-[1.15] tracking-[-0.025em] text-foreground sm:text-[32px]">
-              {release.title}
-            </h2>
-            {release.description ? (
-              <p className="changelog-lead mt-4 max-w-[56ch]">
-                {release.description}
-              </p>
-            ) : null}
-          </BlurIn>
+      <Reveal
+        y={40}
+        delay={0.1}
+        className="min-w-0 rounded-3xl border border-border-subtle bg-panel p-6 sm:p-8"
+      >
+        <h2 className="text-balance text-fg text-page-title">
+          {release.title}
+        </h2>
+        {release.description ? (
+          <p className="changelog-lead mt-3">{release.description}</p>
+        ) : null}
 
-          {release.sections.map((section, index) => {
-            if (section.title) number += 1;
-            return (
-              <BlurIn
-                // Sections of a fixed release never reorder; an untitled one has only its position.
-                // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-                key={section.title || index}
-                index={index + 1}
-                className="mt-12 first:mt-10"
-              >
-                {section.title ? (
-                  <div className="flex items-center gap-3 border-b border-rule pb-3">
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'size-1.5 rounded-full',
-                        KIND_TICK[section.kind],
-                      )}
-                    />
-                    <h3 className="font-mono text-[11px] tracking-[0.16em] text-foreground uppercase">
-                      {section.title}
-                    </h3>
-                    <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-                      {String(number).padStart(2, '0')}
-                    </span>
-                  </div>
-                ) : null}
-                <div
-                  className={cn(
-                    'changelog-prose max-w-[62ch]',
-                    section.title && 'mt-5',
-                  )}
-                  // react-doctor-disable-next-line react-doctor/dangerous-html-sink
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: the only input is content/changelog/*.mdx, rendered by lib/changelog.ts at build time — nothing here is reachable from a request
-                  dangerouslySetInnerHTML={{ __html: section.html }}
-                />
-              </BlurIn>
-            );
-          })}
-        </div>
-      </div>
+        {release.sections.map((section, index) => (
+          <section
+            // Sections of a fixed release never reorder; an untitled one has only its position.
+            // react-doctor-disable-next-line react-doctor/no-array-index-as-key
+            key={section.title || index}
+            className="mt-8 border-border-subtle border-t pt-6 first:mt-8"
+          >
+            {section.title ? (
+              <h3 className="mb-4">
+                <Tag tone={KIND_TONE[section.kind]}>{section.title}</Tag>
+              </h3>
+            ) : null}
+            <div
+              className="changelog-prose max-w-[64ch]"
+              // react-doctor-disable-next-line react-doctor/dangerous-html-sink
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: the only input is content/changelog/*.mdx, rendered by lib/changelog.ts at build time — nothing here is reachable from a request
+              dangerouslySetInnerHTML={{ __html: section.html }}
+            />
+          </section>
+        ))}
+      </Reveal>
     </article>
   );
 }

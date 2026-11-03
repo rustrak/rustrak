@@ -1,15 +1,15 @@
 import type { IntervalUnit, Schedule } from '@rustrak/client';
+import {
+  Button,
+  Field,
+  FieldHint,
+  FieldLabel,
+  Input,
+  Select,
+  SelectItem,
+} from '@rustrak/ui';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { Button } from '@/shared/ui/components/shadcn/button';
-import { Input } from '@/shared/ui/components/shadcn/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/components/shadcn/select';
 
 const UNITS: readonly IntervalUnit[] = [
   'minute',
@@ -19,9 +19,6 @@ const UNITS: readonly IntervalUnit[] = [
   'month',
   'year',
 ];
-
-const LABEL =
-  'text-xs font-bold uppercase tracking-widest text-muted-foreground';
 
 /**
  * Picks a schedule: a crontab, or "every N units". Controlled, so any form
@@ -57,6 +54,9 @@ export function ScheduleField({
       : { value: 1, unit: 'hour' },
   );
   const count = Number.isNaN(interval.value) ? 2 : interval.value;
+  const unitLabels = Object.fromEntries(
+    UNITS.map((unit) => [unit, t(`units.${unit}`, { count })]),
+  );
 
   const switchTo = (type: Schedule['type']) => {
     if (type === value.type) return;
@@ -69,17 +69,15 @@ export function ScheduleField({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <span className={`block ${LABEL}`}>{t('type')}</span>
-        <div className="flex w-fit items-center gap-1 rounded-lg border bg-muted/30 p-1">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-fg-secondary text-label">{t('type')}</span>
+        <div className="flex w-fit items-center gap-1 rounded-lg border border-border-subtle bg-surface p-1">
           {(['crontab', 'interval'] as const).map((option) => (
             <Button
               key={option}
-              type="button"
               size="sm"
-              variant={value.type === option ? 'secondary' : 'ghost'}
-              className="h-7 px-3"
-              aria-pressed={value.type === option}
+              variant="ghost"
+              selected={value.type === option}
               disabled={disabled}
               onClick={() => switchTo(option)}
             >
@@ -90,40 +88,38 @@ export function ScheduleField({
       </div>
 
       {value.type === 'crontab' ? (
-        <div className="space-y-2">
-          <label htmlFor={inputId} className={`block ${LABEL}`}>
-            {t('crontab')}
-          </label>
+        <Field>
+          <FieldLabel>{t('crontab')}</FieldLabel>
           <Input
             id={inputId}
-            className="max-w-xs font-mono"
+            boxClassName="max-w-xs"
+            className="font-mono"
             placeholder="0 * * * *"
             autoComplete="off"
             spellCheck={false}
             disabled={disabled}
-            aria-invalid={error ? true : undefined}
+            invalid={Boolean(error)}
             value={crontab}
             onChange={(event) => {
               setCrontab(event.target.value);
               onChange({ type: 'crontab', value: event.target.value });
             }}
           />
-          <p className="text-sm text-muted-foreground">{t('crontabHint')}</p>
-        </div>
+          <FieldHint>{t('crontabHint')}</FieldHint>
+        </Field>
       ) : (
-        <div className="space-y-2">
-          <label htmlFor={inputId} className={`block ${LABEL}`}>
-            {t('every')}
-          </label>
+        <Field>
+          <FieldLabel>{t('every')}</FieldLabel>
           <div className="flex items-start gap-2">
             <Input
               id={inputId}
               type="number"
               inputMode="numeric"
               min={1}
-              className="w-24 tabular-nums"
+              numeric
+              boxClassName="w-24"
               disabled={disabled}
-              aria-invalid={error ? true : undefined}
+              invalid={Boolean(error)}
               value={Number.isNaN(interval.value) ? '' : interval.value}
               onChange={(event) => {
                 const next = { ...interval, value: event.target.valueAsNumber };
@@ -133,32 +129,27 @@ export function ScheduleField({
             />
             <Select
               value={interval.unit}
+              items={unitLabels}
               onValueChange={(unit) => {
-                if (!unit) return;
-                const next = { ...interval, unit: unit as IntervalUnit };
+                const next = { ...interval, unit };
                 setInterval(next);
                 onChange({ type: 'interval', ...next });
               }}
               disabled={disabled}
+              className="w-36"
+              aria-label={t('unit')}
             >
-              <SelectTrigger className="w-36" aria-label={t('unit')}>
-                <SelectValue>
-                  {(unit: string) => t(`units.${unit}`, { count })}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {UNITS.map((unit) => (
-                  <SelectItem key={unit} value={unit}>
-                    {t(`units.${unit}`, { count })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              {UNITS.map((unit) => (
+                <SelectItem key={unit} value={unit}>
+                  {unitLabels[unit]}
+                </SelectItem>
+              ))}
             </Select>
           </div>
-          <p className="text-sm text-muted-foreground">{t('intervalHint')}</p>
-        </div>
+          <FieldHint>{t('intervalHint')}</FieldHint>
+        </Field>
       )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-danger-fg text-hint">{error}</p>}
     </div>
   );
 }

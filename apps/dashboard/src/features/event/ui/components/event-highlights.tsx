@@ -92,11 +92,9 @@ export function EventHighlights({
           {col.map((it) => (
             <div
               key={it.labelKey}
-              className="flex items-center gap-4 rounded px-2 py-1.5 odd:bg-muted/40"
+              className="flex items-center gap-4 rounded px-2 py-1.5 odd:bg-surface-hover/40"
             >
-              <dt className="w-28 shrink-0 text-muted-foreground">
-                {t(it.labelKey)}
-              </dt>
+              <dt className="w-28 shrink-0 text-fg-subtle">{t(it.labelKey)}</dt>
               <dd
                 className={cn(
                   'min-w-0 truncate',

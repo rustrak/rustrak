@@ -1,9 +1,8 @@
-import { Check, Copy } from 'lucide-react';
+import { Button, CopyIcon, SelectedIcon } from '@rustrak/ui';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { copyToClipboard } from '@/shared/lib/clipboard';
-import { Button } from '@/shared/ui/components/shadcn/button';
 
 interface RawJsonProps {
   data: Record<string, unknown>;
@@ -30,23 +29,18 @@ export function RawJson({ data }: RawJsonProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={handleCopy}>
-          {copied ? (
-            <>
-              <Check className="mr-1 size-3 text-primary" />
-              {t('rawJson.copied')}
-            </>
-          ) : (
-            <>
-              <Copy className="mr-1 size-3" />
-              {t('rawJson.copyJson')}
-            </>
-          )}
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={copied ? SelectedIcon : CopyIcon}
+          onClick={handleCopy}
+        >
+          {copied ? t('rawJson.copied') : t('rawJson.copyJson')}
         </Button>
       </div>
 
-      <div className="bg-zinc-100 dark:bg-zinc-900 border rounded-lg p-4 overflow-x-auto max-h-[600px] overflow-y-auto">
-        <pre className="text-xs font-mono text-zinc-800 dark:text-zinc-200 whitespace-pre">
+      <div className="max-h-150 overflow-auto rounded-lg border border-border-subtle bg-panel p-4">
+        <pre className="whitespace-pre font-mono text-mono-sm text-fg-secondary">
           {jsonString}
         </pre>
       </div>

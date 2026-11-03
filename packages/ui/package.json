@@ -35,9 +35,10 @@
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
+    "@hugeicons/core-free-icons": "4.4.0",
+    "@hugeicons/react": "1.1.10",
     "@tanstack/react-table": "9.3.1",
     "clsx": "2.1.1",
-    "lucide-react": "1.65.0",
     "recharts": "3.10.1",
     "tailwind-merge": "3.7.0",
     "tailwind-variants": "4.0.0"
