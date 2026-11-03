@@ -18,7 +18,7 @@ order.
 
 ## For API client and MCP users
 
-Two releases changed what code that talks to Rustrak uses, with nothing to do on the server:
+Two releases changed what code that talks to Rustrak uses. Only the MCP change needs a step on the server: an admin turns the MCP server on, since it starts off.
 
 - **0.19**: `@rustrak/client` is generated from the server's OpenAPI spec. Every method takes one `{ path, query, body }` object, and several methods and types were renamed. See [@rustrak/client](/sdks/client).
 - **0.19**: the MCP server moved inside Rustrak, at `/mcp`. The separate `@rustrak/mcp` package is no longer published; see [MCP server](/sdks/mcp) to connect an assistant to the built-in one.

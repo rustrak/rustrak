@@ -60,4 +60,4 @@ curl -X PUT "$RUSTRAK_URL/api/0/projects/_/storefront/releases/storefront@2.16.0
 
 The commands `sentry-cli releases new`, `finalize`, `set-commits`, `deploys` and `list` do not work against Rustrak yet: they call Sentry's organization-level release endpoints, which Rustrak does not serve. `sentry-cli sourcemaps upload` does work; see [Source maps](/usage/source-maps).
 
-A release also drives [Resolve in next release](/usage/issues#resolve-archive-reopen): an issue resolved that way reopens only when an event arrives from a different release.
+A release also drives [Resolve in next release](/usage/issues#resolve-archive-reopen): an issue resolved that way reopens when an event arrives from a different release, or from any release once a newer one is created.

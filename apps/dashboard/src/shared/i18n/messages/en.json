@@ -333,7 +333,7 @@
       "commentFailed": "Failed to add comment",
       "statusResolved": "marked this issue as resolved",
       "statusReopened": "reopened this issue",
-      "statusMuted": "archived this issue",
+      "statusMuted": "archived this issue or marked it as spam",
       "statusChanged": "changed status to {status}",
       "priorityChanged": "set priority to {priority}",
       "regression": "detected a regression",

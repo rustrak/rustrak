@@ -33,7 +33,7 @@ The sidebar holds what belongs to the issue rather than to one event: status, pr
 | Action | Shortcut | What happens |
 |---|---|---|
 | **Resolve** | `R` | The issue moves to **Resolved**. A new event reopens it as **Regressed**. |
-| **Resolve in next release** | | Stays resolved while events keep arriving from the release it was resolved in. An event from a newer release reopens it. Events with no release count as the same release. |
+| **Resolve in next release** | | Stays resolved while events keep arriving from the release it was resolved in. An event from any other release reopens it, an older one included. Events with no release count as the same release. Creating a newer release through the API ends the wait, so from then on any event reopens it. |
 | **Archive** | `E` | The issue moves to **Archived**. It keeps counting events but sends no alerts and never reopens on its own. **Unarchive** brings it back. |
 
 **Resolve in next release** is under the arrow next to **Resolve**.

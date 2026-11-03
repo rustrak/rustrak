@@ -4,7 +4,7 @@ Every endpoint, with its parameters, request and response schemas and the authen
 
 ## Authentication
 
-Management endpoints take an [API token](/usage/tokens) as a bearer token:
+Management endpoints take an [API token](/usage/tokens) as a bearer token. Set `RUSTRAK_URL` to your server's address and `RUSTRAK_TOKEN` to the token:
 
 ```bash
 curl -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/projects"

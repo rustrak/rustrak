@@ -333,7 +333,7 @@
       "commentFailed": "No se pudo añadir el comentario",
       "statusResolved": "marcó este problema como resuelto",
       "statusReopened": "reabrió este problema",
-      "statusMuted": "archivó este problema",
+      "statusMuted": "archivó este problema o lo marcó como spam",
       "statusChanged": "cambió el estado a {status}",
       "priorityChanged": "estableció la prioridad en {priority}",
       "regression": "detectó una regresión",

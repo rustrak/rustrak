@@ -333,7 +333,7 @@
       "commentFailed": "Adăugarea comentariului a eșuat",
       "statusResolved": "a marcat această problemă ca fiind rezolvată",
       "statusReopened": "a redeschis această problemă",
-      "statusMuted": "a arhivat această problemă",
+      "statusMuted": "a arhivat această problemă sau a marcat-o ca spam",
       "statusChanged": "a schimbat starea în {status}",
       "priorityChanged": "a setat prioritatea la {priority}",
       "regression": "a detectat o regresie",

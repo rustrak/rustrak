@@ -333,7 +333,7 @@
       "commentFailed": "添加评论失败",
       "statusResolved": "将此问题标记为已解决",
       "statusReopened": "重新打开了此问题",
-      "statusMuted": "归档了此问题",
+      "statusMuted": "归档了此问题或将其标记为垃圾信息",
       "statusChanged": "将状态改为 {status}",
       "priorityChanged": "将优先级设为 {priority}",
       "regression": "检测到回归",

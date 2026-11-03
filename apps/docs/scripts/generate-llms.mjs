@@ -39,16 +39,18 @@ const meta = async (dir) =>
 // The pages of a folder as [urlPath, file], following its _meta.js. A sub-folder
 // (usage/alerts) takes its index as the folder's own URL.
 async function pagesOf(dir) {
-  const pages = [];
-  for (const slug of Object.keys(await meta(dir))) {
-    const file = join(CONTENT, dir, `${slug}.mdx`);
-    const folderIndex = join(CONTENT, dir, slug, 'index.mdx');
-    if (slug === 'index') pages.push([`/${dir}`, file]);
-    else if (await exists(file)) pages.push([`/${dir}/${slug}`, file]);
-    else if (await exists(folderIndex))
-      pages.push(...(await pagesOf(`${dir}/${slug}`)));
-  }
-  return pages;
+  const slugs = Object.keys(await meta(dir));
+  const pages = await Promise.all(
+    slugs.map(async (slug) => {
+      const file = join(CONTENT, dir, `${slug}.mdx`);
+      const folderIndex = join(CONTENT, dir, slug, 'index.mdx');
+      if (slug === 'index') return [[`/${dir}`, file]];
+      if (await exists(file)) return [[`/${dir}/${slug}`, file]];
+      if (await exists(folderIndex)) return pagesOf(`${dir}/${slug}`);
+      return [];
+    }),
+  );
+  return pages.flat();
 }
 
 const exists = (path) =>
@@ -58,14 +60,21 @@ const exists = (path) =>
   );
 
 // MDX to Markdown: drop the frontmatter, imports and JSX-only lines (demos),
-// and make site links absolute so they work outside the site.
+// and make site links absolute so they work outside the site. Imports inside
+// code fences are the examples' own and stay.
 function toMarkdown(source) {
   const description = source
     .match(/^---\n(?:[\s\S]*?\n)?description:\s*(.+)\n[\s\S]*?---\n/)?.[1]
     ?.replace(/^"(.*)"$/, '$1');
+  let fenced = false;
   const body = source
     .replace(/^---\n[\s\S]*?\n---\n/, '')
-    .replace(/^import .*\n/gm, '')
+    .split('\n')
+    .filter((line) => {
+      if (/^\s*```/.test(line)) fenced = !fenced;
+      return fenced || !line.startsWith('import ');
+    })
+    .join('\n')
     .replace(/^<[A-Z][^\n]*\/>\n\n?/gm, '')
     .replace(/\]\(\/(?!\/)/g, `](${SITE}/`)
     .trim();

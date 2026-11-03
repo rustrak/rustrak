@@ -74,7 +74,7 @@ function verify(rawBody, timestamp, signature, secret) {
 }
 ```
 
-Reject requests whose timestamp is too old to stop replays.
+Reject requests whose timestamp is too old. That bounds how long a captured request stays usable but does not stop a repeat inside the window, so also skip any `X-Rustrak-Request-ID` you have already processed.
 
 ### Custom webhook
 
@@ -88,7 +88,7 @@ POSTs a JSON body you write yourself, for an endpoint that expects its own shape
 
 Values are escaped for wherever you put them, and the body must render to valid JSON, which is checked when you save. The fields, rules and examples are on [Message body template](/usage/alerts/message-body-template). It signs requests the same way as the webhook.
 
-A delivery counts as sent when the endpoint answers 2xx; the response body is never read for meaning. Some services answer `200` while refusing the message, so press **Test** after setting one up: it shows exactly what the endpoint answered. A WeCom or DingTalk bot with a custom keyword refuses any message without that keyword, so put the keyword in the body's fixed text.
+A delivery counts as sent when the endpoint answers 2xx with a readable body; the body is never read for meaning. A 2xx whose body is over 64 KiB, cut off or not UTF-8 counts as failed. Some services answer `200` while refusing the message, so press **Test** after setting one up: it shows exactly what the endpoint answered. A WeCom or DingTalk bot with a custom keyword refuses any message without that keyword, so put the keyword in the body's fixed text.
 
 ### Extra headers
 

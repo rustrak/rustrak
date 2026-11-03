@@ -24,7 +24,7 @@ Sentry.captureFeedback({
 });
 ```
 
-Rustrak also takes the older formats: the `user_report` envelope item and `POST /api/0/projects/{org}/{project}/user-feedback/`. The crash-report dialog that `Sentry.showReportDialog()` opens is not supported.
+Rustrak also takes the older formats: the `user_report` envelope item and `POST /api/0/projects/{org}/{project}/user-feedback/`. The endpoint needs the `event_id` of the error the report is about and answers 400 without one; for feedback with no error, use `Sentry.captureFeedback()`. The crash-report dialog that `Sentry.showReportDialog()` opens is not supported.
 
 A feedback needs a message of at most 4,096 characters. One with an empty or longer message is dropped. Screenshots are kept up to 10 MB each.
 

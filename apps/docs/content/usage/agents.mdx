@@ -21,7 +21,7 @@ import { generateText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 
 await Sentry.startSpan({ name: 'research_agent', op: 'gen_ai.invoke_agent' }, () =>
-  generateText({ model: openai('gpt-4o'), tools: { webSearch }, prompt: 'Find the latest Rust release' }),
+  generateText({ model: openai('gpt-4o'), tools: { webSearch /* your tools */ }, prompt: 'Find the latest Rust release' }),
 );
 ```
 
@@ -58,10 +58,10 @@ The **Conversations** tab groups runs that share a `gen_ai.conversation.id`, so 
 
 ## Turn agents off
 
-A project that does not use AI can drop this data: **Settings → Products** turns Agents off. Rustrak then stops storing AI spans as they arrive; what is already stored stays. Turning Performance off turns Agents off too.
+A project that does not use AI can drop this data: **Settings → Data → Products** turns Agents off. Rustrak then stops storing AI spans as they arrive; what is already stored stays. Turning Performance off turns Agents off too.
 
 ## API and storage
 
-Every widget has an endpoint under `/api/projects/{id}/agents/`: `summary`, `runs`, `duration`, `models`, `models/calls`, `models/tokens`, `tools`, `tools/stats`, `traces`, `conversations` and `conversations/{id}`. They take `period_hours`, and the time series also take `interval_hours`. The [MCP server](/sdks/mcp) reads the same data.
+Every widget has an endpoint under `/api/projects/{id}/agents/`: `summary`, `runs`, `duration`, `models`, `models/calls`, `models/tokens`, `tools`, `tools/stats`, `traces`, `conversations` and `conversations/{id}`. All but `conversations/{id}`, which returns the whole conversation, take `period_hours`, and the time series also take `interval_hours`. The [MCP server](/sdks/mcp) reads the same data.
 
 AI spans count toward [storage](/usage/storage). Spans sent inside a transaction are removed with it by retention cleanup; spans sent on their own are not removed by cleanup yet.
