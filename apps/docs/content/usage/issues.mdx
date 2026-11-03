@@ -2,8 +2,6 @@
 
 Every error an SDK sends is an event. Rustrak groups events caused by the same bug into one issue, so a crash that happens 500 times is one row with a count of 500, not 500 rows.
 
-<InteractiveDemo src="/demos/issues.openshowcase" />
-
 Each issue has a short ID: the project slug in capitals and a number, such as `STOREFRONT-1`. Click it on the issue page to copy it.
 
 ## The issue list
@@ -11,6 +9,8 @@ Each issue has a short ID: the project slug in capitals and a number, such as `S
 Open a project to see its issues. The tabs split them by state: **Open**, **Resolved**, **Archived** and **All**.
 
 The bar above the table searches the error type, message, transaction and culprit, ignoring case, and filters by any column (priority, assignee, level and so on), by environment or by release. Start typing and it suggests the keys and their values.
+
+<InteractiveDemo src="/demos/issues.openshowcase" />
 
 Select rows with the checkboxes to resolve, archive, assign or delete several issues at once. Deleting removes the issue and all its events, and cannot be undone.
 
@@ -26,6 +26,8 @@ Click an issue to open it. The page shows one event at a time, the latest first,
 
 The sidebar holds what belongs to the issue rather than to one event: status, priority, assignee, event and user counts, the release where it was first and last seen, tag breakdowns, the linked [GitHub](/configuration/github) issue, and an **Activity** feed where your team can leave comments.
 
+<InteractiveDemo src="/demos/issues-triage.openshowcase" />
+
 ## Resolve, archive, reopen
 
 | Action | Shortcut | What happens |
@@ -35,6 +37,8 @@ The sidebar holds what belongs to the issue rather than to one event: status, pr
 | **Archive** | `E` | The issue moves to **Archived**. It keeps counting events but sends no alerts and never reopens on its own. **Unarchive** brings it back. |
 
 **Resolve in next release** is under the arrow next to **Resolve**.
+
+<InteractiveDemo src="/demos/issues-archive.openshowcase" />
 
 The issue page has more shortcuts: `B` bookmarks the issue, `I` assigns it to you, `Shift+C` copies its link.
 

@@ -4,9 +4,14 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "link", "name": "TypeError: Cannot read properties of undefined (reading 'price')" } },
-    { "action": "click", "target": { "role": "link", "name": "TypeError: Cannot read properties of undefined (reading 'price')" }, "tooltip": "The linked GitHub issue, suspect commits and owners sit beside the error" },
+    { "action": "click", "target": { "role": "link", "name": "TypeError: Cannot read properties of undefined (reading 'price')" }, "hotspot": false },
     { "action": "wait", "for": { "role": "heading", "name": "Code" } },
-    { "action": "click", "target": { "role": "link", "name": "Stack Trace" }, "tooltip": "Every frame opens its line on GitHub" },
-    { "action": "wait", "for": { "role": "link", "name": "Open in GitHub", "nth": 0 } }
+    { "action": "click", "target": { "role": "button", "name": "GitHub actions" }, "tooltip": "The issue is linked to GitHub #214. From here you can open one or link another" },
+    { "action": "press", "key": "Escape", "target": { "role": "menu", "name": "GitHub actions" } },
+    { "action": "wait", "ms": 500 },
+    { "action": "click", "target": { "text": "Suspect commits" }, "tooltip": "Suspect commits touched the failing file. CODEOWNERS says who owns it" },
+    { "action": "click", "target": { "role": "link", "name": "Stack Trace", "exact": true }, "tooltip": "Every frame of your code opens its line on GitHub" },
+    { "action": "wait", "for": { "role": "link", "name": "Open in GitHub", "nth": 0 } },
+    { "action": "wait", "ms": 800 }
   ]
 }

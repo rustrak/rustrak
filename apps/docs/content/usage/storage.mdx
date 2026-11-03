@@ -2,8 +2,6 @@
 
 Every error, transaction, log and source map takes disk space. **Settings → Storage** shows what the instance holds, sets how long each kind of data is kept, and deletes old data. Only instance admins see it, since every cleanup deletes for good.
 
-<InteractiveDemo src="/demos/storage.openshowcase" />
-
 ## Usage
 
 - **Storage used**: the total, one bar split by kind (errors, transactions, logs, source maps) with what each weighs and how many rows or files it is, and a line saying when the next cleanup runs and roughly how much it frees.
@@ -18,6 +16,8 @@ Sizes of errors, transactions and logs are the length of the payloads Rustrak ho
 - **Change**, on a project's row, gives that project its own periods, or puts it back on the general ones.
 
 Both say what the next cleanup would delete with your changes before you save. **Save** applies them at the next cleanup; **Save and clean up now** asks once more, with the size, and deletes in the background straight away.
+
+<InteractiveDemo src="/demos/storage.openshowcase" />
 
 ### Deleting now
 

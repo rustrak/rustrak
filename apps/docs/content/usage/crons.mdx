@@ -4,8 +4,6 @@ Errors tell you when code breaks. They cannot tell you when code never ran: a ni
 
 It is compatible with Sentry Crons: the `check_in` item Sentry SDKs send, the HTTP check-in endpoint and `sentry-cli monitors run` all work against Rustrak unchanged.
 
-<InteractiveDemo src="/demos/crons.openshowcase" />
-
 ## How it works
 
 Each job has a monitor, named by a slug. Every run sends check-ins: `in_progress` when it starts, then `ok` or `error` when it ends, with the same check-in ID.
@@ -53,6 +51,8 @@ Sentry.withMonitor(
 
 **From the dashboard.** Open a project, go to **Crons** and click **New monitor**. The form previews the next runs in the monitor's timezone as you type the schedule. Until the first check-in arrives, the monitor's page shows the snippets below with your DSN filled in.
 
+<InteractiveDemo src="/demos/crons-create.openshowcase" />
+
 ## Check in without an SDK
 
 Any job that can run `curl` can check in. The URL carries the project ID, the slug and the DSN's public key:
@@ -99,5 +99,7 @@ A config sent from code overwrites only the fields it includes. The rest keep wh
 ## Mute a monitor
 
 Click **Mute** on the monitor's page. A muted monitor keeps recording check-ins and its status, but opens no issue and sends no alert. Use it during maintenance windows; **Unmute** turns it back on.
+
+<InteractiveDemo src="/demos/crons.openshowcase" />
 
 Check-ins are kept for 90 days.

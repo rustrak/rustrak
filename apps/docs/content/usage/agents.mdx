@@ -2,8 +2,6 @@
 
 If your app calls an LLM or runs an AI agent, **Agents** shows each run: the model calls and tool calls inside it, how many tokens they used, how long they took and which failed. It reads the same data as Sentry's AI Agent Monitoring, so there is nothing to install on the server.
 
-<InteractiveDemo src="/demos/agents.openshowcase" />
-
 ## Send AI data
 
 Turn on your Sentry SDK's AI integration and tracing. With the Vercel AI SDK in Node.js:
@@ -50,9 +48,13 @@ Open a run to see its spans as a **Waterfall**, or switch to **Agents** to see w
 
 When an LLM call has no response model, Rustrak uses the requested model.
 
+<InteractiveDemo src="/demos/agents.openshowcase" />
+
 ## Conversations
 
 The **Conversations** tab groups runs that share a `gen_ai.conversation.id`, so you can read a chat turn by turn. Set that attribute on your agent spans to fill it.
+
+<InteractiveDemo src="/demos/agents-conversation.openshowcase" />
 
 ## Turn agents off
 

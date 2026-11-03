@@ -4,9 +4,13 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "button", "name": "New Token" } },
-    { "action": "click", "target": { "role": "button", "name": "New Token" }, "hotspot": false },
+    { "action": "click", "target": { "role": "button", "name": "New Token" }, "tooltip": "Your tokens, with when each was created and last used. Add one" },
     { "action": "fill", "target": { "role": "textbox", "name": "Description (optional)" }, "value": "CI deploy" },
-    { "action": "click", "target": { "role": "button", "name": "Create Token" }, "tooltip": "Create it, then copy it into your CI secrets" },
-    { "action": "wait", "for": { "role": "heading", "name": "Token Created" } }
+    { "action": "click", "target": { "role": "button", "name": "Create Token" }, "tooltip": "Say where it is used, so you know what breaks if you delete it" },
+    { "action": "wait", "for": { "role": "heading", "name": "Token Created" } },
+    { "action": "click", "target": { "role": "button", "name": "Copy the new token" }, "tooltip": "Copy it into your CI secrets. It acts as you, with your access", "zoom": 1.8 },
+    { "action": "click", "target": { "role": "button", "name": "Done" }, "hotspot": false },
+    { "action": "wait", "for": { "text": "CI deploy" } },
+    { "action": "wait", "ms": 800 }
   ]
 }

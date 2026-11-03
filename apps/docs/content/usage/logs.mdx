@@ -2,8 +2,6 @@
 
 Logs are the structured lines your app writes as it runs: "order created", "carrier quote took 900 ms". Rustrak keeps them per project under **Logs**, apart from issues, so you can see what the app was doing before something broke. They are not grouped: every line is stored and shown as it came.
 
-<InteractiveDemo src="/demos/logs.openshowcase" />
-
 ## Send logs
 
 Logs are off by default in Sentry SDKs. Turn them on in `Sentry.init` and use the SDK's logger:
@@ -46,7 +44,9 @@ A line sent without a level is stored as `info`. An unknown level is kept as sen
 - `level:error` keeps one level; `trace:<trace id>` keeps one trace.
 - The window button (`14d` by default) sets how far back to look.
 
-Click a line to open it: the full time, severity, trace ID and every attribute. **Logs in this trace** lists the other lines from the same request.
+Click a line to open it: the full time, severity, trace ID and every attribute. **Logs in this trace** filters the list by that line's trace. It keeps the other filters, so remove `level:` to see every line of the request.
+
+<InteractiveDemo src="/demos/logs.openshowcase" />
 
 ## API
 

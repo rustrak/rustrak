@@ -4,8 +4,12 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "textbox", "name": "Email" } },
+    { "action": "click", "target": { "role": "textbox", "name": "Email" }, "tooltip": "There is no open sign-up: an admin invites each person" },
     { "action": "fill", "target": { "role": "textbox", "name": "Email" }, "value": "lena@linden.example" },
-    { "action": "click", "target": { "role": "button", "name": "Invite", "exact": true }, "tooltip": "Invite them. The link is copied for you to share" },
-    { "action": "wait", "for": { "role": "button", "name": "Copy invite link for lena@linden.example" } }
+    { "action": "click", "target": { "role": "combobox", "name": "Invite role" }, "tooltip": "Admins see every project. Members only the ones they join" },
+    { "action": "click", "target": { "role": "option", "name": "Member" }, "hotspot": false },
+    { "action": "click", "target": { "role": "button", "name": "Invite", "exact": true }, "tooltip": "No email is sent: the link is copied for you to share" },
+    { "action": "wait", "for": { "role": "button", "name": "Copy invite link for lena@linden.example" } },
+    { "action": "wait", "ms": 800 }
   ]
 }

@@ -4,12 +4,15 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "link", "name": "New alert" } },
-    { "action": "click", "target": { "role": "link", "name": "New alert" }, "hotspot": false },
+    { "action": "click", "target": { "role": "link", "name": "New alert" }, "tooltip": "Each project has its own alerts: when to send, and where" },
     { "action": "wait", "for": { "role": "button", "name": "Create alert" } },
-    { "action": "fill", "target": { "role": "textbox", "name": "e.g. New issues in production by email" }, "value": "New issues in production" },
-    { "action": "click", "target": { "role": "button", "name": "production" }, "tooltip": "Only errors from production" },
-    { "action": "click", "target": { "role": "switch", "name": "Slack #shop-alerts slack" }, "tooltip": "Pick where it goes" },
-    { "action": "click", "target": { "role": "button", "name": "Create alert" }, "tooltip": "Save it. The summary reads back what it will do" },
-    { "action": "wait", "for": { "role": "heading", "name": "New issues in production" } }
+    { "action": "fill", "target": { "role": "textbox", "name": "e.g. New issues in production by email" }, "value": "New errors in production" },
+    { "action": "click", "target": { "role": "button", "name": "production" }, "hotspot": false },
+    { "action": "click", "target": { "role": "button", "name": "error or higher" }, "tooltip": "Narrow it down: only production, only errors and worse" },
+    { "action": "fill", "target": { "role": "spinbutton", "nth": 0 }, "value": "10" },
+    { "action": "click", "target": { "role": "switch", "name": "Slack #shop-alerts slack" }, "tooltip": "After 10 events, so one-off errors stay quiet. Then pick the channel" },
+    { "action": "click", "target": { "role": "button", "name": "Create alert" }, "tooltip": "The summary reads the alert back in one sentence. Create it" },
+    { "action": "wait", "for": { "role": "heading", "name": "New errors in production" } },
+    { "action": "wait", "ms": 1000 }
   ]
 }

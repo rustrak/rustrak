@@ -2,8 +2,6 @@
 
 A release is a version of your app. Tag your events with it and Rustrak tells you, per version, how many sessions crashed and which issues it brought.
 
-<InteractiveDemo src="/demos/releases.openshowcase" />
-
 ## Tag events with a release
 
 Set `release` when you initialize the SDK:
@@ -39,6 +37,8 @@ The window button (`14d` by default) and the **Environment** filter narrow every
 Click a release to open it. It shows the same numbers against the project average, healthy and crashed sessions over time, the issues first seen in this release, and each environment the release ran in. **View its issues** opens the issue list filtered to this release.
 
 A release is **Unreleased** until it gets a release date (see below). The numbers do not depend on it.
+
+<InteractiveDemo src="/demos/releases.openshowcase" />
 
 ## Create releases from CI
 

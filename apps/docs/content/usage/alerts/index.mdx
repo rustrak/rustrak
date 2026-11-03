@@ -5,11 +5,11 @@ An alert tells your team when something happens in a project: a new issue, a reg
 - **Channels** say where to send: Slack, email, a webhook or a custom webhook. They are shared by every project and live in **Settings → Integrations**.
 - **Alerts** say when to send and to which channels. Each project has its own, under **Alerts** in its sidebar.
 
-<InteractiveDemo src="/demos/alerts.openshowcase" />
-
 ## Add a channel
 
-Go to **Settings → Integrations**, pick a provider and fill in its form. Each channel has a **Test** button that sends a sample alert, so you can check it before any alert uses it.
+Go to **Settings → Integrations**, pick a provider and fill in its form. Each channel's **⋯** menu has **Test**, which sends a sample alert, so you can check it before any alert uses it.
+
+<InteractiveDemo src="/demos/alerts-channel.openshowcase" />
 
 ### Slack
 
@@ -108,6 +108,8 @@ Open a project, go to **Alerts** and click **New alert**:
 | **At most** | How often this alert can notify about the same issue: every time, every 5 minutes, once an hour, once a day, or any number of minutes |
 
 The summary on the right reads the alert back in a sentence before you save. **Send a test** sends a sample through the chosen channels.
+
+<InteractiveDemo src="/demos/alerts.openshowcase" />
 
 **Reactivated** is meant for an archived issue that starts happening again, but Rustrak never takes an issue out of the archive on its own yet, so this alert does not fire today.
 
