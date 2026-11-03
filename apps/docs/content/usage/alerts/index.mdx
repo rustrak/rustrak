@@ -74,7 +74,7 @@ function verify(rawBody, timestamp, signature, secret) {
 }
 ```
 
-Reject requests whose timestamp is too old. That bounds how long a captured request stays usable but does not stop a repeat inside the window, so also skip any `X-Rustrak-Request-ID` you have already processed.
+Reject requests whose timestamp is too old. That bounds how long a captured request stays usable but does not stop a repeat inside the window, so also skip any `X-Rustrak-Request-ID` you have already processed on that endpoint. Every rule and channel that reports the same event sends the same ID, so keep a separate record per channel.
 
 ### Custom webhook
 
