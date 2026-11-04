@@ -49,6 +49,7 @@ export async function generateMetadata({ params }: PageProps) {
     },
     twitter: {
       ...baseMetadata.twitter,
+      ...(post.image ? { images: [post.image] } : {}),
       title: post.title,
       description: post.description,
     },

@@ -5,9 +5,10 @@
 //   public/<page>.md       each page as plain Markdown, next to its HTML
 //
 // All three are generated from content/ at build time and git-ignored.
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { getPost, getPosts } from '../src/lib/blog.ts';
 import { DEFINITION } from '../src/lib/seo.ts';
 
 const SITE = 'https://rustrak.dev';
@@ -130,30 +131,21 @@ for (const [dir, name] of SECTIONS) {
 }
 
 // Blog posts: the long write-ups (benchmarks, how a feature works) that a
-// docs page links to but does not repeat. Title and summary come from the
-// frontmatter, since posts have no `# ` heading.
+// docs page links to but does not repeat. Read through the same `getPosts()`
+// the blog pages use, so drafts, order and frontmatter parsing always agree
+// with what the site publishes.
 index.push('## Blog', '');
-const date = (source) => source.match(/^date:\s*"?([\d-]+)/m)?.[1] ?? '';
-const posts = await Promise.all(
-  (await readdir(join(CONTENT, 'blog')))
-    .filter((f) => f.endsWith('.mdx'))
-    .map(async (file) => [
-      file,
-      await readFile(join(CONTENT, 'blog', file), 'utf8'),
-    ]),
-);
-posts.sort(([, a], [, b]) => date(b).localeCompare(date(a)));
-for (const [file, source] of posts) {
-  if (/^draft:\s*true/m.test(source)) continue;
-  const title = source.match(/^title:\s*"?(.+?)"?\s*$/m)?.[1] ?? file;
-  const url = `/blog/${file.replace(/\.mdx$/, '')}`;
-  const page = toMarkdown(source);
-  await mkdir(join(PUBLIC, 'blog'), { recursive: true });
+await mkdir(join(PUBLIC, 'blog'), { recursive: true });
+for (const post of getPosts()) {
+  const url = `/blog/${post.slug}`;
+  const { body } = toMarkdown(getPost(post.slug).content);
+  const page = `# ${post.title}\n\n${body.replace(/^# .+\n+/, '')}`;
   await writeFile(
     join(PUBLIC, `${url}.md`),
-    `---\nurl: ${SITE}${url}\n---\n\n# ${title}\n\n${page.body.replace(/^# .+\n+/, '')}\n`,
+    `---\nurl: ${SITE}${url}\n---\n\n${page}\n`,
   );
-  index.push(`- [${title}](${SITE}${url}.md): ${page.description}`);
+  index.push(`- [${post.title}](${SITE}${url}.md): ${post.description}`);
+  full.push(`<!-- ${SITE}${url} -->\n\n${page}`);
 }
 index.push('');
 
@@ -166,7 +158,7 @@ index.push(
   '## Optional',
   '',
   `- [Changelog](${SITE}/changelog): What changed in each release`,
-  `- [All docs in one file](${SITE}/llms-full.txt): Every page above, concatenated`,
+  `- [All docs in one file](${SITE}/llms-full.txt): Every page and post above, concatenated`,
   '',
 );
 

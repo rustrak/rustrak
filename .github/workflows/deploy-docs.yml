@@ -136,7 +136,7 @@ jobs:
           KEY: 5842a4272a2e67f69e30517f2fe7e607
         run: |
           URLS=$(grep -o '<loc>[^<]*' apps/docs/out/sitemap.xml | sed 's/<loc>//' | jq -R . | jq -sc .)
-          curl -sS -X POST https://api.indexnow.org/indexnow \
+          curl -fsS -X POST https://api.indexnow.org/indexnow \
             -H 'Content-Type: application/json; charset=utf-8' \
             -d "{\"host\":\"rustrak.dev\",\"key\":\"$KEY\",\"urlList\":$URLS}" \
             -w '\nIndexNow: HTTP %{http_code}\n'
