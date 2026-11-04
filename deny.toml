@@ -14,12 +14,13 @@ ignore = [
     # which `openidconnect` 4 cannot use yet: drop this once it moves to it.
     { id = "RUSTSEC-2026-0387", reason = "only ECDSA public-key verification is used (OIDC ID tokens)" },
     # `zip` 7, pulled in by `symbolic-debuginfo` (up to 13.9 it requires ^7.2):
-    # all three are in `ZipArchive::extract` / `ZipStreamReader::extract`,
+    # all four are in `ZipArchive::extract` / `ZipStreamReader::extract`,
     # which neither symbolic nor Rustrak calls; both only read entries. Rustrak's
     # own `zip` is 9. Drop these once symbolic moves to zip 9.
     { id = "RUSTSEC-2026-0367", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
     { id = "RUSTSEC-2026-0368", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
     { id = "RUSTSEC-2026-0369", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
+    { id = "RUSTSEC-2026-0429", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
     # `zstd` 0.13 / `zstd-safe` 7, pulled in by `symbolic-debuginfo` (up to
     # 14.0-alpha it requires ^0.13.1), which only calls `zstd::bulk::decompress`
     # on compressed ELF sections. 0391 is `with_context` stream reuse, 0398

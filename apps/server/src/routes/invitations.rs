@@ -32,7 +32,9 @@ fn require_admin(actor: &ApiActor) -> AppResult<()> {
     }
 }
 
-/// Emails the invite link and stamps `email_sent_at`.
+/// Emails the invite link and stamps `email_sent_at`. Once SMTP has accepted
+/// the email, a failed stamp is only logged: reporting the send as failed
+/// would prompt the admin to send a second copy.
 async fn deliver(
     pool: &DbPool,
     mailer: &InvitationMailer,
@@ -43,8 +45,13 @@ async fn deliver(
         .send(invitation, inviter_email)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to send invitation email: {e}")))?;
-    invitation.email_sent_at =
-        Some(InvitationService::mark_email_sent(pool, &invitation.token).await?);
+    match InvitationService::mark_email_sent(pool, &invitation.token).await {
+        Ok(sent_at) => invitation.email_sent_at = Some(sent_at),
+        Err(e) => log::error!(
+            "Invitation email to {} was sent but its delivery time was not saved: {e}",
+            invitation.email
+        ),
+    }
     Ok(())
 }
 
