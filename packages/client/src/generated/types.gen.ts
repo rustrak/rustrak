@@ -669,13 +669,10 @@ export type CreateInvitation = {
      */
     role: UserRole;
     /**
-     * When true, the server also emails the invite link to the recipient.
-     * The response still carries `token` for manual sharing either way.
-     * Only valid while an SMTP source is configured and the invite link is
-     * reachable (a configured public/dashboard URL, or a bind host that is
-     * not a wildcard); the handler rejects the request otherwise. Serde
-     * default keeps the pre-email API shape (absent = manual share) working
-     * unchanged.
+     * Also email the invite link to the recipient (Sentry's `sendInvite`).
+     * Needs an enabled email integration or `SMTP_HOST`, and `DASHBOARD_URL`
+     * or `PUBLIC_URL`. The response
+     * carries `token` for manual sharing either way.
      */
     send_email?: boolean;
 };
@@ -761,18 +758,14 @@ export type DifUploadBody = {
 };
 
 /**
- * The wire form of the email-status `source` field: the only values it
- * takes besides `null`, typed as an enum so the generated client names the
- * set instead of accepting any string.
- */
-export type EmailSourceKind = 'integration' | 'global';
-
-/**
  * GET /api/invitations/email-status answer.
  */
 export type EmailStatusResponse = {
+    /**
+     * Whether invitation emails can be sent: `SMTP_HOST` is set, and so is
+     * `DASHBOARD_URL` or `PUBLIC_URL` for the link.
+     */
     available: boolean;
-    source: EmailSourceKind | null;
 };
 
 export type ErrorDetail = {
@@ -1051,10 +1044,7 @@ export type InvitationResponse = {
     created_at: string;
     email: string;
     /**
-     * When SMTP accepted the invitation email; NULL shows a manual-share or
-     * failed-send invitation so the UI can offer copy/resend. Null is a real
-     * value here, never an omission, so the schema keeps it required even
-     * though serde models it as an Option (see openapi_contract_test).
+     * When the invitation email was last sent; null when none was.
      */
     email_sent_at: string | null;
     expires_at: string;
@@ -1835,17 +1825,6 @@ export type RepoCommit = {
     repo_full_name: string;
     sha: string;
     url: string;
-};
-
-/**
- * Request body for re-sending an invitation email.
- */
-export type ResendInvitation = {
-    /**
-     * Re-send even when an email was already delivered (e.g. it landed in
-     * spam and the recipient asks for a fresh copy).
-     */
-    force?: boolean;
 };
 
 export type RetentionResponse = {
@@ -3956,7 +3935,7 @@ export type InvitationsCreateData = {
 
 export type InvitationsCreateErrors = {
     /**
-     * Invalid role, or send_email requested while no SMTP source is configured or the invite link would be unreachable
+     * Invalid role, or send_email while invitation emails are not configured
      */
     400: ErrorResponse;
     /**
@@ -4001,7 +3980,7 @@ export type InvitationsEmailStatusErrors = {
      */
     403: ErrorResponse;
     /**
-     * Reading the email integration or its stored credentials failed
+     * Reading the email integrations failed
      */
     500: ErrorResponse;
 };
@@ -4010,7 +3989,7 @@ export type InvitationsEmailStatusError = InvitationsEmailStatusErrors[keyof Inv
 
 export type InvitationsEmailStatusResponses = {
     /**
-     * Whether invitation emails can be sent, and from which source
+     * Whether invitation emails can be sent
      */
     200: EmailStatusResponse;
 };
@@ -4056,7 +4035,7 @@ export type InvitationsRevokeResponses = {
 export type InvitationsRevokeResponse = InvitationsRevokeResponses[keyof InvitationsRevokeResponses];
 
 export type InvitationsResendData = {
-    body?: ResendInvitation | null;
+    body?: never;
     path: {
         /**
          * Invitation token
@@ -4069,7 +4048,7 @@ export type InvitationsResendData = {
 
 export type InvitationsResendErrors = {
     /**
-     * Invitation expired or used, already emailed without force, a delivery already in progress, or no SMTP source configured
+     * Invitation expired or already used, or invitation emails are not configured
      */
     400: ErrorResponse;
     /**
@@ -4085,7 +4064,7 @@ export type InvitationsResendErrors = {
      */
     404: ErrorResponse;
     /**
-     * The SMTP send failed
+     * The email could not be sent
      */
     500: ErrorResponse;
 };
@@ -4094,7 +4073,7 @@ export type InvitationsResendError = InvitationsResendErrors[keyof InvitationsRe
 
 export type InvitationsResendResponses = {
     /**
-     * Email sent (or re-sent)
+     * Invitation email sent
      */
     200: InvitationResponse;
 };

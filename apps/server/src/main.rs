@@ -354,9 +354,6 @@ async fn main() -> std::io::Result<()> {
             // Share database pool and config with all handlers
             .app_data(web::Data::new(db_pool.clone()))
             .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(rustrak::routes::dashboard::DashboardServed(
-                serve_dashboard,
-            )))
             .app_data(web::Data::new(oidc_service.clone()))
             .app_data(sourcemap_provider_data)
             .app_data(sourcemap_store_data)

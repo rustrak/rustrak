@@ -441,9 +441,9 @@
       "fieldEmail": "Cet e-mail",
       "inviting": "Invitation en cours...",
       "submit": "Inviter",
-      "sendEmailLabel": "Envoyer un e-mail de vérification",
-      "sendEmailAria": "Envoyer un e-mail de vérification",
-      "sendEmailUnavailable": "Configurez une intégration e-mail (ou un SMTP global), puis DASHBOARD_URL ou PUBLIC_URL pour envoyer des e-mails d'invitation"
+      "sendEmailLabel": "Envoyer l'invitation par e-mail",
+      "sendEmailAria": "Envoyer l'invitation par e-mail",
+      "sendEmailUnavailable": "Ajoutez une intégration e-mail dans Paramètres → Intégrations (ou définissez SMTP_HOST), ainsi que DASHBOARD_URL ou PUBLIC_URL, pour envoyer des e-mails d'invitation"
     },
     "toast": {
       "createFailed": "Échec de la création de l’invitation",
@@ -463,7 +463,7 @@
       "roleUpdated": "Rôle mis à jour",
       "roleUpdateFailed": "Échec de la mise à jour du rôle",
       "emailSent": "E-mail d'invitation envoyé",
-      "emailSentHint": "L'e-mail d'invitation est en route — le lien est aussi dans votre presse-papiers.",
+      "emailSentHint": "Le lien d'invitation est en route vers {email}.",
       "emailFailed": "Invitation créée, mais l'e-mail a échoué",
       "emailFailedHint": "L'envoi a échoué — copiez le lien d'invitation et partagez-le vous-même.",
       "resendSent": "E-mail d'invitation renvoyé",
@@ -508,7 +508,10 @@
       "revokeAria": "Révoquer l’invitation de {email}",
       "emailSent": "E-mail envoyé",
       "emailNotSent": "Aucun e-mail envoyé",
-      "resendAria": "Renvoyer l'e-mail d'invitation à {email}"
+      "resendAria": "Renvoyer l'e-mail d'invitation à {email}",
+      "resend": "Renvoyer l'e-mail d'invitation",
+      "copy": "Copier le lien d'invitation",
+      "revoke": "Révoquer l'invitation"
     },
     "table": {
       "email": "E-mail",

@@ -1289,10 +1289,7 @@ where
     test::call_service(app, req).await
 }
 
-// The assertion reads free_disk_bytes, which the server answers only on
-// unix (statvfs); elsewhere it is None by design, so the case belongs to
-// the platforms whose behaviour it pins.
-#[cfg(all(feature = "sqlite", unix))]
+#[cfg(feature = "sqlite")]
 #[actix_web::test]
 async fn an_old_database_reports_the_space_a_compaction_gives_back() {
     // TestDb's file has SQLite's default, auto_vacuum = NONE.

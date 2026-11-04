@@ -545,18 +545,10 @@ export const zDifAssembleFile = z.object({
 export const zDifUploadBody = z.record(z.string(), z.unknown());
 
 /**
- * The wire form of the email-status `source` field: the only values it
- * takes besides `null`, typed as an enum so the generated client names the
- * set instead of accepting any string.
- */
-export const zEmailSourceKind = z.enum(['integration', 'global']);
-
-/**
  * GET /api/invitations/email-status answer.
  */
 export const zEmailStatusResponse = z.object({
-    available: z.boolean(),
-    source: zEmailSourceKind.nullable()
+    available: z.boolean()
 });
 
 /**
@@ -1386,13 +1378,6 @@ export const zIssueGitHub = z.object({
     links: z.array(zIssueLink),
     owners: z.array(z.string()),
     suspect_commits: z.array(zRepoCommit)
-});
-
-/**
- * Request body for re-sending an invitation email.
- */
-export const zResendInvitation = z.object({
-    force: z.boolean().optional()
 });
 
 /**
@@ -2464,7 +2449,7 @@ export const zInvitationsCreateBody = zCreateInvitation;
 export const zInvitationsCreateResponse = zInvitationResponse;
 
 /**
- * Whether invitation emails can be sent, and from which source
+ * Whether invitation emails can be sent
  */
 export const zInvitationsEmailStatusResponse = zEmailStatusResponse;
 
@@ -2477,14 +2462,12 @@ export const zInvitationsRevokePath = z.object({
  */
 export const zInvitationsRevokeResponse = z.void();
 
-export const zInvitationsResendBody = zResendInvitation.nullable();
-
 export const zInvitationsResendPath = z.object({
     token: z.string()
 });
 
 /**
- * Email sent (or re-sent)
+ * Invitation email sent
  */
 export const zInvitationsResendResponse = zInvitationResponse;
 

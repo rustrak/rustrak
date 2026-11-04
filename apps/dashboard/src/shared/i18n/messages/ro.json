@@ -441,9 +441,9 @@
       "fieldEmail": "Această adresă de e-mail",
       "inviting": "Se invită...",
       "submit": "Invită",
-      "sendEmailLabel": "Trimite un e-mail de verificare",
-      "sendEmailAria": "Trimite un e-mail de verificare",
-      "sendEmailUnavailable": "Configurează o integrare de e-mail (sau un SMTP global) și DASHBOARD_URL sau PUBLIC_URL pentru a trimite e-mailuri de invitație"
+      "sendEmailLabel": "Trimite invitația prin e-mail",
+      "sendEmailAria": "Trimite invitația prin e-mail",
+      "sendEmailUnavailable": "Adaugă o integrare de e-mail în Setări → Integrări (sau setează SMTP_HOST) și DASHBOARD_URL sau PUBLIC_URL pentru a trimite e-mailuri de invitație"
     },
     "toast": {
       "createFailed": "Crearea invitației a eșuat",
@@ -463,7 +463,7 @@
       "roleUpdated": "Rol actualizat",
       "roleUpdateFailed": "Actualizarea rolului a eșuat",
       "emailSent": "E-mail de invitație trimis",
-      "emailSentHint": "E-mailul de invitație este pe drum — linkul este și în clipboard.",
+      "emailSentHint": "Linkul de invitație este pe drum către {email}.",
       "emailFailed": "Invitație creată, dar e-mailul a eșuat",
       "emailFailedHint": "Livrarea a eșuat — copiază linkul de invitație și distribuie-l tu însuți.",
       "resendSent": "E-mail de invitație retrimis",
@@ -508,7 +508,10 @@
       "revokeAria": "Retrage invitația pentru {email}",
       "emailSent": "E-mail trimis",
       "emailNotSent": "Fără e-mail trimis",
-      "resendAria": "Retrimite e-mailul de invitație către {email}"
+      "resendAria": "Retrimite e-mailul de invitație către {email}",
+      "resend": "Retrimite e-mailul de invitație",
+      "copy": "Copiază linkul de invitație",
+      "revoke": "Revocă invitația"
     },
     "table": {
       "email": "E-mail",

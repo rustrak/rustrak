@@ -29,9 +29,6 @@ export const Route = createFileRoute('/_authenticated/settings/team')({
     if (answer?.state === 'authenticated' && answer.user.role === 'admin') {
       void queryClient.query(userQueries.team()).catch(noop);
       void queryClient.query(userQueries.invitations()).catch(noop);
-      // Email delivery is a capability flag, not content: prefetch it so the
-      // invite switch is correct on first paint, and let a failure fall
-      // through — the component degrades to "cannot send" on its own.
       void queryClient.query(userQueries.emailStatus()).catch(noop);
     }
   },
@@ -84,9 +81,8 @@ function TeamPage() {
 function TeamRoster({ currentUserId }: { currentUserId: number }) {
   const { data: members } = useSuspenseQuery(userQueries.team());
   const { data: invitations } = useSuspenseQuery(userQueries.invitations());
-  // Suspense is deliberately not used here: an unreadable status means
-  // "assume delivery is off" (the switch greys out), it must never take the
-  // whole team page down with it.
+  // Not suspended: an unreadable status reads as "cannot send", not as a
+  // failed page.
   const { data: emailStatus } = useQuery(userQueries.emailStatus());
   const emailAvailable = emailStatus?.available === true;
 

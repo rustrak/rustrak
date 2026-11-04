@@ -208,88 +208,17 @@ impl Config {
     /// the address SDKs reach is also the one people open), else the bind
     /// address.
     pub fn dashboard_url(&self) -> String {
-        self.dashboard
-            .url
-            .clone()
-            .or_else(|| self.public_url.clone())
-            .unwrap_or_else(|| format!("http://{}:{}", host_for_url(&self.host), self.port))
+        self.public_dashboard_url()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
     }
 
-    /// Whether an emailed link built by [`Config::dashboard_url`] can be
-    /// opened by its recipient: its host carries a scheme, a non-empty
-    /// authority, and — when the link points at *this* server's address
-    /// (`PUBLIC_URL`, or the bind fallback) — a dashboard actually served
-    /// from it. `DASHBOARD_URL` is the operator's own promise about where
-    /// people open the invite page, trusted as stated; this server's
-    /// address is not a promise, so it must hold: the switch on and a
-    /// built dashboard on disk, the same two facts the router mounts on.
-    /// Sending an unopenable link would stamp the row as delivered while the
-    /// invitee got nothing, so the gate refuses instead.
-    pub fn emailed_links_are_reachable(&self, dashboard_served: bool) -> bool {
-        // `DASHBOARD_URL` says where the dashboard lives even when this
-        // server does not serve it; without it the link's host is ours,
-        // and an API-only box — switch off, or nothing built — mounted no
-        // /invite page at all. `dashboard_served` is that mount decision,
-        // taken once by `main` from the same facts the router connects on,
-        // and handed to each request as app data: probing `dir` here would
-        // re-read an env-named path per request for an answer that cannot
-        // change while the process lives.
-        if self.dashboard.url.is_none() && !dashboard_served {
-            return false;
-        }
-        if let Some(url) = self.dashboard.url.as_ref().or(self.public_url.as_ref()) {
-            return is_http_url_with_host(url);
-        }
-        !is_unspecified_host(&self.host)
+    /// [`Config::dashboard_url`] without the bind-address fallback: a link
+    /// sent to someone else, like an invitation, needs an address they can
+    /// open.
+    pub fn public_dashboard_url(&self) -> Option<&str> {
+        self.dashboard.url.as_deref().or(self.public_url.as_deref())
     }
-}
-
-/// A bind host as it must appear inside a URL: an IPv6 literal (the only
-/// host syntax carrying colons) needs its RFC 2732 brackets, or the host and
-/// port cannot be told apart. Any bracketed input is already in that form.
-fn host_for_url(host: &str) -> String {
-    let host = host.trim();
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host.to_string()
-    }
-}
-
-/// Whether a configured link URL is an `http(s)` URL with a non-empty
-/// authority: a scheme alone is not enough (`https://?q=1` names no host),
-/// and the invitee's browser cannot open a link that has nowhere to go.
-fn is_http_url_with_host(url: &str) -> bool {
-    let Some(rest) = url
-        .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))
-    else {
-        return false;
-    };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    !authority.is_empty()
-}
-
-/// Whether a bind host is a wildcard: any IPv4 `0.x` address or the IPv6
-/// unspecified form, in any spelling (`::`, the expanded all-zero form,
-/// or the lone `:` a URL would show bracketed). IPv4 keeps its
-/// four-dotted-quad shape check, so `0` alone or `01.2.3.4` are not
-/// mistaken for it.
-fn is_unspecified_host(host: &str) -> bool {
-    let host = host.trim().trim_start_matches('[').trim_end_matches(']');
-    if host == ":"
-        || host
-            .parse::<std::net::Ipv6Addr>()
-            .is_ok_and(|ip| ip.is_unspecified())
-    {
-        return true;
-    }
-    let parts: Vec<&str> = host.split('.').collect();
-    parts.len() == 4
-        && parts[0] == "0"
-        && parts.iter().all(|part| {
-            !part.is_empty() && part.len() <= 3 && part.bytes().all(|b| b.is_ascii_digit())
-        })
 }
 
 impl TelemetryConfig {

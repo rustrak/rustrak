@@ -332,9 +332,9 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | Method | Endpoint | Description |
 |---|---|---|
 | `invitations.create({ body })` | `POST /api/invitations` | Create an invitation (admin only) |
-| `invitations.emailStatus()` | `GET /api/invitations/email-status` | Is email delivery configured (admin) |
+| `invitations.emailStatus()` | `GET /api/invitations/email-status` | Whether invitation emails can be sent (admin only) |
 | `invitations.list()` | `GET /api/invitations` | List invitations (admin only) |
-| `invitations.resend({ path, body })` | `POST /api/invitations/{token}/resend` | Re-send the invitation email (admin) |
+| `invitations.resend({ path })` | `POST /api/invitations/{token}/resend` | Email the invite link again (admin only) |
 | `invitations.revoke({ path })` | `DELETE /api/invitations/{token}` | Revoke a pending invitation (admin only) |
 
 ### Issues

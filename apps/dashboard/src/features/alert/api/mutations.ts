@@ -9,6 +9,13 @@ import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 import { alertQueries } from './queries';
 
+/**
+ * An email integration is also what sends invitation emails, so changing
+ * one changes the user slice's `emailStatus` answer. Slices cannot import
+ * each other, hence the literal key.
+ */
+const INVITATION_EMAIL_STATUS = ['invitations', 'email-status'] as const;
+
 export const alertMutations = {
   createIntegration: () =>
     mutationOptions({
@@ -17,7 +24,7 @@ export const alertMutations = {
       meta: {
         invalidates: [
           alertQueries.integrations().queryKey,
-          ['invitations', 'email-status'],
+          INVITATION_EMAIL_STATUS,
         ],
       },
     }),
@@ -32,11 +39,10 @@ export const alertMutations = {
         id: number;
         body: UpdateAlertIntegration;
       }) => orThrow(api().alertChannels.update({ path: { id }, body })),
-      // Enable/disable moves the invite form's delivery switch too.
       meta: {
         invalidates: [
           alertQueries.integrations().queryKey,
-          ['invitations', 'email-status'],
+          INVITATION_EMAIL_STATUS,
         ],
       },
     }),
@@ -51,7 +57,7 @@ export const alertMutations = {
       meta: {
         invalidates: [
           alertQueries.integrations().queryKey,
-          ['invitations', 'email-status'],
+          INVITATION_EMAIL_STATUS,
           ['projects'],
         ],
       },

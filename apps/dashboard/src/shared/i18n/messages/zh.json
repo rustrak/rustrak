@@ -441,9 +441,9 @@
       "fieldEmail": "该邮箱地址",
       "inviting": "正在邀请…",
       "submit": "邀请",
-      "sendEmailLabel": "发送验证邮件",
-      "sendEmailAria": "发送验证邮件",
-      "sendEmailUnavailable": "配置邮件集成（或全局 SMTP）与 DASHBOARD_URL/PUBLIC_URL 后才能发送邀请邮件"
+      "sendEmailLabel": "通过邮件发送邀请",
+      "sendEmailAria": "通过邮件发送邀请",
+      "sendEmailUnavailable": "在 设置 → 集成 中添加邮件集成（或设置 SMTP_HOST），并设置 DASHBOARD_URL 或 PUBLIC_URL 后才能发送邀请邮件"
     },
     "toast": {
       "createFailed": "创建邀请失败",
@@ -463,7 +463,7 @@
       "roleUpdated": "角色已更新",
       "roleUpdateFailed": "更新角色失败",
       "emailSent": "邀请邮件已发送",
-      "emailSentHint": "邀请邮件正在路上——链接同时已复制到剪贴板。",
+      "emailSentHint": "邀请链接已发送至 {email}。",
       "emailFailed": "邀请已创建，但邮件发送失败",
       "emailFailedHint": "邮件投递失败——请复制邀请链接并自行分享。",
       "resendSent": "邀请邮件已重发",
@@ -508,7 +508,10 @@
       "revokeAria": "撤销 {email} 的邀请",
       "emailSent": "邮件已发送",
       "emailNotSent": "未发送邮件",
-      "resendAria": "向 {email} 重发邀请邮件"
+      "resendAria": "向 {email} 重发邀请邮件",
+      "resend": "重新发送邀请邮件",
+      "copy": "复制邀请链接",
+      "revoke": "撤销邀请"
     },
     "table": {
       "email": "邮箱",

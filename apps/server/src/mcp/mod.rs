@@ -25,7 +25,6 @@ use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, INTERNAL_ERROR_MESSAGE};
-use crate::routes::dashboard::DashboardServed;
 use crate::services::sourcemap_store::SourceMapStore;
 use crate::services::CleanupJob;
 
@@ -79,7 +78,6 @@ pub struct RustrakMcp {
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     actor: Arc<ApiActor>,
-    dashboard_served: Option<web::Data<DashboardServed>>,
     cleanup_job: Option<web::Data<CleanupJob>>,
     sourcemap_store: Option<web::Data<Arc<dyn SourceMapStore>>>,
 }
@@ -108,7 +106,6 @@ impl RustrakMcp {
                 .cloned()
                 .ok_or_else(|| missing("Config"))?,
             actor: Arc::new(actor),
-            dashboard_served: req.app_data::<web::Data<DashboardServed>>().cloned(),
             cleanup_job: req.app_data::<web::Data<CleanupJob>>().cloned(),
             sourcemap_store: req
                 .app_data::<web::Data<Arc<dyn SourceMapStore>>>()
@@ -118,12 +115,6 @@ impl RustrakMcp {
 
     fn pool(&self) -> web::Data<DbPool> {
         self.pool.clone()
-    }
-
-    /// The mount fact for handlers that gate on it; absent means not
-    /// served, which is the safe reading for a stripped app.
-    fn dashboard_served(&self) -> Option<web::Data<DashboardServed>> {
-        self.dashboard_served.clone()
     }
 
     fn config(&self) -> web::Data<Config> {

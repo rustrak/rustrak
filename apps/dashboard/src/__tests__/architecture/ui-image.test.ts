@@ -141,48 +141,42 @@ function apiUrlSeenByNginx(value: string): {
   };
 }
 
-// The script under test is sourced with POSIX `sh`, which Windows does not
-// ship: the case belongs to the platforms that run it, the same ones that
-// build the image.
-describe.skipIf(process.platform === 'win32')(
-  'the standalone dashboard image reads RUSTRAK_API_URL the way an operator writes it',
-  () => {
-    it('is sourced by the entrypoint before the template is rendered', () => {
-      // Scripts under /docker-entrypoint.d/ run in name order, and only the
-      // `.envsh` ones are sourced, which is what lets this one change the
-      // variable envsubst (20-) will read.
-      expect(dockerfile()).toMatch(
-        /COPY\s+\S*docker\/15-rustrak-api-url\.envsh\s+\/docker-entrypoint\.d\//,
-      );
-    });
+describe('the standalone dashboard image reads RUSTRAK_API_URL the way an operator writes it', () => {
+  it('is sourced by the entrypoint before the template is rendered', () => {
+    // Scripts under /docker-entrypoint.d/ run in name order, and only the
+    // `.envsh` ones are sourced, which is what lets this one change the
+    // variable envsubst (20-) will read.
+    expect(dockerfile()).toMatch(
+      /COPY\s+\S*docker\/15-rustrak-api-url\.envsh\s+\/docker-entrypoint\.d\//,
+    );
+  });
 
-    it('drops a trailing slash rather than proxying every request to /', () => {
-      // `proxy_pass` with a variable sends the request URI as-is only when the
-      // value has no path of its own. `https://api.example.com/` has one, `/`,
-      // and every `/api/...` would reach the server as `/`.
-      expect(apiUrlSeenByNginx('https://api.example.com/').url).toBe(
-        'https://api.example.com',
-      );
-      expect(apiUrlSeenByNginx('http://server:8080//').url).toBe(
-        'http://server:8080',
-      );
-      expect(apiUrlSeenByNginx('http://server:8080').url).toBe(
-        'http://server:8080',
-      );
-    });
+  it('drops a trailing slash rather than proxying every request to /', () => {
+    // `proxy_pass` with a variable sends the request URI as-is only when the
+    // value has no path of its own. `https://api.example.com/` has one, `/`,
+    // and every `/api/...` would reach the server as `/`.
+    expect(apiUrlSeenByNginx('https://api.example.com/').url).toBe(
+      'https://api.example.com',
+    );
+    expect(apiUrlSeenByNginx('http://server:8080//').url).toBe(
+      'http://server:8080',
+    );
+    expect(apiUrlSeenByNginx('http://server:8080').url).toBe(
+      'http://server:8080',
+    );
+  });
 
-    it('refuses a value that carries a path', () => {
-      // There is no right answer for `https://example.com/rustrak`: the
-      // dashboard would need every prefix rewritten, which the template does
-      // not do. Refusing at start is the honest failure.
-      const refused = apiUrlSeenByNginx('https://example.com/rustrak');
-      expect(refused.exit).not.toBe(0);
-      expect(refused.stderr).toMatch(/RUSTRAK_API_URL/);
-    });
+  it('refuses a value that carries a path', () => {
+    // There is no right answer for `https://example.com/rustrak`: the
+    // dashboard would need every prefix rewritten, which the template does
+    // not do. Refusing at start is the honest failure.
+    const refused = apiUrlSeenByNginx('https://example.com/rustrak');
+    expect(refused.exit).not.toBe(0);
+    expect(refused.stderr).toMatch(/RUSTRAK_API_URL/);
+  });
 
-    it('refuses a value that is not an http(s) origin', () => {
-      expect(apiUrlSeenByNginx('server:8080').exit).not.toBe(0);
-      expect(apiUrlSeenByNginx('').exit).not.toBe(0);
-    });
-  },
-);
+  it('refuses a value that is not an http(s) origin', () => {
+    expect(apiUrlSeenByNginx('server:8080').exit).not.toBe(0);
+    expect(apiUrlSeenByNginx('').exit).not.toBe(0);
+  });
+});

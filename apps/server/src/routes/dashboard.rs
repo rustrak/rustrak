@@ -70,14 +70,6 @@ pub const API_PREFIXES: [&str; 8] = [
 /// as meaningful.
 const ONE_YEAR: u32 = 31_536_000;
 
-/// Whether this process mounted the dashboard, published as app data by
-/// `main` from the one decision that also connects the router's mount.
-/// Handlers read the fact instead of re-probing `index.html` per request:
-/// it cannot change while we live, and an env-named path checked on every
-/// request is a taint sink (CodeQL) for an answer taken at startup anyway.
-#[derive(Clone, Copy, Debug)]
-pub struct DashboardServed(pub bool);
-
 /// A compiled dashboard on disk.
 ///
 /// Constructed only through [`Dashboard::detect`], so holding one is proof

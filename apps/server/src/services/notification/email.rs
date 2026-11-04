@@ -8,36 +8,24 @@
 
 use async_trait::async_trait;
 use lettre::message::header::ContentType;
-use lettre::transport::smtp::authentication::Credentials;
-use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
+use lettre::{AsyncTransport, Message};
 
 use super::{NotificationDispatcher, NotificationResult};
 use crate::error::{AppError, AppResult};
 use crate::models::{AlertIntegration, AlertPayload, EmailConfig, EmailRoutingOverride};
+use crate::services::mail::{self, html_escape, SmtpSettings};
 
 /// Email notification dispatcher
 pub struct EmailNotifier {
-    // Global SMTP configuration (fallback if integration doesn't specify)
-    global_smtp_host: Option<String>,
-    global_smtp_port: u16,
-    global_smtp_username: Option<String>,
-    global_smtp_password: Option<String>,
-    global_from_address: String,
+    /// Global SMTP configuration (fallback if integration doesn't specify)
+    global: SmtpSettings,
 }
 
 impl EmailNotifier {
     /// Creates a new email notifier with global SMTP settings from environment
     pub fn new() -> Self {
         Self {
-            global_smtp_host: std::env::var("SMTP_HOST").ok(),
-            global_smtp_port: std::env::var("SMTP_PORT")
-                .unwrap_or_else(|_| "587".to_string())
-                .parse()
-                .unwrap_or(587),
-            global_smtp_username: std::env::var("SMTP_USERNAME").ok(),
-            global_smtp_password: std::env::var("SMTP_PASSWORD").ok(),
-            global_from_address: std::env::var("SMTP_FROM")
-                .unwrap_or_else(|_| "alerts@rustrak.local".to_string()),
+            global: SmtpSettings::from_env(),
         }
     }
 
@@ -176,23 +164,11 @@ This alert was sent by Rustrak for project {project_name}."#,
         recipients: &[String],
         payload: &AlertPayload,
     ) -> NotificationResult {
-        // Determine SMTP settings (integration credentials override global)
-        let smtp_host = credentials
-            .smtp_host
-            .as_ref()
-            .or(self.global_smtp_host.as_ref());
-        let smtp_host = match smtp_host {
-            Some(h) => h,
-            None => {
-                return NotificationResult::failure("SMTP host not configured".to_string(), None)
-            }
+        // Integration credentials override the global settings field by field.
+        let smtp = self.global.clone().overridden_by(credentials);
+        let Some(smtp_host) = smtp.host.as_ref() else {
+            return NotificationResult::failure("SMTP host not configured".to_string(), None);
         };
-
-        let smtp_port = credentials.smtp_port.unwrap_or(self.global_smtp_port);
-        let from_address = credentials
-            .from_address
-            .as_ref()
-            .unwrap_or(&self.global_from_address);
 
         // Build email subject
         let alert_type_display = payload
@@ -221,9 +197,9 @@ This alert was sent by Rustrak for project {project_name}."#,
         for recipient in recipients {
             let email = match Message::builder()
                 .from(
-                    from_address
+                    smtp.from_address
                         .parse()
-                        .unwrap_or_else(|_| "alerts@rustrak.local".parse().unwrap()),
+                        .unwrap_or_else(|_| mail::DEFAULT_FROM.parse().unwrap()),
                 )
                 .to(match recipient.parse() {
                     Ok(addr) => addr,
@@ -255,55 +231,15 @@ This alert was sent by Rustrak for project {project_name}."#,
                 }
             };
 
-            let mailer_builder = if smtp_port == 465 {
-                let tls_params = match lettre::transport::smtp::client::TlsParameters::new(
-                    smtp_host.to_string(),
-                ) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        return NotificationResult::failure(
-                            format!("Invalid TLS parameters for SMTP host: {}", e),
-                            None,
-                        )
-                    }
-                };
-
-                AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_host)
-                    .map(|b| {
-                        b.port(smtp_port)
-                            .tls(lettre::transport::smtp::client::Tls::Wrapper(tls_params))
-                    })
-                    .map_err(|e| {
-                        NotificationResult::failure(format!("Invalid SMTP host: {}", e), None)
-                    })
-            } else {
-                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_host)
-                    .map(|b| b.port(smtp_port))
-                    .map_err(|e| {
-                        NotificationResult::failure(format!("Invalid SMTP host: {}", e), None)
-                    })
-            };
-
-            let mailer_builder = match mailer_builder {
-                Ok(b) => b,
-                Err(result) => return result,
-            };
-
-            let mailer = if let (Some(username), Some(password)) = (
-                credentials
-                    .smtp_username
-                    .as_ref()
-                    .or(self.global_smtp_username.as_ref()),
-                credentials
-                    .smtp_password
-                    .as_ref()
-                    .or(self.global_smtp_password.as_ref()),
+            let mailer = match mail::build_transport(
+                smtp_host,
+                smtp.port,
+                smtp.tls,
+                smtp.username.as_ref(),
+                smtp.password.as_ref(),
             ) {
-                mailer_builder
-                    .credentials(Credentials::new(username.clone(), password.clone()))
-                    .build()
-            } else {
-                mailer_builder.build()
+                Ok(mailer) => mailer,
+                Err(e) => return NotificationResult::failure(e, None),
             };
 
             match mailer.send(email).await {
@@ -332,14 +268,6 @@ impl Default for EmailNotifier {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Simple HTML escaping for email content
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[async_trait]
@@ -390,7 +318,7 @@ impl NotificationDispatcher for EmailNotifier {
             .map_err(|e| AppError::Validation(format!("Invalid email config: {}", e)))?;
 
         // If no global SMTP and no integration SMTP, warn
-        if email_config.smtp_host.is_none() && self.global_smtp_host.is_none() {
+        if email_config.smtp_host.is_none() && self.global.host.is_none() {
             return Err(AppError::Validation(
                 "SMTP host must be configured either globally or per-integration".to_string(),
             ));
@@ -490,12 +418,5 @@ mod tests {
         assert!(text.contains("TEST-1"));
         assert!(text.contains("TypeError"));
         assert!(text.contains("https://example.com/issues/abc-123"));
-    }
-
-    #[test]
-    fn test_html_escape() {
-        assert_eq!(html_escape("<script>"), "&lt;script&gt;");
-        assert_eq!(html_escape("a & b"), "a &amp; b");
-        assert_eq!(html_escape("\"quote\""), "&quot;quote&quot;");
     }
 }

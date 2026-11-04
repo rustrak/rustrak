@@ -571,22 +571,39 @@ fn do_not_track_is_read_from_the_conventional_variable() {
 // =============================================================================
 
 /// Runs `body` with `DASHBOARD_URL`, `PUBLIC_URL`, `HOST` and `PORT` as given,
-/// restoring every link variable afterwards.
+/// restoring all of them and `DATABASE_URL` afterwards.
 fn with_link_env<T>(
     dashboard_url: Option<&str>,
     public_url: Option<&str>,
     body: impl FnOnce() -> T,
 ) -> T {
-    with_link_vars(
-        &[
-            ("DATABASE_URL", Some("postgres://test:test@localhost/test")),
-            ("HOST", Some("0.0.0.0")),
-            ("PORT", Some("8080")),
-            ("DASHBOARD_URL", dashboard_url),
-            ("PUBLIC_URL", public_url),
-        ],
-        body,
-    )
+    const VARS: [&str; 5] = [
+        "DATABASE_URL",
+        "DASHBOARD_URL",
+        "PUBLIC_URL",
+        "HOST",
+        "PORT",
+    ];
+    let saved: Vec<_> = VARS.iter().map(|v| std::env::var(v).ok()).collect();
+    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
+    std::env::set_var("HOST", "0.0.0.0");
+    std::env::set_var("PORT", "8080");
+    for (var, value) in [("DASHBOARD_URL", dashboard_url), ("PUBLIC_URL", public_url)] {
+        match value {
+            Some(v) => std::env::set_var(var, v),
+            None => std::env::remove_var(var),
+        }
+    }
+
+    let out = body();
+
+    for (var, value) in VARS.iter().zip(saved) {
+        match value {
+            Some(v) => std::env::set_var(var, v),
+            None => std::env::remove_var(var),
+        }
+    }
+    out
 }
 
 /// The server serves the dashboard, so the address SDKs reach is also the one
@@ -620,182 +637,6 @@ fn alert_links_fall_back_to_the_bind_address() {
         let config = Config::from_env().expect("Config::from_env() should succeed");
         assert_eq!(config.dashboard_url(), "http://0.0.0.0:8080");
     });
-}
-
-/// The environment variables both link helpers pin, saved and restored
-/// wholesale: leaving `RUSTRAK_DASHBOARD` or its directory inherited from
-/// the process would make the bind-gate cases depend on who ran the tests.
-const LINK_VARS: [&str; 5] = [
-    "DATABASE_URL",
-    "DASHBOARD_URL",
-    "PUBLIC_URL",
-    "HOST",
-    "PORT",
-];
-
-/// Runs `body` with the env vars set as given (absent means removed), then
-/// restores everything.
-fn with_link_vars<T>(values: &[(&str, Option<&str>)], body: impl FnOnce() -> T) -> T {
-    let saved: Vec<_> = LINK_VARS.iter().map(|v| std::env::var(v).ok()).collect();
-    for var in LINK_VARS.iter() {
-        std::env::remove_var(var);
-    }
-    for (var, value) in values {
-        if let Some(value) = value {
-            std::env::set_var(var, value);
-        }
-    }
-    let out = body();
-    for (var, value) in LINK_VARS.iter().zip(saved) {
-        match value {
-            Some(v) => std::env::set_var(var, v),
-            None => std::env::remove_var(var),
-        }
-    }
-    out
-}
-
-/// Runs `body` with `HOST` as given and no configured link URL, restoring
-/// every variable afterwards. `with_link_env` pins the host to the wildcard;
-/// the IPv6 rules below need to choose it. A built dashboard (and the
-/// default switch) is pinned too: these cases pin the *host* rule, and a
-fn with_bind_env<T>(host: &str, body: impl FnOnce() -> T) -> T {
-    with_link_vars(
-        &[
-            ("DATABASE_URL", Some("postgres://test:test@localhost/test")),
-            ("HOST", Some(host)),
-            ("PORT", Some("8080")),
-        ],
-        body,
-    )
-}
-
-/// A bind host with no configured URL is only a location if it is routable,
-/// and an IPv6 literal needs its RFC 2732 brackets before a port can be
-/// appended at all: unbracketed, `http://{host}:{port}` is a URL whose host
-/// and port cannot be told apart (`http://:::1:8080`).
-#[test]
-#[serial]
-fn bind_host_falls_back_only_when_it_is_a_real_location() {
-    for (host, expected_url, reachable) in [
-        ("0.0.0.0", "http://0.0.0.0:8080", false),
-        ("::", "http://[::]:8080", false),
-        ("::1", "http://[::1]:8080", true),
-        ("fe80::1", "http://[fe80::1]:8080", true),
-        ("[::1]", "http://[::1]:8080", true),
-        ("127.0.0.1", "http://127.0.0.1:8080", true),
-        ("01.2.3.4", "http://01.2.3.4:8080", true),
-    ] {
-        with_bind_env(host, || {
-            let config = Config::from_env().expect("Config::from_env() should succeed");
-            assert_eq!(config.dashboard_url(), expected_url, "HOST={host}");
-            assert_eq!(
-                config.emailed_links_are_reachable(true),
-                reachable,
-                "reachable for HOST={host}"
-            );
-        });
-    }
-}
-
-/// A bracketed IPv6 literal survives `url_from_env`'s trimming untouched:
-/// an operator who configured the URL already wrote a complete address,
-/// brackets and all, and the fallback builder must not double them.
-#[test]
-#[serial]
-fn configured_urls_are_left_alone_by_the_ipv6_rule() {
-    with_link_env(Some("http://[fd00::10]:8080/"), None, || {
-        let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert_eq!(config.dashboard_url(), "http://[fd00::10]:8080");
-        assert!(config.emailed_links_are_reachable(true));
-    });
-}
-
-/// A configured URL is judged for its authority, not just its prefix:
-/// `https://?q=1` names no host and nobody can open it.
-#[test]
-#[serial]
-fn emailed_links_reject_a_url_without_a_host() {
-    with_link_env(Some("https://?q=1"), None, || {
-        let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(!config.emailed_links_are_reachable(true));
-    });
-}
-
-/// The expanded all-zero IPv6 is the same wildcard as `::`.
-#[test]
-#[serial]
-fn emailed_links_reject_the_expanded_ipv6_wildcard() {
-    with_bind_env("0:0:0:0:0:0:0:0", || {
-        let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(!config.emailed_links_are_reachable(true));
-    });
-}
-
-/// The gate's only filesystem knowledge is the caller's mount decision —
-/// `main` derives it from the switch and the build once, and publishes it as
-/// app data. Without `DASHBOARD_URL` the link's host is this server, so an
-/// API-only process (false) must refuse; a served dashboard (true) may not.
-/// An explicit `DASHBOARD_URL` states where the page lives and is trusted
-/// regardless — that is how the other-host deployment ships.
-#[test]
-#[serial]
-fn emailed_links_require_a_served_dashboard_when_the_host_is_ours() {
-    with_link_env(None, Some("http://api.example.com"), || {
-        let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(!config.emailed_links_are_reachable(false), "API-only");
-        assert!(
-            config.emailed_links_are_reachable(true),
-            "serving the build"
-        );
-    });
-    with_link_env(Some("https://ui.example.com"), None, || {
-        let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(
-            config.emailed_links_are_reachable(false),
-            "DASHBOARD_URL anywhere"
-        );
-    });
-}
-/// Emailed invitation links carry the address to a stranger's browser, so
-/// the gate is stricter than the link builder: a wildcard bind host is not a
-/// location, and a URL without the scheme its docs require is not a link.
-/// Whether this process serves the dashboard (`main`'s mount decision,
-/// published as app data) is an argument now, not a filesystem probe: the
-/// cases pass it as their deployment would have it.
-#[test]
-#[serial]
-fn emailed_links_are_unreachable_on_the_wildcard_bind_host() {
-    with_link_env(None, None, || {
-        let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(!config.emailed_links_are_reachable(true));
-    });
-}
-
-#[test]
-#[serial]
-fn emailed_links_are_reachable_through_a_configured_url() {
-    with_link_env(None, Some("https://rustrak.example.com"), || {
-        let config = Config::from_env().expect("Config::from_env() should succeed");
-        assert!(config.emailed_links_are_reachable(true));
-    });
-}
-
-/// A schemeless `DASHBOARD_URL` would reach the invitee as text, not a
-/// clickable link, and the row would still be stamped as delivered: the gate
-/// rejects it even when `PUBLIC_URL` alone would have been fine, because
-/// `DASHBOARD_URL` is the one the link is built from.
-#[test]
-#[serial]
-fn emailed_links_reject_a_schemeless_dashboard_url() {
-    with_link_env(
-        Some("dashboard.example.com"),
-        Some("https://rustrak.example.com"),
-        || {
-            let config = Config::from_env().expect("Config::from_env() should succeed");
-            assert!(!config.emailed_links_are_reachable(true));
-        },
-    );
 }
 
 // =============================================================================

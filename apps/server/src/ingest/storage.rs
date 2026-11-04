@@ -319,24 +319,6 @@ pub async fn prepare_ingest_dir(base_dir: &Path) -> AppResult<()> {
 
 fn sync_parent_directory(path: &Path) -> AppResult<()> {
     if let Some(parent) = path.parent() {
-        // Syncing a directory handle is per-platform work: POSIX opens a
-        // directory directly, while Windows needs FILE_FLAG_BACKUP_SEMANTICS
-        // to open one at all, and a handle that may be flushed (write access)
-        // or CreateFile answers with ERROR_ACCESS_DENIED.
-        #[cfg(windows)]
-        let directory = {
-            use std::os::windows::fs::OpenOptionsExt;
-            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-            std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-                .open(parent)
-                .map_err(|e| {
-                    AppError::Internal(format!("Failed to open ingest directory: {}", e))
-                })?
-        };
-        #[cfg(not(windows))]
         let directory = std::fs::File::open(parent)
             .map_err(|e| AppError::Internal(format!("Failed to open ingest directory: {}", e)))?;
         directory

@@ -7,9 +7,9 @@ import {
   EmptyIcon,
   RefreshIcon,
   Tag,
+  Tooltip,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
@@ -23,7 +23,7 @@ import {
 
 interface PendingInvitationsProps {
   invitations: InvitationResponse[];
-  /** Whether any mail transport exists; without one resending can only fail. */
+  /** Whether the server can send invitation emails. */
   emailAvailable: boolean;
 }
 
@@ -42,37 +42,12 @@ async function handleCopy(invitation: InvitationResponse, t: Translate) {
   }
 }
 
-/**
- * One timer for the whole list: the row that expires next is the only one
- * whose render result changes at an exact time, and a stale button that
- * survives until the next interaction promises a click the server will
- * reject. When the earliest future expiry arrives, re-render and let the
- * per-row checks fall where they now land.
- */
-function useExpiryTick(invitations: InvitationResponse[]): void {
-  const [, setTick] = useState(0);
-  const now = Date.now();
-  const nextExpiry = invitations
-    .map((invitation) => new Date(invitation.expires_at).getTime())
-    .filter((time) => time > now)
-    .sort((a, b) => a - b)[0];
-  useEffect(() => {
-    if (nextExpiry === undefined) return;
-    const timer = setTimeout(
-      () => setTick((tick) => tick + 1),
-      nextExpiry - Date.now(),
-    );
-    return () => clearTimeout(timer);
-  }, [nextExpiry]);
-}
-
 export function PendingInvitations({
   invitations,
   emailAvailable,
 }: PendingInvitationsProps) {
   const t = useTranslations('user');
   const format = useFormatter();
-  useExpiryTick(invitations);
   const revoke = useMutation(userMutations.revokeInvitation());
   const resend = useMutation(userMutations.resendInvitation());
   const isPending = revoke.isPending;
@@ -89,21 +64,8 @@ export function PendingInvitations({
     });
   };
 
-  /**
-   * Re-deliver the invite email. The button only exists on rows a resend can
-   * actually deliver: no delivered email (`email_sent_at` null — the server
-   * would demand `force` for a delivered one) and an unexpired link (the
-   * server rejects an expired one, and a button that always fails is noise).
-   * It stays disabled while delivery is unavailable — no transport, or a link
-   * address the server would itself refuse: a click could only ever come back
-   * as a server error.
-   */
+  /** Email the invite link again, like Sentry's "Resend invite". */
   const handleResend = (invitation: InvitationResponse) => {
-    // The timer keeps the row honest between clicks; the click itself
-    // rechecks. Between the last render and this event an invitation can
-    // have expired, and the server would answer it with a rejection the
-    // admin did not ask for.
-    if (new Date(invitation.expires_at).getTime() <= Date.now()) return;
     resend.mutate(
       { token: invitation.token },
       {
@@ -162,38 +124,44 @@ export function PendingInvitations({
             })}
             actions={
               <>
-                {!invitation.email_sent_at &&
+                {emailAvailable &&
                   new Date(invitation.expires_at).getTime() > Date.now() && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={RefreshIcon}
-                      onClick={() => handleResend(invitation)}
-                      disabled={resend.isPending || !emailAvailable}
-                      aria-label={t('pending.resendAria', {
-                        email: invitation.email,
-                      })}
-                    />
+                    <Tooltip content={t('pending.resend')}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={RefreshIcon}
+                        onClick={() => handleResend(invitation)}
+                        disabled={resend.isPending}
+                        aria-label={t('pending.resendAria', {
+                          email: invitation.email,
+                        })}
+                      />
+                    </Tooltip>
                   )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={CopyIcon}
-                  onClick={() => handleCopy(invitation, t)}
-                  aria-label={t('pending.copyAria', {
-                    email: invitation.email,
-                  })}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={CloseIcon}
-                  onClick={() => handleRevoke(invitation)}
-                  disabled={isPending}
-                  aria-label={t('pending.revokeAria', {
-                    email: invitation.email,
-                  })}
-                />
+                <Tooltip content={t('pending.copy')}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={CopyIcon}
+                    onClick={() => handleCopy(invitation, t)}
+                    aria-label={t('pending.copyAria', {
+                      email: invitation.email,
+                    })}
+                  />
+                </Tooltip>
+                <Tooltip content={t('pending.revoke')}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={CloseIcon}
+                    onClick={() => handleRevoke(invitation)}
+                    disabled={isPending}
+                    aria-label={t('pending.revokeAria', {
+                      email: invitation.email,
+                    })}
+                  />
+                </Tooltip>
               </>
             }
           />

@@ -46,11 +46,7 @@ export const userQueries = {
       queryKey: [...userQueries.invitationsRoot(), 'list'],
       queryFn: ({ signal }) => orThrow(api().invitations.list({ signal })),
     }),
-  /**
-   * Whether invitation emails can be delivered, and from where. An admin
-   * read: the invite form's switch asks this before offering delivery, and
-   * a failure degrades to "cannot send" rather than failing the page.
-   */
+  /** Whether the server can send invitation emails. */
   emailStatus: () =>
     queryOptions({
       queryKey: [...userQueries.invitationsRoot(), 'email-status'],

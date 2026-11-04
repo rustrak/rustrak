@@ -38,10 +38,8 @@ type InviteFormData = z.infer<typeof inviteSchema>;
 
 interface InviteFormProps {
   /**
-   * Whether the instance can deliver invitation emails: an enabled email
-   * integration, or a globally configured SMTP. False keeps the switch
-   * disabled with an explanation — the control is offered, not hidden, so
-   * an admin without mail delivery still learns the feature exists.
+   * Whether the server can send invitation emails. False keeps the switch
+   * disabled with an explanation, so the admin learns the feature exists.
    */
   emailAvailable: boolean;
 }
@@ -60,9 +58,6 @@ export function InviteForm({ emailAvailable }: InviteFormProps) {
   const isPending = invite.isPending;
 
   const onSubmit = (data: InviteFormData) => {
-    // `send_email` only travels when it can be honoured: a stale switch
-    // (delivery vanished between render and submit) degrades to the manual
-    // link instead of a 400 naming `send_email`.
     const deliverByEmail = data.sendEmail && emailAvailable;
     invite.mutate(
       {
@@ -95,9 +90,8 @@ export function InviteForm({ emailAvailable }: InviteFormProps) {
   };
 
   /**
-   * The link lands on the clipboard in every branch: an emailed invite can
-   * still bounce, and a failed send is exactly when the admin needs the link
-   * in hand. What changes is which verdict the toast announces.
+   * An emailed invitation needs nothing more from the admin. Otherwise the
+   * link goes on the clipboard, and a failed send says so.
    */
   const copyInvite = async (
     invitation: InvitationResponse,
@@ -106,16 +100,16 @@ export function InviteForm({ emailAvailable }: InviteFormProps) {
     const link = `${window.location.origin}/invite/${invitation.token}`;
     form.reset({ email: '', role: 'member', sendEmail: false });
 
-    const copied = await copyToClipboard(link);
-    if (deliverByEmail && invitation.email_sent_at) {
+    if (invitation.email_sent_at) {
       toast.success(t('toast.emailSent'), {
-        description: copied
-          ? t('toast.emailSentHint')
-          : t('toast.copyInviteLink', { link }),
+        description: t('toast.emailSentHint', { email: invitation.email }),
       });
-    } else if (deliverByEmail) {
-      // The invitation exists either way; only the delivery failed. A warning
-      // tells the admin to fall back to the link, not to re-invite.
+      return;
+    }
+
+    const copied = await copyToClipboard(link);
+    if (deliverByEmail) {
+      // The invitation exists; only the email failed.
       toast.warning(t('toast.emailFailed'), {
         description: copied
           ? t('toast.emailFailedHint')
