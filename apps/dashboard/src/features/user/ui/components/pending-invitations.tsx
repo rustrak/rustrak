@@ -5,7 +5,9 @@ import {
   CloseIcon,
   CopyIcon,
   EmptyIcon,
+  RefreshIcon,
   Tag,
+  Tooltip,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -21,6 +23,8 @@ import {
 
 interface PendingInvitationsProps {
   invitations: InvitationResponse[];
+  /** Whether the server can send invitation emails. */
+  emailAvailable: boolean;
 }
 
 /**
@@ -38,10 +42,14 @@ async function handleCopy(invitation: InvitationResponse, t: Translate) {
   }
 }
 
-export function PendingInvitations({ invitations }: PendingInvitationsProps) {
+export function PendingInvitations({
+  invitations,
+  emailAvailable,
+}: PendingInvitationsProps) {
   const t = useTranslations('user');
   const format = useFormatter();
   const revoke = useMutation(userMutations.revokeInvitation());
+  const resend = useMutation(userMutations.resendInvitation());
   const isPending = revoke.isPending;
 
   const handleRevoke = (invitation: InvitationResponse) => {
@@ -54,6 +62,25 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
           description: error.error.message,
         }),
     });
+  };
+
+  /** Email the invite link again, like Sentry's "Resend invite". */
+  const handleResend = (invitation: InvitationResponse) => {
+    resend.mutate(
+      { token: invitation.token },
+      {
+        onSuccess: () =>
+          toast.success(t('toast.resendSent'), {
+            description: t('toast.resendSentHint', {
+              email: invitation.email,
+            }),
+          }),
+        onError: (error) =>
+          toast.error(t('toast.resendFailed'), {
+            description: error.error.message,
+          }),
+      },
+    );
   };
 
   return (
@@ -82,6 +109,14 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
                     ? t('roles.admin')
                     : t('roles.member')}
                 </Tag>
+                <Tag
+                  variant="soft"
+                  tone={invitation.email_sent_at ? 'brand' : 'neutral'}
+                >
+                  {invitation.email_sent_at
+                    ? t('pending.emailSent')
+                    : t('pending.emailNotSent')}
+                </Tag>
               </span>
             }
             description={t('pending.expires', {
@@ -89,25 +124,44 @@ export function PendingInvitations({ invitations }: PendingInvitationsProps) {
             })}
             actions={
               <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={CopyIcon}
-                  onClick={() => handleCopy(invitation, t)}
-                  aria-label={t('pending.copyAria', {
-                    email: invitation.email,
-                  })}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={CloseIcon}
-                  onClick={() => handleRevoke(invitation)}
-                  disabled={isPending}
-                  aria-label={t('pending.revokeAria', {
-                    email: invitation.email,
-                  })}
-                />
+                {emailAvailable &&
+                  new Date(invitation.expires_at).getTime() > Date.now() && (
+                    <Tooltip content={t('pending.resend')}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={RefreshIcon}
+                        onClick={() => handleResend(invitation)}
+                        disabled={resend.isPending}
+                        aria-label={t('pending.resendAria', {
+                          email: invitation.email,
+                        })}
+                      />
+                    </Tooltip>
+                  )}
+                <Tooltip content={t('pending.copy')}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={CopyIcon}
+                    onClick={() => handleCopy(invitation, t)}
+                    aria-label={t('pending.copyAria', {
+                      email: invitation.email,
+                    })}
+                  />
+                </Tooltip>
+                <Tooltip content={t('pending.revoke')}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={CloseIcon}
+                    onClick={() => handleRevoke(invitation)}
+                    disabled={isPending}
+                    aria-label={t('pending.revokeAria', {
+                      email: invitation.email,
+                    })}
+                  />
+                </Tooltip>
               </>
             }
           />

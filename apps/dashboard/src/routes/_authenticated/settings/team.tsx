@@ -1,5 +1,5 @@
 import { Skeleton, TeamIcon } from '@rustrak/ui';
-import { noop, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
@@ -29,6 +29,7 @@ export const Route = createFileRoute('/_authenticated/settings/team')({
     if (answer?.state === 'authenticated' && answer.user.role === 'admin') {
       void queryClient.query(userQueries.team()).catch(noop);
       void queryClient.query(userQueries.invitations()).catch(noop);
+      void queryClient.query(userQueries.emailStatus()).catch(noop);
     }
   },
   pendingComponent: TeamLoading,
@@ -80,6 +81,10 @@ function TeamPage() {
 function TeamRoster({ currentUserId }: { currentUserId: number }) {
   const { data: members } = useSuspenseQuery(userQueries.team());
   const { data: invitations } = useSuspenseQuery(userQueries.invitations());
+  // Not suspended: an unreadable status reads as "cannot send", not as a
+  // failed page.
+  const { data: emailStatus } = useQuery(userQueries.emailStatus());
+  const emailAvailable = emailStatus?.available === true;
 
   const pendingInvitations = invitations.filter(
     (invitation) => invitation.status === 'pending',
@@ -87,9 +92,12 @@ function TeamRoster({ currentUserId }: { currentUserId: number }) {
 
   return (
     <>
-      <InviteForm />
+      <InviteForm emailAvailable={emailAvailable} />
       <TeamMembersList members={members} currentUserId={currentUserId} />
-      <PendingInvitations invitations={pendingInvitations} />
+      <PendingInvitations
+        invitations={pendingInvitations}
+        emailAvailable={emailAvailable}
+      />
     </>
   );
 }

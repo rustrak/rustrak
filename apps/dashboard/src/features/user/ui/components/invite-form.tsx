@@ -1,6 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { UserRole } from '@rustrak/client';
-import { Button, Input, NewIcon, Select, SelectItem } from '@rustrak/ui';
+import type { InvitationResponse, UserRole } from '@rustrak/client';
+import {
+  Button,
+  Input,
+  NewIcon,
+  Select,
+  SelectItem,
+  Switch,
+} from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useId } from 'react';
 import { useForm } from 'react-hook-form';
@@ -24,16 +31,25 @@ import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 const inviteSchema = z.object({
   email: z.email('Please enter a valid email address'),
   role: z.enum(['admin', 'member']),
+  sendEmail: z.boolean(),
 });
 
 type InviteFormData = z.infer<typeof inviteSchema>;
+
+interface InviteFormProps {
+  /**
+   * Whether the server can send invitation emails. False keeps the switch
+   * disabled with an explanation, so the admin learns the feature exists.
+   */
+  emailAvailable: boolean;
+}
 
 /**
  * A section of two rows, with the submit button beside its heading. The
  * button sits outside the `<form>` and joins it through the `form`
  * attribute, so Enter in the email field still submits.
  */
-export function InviteForm() {
+export function InviteForm({ emailAvailable }: InviteFormProps) {
   const t = useTranslations('user');
   const formId = useId();
 
@@ -42,13 +58,18 @@ export function InviteForm() {
   const isPending = invite.isPending;
 
   const onSubmit = (data: InviteFormData) => {
+    const deliverByEmail = data.sendEmail && emailAvailable;
     invite.mutate(
-      { email: data.email, role: data.role as UserRole },
+      {
+        email: data.email,
+        role: data.role as UserRole,
+        ...(deliverByEmail ? { send_email: true } : {}),
+      },
       {
         onError: (error) => {
           // An address that already has an account, or already has a pending
-          // invite, comes back as a `conflict` naming `email`. That belongs on
-          // the email input, where the fix is.
+          // invite, comes back as a `conflict` naming `email`. That belongs
+          // on the email input, where the fix is.
           const applied = applyServerFieldErrors(form, error.error, {
             labels: {
               email: t('invite.fieldEmail'),
@@ -63,23 +84,44 @@ export function InviteForm() {
             });
           }
         },
-        onSuccess: (invitation) => copyInvite(invitation.token),
+        onSuccess: (invitation) => copyInvite(invitation, deliverByEmail),
       },
     );
   };
 
-  const copyInvite = async (token: string) => {
-    const link = `${window.location.origin}/invite/${token}`;
-    form.reset({ email: '', role: 'member' });
+  /**
+   * An emailed invitation needs nothing more from the admin. Otherwise the
+   * link goes on the clipboard, and a failed send says so.
+   */
+  const copyInvite = async (
+    invitation: InvitationResponse,
+    deliverByEmail: boolean,
+  ) => {
+    const link = `${window.location.origin}/invite/${invitation.token}`;
+    form.reset({ email: '', role: 'member', sendEmail: false });
+
+    if (invitation.email_sent_at) {
+      toast.success(t('toast.emailSent'), {
+        description: t('toast.emailSentHint', { email: invitation.email }),
+      });
+      return;
+    }
 
     const copied = await copyToClipboard(link);
-    if (copied) {
+    if (deliverByEmail) {
+      // The invitation exists; only the email failed.
+      toast.warning(t('toast.emailFailed'), {
+        description: copied
+          ? t('toast.emailFailedHint')
+          : t('toast.copyInviteLink', { link }),
+      });
+    } else if (copied) {
       toast.success(t('toast.created'), {
         description: t('toast.createdHint'),
       });
     } else {
-      // Couldn't auto-copy (e.g. plain HTTP). Surface the link so it isn't lost;
-      // it's also re-copyable from the pending invitations list below.
+      // Couldn't auto-copy (e.g. plain HTTP). Surface the link so it isn't
+      // lost; it's also re-copyable from the pending invitations list below.
       toast.success(t('toast.created'), {
         description: t('toast.copyInviteLink', { link }),
       });
@@ -91,6 +133,7 @@ export function InviteForm() {
     defaultValues: {
       email: '',
       role: 'member',
+      sendEmail: false,
     },
   });
 
@@ -159,6 +202,31 @@ export function InviteForm() {
                       </SelectItem>
                       <SelectItem value="admin">{t('roles.admin')}</SelectItem>
                     </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </SettingRow>
+
+          <SettingRow
+            title={t('invite.sendEmailLabel')}
+            description={
+              emailAvailable ? undefined : t('invite.sendEmailUnavailable')
+            }
+          >
+            <FormField
+              control={form.control}
+              name="sendEmail"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={(checked) => field.onChange(checked)}
+                      disabled={isPending || !emailAvailable}
+                      aria-label={t('invite.sendEmailAria')}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

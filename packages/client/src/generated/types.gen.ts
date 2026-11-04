@@ -668,6 +668,13 @@ export type CreateInvitation = {
      * Global role the invited user will receive (`admin` | `member`).
      */
     role: UserRole;
+    /**
+     * Also email the invite link to the recipient (Sentry's `sendInvite`).
+     * Needs an enabled email integration or `SMTP_HOST`, and `DASHBOARD_URL`
+     * or `PUBLIC_URL`. The response
+     * carries `token` for manual sharing either way.
+     */
+    send_email?: boolean;
 };
 
 /**
@@ -748,6 +755,17 @@ export type DifAssembleFile = {
  */
 export type DifUploadBody = {
     [key: string]: unknown;
+};
+
+/**
+ * GET /api/invitations/email-status answer.
+ */
+export type EmailStatusResponse = {
+    /**
+     * Whether invitation emails can be sent: `SMTP_HOST` is set, and so is
+     * `DASHBOARD_URL` or `PUBLIC_URL` for the link.
+     */
+    available: boolean;
 };
 
 export type ErrorDetail = {
@@ -1025,6 +1043,10 @@ export type InvitationInfoResponse = {
 export type InvitationResponse = {
     created_at: string;
     email: string;
+    /**
+     * When the invitation email was last sent; null when none was.
+     */
+    email_sent_at: string | null;
     expires_at: string;
     role: UserRole;
     status: string;
@@ -3913,7 +3935,7 @@ export type InvitationsCreateData = {
 
 export type InvitationsCreateErrors = {
     /**
-     * Invalid role
+     * Invalid role, or send_email while invitation emails are not configured
      */
     400: ErrorResponse;
     /**
@@ -3940,6 +3962,39 @@ export type InvitationsCreateResponses = {
 };
 
 export type InvitationsCreateResponse = InvitationsCreateResponses[keyof InvitationsCreateResponses];
+
+export type InvitationsEmailStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/invitations/email-status';
+};
+
+export type InvitationsEmailStatusErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Reading the email integrations failed
+     */
+    500: ErrorResponse;
+};
+
+export type InvitationsEmailStatusError = InvitationsEmailStatusErrors[keyof InvitationsEmailStatusErrors];
+
+export type InvitationsEmailStatusResponses = {
+    /**
+     * Whether invitation emails can be sent
+     */
+    200: EmailStatusResponse;
+};
+
+export type InvitationsEmailStatusResponse = InvitationsEmailStatusResponses[keyof InvitationsEmailStatusResponses];
 
 export type InvitationsRevokeData = {
     body?: never;
@@ -3978,6 +4033,52 @@ export type InvitationsRevokeResponses = {
 };
 
 export type InvitationsRevokeResponse = InvitationsRevokeResponses[keyof InvitationsRevokeResponses];
+
+export type InvitationsResendData = {
+    body?: never;
+    path: {
+        /**
+         * Invitation token
+         */
+        token: string;
+    };
+    query?: never;
+    url: '/api/invitations/{token}/resend';
+};
+
+export type InvitationsResendErrors = {
+    /**
+     * Invitation expired or already used, or invitation emails are not configured
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Invitation not found
+     */
+    404: ErrorResponse;
+    /**
+     * The email could not be sent
+     */
+    500: ErrorResponse;
+};
+
+export type InvitationsResendError = InvitationsResendErrors[keyof InvitationsResendErrors];
+
+export type InvitationsResendResponses = {
+    /**
+     * Invitation email sent
+     */
+    200: InvitationResponse;
+};
+
+export type InvitationsResendResponse = InvitationsResendResponses[keyof InvitationsResendResponses];
 
 export type OauthGetAuthorizationData = {
     body?: never;

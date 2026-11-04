@@ -9,12 +9,24 @@ import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 import { alertQueries } from './queries';
 
+/**
+ * An email integration is also what sends invitation emails, so changing
+ * one changes the user slice's `emailStatus` answer. Slices cannot import
+ * each other, hence the literal key.
+ */
+const INVITATION_EMAIL_STATUS = ['invitations', 'email-status'] as const;
+
 export const alertMutations = {
   createIntegration: () =>
     mutationOptions({
       mutationFn: (body: CreateAlertIntegration) =>
         orThrow(api().alertChannels.create({ body })),
-      meta: { invalidates: [alertQueries.integrations().queryKey] },
+      meta: {
+        invalidates: [
+          alertQueries.integrations().queryKey,
+          INVITATION_EMAIL_STATUS,
+        ],
+      },
     }),
   // The integration is the variable, not a parameter: a list of them, or a
   // rule's channels tested together, is one mutation rather than one per row.
@@ -27,7 +39,12 @@ export const alertMutations = {
         id: number;
         body: UpdateAlertIntegration;
       }) => orThrow(api().alertChannels.update({ path: { id }, body })),
-      meta: { invalidates: [alertQueries.integrations().queryKey] },
+      meta: {
+        invalidates: [
+          alertQueries.integrations().queryKey,
+          INVITATION_EMAIL_STATUS,
+        ],
+      },
     }),
   /**
    * Rules in any project may route to the integration and lose it, and no key
@@ -38,7 +55,11 @@ export const alertMutations = {
       mutationFn: (id: number) =>
         orThrow(api().alertChannels.delete({ path: { id } })),
       meta: {
-        invalidates: [alertQueries.integrations().queryKey, ['projects']],
+        invalidates: [
+          alertQueries.integrations().queryKey,
+          INVITATION_EMAIL_STATUS,
+          ['projects'],
+        ],
       },
     }),
   /** Sends a sample alert through the integration; records nothing. */

@@ -44,6 +44,8 @@ pub struct Invitation {
     pub invited_by: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub accepted_at: Option<DateTime<Utc>>,
+    /// When the invitation email was last handed to SMTP; NULL when none was.
+    pub email_sent_at: Option<DateTime<Utc>>,
 }
 
 impl Invitation {
@@ -64,6 +66,12 @@ pub struct CreateInvitation {
     /// Global role the invited user will receive (`admin` | `member`).
     #[cfg_attr(feature = "openapi", schema(value_type = crate::models::UserRole))]
     pub role: String,
+    /// Also email the invite link to the recipient (Sentry's `sendInvite`).
+    /// Needs an enabled email integration or `SMTP_HOST`, and `DASHBOARD_URL`
+    /// or `PUBLIC_URL`. The response
+    /// carries `token` for manual sharing either way.
+    #[serde(default)]
+    pub send_email: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +92,9 @@ pub struct InvitationResponse {
     pub status: String,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+    /// When the invitation email was last sent; null when none was.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub email_sent_at: Option<DateTime<Utc>>,
 }
 
 impl From<Invitation> for InvitationResponse {
@@ -95,6 +106,7 @@ impl From<Invitation> for InvitationResponse {
             status: i.status,
             expires_at: i.expires_at,
             created_at: i.created_at,
+            email_sent_at: i.email_sent_at,
         }
     }
 }
@@ -114,6 +126,7 @@ mod tests {
             invited_by: Some(1),
             created_at: Utc::now(),
             accepted_at: None,
+            email_sent_at: None,
         }
     }
 

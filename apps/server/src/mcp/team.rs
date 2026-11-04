@@ -32,6 +32,10 @@ pub struct InviteArgs {
     email: String,
     /// Global role the invited user will receive: admin or member
     role: String,
+    /// Also email the invite link to the recipient. Needs an enabled email
+    /// integration or SMTP_HOST, and DASHBOARD_URL or PUBLIC_URL for the link.
+    #[serde(default)]
+    send_email: bool,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -101,12 +105,18 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Invite a person by email with a global role. Returns a single-use, expiring invite token; share the link `<app-url>/invite/<token>` manually (no email is sent). Requires an admin token.",
+        description = "Invite a person by email with a global role. By default returns a single-use, expiring invite token to share as the link `<app-url>/invite/<token>`. With send_email=true the link is also emailed to the recipient, which needs an enabled email integration or SMTP_HOST, and DASHBOARD_URL or PUBLIC_URL. Requires an admin token.",
         annotations(destructive_hint = false)
     )]
     async fn create_invitation(&self, Parameters(a): Parameters<InviteArgs>) -> CallToolResult {
         reply(async {
-            invitations::create_invitation(self.pool(), self.actor(), web::Json(args(&a)?)).await
+            invitations::create_invitation(
+                self.pool(),
+                self.actor(),
+                self.config(),
+                web::Json(args(&a)?),
+            )
+            .await
         })
         .await
     }
@@ -128,6 +138,20 @@ impl RustrakMcp {
             invitations::revoke_invitation(self.pool(), self.actor(), web::Path::from(a.token)),
             "Invitation revoked.".to_string(),
         )
+        .await
+    }
+
+    #[tool(
+        description = "Email the invite link of a pending invitation again. Fails when invitation emails are not configured or the send fails. Requires an admin token.",
+        annotations(destructive_hint = false)
+    )]
+    async fn resend_invitation(&self, Parameters(a): Parameters<InvitationArgs>) -> CallToolResult {
+        reply(invitations::resend_invitation(
+            self.pool(),
+            self.actor(),
+            self.config(),
+            web::Path::from(a.token),
+        ))
         .await
     }
 

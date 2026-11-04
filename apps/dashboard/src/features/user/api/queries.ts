@@ -46,6 +46,13 @@ export const userQueries = {
       queryKey: [...userQueries.invitationsRoot(), 'list'],
       queryFn: ({ signal }) => orThrow(api().invitations.list({ signal })),
     }),
+  /** Whether the server can send invitation emails. */
+  emailStatus: () =>
+    queryOptions({
+      queryKey: [...userQueries.invitationsRoot(), 'email-status'],
+      queryFn: ({ signal }) =>
+        orThrow(api().invitations.emailStatus({ signal })),
+    }),
   /** The instance's users with their global role and status. */
   team: () =>
     queryOptions({

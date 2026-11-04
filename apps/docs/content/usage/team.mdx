@@ -25,14 +25,20 @@ Instance admins have full access to every project without being added.
 There is no open sign-up; only admins invite.
 
 1. Go to **Settings → Members**.
-2. Under **Invite a member**, enter the email and pick **Member** or **Admin**.
-3. Click **Invite**. The invitation link is copied to your clipboard.
+2. Under **Invite a member**, enter the email, pick **Member** or **Admin** and, if you want, turn on **Send the invite by email**.
+3. Click **Invite**. Without the email, the invitation link is copied to your clipboard: share it yourself.
 
-Rustrak sends no email: share the link yourself. **Pending invitations** lets you copy it again or revoke it. A link works once and expires after 48 hours.
+**Pending invitations** lets you copy the link again, resend the email or revoke the invitation. A link works once and expires after 48 hours.
 
 The invitee opens the link, sets a password and is signed in, with the email and role from the invitation.
 
 With [single sign-on](/configuration/sso), people can also sign in through your identity provider.
+
+### Invitation emails
+
+They go out through the same SMTP as alert emails: the first enabled email integration in **Settings → Integrations**, with the `SMTP_*` [environment variables](/configuration/environment) filling in whatever it leaves empty. Either one alone is enough. The link uses `DASHBOARD_URL`, else `PUBLIC_URL`; without an SMTP host and one of those, the switch stays off.
+
+If the email fails, the invitation is still created and its link copied, so you can share it yourself or resend it later.
 
 <InteractiveDemo src="/demos/team.openshowcase" />
 
@@ -58,6 +64,13 @@ curl -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/team"
 curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
   -d '{"email": "lena@example.com", "role": "member"}' "$RUSTRAK_URL/api/invitations"
 
+# Same, and email the invite
+curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
+  -d '{"email": "lena@example.com", "role": "member", "send_email": true}' "$RUSTRAK_URL/api/invitations"
+
+# Email the invite link again
+curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/invitations/TOKEN/resend"
+
 # Add user 2 to project 1 as an editor
 curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
   -d '{"user_id": 2, "role": "editor"}' "$RUSTRAK_URL/api/projects/1/members"
@@ -69,4 +82,6 @@ curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: applicat
 | A viewer resolves or deletes an issue | `403` |
 | A non-admin calls a team or invitation endpoint | `403` |
 | `POST /auth/register` | `403`: sign-up is by invitation only |
+| `send_email: true` with no SMTP host, or no `DASHBOARD_URL` or `PUBLIC_URL` | `400`, naming `send_email` |
+| Resending an expired or accepted invitation | `400` |
 | Removing the last admin of the instance or a project | `409` |

@@ -2286,6 +2286,7 @@
           "Invitations"
         ],
         "summary": "POST /api/invitations — create an invitation (admin only)",
+        "description": "With `send_email: true` the invite link is also emailed. A failed send\nstill creates the invitation, with `email_sent_at: null`, so its link can\nbe shared by hand or the email resent.",
         "operationId": "invitations.create",
         "requestBody": {
           "content": {
@@ -2309,7 +2310,7 @@
             }
           },
           "400": {
-            "description": "Invalid role",
+            "description": "Invalid role, or send_email while invitation emails are not configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -2340,6 +2341,62 @@
           },
           "409": {
             "description": "Email already a user or pending invite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/invitations/email-status": {
+      "get": {
+        "tags": [
+          "Invitations"
+        ],
+        "summary": "GET /api/invitations/email-status — whether invitation emails can be sent (admin only)",
+        "operationId": "invitations.emailStatus",
+        "responses": {
+          "200": {
+            "description": "Whether invitation emails can be sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Reading the email integrations failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -2400,6 +2457,93 @@
           },
           "404": {
             "description": "Pending invitation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/invitations/{token}/resend": {
+      "post": {
+        "tags": [
+          "Invitations"
+        ],
+        "summary": "POST /api/invitations/{token}/resend — email the invite link again (admin only)",
+        "operationId": "invitations.resend",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Invitation token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invitation email sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invitation expired or already used, or invitation emails are not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invitation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The email could not be sent",
             "content": {
               "application/json": {
                 "schema": {
@@ -15226,6 +15370,10 @@
           "role": {
             "$ref": "#/components/schemas/UserRole",
             "description": "Global role the invited user will receive (`admin` | `member`)."
+          },
+          "send_email": {
+            "type": "boolean",
+            "description": "Also email the invite link to the recipient (Sentry's `sendInvite`).\nNeeds an enabled email integration or `SMTP_HOST`, and `DASHBOARD_URL`\nor `PUBLIC_URL`. The response\ncarries `token` for manual sharing either way."
           }
         }
       },
@@ -15409,6 +15557,19 @@
       "DifUploadBody": {
         "type": "object",
         "description": "Multipart legacy debug file upload: one `file` part holding a zip."
+      },
+      "EmailStatusResponse": {
+        "type": "object",
+        "description": "GET /api/invitations/email-status answer.",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether invitation emails can be sent: `SMTP_HOST` is set, and so is\n`DASHBOARD_URL` or `PUBLIC_URL` for the link."
+          }
+        }
       },
       "ErrorDetail": {
         "type": "object",
@@ -15993,7 +16154,8 @@
           "role",
           "status",
           "expires_at",
-          "created_at"
+          "created_at",
+          "email_sent_at"
         ],
         "properties": {
           "created_at": {
@@ -16002,6 +16164,14 @@
           },
           "email": {
             "type": "string"
+          },
+          "email_sent_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the invitation email was last sent; null when none was."
           },
           "expires_at": {
             "type": "string",

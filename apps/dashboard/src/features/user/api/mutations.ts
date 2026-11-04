@@ -179,14 +179,21 @@ export const userMutations = {
       meta: { invalidates: [userQueries.members(projectId).queryKey] },
     }),
   /**
-   * Invite an email with a role. No email is sent: the token builds the link
-   * the admin shares. An address that already has an account or an invite
-   * comes back as a `conflict` naming `email`, for the email input.
+   * Invite an email with a role, optionally emailing the link. An address
+   * that already has an account or an invite comes back as a `conflict`
+   * naming `email`, for the email input.
    */
   invite: () =>
     mutationOptions({
       mutationFn: (input: CreateInvitation) =>
         orThrow(api().invitations.create({ body: input })),
+      meta: { invalidates: [userQueries.invitations().queryKey] },
+    }),
+  /** Email an invitation's link again. */
+  resendInvitation: () =>
+    mutationOptions({
+      mutationFn: (input: { token: string }) =>
+        orThrow(api().invitations.resend({ path: { token: input.token } })),
       meta: { invalidates: [userQueries.invitations().queryKey] },
     }),
   /** The token is a variable: one mutation serves every pending row. */

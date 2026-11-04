@@ -208,11 +208,16 @@ impl Config {
     /// the address SDKs reach is also the one people open), else the bind
     /// address.
     pub fn dashboard_url(&self) -> String {
-        self.dashboard
-            .url
-            .clone()
-            .or_else(|| self.public_url.clone())
+        self.public_dashboard_url()
+            .map(str::to_string)
             .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
+    }
+
+    /// [`Config::dashboard_url`] without the bind-address fallback: a link
+    /// sent to someone else, like an invitation, needs an address they can
+    /// open.
+    pub fn public_dashboard_url(&self) -> Option<&str> {
+        self.dashboard.url.as_deref().or(self.public_url.as_deref())
     }
 }
 

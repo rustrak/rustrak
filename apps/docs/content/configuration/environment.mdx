@@ -228,12 +228,13 @@ The cache only saves the file read and the parse. Which file a `debug_id` points
 
 ## Email Alerts (SMTP)
 
-Global SMTP settings for email notifications. Channels can override these.
+Global SMTP settings for email notifications and team invitations. Alert channels can override these.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SMTP_HOST` | - | SMTP server hostname |
 | `SMTP_PORT` | `587` | SMTP port (587 for STARTTLS, 465 for SSL) |
+| `SMTP_TLS` | by port | `starttls`, `tls` (SSL) or `none`. Unset: `tls` on port 465, `starttls` elsewhere. `none` is for a relay on a trusted network or a local test server |
 | `SMTP_USERNAME` | - | SMTP username |
 | `SMTP_PASSWORD` | - | SMTP password |
 | `SMTP_FROM` | `alerts@rustrak.local` | Default sender address |
