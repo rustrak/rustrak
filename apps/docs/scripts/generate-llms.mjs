@@ -8,6 +8,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { getPost, getPosts } from '../src/lib/blog.ts';
+import { DEFINITION } from '../src/lib/seo.ts';
 
 const SITE = 'https://rustrak.dev';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -100,7 +102,7 @@ function firstSentences(body) {
 const index = [
   '# Rustrak',
   '',
-  '> Self-hosted error tracking compatible with the Sentry SDKs. One Rust server, SQLite or PostgreSQL, that also takes transactions, logs, release health, cron check-ins, user feedback and AI agent traces.',
+  `> ${DEFINITION} Besides errors it takes transactions, logs, release health, cron check-ins, user feedback and AI agent traces.`,
   '',
   'Notes for agents:',
   '',
@@ -128,6 +130,25 @@ for (const [dir, name] of SECTIONS) {
   index.push('');
 }
 
+// Blog posts: the long write-ups (benchmarks, how a feature works) that a
+// docs page links to but does not repeat. Read through the same `getPosts()`
+// the blog pages use, so drafts, order and frontmatter parsing always agree
+// with what the site publishes.
+index.push('## Blog', '');
+await mkdir(join(PUBLIC, 'blog'), { recursive: true });
+for (const post of getPosts()) {
+  const url = `/blog/${post.slug}`;
+  const { body } = toMarkdown(getPost(post.slug).content);
+  const page = `# ${post.title}\n\n${body.replace(/^# .+\n+/, '')}`;
+  await writeFile(
+    join(PUBLIC, `${url}.md`),
+    `---\nurl: ${SITE}${url}\n---\n\n${page}\n`,
+  );
+  index.push(`- [${post.title}](${SITE}${url}.md): ${post.description}`);
+  full.push(`<!-- ${SITE}${url} -->\n\n${page}`);
+}
+index.push('');
+
 index.push(
   '## API',
   '',
@@ -137,7 +158,7 @@ index.push(
   '## Optional',
   '',
   `- [Changelog](${SITE}/changelog): What changed in each release`,
-  `- [All docs in one file](${SITE}/llms-full.txt): Every page above, concatenated`,
+  `- [All docs in one file](${SITE}/llms-full.txt): Every page and post above, concatenated`,
   '',
 );
 

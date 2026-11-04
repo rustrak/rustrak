@@ -124,3 +124,19 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      # Tell Bing, Yandex and the other IndexNow engines what the site now holds,
+      # instead of waiting for their next crawl. Bing's index is also what
+      # ChatGPT and Copilot search. Google does not take IndexNow; it reads the
+      # sitemap. The key is public by design: it is the file named after it in
+      # apps/docs/public/. A failed ping must never fail a deploy that worked.
+      - name: Ping IndexNow
+        continue-on-error: true
+        env:
+          KEY: 5842a4272a2e67f69e30517f2fe7e607
+        run: |
+          URLS=$(grep -o '<loc>[^<]*' apps/docs/out/sitemap.xml | sed 's/<loc>//' | jq -R . | jq -sc .)
+          curl -fsS -X POST https://api.indexnow.org/indexnow \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            -d "{\"host\":\"rustrak.dev\",\"key\":\"$KEY\",\"urlList\":$URLS}" \
+            -w '\nIndexNow: HTTP %{http_code}\n'

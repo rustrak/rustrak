@@ -7,7 +7,7 @@ import { RoadmapLive } from './live';
 
 /* Written out rather than imported from `home/chrome`: this is a server
    module, and a constant from a client module arrives as a reference. */
-const ISSUES = 'https://github.com/AbianS/rustrak/issues/new';
+const ISSUES = 'https://github.com/rustrak/rustrak/issues/new';
 
 /**
  * The public roadmap: the intro, the whole plan as a board, each horizon in

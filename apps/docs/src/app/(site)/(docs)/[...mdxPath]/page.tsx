@@ -1,4 +1,5 @@
 import { generateStaticParamsFor, importPage } from 'nextra/pages';
+import { baseMetadata } from '@/lib/seo';
 import { useMDXComponents } from '../../../../../mdx-components';
 
 /**
@@ -35,10 +36,18 @@ export async function generateMetadata(props: PageProps) {
   const { metadata } = await importPage(params.mdxPath);
   // The page's Markdown twin, written by scripts/generate-llms.mjs, so an agent
   // reading the HTML can find the clean version (llmstxt.org, v2).
+  const path = `/${params.mdxPath.join('/')}`;
   return {
     ...metadata,
     alternates: {
-      types: { 'text/markdown': `/${params.mdxPath.join('/')}.md` },
+      canonical: path,
+      types: { 'text/markdown': `${path}.md` },
+    },
+    openGraph: {
+      ...baseMetadata.openGraph,
+      title: metadata.title,
+      description: metadata.description,
+      url: path,
     },
   };
 }

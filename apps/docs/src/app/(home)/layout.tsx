@@ -1,6 +1,9 @@
 import '@fontsource-variable/inter/opsz.css';
 import '@fontsource-variable/geist-mono';
 import './home.css';
+import { baseMetadata } from '@/lib/seo';
+
+export const metadata = baseMetadata;
 
 /**
  * The landing's own root layout.

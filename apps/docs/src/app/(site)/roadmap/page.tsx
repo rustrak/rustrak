@@ -5,6 +5,7 @@ export const metadata = {
   title: 'Roadmap',
   description:
     'What the Rustrak team is building now, what comes next and what is still being explored.',
+  alternates: { canonical: '/roadmap' },
 };
 
 export default function Page() {

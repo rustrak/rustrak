@@ -6,6 +6,7 @@ export const metadata: Metadata = {
     template: '%s — Rustrak Changelog',
   },
   description: 'Release notes and version history for the Rustrak project.',
+  alternates: { canonical: '/changelog' },
 };
 
 export default function ChangelogLayout({

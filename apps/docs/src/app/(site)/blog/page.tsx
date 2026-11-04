@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: 'Blog',
   description:
     'Updates, releases, and engineering notes from the Rustrak project.',
+  alternates: { canonical: '/blog' },
 };
 
 /** The blog index: the landing's section head, then one row per post. */
