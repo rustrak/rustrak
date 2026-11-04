@@ -54,7 +54,7 @@ export function ArchiveFooter({
           JavaScript. They are also on{' '}
           <a
             className="text-fg-brand hover:underline"
-            href="https://github.com/AbianS/rustrak/releases"
+            href="https://github.com/rustrak/rustrak/releases"
           >
             GitHub Releases
           </a>

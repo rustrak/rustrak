@@ -2,6 +2,7 @@ import '@fontsource-variable/inter/opsz.css';
 import '@fontsource-variable/geist-mono';
 import { Head } from 'nextra/components';
 import './globals.css';
+import { baseMetadata } from '@/lib/seo';
 
 /*
  * Inter and Geist Mono, self-hosted the same way as the landing and the
@@ -9,6 +10,7 @@ import './globals.css';
  */
 
 export const metadata = {
+  ...baseMetadata,
   title: {
     default: 'Rustrak Documentation',
     template: '%s - Rustrak',

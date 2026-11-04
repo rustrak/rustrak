@@ -31,14 +31,22 @@ export default async function DocsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const pageMap = await getPageMap();
+  // The changelog keeps its navbar link but loses its ~80 entries: the theme
+  // renders the whole page map into every docs page (mobile menu included),
+  // so they were the first thing in each page's HTML, ahead of its content.
+  // The changelog has its own index and needs none of them.
+  const pageMap = (await getPageMap()).map((item) =>
+    'children' in item && item.name === 'changelog'
+      ? { name: item.name, route: item.route }
+      : item,
+  );
 
   return (
     <Layout
       pageMap={pageMap}
-      docsRepositoryBase="https://github.com/AbianS/rustrak/tree/main/apps/docs"
+      docsRepositoryBase="https://github.com/rustrak/rustrak/tree/main/apps/docs"
       navbar={
-        <Navbar logo={logo} projectLink="https://github.com/AbianS/rustrak" />
+        <Navbar logo={logo} projectLink="https://github.com/rustrak/rustrak" />
       }
       footer={<Footer />}
       // Dark only, like the landing: no theme switch, and the stored or

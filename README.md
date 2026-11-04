@@ -1,6 +1,6 @@
 <div align="center">
 
-<img width="2000" height="1440" alt="hero" src="https://github.com/user-attachments/assets/33b9e743-8dc0-4fb1-95f6-477a806c348e" />
+<img width="2000" height="1440" alt="Rustrak, self-hosted error tracking: project overview dashboard with errors, sessions and open issues" src="https://github.com/user-attachments/assets/33b9e743-8dc0-4fb1-95f6-477a806c348e" />
 
 [![CI](https://github.com/rustrak/rustrak/actions/workflows/ci.yml/badge.svg)](https://github.com/rustrak/rustrak/actions/workflows/ci.yml)
 [![Server coverage](https://img.shields.io/codecov/c/github/rustrak/rustrak/main?flag=rust&label=server%20coverage&logo=codecov)](https://codecov.io/gh/rustrak/rustrak)
@@ -27,7 +27,7 @@ no vendor library to swap, no code to rewrite. It runs as a single process
 with SQLite by default, which means the whole install is one compose file and
 nothing to provision.
 
-<img width="2000" height="1000" alt="wp-overview" src="https://github.com/user-attachments/assets/8d2d4474-a568-4e81-aa9f-9fc2d24401d9" />
+<img width="2000" height="1000" alt="Rustrak project overview: error trend, new issues and crash-free sessions" src="https://github.com/user-attachments/assets/8d2d4474-a568-4e81-aa9f-9fc2d24401d9" />
 
 ## Why Rustrak
 
@@ -45,7 +45,7 @@ spike from becoming a timeout inside your app. On a 4-core box with SQLite, a
 burst of 20,000 events is accepted at about 5k events per second with the
 server peaking under 60 MB of memory.
 
-<img width="2000" height="760" alt="numbers" src="https://github.com/user-attachments/assets/25985660-7e37-40a3-a113-f89d88093310" />
+<img width="2000" height="760" alt="Rustrak resource numbers: memory and throughput" src="https://github.com/user-attachments/assets/25985660-7e37-40a3-a113-f89d88093310" />
 
 No per-event pricing, no sampling you did not ask for, and no seat you have to
 justify to anyone.
@@ -95,7 +95,7 @@ Rustrak accepts the standard Sentry envelope, so migrating is a configuration
 change rather than a project. Create a project, copy its DSN, and change one
 line. Your SDK never learns it is talking to something else.
 
-<img width="2000" height="700" alt="dsn" src="https://github.com/user-attachments/assets/24ecaf98-444b-43e5-a159-493bec082788" />
+<img width="2000" height="700" alt="Sending events to Rustrak with a Sentry SDK DSN" src="https://github.com/user-attachments/assets/24ecaf98-444b-43e5-a159-493bec082788" />
 
 ```python
 # Python
@@ -130,7 +130,7 @@ From the list you can triage in bulk, filter by status, and read each issue's
 24-hour trend without opening anything. Upload source maps and a minified frame
 resolves back to the line you actually wrote.
 
-<img width="2000" height="880" alt="wp-issues" src="https://github.com/user-attachments/assets/b25d7022-e9e9-4e92-bfea-e271c3044f53" />
+<img width="2000" height="880" alt="Rustrak issues list" src="https://github.com/user-attachments/assets/b25d7022-e9e9-4e92-bfea-e271c3044f53" />
 
 ### AI agent traces
 
@@ -144,7 +144,7 @@ takes standalone OTel-style spans that have no parent transaction. When one agen
 hands off to another mid-run, the trace lists every agent involved, not just the
 first.
 
-<img width="2000" height="960" alt="wp-agents" src="https://github.com/user-attachments/assets/7f5a21d1-2e0f-4f9e-8960-28f11687205f" />
+<img width="2000" height="960" alt="Rustrak AI agent monitoring" src="https://github.com/user-attachments/assets/7f5a21d1-2e0f-4f9e-8960-28f11687205f" />
 
 There is no server-side setup. One integration in `Sentry.init` is the whole
 change:
@@ -171,7 +171,7 @@ needs attention is the one that looks wrong.
 
 Open a transaction for its span waterfall and its measurements.
 
-<img width="2000" height="800" alt="wp-performance" src="https://github.com/user-attachments/assets/6aa077b2-c7dd-490d-a864-78703da8b96a" />
+<img width="2000" height="800" alt="Rustrak performance view" src="https://github.com/user-attachments/assets/6aa077b2-c7dd-490d-a864-78703da8b96a" />
 
 ### Logs
 
@@ -183,7 +183,7 @@ and per-row attributes that keep their types.
 A log emitted inside an active span carries the `trace_id`, so it links back to
 the request it came from.
 
-<img width="2000" height="840" alt="wp-logs" src="https://github.com/user-attachments/assets/c947ccd2-18c5-4588-b737-d2f3620dfa70" />
+<img width="2000" height="840" alt="Rustrak structured logs view" src="https://github.com/user-attachments/assets/c947ccd2-18c5-4588-b737-d2f3620dfa70" />
 
 Logging is off by default in Sentry SDKs. Opt in once, then use the logger:
 
@@ -205,7 +205,7 @@ release, which turns "is this deploy worse than the last one" into two numbers:
 Both are tiered rather than printed flat: green at 99% or above, amber at 95%,
 red below. A release at 96% is not fine and should not read as if it were.
 
-<img width="2000" height="760" alt="wp-releases" src="https://github.com/user-attachments/assets/f5edde0b-a4c2-4b99-a1e0-6f95d7776c39" />
+<img width="2000" height="760" alt="Rustrak releases view" src="https://github.com/user-attachments/assets/f5edde0b-a4c2-4b99-a1e0-6f95d7776c39" />
 
 ### Alerts
 
@@ -221,7 +221,7 @@ Destinations are Slack (incoming webhook or bot token), SMTP email, or a plain
 JSON webhook. Credentials belong to the instance and are configured once;
 routing belongs to the rule.
 
-<img width="2000" height="720" alt="wp-alerts" src="https://github.com/user-attachments/assets/7460d258-c413-4bcc-b0f5-60e7e8ee6c63" />
+<img width="2000" height="720" alt="Rustrak alerts view" src="https://github.com/user-attachments/assets/7460d258-c413-4bcc-b0f5-60e7e8ee6c63" />
 
 ### Teams, storage and retention
 

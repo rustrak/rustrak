@@ -5,9 +5,10 @@
 //   public/<page>.md       each page as plain Markdown, next to its HTML
 //
 // All three are generated from content/ at build time and git-ignored.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { DEFINITION } from '../src/lib/seo.ts';
 
 const SITE = 'https://rustrak.dev';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -100,7 +101,7 @@ function firstSentences(body) {
 const index = [
   '# Rustrak',
   '',
-  '> Self-hosted error tracking compatible with the Sentry SDKs. One Rust server, SQLite or PostgreSQL, that also takes transactions, logs, release health, cron check-ins, user feedback and AI agent traces.',
+  `> ${DEFINITION} Besides errors it takes transactions, logs, release health, cron check-ins, user feedback and AI agent traces.`,
   '',
   'Notes for agents:',
   '',
@@ -127,6 +128,34 @@ for (const [dir, name] of SECTIONS) {
   }
   index.push('');
 }
+
+// Blog posts: the long write-ups (benchmarks, how a feature works) that a
+// docs page links to but does not repeat. Title and summary come from the
+// frontmatter, since posts have no `# ` heading.
+index.push('## Blog', '');
+const date = (source) => source.match(/^date:\s*"?([\d-]+)/m)?.[1] ?? '';
+const posts = await Promise.all(
+  (await readdir(join(CONTENT, 'blog')))
+    .filter((f) => f.endsWith('.mdx'))
+    .map(async (file) => [
+      file,
+      await readFile(join(CONTENT, 'blog', file), 'utf8'),
+    ]),
+);
+posts.sort(([, a], [, b]) => date(b).localeCompare(date(a)));
+for (const [file, source] of posts) {
+  if (/^draft:\s*true/m.test(source)) continue;
+  const title = source.match(/^title:\s*"?(.+?)"?\s*$/m)?.[1] ?? file;
+  const url = `/blog/${file.replace(/\.mdx$/, '')}`;
+  const page = toMarkdown(source);
+  await mkdir(join(PUBLIC, 'blog'), { recursive: true });
+  await writeFile(
+    join(PUBLIC, `${url}.md`),
+    `---\nurl: ${SITE}${url}\n---\n\n# ${title}\n\n${page.body.replace(/^# .+\n+/, '')}\n`,
+  );
+  index.push(`- [${title}](${SITE}${url}.md): ${page.description}`);
+}
+index.push('');
 
 index.push(
   '## API',

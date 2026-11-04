@@ -13,6 +13,7 @@ import {
   getPosts,
   shortReadingTime,
 } from '@/lib/blog';
+import { baseMetadata, jsonLd, SITE } from '@/lib/seo';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -32,16 +33,22 @@ export async function generateMetadata({ params }: PageProps) {
   return {
     title: post.title,
     description: post.description,
+    alternates: {
+      canonical: `/blog/${slug}`,
+      types: { 'text/markdown': `/blog/${slug}.md` },
+    },
     openGraph: {
+      ...baseMetadata.openGraph,
       title: post.title,
       description: post.description,
+      url: `/blog/${slug}`,
       type: 'article',
       publishedTime: post.date,
       authors: [post.author],
       ...(post.image ? { images: [{ url: post.image }] } : {}),
     },
     twitter: {
-      card: 'summary_large_image',
+      ...baseMetadata.twitter,
       title: post.title,
       description: post.description,
     },
@@ -85,6 +92,18 @@ export default async function BlogPostPage({ params }: PageProps) {
 
   return (
     <Shell>
+      <script
+        {...jsonLd({
+          '@context': 'https://schema.org',
+          '@type': 'BlogPosting',
+          headline: post.title,
+          description: post.description,
+          datePublished: post.date,
+          author: { '@type': 'Person', name: post.author },
+          publisher: { '@id': `${SITE}/#organization` },
+          mainEntityOfPage: `${SITE}/blog/${slug}`,
+        })}
+      />
       <header className="mx-auto flex w-full max-w-[47rem] flex-col gap-5 px-6 pt-36 sm:pt-44">
         <Reveal y={12}>
           <Link
