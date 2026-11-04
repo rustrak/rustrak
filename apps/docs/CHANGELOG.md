@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.2
+
+### Patch Changes
+
+- [`30f480f`](https://github.com/rustrak/rustrak/commit/30f480fa9a8e3fa8962dc4f04b76472950bd714b) Thanks [@AbianS](https://github.com/AbianS)! - Technical SEO foundation for rustrak.dev: page metadata, canonical URLs and structured data, plus blog posts in the generated llms.txt files.
+
 ## 0.17.1
 
 ### Patch Changes
