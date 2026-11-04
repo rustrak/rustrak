@@ -14,20 +14,22 @@ For each project you choose a repository, and from then on:
 - **Code owners.** The repository's `CODEOWNERS` file names who owns each issue.
 - **Automatic issues.** New errors can open a GitHub issue, filtered by level, environment and number of events.
 
+<InteractiveDemo src="/demos/github.openshowcase" />
+
 ## How it connects
 
 Rustrak creates its own **private GitHub App** for your server. No shared app
 and no token sit between your Rustrak and GitHub: the app belongs to you, and
 it only sees the repositories you pick.
 
-1. In Rustrak, open **Settings → Integrations**, find GitHub under **Development**, press **Configure** and then **Connect GitHub**.
+1. In Rustrak, open **Settings → Integrations → GitHub** and press **Connect GitHub**.
    Type an organization name first to create the app there instead of under
    your own account.
 2. GitHub shows its **Create GitHub App** page, already filled in. Confirm it.
    You can rename the app there if the name is taken.
 3. Back in Rustrak, press **Choose repositories** and install the app on the
    account or organization whose repositories you want.
-4. In each project, open **Settings → GitHub** and pick its repository.
+4. In each project, open **Settings → Repository** and pick its repository.
 
 Only an instance admin can connect GitHub. Anyone who can edit a project can
 choose its repository.
@@ -55,7 +57,7 @@ Behind a firewall, everything but the GitHub-to-Rustrak sync keeps working.
 
 The path in a stack frame is rarely the path in the repository: an app built
 into a container reports `/app/lib/db.ts` for the file the repository keeps at
-`src/lib/db.ts`. A **path mapping** in **Settings → GitHub** says how one
+`src/lib/db.ts`. A **path mapping** in the project's **Settings → Repository** says how one
 becomes the other:
 
 | Path in the stack trace | Path in the repository |
@@ -83,13 +85,13 @@ resolves issues of projects connected to the repository it was pushed to.
 
 ## Assignees
 
-Each person sets their GitHub username under **Settings → Account**. Assign
+Each person sets their GitHub username under **Settings → Integrations → GitHub**. Assign
 them an issue in Rustrak and its linked GitHub issues are assigned to them;
 assign them on GitHub and the Rustrak issue follows.
 
 ## Automatic issues
 
-**Project settings → GitHub → Open GitHub issues automatically** opens one GitHub issue per new Rustrak issue. Without filters that is every new error, so narrow it:
+In the project's **Settings → Repository**, **Open GitHub issues automatically** opens one GitHub issue per new Rustrak issue. Without filters that is every new error, so narrow it:
 
 | Filter | Opens the issue when |
 |--------|----------------------|

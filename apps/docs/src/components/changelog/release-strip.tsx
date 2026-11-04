@@ -5,13 +5,13 @@ import * as m from 'motion/react-m';
 import { useState } from 'react';
 import { formatReleaseDate, type ReleasePulse } from '@/lib/release';
 import { cn } from '@/lib/utils';
-import { EASE } from '../landing/motion';
+import { EASE, VIEW } from '../landing/motion';
 import { useSmoothScrolling } from '../landing/smooth-scroll';
 
 const TONE: Record<ReleasePulse['channel'], string> = {
-  minor: 'bg-primary',
-  patch: 'bg-foreground/35',
-  seed: 'bg-foreground/20',
+  minor: 'bg-surface-brand',
+  patch: 'bg-fg/35',
+  seed: 'bg-fg/20',
 };
 
 /**
@@ -46,10 +46,29 @@ export function ReleaseStrip({
   };
 
   let year = '';
+  const latest = pulse[0];
+  const stats = [
+    { label: 'Releases', value: history.length },
+    { label: 'Changes', value: changes },
+    { label: 'Latest', value: latest?.version ?? '—' },
+  ];
 
   return (
-    <div onPointerLeave={() => setHover(null)}>
-      <div className="flex h-16 items-end gap-[2px] sm:h-24 sm:gap-[3px]">
+    <div
+      onPointerLeave={() => setHover(null)}
+      className="rounded-3xl border border-border-subtle bg-panel p-6 sm:p-8"
+    >
+      <dl className="mb-10 grid grid-cols-3 gap-6">
+        {stats.map((stat) => (
+          <div key={stat.label} className="flex flex-col gap-1.5">
+            <dd className="order-1 text-fg text-page-title tabular-nums">
+              {stat.value}
+            </dd>
+            <dt className="order-2 text-fg-meta text-meta">{stat.label}</dt>
+          </div>
+        ))}
+      </dl>
+      <div className="flex h-20 items-end gap-[2px] sm:h-28 sm:gap-[3px]">
         {history.map((release, i) => {
           const active = hover === release;
           return (
@@ -65,7 +84,7 @@ export function ReleaseStrip({
             >
               <m.span
                 className={cn(
-                  'block w-full origin-bottom rounded-[1px] transition-opacity duration-300',
+                  'block w-full origin-bottom rounded-xs transition-opacity duration-300',
                   TONE[release.channel],
                   hover && !active && 'opacity-35',
                 )}
@@ -73,8 +92,9 @@ export function ReleaseStrip({
                   height: `${Math.max(6, (release.total / peak) * 100)}%`,
                 }}
                 initial={{ scaleY: 0 }}
-                animate={{ scaleY: 1 }}
-                transition={{ duration: 1, ease: EASE, delay: 0.9 + i * 0.018 }}
+                whileInView={{ scaleY: 1 }}
+                viewport={VIEW}
+                transition={{ duration: 1, ease: EASE, delay: 0.3 + i * 0.015 }}
               />
             </button>
           );
@@ -90,7 +110,7 @@ export function ReleaseStrip({
           return (
             <span
               key={release.anchor}
-              className="min-w-0 flex-1 overflow-visible font-mono text-[10.5px] tracking-[0.16em] whitespace-nowrap text-muted-foreground"
+              className="min-w-0 flex-1 overflow-visible whitespace-nowrap font-mono text-fg-meta text-mono-sm"
             >
               {starts ? year : null}
             </span>
@@ -98,10 +118,10 @@ export function ReleaseStrip({
         })}
       </div>
 
-      <p className="mt-5 h-5 truncate font-mono text-[11px] tracking-[0.12em] text-muted-foreground uppercase">
+      <p className="mt-5 h-5 truncate text-fg-meta text-meta">
         {hover ? (
           <>
-            <span className="text-foreground">{hover.version}</span>
+            <span className="text-fg">{hover.version}</span>
             <span className="mx-3 opacity-50">/</span>
             {hover.title}
             <span className="mx-3 hidden opacity-50 sm:inline">/</span>
@@ -112,10 +132,7 @@ export function ReleaseStrip({
             {hover.total} changes
           </>
         ) : (
-          <>
-            {history.length} releases<span className="mx-3 opacity-50">/</span>
-            {changes} changes
-          </>
+          'One bar per release, as tall as its changes. Lime is a minor.'
         )}
       </p>
     </div>

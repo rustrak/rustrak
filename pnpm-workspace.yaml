@@ -39,6 +39,7 @@ minimumReleaseAgeExclude:
   - lucide-react@1.65.0
   - tailwind-variants@4.0.0
   - tsdown@0.23.4
+  - "@rustrak/*"
 
 overrides:
   nextra>zod: 4.3.5

@@ -1,0 +1,25 @@
+/*
+ * What the website needs that the product never does: display sizes, shared by
+ * the landing and every page under `(site)`. The dashboard's largest type is a
+ * 24 px page title; a page read from across the room needs a scale of its own.
+ * Everything else comes from the tokens.
+ */
+@theme {
+  --text-display: clamp(2.75rem, 6.4vw, 5.25rem);
+  --text-display--line-height: 1.02;
+  --text-display--letter-spacing: -0.045em;
+  --text-display--font-weight: 600;
+
+  --text-headline: clamp(2rem, 4.2vw, 3.5rem);
+  --text-headline--line-height: 1.06;
+  --text-headline--letter-spacing: -0.035em;
+  --text-headline--font-weight: 600;
+
+  --text-lead: clamp(1.0625rem, 1.4vw, 1.25rem);
+  --text-lead--line-height: 1.55;
+  --text-lead--letter-spacing: -0.011em;
+
+  --text-eyebrow: 0.8125rem;
+  --text-eyebrow--line-height: 1.2;
+  --text-eyebrow--font-weight: 500;
+}

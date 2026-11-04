@@ -1,121 +1,87 @@
 # Team & Access
 
-Rustrak supports multiple users on a single instance, with role-based access control over actions and projects. Invite teammates, give them their own login, and scope what they can see and do.
+One Rustrak serves a whole team. Each person has their own login, and roles decide which projects they see and what they can do there.
 
 ## Roles
 
-There are two layers of roles.
+There are two layers.
 
-### Global role
+**Instance role.** Every user is an **Admin** or a **Member**. Admins see every project and manage the team. Members see only the projects they were added to.
 
-Every user has one global role:
+The first account, created by `CREATE_SUPERUSER`, is the primary user: it cannot be demoted or removed, so the instance can never be locked out.
 
-- **Admin** — full access to every project plus team management (invite/remove users, change roles).
-- **Member** — can only see and act on projects they are explicitly added to.
+**Project role.** Members get a role on each project they join:
 
-The **primary user** (the first account, created during bootstrap) is special: it can never be demoted or deleted, so an instance can't be locked out.
-
-### Per-project role
-
-Members are granted access to individual projects with a per-project role:
-
-| Role | Can do |
+| Role | Can |
 |---|---|
-| **Viewer** | Read issues, events, and project details |
-| **Editor** | Everything a viewer can, plus resolve/mute/delete issues and update the project |
-| **Admin** | Everything an editor can, plus delete the project and manage its members |
+| **Viewer** | Read issues, events and the project |
+| **Editor** | Also resolve, archive and delete issues, and change the project |
+| **Admin** | Also delete the project and manage its members |
 
-Global admins implicitly have full access to every project, so they don't need explicit membership.
+Instance admins have full access to every project without being added.
 
-## Inviting people
+## Invite someone
 
-Registration is **invite-only** — there is no open sign-up. Only admins can invite.
+There is no open sign-up; only admins invite.
 
-1. Go to **Settings → Team**
-2. Under **Invite a member**, enter an email, pick a global role, and optionally turn on **Send the invite by email**
-3. Click **Invite**
+1. Go to **Settings → Members**.
+2. Under **Invite a member**, enter the email, pick **Member** or **Admin** and, if you want, turn on **Send the invite by email**.
+3. Click **Invite**. Without the email, the invitation link is copied to your clipboard: share it yourself.
 
-Without the email, the invite link is copied to your clipboard: **share it yourself** (chat, email, etc.). You can re-copy it any time from the **Pending invitations** list, resend the email from there, and revoke the invitation there too.
+**Pending invitations** lets you copy the link again, resend the email or revoke the invitation. A link works once and expires after 48 hours.
 
-Invitation links expire after 48 hours and can only be used once.
+The invitee opens the link, sets a password and is signed in, with the email and role from the invitation.
 
-### Email delivery
+With [single sign-on](/configuration/sso), people can also sign in through your identity provider.
 
-Invitation emails go out through the same SMTP settings as alert emails: the first enabled email integration under **Settings → Integrations**, with the server's `SMTP_*` variables filling in whatever it leaves empty (`SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`). Either one alone is enough. The link in them is built from `DASHBOARD_URL`, else `PUBLIC_URL`. Until there is an SMTP host and one of those URLs, the switch is greyed out and `send_email` returns 400.
+### Invitation emails
+
+They go out through the same SMTP as alert emails: the first enabled email integration in **Settings → Integrations**, with the `SMTP_*` [environment variables](/configuration/environment) filling in whatever it leaves empty. Either one alone is enough. The link uses `DASHBOARD_URL`, else `PUBLIC_URL`; without an SMTP host and one of those, the switch stays off.
 
 If the email fails, the invitation is still created and its link copied, so you can share it yourself or resend it later.
 
-### Accepting an invitation
+<InteractiveDemo src="/demos/team.openshowcase" />
 
-The invitee opens the link (`/invite/<token>`), sets a password, and is logged in — their email and global role come from the invitation.
+## Manage the team
 
-## Managing the team
+In **Settings → Members**, the **Actions** menu next to each person changes their instance role or removes them. Removing a user revokes their access and their API tokens. You cannot remove yourself, the primary user or the last admin.
 
-From **Settings → Team** (admins only) you can:
+## Project members
 
-- **Change a user's global role** between admin and member
-- **Remove a user** — this revokes their access and tokens (with a confirmation step)
+Open a project's **Settings → Members** to add someone with a project role, change their role or remove them. A project always keeps at least one admin. Whoever creates a project becomes its admin.
 
-You cannot remove yourself, the primary user, or the last remaining admin.
+<InteractiveDemo src="/demos/team-project.openshowcase" />
 
-## Managing project members
+## API
 
-Open a project and use **Members** to control who can access it:
-
-- **Add a member** — pick a user and a per-project role (viewer/editor/admin)
-- **Change a member's role**
-- **Remove a member**
-
-The last admin of a project cannot be removed. When a member creates a project, they automatically become its admin.
-
-## API access and tokens
-
-API tokens are scoped to the user who created them — a token inherits that user's projects and permissions. See [API Tokens](/usage/tokens).
-
-Admins can manage the team over the API too:
+[API tokens](/usage/tokens) act as the user who made them, with that user's projects and permissions. Admins can manage the team over the API:
 
 ```bash
-# List the team (admin token required)
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/team
+# The team
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/team"
 
-# Invite a member — returns a single-use invite token
-curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"teammate@example.com","role":"member"}' \
-  http://localhost:8080/api/invitations
+# Invite someone; the response holds the invitation token
+curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
+  -d '{"email": "lena@example.com", "role": "member"}' "$RUSTRAK_URL/api/invitations"
 
-# Same, but also email the invite (needs an email integration or SMTP_HOST, and DASHBOARD_URL or PUBLIC_URL)
-curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"teammate2@example.com","role":"member","send_email":true}' \
-  http://localhost:8080/api/invitations
-
-# Whether invitation emails can be sent
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/invitations/email-status
+# Same, and email the invite
+curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
+  -d '{"email": "lena@example.com", "role": "member", "send_email": true}' "$RUSTRAK_URL/api/invitations"
 
 # Email the invite link again
-curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/invitations/TOKEN/resend
+curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/invitations/TOKEN/resend"
 
-# Add a user to a project as an editor
-curl -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":2,"role":"editor"}' \
-  http://localhost:8080/api/projects/1/members
+# Add user 2 to project 1 as an editor
+curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
+  -d '{"user_id": 2, "role": "editor"}' "$RUSTRAK_URL/api/projects/1/members"
 ```
 
-You can also manage all of this from an AI assistant via the [MCP server](/sdks/mcp).
-
-## Behavior reference
-
-| Situation | Result |
+| Situation | Answer |
 |---|---|
-| Member opens a project they don't belong to | `404 Not Found` (existence is not leaked) |
-| Viewer tries to resolve/delete an issue | `403 Forbidden` |
-| Non-admin calls a team or invitation endpoint | `403 Forbidden` |
-| `POST /auth/register` (open sign-up) | `403 Forbidden` — invite-only |
-| `send_email: true` with no email integration or SMTP_HOST, or without DASHBOARD_URL/PUBLIC_URL | `400 Bad Request` — the `send_email` field is named in `error.fields` |
-| Resend for an expired or already-accepted invitation | `400 Bad Request` |
-| Remove the last admin of an instance or project | `409 Conflict` |
+| A member opens a project they are not in | `404`, so the project's existence does not leak |
+| A viewer resolves or deletes an issue | `403` |
+| A non-admin calls a team or invitation endpoint | `403` |
+| `POST /auth/register` | `403`: sign-up is by invitation only |
+| `send_email: true` with no SMTP host, or no `DASHBOARD_URL` or `PUBLIC_URL` | `400`, naming `send_email` |
+| Resending an expired or accepted invitation | `400` |
+| Removing the last admin of the instance or a project | `409` |

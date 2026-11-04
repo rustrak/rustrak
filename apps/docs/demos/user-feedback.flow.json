@@ -1,0 +1,17 @@
+{
+  "title": "Triage user feedback",
+  "url": "http://localhost:8090/projects/1/feedback",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "heading", "name": "Grace Lin" } },
+    { "action": "click", "target": { "role": "button", "name": "Hiro Tanaka" }, "tooltip": "Each report says who wrote it, what they saw and on which page" },
+    { "action": "wait", "for": { "role": "heading", "name": "Hiro Tanaka" } },
+    { "action": "click", "target": { "role": "button", "name": "Resolve R" }, "tooltip": "Dealt with it? Resolve it and the next one opens" },
+    { "action": "wait", "for": { "role": "heading", "name": "Anonymous" } },
+    { "action": "click", "target": { "role": "button", "name": "Grace Lin" }, "hotspot": false },
+    { "action": "wait", "for": { "role": "link", "name": "View the error it is about" } },
+    { "action": "click", "target": { "role": "link", "name": "View the error it is about" }, "tooltip": "Grace's report came with the error she hit. Open it" },
+    { "action": "wait", "for": { "role": "heading", "name": "User Feedback" } },
+    { "action": "scroll", "target": { "role": "heading", "name": "User Feedback" } }
+  ]
+}

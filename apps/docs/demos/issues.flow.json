@@ -1,0 +1,16 @@
+{
+  "title": "Search and filter issues",
+  "url": "http://localhost:8090/projects/2/issues",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "heading", "name": "Issues" } },
+    { "action": "click", "target": { "role": "tab", "name": "Open" }, "tooltip": "The tabs split issues by state: open, resolved, archived" },
+    { "action": "click", "target": { "role": "button", "name": "Events" }, "tooltip": "Sort by any column, here the noisiest first" },
+    { "action": "click", "target": { "role": "combobox", "name": "Filter by key:value, or search…" }, "tooltip": "Filter by any column, environment or release" },
+    { "action": "click", "target": { "role": "option", "name": "Priority priority:" }, "hotspot": false },
+    { "action": "click", "target": { "role": "option", "name": "High" }, "tooltip": "Only the high-priority issues stay" },
+    { "action": "fill", "target": { "role": "combobox", "name": "Filter by key:value, or search…" }, "value": "carrier" },
+    { "action": "press", "key": "Enter" },
+    { "action": "wait", "for": { "role": "link", "name": "TimeoutError: Carrier API did not answer within 10s" } }
+  ]
+}

@@ -32,8 +32,8 @@ export function ChangelogFeed({
     useReleaseArchive({ initial, chunkByAnchor });
 
   return (
-    <>
-      <div className="mx-auto max-w-[1440px] px-5 pb-20 sm:px-10 lg:pb-28">
+    <div className="mx-auto w-full max-w-6xl px-6">
+      <div className="pt-16 pb-20">
         <ReleaseStrip pulse={pulse} onSelect={jumpTo} />
       </div>
 
@@ -49,6 +49,6 @@ export function ChangelogFeed({
         hasMore={loadedChunks < chunkCount}
         onLoadMore={() => void loadThrough(loadedChunks + 1)}
       />
-    </>
+    </div>
   );
 }

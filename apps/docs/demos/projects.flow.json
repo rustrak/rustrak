@@ -1,0 +1,15 @@
+{
+  "title": "Turn a product off",
+  "url": "http://localhost:8090/projects/3/settings/data",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "switch", "name": "Agents" } },
+    { "action": "click", "target": { "role": "switch", "name": "Agents" }, "tooltip": "This worker runs no AI. Turn Agents off: it leaves the sidebar and stops storing data" },
+    { "action": "click", "target": { "role": "button", "name": "Move Crons up" }, "tooltip": "The arrows set the order the sidebar lists products in" },
+    { "action": "click", "target": { "role": "button", "name": "Move Crons up" }, "hotspot": false },
+    { "action": "click", "target": { "role": "link", "name": "Billing worker", "exact": true, "nth": 0 }, "hotspot": false },
+    { "action": "wait", "for": { "role": "link", "name": "Crons" } },
+    { "action": "click", "target": { "role": "link", "name": "Crons" }, "tooltip": "Crons now comes first under Monitor, and Agents is gone" },
+    { "action": "wait", "for": { "role": "link", "name": "New monitor" } }
+  ]
+}

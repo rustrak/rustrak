@@ -1,5 +1,17 @@
 # docs
 
+## 0.17.1
+
+### Patch Changes
+
+- [`d78753f`](https://github.com/rustrak/rustrak/commit/d78753fe115f0a6ede90acbe09f3842168c27887) Thanks [@AbianS](https://github.com/AbianS)! - Re-record every interactive demo to show the whole task and start each one only once it is on screen, scope the webhook repeat checks to one channel, and apply review fixes across the docs.
+
+## 0.17.0
+
+### Minor Changes
+
+- [`498bb9a`](https://github.com/rustrak/rustrak/commit/498bb9af72fd39938485bfac2e14693eed1ba9ea) Thanks [@AbianS](https://github.com/AbianS)! - Redesign the website (landing, docs and blog) on the product design system: @rustrak/ui components, Inter and Geist Mono, platform icons.
+
 ## 0.16.8
 
 ### Patch Changes
