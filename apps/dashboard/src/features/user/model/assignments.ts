@@ -80,6 +80,10 @@ export const reachesProjects = (
     (p) => catalog.find((r) => r.key === p.resource)?.scope === 'project',
   );
 
+/** A role the member holds that the reader cannot list, nor know what it holds. */
+export const isUnlisted = (role: RoleChoice, roles: { id: number }[]) =>
+  typeof role === 'number' && !roles.some((r) => r.id === role);
+
 /** A role as a line of access shows it. */
 export type RoleOption = Pick<Role, 'id' | 'name' | 'description'>;
 

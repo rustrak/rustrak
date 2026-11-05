@@ -7,6 +7,7 @@ import type {
 } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
 import {
+  isUnlisted,
   reachesProjects,
   roleChoices,
   rowsFrom,
@@ -142,5 +143,20 @@ describe('roleChoices', () => {
     expect(roleChoices([], held, canGive)).toEqual([
       { id: 7, name: 'Hidden', description: '' },
     ]);
+  });
+});
+
+describe('isUnlisted', () => {
+  const roles = [{ id: 1 }];
+
+  it('is a held role whose permissions the reader cannot know', () => {
+    expect(isUnlisted(2, roles)).toBe(true);
+    expect(isUnlisted(2, [])).toBe(true);
+  });
+
+  it('is not a listed role, custom permissions or an empty line', () => {
+    expect(isUnlisted(1, roles)).toBe(false);
+    expect(isUnlisted('personal', [])).toBe(false);
+    expect(isUnlisted(null, [])).toBe(false);
   });
 });

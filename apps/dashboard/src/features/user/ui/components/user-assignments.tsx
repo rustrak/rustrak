@@ -23,6 +23,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import {
   type AccessRow,
+  isUnlisted,
   type RoleChoice,
   type RoleOption,
   reachesProjects,
@@ -44,9 +45,6 @@ import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 const PERSONAL = 'personal';
 
 type ProjectOption = { id: number; name: string; platform?: string | null };
-
-const isUnlisted = (role: RoleChoice, roles: Role[]) =>
-  typeof role === 'number' && !roles.some((r) => r.id === role);
 
 const missesProjects = (row: AccessRow) =>
   row.role !== null && row.projects?.length === 0;
@@ -192,6 +190,7 @@ export function UserAssignments({
                     reachesProjects(permissionsOf(row.role), catalog)
                   }
                   personalTaken={hasPersonalRow && row.role !== 'personal'}
+                  unlisted={isUnlisted(row.role, roles)}
                   readOnly={readOnly}
                   onRole={(role) => chooseRole(index, role)}
                   onProjects={(next) => setRow(index, { projects: next })}
@@ -340,6 +339,7 @@ function AccessLine({
   projects,
   reaches,
   personalTaken,
+  unlisted,
   readOnly,
   onRole,
   onProjects,
@@ -353,6 +353,8 @@ function AccessLine({
   reaches: boolean;
   /** Another line already uses the custom permissions. */
   personalTaken: boolean;
+  /** Customizing starts from its permissions, which the reader cannot know. */
+  unlisted: boolean;
   readOnly: boolean;
   onRole: (role: RoleChoice) => void;
   onProjects: (next: number[] | null) => void;
@@ -413,7 +415,7 @@ function AccessLine({
         </div>
         {readOnly ? null : (
           <div className="flex items-center justify-end gap-1 md:mt-6">
-            {typeof row.role === 'number' && !personalTaken ? (
+            {typeof row.role === 'number' && !personalTaken && !unlisted ? (
               <Button variant="ghost" size="sm" onClick={onCustomize}>
                 {t('users.customize')}
               </Button>
