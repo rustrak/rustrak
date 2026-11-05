@@ -20,26 +20,38 @@ CREATE TABLE project_members (
 );
 CREATE INDEX idx_project_members_user ON project_members(user_id);
 CREATE INDEX idx_project_members_project ON project_members(project_id);
--- Put back what the old levels can say. The level comes from what the role holds
--- now, since seeded roles are editable and a name proves nothing, and the highest
--- wins; a role on every project becomes a membership of each one that exists; a
--- role with no project permission is no membership. Anything finer than the three
--- levels (and any workspace permission) is lost with these tables.
+-- Put back what the old levels can say, without giving more than was held: a
+-- level takes every permission it stands for, read from what the user's roles
+-- hold now (seeded roles are editable, a name proves nothing), and a role on
+-- every project counts on each one that exists. Less than a whole level is no
+-- membership: that access goes with these tables, as does anything finer.
 INSERT INTO project_members (project_id, user_id, role)
-SELECT p.id, ra.user_id,
-    CASE MAX(CASE
-        WHEN rp.resource IN ('project-members', 'client-keys') AND rp.action = 'update' THEN 3
-        WHEN rp.action <> 'read' THEN 2
-        ELSE 1
-    END) WHEN 3 THEN 'admin' WHEN 2 THEN 'editor' ELSE 'viewer' END
-FROM role_assignments ra
-JOIN role_permissions rp ON rp.role_id = ra.role_id
-JOIN projects p ON p.id = ra.project_id OR ra.project_id IS NULL
-WHERE rp.resource IN (
-    'issues', 'performance', 'logs', 'sessions', 'releases', 'source-maps', 'alert-rules',
-    'monitors', 'project', 'client-keys', 'project-members', 'project-github'
+WITH legacy (level, resource, action) AS (VALUES
+    (1, 'issues', 'read'), (1, 'performance', 'read'), (1, 'logs', 'read'), (1, 'sessions', 'read'),
+    (1, 'releases', 'read'), (1, 'source-maps', 'read'), (1, 'alert-rules', 'read'), (1, 'monitors', 'read'),
+    (1, 'client-keys', 'read'), (1, 'project-members', 'read'), (1, 'project-github', 'read'),
+    (2, 'issues', 'update'), (2, 'issues', 'delete'),
+    (2, 'releases', 'create'), (2, 'releases', 'update'), (2, 'releases', 'delete'),
+    (2, 'source-maps', 'create'), (2, 'source-maps', 'delete'),
+    (2, 'alert-rules', 'create'), (2, 'alert-rules', 'update'), (2, 'alert-rules', 'delete'),
+    (2, 'monitors', 'create'), (2, 'monitors', 'update'), (2, 'monitors', 'delete'),
+    (2, 'project', 'update'), (2, 'project-github', 'update'),
+    (3, 'project', 'delete'), (3, 'client-keys', 'update'), (3, 'project-members', 'update')
+), held AS (
+    SELECT DISTINCT p.id AS project_id, ra.user_id, rp.resource, rp.action
+    FROM role_assignments ra
+    JOIN role_permissions rp ON rp.role_id = ra.role_id
+    JOIN projects p ON p.id = ra.project_id OR ra.project_id IS NULL
 )
-GROUP BY p.id, ra.user_id;
+SELECT project_id, user_id,
+    CASE
+        WHEN COUNT(*) = 29 THEN 'admin'
+        WHEN SUM(CASE WHEN level <= 2 THEN 1 ELSE 0 END) = 26 THEN 'editor'
+        ELSE 'viewer'
+    END
+FROM held JOIN legacy USING (resource, action)
+GROUP BY project_id, user_id
+HAVING SUM(CASE WHEN level = 1 THEN 1 ELSE 0 END) = 11;
 DROP TABLE role_assignments;
 DROP TABLE role_permissions;
 DROP TABLE roles;

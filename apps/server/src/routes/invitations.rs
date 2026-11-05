@@ -1,4 +1,4 @@
-//! Invitation routes (global admin only).
+//! Invitation routes.
 //!
 //! - POST   /api/invitations                — create an invitation, optionally
 //!   emailing the invite link
@@ -77,7 +77,7 @@ fn may_hold_token(actor: &ApiActor, roles: &[Role], invitation: &Invitation) -> 
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/invitations — create an invitation (admin only)
+/// POST /api/invitations — create an invitation (needs `invitations:create`)
 ///
 /// With `send_email: true` the invite link is also emailed. A failed send
 /// still creates the invitation, with `email_sent_at: null`, so its link can
@@ -147,7 +147,7 @@ pub async fn create_invitation(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/invitations/email-status — whether invitation emails can be sent (admin only)
+/// GET /api/invitations/email-status — whether invitation emails can be sent (needs `invitations:read`)
 pub async fn email_status(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
@@ -177,7 +177,7 @@ pub async fn email_status(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/invitations/{id}/resend — email the invite link again (admin only)
+/// POST /api/invitations/{id}/resend — email the invite link again (needs `invitations:create`)
 pub async fn resend_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -222,7 +222,7 @@ pub async fn resend_invitation(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/invitations — list invitations (admin only)
+/// GET /api/invitations — list invitations (needs `invitations:read`)
 pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     actor.require(Resource::Invitations, Action::Read, None)?;
 
@@ -257,7 +257,7 @@ pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppRe
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/invitations/{id} — revoke a pending invitation (admin only)
+/// DELETE /api/invitations/{id} — revoke a pending invitation (needs `invitations:delete`)
 pub async fn revoke_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,

@@ -397,11 +397,11 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `invitations.create({ body })` | `POST /api/invitations` | Create an invitation (admin only) |
-| `invitations.emailStatus()` | `GET /api/invitations/email-status` | Whether invitation emails can be sent (admin only) |
-| `invitations.list()` | `GET /api/invitations` | List invitations (admin only) |
-| `invitations.resend({ path })` | `POST /api/invitations/{id}/resend` | Email the invite link again (admin only) |
-| `invitations.revoke({ path })` | `DELETE /api/invitations/{id}` | Revoke a pending invitation (admin only) |
+| `invitations.create({ body })` | `POST /api/invitations` | Create an invitation (needs `invitations:create`) |
+| `invitations.emailStatus()` | `GET /api/invitations/email-status` | Whether invitation emails can be sent (needs `invitations:read`) |
+| `invitations.list()` | `GET /api/invitations` | List invitations (needs `invitations:read`) |
+| `invitations.resend({ path })` | `POST /api/invitations/{id}/resend` | Email the invite link again (needs `invitations:create`) |
+| `invitations.revoke({ path })` | `DELETE /api/invitations/{id}` | Revoke a pending invitation (needs `invitations:delete`) |
 
 ### Issues
 

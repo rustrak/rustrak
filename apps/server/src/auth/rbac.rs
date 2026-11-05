@@ -288,6 +288,19 @@ impl Access {
         }
     }
 
+    /// Whether `action` is allowed on a project this user just created. Their
+    /// roles extend to it unless they already reach every project, and a
+    /// token's list of projects does not grow to include it.
+    pub fn can_on_new_project(&self, resource: Resource, action: Action, id: i32) -> bool {
+        if self.cap.as_ref().is_some_and(|c| c.projects.is_some()) {
+            return false;
+        }
+        match self.visible_projects() {
+            ProjectScope::All => self.can(resource, action, Some(id)),
+            ProjectScope::Only(_) => self.can_somewhere(resource, action),
+        }
+    }
+
     /// The projects this user can see at all.
     pub fn visible_projects(&self) -> ProjectScope {
         let held = if self.instance.any_project_grant() {

@@ -1047,7 +1047,7 @@ export class AlertChannels extends HeyApiClient {
 
 export class Invitations extends HeyApiClient {
     /**
-     * GET /api/invitations — list invitations (admin only)
+     * GET /api/invitations — list invitations (needs `invitations:read`)
      */
     public list<ThrowOnError extends boolean = false>(options?: Options<InvitationsListData, ThrowOnError>): RequestResult<InvitationsListResponses, InvitationsListErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<InvitationsListResponses, InvitationsListErrors, ThrowOnError>({
@@ -1064,7 +1064,7 @@ export class Invitations extends HeyApiClient {
     }
     
     /**
-     * POST /api/invitations — create an invitation (admin only)
+     * POST /api/invitations — create an invitation (needs `invitations:create`)
      *
      * With `send_email: true` the invite link is also emailed. A failed send
      * still creates the invitation, with `email_sent_at: null`, so its link can
@@ -1089,7 +1089,7 @@ export class Invitations extends HeyApiClient {
     }
     
     /**
-     * GET /api/invitations/email-status — whether invitation emails can be sent (admin only)
+     * GET /api/invitations/email-status — whether invitation emails can be sent (needs `invitations:read`)
      */
     public emailStatus<ThrowOnError extends boolean = false>(options?: Options<InvitationsEmailStatusData, ThrowOnError>): RequestResult<InvitationsEmailStatusResponses, InvitationsEmailStatusErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<InvitationsEmailStatusResponses, InvitationsEmailStatusErrors, ThrowOnError>({
@@ -1106,7 +1106,7 @@ export class Invitations extends HeyApiClient {
     }
     
     /**
-     * DELETE /api/invitations/{id} — revoke a pending invitation (admin only)
+     * DELETE /api/invitations/{id} — revoke a pending invitation (needs `invitations:delete`)
      */
     public revoke<ThrowOnError extends boolean = false>(options: Options<InvitationsRevokeData, ThrowOnError>): RequestResult<InvitationsRevokeResponses, InvitationsRevokeErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<InvitationsRevokeResponses, InvitationsRevokeErrors, ThrowOnError>({
@@ -1123,7 +1123,7 @@ export class Invitations extends HeyApiClient {
     }
     
     /**
-     * POST /api/invitations/{id}/resend — email the invite link again (admin only)
+     * POST /api/invitations/{id}/resend — email the invite link again (needs `invitations:create`)
      */
     public resend<ThrowOnError extends boolean = false>(options: Options<InvitationsResendData, ThrowOnError>): RequestResult<InvitationsResendResponses, InvitationsResendErrors, ThrowOnError> {
         return (options.client ?? this.client).post<InvitationsResendResponses, InvitationsResendErrors, ThrowOnError>({

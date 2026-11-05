@@ -1142,3 +1142,73 @@ async fn a_role_name_longer_than_its_column_is_a_validation_error() {
     );
     assert_eq!(status, 201, "the limit counts characters: {body}");
 }
+
+/// The keys in a creation response follow what the caller holds on the new
+/// project, which is the same answer `GET` gives them afterwards.
+#[actix_web::test]
+async fn creating_a_project_returns_its_keys_only_to_who_holds_them_there() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let new_project = |name: &str| json!({ "name": name });
+    let create = (Resource::Projects, Action::Create);
+    let keys = (Resource::ClientKeys, Action::Read);
+
+    // Reaches every project through one grant, holds the keys on only one:
+    // no role extends to the new project, so nothing gives them there.
+    let wide = holder(
+        &db.pool,
+        "wide@x.com",
+        &[create, (Resource::Issues, Action::Read)],
+        None,
+    )
+    .await;
+    let on_one = role(&db.pool, "keys on one", &[keys]).await;
+    RoleService::assign(&db.pool, wide.id, on_one, Some(p))
+        .await
+        .unwrap();
+    // Its roles extend to what it creates, keys included.
+    let extended = holder(&db.pool, "ext@x.com", &[create, keys], Some(p)).await;
+    // Its list does not grow to reach what it creates.
+    let limited = AuthTokenService::create_for_user(
+        &db.pool,
+        CreateAuthToken {
+            project_ids: Some(vec![p]),
+            ..Default::default()
+        },
+        Some(owner.id),
+    )
+    .await
+    .unwrap()
+    .token;
+    let app = app!(db.pool.clone());
+
+    let (status, body) = call!(app, post, "/api/projects", wide.token, new_project("a"));
+    assert_eq!(status, 201, "{body}");
+    assert!(
+        body["dsn"].is_null() && body["sentry_key"].is_null(),
+        "{body}"
+    );
+
+    let (status, body) = call!(app, post, "/api/projects", limited, new_project("b"));
+    assert_eq!(status, 201, "{body}");
+    assert!(
+        body["dsn"].is_null() && body["sentry_key"].is_null(),
+        "{body}"
+    );
+
+    let (status, body) = call!(app, post, "/api/projects", extended.token, new_project("c"));
+    assert_eq!(status, 201, "{body}");
+    assert!(body["dsn"].is_string(), "{body}");
+    let (_, again) = call!(
+        app,
+        get,
+        format!("/api/projects/{}", body["id"]),
+        extended.token
+    );
+    assert_eq!(again["dsn"], body["dsn"]);
+
+    let (status, body) = call!(app, post, "/api/projects", owner.token, new_project("d"));
+    assert_eq!(status, 201, "{body}");
+    assert!(body["dsn"].is_string(), "{body}");
+}

@@ -176,13 +176,49 @@ async fn the_migration_carries_over_existing_admins_and_memberships() {
     assert_eq!(names, ["Editor"]);
 }
 
-/// Rolling back keeps what the old levels can say: the level comes from what
-/// the role holds now, the highest wins, an all-project assignment becomes a
-/// membership of each project, and a role with no project permission none.
+/// Rolling back never gives more than a role held: a level takes every
+/// permission it stands for, across the user's roles on the project, and a role
+/// on every project counts on each one. Anything less is no membership.
 #[cfg(feature = "sqlite")]
 #[actix_web::test]
-async fn rolling_the_migration_back_restores_memberships() {
+async fn rolling_the_migration_back_restores_only_complete_levels() {
     const BEFORE_RBAC: i64 = 20261105000000 - 1;
+    const VIEWER: &[(&str, &str)] = &[
+        ("issues", "read"),
+        ("performance", "read"),
+        ("logs", "read"),
+        ("sessions", "read"),
+        ("releases", "read"),
+        ("source-maps", "read"),
+        ("alert-rules", "read"),
+        ("monitors", "read"),
+        ("client-keys", "read"),
+        ("project-members", "read"),
+        ("project-github", "read"),
+    ];
+    const EDITOR_ADDS: &[(&str, &str)] = &[
+        ("issues", "update"),
+        ("issues", "delete"),
+        ("releases", "create"),
+        ("releases", "update"),
+        ("releases", "delete"),
+        ("source-maps", "create"),
+        ("source-maps", "delete"),
+        ("alert-rules", "create"),
+        ("alert-rules", "update"),
+        ("alert-rules", "delete"),
+        ("monitors", "create"),
+        ("monitors", "update"),
+        ("monitors", "delete"),
+        ("project", "update"),
+        ("project-github", "update"),
+    ];
+    const ADMIN_ADDS: &[(&str, &str)] = &[
+        ("project", "delete"),
+        ("client-keys", "update"),
+        ("project-members", "update"),
+    ];
+
     let dir = tempfile::tempdir().unwrap();
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
@@ -197,40 +233,37 @@ async fn rolling_the_migration_back_restores_memberships() {
     migrator.run(&pool).await.unwrap();
 
     let (p1, p2) = (project(&pool, "one").await, project(&pool, "two").await);
-    let u = |email: &'static str| user(&pool, email);
-    let (both, everywhere, workspace) =
-        (u("b@x.com").await, u("e@x.com").await, u("w@x.com").await);
-    let held = |name: &'static str, perms: Vec<(Resource, Action)>| {
-        let pool = &pool;
-        async move {
-            RoleService::create(
-                pool,
-                name,
-                "",
-                perms
-                    .into_iter()
-                    .map(|(resource, action)| rustrak::models::Permission { resource, action })
-                    .collect(),
-            )
-            .await
-            .unwrap()
-            .id
+    let mut roles = 0;
+    let mut give = async |email: &str, sets: &[&[&[(&str, &str)]]], place: Option<i32>| {
+        let who = user(&pool, email).await;
+        for set in sets {
+            roles += 1;
+            let permissions = set
+                .iter()
+                .flat_map(|pairs| pairs.iter())
+                .map(|(r, a)| rustrak::models::Permission {
+                    resource: Resource::parse(r).unwrap(),
+                    action: Action::parse(a).unwrap(),
+                })
+                .collect();
+            let role = RoleService::create(&pool, &format!("r{roles}"), "", permissions)
+                .await
+                .unwrap();
+            RoleService::assign(&pool, who.id, role.id, place)
+                .await
+                .unwrap();
         }
+        who.id
     };
-    let viewer = held("v", vec![(Resource::Issues, Action::Read)]).await;
-    let editor = held("e", vec![(Resource::Project, Action::Update)]).await;
-    let admin = held("a", vec![(Resource::ProjectMembers, Action::Update)]).await;
-    let settings = held("s", vec![(Resource::Storage, Action::Read)]).await;
-    for (who, role, project) in [
-        (both.id, viewer, Some(p1)),
-        (both.id, admin, Some(p1)),
-        (everywhere.id, editor, None),
-        (workspace.id, settings, None),
-    ] {
-        RoleService::assign(&pool, who, role, project)
-            .await
-            .unwrap();
-    }
+
+    let admin = give("a@x.com", &[&[VIEWER, EDITOR_ADDS, ADMIN_ADDS]], Some(p1)).await;
+    let everywhere = give("e@x.com", &[&[VIEWER, EDITOR_ADDS]], None).await;
+    let split = give("s@x.com", &[&[VIEWER], &[EDITOR_ADDS]], Some(p1)).await;
+    let viewer = give("v@x.com", &[&[VIEWER]], Some(p2)).await;
+    // Partial grants: none of these stands for a whole level.
+    give("m@x.com", &[&[&[("project-members", "update")]]], Some(p1)).await;
+    give("l@x.com", &[&[&[("logs", "read")]]], Some(p1)).await;
+    give("w@x.com", &[&[&[("storage", "read")]]], None).await;
 
     migrator.undo(&pool, BEFORE_RBAC).await.unwrap();
 
@@ -240,12 +273,13 @@ async fn rolling_the_migration_back_restores_memberships() {
             .await
             .unwrap();
     rows.sort();
-    assert_eq!(
-        rows,
-        [
-            (p1, both.id, "admin".to_string()),
-            (p1, everywhere.id, "editor".to_string()),
-            (p2, everywhere.id, "editor".to_string()),
-        ]
-    );
+    let mut expected = vec![
+        (p1, admin, "admin".to_string()),
+        (p1, everywhere, "editor".to_string()),
+        (p2, everywhere, "editor".to_string()),
+        (p1, split, "editor".to_string()),
+        (p2, viewer, "viewer".to_string()),
+    ];
+    expected.sort();
+    assert_eq!(rows, expected);
 }

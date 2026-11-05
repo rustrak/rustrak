@@ -2320,7 +2320,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "GET /api/invitations — list invitations (admin only)",
+        "summary": "GET /api/invitations — list invitations (needs `invitations:read`)",
         "operationId": "invitations.list",
         "responses": {
           "200": {
@@ -2367,7 +2367,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "POST /api/invitations — create an invitation (admin only)",
+        "summary": "POST /api/invitations — create an invitation (needs `invitations:create`)",
         "description": "With `send_email: true` the invite link is also emailed. A failed send\nstill creates the invitation, with `email_sent_at: null`, so its link can\nbe shared by hand or the email resent.",
         "operationId": "invitations.create",
         "requestBody": {
@@ -2444,7 +2444,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "GET /api/invitations/email-status — whether invitation emails can be sent (admin only)",
+        "summary": "GET /api/invitations/email-status — whether invitation emails can be sent (needs `invitations:read`)",
         "operationId": "invitations.emailStatus",
         "responses": {
           "200": {
@@ -2500,7 +2500,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "DELETE /api/invitations/{id} — revoke a pending invitation (admin only)",
+        "summary": "DELETE /api/invitations/{id} — revoke a pending invitation (needs `invitations:delete`)",
         "operationId": "invitations.revoke",
         "parameters": [
           {
@@ -2560,7 +2560,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "POST /api/invitations/{id}/resend — email the invite link again (admin only)",
+        "summary": "POST /api/invitations/{id}/resend — email the invite link again (needs `invitations:create`)",
         "operationId": "invitations.resend",
         "parameters": [
           {

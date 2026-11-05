@@ -106,7 +106,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Invite a person by email with a global role. By default returns a single-use, expiring invite token to share as the link `<app-url>/invite/<token>`. With send_email=true the link is also emailed to the recipient, which needs an enabled email integration or SMTP_HOST, and DASHBOARD_URL or PUBLIC_URL. Requires an admin token.",
+        description = "Invite a person by email with a global role. By default returns a single-use, expiring invite token to share as the link `<app-url>/invite/<token>`. With send_email=true the link is also emailed to the recipient, which needs an enabled email integration or SMTP_HOST, and DASHBOARD_URL or PUBLIC_URL. Requires invitations:create.",
         annotations(destructive_hint = false)
     )]
     async fn create_invitation(&self, Parameters(a): Parameters<InviteArgs>) -> CallToolResult {
@@ -131,7 +131,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Revoke a pending invitation by its id so it can no longer be accepted. Requires an admin token.",
+        description = "Revoke a pending invitation by its id so it can no longer be accepted. Requires invitations:delete.",
         annotations(destructive_hint = true)
     )]
     async fn revoke_invitation(&self, Parameters(a): Parameters<InvitationArgs>) -> CallToolResult {
@@ -143,7 +143,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Email the invite link of a pending invitation again. Fails when invitation emails are not configured or the send fails. Requires an admin token.",
+        description = "Email the invite link of a pending invitation again. Fails when invitation emails are not configured or the send fails. Requires invitations:create.",
         annotations(destructive_hint = false)
     )]
     async fn resend_invitation(&self, Parameters(a): Parameters<InvitationArgs>) -> CallToolResult {

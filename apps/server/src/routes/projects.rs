@@ -165,10 +165,10 @@ pub async fn create_project(
 
     let base_url = build_base_url(&config);
     let mut response = project.to_response(&base_url);
-    // `actor` predates the new project; what they hold is what just extended.
+    // `actor` predates the new project, so ask what holds on it.
     if !actor
         .access
-        .can_somewhere(Resource::ClientKeys, Action::Read)
+        .can_on_new_project(Resource::ClientKeys, Action::Read, project.id)
     {
         response.sentry_key = None;
         response.dsn = None;
