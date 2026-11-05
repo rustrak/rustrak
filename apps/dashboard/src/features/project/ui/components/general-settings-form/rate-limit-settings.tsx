@@ -20,9 +20,12 @@ type LimitField = 'rate_limit_per_minute' | 'rate_limit_per_hour';
 export function RateLimitSettings({
   project,
   serverLimits,
+  readOnly = false,
 }: {
   project: ProjectResponse;
   serverLimits: RateLimitsResponse | null;
+  /** Without `project:update`: shown, not changeable. */
+  readOnly?: boolean;
 }) {
   const t = useTranslations('projects.rateLimits');
   const format = useFormatter();
@@ -34,12 +37,14 @@ export function RateLimitSettings({
     <SettingSection title={t('title')} description={t('description')}>
       <LimitRow
         project={project}
+        readOnly={readOnly}
         field="rate_limit_per_minute"
         title={t('perMinute')}
         placeholder={serverLimit(serverLimits?.project_per_minute)}
       />
       <LimitRow
         project={project}
+        readOnly={readOnly}
         field="rate_limit_per_hour"
         title={t('perHour')}
         placeholder={serverLimit(serverLimits?.project_per_hour)}
@@ -58,8 +63,10 @@ function LimitRow({
   field,
   title,
   placeholder,
+  readOnly,
 }: {
   project: ProjectResponse;
+  readOnly: boolean;
   field: LimitField;
   title: string;
   placeholder: string;
@@ -104,20 +111,22 @@ function LimitRow({
           inputMode="numeric"
           placeholder={placeholder}
           value={raw}
-          disabled={isPending}
+          disabled={isPending || readOnly}
           onChange={(event) => {
             setRaw(event.target.value);
             setInvalid(false);
           }}
         />
-        <Button
-          type="button"
-          onClick={save}
-          loading={isPending}
-          disabled={!hasChanges}
-        >
-          {t('save')}
-        </Button>
+        {readOnly ? null : (
+          <Button
+            type="button"
+            onClick={save}
+            loading={isPending}
+            disabled={!hasChanges}
+          >
+            {t('save')}
+          </Button>
+        )}
       </div>
       {invalid && (
         <p className="mt-2 text-hint text-danger-fg">{t('invalid')}</p>

@@ -5,7 +5,7 @@ import { api } from '@/shared/api/rustrak';
 import { tokenQueries } from './queries';
 
 export const tokenMutations = {
-  /** The answer carries the full token value. */
+  /** The answer carries the full token value, the only time it exists. */
   create: () =>
     mutationOptions({
       mutationFn: (body: CreateAuthToken) =>

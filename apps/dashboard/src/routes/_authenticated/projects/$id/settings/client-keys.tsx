@@ -4,9 +4,11 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { ClientKeysSettings } from '@/features/project/ui/components/client-keys-settings';
+import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { SettingSection } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/settings/client-keys',
@@ -22,6 +24,7 @@ function ClientKeysPage() {
   const { data: project } = useSuspenseQuery(
     projectQueries.detail(Number.parseInt(id, 10)),
   );
+  const canRead = usePermissions().can('client-keys', 'read', project.id);
 
   return (
     <>
@@ -31,7 +34,7 @@ function ClientKeysPage() {
         description={t('clientKeys.subtitle')}
       />
 
-      <ClientKeysSettings project={project} />
+      {canRead ? <ClientKeysSettings project={project} /> : <NotAuthorized />}
     </>
   );
 }

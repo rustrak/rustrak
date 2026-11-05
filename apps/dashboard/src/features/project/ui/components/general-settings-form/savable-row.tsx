@@ -28,10 +28,13 @@ export function SavableRow({
   placeholder,
   className,
   isPending,
+  readOnly = false,
   hasChanges,
   onSave,
   onEdit,
 }: {
+  /** Without `project:update`: shown, not changeable. */
+  readOnly?: boolean;
   form: UseFormReturn<GeneralSettingsFormData>;
   name: Path<GeneralSettingsFormData>;
   title: string;
@@ -57,7 +60,7 @@ export function SavableRow({
                 id={id}
                 placeholder={placeholder}
                 className={className}
-                disabled={isPending}
+                disabled={isPending || readOnly}
                 aria-busy={isPending || undefined}
                 leading={
                   isPending ? (

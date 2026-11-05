@@ -28,7 +28,8 @@ const TREND_MIN_SCALE = 4;
 
 interface ProjectCardProps {
   project: ProjectResponse;
-  onDelete: (project: ProjectResponse) => void;
+  /** Absent when the reader may not delete it: no menu then. */
+  onDelete?: (project: ProjectResponse) => void;
 }
 
 /**
@@ -92,33 +93,35 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
           fatal={stats?.fatal_issues ?? 0}
         />
 
-        <Menu
-          align="end"
-          trigger={
-            <button
-              type="button"
-              aria-label={t('card.actions', { name: project.name })}
-              className={cn(
-                'relative z-10 flex size-control-xs items-center justify-center',
-                'rounded-md text-fg-meta hover:bg-surface-hover hover:text-fg',
-                'data-popup-open:bg-surface-hover',
-                interactiveTransition,
-                focusRing,
-              )}
-            >
-              <MoreIcon size="lg" />
-            </button>
-          }
-          actions={[
-            {
-              id: 'delete',
-              label: t('actions.delete'),
-              icon: DeleteIcon,
-              tone: 'danger',
-              onSelect: () => onDelete(project),
-            },
-          ]}
-        />
+        {onDelete ? (
+          <Menu
+            align="end"
+            trigger={
+              <button
+                type="button"
+                aria-label={t('card.actions', { name: project.name })}
+                className={cn(
+                  'relative z-10 flex size-control-xs items-center justify-center',
+                  'rounded-md text-fg-meta hover:bg-surface-hover hover:text-fg',
+                  'data-popup-open:bg-surface-hover',
+                  interactiveTransition,
+                  focusRing,
+                )}
+              >
+                <MoreIcon size="lg" />
+              </button>
+            }
+            actions={[
+              {
+                id: 'delete',
+                label: t('actions.delete'),
+                icon: DeleteIcon,
+                tone: 'danger',
+                onSelect: () => onDelete(project),
+              },
+            ]}
+          />
+        ) : null}
 
         <ChevronRightIcon
           size="lg"

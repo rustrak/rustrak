@@ -59,7 +59,14 @@ interface ProductsState {
  * beside each one: a list that only reorders by drag is a list a keyboard
  * cannot reorder at all.
  */
-export function ProductsSettings({ project }: { project: ProjectResponse }) {
+export function ProductsSettings({
+  project,
+  readOnly = false,
+}: {
+  project: ProjectResponse;
+  /** Without `project:update`: shown, not changeable. */
+  readOnly?: boolean;
+}) {
   const t = useTranslations('settings');
   const tNav = useTranslations('projects');
   const update = useMutation(projectMutations.update(project.id));
@@ -82,7 +89,8 @@ export function ProductsSettings({ project }: { project: ProjectResponse }) {
   } | null>(null);
   // One save at a time: each sends both lists whole, so two in flight could
   // land out of order and the older one would win.
-  const saving = update.isPending;
+  // Read-only rides on the same flag: nothing moves or toggles.
+  const saving = update.isPending || readOnly;
 
   const save = (next: ProductsState, previous = state) => {
     setState(next);

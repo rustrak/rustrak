@@ -28,7 +28,6 @@ import { Route as AuthenticatedSettingsMcpRouteImport } from './routes/_authenti
 import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_authenticated/settings/preferences';
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated/settings/profile';
 import { Route as AuthenticatedSettingsStorageRouteImport } from './routes/_authenticated/settings/storage';
-import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings/team';
 import { Route as AuthenticatedSettingsTokensRouteImport } from './routes/_authenticated/settings/tokens';
 import { Route as AuthenticatedProjectsIdIndexRouteImport } from './routes/_authenticated/projects/$id/index';
 import { Route as AuthenticatedProjectsIdLogsRouteImport } from './routes/_authenticated/projects/$id/logs';
@@ -36,6 +35,10 @@ import { Route as AuthenticatedProjectsIdSettingsRouteImport } from './routes/_a
 import { Route as AuthenticatedSettingsIntegrationsIndexRouteImport } from './routes/_authenticated/settings/integrations/index';
 import { Route as AuthenticatedSettingsIntegrationsProviderRouteImport } from './routes/_authenticated/settings/integrations/$provider';
 import { Route as AuthenticatedSettingsIntegrationsGithubRouteImport } from './routes/_authenticated/settings/integrations/github';
+import { Route as AuthenticatedSettingsRolesIndexRouteImport } from './routes/_authenticated/settings/roles/index';
+import { Route as AuthenticatedSettingsRolesRoleIdRouteImport } from './routes/_authenticated/settings/roles/$roleId';
+import { Route as AuthenticatedSettingsTeamIndexRouteImport } from './routes/_authenticated/settings/team/index';
+import { Route as AuthenticatedSettingsTeamUserIdRouteImport } from './routes/_authenticated/settings/team/$userId';
 import { Route as AuthenticatedProjectsIdAgentsIndexRouteImport } from './routes/_authenticated/projects/$id/agents/index';
 import { Route as AuthenticatedProjectsIdAgentsTraceIdRouteImport } from './routes/_authenticated/projects/$id/agents/$traceId';
 import { Route as AuthenticatedProjectsIdAlertsIndexRouteImport } from './routes/_authenticated/projects/$id/alerts/index';
@@ -55,7 +58,6 @@ import { Route as AuthenticatedProjectsIdSettingsClientKeysRouteImport } from '.
 import { Route as AuthenticatedProjectsIdSettingsDataRouteImport } from './routes/_authenticated/projects/$id/settings/data';
 import { Route as AuthenticatedProjectsIdSettingsGeneralRouteImport } from './routes/_authenticated/projects/$id/settings/general';
 import { Route as AuthenticatedProjectsIdSettingsGithubRouteImport } from './routes/_authenticated/projects/$id/settings/github';
-import { Route as AuthenticatedProjectsIdSettingsMembersRouteImport } from './routes/_authenticated/projects/$id/settings/members';
 import { Route as AuthenticatedProjectsIdSettingsProductsRouteImport } from './routes/_authenticated/projects/$id/settings/products';
 import { Route as AuthenticatedProjectsIdAgentsConversationsConversationIdRouteImport } from './routes/_authenticated/projects/$id/agents/conversations/$conversationId';
 import { Route as AuthenticatedProjectsIdAlertsRuleIdIndexRouteImport } from './routes/_authenticated/projects/$id/alerts/$ruleId/index';
@@ -172,12 +174,6 @@ const AuthenticatedSettingsStorageRoute =
     path: '/storage',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any);
-const AuthenticatedSettingsTeamRoute =
-  AuthenticatedSettingsTeamRouteImport.update({
-    id: '/team',
-    path: '/team',
-    getParentRoute: () => AuthenticatedSettingsRoute,
-  } as any);
 const AuthenticatedSettingsTokensRoute =
   AuthenticatedSettingsTokensRouteImport.update({
     id: '/tokens',
@@ -218,6 +214,30 @@ const AuthenticatedSettingsIntegrationsGithubRoute =
   AuthenticatedSettingsIntegrationsGithubRouteImport.update({
     id: '/integrations/github',
     path: '/integrations/github',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any);
+const AuthenticatedSettingsRolesIndexRoute =
+  AuthenticatedSettingsRolesIndexRouteImport.update({
+    id: '/roles/',
+    path: '/roles/',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any);
+const AuthenticatedSettingsRolesRoleIdRoute =
+  AuthenticatedSettingsRolesRoleIdRouteImport.update({
+    id: '/roles/$roleId',
+    path: '/roles/$roleId',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any);
+const AuthenticatedSettingsTeamIndexRoute =
+  AuthenticatedSettingsTeamIndexRouteImport.update({
+    id: '/team/',
+    path: '/team/',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any);
+const AuthenticatedSettingsTeamUserIdRoute =
+  AuthenticatedSettingsTeamUserIdRouteImport.update({
+    id: '/team/$userId',
+    path: '/team/$userId',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any);
 const AuthenticatedProjectsIdAgentsIndexRoute =
@@ -334,12 +354,6 @@ const AuthenticatedProjectsIdSettingsGithubRoute =
     path: '/github',
     getParentRoute: () => AuthenticatedProjectsIdSettingsRoute,
   } as any);
-const AuthenticatedProjectsIdSettingsMembersRoute =
-  AuthenticatedProjectsIdSettingsMembersRouteImport.update({
-    id: '/members',
-    path: '/members',
-    getParentRoute: () => AuthenticatedProjectsIdSettingsRoute,
-  } as any);
 const AuthenticatedProjectsIdSettingsProductsRoute =
   AuthenticatedProjectsIdSettingsProductsRouteImport.update({
     id: '/products',
@@ -418,7 +432,6 @@ export interface FileRoutesByFullPath {
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute;
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute;
   '/settings/storage': typeof AuthenticatedSettingsStorageRoute;
-  '/settings/team': typeof AuthenticatedSettingsTeamRoute;
   '/settings/tokens': typeof AuthenticatedSettingsTokensRoute;
   '/projects/': typeof AuthenticatedProjectsIndexRoute;
   '/settings/': typeof AuthenticatedSettingsIndexRoute;
@@ -426,8 +439,12 @@ export interface FileRoutesByFullPath {
   '/projects/$id/settings': typeof AuthenticatedProjectsIdSettingsRouteWithChildren;
   '/settings/integrations/$provider': typeof AuthenticatedSettingsIntegrationsProviderRoute;
   '/settings/integrations/github': typeof AuthenticatedSettingsIntegrationsGithubRoute;
+  '/settings/roles/$roleId': typeof AuthenticatedSettingsRolesRoleIdRoute;
+  '/settings/team/$userId': typeof AuthenticatedSettingsTeamUserIdRoute;
   '/projects/$id/': typeof AuthenticatedProjectsIdIndexRoute;
   '/settings/integrations/': typeof AuthenticatedSettingsIntegrationsIndexRoute;
+  '/settings/roles/': typeof AuthenticatedSettingsRolesIndexRoute;
+  '/settings/team/': typeof AuthenticatedSettingsTeamIndexRoute;
   '/projects/$id/agents/$traceId': typeof AuthenticatedProjectsIdAgentsTraceIdRoute;
   '/projects/$id/alerts/new': typeof AuthenticatedProjectsIdAlertsNewRoute;
   '/projects/$id/crons/new': typeof AuthenticatedProjectsIdCronsNewRoute;
@@ -439,7 +456,6 @@ export interface FileRoutesByFullPath {
   '/projects/$id/settings/data': typeof AuthenticatedProjectsIdSettingsDataRoute;
   '/projects/$id/settings/general': typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   '/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
-  '/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
   '/projects/$id/agents/': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/projects/$id/alerts/': typeof AuthenticatedProjectsIdAlertsIndexRoute;
@@ -474,15 +490,18 @@ export interface FileRoutesByTo {
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute;
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute;
   '/settings/storage': typeof AuthenticatedSettingsStorageRoute;
-  '/settings/team': typeof AuthenticatedSettingsTeamRoute;
   '/settings/tokens': typeof AuthenticatedSettingsTokensRoute;
   '/projects': typeof AuthenticatedProjectsIndexRoute;
   '/settings': typeof AuthenticatedSettingsIndexRoute;
   '/projects/$id/logs': typeof AuthenticatedProjectsIdLogsRoute;
   '/settings/integrations/$provider': typeof AuthenticatedSettingsIntegrationsProviderRoute;
   '/settings/integrations/github': typeof AuthenticatedSettingsIntegrationsGithubRoute;
+  '/settings/roles/$roleId': typeof AuthenticatedSettingsRolesRoleIdRoute;
+  '/settings/team/$userId': typeof AuthenticatedSettingsTeamUserIdRoute;
   '/projects/$id': typeof AuthenticatedProjectsIdIndexRoute;
   '/settings/integrations': typeof AuthenticatedSettingsIntegrationsIndexRoute;
+  '/settings/roles': typeof AuthenticatedSettingsRolesIndexRoute;
+  '/settings/team': typeof AuthenticatedSettingsTeamIndexRoute;
   '/projects/$id/agents/$traceId': typeof AuthenticatedProjectsIdAgentsTraceIdRoute;
   '/projects/$id/alerts/new': typeof AuthenticatedProjectsIdAlertsNewRoute;
   '/projects/$id/crons/new': typeof AuthenticatedProjectsIdCronsNewRoute;
@@ -494,7 +513,6 @@ export interface FileRoutesByTo {
   '/projects/$id/settings/data': typeof AuthenticatedProjectsIdSettingsDataRoute;
   '/projects/$id/settings/general': typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   '/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
-  '/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
   '/projects/$id/agents': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/projects/$id/alerts': typeof AuthenticatedProjectsIdAlertsIndexRoute;
@@ -533,7 +551,6 @@ export interface FileRoutesById {
   '/_authenticated/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute;
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute;
   '/_authenticated/settings/storage': typeof AuthenticatedSettingsStorageRoute;
-  '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute;
   '/_authenticated/settings/tokens': typeof AuthenticatedSettingsTokensRoute;
   '/_authenticated/projects/': typeof AuthenticatedProjectsIndexRoute;
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute;
@@ -541,8 +558,12 @@ export interface FileRoutesById {
   '/_authenticated/projects/$id/settings': typeof AuthenticatedProjectsIdSettingsRouteWithChildren;
   '/_authenticated/settings/integrations/$provider': typeof AuthenticatedSettingsIntegrationsProviderRoute;
   '/_authenticated/settings/integrations/github': typeof AuthenticatedSettingsIntegrationsGithubRoute;
+  '/_authenticated/settings/roles/$roleId': typeof AuthenticatedSettingsRolesRoleIdRoute;
+  '/_authenticated/settings/team/$userId': typeof AuthenticatedSettingsTeamUserIdRoute;
   '/_authenticated/projects/$id/': typeof AuthenticatedProjectsIdIndexRoute;
   '/_authenticated/settings/integrations/': typeof AuthenticatedSettingsIntegrationsIndexRoute;
+  '/_authenticated/settings/roles/': typeof AuthenticatedSettingsRolesIndexRoute;
+  '/_authenticated/settings/team/': typeof AuthenticatedSettingsTeamIndexRoute;
   '/_authenticated/projects/$id/agents/$traceId': typeof AuthenticatedProjectsIdAgentsTraceIdRoute;
   '/_authenticated/projects/$id/alerts/new': typeof AuthenticatedProjectsIdAlertsNewRoute;
   '/_authenticated/projects/$id/crons/new': typeof AuthenticatedProjectsIdCronsNewRoute;
@@ -554,7 +575,6 @@ export interface FileRoutesById {
   '/_authenticated/projects/$id/settings/data': typeof AuthenticatedProjectsIdSettingsDataRoute;
   '/_authenticated/projects/$id/settings/general': typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   '/_authenticated/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
-  '/_authenticated/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/_authenticated/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
   '/_authenticated/projects/$id/agents/': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/_authenticated/projects/$id/alerts/': typeof AuthenticatedProjectsIdAlertsIndexRoute;
@@ -593,7 +613,6 @@ export interface FileRouteTypes {
     | '/settings/preferences'
     | '/settings/profile'
     | '/settings/storage'
-    | '/settings/team'
     | '/settings/tokens'
     | '/projects/'
     | '/settings/'
@@ -601,8 +620,12 @@ export interface FileRouteTypes {
     | '/projects/$id/settings'
     | '/settings/integrations/$provider'
     | '/settings/integrations/github'
+    | '/settings/roles/$roleId'
+    | '/settings/team/$userId'
     | '/projects/$id/'
     | '/settings/integrations/'
+    | '/settings/roles/'
+    | '/settings/team/'
     | '/projects/$id/agents/$traceId'
     | '/projects/$id/alerts/new'
     | '/projects/$id/crons/new'
@@ -614,7 +637,6 @@ export interface FileRouteTypes {
     | '/projects/$id/settings/data'
     | '/projects/$id/settings/general'
     | '/projects/$id/settings/github'
-    | '/projects/$id/settings/members'
     | '/projects/$id/settings/products'
     | '/projects/$id/agents/'
     | '/projects/$id/alerts/'
@@ -649,15 +671,18 @@ export interface FileRouteTypes {
     | '/settings/preferences'
     | '/settings/profile'
     | '/settings/storage'
-    | '/settings/team'
     | '/settings/tokens'
     | '/projects'
     | '/settings'
     | '/projects/$id/logs'
     | '/settings/integrations/$provider'
     | '/settings/integrations/github'
+    | '/settings/roles/$roleId'
+    | '/settings/team/$userId'
     | '/projects/$id'
     | '/settings/integrations'
+    | '/settings/roles'
+    | '/settings/team'
     | '/projects/$id/agents/$traceId'
     | '/projects/$id/alerts/new'
     | '/projects/$id/crons/new'
@@ -669,7 +694,6 @@ export interface FileRouteTypes {
     | '/projects/$id/settings/data'
     | '/projects/$id/settings/general'
     | '/projects/$id/settings/github'
-    | '/projects/$id/settings/members'
     | '/projects/$id/settings/products'
     | '/projects/$id/agents'
     | '/projects/$id/alerts'
@@ -707,7 +731,6 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/preferences'
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/storage'
-    | '/_authenticated/settings/team'
     | '/_authenticated/settings/tokens'
     | '/_authenticated/projects/'
     | '/_authenticated/settings/'
@@ -715,8 +738,12 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$id/settings'
     | '/_authenticated/settings/integrations/$provider'
     | '/_authenticated/settings/integrations/github'
+    | '/_authenticated/settings/roles/$roleId'
+    | '/_authenticated/settings/team/$userId'
     | '/_authenticated/projects/$id/'
     | '/_authenticated/settings/integrations/'
+    | '/_authenticated/settings/roles/'
+    | '/_authenticated/settings/team/'
     | '/_authenticated/projects/$id/agents/$traceId'
     | '/_authenticated/projects/$id/alerts/new'
     | '/_authenticated/projects/$id/crons/new'
@@ -728,7 +755,6 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$id/settings/data'
     | '/_authenticated/projects/$id/settings/general'
     | '/_authenticated/projects/$id/settings/github'
-    | '/_authenticated/projects/$id/settings/members'
     | '/_authenticated/projects/$id/settings/products'
     | '/_authenticated/projects/$id/agents/'
     | '/_authenticated/projects/$id/alerts/'
@@ -893,13 +919,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsStorageRouteImport;
       parentRoute: typeof AuthenticatedSettingsRoute;
     };
-    '/_authenticated/settings/team': {
-      id: '/_authenticated/settings/team';
-      path: '/team';
-      fullPath: '/settings/team';
-      preLoaderRoute: typeof AuthenticatedSettingsTeamRouteImport;
-      parentRoute: typeof AuthenticatedSettingsRoute;
-    };
     '/_authenticated/settings/tokens': {
       id: '/_authenticated/settings/tokens';
       path: '/tokens';
@@ -947,6 +966,34 @@ declare module '@tanstack/react-router' {
       path: '/integrations/github';
       fullPath: '/settings/integrations/github';
       preLoaderRoute: typeof AuthenticatedSettingsIntegrationsGithubRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRoute;
+    };
+    '/_authenticated/settings/roles/': {
+      id: '/_authenticated/settings/roles/';
+      path: '/roles';
+      fullPath: '/settings/roles/';
+      preLoaderRoute: typeof AuthenticatedSettingsRolesIndexRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRoute;
+    };
+    '/_authenticated/settings/roles/$roleId': {
+      id: '/_authenticated/settings/roles/$roleId';
+      path: '/roles/$roleId';
+      fullPath: '/settings/roles/$roleId';
+      preLoaderRoute: typeof AuthenticatedSettingsRolesRoleIdRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRoute;
+    };
+    '/_authenticated/settings/team/': {
+      id: '/_authenticated/settings/team/';
+      path: '/team';
+      fullPath: '/settings/team/';
+      preLoaderRoute: typeof AuthenticatedSettingsTeamIndexRouteImport;
+      parentRoute: typeof AuthenticatedSettingsRoute;
+    };
+    '/_authenticated/settings/team/$userId': {
+      id: '/_authenticated/settings/team/$userId';
+      path: '/team/$userId';
+      fullPath: '/settings/team/$userId';
+      preLoaderRoute: typeof AuthenticatedSettingsTeamUserIdRouteImport;
       parentRoute: typeof AuthenticatedSettingsRoute;
     };
     '/_authenticated/projects/$id/agents/': {
@@ -1082,13 +1129,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsIdSettingsGithubRouteImport;
       parentRoute: typeof AuthenticatedProjectsIdSettingsRoute;
     };
-    '/_authenticated/projects/$id/settings/members': {
-      id: '/_authenticated/projects/$id/settings/members';
-      path: '/members';
-      fullPath: '/projects/$id/settings/members';
-      preLoaderRoute: typeof AuthenticatedProjectsIdSettingsMembersRouteImport;
-      parentRoute: typeof AuthenticatedProjectsIdSettingsRoute;
-    };
     '/_authenticated/projects/$id/settings/products': {
       id: '/_authenticated/projects/$id/settings/products';
       path: '/products';
@@ -1171,12 +1211,15 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsPreferencesRoute: typeof AuthenticatedSettingsPreferencesRoute;
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute;
   AuthenticatedSettingsStorageRoute: typeof AuthenticatedSettingsStorageRoute;
-  AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute;
   AuthenticatedSettingsTokensRoute: typeof AuthenticatedSettingsTokensRoute;
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute;
   AuthenticatedSettingsIntegrationsProviderRoute: typeof AuthenticatedSettingsIntegrationsProviderRoute;
   AuthenticatedSettingsIntegrationsGithubRoute: typeof AuthenticatedSettingsIntegrationsGithubRoute;
+  AuthenticatedSettingsRolesRoleIdRoute: typeof AuthenticatedSettingsRolesRoleIdRoute;
+  AuthenticatedSettingsTeamUserIdRoute: typeof AuthenticatedSettingsTeamUserIdRoute;
   AuthenticatedSettingsIntegrationsIndexRoute: typeof AuthenticatedSettingsIntegrationsIndexRoute;
+  AuthenticatedSettingsRolesIndexRoute: typeof AuthenticatedSettingsRolesIndexRoute;
+  AuthenticatedSettingsTeamIndexRoute: typeof AuthenticatedSettingsTeamIndexRoute;
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
@@ -1188,15 +1231,18 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsPreferencesRoute: AuthenticatedSettingsPreferencesRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
   AuthenticatedSettingsStorageRoute: AuthenticatedSettingsStorageRoute,
-  AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
   AuthenticatedSettingsTokensRoute: AuthenticatedSettingsTokensRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
   AuthenticatedSettingsIntegrationsProviderRoute:
     AuthenticatedSettingsIntegrationsProviderRoute,
   AuthenticatedSettingsIntegrationsGithubRoute:
     AuthenticatedSettingsIntegrationsGithubRoute,
+  AuthenticatedSettingsRolesRoleIdRoute: AuthenticatedSettingsRolesRoleIdRoute,
+  AuthenticatedSettingsTeamUserIdRoute: AuthenticatedSettingsTeamUserIdRoute,
   AuthenticatedSettingsIntegrationsIndexRoute:
     AuthenticatedSettingsIntegrationsIndexRoute,
+  AuthenticatedSettingsRolesIndexRoute: AuthenticatedSettingsRolesIndexRoute,
+  AuthenticatedSettingsTeamIndexRoute: AuthenticatedSettingsTeamIndexRoute,
 };
 
 const AuthenticatedSettingsRouteWithChildren =
@@ -1210,7 +1256,6 @@ interface AuthenticatedProjectsIdSettingsRouteChildren {
   AuthenticatedProjectsIdSettingsDataRoute: typeof AuthenticatedProjectsIdSettingsDataRoute;
   AuthenticatedProjectsIdSettingsGeneralRoute: typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   AuthenticatedProjectsIdSettingsGithubRoute: typeof AuthenticatedProjectsIdSettingsGithubRoute;
-  AuthenticatedProjectsIdSettingsMembersRoute: typeof AuthenticatedProjectsIdSettingsMembersRoute;
   AuthenticatedProjectsIdSettingsProductsRoute: typeof AuthenticatedProjectsIdSettingsProductsRoute;
   AuthenticatedProjectsIdSettingsIndexRoute: typeof AuthenticatedProjectsIdSettingsIndexRoute;
 }
@@ -1227,8 +1272,6 @@ const AuthenticatedProjectsIdSettingsRouteChildren: AuthenticatedProjectsIdSetti
       AuthenticatedProjectsIdSettingsGeneralRoute,
     AuthenticatedProjectsIdSettingsGithubRoute:
       AuthenticatedProjectsIdSettingsGithubRoute,
-    AuthenticatedProjectsIdSettingsMembersRoute:
-      AuthenticatedProjectsIdSettingsMembersRoute,
     AuthenticatedProjectsIdSettingsProductsRoute:
       AuthenticatedProjectsIdSettingsProductsRoute,
     AuthenticatedProjectsIdSettingsIndexRoute:

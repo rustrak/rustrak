@@ -14,7 +14,14 @@ const STEPS = ['checkIn', 'run', 'alert'] as const;
  * The crons page before any monitor exists: the three steps to get one, and
  * the snippet that takes them, side by side.
  */
-export function CronsEmpty({ dsn, newHref }: { dsn: string; newHref: string }) {
+export function CronsEmpty({
+  dsn,
+  newHref,
+}: {
+  dsn: string;
+  /** Absent when the reader may not create monitors by hand. */
+  newHref?: string;
+}) {
   const t = useTranslations('crons');
 
   return (
@@ -65,14 +72,16 @@ export function CronsEmpty({ dsn, newHref }: { dsn: string; newHref: string }) {
         <Text variant="meta" tone="subtle">
           {t('empty.upsertNote')}
         </Text>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border border-dashed px-4 py-3">
-          <Text variant="meta" tone="subtle">
-            {t('empty.orManual')}
-          </Text>
-          <Button size="sm" render={<Link href={newHref} />}>
-            {t('empty.manual')}
-          </Button>
-        </div>
+        {newHref ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border border-dashed px-4 py-3">
+            <Text variant="meta" tone="subtle">
+              {t('empty.orManual')}
+            </Text>
+            <Button size="sm" render={<Link href={newHref} />}>
+              {t('empty.manual')}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

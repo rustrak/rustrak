@@ -32,6 +32,7 @@ import { projectQueries } from '@/features/project/api/queries';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 const STATES = ['failing', 'ok', 'waiting', 'muted'] as const;
 type MonitorState = (typeof STATES)[number];
@@ -162,7 +163,9 @@ function CronsScreen({
   const navigate = Route.useNavigate();
   const projectId = Number.parseInt(id, 10);
   const period = search.period ?? DEFAULT_PERIOD;
-  const newHref = `/projects/${projectId}/crons/new`;
+  const newHref = usePermissionsLater().can('monitors', 'create', projectId)
+    ? `/projects/${projectId}/crons/new`
+    : undefined;
   const failing =
     monitors?.filter((m) => monitorHealth(m) === 'failing').length ?? 0;
   const fields: QueryField[] = [
@@ -199,7 +202,7 @@ function CronsScreen({
             : [<Skeleton key="summary" className="h-4 w-56" />]
         }
         actions={
-          monitors && monitors.length > 0 ? (
+          newHref && monitors && monitors.length > 0 ? (
             <Button
               variant="primary"
               icon={NewIcon}

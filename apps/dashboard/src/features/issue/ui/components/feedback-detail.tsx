@@ -22,6 +22,7 @@ import {
   isWebUrl,
 } from '@/features/issue/model/feedback-mailbox';
 import { Link } from '@/shared/ui/components/link';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 const STATUS_TONE: Record<string, TagTone> = {
   resolved: 'brand',
@@ -50,7 +51,6 @@ export function FeedbackDetail({
   onBack: () => void;
 }) {
   const t = useTranslations('projectPages.feedback');
-  const tIssues = useTranslations('issues');
   const format = useFormatter();
   const sender = feedbackSender(feedback);
   const resolved = feedback.status === 'resolved';
@@ -104,25 +104,14 @@ export function FeedbackDetail({
         </div>
 
         {/* Full-width halves on a phone, where there is no keyboard to hint at. */}
-        <div className="grid shrink-0 grid-cols-2 gap-2 max-lg:[&_kbd]:hidden @xl:flex @xl:items-center">
-          <Button
-            variant={resolved ? 'secondary' : 'primary'}
-            icon={resolved ? UnresolveIcon : ResolveIcon}
-            shortcut="R"
-            disabled={isPending}
-            onClick={onResolve}
-          >
-            {tIssues(resolved ? 'actions.unresolve' : 'actions.resolve')}
-          </Button>
-          <Button
-            icon={MuteIcon}
-            shortcut="E"
-            disabled={isPending}
-            onClick={onSpam}
-          >
-            {tIssues(spam ? 'actions.moveToInbox' : 'actions.markSpam')}
-          </Button>
-        </div>
+        <TriageButtons
+          projectId={projectId}
+          resolved={resolved}
+          spam={spam}
+          isPending={isPending}
+          onResolve={onResolve}
+          onSpam={onSpam}
+        />
       </header>
 
       <div className="flex flex-col gap-6 py-6 lg:px-6">
@@ -231,5 +220,46 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 function isImage(contentType: string) {
   return ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(
     contentType,
+  );
+}
+
+/** Resolve and spam: only for a reader who may triage (`issues:update`). */
+function TriageButtons({
+  projectId,
+  resolved,
+  spam,
+  isPending,
+  onResolve,
+  onSpam,
+}: {
+  projectId: number;
+  resolved: boolean;
+  spam: boolean;
+  isPending: boolean;
+  onResolve: () => void;
+  onSpam: () => void;
+}) {
+  const tIssues = useTranslations('issues');
+  if (!usePermissionsLater().can('issues', 'update', projectId)) return null;
+  return (
+    <div className="grid shrink-0 grid-cols-2 gap-2 max-lg:[&_kbd]:hidden @xl:flex @xl:items-center">
+      <Button
+        variant={resolved ? 'secondary' : 'primary'}
+        icon={resolved ? UnresolveIcon : ResolveIcon}
+        shortcut="R"
+        disabled={isPending}
+        onClick={onResolve}
+      >
+        {tIssues(resolved ? 'actions.unresolve' : 'actions.resolve')}
+      </Button>
+      <Button
+        icon={MuteIcon}
+        shortcut="E"
+        disabled={isPending}
+        onClick={onSpam}
+      >
+        {tIssues(spam ? 'actions.moveToInbox' : 'actions.markSpam')}
+      </Button>
+    </div>
   );
 }

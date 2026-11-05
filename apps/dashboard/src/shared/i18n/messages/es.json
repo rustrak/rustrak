@@ -443,7 +443,12 @@
       "submit": "Invitar",
       "sendEmailLabel": "Enviar la invitación por correo",
       "sendEmailAria": "Enviar la invitación por correo",
-      "sendEmailUnavailable": "Añade una integración de correo en Configuración → Integraciones (o configura SMTP_HOST), y DASHBOARD_URL o PUBLIC_URL, para enviar correos de invitación"
+      "sendEmailUnavailable": "Añade una integración de correo en Configuración → Integraciones (o configura SMTP_HOST), y DASHBOARD_URL o PUBLIC_URL, para enviar correos de invitación",
+      "accessHint": "Permisos que se conceden al aceptar la invitación.",
+      "noRole": "Sin acceso",
+      "ownerHint": "Acceso sin restricciones a todos los proyectos y ajustes, incluida la gestión de otros propietarios.",
+      "whereLabel": "Alcance",
+      "allProjects": "Todos los proyectos"
     },
     "toast": {
       "createFailed": "No se pudo crear la invitación",
@@ -478,7 +483,8 @@
       "manageDescription": "Gestiona quién puede acceder a este proyecto y con qué rol.",
       "readOnlyDescription": "Las personas con acceso a este proyecto.",
       "addMember": "Añadir miembro",
-      "empty": "Aún no hay miembros"
+      "empty": "Aún no hay miembros",
+      "save": "Guardar"
     },
     "remove": {
       "title": "Eliminar miembro",
@@ -539,9 +545,7 @@
       "description": "Esto elimina definitivamente al usuario y su acceso a todos los proyectos. La acción no se puede deshacer."
     },
     "roles": {
-      "viewer": "Observador",
-      "editor": "Editor",
-      "admin": "Admin",
+      "admin": "Propietario",
       "member": "Miembro"
     }
   },
@@ -608,7 +612,8 @@
     "selectedCount": "{count, plural, =1 {# seleccionado} other {# seleccionados}}",
     "empty": {
       "title": "Aún no hay proyectos",
-      "hint": "Crea tu primer proyecto para empezar a seguir errores"
+      "hint": "Crea tu primer proyecto para empezar a seguir errores",
+      "noAccessHint": "Contacta con un propietario para solicitar acceso a un proyecto."
     },
     "newProject": "Nuevo proyecto",
     "delete": "Eliminar",
@@ -1486,11 +1491,20 @@
       "description": "Crea un nuevo token para acceso programático a la API.",
       "descriptionLabel": "Descripción (opcional)",
       "descriptionPlaceholder": "p. ej., Pipeline de CI/CD",
-      "charCount": "{count}/{max} {count, plural, =1 {carácter} other {caracteres}}",
       "descriptionTooLong": "La descripción debe tener como máximo {max} caracteres",
       "cancel": "Cancelar",
       "creating": "Creando...",
-      "submit": "Crear token"
+      "submit": "Crear token",
+      "allPermissions": "Todos mis permisos",
+      "permissionsHint": "Limitados a los permisos que tienes asignados.",
+      "projectsHint": "El acceso nunca supera al de tu cuenta.",
+      "expiresLabel": "Fecha de caducidad (opcional)",
+      "expiresHint": "Si se deja en blanco, el token no caduca.",
+      "customPermissions": "Permisos personalizados",
+      "permissionsLabel": "Permisos",
+      "projectsLabel": "Proyectos",
+      "allProjects": "Todos los proyectos autorizados",
+      "allProjectsHint": "Todos los proyectos a los que tengas acceso, ahora o en el futuro."
     },
     "copyTokenLabel": "Copiar el token {label}",
     "deleteTokenLabel": "Eliminar el token {label}",
@@ -1529,6 +1543,15 @@
       "cancel": "Cancelar",
       "deleting": "Eliminando...",
       "confirm": "Eliminar"
+    },
+    "scope": {
+      "allPermissions": "Todos los permisos de la cuenta",
+      "permissions": "{count, plural, one {# permiso} other {# permisos}}",
+      "allProjects": "todos los proyectos autorizados",
+      "projects": "{count, plural, one {# proyecto} other {# proyectos}}",
+      "noExpiry": "sin caducidad",
+      "expired": "caducado",
+      "expires": "caduca el {date}"
     }
   },
   "storage": {
@@ -2013,7 +2036,8 @@
       "profile": "Perfil",
       "preferences": "Preferencias",
       "instance": "Instancia",
-      "data": "Datos"
+      "data": "Datos",
+      "roles": "Roles"
     },
     "loadProjectFailed": "No se pudo cargar el proyecto",
     "loadProjectsFailed": "No se pudieron cargar los proyectos",
@@ -2266,7 +2290,8 @@
     "data": {
       "title": "Datos",
       "subtitle": "Qué guarda este proyecto y cuánto acepta."
-    }
+    },
+    "projectNotAuthorizedDescription": "Tu acceso no incluye esta sección del proyecto. Contacta con un propietario para solicitarlo."
   },
   "github": {
     "section": {
@@ -2726,6 +2751,142 @@
       "start": "Inicio",
       "status": "Estado",
       "spanId": "Id del span"
+    }
+  },
+  "access": {
+    "meta": {
+      "title": "Roles · Ajustes"
+    },
+    "title": "Roles",
+    "subtitle": "Conjuntos de permisos reutilizables para asignar el mismo acceso a varios miembros.",
+    "notAuthorized": "Sin autorización",
+    "notAuthorizedDescription": "Para ver los roles se necesita el permiso Roles.",
+    "resource": "Recurso",
+    "actions": {
+      "read": "Ver",
+      "create": "Crear",
+      "update": "Editar",
+      "delete": "Eliminar"
+    },
+    "wholeRow": "Todas las acciones sobre {resource}",
+    "general": "General",
+    "modules": {
+      "workspace": "Workspace",
+      "settings": "Ajustes",
+      "issues": "Issues",
+      "monitoring": "Monitorización",
+      "releases": "Releases",
+      "alerts": "Alertas",
+      "project": "Proyecto"
+    },
+    "resources": {
+      "projects": "Proyectos",
+      "users": "Usuarios",
+      "invitations": "Invitaciones",
+      "roles": "Roles",
+      "api-tokens": "Tokens de API de otros usuarios",
+      "integrations": "Integraciones (Slack, webhooks, email)",
+      "github-app": "App de GitHub",
+      "storage": "Almacenamiento y retención",
+      "mcp": "Asistentes de IA (MCP)",
+      "telemetry": "Telemetría",
+      "issues": "Issues y eventos",
+      "performance": "Rendimiento y agentes",
+      "logs": "Logs",
+      "sessions": "Salud de releases",
+      "releases": "Releases",
+      "source-maps": "Source maps y archivos de depuración",
+      "alert-rules": "Reglas de alerta",
+      "monitors": "Monitores cron",
+      "project": "Ajustes del proyecto",
+      "client-keys": "Claves del SDK (DSN)",
+      "project-members": "Miembros del proyecto",
+      "project-github": "Vínculo con el repositorio"
+    },
+    "you": "(tú)",
+    "owner": "Propietario",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "users": {
+      "meta": "{email} · Miembros",
+      "ownerNote": "Los propietarios tienen acceso sin restricciones a todos los proyectos y ajustes. Los roles no les aplican.",
+      "roleAria": "Rol",
+      "readOnlySelf": "No puedes modificar tu propio acceso.",
+      "readOnlyPermission": "Para modificar el acceso se necesita el permiso de edición de Usuarios.",
+      "saved": "Acceso actualizado",
+      "saveFailed": "No se pudo actualizar el acceso",
+      "accessTitle": "Acceso",
+      "addAccess": "Añadir acceso",
+      "removeAccess": "Retirar acceso",
+      "customize": "Personalizar",
+      "customRole": "Permisos personalizados",
+      "customRoleHint": "Permisos específicos de este miembro. Se configuran a continuación.",
+      "noAccessHint": "Este miembro no puede acceder a ningún proyecto ni ajuste.",
+      "pickProject": "Selecciona al menos un proyecto.",
+      "customTitle": "Permisos personalizados",
+      "sectionHint": "Define los permisos asignados a este miembro y dónde se aplican.",
+      "whatLabel": "Rol",
+      "whereLabel": "Alcance",
+      "everywhere": "Todo el workspace",
+      "pickRole": "Selecciona un rol",
+      "giveAccess": "Conceder acceso",
+      "noAccessTitle": "Sin acceso asignado",
+      "ownerTitle": "Acceso sin restricciones"
+    },
+    "roles": {
+      "title": "Roles",
+      "description": "Los roles se asignan desde la página de cada miembro.",
+      "new": "Nuevo rol",
+      "newTitle": "Nuevo rol",
+      "empty": "No hay roles definidos",
+      "permissionCount": "{count, plural, one {# permiso} other {# permisos}}",
+      "name": "Nombre",
+      "descriptionLabel": "Descripción",
+      "copyFrom": "Copiar permisos de",
+      "fromScratch": "Ninguno (empezar vacío)",
+      "create": "Crear rol",
+      "createFailed": "No se pudo crear el rol",
+      "saved": "Rol guardado",
+      "saveFailed": "No se pudo guardar el rol",
+      "delete": "Eliminar rol",
+      "deleteTitle": "¿Eliminar {name}?",
+      "deleteDescription": "Solo se pueden eliminar roles sin asignaciones.",
+      "deleted": "Rol eliminado",
+      "deleteFailed": "No se pudo eliminar el rol",
+      "assignedTo": "{count, plural, =0 {Sin asignar} one {# asignación} other {# asignaciones}}",
+      "meta": "{name} · Roles",
+      "descriptionPlaceholder": "Finalidad de este rol y acceso que proporciona.",
+      "descriptionHint": "Se muestra allí donde se asigna este rol.",
+      "allProjects": "Todos los proyectos",
+      "detailsTitle": "Detalles",
+      "allProjectsHint": "Incluye los proyectos que se creen en el futuro.",
+      "noProjects": "Ningún proyecto",
+      "noProjectsYet": "No hay proyectos disponibles.",
+      "projectCount": "{count, plural, one {# proyecto} other {# proyectos}}"
+    },
+    "resourceHelp": {
+      "projects": "Crear proyectos. Requiere al menos un permiso de proyecto, que se extiende a los proyectos creados.",
+      "users": "Ver a los miembros, gestionar su acceso y eliminarlos. Solo los propietarios pueden gestionar a otros propietarios.",
+      "invitations": "Enviar invitaciones por enlace o email, ver las pendientes y revocarlas. Las invitaciones solo pueden incluir permisos que tengas.",
+      "roles": "Ver, crear, editar y eliminar roles. Los roles solo pueden incluir permisos que tengas.",
+      "api-tokens": "Ver y revocar los tokens de API de otros miembros. Cada miembro gestiona los suyos sin este permiso.",
+      "integrations": "Slack, webhooks y envío de email para alertas e invitaciones.",
+      "github-app": "La app de GitHub que enlaza stack traces y releases con los repositorios.",
+      "storage": "Uso de disco y retención de datos: configurar los periodos de retención y eliminar o compactar datos históricos.",
+      "mcp": "Activar o desactivar el servidor MCP que da acceso a Rustrak a los asistentes de IA.",
+      "telemetry": "Ver el informe de uso anónimo que envía Rustrak.",
+      "issues": "Errores y sus eventos: ver, resolver, ignorar, asignar, fusionar y borrar.",
+      "performance": "Transacciones, spans, endpoints y trazas de agentes de IA.",
+      "logs": "Flujo de logs del proyecto.",
+      "sessions": "Salud de las releases: sesiones y usuarios sin crashes.",
+      "releases": "Releases, sus commits y despliegues.",
+      "source-maps": "Source maps y archivos de depuración para ver stack traces legibles.",
+      "alert-rules": "Reglas que envían notificaciones por Slack, webhook o email cuando se cumplen sus condiciones.",
+      "monitors": "Monitores de cron y sus check-ins.",
+      "project": "Nombre, plataforma, datos y productos del proyecto. Eliminar borra de forma permanente el proyecto y sus datos.",
+      "client-keys": "Claves del SDK (DSN) con las que las aplicaciones envían eventos. Editar permite rotarlas o desactivarlas.",
+      "project-members": "Miembros del proyecto y sus roles. Editar permite asignar y retirar roles en este proyecto.",
+      "project-github": "El repositorio de GitHub enlazado a este proyecto."
     }
   }
 }

@@ -32,6 +32,7 @@ import {
   searchString,
 } from '@/shared/lib/search-params';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 /** The page of a mailbox the URL shows, for the loader and the component. */
 function feedbackList(
@@ -133,6 +134,7 @@ function FeedbackPage() {
       }),
   });
   const isPending = isLoading || update.isPending;
+  const canTriage = usePermissionsLater().can('issues', 'update', projectId);
 
   const select = (selected: string | undefined) =>
     navigate({ search: (prev) => ({ ...prev, selected }), replace: true });
@@ -144,7 +146,9 @@ function FeedbackPage() {
 
   // Either verb moves the feedback to another mailbox, so the pane moves on.
   const change = (state: UpdateIssueState) => {
-    if (!current || isPending) return;
+    // The keys do nothing for a reader who may not triage; the buttons are
+    // not shown to them.
+    if (!current || isPending || !canTriage) return;
     update.mutate({ issueId: current.id, state });
   };
   const resolve = () =>

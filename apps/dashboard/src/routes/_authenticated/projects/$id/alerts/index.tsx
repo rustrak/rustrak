@@ -40,6 +40,7 @@ import { searchOneOf } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { QueryState } from '@/shared/ui/components/query-state';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 const VIEWS = ['rules', 'deliveries'] as const;
 const HISTORY = { limit: 100 };
@@ -110,6 +111,11 @@ function AlertsScreen({
   const projectId = Number.parseInt(id, 10);
   const history = useQuery(alertQueries.history(projectId, HISTORY));
   const update = useMutation(alertMutations.updateRule(projectId));
+  const permissions = usePermissionsLater();
+  const canCreate = permissions.can('alert-rules', 'create', projectId);
+  // A paused or resumed rule is an update; without it the switches stay put.
+  const busy =
+    update.isPending || !permissions.can('alert-rules', 'update', projectId);
 
   const failed = (history.data ?? []).filter(
     (h) => h.status === 'failed',
@@ -161,13 +167,7 @@ function AlertsScreen({
                 <Skeleton className="h-3 w-16" />
               )}
             </Button>
-            <Button
-              variant="primary"
-              icon={NewIcon}
-              render={<Link href={newAlertHref(projectId)} />}
-            >
-              {t('overview.new')}
-            </Button>
+            <NewAlertButton projectId={projectId} canCreate={canCreate} />
           </div>
         }
         tabs={
@@ -196,19 +196,39 @@ function AlertsScreen({
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel">
             <Deliveries projectId={projectId} rules={rules} history={history} />
           </div>
-        ) : rules?.length === 0 ? (
+        ) : rules?.length === 0 && canCreate ? (
           <AlertStarters projectId={projectId} />
         ) : (
           <RulesTable
             projectId={projectId}
             rules={rules}
             integrations={integrations ?? []}
-            busy={update.isPending}
+            busy={busy}
             onToggle={toggle}
           />
         )}
       </Page>
     </div>
+  );
+}
+
+function NewAlertButton({
+  projectId,
+  canCreate,
+}: {
+  projectId: number;
+  canCreate: boolean;
+}) {
+  const t = useTranslations('alerts');
+  if (!canCreate) return null;
+  return (
+    <Button
+      variant="primary"
+      icon={NewIcon}
+      render={<Link href={newAlertHref(projectId)} />}
+    >
+      {t('overview.new')}
+    </Button>
   );
 }
 

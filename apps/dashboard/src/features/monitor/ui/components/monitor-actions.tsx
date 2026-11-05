@@ -19,6 +19,7 @@ import { useTranslations } from 'use-intl';
 import { monitorMutations } from '@/features/monitor/api/mutations';
 import { monitorHref } from '@/features/monitor/lib/href';
 import { Link } from '@/shared/ui/components/link';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
@@ -40,6 +41,9 @@ export function MonitorActions({
   const [confirming, setConfirming] = useState(false);
   const base = `/projects/${projectId}/crons`;
   const href = monitorHref(projectId, monitor.slug);
+  const permissions = usePermissionsLater();
+  const canUpdate = permissions.can('monitors', 'update', projectId);
+  const canDelete = permissions.can('monitors', 'delete', projectId);
 
   const toggleMute = () =>
     update.mutate(
@@ -65,36 +69,42 @@ export function MonitorActions({
 
   return (
     <div className="flex items-center gap-2">
-      <Button
-        icon={monitor.is_muted ? NotificationIcon : MuteIcon}
-        disabled={isPending}
-        onClick={toggleMute}
-      >
-        {t(monitor.is_muted ? 'actions.unmute' : 'actions.mute')}
-      </Button>
-      <Button icon={EditIcon} render={<Link href={`${href}/edit`} />}>
-        {t('actions.edit')}
-      </Button>
-      <Menu
-        align="end"
-        trigger={
+      {canUpdate ? (
+        <>
           <Button
-            variant="ghost"
-            icon={MoreIcon}
-            aria-label={t('actions.more')}
+            icon={monitor.is_muted ? NotificationIcon : MuteIcon}
             disabled={isPending}
-          />
-        }
-        actions={[
-          {
-            id: 'delete',
-            label: t('actions.delete'),
-            icon: DeleteIcon,
-            tone: 'danger',
-            onSelect: () => setConfirming(true),
-          },
-        ]}
-      />
+            onClick={toggleMute}
+          >
+            {t(monitor.is_muted ? 'actions.unmute' : 'actions.mute')}
+          </Button>
+          <Button icon={EditIcon} render={<Link href={`${href}/edit`} />}>
+            {t('actions.edit')}
+          </Button>
+        </>
+      ) : null}
+      {canDelete ? (
+        <Menu
+          align="end"
+          trigger={
+            <Button
+              variant="ghost"
+              icon={MoreIcon}
+              aria-label={t('actions.more')}
+              disabled={isPending}
+            />
+          }
+          actions={[
+            {
+              id: 'delete',
+              label: t('actions.delete'),
+              icon: DeleteIcon,
+              tone: 'danger',
+              onSelect: () => setConfirming(true),
+            },
+          ]}
+        />
+      ) : null}
 
       <Dialog
         alert

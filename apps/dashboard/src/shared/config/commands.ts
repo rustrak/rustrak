@@ -156,13 +156,6 @@ const PROJECT_SETTINGS_PAGES: ProjectPage[] = [
     keywords: ['rules', 'notifications'],
   },
   {
-    labelKey: 'commands.members',
-    segment: '/settings/members',
-    descriptionKey: 'commands.membersDescription',
-    icon: TeamIcon,
-    keywords: ['access', 'roles', 'permissions'],
-  },
-  {
     labelKey: 'commands.clientKeys',
     segment: '/settings/client-keys',
     descriptionKey: 'commands.clientKeysDescription',

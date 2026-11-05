@@ -12,6 +12,7 @@ export const Route = createFileRoute('/_authenticated/settings/profile')({
 /** Who the reader is here, and how they sign in. */
 function ProfilePage() {
   const t = useTranslations('settings');
+  const tUser = useTranslations('user');
   const user = useSessionUser();
 
   return (
@@ -28,7 +29,7 @@ function ProfilePage() {
         </SettingRow>
         <SettingRow title={t('account.role')}>
           <p className="text-value text-fg">
-            {user.is_admin ? t('account.administrator') : user.role}
+            {user.is_admin ? tUser('roles.admin') : tUser('roles.member')}
           </p>
         </SettingRow>
         <SettingRow title={t('account.password.title')}>

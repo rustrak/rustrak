@@ -40,6 +40,8 @@ interface RepositorySettingsProps {
   projectId: number;
   projectSlug: string;
   repository: ProjectRepository | null;
+  /** Without `project-github:update`: shown, not changeable. */
+  readOnly?: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export function RepositorySettings({
   projectId,
   projectSlug,
   repository,
+  readOnly = false,
 }: RepositorySettingsProps) {
   const t = useTranslations('github');
   const format = useFormatter();
@@ -70,7 +73,9 @@ export function RepositorySettings({
   });
   // Pending until the saved values are back on screen: a draft keyed on them
   // would otherwise drop edits made between.
+  // Read-only rides on the same flag: every control already waits on it.
   const isPending =
+    readOnly ||
     setRepository.isPending ||
     removeRepository.isPending ||
     syncCodeowners.isPending;

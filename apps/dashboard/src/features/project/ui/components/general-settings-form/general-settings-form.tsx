@@ -45,9 +45,17 @@ export type GeneralSettingsFormData = z.infer<
 
 interface GeneralSettingsFormProps {
   project: ProjectResponse;
+  /** `project:update`. */
+  canUpdate: boolean;
+  /** `project:delete`: without it there is no danger zone. */
+  canDelete: boolean;
 }
 
-export function GeneralSettingsForm({ project }: GeneralSettingsFormProps) {
+export function GeneralSettingsForm({
+  project,
+  canUpdate,
+  canDelete,
+}: GeneralSettingsFormProps) {
   const t = useTranslations('projects');
   const formT = useTranslations();
   const router = useRouter();
@@ -211,6 +219,7 @@ export function GeneralSettingsForm({ project }: GeneralSettingsFormProps) {
             description={t('nameDescription')}
             placeholder={t('namePlaceholder')}
             isPending={isPending}
+            readOnly={!canUpdate}
             hasChanges={hasNameChanges}
             onSave={handleSaveName}
             onEdit={() => clearServerError('name')}
@@ -224,6 +233,7 @@ export function GeneralSettingsForm({ project }: GeneralSettingsFormProps) {
             placeholder="project-slug"
             className="font-mono"
             isPending={isPending}
+            readOnly={!canUpdate}
             hasChanges={hasSlugChanges}
             onSave={handleSaveSlug}
             onEdit={() => clearServerError('slug')}
@@ -236,7 +246,7 @@ export function GeneralSettingsForm({ project }: GeneralSettingsFormProps) {
             <PlatformPicker
               value={project.platform}
               onValueChange={handlePlatformChange}
-              disabled={isPending}
+              disabled={isPending || !canUpdate}
             />
           </SettingRow>
 
@@ -245,7 +255,9 @@ export function GeneralSettingsForm({ project }: GeneralSettingsFormProps) {
         </SettingSection>
       </Form>
 
-      <DangerZone project={project} onRemove={handleRemoveProject} />
+      {canDelete ? (
+        <DangerZone project={project} onRemove={handleRemoveProject} />
+      ) : null}
     </div>
   );
 }

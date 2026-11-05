@@ -1,4 +1,8 @@
-import type { AuthTokenResponse } from '@rustrak/client';
+import type {
+  AuthTokenResponse,
+  CatalogResource,
+  CreateAuthToken,
+} from '@rustrak/client';
 import {
   Button,
   Dialog,
@@ -8,13 +12,11 @@ import {
   NewIcon,
   TokensIcon,
 } from '@rustrak/ui';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { tokenMutations } from '@/features/token/api/mutations';
-import { tokenQueries } from '@/features/token/api/queries';
-import type { ApiError } from '@/shared/api/query';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import {
   SettingSection,
@@ -31,6 +33,10 @@ interface TokensListProps {
   subtitle: string;
   /** Under the list: where the API these tokens open is documented. */
   footer?: React.ReactNode;
+  /** For narrowing a new token: what a permission can name. */
+  catalog: CatalogResource[];
+  /** For binding a new token to some projects. */
+  projects: { id: number; name: string }[];
 }
 
 export function TokensList({
@@ -38,19 +44,17 @@ export function TokensList({
   title,
   subtitle,
   footer,
+  catalog,
+  projects,
 }: TokensListProps) {
   const t = useTranslations('tokens');
   const commonT = useTranslations('common');
-  const queryClient = useQueryClient();
   const creation = useMutation(tokenMutations.create());
   const removal = useMutation(tokenMutations.delete());
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   // The full value, shown once: the creation's answer, until it is closed.
   const newToken = creation.data?.token ?? null;
 
-  // Which single token a copy is in flight for, so only its own buttons go
-  // quiet rather than the whole table.
-  const [copyingId, setCopyingId] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AuthTokenResponse | null>(
     null,
   );
@@ -60,20 +64,17 @@ export function TokensList({
     creation.reset();
   };
 
-  const create = (description: string) =>
-    creation.mutate(
-      { description: description || undefined },
-      {
-        onError: (error) =>
-          toast.error(t('toasts.createFailed'), {
-            description: error.error.message,
-          }),
-        onSuccess: () =>
-          toast.success(t('toasts.created'), {
-            description: t('toasts.createdHint'),
-          }),
-      },
-    );
+  const create = (input: CreateAuthToken) =>
+    creation.mutate(input, {
+      onError: (error) =>
+        toast.error(t('toasts.createFailed'), {
+          description: error.error.message,
+        }),
+      onSuccess: () =>
+        toast.success(t('toasts.created'), {
+          description: t('toasts.createdHint'),
+        }),
+    });
 
   const confirmDelete = () => {
     if (!pendingDelete) return;
@@ -86,28 +87,6 @@ export function TokensList({
         }),
       onSuccess: () => toast.success(t('toasts.deleted')),
     });
-  };
-
-  const copy = async (token: AuthTokenResponse) => {
-    setCopyingId(token.id);
-    try {
-      const { token: value } = await queryClient.fetchQuery(
-        tokenQueries.detail(token.id),
-      );
-      if (await copyToClipboard(value)) {
-        toast.success(t('toasts.copied'));
-      } else {
-        // No clipboard (an insecure origin, usually). Showing the value is the
-        // fallback: it is the one thing the user came here for.
-        toast.info(t('toasts.copyTitle'), { description: value });
-      }
-    } catch (error) {
-      toast.error(t('toasts.getFailed'), {
-        description: (error as ApiError).error.message,
-      });
-    } finally {
-      setCopyingId(null);
-    }
   };
 
   const copyNewToken = async () => {
@@ -123,9 +102,7 @@ export function TokensList({
   const rowProps = {
     tokens,
     isBusy: (token: AuthTokenResponse) =>
-      copyingId === token.id ||
-      (removal.isPending && removal.variables === token.id),
-    onCopy: copy,
+      removal.isPending && removal.variables === token.id,
     onDelete: setPendingDelete,
   };
 
@@ -145,6 +122,8 @@ export function TokensList({
             onCreate={create}
             onDone={closeCreate}
             onCopyToken={copyNewToken}
+            catalog={catalog}
+            projects={projects}
           />
         }
       />

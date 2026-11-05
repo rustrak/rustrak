@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
 import type { IssueView } from '@/features/issue/model/issue-table';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useStableFormatter } from '@/shared/ui/hooks/use-stable-formatter';
 import { DeleteIssuesDialog } from './delete-issues-dialog';
@@ -89,6 +90,9 @@ export function IssuesTable({
   const format = useStableFormatter();
   const router = useRouter();
   const [deleting, setDeleting] = useState<IssueResponse[] | null>(null);
+  const permissions = usePermissionsLater();
+  const canUpdate = permissions.can('issues', 'update', projectId);
+  const canDelete = permissions.can('issues', 'delete', projectId);
 
   const columns = useMemo(
     () => issueColumns({ projectId, t, format, members, me }),
@@ -179,6 +183,8 @@ export function IssuesTable({
     me,
     apply,
     setDeleting,
+    canUpdate,
+    canDelete,
   });
 
   const table = useDataTable({
@@ -188,7 +194,8 @@ export function IssuesTable({
     query,
     onQueryChange,
     getRowId: (issue) => issue.id,
-    enableSelection: true,
+    // Ticking rows only leads to the bulk actions.
+    enableSelection: canUpdate || canDelete,
     rowMenu,
     storageKey: 'issues',
     initialVisibility: { level: false },
@@ -241,6 +248,8 @@ export function IssuesTable({
             onDelete={setDeleting}
             priorityItems={priorityItems}
             assignItems={assignItems}
+            canUpdate={canUpdate}
+            canDelete={canDelete}
           />
         }
       />
@@ -271,11 +280,15 @@ function useIssueMenus({
   me,
   apply,
   setDeleting,
+  canUpdate,
+  canDelete,
 }: {
   members: Assignable[];
   me: number;
   apply: (issues: IssueResponse[], change: Change) => void;
   setDeleting: (issues: IssueResponse[]) => void;
+  canUpdate: boolean;
+  canDelete: boolean;
 }) {
   const t = useTranslations('issues');
   const handlers = useRef({ apply, setDeleting });
@@ -328,7 +341,7 @@ function useIssueMenus({
       const one = () => [issue];
       const resolved = issue.status === 'resolved';
       const muted = issue.status === 'ignored';
-      return [
+      const triage: MenuAction[] = [
         {
           id: 'resolve',
           label: resolved ? t('actions.unresolve') : t('actions.resolve'),
@@ -359,11 +372,14 @@ function useIssueMenus({
           icon: AssignIcon,
           items: assignItems(one, issue.assigned_to),
         },
+      ];
+      return [
+        ...(canUpdate ? triage : []),
         {
           id: 'copy',
           label: t('table.copyId'),
           icon: CopyIcon,
-          separated: true,
+          separated: canUpdate,
           onSelect: () => {
             navigator.clipboard
               ?.writeText(issue.short_id)
@@ -371,16 +387,20 @@ function useIssueMenus({
               .catch(() => {});
           },
         },
-        {
-          id: 'delete',
-          label: t('actions.delete'),
-          icon: DeleteIcon,
-          tone: 'danger',
-          onSelect: () => handlers.current.setDeleting(one()),
-        },
+        ...(canDelete
+          ? [
+              {
+                id: 'delete',
+                label: t('actions.delete'),
+                icon: DeleteIcon,
+                tone: 'danger' as const,
+                onSelect: () => handlers.current.setDeleting(one()),
+              },
+            ]
+          : []),
       ];
     },
-    [t, priorityItems, assignItems],
+    [t, priorityItems, assignItems, canUpdate, canDelete],
   );
 
   return { priorityItems, assignItems, rowMenu };
@@ -394,7 +414,11 @@ function BulkActions({
   onDelete,
   priorityItems,
   assignItems,
+  canUpdate,
+  canDelete,
 }: {
+  canUpdate: boolean;
+  canDelete: boolean;
   selected: Pick;
   disabled: boolean;
   apply: (issues: IssueResponse[], change: Change) => void;
@@ -405,55 +429,61 @@ function BulkActions({
   const t = useTranslations('issues');
   return (
     <>
-      <Button
-        size="xs"
-        variant="primary"
-        icon={ResolveIcon}
-        disabled={disabled}
-        onClick={() => apply(selected(), { status: 'resolved' })}
-      >
-        {t('actions.resolve')}
-      </Button>
-      <Button
-        size="xs"
-        variant="secondary"
-        icon={MuteIcon}
-        disabled={disabled}
-        onClick={() => apply(selected(), { status: 'ignored' })}
-      >
-        {t('actions.mute')}
-      </Button>
-      <Menu
-        actions={priorityItems(selected)}
-        trigger={
-          <Button size="xs" variant="secondary" menu disabled={disabled}>
-            {t('priority')}
+      {canUpdate ? (
+        <>
+          <Button
+            size="xs"
+            variant="primary"
+            icon={ResolveIcon}
+            disabled={disabled}
+            onClick={() => apply(selected(), { status: 'resolved' })}
+          >
+            {t('actions.resolve')}
           </Button>
-        }
-      />
-      <Menu
-        actions={assignItems(selected)}
-        trigger={
           <Button
             size="xs"
             variant="secondary"
-            icon={AssignIcon}
-            menu
+            icon={MuteIcon}
             disabled={disabled}
+            onClick={() => apply(selected(), { status: 'ignored' })}
           >
-            {t('table.assign')}
+            {t('actions.mute')}
           </Button>
-        }
-      />
-      <Button
-        size="xs"
-        variant="danger"
-        icon={DeleteIcon}
-        disabled={disabled}
-        onClick={() => onDelete(selected())}
-      >
-        {t('actions.delete')}
-      </Button>
+          <Menu
+            actions={priorityItems(selected)}
+            trigger={
+              <Button size="xs" variant="secondary" menu disabled={disabled}>
+                {t('priority')}
+              </Button>
+            }
+          />
+          <Menu
+            actions={assignItems(selected)}
+            trigger={
+              <Button
+                size="xs"
+                variant="secondary"
+                icon={AssignIcon}
+                menu
+                disabled={disabled}
+              >
+                {t('table.assign')}
+              </Button>
+            }
+          />
+        </>
+      ) : null}
+      {canDelete ? (
+        <Button
+          size="xs"
+          variant="danger"
+          icon={DeleteIcon}
+          disabled={disabled}
+          onClick={() => onDelete(selected())}
+        >
+          {t('actions.delete')}
+        </Button>
+      ) : null}
     </>
   );
 }

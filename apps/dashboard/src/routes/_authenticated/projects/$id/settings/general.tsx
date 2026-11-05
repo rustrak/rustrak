@@ -7,6 +7,7 @@ import { GeneralSettingsForm } from '@/features/project/ui/components/general-se
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/settings/general',
@@ -22,6 +23,7 @@ function GeneralSettingsPage() {
   const { data: project } = useSuspenseQuery(
     projectQueries.detail(Number.parseInt(id, 10)),
   );
+  const permissions = usePermissions();
 
   return (
     <>
@@ -31,7 +33,11 @@ function GeneralSettingsPage() {
         description={t('general.subtitle')}
       />
 
-      <GeneralSettingsForm project={project} />
+      <GeneralSettingsForm
+        project={project}
+        canUpdate={permissions.can('project', 'update', project.id)}
+        canDelete={permissions.can('project', 'delete', project.id)}
+      />
     </>
   );
 }

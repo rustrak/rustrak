@@ -1,0 +1,52 @@
+import type { Action, MyAccess, Resource } from '@rustrak/client';
+
+/**
+ * What the reader may do, from `GET /api/access/me`. Mirrors `Access::can`
+ * in `apps/server/src/auth/rbac.rs`; the server enforces, this only decides
+ * what to show.
+ */
+export interface Permissions {
+  isOwner: boolean;
+  /** On the workspace, or on `projectId` for a project resource. */
+  can: (resource: Resource, action: Action, projectId?: number) => boolean;
+  /** On the workspace or on at least one project. */
+  canAnywhere: (resource: Resource, action: Action) => boolean;
+}
+
+type Grant = { resource: Resource; action: Action };
+
+const has = (grants: Grant[], resource: Resource, action: Action) =>
+  grants.some((g) => g.resource === resource && g.action === action);
+
+export const NO_PERMISSIONS: MyAccess = {
+  is_owner: false,
+  instance: [],
+  all_projects: [],
+  projects: [],
+};
+
+export function permissionsFrom(me: MyAccess): Permissions {
+  const local = (projectId: number) =>
+    me.projects.find((p) => p.project_id === projectId)?.permissions ?? [];
+
+  return {
+    isOwner: me.is_owner,
+    can: (resource, action, projectId) => {
+      if (me.is_owner || has(me.instance, resource, action)) return true;
+      if (projectId === undefined) return false;
+      // Any permission on a project implies seeing it.
+      if (resource === 'project' && action === 'read') {
+        return me.all_projects.length > 0 || local(projectId).length > 0;
+      }
+      return (
+        has(me.all_projects, resource, action) ||
+        has(local(projectId), resource, action)
+      );
+    },
+    canAnywhere: (resource, action) =>
+      me.is_owner ||
+      has(me.instance, resource, action) ||
+      has(me.all_projects, resource, action) ||
+      me.projects.some((p) => has(p.permissions, resource, action)),
+  };
+}

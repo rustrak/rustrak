@@ -3,6 +3,7 @@ import { noop } from '@tanstack/react-query';
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
 import { projectQueries } from '@/features/project/api/queries';
 import { TimeZoneSync } from '@/features/user/ui/components/time-zone-sync';
+import { accessQueries } from '@/shared/api/permissions';
 import { returnPath } from '@/shared/api/return-path';
 import { session } from '@/shared/api/session';
 import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
@@ -50,6 +51,7 @@ export const Route = createFileRoute('/_authenticated')({
   // The sidebar's switcher and the command bar, started here so they are on
   // their way before the frame renders; neither waits for it.
   loader: ({ context: { queryClient } }) => {
+    void queryClient.query(accessQueries.me()).catch(noop);
     void queryClient
       .query(projectQueries.list({ per_page: COMMAND_BAR_PROJECT_LIMIT }))
       .catch(noop);

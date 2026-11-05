@@ -60,7 +60,7 @@ export function FieldLabel({
   return (
     <BaseField.Label
       className={cn(
-        'text-fg-secondary text-label data-disabled:text-fg-disabled',
+        'w-fit text-fg-secondary text-label data-disabled:text-fg-disabled',
         className,
       )}
       {...props}

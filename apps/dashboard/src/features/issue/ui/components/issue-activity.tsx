@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 interface IssueActivityProps {
   projectId: number;
@@ -101,6 +102,8 @@ export function IssueActivity({
 }: IssueActivityProps) {
   const format = useFormatter();
   const t = useTranslations('issues');
+  // Commenting is `issues:update` on the server.
+  const canComment = usePermissionsLater().can('issues', 'update', projectId);
   const [text, setText] = useState('');
   const { mutate, isPending } = useMutation({
     ...issueMutations.comment(projectId, issueId),
@@ -129,28 +132,30 @@ export function IssueActivity({
 
   return (
     <div className="flex flex-col gap-4">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={t('activity.placeholder')}
-          rows={3}
-          disabled={isPending}
-          aria-label={t('activity.placeholder')}
-        />
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            size="sm"
-            variant="secondary"
-            icon={CommentIcon}
-            loading={isPending}
-            disabled={!text.trim()}
-          >
-            {t('activity.comment')}
-          </Button>
-        </div>
-      </form>
+      {canComment ? (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={t('activity.placeholder')}
+            rows={3}
+            disabled={isPending}
+            aria-label={t('activity.placeholder')}
+          />
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              size="sm"
+              variant="secondary"
+              icon={CommentIcon}
+              loading={isPending}
+              disabled={!text.trim()}
+            >
+              {t('activity.comment')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
 
       {entries.length === 0 ? (
         <p className="py-4 text-center text-meta text-fg-subtle">

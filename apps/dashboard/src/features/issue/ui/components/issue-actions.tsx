@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { DeleteIssuesDialog } from './issues-table/delete-issues-dialog';
 
@@ -40,6 +41,7 @@ const toastFailure = (message: string) => (error: Error) =>
  */
 export function useIssueChange(projectId: number, issue: IssueResponse) {
   const t = useTranslations('issues');
+  const permissions = usePermissionsLater();
   const update = useMutation(issueMutations.update(projectId));
   const bookmark = useMutation({
     ...issueMutations.bookmark(projectId, issue.id),
@@ -52,6 +54,9 @@ export function useIssueChange(projectId: number, issue: IssueResponse) {
 
   return {
     isPending: update.isPending || bookmark.isPending || subscribe.isPending,
+    /** Status, priority, assignee: `issues:update`. Bookmarks are the reader's own. */
+    canUpdate: permissions.can('issues', 'update', projectId),
+    canDelete: permissions.can('issues', 'delete', projectId),
     update: (body: UpdateIssueState, failed = t('toasts.updateFailed')) =>
       update.mutate(
         { issueId: issue.id, state: body },
@@ -130,10 +135,8 @@ export function IssueActionBar({
 }: IssueActionBarProps) {
   const t = useTranslations('issues');
   const router = useRouter();
-  const { isPending, update, bookmark, subscribe } = useIssueChange(
-    projectId,
-    issue,
-  );
+  const { isPending, update, bookmark, subscribe, canUpdate, canDelete } =
+    useIssueChange(projectId, issue);
   const [deleting, setDeleting] = useState(false);
   // The callbacks go on `mutate`: here they would replace the factory's
   // `onSuccess`, which drops the deleted issue from the cache.
@@ -164,10 +167,14 @@ export function IssueActionBar({
     if (!isPending) action();
   };
   useShortcuts({
-    r: once(resolve),
-    e: once(archive),
+    ...(canUpdate
+      ? {
+          r: once(resolve),
+          e: once(archive),
+          i: once(() => update({ assigned_to: me })),
+        }
+      : {}),
     b: once(bookmark),
-    i: once(() => update({ assigned_to: me })),
     C: copyLink,
   });
 
@@ -207,79 +214,49 @@ export function IssueActionBar({
       icon: CopyIcon,
       onSelect: () => copy(issue.short_id, t('table.copied')),
     },
-    {
-      id: 'assign-me',
-      label: t('table.assignToMe'),
-      shortcut: 'I',
-      separated: true,
-      disabled: isPending || issue.assigned_to === me,
-      onSelect: () => update({ assigned_to: me }),
-    },
-    {
-      id: 'delete',
-      label: t('actions.deleteIssue'),
-      icon: DeleteIcon,
-      tone: 'danger',
-      separated: true,
-      onSelect: () => setDeleting(true),
-    },
+    ...(canUpdate
+      ? [
+          {
+            id: 'assign-me',
+            label: t('table.assignToMe'),
+            shortcut: 'I',
+            separated: true,
+            disabled: isPending || issue.assigned_to === me,
+            onSelect: () => update({ assigned_to: me }),
+          },
+        ]
+      : []),
+    ...(canDelete
+      ? [
+          {
+            id: 'delete',
+            label: t('actions.deleteIssue'),
+            icon: DeleteIcon,
+            tone: 'danger' as const,
+            separated: true,
+            onSelect: () => setDeleting(true),
+          },
+        ]
+      : []),
   ];
 
   return (
     // Full width when it has a row of its own, so the toggles and ⋯ sit at
     // the right edge; the two verbs never wrap apart.
     <div className="flex w-full items-center gap-2 @4xl:w-auto">
-      {resolved ? (
-        <Button
-          variant="secondary"
-          icon={UnresolveIcon}
-          disabled={isPending}
-          onClick={resolve}
-          shortcut="R"
-        >
-          {t('actions.unresolve')}
-        </Button>
-      ) : (
-        <SplitButton
-          icon={ResolveIcon}
-          onClick={resolve}
-          disabled={isPending}
-          menuLabel={t('moreResolveOptions')}
-          actions={[
-            {
-              id: 'resolve',
-              label: t('actions.resolve'),
-              shortcut: 'R',
-              onSelect: resolve,
-            },
-            {
-              id: 'next-release',
-              label: t('actions.resolveInNextRelease'),
-              onSelect: () => update({ status: 'resolvedInNextRelease' }),
-            },
-          ]}
-        >
-          {t('actions.resolve')}
-        </SplitButton>
-      )}
-
-      {/* One archive, with no "until escalating" beside it: that variant
-          waits for the server to reopen issues that escalate. */}
-      <Button
-        variant="secondary"
-        icon={MuteIcon}
-        disabled={isPending}
-        onClick={archive}
-        shortcut="E"
-      >
-        {feedback
-          ? archived
-            ? t('actions.moveToInbox')
-            : t('actions.markSpam')
-          : archived
-            ? t('actions.unarchive')
-            : t('actions.archive')}
-      </Button>
+      {canUpdate ? (
+        <TriageButtons
+          resolved={resolved}
+          archived={archived}
+          feedback={feedback}
+          isPending={isPending}
+          resolve={resolve}
+          archive={archive}
+          resolveInNextRelease={() =>
+            update({ status: 'resolvedInNextRelease' })
+          }
+        />
+      ) : null}
 
       <span
         aria-hidden="true"
@@ -355,5 +332,81 @@ export function IssueActionBar({
         }
       />
     </div>
+  );
+}
+
+/** The two verbs of triage, for a reader who may triage (`issues:update`). */
+function TriageButtons({
+  resolved,
+  archived,
+  feedback,
+  isPending,
+  resolve,
+  archive,
+  resolveInNextRelease,
+}: {
+  resolved: boolean;
+  archived: boolean;
+  feedback: boolean;
+  isPending: boolean;
+  resolve: () => void;
+  archive: () => void;
+  resolveInNextRelease: () => void;
+}) {
+  const t = useTranslations('issues');
+  return (
+    <>
+      {resolved ? (
+        <Button
+          variant="secondary"
+          icon={UnresolveIcon}
+          disabled={isPending}
+          onClick={resolve}
+          shortcut="R"
+        >
+          {t('actions.unresolve')}
+        </Button>
+      ) : (
+        <SplitButton
+          icon={ResolveIcon}
+          onClick={resolve}
+          disabled={isPending}
+          menuLabel={t('moreResolveOptions')}
+          actions={[
+            {
+              id: 'resolve',
+              label: t('actions.resolve'),
+              shortcut: 'R',
+              onSelect: resolve,
+            },
+            {
+              id: 'next-release',
+              label: t('actions.resolveInNextRelease'),
+              onSelect: resolveInNextRelease,
+            },
+          ]}
+        >
+          {t('actions.resolve')}
+        </SplitButton>
+      )}
+
+      {/* One archive, with no "until escalating" beside it: that variant
+          waits for the server to reopen issues that escalate. */}
+      <Button
+        variant="secondary"
+        icon={MuteIcon}
+        disabled={isPending}
+        onClick={archive}
+        shortcut="E"
+      >
+        {feedback
+          ? archived
+            ? t('actions.moveToInbox')
+            : t('actions.markSpam')
+          : archived
+            ? t('actions.unarchive')
+            : t('actions.archive')}
+      </Button>
+    </>
   );
 }

@@ -30,6 +30,7 @@ import { PageLoading } from '@/shared/ui/components/page-loading';
 import { Panel, RailBlock } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
@@ -81,6 +82,9 @@ function AlertPage() {
   const update = useMutation(alertMutations.updateRule(projectId));
   const remove = useMutation(alertMutations.deleteRule(projectId, rule.id));
   const isPending = update.isPending || remove.isPending;
+  const permissions = usePermissionsLater();
+  const canUpdate = permissions.can('alert-rules', 'update', projectId);
+  const canDelete = permissions.can('alert-rules', 'delete', projectId);
   usePageTrail([{ label: rule.name }]);
 
   const shape = ruleShape(rule, integrations);
@@ -198,25 +202,29 @@ function AlertPage() {
             <label className="me-2 flex items-center gap-2 text-fg-secondary text-meta">
               <Switch
                 checked={rule.is_enabled}
-                disabled={isPending}
+                disabled={isPending || !canUpdate}
                 onCheckedChange={setEnabled}
               />
               {t(rule.is_enabled ? 'overview.active' : 'list.paused')}
             </label>
-            <Button
-              icon={EditIcon}
-              render={<Link href={`${alertHref(projectId, rule.id)}/edit`} />}
-            >
-              {t('overview.edit')}
-            </Button>
-            <Button
-              variant="ghost"
-              icon={DeleteIcon}
-              disabled={isPending}
-              onClick={() => setConfirming(true)}
-            >
-              {t('overview.delete')}
-            </Button>
+            {canUpdate ? (
+              <Button
+                icon={EditIcon}
+                render={<Link href={`${alertHref(projectId, rule.id)}/edit`} />}
+              >
+                {t('overview.edit')}
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <Button
+                variant="ghost"
+                icon={DeleteIcon}
+                disabled={isPending}
+                onClick={() => setConfirming(true)}
+              >
+                {t('overview.delete')}
+              </Button>
+            ) : null}
           </div>
         </div>
       </header>

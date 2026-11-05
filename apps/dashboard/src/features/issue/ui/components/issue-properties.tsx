@@ -38,7 +38,7 @@ export function IssueProperties({
 }) {
   const t = useTranslations('issues');
   const format = useFormatter();
-  const { isPending, update } = useIssueChange(projectId, issue);
+  const { isPending, update, canUpdate } = useIssueChange(projectId, issue);
   const status = statusDisplay(issue);
   const priority = priorityDisplay(issue.priority);
   const assignee = members.find((member) => member.id === issue.assigned_to);
@@ -111,7 +111,7 @@ export function IssueProperties({
           align="end"
           actions={priorityActions}
           trigger={
-            <PropertyButton disabled={isPending}>
+            <PropertyButton disabled={isPending || !canUpdate}>
               {priority && issue.priority ? (
                 <>
                   <span
@@ -139,7 +139,7 @@ export function IssueProperties({
           actions={assigneeActions}
           popupClassName="min-w-56"
           trigger={
-            <PropertyButton disabled={isPending}>
+            <PropertyButton disabled={isPending || !canUpdate}>
               {assignee ? (
                 <>
                   <Avatar name={assignee.email} size="xs" />

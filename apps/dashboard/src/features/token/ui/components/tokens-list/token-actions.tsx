@@ -1,6 +1,5 @@
 import type { AuthTokenResponse } from '@rustrak/client';
 import {
-  CopyIcon,
   cn,
   DeleteIcon,
   focusRing,
@@ -11,21 +10,19 @@ import {
 import { useTranslations } from 'use-intl';
 
 /**
- * Copy and delete for one token, behind the row's ⋯ menu.
+ * Delete for one token, behind the row's ⋯ menu. There is no copy: tokens
+ * are stored hashed, and the full value exists only when it is created.
  *
  * A token is identified by its description where it has one and by its
- * prefix otherwise, and that fallback is the whole reason these actions need
- * labels: "copy" and "delete" alone never say what.
+ * prefix otherwise, which is why the action carries a label.
  */
 export function TokenActions({
   token,
   busy,
-  onCopy,
   onDelete,
 }: {
   token: AuthTokenResponse;
   busy: boolean;
-  onCopy: (token: AuthTokenResponse) => void;
   onDelete: (token: AuthTokenResponse) => void;
 }) {
   const t = useTranslations('tokens');
@@ -52,18 +49,10 @@ export function TokenActions({
       }
       actions={[
         {
-          id: 'copy',
-          label: t('copyTokenLabel', { label }),
-          icon: CopyIcon,
-          disabled: busy,
-          onSelect: () => onCopy(token),
-        },
-        {
           id: 'delete',
           label: t('deleteTokenLabel', { label }),
           icon: DeleteIcon,
           tone: 'danger',
-          separated: true,
           disabled: busy,
           onSelect: () => onDelete(token),
         },

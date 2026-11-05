@@ -12,6 +12,7 @@ import {
   SettingsListSkeleton,
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/settings/data',
@@ -36,6 +37,7 @@ function DataSettingsPage() {
     projectQueries.detail(Number.parseInt(id, 10)),
   );
   const rateLimits = useQuery(projectQueries.rateLimits());
+  const readOnly = !usePermissions().can('project', 'update', project.id);
 
   return (
     <>
@@ -47,12 +49,17 @@ function DataSettingsPage() {
 
       {/* Keyed: its state seeds once, and the next project must not inherit
           this one's switches. */}
-      <ProductsSettings key={project.id} project={project} />
+      <ProductsSettings
+        key={project.id}
+        project={project}
+        readOnly={readOnly}
+      />
 
       <RateLimitSettings
         project={project}
         // A failure here costs only the placeholder, not the page.
         serverLimits={rateLimits.data ?? null}
+        readOnly={readOnly}
       />
     </>
   );
