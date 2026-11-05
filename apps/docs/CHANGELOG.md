@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.3
+
+### Patch Changes
+
+- [`82544d4`](https://github.com/rustrak/rustrak/commit/82544d43da00bf1bce24dda0a800994d01d8620d) Thanks [@AbianS](https://github.com/AbianS)! - Update the OpenShowcase player to 0.6.1 and show every interactive demo inside a bezel, on a backdrop and with hotspots in the brand color.
+
 ## 0.17.2
 
 ### Patch Changes
