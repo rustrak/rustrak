@@ -98,7 +98,7 @@ async fn setup() -> (TestDb, i32, String) {
     )
     .await
     .unwrap();
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .unwrap()
         .token;

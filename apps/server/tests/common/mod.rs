@@ -66,3 +66,56 @@ impl SourceMapProvider for NullSourceMapProvider {
 pub fn null_sourcemap_provider() -> Arc<dyn SourceMapProvider> {
     Arc::new(NullSourceMapProvider)
 }
+
+/// The role named `name`, created on first use: the install ships none, so the
+/// suite keeps the sets existing memberships migrate to, plus a workspace admin.
+pub async fn ensure_role(pool: &DbPool, name: &str) -> i32 {
+    use rustrak::auth::rbac::{Action, Resource, Scope};
+    use rustrak::models::Permission;
+    use rustrak::services::RoleService;
+
+    if let Some(role) = RoleService::list(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.name == name)
+    {
+        return role.id;
+    }
+    let keep: fn(Resource, Action) -> bool = match name {
+        "Workspace Admin" => |r, _| r.scope() == Scope::Instance,
+        "Project Admin" => |r, _| r.scope() == Scope::Project,
+        "Editor" => |r, a| {
+            r.scope() == Scope::Project
+                && !matches!(
+                    (r, a),
+                    (Resource::Project, Action::Delete)
+                        | (Resource::ClientKeys, Action::Update)
+                        | (Resource::ProjectMembers, Action::Update)
+                )
+        },
+        "Viewer" => |r, a| r.scope() == Scope::Project && a == Action::Read,
+        other => panic!("no such test role {other}"),
+    };
+    let permissions = Resource::ALL
+        .iter()
+        .flat_map(|r| r.actions().iter().map(move |a| (*r, *a)))
+        .filter(|&(r, a)| keep(r, a))
+        .map(|(resource, action)| Permission { resource, action })
+        .collect();
+    RoleService::create(pool, name, "", permissions)
+        .await
+        .unwrap()
+        .id
+}
+
+/// Gives a user a named test role on one project.
+pub async fn grant_project_role(
+    pool: &DbPool,
+    project_id: i32,
+    user_id: i32,
+    role: &str,
+) -> AppResult<()> {
+    let id = ensure_role(pool, role).await;
+    rustrak::services::RoleService::assign(pool, user_id, id, Some(project_id)).await
+}

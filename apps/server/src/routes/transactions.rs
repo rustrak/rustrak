@@ -1,13 +1,13 @@
 use actix_web::{web, HttpResponse};
 use uuid::Uuid;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
 #[cfg(feature = "openapi")]
 use crate::models::{TransactionDetailResponse, TransactionResponse};
 use crate::pagination::{ListTransactionsQuery, OffsetPaginatedResponse};
-use crate::services::access::{self, Action};
 use crate::services::TransactionService;
 
 #[cfg(feature = "openapi")]
@@ -39,14 +39,7 @@ pub async fn list_transactions(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let page = query.page.max(1);
     let per_page = query.per_page.clamp(1, 100);
@@ -99,14 +92,7 @@ pub async fn get_transaction(
 ) -> AppResult<HttpResponse> {
     let (project_id, transaction_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let transaction =
         TransactionService::get_by_id(pool.get_ref(), project_id, transaction_id).await?;
@@ -140,14 +126,7 @@ pub async fn get_transaction_spans(
 ) -> AppResult<HttpResponse> {
     let (project_id, transaction_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let spans = TransactionService::list_spans(pool.get_ref(), project_id, transaction_id).await?;
 
@@ -182,14 +161,7 @@ pub async fn get_transaction_stats(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let page = query.page.max(1);
     let per_page = query.per_page.clamp(1, 100);
@@ -228,14 +200,7 @@ pub async fn get_transaction_stat_group(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let stat = TransactionService::stats_for_group(
         pool.get_ref(),
@@ -279,14 +244,7 @@ pub async fn get_transaction_stat_group_timeseries(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let filter = query.filter();
     let points = TransactionService::group_timeseries(

@@ -258,7 +258,7 @@ async fn a_query_keeps_the_versions_that_contain_it() {
 async fn the_api_pages_the_list_and_answers_one_release() {
     let db = TestDb::new().await;
     let p = seed(&db.pool).await;
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .unwrap()
         .token;

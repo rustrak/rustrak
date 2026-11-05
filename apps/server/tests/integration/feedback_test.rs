@@ -639,7 +639,7 @@ async fn the_user_feedback_endpoint_takes_a_token_and_returns_the_report() {
     let app = app(&s).await;
     let token = rustrak::services::AuthTokenService::create(
         &s.db.pool,
-        rustrak::models::CreateAuthToken { description: None },
+        rustrak::models::CreateAuthToken::default(),
     )
     .await
     .unwrap()
@@ -674,13 +674,10 @@ async fn the_user_feedback_endpoint_takes_a_token_and_returns_the_report() {
 }
 
 async fn admin_token(pool: &DbPool) -> String {
-    rustrak::services::AuthTokenService::create(
-        pool,
-        rustrak::models::CreateAuthToken { description: None },
-    )
-    .await
-    .unwrap()
-    .token
+    rustrak::services::AuthTokenService::create(pool, rustrak::models::CreateAuthToken::default())
+        .await
+        .unwrap()
+        .token
 }
 
 async fn get_feedback(

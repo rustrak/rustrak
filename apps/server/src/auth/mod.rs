@@ -1,5 +1,6 @@
 pub mod extractors;
 pub mod oidc;
+pub mod rbac;
 pub mod sentry_auth;
 pub mod session;
 pub mod token;

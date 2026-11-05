@@ -50,8 +50,9 @@ pub struct MemberArgs {
     project_id: i32,
     /// User ID to add or update
     user_id: i32,
-    /// Per-project role to assign: viewer, editor or admin
-    role: String,
+    /// The user's roles on this project, by role id (see `GET /api/roles`).
+    /// Replaces the roles they hold there; empty removes them.
+    role_ids: Vec<i32>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -156,7 +157,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "List the members of a project with their per-project role (viewer/editor/admin). Requires global admin or project-admin access.",
+        description = "List the members of a project with the roles they hold on it. Requires the project-members:read permission on the project.",
         annotations(read_only_hint = true)
     )]
     async fn list_project_members(&self, Parameters(a): Parameters<ProjectArgs>) -> CallToolResult {
@@ -169,7 +170,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Add a user to a project or change their per-project role. viewer = read issues/events; editor = also resolve/delete issues and update the project; admin = also delete the project and manage its members. Requires global admin or project-admin access.",
+        description = "Set the roles a user holds on a project, by role id (see `GET /api/roles`). Requires the project-members:update permission, only grants roles within the caller's own permissions, and never changes the caller's own membership.",
         annotations(destructive_hint = false)
     )]
     async fn set_project_member(&self, Parameters(a): Parameters<MemberArgs>) -> CallToolResult {
@@ -184,15 +185,15 @@ impl RustrakMcp {
                 .await
             },
             format!(
-                "User {} is now {} on project {}.",
-                a.user_id, a.role, a.project_id
+                "User {} now holds roles {:?} on project {}.",
+                a.user_id, a.role_ids, a.project_id
             ),
         )
         .await
     }
 
     #[tool(
-        description = "Remove a user's access to a project. The last project admin cannot be removed. Requires global admin or project-admin access.",
+        description = "Remove every role a user holds on a project. Requires the project-members:update permission; the caller cannot remove themselves.",
         annotations(destructive_hint = true)
     )]
     async fn remove_project_member(

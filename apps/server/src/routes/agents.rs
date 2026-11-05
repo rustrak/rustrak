@@ -11,6 +11,7 @@
 
 use actix_web::{web, HttpResponse};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
@@ -23,21 +24,13 @@ use crate::pagination::{
     AgentBreakdownQuery, AgentConversationsQuery, AgentTimeseriesQuery, AgentTracesQuery,
     AgentWindowQuery, OffsetPaginatedResponse,
 };
-use crate::services::access::{self, Action};
 use crate::services::span::{AgentFilters, SpanService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
 
-async fn require_view_access(pool: &DbPool, project_id: i32, actor: &ApiActor) -> AppResult<()> {
-    access::require(
-        pool,
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await
+async fn require_view_access(_pool: &DbPool, project_id: i32, actor: &ApiActor) -> AppResult<()> {
+    actor.require(Resource::Performance, Action::Read, Some(project_id))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(

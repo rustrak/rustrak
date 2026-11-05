@@ -218,6 +218,8 @@ mod tests {
             created_at: Utc::now(),
             accepted_at: None,
             email_sent_at: None,
+            role_id: None,
+            project_id: None,
         }
     }
 

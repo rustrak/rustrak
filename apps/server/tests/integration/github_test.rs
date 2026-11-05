@@ -303,13 +303,10 @@ macro_rules! app {
 }
 
 async fn token(db: &TestDb) -> String {
-    AuthTokenService::create(
-        &db.pool,
-        rustrak::models::CreateAuthToken { description: None },
-    )
-    .await
-    .unwrap()
-    .token
+    AuthTokenService::create(&db.pool, rustrak::models::CreateAuthToken::default())
+        .await
+        .unwrap()
+        .token
 }
 
 fn bearer(token: &str) -> (&'static str, String) {
@@ -1432,7 +1429,7 @@ async fn comments_reach_github_without_the_authors_email() {
     .unwrap();
     let token = AuthTokenService::create_for_user(
         &db.pool,
-        rustrak::models::CreateAuthToken { description: None },
+        rustrak::models::CreateAuthToken::default(),
         Some(user.id),
     )
     .await
@@ -2556,7 +2553,7 @@ async fn people_set_their_own_github_login() {
     .unwrap();
     let token = AuthTokenService::create_for_user(
         &db.pool,
-        rustrak::models::CreateAuthToken { description: None },
+        rustrak::models::CreateAuthToken::default(),
         Some(user.id),
     )
     .await

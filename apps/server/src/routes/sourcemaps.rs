@@ -6,12 +6,12 @@ use sha1::Digest as _;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::source_file::DIF_JOB_KIND;
-use crate::services::access::{self, Action};
 use crate::services::sourcemap::{get_missing_chunks, store_chunks, SourceMapProvider};
 
 // ---------------------------------------------------------------------------
@@ -299,14 +299,7 @@ pub async fn artifact_bundle_assemble(
     };
 
     // Enforce mutation access on the resolved project.
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::UpdateProject,
-    )
-    .await?;
+    actor.require(Resource::SourceMaps, Action::Create, Some(project_id))?;
 
     let response = enqueue_assembly(
         pool.get_ref(),
@@ -604,14 +597,7 @@ pub async fn dif_assemble(
             "project not found: {project_slug}"
         )));
     };
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::UpdateProject,
-    )
-    .await?;
+    actor.require(Resource::SourceMaps, Action::Create, Some(project_id))?;
 
     let mut out = HashMap::new();
     for (checksum, file) in body.iter() {
@@ -702,14 +688,7 @@ pub async fn dif_upload(
             "project not found: {project_slug}"
         )));
     };
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::UpdateProject,
-    )
-    .await?;
+    actor.require(Resource::SourceMaps, Action::Create, Some(project_id))?;
 
     let max_size = config.max_chunk_size_bytes.saturating_mul(64);
     let mut upload: Option<Vec<u8>> = None;
@@ -864,14 +843,7 @@ pub async fn list_source_maps(
         }
     };
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::SourceMaps, Action::Read, Some(project_id))?;
 
     #[derive(sqlx::FromRow)]
     struct Row {

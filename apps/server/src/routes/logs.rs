@@ -1,12 +1,12 @@
 use actix_web::{web, HttpResponse};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 #[cfg(feature = "openapi")]
 use crate::models::{LogResponse, LogVolumePoint};
 use crate::pagination::{ListLogsQuery, LogVolumeQuery, OffsetPaginatedResponse};
-use crate::services::access::{self, Action};
 use crate::services::log::LogService;
 
 #[cfg(feature = "openapi")]
@@ -39,14 +39,7 @@ pub async fn list_logs(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Logs, Action::Read, Some(project_id))?;
 
     let page = query.page.max(1);
     let per_page = query.per_page.clamp(1, 100);
@@ -90,14 +83,7 @@ pub async fn get_log_volume(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Logs, Action::Read, Some(project_id))?;
 
     let points = LogService::volume(pool.get_ref(), project_id, &query.filters()).await?;
     Ok(HttpResponse::Ok().json(points))
@@ -128,14 +114,7 @@ pub async fn get_log(
 ) -> AppResult<HttpResponse> {
     let (project_id, log_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Logs, Action::Read, Some(project_id))?;
 
     let log = LogService::get(pool.get_ref(), project_id, log_id)
         .await?

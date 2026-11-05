@@ -22,6 +22,13 @@ impl InvitationService {
         let role = UserRole::parse(&input.role)
             .ok_or_else(|| AppError::Validation(format!("Invalid role: {}", input.role)))?;
 
+        if input.project_id.is_some() && input.role_id.is_none() {
+            return Err(
+                AppError::Validation("A project needs a role to give on it".to_string())
+                    .with_field("role_id", FieldErrorCode::Required),
+            );
+        }
+
         let email = User::normalize_email(&input.email);
 
         if !crate::routes::auth::is_valid_email(&email) {
@@ -47,9 +54,9 @@ impl InvitationService {
 
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            INSERT INTO invitations (token, email, role, status, expires_at, invited_by)
-            VALUES ($1, $2, $3, 'pending', $4, $5)
-            RETURNING token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            INSERT INTO invitations (token, email, role, status, expires_at, invited_by, role_id, project_id)
+            VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
+            RETURNING token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             "#,
         )
         .bind(&token)
@@ -57,6 +64,8 @@ impl InvitationService {
         .bind(role.as_str())
         .bind(expires_at)
         .bind(invited_by)
+        .bind(input.role_id)
+        .bind(input.project_id)
         .fetch_one(pool)
         .await?;
 
@@ -67,7 +76,7 @@ impl InvitationService {
     pub async fn get(pool: &DbPool, token: &str) -> AppResult<Option<Invitation>> {
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             FROM invitations WHERE token = $1
             "#,
         )
@@ -82,7 +91,7 @@ impl InvitationService {
     pub async fn list(pool: &DbPool) -> AppResult<Vec<Invitation>> {
         let invitations = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             FROM invitations ORDER BY created_at DESC
             "#,
         )
@@ -106,7 +115,7 @@ impl InvitationService {
     async fn pending_for_email(pool: &DbPool, email: &str) -> AppResult<Option<Invitation>> {
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at
+            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             FROM invitations WHERE LOWER(email) = LOWER($1) AND status = 'pending'
             "#,
         )
@@ -162,6 +171,17 @@ impl InvitationService {
         let mut tx = pool.begin().await?;
 
         let user = UsersService::create_user(&mut *tx, &req, role).await?;
+
+        if let Some(role_id) = invitation.role_id {
+            sqlx::query(
+                "INSERT INTO role_assignments (user_id, role_id, project_id) VALUES ($1, $2, $3)",
+            )
+            .bind(user.id)
+            .bind(role_id)
+            .bind(invitation.project_id)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         // Consume only if still pending — guards against a concurrent accept/
         // revoke that slipped in between the check above and now.

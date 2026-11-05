@@ -19,6 +19,11 @@ export type AcceptInvitationResponse = {
 };
 
 /**
+ * Something a grant can allow.
+ */
+export type Action = 'read' | 'create' | 'update' | 'delete';
+
+/**
  * An entry in an issue's activity log. Comments are stored as activity rows of
  * type `note` with `{"text": ...}` in `data` (Sentry models notes as activity).
  */
@@ -260,6 +265,14 @@ export type AssembleResponse = {
     state: string;
 };
 
+export type AssignmentInput = {
+    /**
+     * `null` reaches every project.
+     */
+    project_id?: number | null;
+    role_id: number;
+};
+
 /**
  * The raw bytes of an attachment. Untyped in the spec: the generated
  * client validates bodies with zod, which has no type for a binary one.
@@ -297,7 +310,16 @@ export type AuthResponse = {
 export type AuthTokenCreatedResponse = {
     created_at: string;
     description: string | null;
+    expires_at: string | null;
     id: number;
+    /**
+     * `null`: everything its owner may do.
+     */
+    permissions: Array<Permission> | null;
+    /**
+     * `null`: every project its owner reaches.
+     */
+    project_ids: Array<number> | null;
     token: string;
 };
 
@@ -307,9 +329,19 @@ export type AuthTokenCreatedResponse = {
 export type AuthTokenResponse = {
     created_at: string;
     description: string | null;
+    expires_at: string | null;
     id: number;
     last_used_at: string | null;
+    /**
+     * `null`: everything its owner may do.
+     */
+    permissions: Array<Permission> | null;
+    /**
+     * `null`: every project its owner reaches.
+     */
+    project_ids: Array<number> | null;
     token_prefix: string;
+    user_id: number | null;
 };
 
 /**
@@ -381,6 +413,17 @@ export type BulkUpdateIssues = {
 
 export type BulkUpdateResponse = {
     updated: number;
+};
+
+export type Catalog = {
+    resources: Array<CatalogResource>;
+};
+
+export type CatalogResource = {
+    actions: Array<Action>;
+    key: string;
+    module: string;
+    scope: Scope;
 };
 
 export type ChangePasswordRequest = {
@@ -639,6 +682,19 @@ export type CreateAlertRule = {
  */
 export type CreateAuthToken = {
     description?: string | null;
+    /**
+     * When it stops working. Omitted or `null`: never.
+     */
+    expires_at?: string | null;
+    /**
+     * What the token may do, within its owner's permissions. Omitted or
+     * `null`: everything its owner may do.
+     */
+    permissions?: Array<Permission> | null;
+    /**
+     * The projects it may reach. Omitted or `null`: every project its owner reaches.
+     */
+    project_ids?: Array<number> | null;
 };
 
 export type CreateGitHubIssue = {
@@ -665,9 +721,18 @@ export type CreateGitHubIssue = {
 export type CreateInvitation = {
     email: string;
     /**
+     * Where `role_id` applies; omitted or `null` is the whole instance.
+     */
+    project_id?: number | null;
+    /**
      * Global role the invited user will receive (`admin` | `member`).
      */
     role: UserRole;
+    /**
+     * A role the new user holds once they accept, within the inviter's own
+     * permissions.
+     */
+    role_id?: number | null;
     /**
      * Also email the invite link to the recipient (Sentry's `sendInvite`).
      * Needs an enabled email integration or `SMTP_HOST`, and `DASHBOARD_URL`
@@ -1048,7 +1113,9 @@ export type InvitationResponse = {
      */
     email_sent_at: string | null;
     expires_at: string;
+    project_id: number | null;
     role: UserRole;
+    role_id: number | null;
     status: string;
     token: string;
 };
@@ -1464,6 +1531,25 @@ export type MonitorStatsBucket = {
 };
 
 /**
+ * What the caller may do. An owner may do everything and gets empty lists.
+ */
+export type MyAccess = {
+    /**
+     * Project permissions held on every project.
+     */
+    all_projects: Array<Permission>;
+    /**
+     * Workspace permissions.
+     */
+    instance: Array<Permission>;
+    is_owner: boolean;
+    /**
+     * Project permissions held on one project.
+     */
+    projects: Array<ProjectPermissions>;
+};
+
+/**
  * A connected client, as its user sees it.
  */
 export type OAuthGrant = {
@@ -1481,6 +1567,25 @@ export type OrgDetails = {
     id: string;
     name: string;
     slug: string;
+};
+
+/**
+ * One `(resource, action)` grant.
+ */
+export type Permission = {
+    action: Action;
+    resource: Resource;
+};
+
+/**
+ * Permissions given to one person directly, without a role of the list.
+ */
+export type PersonalAccess = {
+    permissions: Array<Permission>;
+    /**
+     * Where its project permissions apply. Omitted or `null`: every project.
+     */
+    project_ids?: Array<number> | null;
 };
 
 /**
@@ -1572,22 +1677,18 @@ export type ProjectListStats = {
     trend: Array<number>;
 };
 
+/**
+ * A member of one project: someone holding a role on it or on every project.
+ */
 export type ProjectMember = {
-    created_at: string;
-    id: number;
-    project_id: number;
-    role: ProjectRole;
+    email: string;
+    roles: Array<RoleRef>;
     user_id: number;
 };
 
-/**
- * Member row joined with the user's email, for listing a project's team.
- */
-export type ProjectMemberResponse = {
-    created_at: string;
-    email: string;
-    role: ProjectRole;
-    user_id: number;
+export type ProjectPermissions = {
+    permissions: Array<Permission>;
+    project_id: number;
 };
 
 export type ProjectRepository = {
@@ -1666,14 +1767,6 @@ export type ProjectRetention = {
     project_id: number;
     transactions_days: number | null;
 };
-
-/**
- * Per-project capability level for a member.
- *
- * Ordered by privilege: `Viewer` < `Editor` < `Admin` (derived `Ord` uses
- * declaration order). An `Action` maps to the minimum role that may perform it.
- */
-export type ProjectRole = 'viewer' | 'editor' | 'admin';
 
 /**
  * Project-wide counters for the overview page, each with its previous-period
@@ -1827,6 +1920,11 @@ export type RepoCommit = {
     url: string;
 };
 
+/**
+ * Every resource a permission can name.
+ */
+export type Resource = 'projects' | 'users' | 'invitations' | 'roles' | 'api-tokens' | 'integrations' | 'github-app' | 'storage' | 'mcp' | 'telemetry' | 'issues' | 'performance' | 'logs' | 'sessions' | 'releases' | 'source-maps' | 'alert-rules' | 'monitors' | 'project' | 'client-keys' | 'project-members' | 'project-github';
+
 export type RetentionResponse = {
     last_run: RetentionRun | null;
     /**
@@ -1886,6 +1984,49 @@ export type RetentionWindows = {
     transactions_days: number | null;
 };
 
+/**
+ * A named set of permissions, given to users by an assignment.
+ */
+export type Role = {
+    /**
+     * How many assignments use this role.
+     */
+    assignment_count: number;
+    created_at: string;
+    description: string;
+    id: number;
+    name: string;
+    permissions: Array<Permission>;
+};
+
+/**
+ * A role given to a user. `project_id = null` reaches every project. A role's
+ * workspace permissions apply wherever it is held.
+ */
+export type RoleAssignment = {
+    created_at: string;
+    id: number;
+    /**
+     * The user's own permissions rather than a role of the list.
+     */
+    is_personal: boolean;
+    project_id: number | null;
+    role_id: number;
+    role_name: string;
+    user_id: number;
+};
+
+export type RoleInput = {
+    description?: string;
+    name: string;
+    permissions: Array<Permission>;
+};
+
+export type RoleRef = {
+    id: number;
+    name: string;
+};
+
 export type Schedule = {
     type: 'crontab';
     value: string;
@@ -1902,6 +2043,11 @@ export type Schedule = {
 export type SchedulePreview = {
     next_runs: Array<string>;
 };
+
+/**
+ * Whether a resource belongs to the workspace or to one project.
+ */
+export type Scope = 'instance' | 'project';
 
 export type SeenResponse = {
     has_seen: boolean;
@@ -2110,6 +2256,22 @@ export type SessionTimeseriesPoint = {
     crash_free_sessions_rate: number | null;
     crashed: number;
     total: number;
+};
+
+/**
+ * Everything a user holds.
+ */
+export type SetAccess = {
+    assignments: Array<AssignmentInput>;
+    personal?: PersonalAccess | null;
+};
+
+export type SetProjectMember = {
+    /**
+     * The member's roles on this project; empty removes them.
+     */
+    role_ids: Array<number>;
+    user_id: number;
 };
 
 /**
@@ -2648,9 +2810,15 @@ export type UpdateUserRole = {
     role: UserRole;
 };
 
-export type UpsertProjectMember = {
-    role: ProjectRole;
-    user_id: number;
+/**
+ * Everything a user holds.
+ */
+export type UserAccess = {
+    assignments: Array<RoleAssignment>;
+    /**
+     * What their personal role holds; its places are in `assignments`.
+     */
+    personal_permissions: Array<Permission>;
 };
 
 /**
@@ -3365,6 +3533,56 @@ export type SentrySubmitUserFeedbackResponses = {
 };
 
 export type SentrySubmitUserFeedbackResponse = SentrySubmitUserFeedbackResponses[keyof SentrySubmitUserFeedbackResponses];
+
+export type AccessCatalogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/access/catalog';
+};
+
+export type AccessCatalogErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type AccessCatalogError = AccessCatalogErrors[keyof AccessCatalogErrors];
+
+export type AccessCatalogResponses = {
+    /**
+     * Every resource a permission can name
+     */
+    200: Catalog;
+};
+
+export type AccessCatalogResponse = AccessCatalogResponses[keyof AccessCatalogResponses];
+
+export type AccessMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/access/me';
+};
+
+export type AccessMeErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type AccessMeError = AccessMeErrors[keyof AccessMeErrors];
+
+export type AccessMeResponses = {
+    /**
+     * What the caller may do
+     */
+    200: MyAccess;
+};
+
+export type AccessMeResponse = AccessMeResponses[keyof AccessMeResponses];
 
 export type GithubDisconnectData = {
     body?: never;
@@ -4307,6 +4525,10 @@ export type ProjectsCreateErrors = {
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Missing projects:create, or no permission on projects
+     */
+    403: ErrorResponse;
     /**
      * Conflict
      */
@@ -7020,7 +7242,7 @@ export type MembersListErrors = {
      */
     401: ErrorResponse;
     /**
-     * Forbidden
+     * Missing project-members:read
      */
     403: ErrorResponse;
     /**
@@ -7033,15 +7255,15 @@ export type MembersListError = MembersListErrors[keyof MembersListErrors];
 
 export type MembersListResponses = {
     /**
-     * List of project members
+     * Project members
      */
-    200: Array<ProjectMemberResponse>;
+    200: Array<ProjectMember>;
 };
 
 export type MembersListResponse = MembersListResponses[keyof MembersListResponses];
 
 export type MembersUpsertData = {
-    body: UpsertProjectMember;
+    body: SetProjectMember;
     path: {
         /**
          * Project ID
@@ -7054,7 +7276,7 @@ export type MembersUpsertData = {
 
 export type MembersUpsertErrors = {
     /**
-     * Invalid role
+     * Unknown role
      */
     400: ErrorResponse;
     /**
@@ -7062,26 +7284,22 @@ export type MembersUpsertErrors = {
      */
     401: ErrorResponse;
     /**
-     * Forbidden
+     * Missing project-members:update, own membership, or a role beyond the caller's
      */
     403: ErrorResponse;
     /**
      * Project or user not found
      */
     404: ErrorResponse;
-    /**
-     * Cannot downgrade last project admin
-     */
-    409: ErrorResponse;
 };
 
 export type MembersUpsertError = MembersUpsertErrors[keyof MembersUpsertErrors];
 
 export type MembersUpsertResponses = {
     /**
-     * Member added or updated
+     * Project members now
      */
-    200: ProjectMember;
+    200: Array<ProjectMember>;
 };
 
 export type MembersUpsertResponse = MembersUpsertResponses[keyof MembersUpsertResponses];
@@ -7108,24 +7326,20 @@ export type MembersRemoveErrors = {
      */
     401: ErrorResponse;
     /**
-     * Forbidden
+     * Missing project-members:update, own membership, or a role beyond the caller's
      */
     403: ErrorResponse;
     /**
-     * Membership not found
+     * Project not found
      */
     404: ErrorResponse;
-    /**
-     * Cannot remove last project admin
-     */
-    409: ErrorResponse;
 };
 
 export type MembersRemoveError = MembersRemoveErrors[keyof MembersRemoveErrors];
 
 export type MembersRemoveResponses = {
     /**
-     * Member removed
+     * Removed
      */
     204: void;
 };
@@ -8407,6 +8621,160 @@ export type ProjectsGetRateLimitsResponses = {
 
 export type ProjectsGetRateLimitsResponse = ProjectsGetRateLimitsResponses[keyof ProjectsGetRateLimitsResponses];
 
+export type RolesListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/roles';
+};
+
+export type RolesListErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing roles:read
+     */
+    403: ErrorResponse;
+};
+
+export type RolesListError = RolesListErrors[keyof RolesListErrors];
+
+export type RolesListResponses = {
+    /**
+     * Every role
+     */
+    200: Array<Role>;
+};
+
+export type RolesListResponse = RolesListResponses[keyof RolesListResponses];
+
+export type RolesCreateData = {
+    body: RoleInput;
+    path?: never;
+    query?: never;
+    url: '/api/roles';
+};
+
+export type RolesCreateErrors = {
+    /**
+     * Invalid role
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing roles:create, or a permission the caller lacks
+     */
+    403: ErrorResponse;
+    /**
+     * Name taken
+     */
+    409: ErrorResponse;
+};
+
+export type RolesCreateError = RolesCreateErrors[keyof RolesCreateErrors];
+
+export type RolesCreateResponses = {
+    /**
+     * Created
+     */
+    201: Role;
+};
+
+export type RolesCreateResponse = RolesCreateResponses[keyof RolesCreateResponses];
+
+export type RolesDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Role ID
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/roles/{id}';
+};
+
+export type RolesDeleteErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing roles:delete
+     */
+    403: ErrorResponse;
+    /**
+     * No such role
+     */
+    404: ErrorResponse;
+    /**
+     * Role still assigned
+     */
+    409: ErrorResponse;
+};
+
+export type RolesDeleteError = RolesDeleteErrors[keyof RolesDeleteErrors];
+
+export type RolesDeleteResponses = {
+    /**
+     * Deleted
+     */
+    204: void;
+};
+
+export type RolesDeleteResponse = RolesDeleteResponses[keyof RolesDeleteResponses];
+
+export type RolesUpdateData = {
+    body: RoleInput;
+    path: {
+        /**
+         * Role ID
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/roles/{id}';
+};
+
+export type RolesUpdateErrors = {
+    /**
+     * Invalid role
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing roles:update, or a permission the caller lacks
+     */
+    403: ErrorResponse;
+    /**
+     * No such role
+     */
+    404: ErrorResponse;
+    /**
+     * Name taken
+     */
+    409: ErrorResponse;
+};
+
+export type RolesUpdateError = RolesUpdateErrors[keyof RolesUpdateErrors];
+
+export type RolesUpdateResponses = {
+    /**
+     * Updated
+     */
+    200: Role;
+};
+
+export type RolesUpdateResponse = RolesUpdateResponses[keyof RolesUpdateResponses];
+
 export type SchedulesPreviewData = {
     body: PreviewSchedule;
     path?: never;
@@ -9084,6 +9452,10 @@ export type TokensCreateErrors = {
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Called with a token, or a permission the caller lacks
+     */
+    403: ErrorResponse;
 };
 
 export type TokensCreateError = TokensCreateErrors[keyof TokensCreateErrors];
@@ -9166,12 +9538,88 @@ export type TokensGetError = TokensGetErrors[keyof TokensGetErrors];
 
 export type TokensGetResponses = {
     /**
-     * Token details (full token value)
+     * Token details (masked)
      */
-    200: AuthTokenCreatedResponse;
+    200: AuthTokenResponse;
 };
 
 export type TokensGetResponse = TokensGetResponses[keyof TokensGetResponses];
+
+export type UsersAssignmentsData = {
+    body?: never;
+    path: {
+        /**
+         * User ID
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/users/{id}/assignments';
+};
+
+export type UsersAssignmentsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing users:read
+     */
+    403: ErrorResponse;
+};
+
+export type UsersAssignmentsError = UsersAssignmentsErrors[keyof UsersAssignmentsErrors];
+
+export type UsersAssignmentsResponses = {
+    /**
+     * What the user holds
+     */
+    200: UserAccess;
+};
+
+export type UsersAssignmentsResponse = UsersAssignmentsResponses[keyof UsersAssignmentsResponses];
+
+export type UsersSetAssignmentsData = {
+    body: SetAccess;
+    path: {
+        /**
+         * User ID
+         */
+        id: number;
+    };
+    query?: never;
+    url: '/api/users/{id}/assignments';
+};
+
+export type UsersSetAssignmentsErrors = {
+    /**
+     * Unknown role, or personal permissions with no project
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing users:update, own assignments, or a role beyond the caller's
+     */
+    403: ErrorResponse;
+    /**
+     * No such user or project
+     */
+    404: ErrorResponse;
+};
+
+export type UsersSetAssignmentsError = UsersSetAssignmentsErrors[keyof UsersSetAssignmentsErrors];
+
+export type UsersSetAssignmentsResponses = {
+    /**
+     * What the user holds now
+     */
+    200: UserAccess;
+};
+
+export type UsersSetAssignmentsResponse = UsersSetAssignmentsResponses[keyof UsersSetAssignmentsResponses];
 
 export type AuthAcceptInvitationData = {
     body: AcceptInvitation;

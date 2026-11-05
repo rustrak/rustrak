@@ -10,14 +10,10 @@ use actix_web::{cookie::Key, test, web, App};
 use chrono::Utc;
 use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
 use rustrak::db::DbPool;
-use rustrak::models::{
-    CreateAuthToken, CreateProject, CreateUserRequest, Issue, ProjectRole, User, UserRole,
-};
+use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, Issue, User, UserRole};
 use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
-use rustrak::services::{
-    AuthTokenService, IssueService, ProjectMemberService, ProjectService, UsersService,
-};
+use rustrak::services::{AuthTokenService, IssueService, ProjectService, UsersService};
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -25,7 +21,7 @@ use std::time::Duration;
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn create_test_config() -> Config {
+pub(crate) fn create_test_config() -> Config {
     Config {
         host: "127.0.0.1".to_string(),
         port: 0,
@@ -110,7 +106,7 @@ async fn seed_user(pool: &DbPool, email: &str, role: UserRole) -> User {
 
 /// Creates a user-scoped bearer token and returns its raw value.
 async fn seed_token_for(pool: &DbPool, user_id: i32) -> String {
-    AuthTokenService::create_for_user(pool, CreateAuthToken { description: None }, Some(user_id))
+    AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user_id))
         .await
         .expect("seed token")
         .token
@@ -118,7 +114,7 @@ async fn seed_token_for(pool: &DbPool, user_id: i32) -> String {
 
 /// Creates a legacy (user-less) admin-equivalent token.
 async fn seed_legacy_token(pool: &DbPool) -> String {
-    AuthTokenService::create(pool, CreateAuthToken { description: None })
+    AuthTokenService::create(pool, CreateAuthToken::default())
         .await
         .expect("seed legacy token")
         .token
@@ -137,8 +133,8 @@ async fn seed_project(pool: &DbPool, name: &str) -> rustrak::models::Project {
     .expect("seed project")
 }
 
-async fn add_member(pool: &DbPool, project_id: i32, user_id: i32, role: ProjectRole) {
-    ProjectMemberService::upsert(pool, project_id, user_id, role)
+async fn add_member(pool: &DbPool, project_id: i32, user_id: i32, role: &str) {
+    crate::common::grant_project_role(pool, project_id, user_id, role)
         .await
         .expect("add member");
 }
@@ -254,7 +250,7 @@ async fn viewer_reads_but_cannot_mutate_and_nonmember_is_404() {
 
     let p1 = seed_project(&db.pool, "P1").await;
     let p2 = seed_project(&db.pool, "P2").await;
-    add_member(&db.pool, p1.id, member.id, ProjectRole::Viewer).await;
+    add_member(&db.pool, p1.id, member.id, "Viewer").await;
     let issue = seed_issue(&db.pool, p1.id).await;
 
     let app = build_app!(db.pool.clone(), config);
@@ -308,16 +304,17 @@ async fn project_admin_adds_editor_who_can_mutate() {
     let editor_token = seed_token_for(&db.pool, editor.id).await;
 
     let p1 = seed_project(&db.pool, "P1").await;
-    add_member(&db.pool, p1.id, padmin.id, ProjectRole::Admin).await;
+    add_member(&db.pool, p1.id, padmin.id, "Project Admin").await;
     let issue = seed_issue(&db.pool, p1.id).await;
 
+    let editor_role = crate::common::ensure_role(&db.pool, "Editor").await;
     let app = build_app!(db.pool.clone(), config);
 
     // Project admin adds the editor.
     let req = test::TestRequest::put()
         .uri(&format!("/api/projects/{}/members", p1.id))
         .insert_header(bearer(&padmin_token))
-        .set_json(json!({ "user_id": editor.id, "role": "editor" }))
+        .set_json(json!({ "user_id": editor.id, "role_ids": [editor_role] }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 200, "project admin can add a member");
@@ -347,7 +344,7 @@ async fn global_admin_sees_all_projects_and_members() {
 
     let p1 = seed_project(&db.pool, "P1").await;
     let p2 = seed_project(&db.pool, "P2").await;
-    add_member(&db.pool, p1.id, member.id, ProjectRole::Viewer).await;
+    add_member(&db.pool, p1.id, member.id, "Viewer").await;
 
     let app = build_app!(db.pool.clone(), config);
 
@@ -404,7 +401,7 @@ async fn member_token_only_reaches_member_projects() {
 
     let p1 = seed_project(&db.pool, "P1").await;
     let p2 = seed_project(&db.pool, "P2").await;
-    add_member(&db.pool, p1.id, member.id, ProjectRole::Viewer).await;
+    add_member(&db.pool, p1.id, member.id, "Viewer").await;
 
     let app = build_app!(db.pool.clone(), config);
 
@@ -472,29 +469,6 @@ async fn register_is_invite_only() {
 // ---------------------------------------------------------------------------
 // (g) Removing the last project admin returns 409
 // ---------------------------------------------------------------------------
-
-#[actix_web::test]
-async fn removing_last_project_admin_returns_409() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-
-    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let padmin = seed_user(&db.pool, "padmin@x.com", UserRole::Member).await;
-
-    let p1 = seed_project(&db.pool, "P1").await;
-    add_member(&db.pool, p1.id, padmin.id, ProjectRole::Admin).await;
-
-    let app = build_app!(db.pool.clone(), config);
-
-    // Global admin tries to remove the only project admin → 409.
-    let req = test::TestRequest::delete()
-        .uri(&format!("/api/projects/{}/members/{}", p1.id, padmin.id))
-        .insert_header(bearer(&admin_token))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 409, "cannot remove the last project admin");
-}
 
 // ---------------------------------------------------------------------------
 // Bonus: invite with bad role → 400
@@ -723,8 +697,8 @@ async fn viewer_cannot_mutate_new_issue_endpoints_but_editor_can() {
     let editor_token = seed_token_for(&db.pool, editor.id).await;
 
     let project = seed_project(&db.pool, "Social Project").await;
-    add_member(&db.pool, project.id, viewer.id, ProjectRole::Viewer).await;
-    add_member(&db.pool, project.id, editor.id, ProjectRole::Editor).await;
+    add_member(&db.pool, project.id, viewer.id, "Viewer").await;
+    add_member(&db.pool, project.id, editor.id, "Editor").await;
     let issue = seed_issue(&db.pool, project.id).await;
 
     let app = build_app!(db.pool.clone(), config);

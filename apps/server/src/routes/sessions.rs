@@ -1,11 +1,11 @@
 use actix_web::{web, HttpResponse};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::pagination::OffsetPaginatedResponse;
 use crate::routes::period::parse_period_hours;
-use crate::services::access::{self, Action};
 use crate::services::scope::Scope;
 use crate::services::session::SessionService;
 
@@ -72,14 +72,7 @@ pub async fn get_stats(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Sessions, Action::Read, Some(project_id))?;
 
     let period_hours = query.period_hours();
     let page = query.page.max(1);
@@ -150,14 +143,7 @@ pub async fn get_summary(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Sessions, Action::Read, Some(project_id))?;
 
     let period_hours = query.period_hours();
     let summary = SessionService::project_summary(
@@ -225,14 +211,7 @@ pub async fn get_timeseries(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Sessions, Action::Read, Some(project_id))?;
 
     let points = SessionService::session_timeseries(
         pool.get_ref(),

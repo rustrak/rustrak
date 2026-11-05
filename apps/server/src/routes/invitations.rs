@@ -10,27 +10,19 @@
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{CreateInvitation, Invitation, InvitationResponse};
 use crate::services::invitation_email::{EmailStatusResponse, InvitationMailer};
-use crate::services::InvitationService;
+use crate::services::{InvitationService, RoleService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
 
 const EMAIL_NOT_CONFIGURED: &str = "Invitation emails need an enabled email integration or SMTP_HOST, and DASHBOARD_URL or PUBLIC_URL for the link";
-
-/// Ensures the actor is a global admin, else 403.
-fn require_admin(actor: &ApiActor) -> AppResult<()> {
-    if actor.is_admin() {
-        Ok(())
-    } else {
-        Err(AppError::Forbidden("Admin privileges required".to_string()))
-    }
-}
 
 /// Emails the invite link and stamps `email_sent_at`. Once SMTP has accepted
 /// the email, a failed stamp is only logged: reporting the send as failed
@@ -81,10 +73,29 @@ pub async fn create_invitation(
     config: web::Data<Config>,
     body: web::Json<CreateInvitation>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Invitations, Action::Create, None)?;
 
     let inviter = actor.require_user()?;
     let input = body.into_inner();
+    // An invitation hands out access: never beyond the inviter's own.
+    if input.role == "admin" && !actor.is_owner() {
+        return Err(AppError::Forbidden(
+            "Only an owner can invite an owner".to_string(),
+        ));
+    }
+    if let Some(role_id) = input.role_id {
+        let role = RoleService::get(pool.get_ref(), role_id)
+            .await
+            .map_err(|_| {
+                AppError::Validation(format!("Unknown role {role_id}"))
+                    .with_field("role_id", FieldErrorCode::Invalid)
+            })?;
+        if !actor.access.covers(&role.grants(), input.project_id) {
+            return Err(AppError::Forbidden(
+                "You cannot grant permissions you do not hold".to_string(),
+            ));
+        }
+    }
     let mailer = if input.send_email {
         Some(
             InvitationMailer::resolve(pool.get_ref(), &config)
@@ -127,7 +138,7 @@ pub async fn email_status(
     config: web::Data<Config>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Invitations, Action::Read, None)?;
 
     let available = InvitationMailer::resolve(pool.get_ref(), &config)
         .await?
@@ -158,7 +169,7 @@ pub async fn resend_invitation(
     config: web::Data<Config>,
     path: web::Path<String>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Invitations, Action::Create, None)?;
 
     let inviter = actor.require_user()?;
     let mut invitation = InvitationService::get(pool.get_ref(), &path.into_inner())
@@ -192,7 +203,7 @@ pub async fn resend_invitation(
 ))]
 /// GET /api/invitations — list invitations (admin only)
 pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Invitations, Action::Read, None)?;
 
     let invitations = InvitationService::list(pool.get_ref()).await?;
     let responses: Vec<InvitationResponse> = invitations
@@ -223,7 +234,7 @@ pub async fn revoke_invitation(
     actor: ApiActor,
     path: web::Path<String>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Invitations, Action::Delete, None)?;
 
     InvitationService::revoke(pool.get_ref(), &path.into_inner()).await?;
 
