@@ -905,7 +905,11 @@ export class Github extends HeyApiClient {
 
 export class AlertChannels extends HeyApiClient {
     /**
-     * GET /api/alert-channels
+     * Lists the channels alerts can go through.
+     *
+     * `integrations:read` sees their credentials, masked. Holding an alert-rules
+     * permission on any project is enough for the rest, without them: choosing
+     * where a rule notifies takes a channel's name, not its secrets.
      */
     public list<ThrowOnError extends boolean = false>(options?: Options<AlertChannelsListData, ThrowOnError>): RequestResult<AlertChannelsListResponses, AlertChannelsListErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<AlertChannelsListResponses, AlertChannelsListErrors, ThrowOnError>({
@@ -2230,7 +2234,7 @@ export class Logs extends HeyApiClient {
 
 export class Members extends HeyApiClient {
     /**
-     * Lists everyone holding a role on the project, with those roles.
+     * Lists everyone holding a role on the project, with those roles; personal permissions are not roles.
      */
     public list<ThrowOnError extends boolean = false>(options: Options<MembersListData, ThrowOnError>): RequestResult<MembersListResponses, MembersListErrors, ThrowOnError> {
         return (options.client ?? this.client).get<MembersListResponses, MembersListErrors, ThrowOnError>({
@@ -2268,7 +2272,7 @@ export class Members extends HeyApiClient {
     }
     
     /**
-     * Removes the roles a user holds on this project; roles on all projects stay.
+     * Removes the roles a user holds on this project; roles on all projects and personal permissions stay.
      */
     public remove<ThrowOnError extends boolean = false>(options: Options<MembersRemoveData, ThrowOnError>): RequestResult<MembersRemoveResponses, MembersRemoveErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<MembersRemoveResponses, MembersRemoveErrors, ThrowOnError>({
@@ -2755,7 +2759,7 @@ export class Settings extends HeyApiClient {
     }
     
     /**
-     * Turns the MCP endpoint at `/mcp` on or off. Instance admins only.
+     * Turns the MCP endpoint at `/mcp` on or off (needs `mcp:update`).
      */
     public updateMcp<ThrowOnError extends boolean = false>(options: Options<SettingsUpdateMcpData, ThrowOnError>): RequestResult<SettingsUpdateMcpResponses, SettingsUpdateMcpErrors, ThrowOnError> {
         return (options.client ?? this.client).put<SettingsUpdateMcpResponses, SettingsUpdateMcpErrors, ThrowOnError>({
@@ -3042,7 +3046,7 @@ export class Storage extends HeyApiClient {
 
 export class Team extends HeyApiClient {
     /**
-     * GET /api/team — list all users (admin only)
+     * GET /api/team — list all users (needs `users:read`)
      */
     public list<ThrowOnError extends boolean = false>(options?: Options<TeamListData, ThrowOnError>): RequestResult<TeamListResponses, TeamListErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<TeamListResponses, TeamListErrors, ThrowOnError>({
@@ -3059,7 +3063,7 @@ export class Team extends HeyApiClient {
     }
     
     /**
-     * DELETE /api/team/{user_id} — remove a user from the instance (admin only)
+     * DELETE /api/team/{user_id} — remove a user from the instance (needs `users:delete`)
      */
     public deleteUser<ThrowOnError extends boolean = false>(options: Options<TeamDeleteUserData, ThrowOnError>): RequestResult<TeamDeleteUserResponses, TeamDeleteUserErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<TeamDeleteUserResponses, TeamDeleteUserErrors, ThrowOnError>({
@@ -3076,7 +3080,7 @@ export class Team extends HeyApiClient {
     }
     
     /**
-     * PATCH /api/team/{user_id}/role — change a user's global role (admin only)
+     * PATCH /api/team/{user_id}/role — change a user's global role (needs `users:update`)
      */
     public updateRole<ThrowOnError extends boolean = false>(options: Options<TeamUpdateRoleData, ThrowOnError>): RequestResult<TeamUpdateRoleResponses, TeamUpdateRoleErrors, ThrowOnError> {
         return (options.client ?? this.client).patch<TeamUpdateRoleResponses, TeamUpdateRoleErrors, ThrowOnError>({
@@ -3120,7 +3124,8 @@ export class Tokens extends HeyApiClient {
     /**
      * GET /api/tokens - List tokens (masked)
      *
-     * Everyone sees their own tokens; `api-tokens:read` sees every token.
+     * Everyone sees their own tokens; `api-tokens:read` sees every token. A token
+     * limited to other permissions sees none: it must not reach its owner's others.
      */
     public list<ThrowOnError extends boolean = false>(options?: Options<TokensListData, ThrowOnError>): RequestResult<TokensListResponses, TokensListErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<TokensListResponses, TokensListErrors, ThrowOnError>({

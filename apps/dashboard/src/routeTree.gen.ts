@@ -58,6 +58,7 @@ import { Route as AuthenticatedProjectsIdSettingsClientKeysRouteImport } from '.
 import { Route as AuthenticatedProjectsIdSettingsDataRouteImport } from './routes/_authenticated/projects/$id/settings/data';
 import { Route as AuthenticatedProjectsIdSettingsGeneralRouteImport } from './routes/_authenticated/projects/$id/settings/general';
 import { Route as AuthenticatedProjectsIdSettingsGithubRouteImport } from './routes/_authenticated/projects/$id/settings/github';
+import { Route as AuthenticatedProjectsIdSettingsMembersRouteImport } from './routes/_authenticated/projects/$id/settings/members';
 import { Route as AuthenticatedProjectsIdSettingsProductsRouteImport } from './routes/_authenticated/projects/$id/settings/products';
 import { Route as AuthenticatedProjectsIdAgentsConversationsConversationIdRouteImport } from './routes/_authenticated/projects/$id/agents/conversations/$conversationId';
 import { Route as AuthenticatedProjectsIdAlertsRuleIdIndexRouteImport } from './routes/_authenticated/projects/$id/alerts/$ruleId/index';
@@ -354,6 +355,12 @@ const AuthenticatedProjectsIdSettingsGithubRoute =
     path: '/github',
     getParentRoute: () => AuthenticatedProjectsIdSettingsRoute,
   } as any);
+const AuthenticatedProjectsIdSettingsMembersRoute =
+  AuthenticatedProjectsIdSettingsMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
+    getParentRoute: () => AuthenticatedProjectsIdSettingsRoute,
+  } as any);
 const AuthenticatedProjectsIdSettingsProductsRoute =
   AuthenticatedProjectsIdSettingsProductsRouteImport.update({
     id: '/products',
@@ -456,6 +463,7 @@ export interface FileRoutesByFullPath {
   '/projects/$id/settings/data': typeof AuthenticatedProjectsIdSettingsDataRoute;
   '/projects/$id/settings/general': typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   '/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
+  '/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
   '/projects/$id/agents/': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/projects/$id/alerts/': typeof AuthenticatedProjectsIdAlertsIndexRoute;
@@ -513,6 +521,7 @@ export interface FileRoutesByTo {
   '/projects/$id/settings/data': typeof AuthenticatedProjectsIdSettingsDataRoute;
   '/projects/$id/settings/general': typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   '/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
+  '/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
   '/projects/$id/agents': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/projects/$id/alerts': typeof AuthenticatedProjectsIdAlertsIndexRoute;
@@ -575,6 +584,7 @@ export interface FileRoutesById {
   '/_authenticated/projects/$id/settings/data': typeof AuthenticatedProjectsIdSettingsDataRoute;
   '/_authenticated/projects/$id/settings/general': typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   '/_authenticated/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
+  '/_authenticated/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/_authenticated/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
   '/_authenticated/projects/$id/agents/': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/_authenticated/projects/$id/alerts/': typeof AuthenticatedProjectsIdAlertsIndexRoute;
@@ -637,6 +647,7 @@ export interface FileRouteTypes {
     | '/projects/$id/settings/data'
     | '/projects/$id/settings/general'
     | '/projects/$id/settings/github'
+    | '/projects/$id/settings/members'
     | '/projects/$id/settings/products'
     | '/projects/$id/agents/'
     | '/projects/$id/alerts/'
@@ -694,6 +705,7 @@ export interface FileRouteTypes {
     | '/projects/$id/settings/data'
     | '/projects/$id/settings/general'
     | '/projects/$id/settings/github'
+    | '/projects/$id/settings/members'
     | '/projects/$id/settings/products'
     | '/projects/$id/agents'
     | '/projects/$id/alerts'
@@ -755,6 +767,7 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$id/settings/data'
     | '/_authenticated/projects/$id/settings/general'
     | '/_authenticated/projects/$id/settings/github'
+    | '/_authenticated/projects/$id/settings/members'
     | '/_authenticated/projects/$id/settings/products'
     | '/_authenticated/projects/$id/agents/'
     | '/_authenticated/projects/$id/alerts/'
@@ -1129,6 +1142,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsIdSettingsGithubRouteImport;
       parentRoute: typeof AuthenticatedProjectsIdSettingsRoute;
     };
+    '/_authenticated/projects/$id/settings/members': {
+      id: '/_authenticated/projects/$id/settings/members';
+      path: '/members';
+      fullPath: '/projects/$id/settings/members';
+      preLoaderRoute: typeof AuthenticatedProjectsIdSettingsMembersRouteImport;
+      parentRoute: typeof AuthenticatedProjectsIdSettingsRoute;
+    };
     '/_authenticated/projects/$id/settings/products': {
       id: '/_authenticated/projects/$id/settings/products';
       path: '/products';
@@ -1256,6 +1276,7 @@ interface AuthenticatedProjectsIdSettingsRouteChildren {
   AuthenticatedProjectsIdSettingsDataRoute: typeof AuthenticatedProjectsIdSettingsDataRoute;
   AuthenticatedProjectsIdSettingsGeneralRoute: typeof AuthenticatedProjectsIdSettingsGeneralRoute;
   AuthenticatedProjectsIdSettingsGithubRoute: typeof AuthenticatedProjectsIdSettingsGithubRoute;
+  AuthenticatedProjectsIdSettingsMembersRoute: typeof AuthenticatedProjectsIdSettingsMembersRoute;
   AuthenticatedProjectsIdSettingsProductsRoute: typeof AuthenticatedProjectsIdSettingsProductsRoute;
   AuthenticatedProjectsIdSettingsIndexRoute: typeof AuthenticatedProjectsIdSettingsIndexRoute;
 }
@@ -1272,6 +1293,8 @@ const AuthenticatedProjectsIdSettingsRouteChildren: AuthenticatedProjectsIdSetti
       AuthenticatedProjectsIdSettingsGeneralRoute,
     AuthenticatedProjectsIdSettingsGithubRoute:
       AuthenticatedProjectsIdSettingsGithubRoute,
+    AuthenticatedProjectsIdSettingsMembersRoute:
+      AuthenticatedProjectsIdSettingsMembersRoute,
     AuthenticatedProjectsIdSettingsProductsRoute:
       AuthenticatedProjectsIdSettingsProductsRoute,
     AuthenticatedProjectsIdSettingsIndexRoute:

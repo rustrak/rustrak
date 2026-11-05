@@ -12,6 +12,18 @@ use crate::services::AuthTokenService;
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
 
+/// What one's own tokens allow goes through this: a token acts as its owner
+/// narrowed by its scope, so a limited one cannot manage the owner's others.
+fn require_scope(actor: &ApiActor, action: Action) -> AppResult<()> {
+    if actor.access.scope_allows(Resource::ApiTokens, action) {
+        return Ok(());
+    }
+    Err(AppError::Forbidden(format!(
+        "Missing permission api-tokens:{}",
+        action.key()
+    )))
+}
+
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/tokens",
@@ -20,16 +32,19 @@ use utoipa::OpenApi;
     responses(
         (status = 200, description = "List of tokens (masked)", body = Vec<AuthTokenResponse>),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "A token limited to other permissions", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
 /// GET /api/tokens - List tokens (masked)
 ///
-/// Everyone sees their own tokens; `api-tokens:read` sees every token.
+/// Everyone sees their own tokens; `api-tokens:read` sees every token. A token
+/// limited to other permissions sees none: it must not reach its owner's others.
 pub async fn list_tokens(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     let tokens = if actor.access.can(Resource::ApiTokens, Action::Read, None) {
         AuthTokenService::list(pool.get_ref()).await?
     } else {
+        require_scope(&actor, Action::Read)?;
         let uid = actor
             .user_id()
             .ok_or_else(|| AppError::Unauthorized("Not authenticated".to_string()))?;
@@ -110,6 +125,7 @@ pub async fn delete_token(
     let id = path.into_inner();
 
     if !actor.access.can(Resource::ApiTokens, Action::Delete, None) {
+        require_scope(&actor, Action::Delete)?;
         let token = AuthTokenService::get_by_id(pool.get_ref(), id).await?;
         if token.user_id != actor.user_id() {
             return Err(AppError::Forbidden(
@@ -147,6 +163,9 @@ pub async fn get_token(
     path: web::Path<i32>,
 ) -> AppResult<HttpResponse> {
     let id = path.into_inner();
+    if !actor.access.can(Resource::ApiTokens, Action::Read, None) {
+        require_scope(&actor, Action::Read)?;
+    }
     let token = AuthTokenService::get_by_id(pool.get_ref(), id).await?;
 
     if !actor.access.can(Resource::ApiTokens, Action::Read, None)

@@ -1,11 +1,11 @@
 import { Skeleton } from '@rustrak/ui';
-import { noop, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
 import { UserAssignments } from '@/features/user/ui/components/user-assignments';
-import { accessQueries } from '@/shared/api/permissions';
+import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
 import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import {
@@ -26,7 +26,11 @@ export const Route = createFileRoute('/_authenticated/settings/team/$userId')({
     const id = Number.parseInt(params.userId, 10);
     void queryClient.query(userQueries.team()).catch(noop);
     void queryClient.query(userQueries.assignments(id)).catch(noop);
-    void queryClient.query(userQueries.roles()).catch(noop);
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('roles', 'read'),
+      () => void queryClient.query(userQueries.roles()).catch(noop),
+    );
     void queryClient.query(accessQueries.catalog()).catch(noop);
     void queryClient.query(projectsToPick).catch(noop);
   },
@@ -41,7 +45,11 @@ function UserPage() {
   const permissions = usePermissions();
   const { data: team } = useSuspenseQuery(userQueries.team());
   const { data: access } = useSuspenseQuery(userQueries.assignments(id));
-  const { data: roles } = useSuspenseQuery(userQueries.roles());
+  // Optional: what they hold names itself, and custom access needs no role.
+  const { data: roles = [] } = useQuery({
+    ...userQueries.roles(),
+    enabled: permissions.can('roles', 'read'),
+  });
   const { data: catalog } = useSuspenseQuery(accessQueries.catalog());
   const { data: projects } = useSuspenseQuery(projectsToPick);
   const user = team.find((u) => u.id === id);

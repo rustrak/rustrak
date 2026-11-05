@@ -24,7 +24,9 @@ macro_rules! app {
                 .configure(routes::releases::configure)
                 .configure(routes::projects::configure)
                 .configure(routes::sourcemaps::configure)
-                .configure(routes::github::configure),
+                .configure(routes::github::configure)
+                .configure(routes::tokens::configure)
+                .configure(routes::alerts::configure),
         )
         .await
     };
@@ -1211,4 +1213,228 @@ async fn creating_a_project_returns_its_keys_only_to_who_holds_them_there() {
     let (status, body) = call!(app, post, "/api/projects", owner.token, new_project("d"));
     assert_eq!(status, 201, "{body}");
     assert!(body["dsn"].is_string(), "{body}");
+}
+
+/// A leaked CI token must not reach the rest of its owner's credentials.
+#[actix_web::test]
+async fn a_scoped_token_cannot_manage_its_owners_other_tokens() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let owner = holder(
+        &db.pool,
+        "o@x.com",
+        &[(Resource::Logs, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let scoped = AuthTokenService::create_for_user(
+        &db.pool,
+        CreateAuthToken {
+            permissions: Some(vec![Permission {
+                resource: Resource::Logs,
+                action: Action::Read,
+            }]),
+            ..Default::default()
+        },
+        Some(owner.id),
+    )
+    .await
+    .unwrap();
+    let other =
+        AuthTokenService::create_for_user(&db.pool, CreateAuthToken::default(), Some(owner.id))
+            .await
+            .unwrap();
+    let app = app!(db.pool.clone());
+
+    let (status, _) = call!(app, get, "/api/tokens", scoped.token);
+    assert_eq!(status, 403);
+    let (status, _) = call!(app, get, format!("/api/tokens/{}", other.id), scoped.token);
+    assert_eq!(status, 403);
+    let (status, _) = call!(
+        app,
+        delete,
+        format!("/api/tokens/{}", other.id),
+        scoped.token
+    );
+    assert_eq!(status, 403);
+
+    // Unlimited, it still manages what is its owner's.
+    let (status, _) = call!(app, get, "/api/tokens", other.token);
+    assert_eq!(status, 200);
+    let (status, _) = call!(
+        app,
+        delete,
+        format!("/api/tokens/{}", scoped.id),
+        other.token
+    );
+    assert_eq!(status, 204);
+}
+
+/// A token sees a project only through a permission it shares with its owner
+/// there, not through one that only its owner holds.
+#[actix_web::test]
+async fn a_token_does_not_see_projects_its_permissions_do_not_reach() {
+    let db = TestDb::new().await;
+    let a = project(&db.pool).await;
+    let b = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "other".into(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    let owner = holder(
+        &db.pool,
+        "o@x.com",
+        &[(Resource::Logs, Action::Read)],
+        Some(a),
+    )
+    .await;
+    let on_b = role(&db.pool, "issues", &[(Resource::Issues, Action::Read)]).await;
+    RoleService::assign(&db.pool, owner.id, on_b, Some(b))
+        .await
+        .unwrap();
+    let limited = AuthTokenService::create_for_user(
+        &db.pool,
+        CreateAuthToken {
+            permissions: Some(vec![Permission {
+                resource: Resource::Logs,
+                action: Action::Read,
+            }]),
+            ..Default::default()
+        },
+        Some(owner.id),
+    )
+    .await
+    .unwrap()
+    .token;
+    let app = app!(db.pool.clone());
+
+    let (status, body) = call!(app, get, "/api/projects", limited);
+    assert_eq!(status, 200, "{body}");
+    let ids: Vec<i64> = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, [i64::from(a)]);
+    let (status, _) = call!(app, get, format!("/api/projects/{a}"), limited);
+    assert_eq!(status, 200);
+    let (status, _) = call!(app, get, format!("/api/projects/{b}"), limited);
+    assert_eq!(status, 404);
+
+    // Its owner, with no token in the way, sees both.
+    let (_, body) = call!(app, get, "/api/projects", owner.token);
+    assert_eq!(body["total_count"], 2, "{body}");
+}
+
+/// Personal permissions belong to the member's own page: the project members
+/// API neither lists them nor takes them away.
+#[actix_web::test]
+async fn the_members_api_leaves_personal_permissions_alone() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let member = who(&db.pool, "m@x.com", false).await;
+    let shared = role(&db.pool, "viewer", &[(Resource::Issues, Action::Read)]).await;
+    let app = app!(db.pool.clone());
+    let (status, body) = call!(
+        app,
+        put,
+        format!("/api/users/{}/assignments", member.id),
+        owner.token,
+        json!({
+            "assignments": [{ "role_id": shared, "project_id": p }],
+            "personal": {
+                "permissions": [{ "resource": "logs", "action": "read" }],
+                "project_ids": [p],
+            },
+        })
+    );
+    assert_eq!(status, 200, "{body}");
+
+    let (_, body) = call!(app, get, format!("/api/projects/{p}/members"), owner.token);
+    let roles = &body[0]["roles"];
+    assert_eq!(roles.as_array().unwrap().len(), 1, "{body}");
+    assert_eq!(roles[0]["id"], shared);
+
+    // What the listing shows can be sent back as it is.
+    let (status, body) = call!(
+        app,
+        put,
+        format!("/api/projects/{p}/members"),
+        owner.token,
+        json!({ "user_id": member.id, "role_ids": [shared] })
+    );
+    assert_eq!(status, 200, "{body}");
+    let (status, _) = call!(
+        app,
+        delete,
+        format!("/api/projects/{p}/members/{}", member.id),
+        owner.token
+    );
+    assert_eq!(status, 204);
+
+    let (_, access) = call!(
+        app,
+        get,
+        format!("/api/users/{}/assignments", member.id),
+        owner.token
+    );
+    let held = access["assignments"].as_array().unwrap();
+    assert_eq!(held.len(), 1, "{access}");
+    assert_eq!(held[0]["is_personal"], true, "{access}");
+}
+
+/// Choosing where an alert goes takes the channels' names, not their secrets.
+#[actix_web::test]
+async fn alert_rule_holders_list_channels_without_their_credentials() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let rules = holder(
+        &db.pool,
+        "r@x.com",
+        &[(Resource::AlertRules, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let unrelated = holder(
+        &db.pool,
+        "l@x.com",
+        &[(Resource::Logs, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let app = app!(db.pool.clone());
+    let (status, body) = call!(
+        app,
+        post,
+        "/api/integrations",
+        owner.token,
+        json!({
+            "name": "ops",
+            "provider_type": "webhook",
+            "credentials": { "url": "https://hooks.example.com/SECRET" },
+        })
+    );
+    assert_eq!(status, 201, "{body}");
+
+    let (status, body) = call!(app, get, "/api/integrations", rules.token);
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body[0]["name"], "ops");
+    assert_eq!(body[0]["credentials"], json!({}), "{body}");
+    assert!(!body.to_string().contains("SECRET"), "{body}");
+
+    let (status, body) = call!(app, get, "/api/integrations", owner.token);
+    assert_eq!(status, 200);
+    assert_ne!(body[0]["credentials"], json!({}), "{body}");
+
+    let (status, _) = call!(app, get, "/api/integrations", unrelated.token);
+    assert_eq!(status, 403);
 }

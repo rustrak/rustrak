@@ -50,6 +50,15 @@ describe('access model', () => {
     expect(rowState(some, issues)).toBe('some');
     expect(rowState(toggleRow(some, issues), issues)).toBe('all');
   });
+
+  it('keeps a grant the narrowed row does not show', () => {
+    const shown = { ...catalog[0], actions: ['read'] } as CatalogResource;
+    const hidden: Permission = { resource: 'issues', action: 'delete' };
+    expect(toggleRow([hidden], shown)).toContainEqual(hidden);
+    expect(
+      toggleRow([hidden, { resource: 'issues', action: 'read' }], shown),
+    ).toEqual([hidden]);
+  });
 });
 
 describe('grantable', () => {

@@ -8,8 +8,10 @@ import {
   MonitorForm,
   MonitorFormSkeleton,
 } from '@/features/monitor/ui/components/monitor-form';
+import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/crons/m/$slug/edit',
@@ -27,6 +29,7 @@ function EditMonitorPage() {
   const t = useTranslations('crons');
   const { id, slug } = Route.useParams();
   const projectId = Number.parseInt(id, 10);
+  const canUpdate = usePermissions().can('monitors', 'update', projectId);
   const { data: monitor } = useSuspenseQuery(
     monitorQueries.detail(projectId, slug),
   );
@@ -44,7 +47,11 @@ function EditMonitorPage() {
       />
       <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
         <div className="mx-auto max-w-5xl">
-          <MonitorForm projectId={projectId} monitor={monitor} />
+          {canUpdate ? (
+            <MonitorForm projectId={projectId} monitor={monitor} />
+          ) : (
+            <NotAuthorized />
+          )}
         </div>
       </div>
     </div>

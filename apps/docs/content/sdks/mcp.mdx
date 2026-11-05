@@ -180,7 +180,7 @@ claude mcp add --transport http rustrak https://your-rustrak.example.com/mcp \
 
 ### Team, tokens and storage
 
-Team, invitation and storage tools need an admin. Token tools work on the caller's own tokens; an admin can also manage everyone else's. Project-member tools need a global admin or an admin of that project. See [Team & Access](/usage/team).
+Each tool needs the permission that its description names, such as `storage:read`, `invitations:create` or `project-members:update`. Token tools work on the caller's own tokens; `api-tokens:read` and `api-tokens:delete` also reach everyone else's. See [Team & Access](/usage/team).
 
 | Tool | Description |
 |---|---|

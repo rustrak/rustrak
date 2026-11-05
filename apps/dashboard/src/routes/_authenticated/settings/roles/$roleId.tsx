@@ -4,21 +4,33 @@ import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
 import { RoleDocument } from '@/features/user/ui/components/role-document';
-import { accessQueries } from '@/shared/api/permissions';
+import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
+import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute('/_authenticated/settings/roles/$roleId')({
   loader: ({ context: { queryClient } }) => {
-    void queryClient.query(userQueries.roles()).catch(noop);
-    void queryClient.query(accessQueries.catalog()).catch(noop);
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('roles', 'read'),
+      () => {
+        void queryClient.query(userQueries.roles()).catch(noop);
+        void queryClient.query(accessQueries.catalog()).catch(noop);
+      },
+    );
   },
   pendingComponent: RoleLoading,
   component: RolePage,
 });
 
 function RolePage() {
+  return usePermissions().can('roles', 'read') ? <Role /> : <NotAuthorized />;
+}
+
+/** Separate so the roles are only read by who may read them. */
+function Role() {
   const t = useTranslations('access');
   const { roleId } = Route.useParams();
   const permissions = usePermissions();

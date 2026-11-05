@@ -1105,6 +1105,7 @@
       "editMetaTitle": "Modifier {name} | Alertes | Rustrak",
       "emptyTitle": "Aucune alerte pour l’instant",
       "emptyDescription": "Choisissez de quoi vous voulez être prévenu pour commencer. Vous pouvez avoir autant d’alertes que vous voulez : par exemple les nouveaux problèmes de production par email et tous les nouveaux problèmes sur Slack.",
+      "noRules": "Aucune règle d'alerte pour le moment.",
       "failedCount": "{count, plural, one {# envoi en échec} other {# envois en échec}}",
       "tabRules": "Alertes",
       "tabDeliveries": "Envois"
@@ -1483,9 +1484,9 @@
     "create": {
       "trigger": "Nouveau jeton",
       "createdTitle": "Jeton créé",
-      "createdDescription": "Copiez votre jeton maintenant. Vous pourrez aussi le récupérer plus tard dans la liste.",
+      "createdDescription": "Copiez votre jeton maintenant. Il ne sera plus affiché.",
       "copyTokenLabel": "Copier le nouveau jeton",
-      "copyAgainHint": "Vous pouvez recopier ce jeton à tout moment depuis la liste des jetons.",
+      "copyAgainHint": "Une fois cette fenêtre fermée, le jeton ne pourra plus être récupéré.",
       "done": "Terminé",
       "title": "Créer un jeton API",
       "description": "Créez un nouveau jeton pour un accès programmatique à l’API.",
@@ -2821,7 +2822,7 @@
       "customize": "Personnaliser",
       "customRole": "Permissions personnalisées",
       "customRoleHint": "Permissions propres à ce membre, à configurer ci-dessous.",
-      "noAccessHint": "Ce membre ne peut accéder à aucun projet ni réglage.",
+      "noAccessHint": "Ce membre n'a encore aucun rôle ni aucune permission.",
       "pickProject": "Sélectionnez au moins un projet.",
       "customTitle": "Permissions personnalisées",
       "sectionHint": "Définissez les permissions attribuées à ce membre et leur portée.",

@@ -1,4 +1,4 @@
-//! Team management routes (global admin only).
+//! Team management routes.
 //!
 //! - GET   /api/team                  — list all users
 //! - PATCH /api/team/{user_id}/role   — change a user's global role
@@ -68,7 +68,7 @@ pub struct UpdateUserRole {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/team — list all users (admin only)
+/// GET /api/team — list all users (needs `users:read`)
 pub async fn list_team(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     actor.require(Resource::Users, Action::Read, None)?;
 
@@ -99,7 +99,7 @@ pub async fn list_team(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<Ht
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PATCH /api/team/{user_id}/role — change a user's global role (admin only)
+/// PATCH /api/team/{user_id}/role — change a user's global role (needs `users:update`)
 pub async fn update_team_role(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -173,7 +173,7 @@ pub async fn update_team_role(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/team/{user_id} — remove a user from the instance (admin only)
+/// DELETE /api/team/{user_id} — remove a user from the instance (needs `users:delete`)
 pub async fn delete_user(
     pool: web::Data<DbPool>,
     actor: ApiActor,

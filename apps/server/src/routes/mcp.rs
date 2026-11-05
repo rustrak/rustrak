@@ -93,11 +93,11 @@ pub async fn get_settings(
     responses(
         (status = 200, description = "The MCP endpoint's new state, and its URL", body = McpStatus),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Not an instance admin", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing mcp:update", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Turns the MCP endpoint at `/mcp` on or off. Instance admins only.
+/// Turns the MCP endpoint at `/mcp` on or off (needs `mcp:update`).
 pub async fn update_settings(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,

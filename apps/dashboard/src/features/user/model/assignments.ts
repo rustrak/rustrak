@@ -1,4 +1,9 @@
-import type { CatalogResource, Permission, SetAccess } from '@rustrak/client';
+import type {
+  CatalogResource,
+  Permission,
+  Role,
+  SetAccess,
+} from '@rustrak/client';
 
 /** A role of the list, the person's own permissions, or nothing chosen yet. */
 export type RoleChoice = number | 'personal' | null;
@@ -74,3 +79,25 @@ export const reachesProjects = (
   permissions.some(
     (p) => catalog.find((r) => r.key === p.resource)?.scope === 'project',
   );
+
+/** A role as a line of access shows it. */
+export type RoleOption = Pick<Role, 'id' | 'name' | 'description'>;
+
+/**
+ * What a line can choose: the roles the reader could give, and what the member
+ * already holds, which stays visible even when the reader cannot list it.
+ */
+export function roleChoices(
+  roles: Role[],
+  held: { role_id: number; role_name: string; is_personal: boolean }[],
+  canGive: (permission: Permission) => boolean,
+): RoleOption[] {
+  const holds = (id: number) => held.some((h) => h.role_id === id);
+  const listed = roles.filter(
+    (r) => holds(r.id) || r.permissions.every(canGive),
+  );
+  const unlisted = held
+    .filter((h) => !h.is_personal && !roles.some((r) => r.id === h.role_id))
+    .map((h) => ({ id: h.role_id, name: h.role_name, description: '' }));
+  return [...listed, ...unlisted];
+}

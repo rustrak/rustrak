@@ -192,6 +192,7 @@ export function StorageView({
         <StorageProjects
           projects={summary.projects}
           settings={retention.settings}
+          readOnly={!canUpdate}
           onEditRetention={setProject}
         />
       ) : (

@@ -455,9 +455,9 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::sourcemaps::configure)
             // Sentry management API subset (Bearer auth, GitLab error tracking)
             .configure(routes::sentry_api::configure)
-            // Storage usage + retention/cleanup (admin only)
+            // Storage usage + retention/cleanup
             .configure(routes::storage::configure)
-            // What the anonymous telemetry would send (admin only)
+            // What the anonymous telemetry would send
             .configure(routes::telemetry::configure)
             // Ingest routes (Sentry SDK auth)
             .configure(routes::ingest::configure);

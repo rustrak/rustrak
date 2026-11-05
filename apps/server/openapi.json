@@ -1950,7 +1950,8 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "GET /api/alert-channels",
+        "summary": "Lists the channels alerts can go through.",
+        "description": "`integrations:read` sees their credentials, masked. Holding an alert-rules\npermission on any project is enough for the rest, without them: choosing\nwhere a rule notifies takes a channel's name, not its secrets.",
         "operationId": "alertChannels.list",
         "responses": {
           "200": {
@@ -1968,6 +1969,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing integrations:read and every alert-rules permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -8666,7 +8677,7 @@
         "tags": [
           "Members"
         ],
-        "summary": "Lists everyone holding a role on the project, with those roles.",
+        "summary": "Lists everyone holding a role on the project, with those roles; personal permissions are not roles.",
         "operationId": "members.list",
         "parameters": [
           {
@@ -8826,7 +8837,7 @@
         "tags": [
           "Members"
         ],
-        "summary": "Removes the roles a user holds on this project; roles on all projects stay.",
+        "summary": "Removes the roles a user holds on this project; roles on all projects and personal permissions stay.",
         "operationId": "members.remove",
         "parameters": [
           {
@@ -12167,7 +12178,7 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Turns the MCP endpoint at `/mcp` on or off. Instance admins only.",
+        "summary": "Turns the MCP endpoint at `/mcp` on or off (needs `mcp:update`).",
         "operationId": "settings.updateMcp",
         "requestBody": {
           "content": {
@@ -12201,7 +12212,7 @@
             }
           },
           "403": {
-            "description": "Not an instance admin",
+            "description": "Missing mcp:update",
             "content": {
               "application/json": {
                 "schema": {
@@ -12237,7 +12248,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -12622,7 +12633,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -12686,7 +12697,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:update",
             "content": {
               "application/json": {
                 "schema": {
@@ -12742,7 +12753,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -12788,7 +12799,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:delete",
             "content": {
               "application/json": {
                 "schema": {
@@ -12928,7 +12939,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "GET /api/team — list all users (admin only)",
+        "summary": "GET /api/team — list all users (needs `users:read`)",
         "operationId": "team.list",
         "responses": {
           "200": {
@@ -12977,7 +12988,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "DELETE /api/team/{user_id} — remove a user from the instance (admin only)",
+        "summary": "DELETE /api/team/{user_id} — remove a user from the instance (needs `users:delete`)",
         "operationId": "team.deleteUser",
         "parameters": [
           {
@@ -13048,7 +13059,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "PATCH /api/team/{user_id}/role — change a user's global role (admin only)",
+        "summary": "PATCH /api/team/{user_id}/role — change a user's global role (needs `users:update`)",
         "operationId": "team.updateRole",
         "parameters": [
           {
@@ -13186,7 +13197,7 @@
           "Tokens"
         ],
         "summary": "GET /api/tokens - List tokens (masked)",
-        "description": "Everyone sees their own tokens; `api-tokens:read` sees every token.",
+        "description": "Everyone sees their own tokens; `api-tokens:read` sees every token. A token\nlimited to other permissions sees none: it must not reach its owner's others.",
         "operationId": "tokens.list",
         "responses": {
           "200": {
@@ -13204,6 +13215,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token limited to other permissions",
             "content": {
               "application/json": {
                 "schema": {

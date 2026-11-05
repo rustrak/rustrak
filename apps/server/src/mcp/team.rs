@@ -1,6 +1,5 @@
 //! The global user roster and roles, invitations, and per-project membership.
-//! Team and invitation tools need an instance admin; project member tools a
-//! global admin or an admin of that project.
+//! Each tool needs the permission its description names.
 
 use actix_web::web;
 use rmcp::handler::server::wrapper::Parameters;
@@ -66,7 +65,7 @@ pub struct RemoveMemberArgs {
 #[tool_router(router = team_tools, vis = "pub(super)")]
 impl RustrakMcp {
     #[tool(
-        description = "List all users on this Rustrak instance with their global role (admin/member) and status. Requires an admin token.",
+        description = "List all users on this Rustrak instance with their global role (admin/member) and status. Requires users:read.",
         annotations(read_only_hint = true)
     )]
     async fn list_team_members(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
@@ -74,7 +73,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Change a user's global role. Admins manage the team and all projects; members only see projects they belong to. The primary user and the last admin cannot be demoted. Requires an admin token.",
+        description = "Change a user's global role. Admins manage the team and all projects; members only see projects they belong to. The primary user and the last admin cannot be demoted. Requires users:update.",
         annotations(destructive_hint = false)
     )]
     async fn update_member_role(&self, Parameters(a): Parameters<RoleArgs>) -> CallToolResult {
@@ -94,7 +93,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Permanently remove a user from the instance, revoking their access and tokens. The primary user, yourself, and the last admin cannot be removed. Requires an admin token.",
+        description = "Permanently remove a user from the instance, revoking their access and tokens. The primary user, yourself, and the last admin cannot be removed. Requires users:delete.",
         annotations(destructive_hint = true)
     )]
     async fn remove_team_member(&self, Parameters(a): Parameters<UserArgs>) -> CallToolResult {

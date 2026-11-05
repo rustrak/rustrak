@@ -76,9 +76,15 @@ export function CreateTokenDialog({
 
   const trimmed = description.trim();
   const isValid = trimmed.length <= TOKEN_DESCRIPTION_MAX_LENGTH;
+  // Every way to submit goes through this: the button, and Enter.
+  const canSubmit =
+    !isPending &&
+    isValid &&
+    permissions?.length !== 0 &&
+    projectIds?.length !== 0;
 
   const create = () => {
-    if (!isValid) return;
+    if (!canSubmit) return;
     onCreate({
       description: trimmed || undefined,
       permissions,
@@ -88,10 +94,22 @@ export function CreateTokenDialog({
         ? new Date(`${expiresOn}T23:59:59`).toISOString()
         : null,
     });
+  };
+
+  // The draft goes only when the dialog does: a failed creation stays open to
+  // retry, and clearing it there would retry with no limits at all.
+  const forgetDraft = () => {
     setDescription('');
     setPermissions(null);
     setProjectIds(null);
     setExpiresOn('');
+  };
+
+  const close = () => {
+    // Dropping a creation in flight would lose the only copy of its token.
+    if (isPending) return;
+    forgetDraft();
+    onOpenChange(false);
   };
 
   const permissionChoices = {
@@ -116,7 +134,7 @@ export function CreateTokenDialog({
       </Button>
       <Dialog
         open={open}
-        onOpenChange={onOpenChange}
+        onOpenChange={(next) => (next ? onOpenChange(true) : close())}
         size={newToken ? 'sm' : 'xl'}
       >
         {newToken ? (
@@ -144,7 +162,13 @@ export function CreateTokenDialog({
               </p>
             </DialogBody>
             <DialogFooter>
-              <Button variant="primary" onClick={onDone}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  forgetDraft();
+                  onDone();
+                }}
+              >
                 {t('create.done')}
               </Button>
             </DialogFooter>
@@ -231,23 +255,10 @@ export function CreateTokenDialog({
               ) : null}
             </DialogBody>
             <DialogFooter>
-              <Button
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-                disabled={isPending}
-              >
+              <Button variant="ghost" onClick={close} disabled={isPending}>
                 {t('create.cancel')}
               </Button>
-              <Button
-                variant="primary"
-                onClick={create}
-                disabled={
-                  isPending ||
-                  !isValid ||
-                  permissions?.length === 0 ||
-                  projectIds?.length === 0
-                }
-              >
+              <Button variant="primary" onClick={create} disabled={!canSubmit}>
                 {isPending ? t('create.creating') : t('create.submit')}
               </Button>
             </DialogFooter>

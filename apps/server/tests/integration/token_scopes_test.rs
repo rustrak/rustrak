@@ -200,7 +200,8 @@ async fn a_token_never_exceeds_its_owner() {
         status(&app, &format!("/api/projects/{p}/issues"), &t.token).await,
         200
     );
-    assert_eq!(status(&app, "/api/integrations", &t.token).await, 403);
+    // One channel, with its credentials, is `integrations:read`'s alone.
+    assert_eq!(status(&app, "/api/integrations/1", &t.token).await, 403);
 }
 
 #[actix_web::test]

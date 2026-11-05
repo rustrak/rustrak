@@ -3930,6 +3930,10 @@ export type AlertChannelsListErrors = {
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Missing integrations:read and every alert-rules permission
+     */
+    403: ErrorResponse;
 };
 
 export type AlertChannelsListError = AlertChannelsListErrors[keyof AlertChannelsListErrors];
@@ -8858,7 +8862,7 @@ export type SettingsUpdateMcpErrors = {
      */
     401: ErrorResponse;
     /**
-     * Not an instance admin
+     * Missing mcp:update
      */
     403: ErrorResponse;
 };
@@ -8883,7 +8887,7 @@ export type StorageGetAgeData = {
 
 export type StorageGetAgeErrors = {
     /**
-     * Admin privileges required
+     * Missing storage:read
      */
     403: ErrorResponse;
 };
@@ -9099,7 +9103,7 @@ export type StorageGetRetentionErrors = {
      */
     401: ErrorResponse;
     /**
-     * Admin privileges required
+     * Missing storage:read
      */
     403: ErrorResponse;
 };
@@ -9132,7 +9136,7 @@ export type StorageUpdateRetentionErrors = {
      */
     401: ErrorResponse;
     /**
-     * Admin privileges required
+     * Missing storage:update
      */
     403: ErrorResponse;
 };
@@ -9161,7 +9165,7 @@ export type StoragePreviewRetentionErrors = {
      */
     400: ErrorResponse;
     /**
-     * Admin privileges required
+     * Missing storage:read
      */
     403: ErrorResponse;
 };
@@ -9190,7 +9194,7 @@ export type StorageRunRetentionErrors = {
      */
     400: ErrorResponse;
     /**
-     * Admin privileges required
+     * Missing storage:delete
      */
     403: ErrorResponse;
     /**
@@ -9443,6 +9447,10 @@ export type TokensListErrors = {
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * A token limited to other permissions
+     */
+    403: ErrorResponse;
 };
 
 export type TokensListError = TokensListErrors[keyof TokensListErrors];

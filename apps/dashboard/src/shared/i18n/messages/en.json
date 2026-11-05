@@ -1105,6 +1105,7 @@
       "editMetaTitle": "Edit {name} | Alerts | Rustrak",
       "emptyTitle": "No alerts yet",
       "emptyDescription": "Pick what you want to hear about to start. You can have as many alerts as you like — say, new issues in production by email and every new issue to Slack.",
+      "noRules": "No alert rules yet.",
       "failedCount": "{count, plural, one {# failed delivery} other {# failed deliveries}}",
       "tabRules": "Alerts",
       "tabDeliveries": "Deliveries"
@@ -1483,9 +1484,9 @@
     "create": {
       "trigger": "New Token",
       "createdTitle": "Token Created",
-      "createdDescription": "Copy your token now. You can also retrieve it later from the list.",
+      "createdDescription": "Copy your token now. It won't be shown again.",
       "copyTokenLabel": "Copy the new token",
-      "copyAgainHint": "You can copy this token again anytime from the token list.",
+      "copyAgainHint": "Once you close this dialog, the token can't be retrieved.",
       "done": "Done",
       "title": "Create API Token",
       "description": "Create a new token for programmatic API access.",
@@ -2821,7 +2822,7 @@
       "customize": "Customize",
       "customRole": "Custom permissions",
       "customRoleHint": "Permissions specific to this member. Configure them below.",
-      "noAccessHint": "This member cannot access any project or setting.",
+      "noAccessHint": "This member has no roles or permissions yet.",
       "pickProject": "Select at least one project.",
       "customTitle": "Custom permissions",
       "sectionHint": "Define the permissions assigned to this member and where they apply.",

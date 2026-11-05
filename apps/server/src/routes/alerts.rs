@@ -182,14 +182,34 @@ fn channel_to_safe_json(channel: &crate::models::AlertIntegration) -> serde_json
     responses(
         (status = 200, description = "List of notification channels", body = Vec<NotificationChannel>),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing integrations:read and every alert-rules permission", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/alert-channels
+/// Lists the channels alerts can go through.
+///
+/// `integrations:read` sees their credentials, masked. Holding an alert-rules
+/// permission on any project is enough for the rest, without them: choosing
+/// where a rule notifies takes a channel's name, not its secrets.
 pub async fn list_channels(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
-    actor.require(Resource::Integrations, Action::Read, None)?;
+    let full = actor.access.can(Resource::Integrations, Action::Read, None);
+    let names_only = [Action::Read, Action::Create, Action::Update]
+        .iter()
+        .any(|&a| actor.access.can_somewhere(Resource::AlertRules, a));
+    if !full && !names_only {
+        actor.require(Resource::Integrations, Action::Read, None)?;
+    }
     let channels = AlertService::list_channels(pool.get_ref()).await?;
-    let safe: Vec<serde_json::Value> = channels.iter().map(channel_to_safe_json).collect();
+    let safe: Vec<serde_json::Value> = channels
+        .iter()
+        .map(|channel| {
+            let mut json = channel_to_safe_json(channel);
+            if !full {
+                json["credentials"] = serde_json::json!({});
+            }
+            json
+        })
+        .collect();
     Ok(HttpResponse::Ok().json(safe))
 }
 

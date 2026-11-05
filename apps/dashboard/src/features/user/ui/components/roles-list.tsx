@@ -25,6 +25,7 @@ import {
   SettingsEmpty,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /** The roles there are, each row leading to its page. */
@@ -106,9 +107,14 @@ function NewRoleForm({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
   const create = useMutation(userMutations.createRole());
   const [name, setName] = useState('');
   const [copyFrom, setCopyFrom] = useState(FROM_SCRATCH);
+  const reader = usePermissionsLater();
+  // A copy needs every permission of the original, wherever it reaches.
+  const copyable = roles.filter((r) =>
+    r.permissions.every((p) => reader.canEverywhere(p.resource, p.action)),
+  );
 
   const submit = () => {
-    const source = roles.find((r) => String(r.id) === copyFrom);
+    const source = copyable.find((r) => String(r.id) === copyFrom);
     create.mutate(
       {
         name: name.trim(),
@@ -137,7 +143,9 @@ function NewRoleForm({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && name.trim() && submit()}
+            onKeyDown={(e) =>
+              e.key === 'Enter' && name.trim() && !create.isPending && submit()
+            }
           />
         </Field>
         <Field>
@@ -148,13 +156,15 @@ function NewRoleForm({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
             aria-label={t('roles.copyFrom')}
             items={{
               [FROM_SCRATCH]: t('roles.fromScratch'),
-              ...Object.fromEntries(roles.map((r) => [String(r.id), r.name])),
+              ...Object.fromEntries(
+                copyable.map((r) => [String(r.id), r.name]),
+              ),
             }}
           >
             <SelectItem value={FROM_SCRATCH}>
               {t('roles.fromScratch')}
             </SelectItem>
-            {roles.map((r) => (
+            {copyable.map((r) => (
               <SelectItem key={r.id} value={String(r.id)}>
                 {r.name}
               </SelectItem>

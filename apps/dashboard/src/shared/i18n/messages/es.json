@@ -1105,6 +1105,7 @@
       "editMetaTitle": "Editar {name} | Alertas | Rustrak",
       "emptyTitle": "Aún no hay alertas",
       "emptyDescription": "Elige de qué quieres enterarte para empezar. Puedes tener tantas alertas como quieras: por ejemplo, problemas nuevos de producción por email y todos los problemas nuevos a Slack.",
+      "noRules": "Aún no hay reglas de alerta.",
       "failedCount": "{count, plural, one {# envío fallido} other {# envíos fallidos}}",
       "tabRules": "Alertas",
       "tabDeliveries": "Envíos"
@@ -1483,9 +1484,9 @@
     "create": {
       "trigger": "Nuevo token",
       "createdTitle": "Token creado",
-      "createdDescription": "Copia tu token ahora. También podrás recuperarlo más tarde desde la lista.",
+      "createdDescription": "Copia tu token ahora. No se volverá a mostrar.",
       "copyTokenLabel": "Copiar el nuevo token",
-      "copyAgainHint": "Puedes volver a copiar este token cuando quieras desde la lista de tokens.",
+      "copyAgainHint": "Al cerrar este diálogo, no podrás recuperar el token.",
       "done": "Hecho",
       "title": "Crear token de API",
       "description": "Crea un nuevo token para acceso programático a la API.",
@@ -2821,7 +2822,7 @@
       "customize": "Personalizar",
       "customRole": "Permisos personalizados",
       "customRoleHint": "Permisos específicos de este miembro. Se configuran a continuación.",
-      "noAccessHint": "Este miembro no puede acceder a ningún proyecto ni ajuste.",
+      "noAccessHint": "Este miembro aún no tiene roles ni permisos.",
       "pickProject": "Selecciona al menos un proyecto.",
       "customTitle": "Permisos personalizados",
       "sectionHint": "Define los permisos asignados a este miembro y dónde se aplican.",

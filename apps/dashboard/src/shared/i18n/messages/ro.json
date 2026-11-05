@@ -1105,6 +1105,7 @@
       "editMetaTitle": "Editează {name} | Alerte | Rustrak",
       "emptyTitle": "Încă nu există alerte",
       "emptyDescription": "Alege despre ce vrei să afli ca să începi. Poți avea oricâte alerte: de exemplu, probleme noi din producție prin email și toate problemele noi pe Slack.",
+      "noRules": "Nu există încă reguli de alertă.",
       "failedCount": "{count, plural, one {# trimitere eșuată} few {# trimiteri eșuate} other {# de trimiteri eșuate}}",
       "tabRules": "Alerte",
       "tabDeliveries": "Trimiteri"
@@ -1483,9 +1484,9 @@
     "create": {
       "trigger": "Token nou",
       "createdTitle": "Token creat",
-      "createdDescription": "Copiază token-ul acum. Îl poți recupera ulterior și din listă.",
+      "createdDescription": "Copiază tokenul acum. Nu va mai fi afișat.",
       "copyTokenLabel": "Copiază token-ul nou",
-      "copyAgainHint": "Poți copia acest token oricând din lista de token-uri.",
+      "copyAgainHint": "După ce închizi această fereastră, tokenul nu mai poate fi recuperat.",
       "done": "Gata",
       "title": "Creează token API",
       "description": "Creează un token nou pentru acces programatic la API.",
@@ -2821,7 +2822,7 @@
       "customize": "Personalizează",
       "customRole": "Permisiuni personalizate",
       "customRoleHint": "Permisiuni specifice acestui membru. Se configurează mai jos.",
-      "noAccessHint": "Acest membru nu poate accesa niciun proiect sau setare.",
+      "noAccessHint": "Acest membru nu are încă roluri sau permisiuni.",
       "pickProject": "Selectează cel puțin un proiect.",
       "customTitle": "Permisiuni personalizate",
       "sectionHint": "Definește permisiunile atribuite acestui membru și unde se aplică.",

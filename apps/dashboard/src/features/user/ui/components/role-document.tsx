@@ -148,7 +148,13 @@ export function RoleDocument({
   return (
     <PermissionEditor
       header={header}
-      catalog={canEdit ? grantable(catalog, reader) : catalog}
+      // A role reaches every project wherever it is given, so saving it takes
+      // holding each permission everywhere.
+      catalog={
+        canEdit
+          ? grantable(catalog, { canAnywhere: reader.canEverywhere })
+          : catalog
+      }
       value={permissions}
       onChange={setPermissions}
       readOnly={!canEdit}

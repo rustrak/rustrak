@@ -24,12 +24,16 @@ export const Route = createFileRoute(
     startIfAllowed(
       queryClient,
       (p) => p.can('project-github', 'read', projectId),
-      () => {
+      () =>
+        void queryClient.query(githubQueries.repository(projectId)).catch(noop),
+    );
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('project-github', 'update', projectId),
+      () =>
         void queryClient
           .query(githubQueries.repositories(projectId))
-          .catch(noop);
-        void queryClient.query(githubQueries.repository(projectId)).catch(noop);
-      },
+          .catch(noop),
     );
   },
   pendingComponent: GitHubSettingsLoading,

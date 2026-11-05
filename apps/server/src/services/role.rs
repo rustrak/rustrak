@@ -317,6 +317,7 @@ impl RoleService {
     }
 
     /// Replaces the roles a user holds on one project (empty removes them).
+    /// Their personal permissions stay: those are set with `set_assignments`.
     pub async fn set_project_roles(
         pool: &DbPool,
         project_id: i32,
@@ -324,11 +325,14 @@ impl RoleService {
         role_ids: &[i32],
     ) -> AppResult<()> {
         let mut tx = pool.begin().await?;
-        sqlx::query("DELETE FROM role_assignments WHERE user_id = $1 AND project_id = $2")
-            .bind(user_id)
-            .bind(project_id)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "DELETE FROM role_assignments WHERE user_id = $1 AND project_id = $2
+             AND role_id NOT IN (SELECT id FROM roles WHERE user_id IS NOT NULL)",
+        )
+        .bind(user_id)
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await?;
         for &role_id in role_ids {
             Self::assign(&mut *tx, user_id, role_id, Some(project_id)).await?;
         }
@@ -386,8 +390,8 @@ impl RoleService {
         ))
     }
 
-    /// Everyone holding project permissions here or on every project, by email.
-    /// Owners are not listed: they hold no role.
+    /// Everyone holding a role of the list that reaches this project, by email.
+    /// Owners hold no role, and personal permissions are no role of the list.
     pub async fn project_members(pool: &DbPool, project_id: i32) -> AppResult<Vec<ProjectMember>> {
         let rows: Vec<(i32, String, i32, String)> = sqlx::query_as(
             r#"
@@ -395,7 +399,7 @@ impl RoleService {
             FROM role_assignments a
             JOIN users u ON u.id = a.user_id
             JOIN roles r ON r.id = a.role_id
-            WHERE a.project_id = $1 OR a.project_id IS NULL
+            WHERE (a.project_id = $1 OR a.project_id IS NULL) AND r.user_id IS NULL
             ORDER BY u.email, r.name
             "#,
         )

@@ -56,7 +56,7 @@ async fn require_covered(
         .map(|id| shared.iter().find(|r| r.id == *id).ok_or(*id));
     let old = current
         .iter()
-        .filter(|a| a.project_id == Some(project_id))
+        .filter(|a| a.project_id == Some(project_id) && !a.is_personal)
         .map(|a| all.iter().find(|r| r.id == a.role_id).ok_or(a.role_id));
     for role in new.chain(old) {
         let role = role.map_err(|id| {
@@ -86,7 +86,7 @@ async fn require_covered(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Lists everyone holding a role on the project, with those roles.
+/// Lists everyone holding a role on the project, with those roles; personal permissions are not roles.
 pub async fn list_members(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -160,7 +160,7 @@ pub async fn upsert_member(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Removes the roles a user holds on this project; roles on all projects stay.
+/// Removes the roles a user holds on this project; roles on all projects and personal permissions stay.
 pub async fn remove_member(
     pool: web::Data<DbPool>,
     actor: ApiActor,

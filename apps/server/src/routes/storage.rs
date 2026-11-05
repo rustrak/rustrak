@@ -296,7 +296,7 @@ pub struct StorageApi;
     responses(
         (status = 200, description = "Retention settings, next cleanup and last cleanup", body = RetentionResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Admin privileges required", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing storage:read", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
@@ -321,7 +321,7 @@ pub async fn get_retention(
         (status = 200, description = "Saved; the new schedule applies within a minute", body = RetentionResponse),
         (status = 400, description = "Settings that cannot run", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Admin privileges required", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing storage:update", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
@@ -354,7 +354,7 @@ pub async fn update_retention(
     responses(
         (status = 200, description = "Dry-run: rows enforcing these settings now would remove", body = CleanupCounts),
         (status = 400, description = "Settings that cannot run", body = crate::error::ErrorResponse),
-        (status = 403, description = "Admin privileges required", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing storage:read", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
@@ -378,7 +378,7 @@ pub async fn preview_retention(
     responses(
         (status = 202, description = "Cleanup started in the background; poll its status", body = CleanupStatus),
         (status = 400, description = "Everything is kept forever: nothing to clean up", body = crate::error::ErrorResponse),
-        (status = 403, description = "Admin privileges required", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing storage:delete", body = crate::error::ErrorResponse),
         (status = 409, description = "A cleanup is already running", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -435,7 +435,7 @@ pub async fn run_retention(
     tag = "Storage",
     responses(
         (status = 200, description = "How long ago each project's data arrived, per kind", body = crate::models::StorageAge),
-        (status = 403, description = "Admin privileges required", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing storage:read", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]

@@ -9,10 +9,12 @@ import {
   type EditParam,
   ProviderSettings,
 } from '@/features/alert/ui/components/provider-settings';
+import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { SettingsListSkeleton } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { integrationProjectId } from '../-components/integrations-back-link';
 
 export const Route = createFileRoute(
@@ -36,6 +38,15 @@ function useProvider() {
 
 /** One alert provider: its integrations, and the form to add or edit one. */
 function ProviderPage() {
+  return usePermissions().can('integrations', 'read') ? (
+    <Provider />
+  ) : (
+    <NotAuthorized />
+  );
+}
+
+/** Separate: without the permission the list comes with no credentials. */
+function Provider() {
   const tAlerts = useTranslations('alerts');
   const provider = useProvider();
   const { data: integrations } = useSuspenseQuery(alertQueries.integrations());

@@ -1,5 +1,5 @@
 import { ExternalLinkIcon } from '@rustrak/ui';
-import { noop, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
@@ -31,17 +31,18 @@ export const Route = createFileRoute('/_authenticated/settings/tokens')({
 function TokensPage() {
   const t = useTranslations('settings');
   const { data: tokens } = useSuspenseQuery(tokenQueries.list());
-  const { data: catalog } = useSuspenseQuery(accessQueries.catalog());
+  // These only feed the new-token dialog: their failure must not take the list.
+  const { data: catalog } = useQuery(accessQueries.catalog());
   // ponytail: the first 100 projects; past that a token is bound by the API.
-  const { data: projects } = useSuspenseQuery(projectsToPick);
+  const { data: projects } = useQuery(projectsToPick);
 
   return (
     <>
       <title>{t('tokens.meta.title')}</title>
       <TokensList
         tokens={tokens}
-        catalog={catalog.resources}
-        projects={projects.items}
+        catalog={catalog?.resources ?? []}
+        projects={projects?.items ?? []}
         title={t('tokens.title')}
         subtitle={t('tokens.subtitle')}
         footer={

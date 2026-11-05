@@ -170,6 +170,18 @@ impl Grants {
         self.all || self.pairs.iter().any(|(r, _)| r.scope() == Scope::Project)
     }
 
+    /// Whether both hold some project permission in common.
+    fn shares_project_grant(&self, other: &Grants) -> bool {
+        match (self.all, other.all) {
+            (true, _) => other.any_project_grant(),
+            (_, true) => self.any_project_grant(),
+            _ => self
+                .pairs
+                .iter()
+                .any(|p| p.0.scope() == Scope::Project && other.pairs.contains(p)),
+        }
+    }
+
     fn add(&mut self, other: &Grants) {
         self.all |= other.all;
         self.pairs.extend(other.pairs.iter().copied());
@@ -206,9 +218,6 @@ impl TokenScope {
         let Some(id) = project_id else { return false };
         if self.projects.as_ref().is_some_and(|ids| !ids.contains(&id)) {
             return false;
-        }
-        if resource == Resource::Project && action == Action::Read {
-            return self.grants.any_project_grant();
         }
         self.grants.allows(resource, action)
     }
@@ -256,7 +265,41 @@ impl Access {
     /// Whether `action` on `resource` is allowed. Project resources need the
     /// project; instance resources ignore it and only count instance grants.
     pub fn can(&self, resource: Resource, action: Action, project_id: Option<i32>) -> bool {
+        if resource == Resource::Project && action == Action::Read {
+            return project_id.is_some_and(|id| self.sees_project(id));
+        }
         self.held(resource, action, project_id) && self.capped_by(resource, action, project_id)
+    }
+
+    /// Whether what a token was limited to allows this. Anyone not acting
+    /// through a token passes: for what is theirs regardless of what they hold.
+    pub fn scope_allows(&self, resource: Resource, action: Action) -> bool {
+        self.cap
+            .as_ref()
+            .is_none_or(|c| c.grants.allows(resource, action))
+    }
+
+    /// These grants show a project: any permission on it does, and through a
+    /// token only one the token keeps.
+    fn shows_project(&self, grants: &Grants) -> bool {
+        match &self.cap {
+            Some(cap) => grants.shares_project_grant(&cap.grants),
+            None => grants.any_project_grant(),
+        }
+    }
+
+    fn sees_project(&self, id: i32) -> bool {
+        let listed = self
+            .cap
+            .as_ref()
+            .and_then(|c| c.projects.as_ref())
+            .is_none_or(|ids| ids.contains(&id));
+        listed
+            && (self.shows_project(&self.instance)
+                || self
+                    .projects
+                    .get(&id)
+                    .is_some_and(|g| self.shows_project(g)))
     }
 
     fn held(&self, resource: Resource, action: Action, project_id: Option<i32>) -> bool {
@@ -264,12 +307,11 @@ impl Access {
             return self.instance.allows(resource, action);
         }
         let Some(id) = project_id else { return false };
-        let local = self.projects.get(&id);
-        if resource == Resource::Project && action == Action::Read {
-            return self.instance.any_project_grant()
-                || local.is_some_and(Grants::any_project_grant);
-        }
-        self.instance.allows(resource, action) || local.is_some_and(|g| g.allows(resource, action))
+        self.instance.allows(resource, action)
+            || self
+                .projects
+                .get(&id)
+                .is_some_and(|g| g.allows(resource, action))
     }
 
     /// Whether `action` on a project resource is allowed on at least one
@@ -303,22 +345,19 @@ impl Access {
 
     /// The projects this user can see at all.
     pub fn visible_projects(&self) -> ProjectScope {
-        let held = if self.instance.any_project_grant() {
+        let held = if self.shows_project(&self.instance) {
             ProjectScope::All
         } else {
             let mut ids: Vec<i32> = self
                 .projects
                 .iter()
-                .filter(|(_, g)| g.any_project_grant())
+                .filter(|(_, g)| self.shows_project(g))
                 .map(|(id, _)| *id)
                 .collect();
             ids.sort_unstable();
             ProjectScope::Only(ids)
         };
         let Some(cap) = &self.cap else { return held };
-        if !cap.grants.any_project_grant() {
-            return ProjectScope::Only(vec![]);
-        }
         match (held, &cap.projects) {
             (held, None) => held,
             (ProjectScope::All, Some(ids)) => ProjectScope::Only(ids.clone()),

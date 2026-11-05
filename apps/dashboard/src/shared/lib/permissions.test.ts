@@ -84,3 +84,39 @@ describe('permissionsFrom', () => {
     expect(p.canAnywhere('project-members', 'read')).toBe(false);
   });
 });
+
+describe('canEverywhere', () => {
+  const logs = { resource: 'logs', action: 'read' } as const;
+  const storage = { resource: 'storage', action: 'read' } as const;
+  const empty = {
+    is_owner: false,
+    instance: [],
+    all_projects: [],
+    projects: [],
+  };
+
+  it('needs the grant on every project: one project is not enough', () => {
+    const one = permissionsFrom({
+      ...empty,
+      projects: [{ project_id: 1, permissions: [logs] }],
+    });
+    expect(one.canAnywhere('logs', 'read')).toBe(true);
+    expect(one.canEverywhere('logs', 'read')).toBe(false);
+  });
+
+  it('counts all-project and workspace grants, and owners', () => {
+    const wide = permissionsFrom({
+      ...empty,
+      all_projects: [logs],
+      instance: [storage],
+    });
+    expect(wide.canEverywhere('logs', 'read')).toBe(true);
+    expect(wide.canEverywhere('storage', 'read')).toBe(true);
+    expect(
+      permissionsFrom({ ...empty, is_owner: true }).canEverywhere(
+        'logs',
+        'read',
+      ),
+    ).toBe(true);
+  });
+});

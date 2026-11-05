@@ -316,7 +316,7 @@ Every method, grouped as it hangs off the client.
 | `alertChannels.create({ body })` | `POST /api/integrations` |  |
 | `alertChannels.delete({ path })` | `DELETE /api/integrations/{id}` |  |
 | `alertChannels.get({ path })` | `GET /api/integrations/{id}` |  |
-| `alertChannels.list()` | `GET /api/integrations` |  |
+| `alertChannels.list()` | `GET /api/integrations` | Lists the channels alerts can go through. |
 | `alertChannels.previewTemplate({ body })` | `POST /api/integrations/preview-template` | Renders a Custom Webhook template against a sample payload and hands back the body that would be sent. |
 | `alertChannels.test({ path, body })` | `POST /api/integrations/{id}/test` |  |
 | `alertChannels.update({ path, body })` | `PATCH /api/integrations/{id}` |  |
@@ -439,8 +439,8 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `members.list({ path })` | `GET /api/projects/{project_id}/members` | Lists everyone holding a role on the project, with those roles. |
-| `members.remove({ path })` | `DELETE /api/projects/{project_id}/members/{user_id}` | Removes the roles a user holds on this project; roles on all projects stay. |
+| `members.list({ path })` | `GET /api/projects/{project_id}/members` | Lists everyone holding a role on the project, with those roles; personal permissions are not roles. |
+| `members.remove({ path })` | `DELETE /api/projects/{project_id}/members/{user_id}` | Removes the roles a user holds on this project; roles on all projects and personal permissions stay. |
 | `members.upsert({ path, body })` | `PUT /api/projects/{project_id}/members` | Sets the roles a user holds on the project. |
 
 ### Monitors
@@ -518,7 +518,7 @@ Every method, grouped as it hangs off the client.
 | Method | Endpoint | Description |
 |---|---|---|
 | `settings.getMcp()` | `GET /api/settings/mcp` | Whether the MCP endpoint at `/mcp` is on. |
-| `settings.updateMcp({ body })` | `PUT /api/settings/mcp` | Turns the MCP endpoint at `/mcp` on or off. |
+| `settings.updateMcp({ body })` | `PUT /api/settings/mcp` | Turns the MCP endpoint at `/mcp` on or off (needs `mcp:update`). |
 
 ### Source Maps
 
@@ -569,9 +569,9 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `team.deleteUser({ path })` | `DELETE /api/team/{user_id}` | Remove a user from the instance (admin only) |
-| `team.list()` | `GET /api/team` | List all users (admin only) |
-| `team.updateRole({ path, body })` | `PATCH /api/team/{user_id}/role` | Change a user's global role (admin only) |
+| `team.deleteUser({ path })` | `DELETE /api/team/{user_id}` | Remove a user from the instance (needs `users:delete`) |
+| `team.list()` | `GET /api/team` | List all users (needs `users:read`) |
+| `team.updateRole({ path, body })` | `PATCH /api/team/{user_id}/role` | Change a user's global role (needs `users:update`) |
 
 ### Telemetry
 

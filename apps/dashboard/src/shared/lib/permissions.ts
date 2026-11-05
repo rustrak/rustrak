@@ -11,6 +11,8 @@ export interface Permissions {
   can: (resource: Resource, action: Action, projectId?: number) => boolean;
   /** On the workspace or on at least one project. */
   canAnywhere: (resource: Resource, action: Action) => boolean;
+  /** On the workspace or on every project: what a role of the list can hold. */
+  canEverywhere: (resource: Resource, action: Action) => boolean;
 }
 
 type Grant = { resource: Resource; action: Action };
@@ -48,5 +50,9 @@ export function permissionsFrom(me: MyAccess): Permissions {
       has(me.instance, resource, action) ||
       has(me.all_projects, resource, action) ||
       me.projects.some((p) => has(p.permissions, resource, action)),
+    canEverywhere: (resource, action) =>
+      me.is_owner ||
+      has(me.instance, resource, action) ||
+      has(me.all_projects, resource, action),
   };
 }

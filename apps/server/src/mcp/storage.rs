@@ -89,7 +89,7 @@ pub struct UpdateRetentionArgs {
 #[tool_router(router = storage_tools, vis = "pub(super)")]
 impl RustrakMcp {
     #[tool(
-        description = "Get the instance-wide Rustrak storage summary (admin only): total database size, row counts for events, transactions, spans and logs, and the exact source-map weight. Use this to see what is consuming storage before cleaning up.",
+        description = "Get the instance-wide Rustrak storage summary (needs storage:read): total database size, row counts for events, transactions, spans and logs, and the exact source-map weight. Use this to see what is consuming storage before cleaning up.",
         annotations(read_only_hint = true)
     )]
     async fn get_storage_summary(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
@@ -98,7 +98,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Get the per-project Rustrak storage breakdown (admin only): event/transaction/span/source-map counts and estimated bytes for every project. Use this to find which project is accumulating the most data.",
+        description = "Get the per-project Rustrak storage breakdown (needs storage:read): event/transaction/span/source-map counts and estimated bytes for every project. Use this to find which project is accumulating the most data.",
         annotations(read_only_hint = true)
     )]
     async fn get_storage_by_project(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
@@ -107,7 +107,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Dry-run a Rustrak retention cleanup (admin only): report how many events, transactions, spans, logs and issues would be removed if data older than `older_than_days` were deleted, optionally scoped to one project and to specific data categories. Mutates nothing — always run this before execute_storage_cleanup.",
+        description = "Dry-run a Rustrak retention cleanup (needs storage:read): report how many events, transactions, spans, logs and issues would be removed if data older than `older_than_days` were deleted, optionally scoped to one project and to specific data categories. Mutates nothing — always run this before execute_storage_cleanup.",
         annotations(read_only_hint = true)
     )]
     async fn preview_storage_cleanup(
@@ -121,7 +121,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "DESTRUCTIVE (admin only): permanently delete Rustrak data older than `older_than_days` (optionally scoped to one project and to specific data categories) and remove the issues it leaves with zero events. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_cleanup first and show the user the counts before confirming. The cleanup runs in the background: this returns the started job at once, and get_storage_cleanup_status reports its progress and final counts. Only one cleanup runs at a time; starting another while one runs is refused with a conflict.",
+        description = "DESTRUCTIVE (needs storage:delete): permanently delete Rustrak data older than `older_than_days` (optionally scoped to one project and to specific data categories) and remove the issues it leaves with zero events. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_cleanup first and show the user the counts before confirming. The cleanup runs in the background: this returns the started job at once, and get_storage_cleanup_status reports its progress and final counts. Only one cleanup runs at a time; starting another while one runs is refused with a conflict.",
         annotations(destructive_hint = true)
     )]
     async fn execute_storage_cleanup(
@@ -144,7 +144,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Get the progress of the running Rustrak storage cleanup, or the outcome of the last one (admin only): its state (idle, running, completed, failed), the rows removed so far, and when it started and finished. Use it after execute_storage_cleanup to tell the user when the deletion is done.",
+        description = "Get the progress of the running Rustrak storage cleanup, or the outcome of the last one (needs storage:read): its state (idle, running, completed, failed), the rows removed so far, and when it started and finished. Use it after execute_storage_cleanup to tell the user when the deletion is done.",
         annotations(read_only_hint = true)
     )]
     async fn get_storage_cleanup_status(
@@ -155,7 +155,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Dry-run a Rustrak source-map garbage collection (admin only): report how many orphaned source-map files would be removed and how many bytes reclaimed, without deleting anything. Mutates nothing — always run this before gc_storage_source_maps.",
+        description = "Dry-run a Rustrak source-map garbage collection (needs storage:read): report how many orphaned source-map files would be removed and how many bytes reclaimed, without deleting anything. Mutates nothing — always run this before gc_storage_source_maps.",
         annotations(read_only_hint = true)
     )]
     async fn preview_storage_source_maps_gc(
@@ -166,7 +166,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "DESTRUCTIVE (admin only): permanently remove orphaned Rustrak source-map files no longer referenced by any upload (e.g. left behind by deleted projects), from the database and disk. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_source_maps_gc first and show the user the counts before confirming.",
+        description = "DESTRUCTIVE (needs storage:delete): permanently remove orphaned Rustrak source-map files no longer referenced by any upload (e.g. left behind by deleted projects), from the database and disk. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_source_maps_gc first and show the user the counts before confirming.",
         annotations(destructive_hint = true)
     )]
     async fn gc_storage_source_maps(
@@ -189,7 +189,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Get the storage retention (admin only): how many days each kind of data (error events, transactions with their spans, logs) is kept by default and per project (null keeps it forever), when the cleanup that enforces it runs (daily or weekly at an hour, UTC), when it runs next and how its last run went.",
+        description = "Get the storage retention (needs storage:read): how many days each kind of data (error events, transactions with their spans, logs) is kept by default and per project (null keeps it forever), when the cleanup that enforces it runs (daily or weekly at an hour, UTC), when it runs next and how its last run went.",
         annotations(read_only_hint = true)
     )]
     async fn get_retention(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
@@ -200,7 +200,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Dry-run retention settings (admin only): the rows enforcing them now would permanently delete, each project against its own windows. Saves and deletes nothing. Run it before update_retention and show the user the counts.",
+        description = "Dry-run retention settings (needs storage:read): the rows enforcing them now would permanently delete, each project against its own windows. Saves and deletes nothing. Run it before update_retention and show the user the counts.",
         annotations(read_only_hint = true)
     )]
     async fn preview_retention(&self, Parameters(a): Parameters<RetentionArgs>) -> CallToolResult {
@@ -211,7 +211,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "DESTRUCTIVE (admin only): enforce the saved retention now instead of waiting for the schedule. Permanently deletes every project's data older than its retention window, and the source maps no upload uses. You MUST set confirm=true to proceed; without it the tool refuses. Run preview_retention with the saved settings first and show the user what goes. It runs in the background: this returns the started job, and get_storage_cleanup_status reports its progress.",
+        description = "DESTRUCTIVE (needs storage:delete): enforce the saved retention now instead of waiting for the schedule. Permanently deletes every project's data older than its retention window, and the source maps no upload uses. You MUST set confirm=true to proceed; without it the tool refuses. Run preview_retention with the saved settings first and show the user what goes. It runs in the background: this returns the started job, and get_storage_cleanup_status reports its progress.",
         annotations(destructive_hint = true)
     )]
     async fn run_retention(&self, Parameters(a): Parameters<ConfirmArgs>) -> CallToolResult {
@@ -231,7 +231,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Replace the storage retention settings (admin only). Every field is sent. DESTRUCTIVE whenever any window is set: the cleanup then permanently deletes data older than it on every run. You MUST set confirm=true to save such settings; without it the tool refuses. Keeping everything forever needs no confirmation. Run preview_retention first and show the user what goes.",
+        description = "Replace the storage retention settings (needs storage:update). Every field is sent. DESTRUCTIVE whenever any window is set: the cleanup then permanently deletes data older than it on every run. You MUST set confirm=true to save such settings; without it the tool refuses. Keeping everything forever needs no confirmation. Run preview_retention first and show the user what goes.",
         annotations(destructive_hint = true)
     )]
     async fn update_retention(

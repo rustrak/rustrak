@@ -1105,6 +1105,7 @@
       "editMetaTitle": "编辑 {name} | 告警 | Rustrak",
       "emptyTitle": "还没有告警",
       "emptyDescription": "选择你想获知的内容开始。告警数量不限：例如生产环境的新问题发邮件，所有新问题发到 Slack。",
+      "noRules": "暂无告警规则。",
       "failedCount": "{count} 次发送失败",
       "tabRules": "告警",
       "tabDeliveries": "发送记录"
@@ -1483,9 +1484,9 @@
     "create": {
       "trigger": "新建令牌",
       "createdTitle": "令牌已创建",
-      "createdDescription": "现在复制您的令牌，之后仍可从列表中获取。",
+      "createdDescription": "请立即复制令牌。它不会再次显示。",
       "copyTokenLabel": "复制新令牌",
-      "copyAgainHint": "您可以随时从令牌列表中再次复制此令牌。",
+      "copyAgainHint": "关闭此对话框后，将无法再获取该令牌。",
       "done": "完成",
       "title": "创建 API 令牌",
       "description": "创建用于程序化 API 访问的新令牌。",
@@ -2821,7 +2822,7 @@
       "customize": "自定义",
       "customRole": "自定义权限",
       "customRoleHint": "此成员专属的权限，请在下方配置。",
-      "noAccessHint": "此成员无法访问任何项目或设置。",
+      "noAccessHint": "此成员尚无任何角色或权限。",
       "pickProject": "请至少选择一个项目。",
       "customTitle": "自定义权限",
       "sectionHint": "定义分配给此成员的权限及其适用范围。",

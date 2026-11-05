@@ -34,7 +34,11 @@ export function PermissionEditor({
   const t = useTranslations('access');
   const modules = modulesOf(catalog);
   const granted = (resources: CatalogResource[]) =>
-    value.filter((p) => resources.some((r) => r.key === p.resource)).length;
+    value.filter((p) =>
+      resources.some(
+        (r) => r.key === p.resource && r.actions.includes(p.action),
+      ),
+    ).length;
 
   const list = (
     <TabList>

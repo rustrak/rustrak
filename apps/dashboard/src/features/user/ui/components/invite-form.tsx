@@ -33,6 +33,7 @@ import {
   FormMessage,
   FormRootError,
 } from '@/shared/ui/components/form';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 const inviteSchema = z.object({
   email: z.email('Please enter a valid email address'),
@@ -96,12 +97,17 @@ export function InviteForm({
     defaultValues: DEFAULTS,
   });
   const access = form.watch('access');
+  const reader = usePermissionsLater();
+  // Roles the inviter could not give are not offered: the server would refuse.
+  const givable = roles?.filter((r) =>
+    r.permissions.every((p) => reader.canAnywhere(p.resource, p.action)),
+  );
   const accessItems = {
     [NO_ROLE]: t('invite.noRole'),
     ...(isOwner ? { [OWNER]: t('roles.admin') } : {}),
-    ...Object.fromEntries((roles ?? []).map((r) => [String(r.id), r.name])),
+    ...Object.fromEntries((givable ?? []).map((r) => [String(r.id), r.name])),
   };
-  const chosen = roles?.find((r) => String(r.id) === access);
+  const chosen = givable?.find((r) => String(r.id) === access);
   const asksWhere = chosen && reachesProjects(chosen.permissions, catalog);
   const whereItems = {
     [ALL_PROJECTS]: t('invite.allProjects'),

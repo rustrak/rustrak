@@ -95,7 +95,11 @@ export function toggleRow(
   permissions: Permission[],
   resource: CatalogResource,
 ): Permission[] {
-  const rest = permissions.filter((p) => p.resource !== resource.key);
+  // Only the actions this row shows: a narrowed editor keeps what it hides.
+  const shown = new Set(resource.actions);
+  const rest = permissions.filter(
+    (p) => !(p.resource === resource.key && shown.has(p.action)),
+  );
   return rowState(permissions, resource) === 'all'
     ? rest
     : [

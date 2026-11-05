@@ -1,7 +1,14 @@
-import type { Action, CatalogResource, Resource } from '@rustrak/client';
+import type {
+  Action,
+  CatalogResource,
+  Permission,
+  Resource,
+  Role,
+} from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
 import {
   reachesProjects,
+  roleChoices,
   rowsFrom,
   sameAccess,
   toSetAccess,
@@ -103,5 +110,37 @@ describe('reachesProjects', () => {
       reachesProjects([{ resource: 'storage', action: 'read' }], catalog),
     ).toBe(false);
     expect(reachesProjects([], catalog)).toBe(false);
+  });
+});
+
+describe('roleChoices', () => {
+  const role = (id: number, resource: string) =>
+    ({
+      id,
+      name: `r${id}`,
+      description: '',
+      permissions: [{ resource, action: 'read' }],
+    }) as Role;
+  const canGive = (p: Permission) => p.resource === 'logs';
+
+  it('offers what the reader could give, and keeps what is already held', () => {
+    const held = [{ role_id: 2, role_name: 'r2', is_personal: false }];
+    expect(
+      roleChoices(
+        [role(1, 'logs'), role(2, 'issues'), role(3, 'issues')],
+        held,
+        canGive,
+      ).map((r) => r.id),
+    ).toEqual([1, 2]);
+  });
+
+  it('names a held role the reader cannot list, and skips personal ones', () => {
+    const held = [
+      { role_id: 7, role_name: 'Hidden', is_personal: false },
+      { role_id: 8, role_name: 'Custom', is_personal: true },
+    ];
+    expect(roleChoices([], held, canGive)).toEqual([
+      { id: 7, name: 'Hidden', description: '' },
+    ]);
   });
 });

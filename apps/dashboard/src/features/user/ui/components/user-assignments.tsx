@@ -24,7 +24,9 @@ import { userMutations } from '@/features/user/api/mutations';
 import {
   type AccessRow,
   type RoleChoice,
+  type RoleOption,
   reachesProjects,
+  roleChoices,
   rowsFrom,
   sameAccess,
   toSetAccess,
@@ -42,6 +44,9 @@ import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 const PERSONAL = 'personal';
 
 type ProjectOption = { id: number; name: string; platform?: string | null };
+
+const isUnlisted = (role: RoleChoice, roles: Role[]) =>
+  typeof role === 'number' && !roles.some((r) => r.id === role);
 
 const missesProjects = (row: AccessRow) =>
   row.role !== null && row.projects?.length === 0;
@@ -69,6 +74,7 @@ export function UserAssignments({
   readOnlyReason: string | null;
 }) {
   const t = useTranslations('access');
+  const reader = usePermissionsLater();
   // The callbacks live here, not on `mutate`: a saved access remounts this
   // page, and `mutate`'s own callbacks do not run once it has unmounted.
   const save = useMutation({
@@ -85,6 +91,9 @@ export function UserAssignments({
   const [personal, setPersonal] = useState<Permission[]>(
     () => access.personal_permissions,
   );
+  const choices = roleChoices(roles, access.assignments, (p) =>
+    reader.canAnywhere(p.resource, p.action),
+  );
   const isOwner = user.role === 'admin';
   const readOnly = readOnlyReason !== null || isOwner;
 
@@ -96,7 +105,7 @@ export function UserAssignments({
   const hasPersonalRow = rows.some((r) => r.role === 'personal');
   // With no roles to choose from, a line can only be custom permissions.
   const canAddAnother =
-    !readOnly && rows.length > 0 && (roles.length > 0 || !hasPersonalRow);
+    !readOnly && rows.length > 0 && (choices.length > 0 || !hasPersonalRow);
 
   const permissionsOf = (role: RoleChoice): Permission[] =>
     role === 'personal'
@@ -111,7 +120,7 @@ export function UserAssignments({
   const addRow = () =>
     setRows((all) => [
       ...all,
-      { role: roles.length > 0 ? null : 'personal', projects: null },
+      { role: choices.length > 0 ? null : 'personal', projects: null },
     ]);
 
   const chooseRole = (index: number, role: RoleChoice) => {
@@ -175,9 +184,13 @@ export function UserAssignments({
                   // react-doctor-disable-next-line react-doctor/no-array-index-as-key
                   key={index}
                   row={row}
-                  roles={roles}
+                  roles={choices}
                   projects={projects}
-                  reaches={reachesProjects(permissionsOf(row.role), catalog)}
+                  // Unknown when the reader cannot list it: where stays shown.
+                  reaches={
+                    isUnlisted(row.role, roles) ||
+                    reachesProjects(permissionsOf(row.role), catalog)
+                  }
                   personalTaken={hasPersonalRow && row.role !== 'personal'}
                   readOnly={readOnly}
                   onRole={(role) => chooseRole(index, role)}
@@ -334,7 +347,7 @@ function AccessLine({
   onRemove,
 }: {
   row: AccessRow;
-  roles: Role[];
+  roles: RoleOption[];
   projects: ProjectOption[];
   /** Whether what this line holds applies to projects at all. */
   reaches: boolean;

@@ -98,7 +98,11 @@ export function RepositorySettings({
   readOnly = false,
 }: RepositorySettingsProps) {
   const t = useTranslations('github');
-  const repositories = useQuery(githubQueries.repositories(projectId));
+  // Choosing one takes `project-github:update`, and so does listing them.
+  const repositories = useQuery({
+    ...githubQueries.repositories(projectId),
+    enabled: !readOnly,
+  });
   const failed = (failure: string) => (error: Error) =>
     toast.error(failure, { description: error.message });
   const setRepository = useMutation({
