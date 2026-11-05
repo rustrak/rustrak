@@ -13,7 +13,12 @@ export function InteractiveDemo({ src }: { src: string }) {
   return (
     <OpenShowcaseDemo
       src={src.startsWith('/') ? `${basePath}${src}` : src}
+      hotspotStyle={{
+        bgColor: 'var(--surface-brand)',
+      }}
       appearance="dark"
+      wrapper="bezel"
+      backdrop={{ color: 'var(--surface-brand)', fill: 'soft', padding: 2 }}
       startWhenVisible
       // The player draws its own window frame; a border here doubles it.
       className="my-6 w-full"

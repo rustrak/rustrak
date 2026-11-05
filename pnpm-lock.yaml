@@ -332,8 +332,8 @@ importers:
         specifier: 5.3.0
         version: 5.3.0
       '@rustrak/openshowcase-player-react':
-        specifier: 0.5.0
-        version: 0.5.0(react@19.3.1)(typescript@6.0.3)
+        specifier: 0.6.0
+        version: 0.6.0(react@19.3.1)(typescript@6.0.3)
       '@rustrak/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -3313,16 +3313,16 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rustrak/openshowcase-player-core@0.5.0':
-    resolution: {integrity: sha512-uXMSxj4P4xxbwiVOrK7PUc4eT5LJb4X0Fy2P3RSCLReg9MD9CK8ED+iCLDUuVitQBYH9gnmTBir5llqcao79fg==}
+  '@rustrak/openshowcase-player-core@0.6.0':
+    resolution: {integrity: sha512-jLQ41/Sow2jbfKj1KxAPjdn+0NkU+uLvLqxnJGV5plpSK6JShSIRZTJeufvC5Pg2FlZwMF/+NE7yhrCnhrUcmA==}
 
-  '@rustrak/openshowcase-player-react@0.5.0':
-    resolution: {integrity: sha512-5iUhrVvkDMhwcFkVjGC/qOnEtxq6TD+N1GRJsd5OGCYRriOnuVTKLhS2WhqwQGfUfNcH0yxH+eXh8tg7CC+XqA==}
+  '@rustrak/openshowcase-player-react@0.6.0':
+    resolution: {integrity: sha512-AH+IhxglKrZh8yQTPcuK1XeRb6RDs57tnlU2CFbPLMf6gTOolLqyopLYw1ghuMHcbrjl8tC4W4RQRAA+NwodGw==}
     peerDependencies:
       react: '>=18'
 
-  '@rustrak/openshowcase-schema@0.5.0':
-    resolution: {integrity: sha512-WHBQMI3I5iEIclx9iiMJIafMq3jeZrIeQivlX03p+YFUb3HutYmkw686+N5IeLMpQDr/KjMY5qOnBlRkoaBcOQ==}
+  '@rustrak/openshowcase-schema@0.6.0':
+    resolution: {integrity: sha512-1Gu1Ba79+yZNoVarRGzt87uGV17bC2qp1BIte8uiNunnv+AZjT3+Y86Bb4lMALVuX1OAwn/QE0qibpVcD4VNkw==}
 
   '@scalar/agent-chat@0.12.49':
     resolution: {integrity: sha512-ol4VbQSCAfRPsHitueK8G6pj0YRhTXqLqVY5ADn9WTKW7F0UVgjfq8HU8gg0Q6R43fBdmk74eVfI7DojAdBbxg==}
@@ -10451,21 +10451,21 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.64.9':
     optional: true
 
-  '@rustrak/openshowcase-player-core@0.5.0(typescript@6.0.3)':
+  '@rustrak/openshowcase-player-core@0.6.0(typescript@6.0.3)':
     dependencies:
-      '@rustrak/openshowcase-schema': 0.5.0(typescript@6.0.3)
+      '@rustrak/openshowcase-schema': 0.6.0(typescript@6.0.3)
     transitivePeerDependencies:
       - typescript
 
-  '@rustrak/openshowcase-player-react@0.5.0(react@19.3.1)(typescript@6.0.3)':
+  '@rustrak/openshowcase-player-react@0.6.0(react@19.3.1)(typescript@6.0.3)':
     dependencies:
-      '@rustrak/openshowcase-player-core': 0.5.0(typescript@6.0.3)
-      '@rustrak/openshowcase-schema': 0.5.0(typescript@6.0.3)
+      '@rustrak/openshowcase-player-core': 0.6.0(typescript@6.0.3)
+      '@rustrak/openshowcase-schema': 0.6.0(typescript@6.0.3)
       react: 19.3.1
     transitivePeerDependencies:
       - typescript
 
-  '@rustrak/openshowcase-schema@0.5.0(typescript@6.0.3)':
+  '@rustrak/openshowcase-schema@0.6.0(typescript@6.0.3)':
     dependencies:
       valibot: 1.5.0(typescript@6.0.3)
     transitivePeerDependencies:
