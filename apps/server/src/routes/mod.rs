@@ -17,6 +17,7 @@ pub mod oauth;
 pub mod period;
 pub mod projects;
 pub mod releases;
+pub mod roles;
 pub mod schedules;
 pub mod sentry_api;
 pub mod sessions;

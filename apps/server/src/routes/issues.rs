@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse};
 use uuid::Uuid;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
@@ -8,7 +9,6 @@ use crate::error::{AppError, AppResult};
 use crate::models::IssueResponse;
 use crate::models::{BulkDeleteIssues, BulkUpdateIssues, UpdateIssueState};
 use crate::pagination::{ListIssuesQuery, OffsetPaginatedResponse};
-use crate::services::access::{self, Action};
 use crate::services::github;
 use crate::services::scope::Scope;
 use crate::services::{EventService, IssueService, IssueSocialService, ProjectService};
@@ -73,14 +73,7 @@ pub async fn list_issues(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     // Verify project exists and get slug for response
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
@@ -159,14 +152,7 @@ pub async fn list_environments(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     ProjectService::get_by_id(pool.get_ref(), project_id).await?;
     let environments = IssueService::environments(pool.get_ref(), project_id).await?;
     Ok(HttpResponse::Ok().json(environments))
@@ -232,14 +218,7 @@ pub async fn list_feedback(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
     let (issues, total_count) = IssueService::list_offset(
@@ -304,14 +283,7 @@ pub async fn get_issue(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     // Verify project exists and get slug
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
@@ -366,14 +338,7 @@ pub async fn update_issue(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::MutateIssue,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Update, Some(project_id))?;
 
     // Verify project exists and get slug
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
@@ -451,14 +416,7 @@ pub async fn delete_issue(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::MutateIssue,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Delete, Some(project_id))?;
 
     // Verify issue belongs to the project before deleting
     let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
@@ -494,14 +452,7 @@ pub async fn get_issue_hashes(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
     if issue.project_id != project_id {
@@ -536,14 +487,7 @@ pub async fn get_issue_tag_values(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id, key) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
     if issue.project_id != project_id {
@@ -577,14 +521,7 @@ pub async fn get_issue_aggregates(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
     if issue.project_id != project_id {
@@ -616,14 +553,7 @@ pub async fn bulk_update_issues(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::MutateIssue,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Update, Some(project_id))?;
     body.validate_size()?;
 
     // Status and priority are applied in one transaction so a request that sets
@@ -708,14 +638,7 @@ pub async fn delete_issues(
     body: AppResult<web::Json<BulkDeleteIssues>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::MutateIssue,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Delete, Some(project_id))?;
 
     let body = body?;
     body.validate_size()?;
@@ -778,14 +701,7 @@ pub async fn get_issue_stats(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     // window=24h → 24 hourly buckets; window=30d → 30 daily buckets.
@@ -823,14 +739,7 @@ pub async fn get_issue_activity(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
     let activity = IssueSocialService::list_activity(pool.get_ref(), issue_id).await?;
     Ok(HttpResponse::Ok().json(activity))
@@ -860,14 +769,7 @@ pub async fn create_issue_comment(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::MutateIssue,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Update, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
     let entry =
         IssueSocialService::add_comment(pool.get_ref(), issue_id, actor.user_id(), &body.text)
@@ -908,14 +810,7 @@ pub async fn set_issue_bookmark(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
     let user_id = require_user(&actor)?;
     let enabled = body.enabled.unwrap_or(true);
@@ -947,14 +842,7 @@ pub async fn set_issue_subscription(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
     let user_id = require_user(&actor)?;
     let enabled = body.enabled.unwrap_or(true);
@@ -985,14 +873,7 @@ pub async fn mark_issue_seen(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
     let user_id = require_user(&actor)?;
     IssueSocialService::mark_seen(pool.get_ref(), issue_id, user_id).await?;
@@ -1023,14 +904,7 @@ pub async fn list_issue_user_reports(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
     let page = query.page.max(1);
     let per_page = query.per_page.clamp(1, 100);
@@ -1070,14 +944,7 @@ pub async fn create_issue_user_report(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::MutateIssue,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Update, Some(project_id))?;
     require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     // If an event_id is supplied, verify it actually belongs to this issue so

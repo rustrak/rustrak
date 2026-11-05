@@ -41,7 +41,7 @@ group, always.
 | Method | Who | How |
 |---|---|---|
 | Session | humans on the dashboard | email + password, Argon2id, httpOnly cookie |
-| Bearer token | API and scripts | 40-char hex against `auth_tokens` |
+| Bearer token | API and scripts | 40-char hex, stored as its SHA-256 in `auth_tokens` |
 | Sentry auth | SDKs on ingest routes | the key embedded in the DSN |
 | OAuth access token | MCP clients, `/mcp` only | `rto_` + hex, hashed in `oauth_grants` |
 
@@ -49,6 +49,42 @@ They are separate on purpose, the same way GitHub separates sessions from PATs.
 Session auth is better UX for people; token auth is the standard for machines.
 
 DSN format: `http://<sentry_key>@<host>/<project_id>`.
+
+## Permissions (`src/auth/rbac.rs`)
+
+A person's access is set on one page: a role and where it applies, or
+permissions of their own. Never put projects inside a role: that needs one role
+per combination of permissions and projects.
+
+- **The catalog is code**: `catalog!` lists every `Resource` with its module,
+  scope (`Instance` or `Project`) and the `Action`s (read, create, update,
+  delete) it accepts. Settings are one resource per area (`storage`,
+  `integrations`, `mcp`, …). A new resource is one line there. Seeing a
+  project is not in it: any permission on the project implies it.
+- **A role can mix workspace and project permissions.** A new install has no
+  roles and code never names one; memberships from before roles existed migrate
+  to ordinary, editable ones. Creating a project extends the creator's own roles
+  to it, so `projects:create` alone is refused: they could not see the project.
+- **Assignments say where**: `role_assignments(user, role, project_id)`. NULL
+  reaches every project. A role's project permissions apply there; its workspace
+  permissions apply wherever it is held. Grants only add up; nothing is granted
+  by default.
+- **Personal permissions are a role**: `roles.user_id` marks one person's own
+  role, which `RoleService::list` leaves out, nobody else can be given, and goes
+  with them. `PUT /api/users/{id}/assignments` writes it with their assignments.
+- **Owners are `users.role = 'admin'`**, not a role: they hold everything,
+  and only an owner makes, unmakes or deletes one.
+- **One check**: `actor.require(resource, action, Some(project_id))` in the
+  handler. Cannot see the project → 404; sees it but lacks the permission →
+  403. Listings use `actor.visible_projects()`.
+- **No escalation**: writing a role, assigning one, inviting with one or
+  adding a project member all need `Access::covers` (you hold it, where it
+  applies). Nobody edits their own assignments or project roles.
+- **Tokens are created from a session only**, never with another token and never
+  with a permission the creator lacks, so a limited token cannot mint its way out.
+- **Tokens** act as their owner narrowed by their own scope
+  (`Access::capped`: permissions, projects, expiry). A token with no owner
+  (legacy) holds everything.
 
 ## The MCP server at `/mcp`
 

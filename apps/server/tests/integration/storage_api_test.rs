@@ -104,7 +104,7 @@ async fn seed_user(pool: &DbPool, email: &str, role: UserRole) -> User {
 }
 
 async fn token_for(pool: &DbPool, user_id: i32) -> String {
-    AuthTokenService::create_for_user(pool, CreateAuthToken { description: None }, Some(user_id))
+    AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user_id))
         .await
         .expect("seed token")
         .token
@@ -1323,7 +1323,7 @@ async fn compacting_an_old_database_lets_it_give_space_back_from_then_on() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
     let project = create_project(&db.pool, "legacy").await;
-    seed_old_logs(&db.pool, project, 10, 500, 4_096).await;
+    seed_old_logs(&db.pool, project, 10, 1_000, 4_096).await;
     CleanupJob::default()
         .run_retention(db.pool.clone(), logs_retention(1), test_store())
         .await

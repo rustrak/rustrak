@@ -41,7 +41,8 @@ export function ProjectsPicker({
 }) {
   const t = useTranslations('access');
   const all = allLabel ?? t('roles.allProjects');
-  const picked = projects.filter((p) => value?.includes(p.id));
+  const chosen = new Set(value);
+  const picked = projects.filter((p) => chosen.has(p.id));
   // Projects the reader cannot see still count, they just have no name here.
   const label =
     value === null
@@ -109,7 +110,7 @@ export function ProjectsPicker({
             >
               <Checkbox
                 aria-label={p.name}
-                checked={value === null || value.includes(p.id)}
+                checked={value === null || chosen.has(p.id)}
                 onCheckedChange={(on) => toggle(p.id, on)}
               />
               <ProjectLogo project={p} />

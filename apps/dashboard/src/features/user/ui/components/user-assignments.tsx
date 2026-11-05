@@ -69,7 +69,6 @@ export function UserAssignments({
   readOnlyReason: string | null;
 }) {
   const t = useTranslations('access');
-  const reader = usePermissionsLater();
   // The callbacks live here, not on `mutate`: a saved access remounts this
   // page, and `mutate`'s own callbacks do not run once it has unmounted.
   const save = useMutation({
@@ -155,12 +154,7 @@ export function UserAssignments({
         <OwnerAccess />
       ) : (
         <div className="flex flex-col gap-8">
-          {readOnlyReason ? (
-            <p className="flex items-center gap-2 text-fg-subtle text-meta">
-              <InfoIcon size="sm" aria-hidden="true" />
-              {readOnlyReason}
-            </p>
-          ) : null}
+          <ReadOnlyNote reason={readOnlyReason} />
           <SettingSection
             title={t('users.accessTitle')}
             description={t('users.sectionHint')}
@@ -178,6 +172,7 @@ export function UserAssignments({
               rows.map((row, index) => (
                 <AccessLine
                   // A line has no identity of its own until it is saved.
+                  // react-doctor-disable-next-line react-doctor/no-array-index-as-key
                   key={index}
                   row={row}
                   roles={roles}
@@ -196,26 +191,57 @@ export function UserAssignments({
             )}
           </SettingSection>
           {hasPersonalRow ? (
-            <section>
-              <div className="flex items-center gap-2">
-                <h2 className="text-card-title text-fg">
-                  {t('users.customTitle')}
-                </h2>
-                <Tag variant="soft">
-                  {t('roles.permissionCount', { count: personal.length })}
-                </Tag>
-              </div>
-              <PermissionEditor
-                catalog={readOnly ? catalog : grantable(catalog, reader)}
-                value={personal}
-                onChange={setPersonal}
-                readOnly={readOnly}
-              />
-            </section>
+            <CustomPermissions
+              catalog={catalog}
+              value={personal}
+              onChange={setPersonal}
+              readOnly={readOnly}
+            />
           ) : null}
         </div>
       )}
     </>
+  );
+}
+
+function ReadOnlyNote({ reason }: { reason: string | null }) {
+  return reason ? (
+    <p className="flex items-center gap-2 text-fg-subtle text-meta">
+      <InfoIcon size="sm" aria-hidden="true" />
+      {reason}
+    </p>
+  ) : null;
+}
+
+/** The member's own permissions, limited to what the reader can hand out. */
+function CustomPermissions({
+  catalog,
+  value,
+  onChange,
+  readOnly,
+}: {
+  catalog: CatalogResource[];
+  value: Permission[];
+  onChange: (next: Permission[]) => void;
+  readOnly: boolean;
+}) {
+  const t = useTranslations('access');
+  const reader = usePermissionsLater();
+  return (
+    <section>
+      <div className="flex items-center gap-2">
+        <h2 className="text-card-title text-fg">{t('users.customTitle')}</h2>
+        <Tag variant="soft">
+          {t('roles.permissionCount', { count: value.length })}
+        </Tag>
+      </div>
+      <PermissionEditor
+        catalog={readOnly ? catalog : grantable(catalog, reader)}
+        value={value}
+        onChange={onChange}
+        readOnly={readOnly}
+      />
+    </section>
   );
 }
 

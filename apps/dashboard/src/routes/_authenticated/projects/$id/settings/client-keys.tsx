@@ -34,7 +34,11 @@ function ClientKeysPage() {
         description={t('clientKeys.subtitle')}
       />
 
-      {canRead ? <ClientKeysSettings project={project} /> : <NotAuthorized />}
+      {canRead && project.dsn ? (
+        <ClientKeysSettings project={project} dsn={project.dsn} />
+      ) : (
+        <NotAuthorized />
+      )}
     </>
   );
 }

@@ -8,6 +8,16 @@ export const zAcceptInvitation = z.object({
 });
 
 /**
+ * Something a grant can allow.
+ */
+export const zAction = z.enum([
+    'read',
+    'create',
+    'update',
+    'delete'
+]);
+
+/**
  * An entry in an issue's activity log. Comments are stored as activity rows of
  * type `note` with `{"text": ...}` in `data` (Sentry models notes as activity).
  */
@@ -194,6 +204,11 @@ export const zAssembleResponse = z.object({
     state: z.string()
 });
 
+export const zAssignmentInput = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullish(),
+    role_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
 /**
  * The raw bytes of an attachment. Untyped in the spec: the generated
  * client validates bodies with zod, which has no type for a binary one.
@@ -210,27 +225,6 @@ export const zAttachmentInfo = z.object({
     filename: z.string(),
     id: z.uuid(),
     size: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
-});
-
-/**
- * Response that includes the full token (only on creation)
- */
-export const zAuthTokenCreatedResponse = z.object({
-    created_at: z.iso.datetime({ offset: true }),
-    description: z.string().nullable(),
-    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
-    token: z.string()
-});
-
-/**
- * Response for listing (token is masked)
- */
-export const zAuthTokenResponse = z.object({
-    created_at: z.iso.datetime({ offset: true }),
-    description: z.string().nullable(),
-    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
-    last_used_at: z.iso.datetime({ offset: true }).nullable(),
-    token_prefix: z.string()
 });
 
 /**
@@ -473,13 +467,6 @@ export const zCreateAlertRule = z.object({
     conditions: z.record(z.string(), z.unknown()).optional(),
     cooldown_minutes: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).optional(),
     name: z.string()
-});
-
-/**
- * DTO for creating a new token
- */
-export const zCreateAuthToken = z.object({
-    description: z.string().nullish()
 });
 
 export const zCreateGitHubIssue = z.object({
@@ -1164,7 +1151,7 @@ export const zProjectResponse = z.object({
     created_at: z.iso.datetime({ offset: true }),
     digested_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     disabled_products: z.array(zProduct),
-    dsn: z.string(),
+    dsn: z.string().nullable(),
     id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     name: z.string(),
     platform: z.string().nullable(),
@@ -1172,7 +1159,7 @@ export const zProjectResponse = z.object({
     rate_limit_per_hour: z.int().nullable(),
     rate_limit_per_minute: z.int().nullable(),
     rate_limited_event_count: z.int(),
-    sentry_key: z.string(),
+    sentry_key: z.string().nullable(),
     slug: z.string(),
     stats: zProjectListStats.nullish(),
     stored_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
@@ -1188,36 +1175,6 @@ export const zProjectRetention = z.object({
     logs_days: z.int().nullable(),
     project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     transactions_days: z.int().nullable()
-});
-
-/**
- * Per-project capability level for a member.
- *
- * Ordered by privilege: `Viewer` < `Editor` < `Admin` (derived `Ord` uses
- * declaration order). An `Action` maps to the minimum role that may perform it.
- */
-export const zProjectRole = z.enum([
-    'viewer',
-    'editor',
-    'admin'
-]);
-
-export const zProjectMember = z.object({
-    created_at: z.iso.datetime({ offset: true }),
-    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
-    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
-    role: zProjectRole,
-    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
-});
-
-/**
- * Member row joined with the user's email, for listing a project's team.
- */
-export const zProjectMemberResponse = z.object({
-    created_at: z.iso.datetime({ offset: true }),
-    email: z.string(),
-    role: zProjectRole,
-    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
 });
 
 /**
@@ -1381,6 +1338,103 @@ export const zIssueGitHub = z.object({
 });
 
 /**
+ * Every resource a permission can name.
+ */
+export const zResource = z.enum([
+    'projects',
+    'users',
+    'invitations',
+    'roles',
+    'api-tokens',
+    'integrations',
+    'github-app',
+    'storage',
+    'mcp',
+    'telemetry',
+    'issues',
+    'performance',
+    'logs',
+    'sessions',
+    'releases',
+    'source-maps',
+    'alert-rules',
+    'monitors',
+    'project',
+    'client-keys',
+    'project-members',
+    'project-github'
+]);
+
+/**
+ * One `(resource, action)` grant.
+ */
+export const zPermission = z.object({
+    action: zAction,
+    resource: zResource
+});
+
+/**
+ * Response that includes the full token (only on creation)
+ */
+export const zAuthTokenCreatedResponse = z.object({
+    created_at: z.iso.datetime({ offset: true }),
+    description: z.string().nullable(),
+    expires_at: z.iso.datetime({ offset: true }).nullable(),
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    permissions: z.array(zPermission).nullable(),
+    project_ids: z.array(z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })).nullable(),
+    token: z.string()
+});
+
+/**
+ * Response for listing (token is masked)
+ */
+export const zAuthTokenResponse = z.object({
+    created_at: z.iso.datetime({ offset: true }),
+    description: z.string().nullable(),
+    expires_at: z.iso.datetime({ offset: true }).nullable(),
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    last_used_at: z.iso.datetime({ offset: true }).nullable(),
+    permissions: z.array(zPermission).nullable(),
+    project_ids: z.array(z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })).nullable(),
+    token_prefix: z.string(),
+    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable()
+});
+
+/**
+ * DTO for creating a new token
+ */
+export const zCreateAuthToken = z.object({
+    description: z.string().nullish(),
+    expires_at: z.iso.datetime({ offset: true }).nullish(),
+    permissions: z.array(zPermission).nullish(),
+    project_ids: z.array(z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })).nullish()
+});
+
+/**
+ * Permissions given to one person directly, without a role of the list.
+ */
+export const zPersonalAccess = z.object({
+    permissions: z.array(zPermission),
+    project_ids: z.array(z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })).nullish()
+});
+
+export const zProjectPermissions = z.object({
+    permissions: z.array(zPermission),
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * What the caller may do. An owner may do everything and gets empty lists.
+ */
+export const zMyAccess = z.object({
+    all_projects: z.array(zPermission),
+    instance: z.array(zPermission),
+    is_owner: z.boolean(),
+    projects: z.array(zProjectPermissions)
+});
+
+/**
  * How the last retention cleanup went.
  */
 export const zRetentionRun = z.object({
@@ -1422,6 +1476,52 @@ export const zRetentionResponse = z.object({
     last_run: zRetentionRun.nullable(),
     next_run_at: z.iso.datetime({ offset: true }).nullable(),
     settings: zRetentionSettings
+});
+
+/**
+ * A named set of permissions, given to users by an assignment.
+ */
+export const zRole = z.object({
+    assignment_count: z.int(),
+    created_at: z.iso.datetime({ offset: true }),
+    description: z.string(),
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    name: z.string(),
+    permissions: z.array(zPermission)
+});
+
+/**
+ * A role given to a user. `project_id = null` reaches every project. A role's
+ * workspace permissions apply wherever it is held.
+ */
+export const zRoleAssignment = z.object({
+    created_at: z.iso.datetime({ offset: true }),
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    is_personal: z.boolean(),
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
+    role_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    role_name: z.string(),
+    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+export const zRoleInput = z.object({
+    description: z.string().optional(),
+    name: z.string(),
+    permissions: z.array(zPermission)
+});
+
+export const zRoleRef = z.object({
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    name: z.string()
+});
+
+/**
+ * A member of one project: someone holding a role on it or on every project.
+ */
+export const zProjectMember = z.object({
+    email: z.string(),
+    roles: z.array(zRoleRef),
+    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
 });
 
 export const zSchedule = z.union([
@@ -1493,6 +1593,22 @@ export const zPreviewSchedule = z.object({
  */
 export const zSchedulePreview = z.object({
     next_runs: z.array(z.iso.datetime({ offset: true }))
+});
+
+/**
+ * Whether a resource belongs to the workspace or to one project.
+ */
+export const zScope = z.enum(['instance', 'project']);
+
+export const zCatalogResource = z.object({
+    actions: z.array(zAction),
+    key: z.string(),
+    module: z.string(),
+    scope: zScope
+});
+
+export const zCatalog = z.object({
+    resources: z.array(zCatalogResource)
 });
 
 export const zSeenResponse = z.object({
@@ -1663,6 +1779,19 @@ export const zSessionTimeseriesPoint = z.object({
     crash_free_sessions_rate: z.number().nullable(),
     crashed: z.int(),
     total: z.int()
+});
+
+/**
+ * Everything a user holds.
+ */
+export const zSetAccess = z.object({
+    assignments: z.array(zAssignmentInput),
+    personal: zPersonalAccess.nullish()
+});
+
+export const zSetProjectMember = z.object({
+    role_ids: z.array(z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
+    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
 });
 
 /**
@@ -2021,9 +2150,12 @@ export const zUpdateRelease = z.object({
     url: z.string().nullish()
 });
 
-export const zUpsertProjectMember = z.object({
-    role: zProjectRole,
-    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+/**
+ * Everything a user holds.
+ */
+export const zUserAccess = z.object({
+    assignments: z.array(zRoleAssignment),
+    personal_permissions: z.array(zPermission)
 });
 
 /**
@@ -2060,7 +2192,9 @@ export const zUserRole = z.enum(['admin', 'member']);
 
 export const zCreateInvitation = z.object({
     email: z.string(),
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullish(),
     role: zUserRole,
+    role_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullish(),
     send_email: z.boolean().optional()
 });
 
@@ -2082,9 +2216,12 @@ export const zInvitationResponse = z.object({
     email: z.string(),
     email_sent_at: z.iso.datetime({ offset: true }).nullable(),
     expires_at: z.iso.datetime({ offset: true }),
+    id: z.string(),
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
     role: zUserRole,
+    role_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
     status: z.string(),
-    token: z.string()
+    token: z.string().nullable()
 });
 
 /**
@@ -2314,6 +2451,16 @@ export const zSentrySubmitUserFeedbackPath = z.object({
 export const zSentrySubmitUserFeedbackResponse = zSentryUserReport;
 
 /**
+ * Every resource a permission can name
+ */
+export const zAccessCatalogResponse = zCatalog;
+
+/**
+ * What the caller may do
+ */
+export const zAccessMeResponse = zMyAccess;
+
+/**
  * GitHub App removed
  */
 export const zGithubDisconnectResponse = z.void();
@@ -2454,7 +2601,7 @@ export const zInvitationsCreateResponse = zInvitationResponse;
 export const zInvitationsEmailStatusResponse = zEmailStatusResponse;
 
 export const zInvitationsRevokePath = z.object({
-    token: z.string()
+    id: z.string()
 });
 
 /**
@@ -2463,7 +2610,7 @@ export const zInvitationsRevokePath = z.object({
 export const zInvitationsRevokeResponse = z.void();
 
 export const zInvitationsResendPath = z.object({
-    token: z.string()
+    id: z.string()
 });
 
 /**
@@ -2522,7 +2669,7 @@ export const zProjectsListResponse = z.object({
         created_at: z.iso.datetime({ offset: true }),
         digested_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
         disabled_products: z.array(zProduct),
-        dsn: z.string(),
+        dsn: z.string().nullable(),
         id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
         name: z.string(),
         platform: z.string().nullable(),
@@ -2530,7 +2677,7 @@ export const zProjectsListResponse = z.object({
         rate_limit_per_hour: z.int().nullable(),
         rate_limit_per_minute: z.int().nullable(),
         rate_limited_event_count: z.int(),
-        sentry_key: z.string(),
+        sentry_key: z.string().nullable(),
         slug: z.string(),
         stats: zProjectListStats.nullish(),
         stored_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
@@ -3418,20 +3565,20 @@ export const zMembersListPath = z.object({
 });
 
 /**
- * List of project members
+ * Project members
  */
-export const zMembersListResponse = z.array(zProjectMemberResponse);
+export const zMembersListResponse = z.array(zProjectMember);
 
-export const zMembersUpsertBody = zUpsertProjectMember;
+export const zMembersUpsertBody = zSetProjectMember;
 
 export const zMembersUpsertPath = z.object({
     project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
 });
 
 /**
- * Member added or updated
+ * Project members now
  */
-export const zMembersUpsertResponse = zProjectMember;
+export const zMembersUpsertResponse = z.array(zProjectMember);
 
 export const zMembersRemovePath = z.object({
     project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
@@ -3439,7 +3586,7 @@ export const zMembersRemovePath = z.object({
 });
 
 /**
- * Member removed
+ * Removed
  */
 export const zMembersRemoveResponse = z.void();
 
@@ -3913,6 +4060,38 @@ export const zTransactionsGetSpansResponse = z.array(z.object({
  */
 export const zProjectsGetRateLimitsResponse = zRateLimitsResponse;
 
+/**
+ * Every role
+ */
+export const zRolesListResponse = z.array(zRole);
+
+export const zRolesCreateBody = zRoleInput;
+
+/**
+ * Created
+ */
+export const zRolesCreateResponse = zRole;
+
+export const zRolesDeletePath = z.object({
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * Deleted
+ */
+export const zRolesDeleteResponse = z.void();
+
+export const zRolesUpdateBody = zRoleInput;
+
+export const zRolesUpdatePath = z.object({
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * Updated
+ */
+export const zRolesUpdateResponse = zRole;
+
 export const zSchedulesPreviewBody = zPreviewSchedule;
 
 /**
@@ -4078,9 +4257,29 @@ export const zTokensGetPath = z.object({
 });
 
 /**
- * Token details (full token value)
+ * Token details (masked)
  */
-export const zTokensGetResponse = zAuthTokenCreatedResponse;
+export const zTokensGetResponse = zAuthTokenResponse;
+
+export const zUsersAssignmentsPath = z.object({
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * What the user holds
+ */
+export const zUsersAssignmentsResponse = zUserAccess;
+
+export const zUsersSetAssignmentsBody = zSetAccess;
+
+export const zUsersSetAssignmentsPath = z.object({
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * What the user holds now
+ */
+export const zUsersSetAssignmentsResponse = zUserAccess;
 
 export const zAuthAcceptInvitationBody = zAcceptInvitation;
 

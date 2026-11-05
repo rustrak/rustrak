@@ -182,7 +182,7 @@ async fn test_list_projects_with_valid_bearer_token_returns_200() {
     let config = create_test_config();
 
     // Create a real token in the DB
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .expect("token creation must succeed");
 
@@ -209,7 +209,7 @@ async fn test_list_projects_with_valid_bearer_token_returns_200() {
 async fn test_get_project_reports_rate_limited_events() {
     let db = TestDb::new().await;
     let config = create_test_config();
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .unwrap();
     let project = ProjectService::create(
@@ -249,7 +249,7 @@ async fn test_get_project_reports_rate_limited_events() {
 #[actix_web::test]
 async fn test_update_project_rate_limit_set_keep_and_clear() {
     let db = TestDb::new().await;
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .unwrap();
     let project = ProjectService::create(
@@ -311,7 +311,7 @@ async fn test_update_project_rate_limit_set_keep_and_clear() {
 #[actix_web::test]
 async fn test_rate_limits_report_the_servers_project_limits() {
     let db = TestDb::new().await;
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .unwrap();
     let app = test::init_service(
@@ -937,7 +937,7 @@ async fn test_create_project_rejects_unslugifiable_user_slug() {
 /// Lists projects as an admin-equivalent Bearer caller and returns the parsed
 /// `items` array.
 async fn list_projects_json(db: &TestDb, uri: &str) -> serde_json::Value {
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .expect("token creation must succeed");
 

@@ -2,12 +2,11 @@
 use crate::common::TestDb;
 use actix_web::{test, web, App};
 use chrono::Utc;
-use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, ProjectRole, UserRole};
+use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, UserRole};
 use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
 use rustrak::services::{
-    AuthTokenService, EventService, IssueService, ProjectMemberService, ProjectService,
-    UsersService,
+    AuthTokenService, EventService, IssueService, ProjectService, UsersService,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -25,14 +24,11 @@ async fn sdk_event_lookup_preserves_project_scope_and_viewer_authorization() {
     )
     .await
     .unwrap();
-    let token = AuthTokenService::create_for_user(
-        &db.pool,
-        CreateAuthToken { description: None },
-        Some(viewer.id),
-    )
-    .await
-    .unwrap()
-    .token;
+    let token =
+        AuthTokenService::create_for_user(&db.pool, CreateAuthToken::default(), Some(viewer.id))
+            .await
+            .unwrap()
+            .token;
     let fields = DenormalizedFields {
         calculated_type: "TypeError".into(),
         calculated_value: "lookup proof".into(),
@@ -57,7 +53,7 @@ async fn sdk_event_lookup_preserves_project_scope_and_viewer_authorization() {
         )
         .await
         .unwrap();
-        ProjectMemberService::upsert(&db.pool, project.id, viewer.id, ProjectRole::Viewer)
+        crate::common::grant_project_role(&db.pool, project.id, viewer.id, "Viewer")
             .await
             .unwrap();
         let issue = IssueService::create(
@@ -130,7 +126,7 @@ async fn sdk_event_lookup_preserves_project_scope_and_viewer_authorization() {
     let response = test::call_service(&app, test::TestRequest::get().uri(&uri).to_request()).await;
     assert_eq!(response.status(), 401);
     // Removing membership must make even a known event UUID inaccessible.
-    sqlx::query("DELETE FROM project_members WHERE project_id = $1 AND user_id = $2")
+    sqlx::query("DELETE FROM role_assignments WHERE project_id = $1 AND user_id = $2")
         .bind(project_id)
         .bind(viewer.id)
         .execute(&db.pool)

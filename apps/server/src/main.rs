@@ -182,6 +182,11 @@ async fn main() -> std::io::Result<()> {
     };
 
     // Bootstrap: create initial token if none exist
+    match AuthTokenService::hash_plaintext_tokens(&db_pool).await {
+        Ok(0) => {}
+        Ok(n) => log::info!("Hashed {n} API token(s) stored before tokens were hashed"),
+        Err(e) => log::error!("Failed to hash stored API tokens: {e}"),
+    }
     bootstrap_token(&db_pool).await;
 
     // Bootstrap: create superuser if CREATE_SUPERUSER is set
@@ -421,6 +426,7 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::alerts::configure_history)
             // Project members (more specific than generic projects scope)
             .configure(routes::members::configure)
+            .configure(routes::roles::configure)
             // Session stats routes (more specific than generic projects scope)
             .configure(routes::sessions::configure)
             // Project-wide stats for the overview (more specific than generic projects scope)
@@ -513,6 +519,7 @@ async fn bootstrap_token(pool: &db::DbPool) {
             // Create bootstrap token
             let input = models::CreateAuthToken {
                 description: Some("Bootstrap token (created automatically)".to_string()),
+                ..Default::default()
             };
 
             match AuthTokenService::create(pool, input).await {

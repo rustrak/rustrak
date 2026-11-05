@@ -1,12 +1,12 @@
 use actix_web::{web, HttpResponse};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
 #[cfg(feature = "openapi")]
 use crate::models::{SpanDetailResponse, SpanResponse};
 use crate::pagination::{ListSpansQuery, OffsetPaginatedResponse};
-use crate::services::access::{self, Action};
 use crate::services::span::{SpanFilters, SpanService};
 use uuid::Uuid;
 
@@ -42,14 +42,7 @@ pub async fn list_spans(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let page = query.page.max(1);
     let per_page = query.per_page.clamp(1, 100);
@@ -100,14 +93,7 @@ pub async fn get_span(
 ) -> AppResult<HttpResponse> {
     let (project_id, span_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Performance, Action::Read, Some(project_id))?;
 
     let span = SpanService::get_by_id(pool.get_ref(), project_id, span_id).await?;
 

@@ -162,13 +162,13 @@ export function InviteForm({
     invitation: InvitationResponse,
     deliverByEmail: boolean,
   ) => {
-    const link = `${window.location.origin}/invite/${invitation.token}`;
     if (invitation.email_sent_at) {
       toast.success(t('toast.emailSent'), {
         description: t('toast.emailSentHint', { email: invitation.email }),
       });
       return;
     }
+    const link = `${window.location.origin}/invite/${invitation.token}`;
     const copied = await copyToClipboard(link);
     if (deliverByEmail) {
       // The invitation exists; only the email failed.

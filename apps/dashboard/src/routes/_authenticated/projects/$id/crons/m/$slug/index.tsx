@@ -168,7 +168,9 @@ function MonitorPage() {
                 title={t('detail.waitingTitle')}
                 hint={t('detail.waitingDescription')}
               >
-                <CronSetupGuide dsn={project.dsn} slug={monitor.slug} />
+                {project.dsn ? (
+                  <CronSetupGuide dsn={project.dsn} slug={monitor.slug} />
+                ) : null}
               </Panel>
             ) : (
               <>
@@ -227,7 +229,7 @@ function MonitorPage() {
               />
             </Panel>
 
-            {waiting ? null : (
+            {waiting || !project.dsn ? null : (
               <Panel
                 title={t('detail.instrument')}
                 hint={t('detail.instrumentHint')}

@@ -2,12 +2,13 @@ use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::auth::rbac::{self, Access, Assignment, Grants, ProjectScope, Resource};
 use crate::auth::sentry_auth::parse_sentry_auth_header;
 use crate::auth::session::AuthenticatedUser;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{AuthToken, Project, User};
-use crate::services::{AuthTokenService, ProjectService, UsersService};
+use crate::services::{AuthTokenService, ProjectService, RoleService, UsersService};
 
 /// Extractor for Bearer token authentication (API endpoints)
 ///
@@ -72,6 +73,9 @@ impl FromRequest for BearerAuth {
             let token = AuthTokenService::get_by_token(pool.get_ref(), token_str)
                 .await?
                 .ok_or_else(|| AppError::Unauthorized("Invalid Bearer token".to_string()))?;
+            if token.is_expired() {
+                return Err(AppError::Unauthorized("Bearer token expired".to_string()));
+            }
 
             // Update last_used_at asynchronously (fire and forget)
             let pool_clone = pool.clone();
@@ -240,13 +244,17 @@ impl FromRequest for ApiAuth {
     }
 }
 
-/// Authenticated principal for management API endpoints, carrying the acting user.
+/// Authenticated principal for management API endpoints: the acting user and
+/// what they may do.
 ///
-/// Resolves from a Bearer token (owner user) or a session cookie. A legacy
-/// token with no owning user (`user_id = NULL`) resolves to `user: None`, which
-/// is treated as a full-access instance admin.
+/// Resolves from a Bearer token (its owner) or a session cookie. A legacy
+/// token with no owning user (`user_id = NULL`) resolves to `user: None` with
+/// every permission.
 pub struct ApiActor {
     pub user: Option<User>,
+    pub access: Access,
+    /// Signed in with a session, rather than holding a token.
+    pub via_session: bool,
 }
 
 impl ApiActor {
@@ -254,7 +262,14 @@ impl ApiActor {
     /// token with none (`user_id = None`).
     pub async fn for_token(pool: &DbPool, user_id: Option<i32>) -> AppResult<Self> {
         let Some(uid) = user_id else {
-            return Ok(ApiActor { user: None });
+            return Ok(ApiActor {
+                via_session: false,
+                user: None,
+                access: Access::new(vec![Assignment {
+                    project_id: None,
+                    grants: Grants::all(),
+                }]),
+            });
         };
         let user = UsersService::get_by_id(pool, uid)
             .await?
@@ -264,12 +279,54 @@ impl ApiActor {
         if !user.is_active {
             return Err(AppError::Unauthorized("Account is disabled".to_string()));
         }
-        Ok(ApiActor { user: Some(user) })
+        Self::for_user(pool, user).await
     }
 
-    /// Whether this actor has full instance access (global admin or legacy token).
-    pub fn is_admin(&self) -> bool {
-        self.user.as_ref().is_none_or(|u| u.is_admin())
+    pub async fn for_user(pool: &DbPool, user: User) -> AppResult<Self> {
+        let access = RoleService::access_for(pool, user.id).await?;
+        Ok(ApiActor {
+            via_session: false,
+            user: Some(user),
+            access,
+        })
+    }
+
+    /// Fails unless the actor may do `action` on `resource`. For a project
+    /// resource, someone who cannot see the project gets a 404 so its
+    /// existence is not leaked; someone who can see it but lacks the
+    /// permission gets a 403.
+    pub fn require(
+        &self,
+        resource: Resource,
+        action: rbac::Action,
+        project_id: Option<i32>,
+    ) -> AppResult<()> {
+        if let Some(id) = project_id {
+            if !self
+                .access
+                .can(Resource::Project, rbac::Action::Read, Some(id))
+            {
+                return Err(AppError::NotFound(format!("Project {id} not found")));
+            }
+        }
+        if self.access.can(resource, action, project_id) {
+            Ok(())
+        } else {
+            Err(AppError::Forbidden(format!(
+                "Missing permission {}:{}",
+                resource.key(),
+                action.key()
+            )))
+        }
+    }
+
+    pub fn visible_projects(&self) -> ProjectScope {
+        self.access.visible_projects()
+    }
+
+    /// Holds an instance-wide role with every permission.
+    pub fn is_owner(&self) -> bool {
+        self.access.is_owner()
     }
 
     /// The acting user's id, if any (`None` for a legacy user-less token).
@@ -307,7 +364,11 @@ impl FromRequest for ApiActor {
         Box::pin(async move {
             match bearer_future.await {
                 Ok(bearer) => {
-                    return ApiActor::for_token(pool.get_ref(), bearer.token.user_id).await;
+                    let actor = ApiActor::for_token(pool.get_ref(), bearer.token.user_id).await?;
+                    return Ok(ApiActor {
+                        access: actor.access.capped(bearer.token.scope()),
+                        ..actor
+                    });
                 }
                 // fall through to session, annotated or not
                 Err(ref e) if falls_through_to_session(e) => {}
@@ -322,8 +383,10 @@ impl FromRequest for ApiActor {
                 }
             })?;
 
+            let actor = ApiActor::for_user(pool.get_ref(), authed.0).await?;
             Ok(ApiActor {
-                user: Some(authed.0),
+                via_session: true,
+                ..actor
             })
         })
     }

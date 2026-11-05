@@ -21,6 +21,7 @@ mod monitor_schedule_test;
 mod native_function_name_test;
 mod native_test;
 mod notification_test;
+mod rbac_test;
 mod schedule_test;
 mod sourcemap_store_test;
 mod sourcemap_test;

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use chrono::DurationRound;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
@@ -27,15 +28,6 @@ use crate::services::{CleanupJob, StorageService};
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
 
-/// Ensures the actor is a global admin, else 403.
-fn require_admin(actor: &ApiActor) -> AppResult<()> {
-    if actor.is_admin() {
-        Ok(())
-    } else {
-        Err(AppError::Forbidden("Admin privileges required".to_string()))
-    }
-}
-
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/storage/summary",
@@ -53,7 +45,7 @@ pub async fn get_summary(
     job: web::Data<CleanupJob>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     let snapshot = job.snapshot(pool.get_ref()).await?;
     Ok(HttpResponse::Ok().json(&snapshot.summary))
 }
@@ -75,7 +67,7 @@ pub async fn get_projects(
     job: web::Data<CleanupJob>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     let snapshot = job.snapshot(pool.get_ref()).await?;
     Ok(HttpResponse::Ok().json(&snapshot.projects))
 }
@@ -98,7 +90,7 @@ pub async fn preview_cleanup(
     actor: ApiActor,
     body: web::Json<CleanupRequest>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     let counts = StorageService::preview_cleanup(
         pool.get_ref(),
         body.older_than_days,
@@ -132,7 +124,7 @@ pub async fn execute_cleanup(
     actor: ApiActor,
     body: web::Json<CleanupRequest>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Delete, None)?;
     let status = job.start(
         pool.get_ref().clone(),
         body.older_than_days,
@@ -159,7 +151,7 @@ pub async fn get_cleanup_status(
     job: web::Data<CleanupJob>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     Ok(HttpResponse::Ok().json(job.status()))
 }
 
@@ -179,7 +171,7 @@ pub async fn preview_source_map_gc(
     pool: web::Data<DbPool>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     let result = StorageService::preview_source_map_gc(pool.get_ref()).await?;
     Ok(HttpResponse::Ok().json(result))
 }
@@ -202,7 +194,7 @@ pub async fn gc_source_maps(
     store: web::Data<Arc<dyn SourceMapStore>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Delete, None)?;
     let result = StorageService::gc_source_maps(pool.get_ref(), store.get_ref().as_ref()).await?;
     job.forget_snapshot();
     Ok(HttpResponse::Ok().json(result))
@@ -222,7 +214,7 @@ pub async fn gc_source_maps(
 /// GET /api/storage/compaction — whether the database file shrinks when data
 /// is deleted, and the disk a one-off compaction needs.
 pub async fn get_compaction(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     let compaction = StorageService::compaction(pool.get_ref()).await?;
     Ok(HttpResponse::Ok().json(compaction))
 }
@@ -248,7 +240,7 @@ pub async fn compact(
     job: web::Data<CleanupJob>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Delete, None)?;
     let status = job.start_compaction(pool.get_ref().clone()).await?;
     Ok(HttpResponse::Accepted().json(status))
 }
@@ -314,7 +306,7 @@ pub async fn get_retention(
     job: web::Data<CleanupJob>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     let retention = retention_response(pool.get_ref(), &job).await?;
     Ok(HttpResponse::Ok().json(retention))
 }
@@ -340,7 +332,7 @@ pub async fn update_retention(
     actor: ApiActor,
     body: web::Json<RetentionSettings>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Update, None)?;
     let settings = body.into_inner();
     settings.validate()?;
     Scheduler::update_settings(
@@ -373,7 +365,7 @@ pub async fn preview_retention(
     actor: ApiActor,
     body: web::Json<RetentionSettings>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     let counts = StorageService::preview_retention(pool.get_ref(), &body).await?;
     Ok(HttpResponse::Ok().json(counts))
 }
@@ -399,7 +391,7 @@ pub async fn run_retention(
     store: web::Data<Arc<dyn SourceMapStore>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Delete, None)?;
     let settings = retention_response(pool.get_ref(), &job).await?.settings;
     if !settings.deletes_anything() {
         return Err(AppError::Validation(
@@ -453,7 +445,7 @@ pub async fn get_age(
     job: web::Data<CleanupJob>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Storage, Action::Read, None)?;
     Ok(HttpResponse::Ok().json(&job.snapshot(pool.get_ref()).await?.age))
 }
 

@@ -1,13 +1,13 @@
 use actix_web::{web, HttpResponse};
 use uuid::Uuid;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 #[cfg(feature = "openapi")]
 use crate::models::{EventDetailResponse, EventResponse};
 use crate::pagination::{EventCursor, ListEventsQuery, PaginatedResponse, PAGE_SIZE};
-use crate::services::access::{self, Action};
 use crate::services::attachment::image_type;
 use crate::services::{AttachmentService, EventService, IssueService};
 
@@ -41,14 +41,7 @@ pub async fn list_events(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     // Verify issue exists and belongs to the project
     let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
@@ -116,14 +109,7 @@ pub async fn get_event(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id, event_id) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     // Verify issue exists and belongs to the project
     let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
@@ -165,14 +151,7 @@ pub async fn get_event_by_sentry_id(
 ) -> AppResult<HttpResponse> {
     let (project_id, event_id) = path.into_inner();
     // Apply the same Viewer boundary as issue-scoped detail before reading data.
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     // The existing unique (project_id, event_id) index also serves this lookup.
     let event = EventService::get_by_event_id(pool.get_ref(), project_id, event_id).await?;
     Ok(HttpResponse::Ok().json(event.to_detail_response()))
@@ -211,14 +190,7 @@ pub async fn list_event_attachments(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id, event_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     let event = EventService::get_by_id(pool.get_ref(), event_id).await?;
     if event.project_id != project_id || event.issue_id != Some(issue_id) {
         return Err(AppError::NotFound(format!("Event {} not found", event_id)));
@@ -260,14 +232,7 @@ pub async fn download_attachment(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, attachment_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     let (info, data) = AttachmentService::get(pool.get_ref(), project_id, attachment_id).await?;
     use actix_web::http::header::{
         Charset, ContentDisposition, DispositionParam, DispositionType, ExtendedValue,

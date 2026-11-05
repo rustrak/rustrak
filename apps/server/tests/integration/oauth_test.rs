@@ -15,10 +15,10 @@ use base64::Engine;
 use rustrak::config::Config;
 use rustrak::db::DbPool;
 use rustrak::error::{AppError, AppResult};
-use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, ProjectRole, UserRole};
+use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, UserRole};
 use rustrak::routes;
 use rustrak::services::oauth::{ClientMetadata, ClientMetadataSource};
-use rustrak::services::{AuthTokenService, ProjectMemberService, ProjectService, UsersService};
+use rustrak::services::{AuthTokenService, ProjectService, UsersService};
 use serde_json::{json, Value};
 use sha2::Digest;
 
@@ -135,7 +135,7 @@ where
         .await
         .unwrap();
         if name == "Mine" {
-            ProjectMemberService::upsert(pool, project.id, user.id, ProjectRole::Viewer)
+            crate::common::grant_project_role(pool, project.id, user.id, "Viewer")
                 .await
                 .unwrap();
         }
@@ -160,7 +160,7 @@ async fn enable_mcp<S>(app: &S, pool: &DbPool)
 where
     S: Service<Request, Response = ServiceResponse, Error = actix_web::Error>,
 {
-    let admin = AuthTokenService::create(pool, CreateAuthToken { description: None })
+    let admin = AuthTokenService::create(pool, CreateAuthToken::default())
         .await
         .unwrap()
         .token;

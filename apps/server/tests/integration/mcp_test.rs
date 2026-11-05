@@ -8,9 +8,9 @@ use crate::common::TestDb;
 use actix_web::{test, web, App};
 use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
 use rustrak::db::DbPool;
-use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, ProjectRole, UserRole};
+use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, UserRole};
 use rustrak::routes;
-use rustrak::services::{AuthTokenService, ProjectMemberService, ProjectService, UsersService};
+use rustrak::services::{AuthTokenService, ProjectService, UsersService};
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -68,7 +68,7 @@ macro_rules! build_app {
 }
 
 async fn seed_legacy_token(pool: &DbPool) -> String {
-    AuthTokenService::create(pool, CreateAuthToken { description: None })
+    AuthTokenService::create(pool, CreateAuthToken::default())
         .await
         .expect("seed legacy token")
         .token
@@ -85,14 +85,10 @@ async fn seed_member_token(pool: &DbPool, email: &str) -> (i32, String) {
     )
     .await
     .expect("seed user");
-    let token = AuthTokenService::create_for_user(
-        pool,
-        CreateAuthToken { description: None },
-        Some(user.id),
-    )
-    .await
-    .expect("seed token")
-    .token;
+    let token = AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user.id))
+        .await
+        .expect("seed token")
+        .token;
     (user.id, token)
 }
 
@@ -227,7 +223,7 @@ async fn list_projects_only_shows_the_callers_projects() {
     let (user_id, member) = seed_member_token(&db.pool, "member@example.com").await;
     let mine = seed_project(&db.pool, "Mine").await;
     seed_project(&db.pool, "Not mine").await;
-    ProjectMemberService::upsert(&db.pool, mine, user_id, ProjectRole::Viewer)
+    crate::common::grant_project_role(&db.pool, mine, user_id, "Viewer")
         .await
         .unwrap();
     let app = build_app!(db.pool.clone());
@@ -355,7 +351,7 @@ async fn seed_issue(pool: &DbPool, project_id: i32) -> uuid::Uuid {
 
 /// The whole surface the npm package served, so dropping a tool is a test
 /// failure rather than a silent regression for every connected assistant.
-const TOOLS: [&str; 82] = [
+const TOOLS: [&str; 81] = [
     "assign_issue",
     "bookmark_issue",
     "bulk_delete_issues",
@@ -365,7 +361,6 @@ const TOOLS: [&str; 82] = [
     "create_invitation",
     "create_monitor",
     "create_project",
-    "create_token",
     "delete_issue",
     "delete_monitor",
     "execute_storage_cleanup",
@@ -505,7 +500,7 @@ async fn a_member_cannot_resolve_an_issue_in_a_project_they_only_view() {
     let admin = seed_legacy_token(&db.pool).await;
     let (user_id, member) = seed_member_token(&db.pool, "viewer@example.com").await;
     let project = seed_project(&db.pool, "Shop").await;
-    ProjectMemberService::upsert(&db.pool, project, user_id, ProjectRole::Viewer)
+    crate::common::grant_project_role(&db.pool, project, user_id, "Viewer")
         .await
         .unwrap();
     let issue = seed_issue(&db.pool, project).await;
@@ -551,7 +546,7 @@ async fn an_unconfirmed_destructive_tool_is_refused() {
 async fn a_tool_whose_handler_answers_no_content_says_what_it_did() {
     let db = TestDb::new().await;
     let admin = seed_legacy_token(&db.pool).await;
-    let doomed = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let doomed = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .unwrap();
     let app = build_app!(db.pool.clone());

@@ -14,9 +14,10 @@ import {
 
 interface ClientKeysSettingsProps {
   project: ProjectResponse;
+  dsn: string;
 }
 
-export function ClientKeysSettings({ project }: ClientKeysSettingsProps) {
+export function ClientKeysSettings({ project, dsn }: ClientKeysSettingsProps) {
   const t = useTranslations('projects');
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -29,7 +30,7 @@ export function ClientKeysSettings({ project }: ClientKeysSettingsProps) {
 
   const { snippet, docsUrl, codeExample, codeLanguage } = resolveSetupSnippet(
     project.platform,
-    project.dsn,
+    dsn,
   );
 
   const exampleTitle = snippet
@@ -45,10 +46,10 @@ export function ClientKeysSettings({ project }: ClientKeysSettingsProps) {
         description={t('clientKeys.dsnDescription')}
       >
         <CopyValue
-          value={project.dsn}
+          value={dsn}
           copied={isCopied('dsn')}
           ariaLabel={t('clientKeys.copyDsn')}
-          onCopy={() => copy('dsn', project.dsn, t('clientKeys.dsn'))}
+          onCopy={() => copy('dsn', dsn, t('clientKeys.dsn'))}
         />
       </SettingSection>
 
