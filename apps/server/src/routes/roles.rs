@@ -22,7 +22,7 @@ use crate::error::{AppError, AppResult, FieldErrorCode};
 #[cfg(feature = "openapi")]
 use crate::models::Role;
 use crate::models::{Permission, PersonalAccess, RoleAssignment};
-use crate::services::RoleService;
+use crate::services::{RoleService, UsersService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
@@ -109,6 +109,12 @@ fn validate(name: &str) -> AppResult<()> {
     if name.trim().is_empty() {
         return Err(AppError::Validation("Role name is required".to_string())
             .with_field("name", FieldErrorCode::Required));
+    }
+    if name.chars().count() > 100 {
+        return Err(
+            AppError::Validation("Role name is at most 100 characters".to_string())
+                .with_field("name", FieldErrorCode::TooLong),
+        );
     }
     Ok(())
 }
@@ -372,6 +378,9 @@ pub async fn set_assignments(
             "You cannot change your own roles".to_string(),
         ));
     }
+    UsersService::get_by_id(pool.get_ref(), user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User {user_id} not found")))?;
     // Only roles of the list can be given; what is taken away may be anyone's.
     let shared = RoleService::list(pool.get_ref()).await?;
     let unknown = |id: i32| {

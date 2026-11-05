@@ -101,7 +101,7 @@ pub async fn create_token(
 ))]
 /// DELETE /api/tokens/{id} - Revoke a token
 ///
-/// Admins may revoke any token; non-admins may only revoke their own.
+/// Everyone may revoke their own; `api-tokens:delete` revokes any.
 pub async fn delete_token(
     pool: web::Data<DbPool>,
     actor: ApiActor,

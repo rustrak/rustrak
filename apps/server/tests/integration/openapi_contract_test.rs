@@ -650,6 +650,6 @@ async fn the_spec_does_not_promise_an_rfc_4122_uuid_for_a_project_key() {
     let spec = serde_json::to_value(rustrak::openapi::ApiDoc::openapi()).unwrap();
     let key = &spec["components"]["schemas"]["ProjectResponse"]["properties"]["sentry_key"];
 
-    assert_eq!(key["type"], "string", "{key}");
+    assert_eq!(key["type"], serde_json::json!(["string", "null"]), "{key}");
     assert!(key.get("format").is_none(), "{key}");
 }

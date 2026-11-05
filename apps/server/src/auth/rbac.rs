@@ -272,6 +272,22 @@ impl Access {
         self.instance.allows(resource, action) || local.is_some_and(|g| g.allows(resource, action))
     }
 
+    /// Whether `action` on a project resource is allowed on at least one
+    /// project, for what belongs to no project yet.
+    pub fn can_somewhere(&self, resource: Resource, action: Action) -> bool {
+        match &self.cap {
+            Some(cap) if !cap.grants.allows(resource, action) => false,
+            Some(TokenScope {
+                projects: Some(ids),
+                ..
+            }) => ids.iter().any(|&id| self.held(resource, action, Some(id))),
+            _ => {
+                self.instance.allows(resource, action)
+                    || self.projects.values().any(|g| g.allows(resource, action))
+            }
+        }
+    }
+
     /// The projects this user can see at all.
     pub fn visible_projects(&self) -> ProjectScope {
         let held = if self.instance.any_project_grant() {

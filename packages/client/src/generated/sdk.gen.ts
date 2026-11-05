@@ -1106,7 +1106,7 @@ export class Invitations extends HeyApiClient {
     }
     
     /**
-     * DELETE /api/invitations/{token} — revoke a pending invitation (admin only)
+     * DELETE /api/invitations/{id} — revoke a pending invitation (admin only)
      */
     public revoke<ThrowOnError extends boolean = false>(options: Options<InvitationsRevokeData, ThrowOnError>): RequestResult<InvitationsRevokeResponses, InvitationsRevokeErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<InvitationsRevokeResponses, InvitationsRevokeErrors, ThrowOnError>({
@@ -1117,13 +1117,13 @@ export class Invitations extends HeyApiClient {
             }).parseAsync(data),
             responseValidator: async (data) => await zInvitationsRevokeResponse.parseAsync(data),
             security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/invitations/{token}',
+            url: '/api/invitations/{id}',
             ...options
         });
     }
     
     /**
-     * POST /api/invitations/{token}/resend — email the invite link again (admin only)
+     * POST /api/invitations/{id}/resend — email the invite link again (admin only)
      */
     public resend<ThrowOnError extends boolean = false>(options: Options<InvitationsResendData, ThrowOnError>): RequestResult<InvitationsResendResponses, InvitationsResendErrors, ThrowOnError> {
         return (options.client ?? this.client).post<InvitationsResendResponses, InvitationsResendErrors, ThrowOnError>({
@@ -1134,7 +1134,7 @@ export class Invitations extends HeyApiClient {
             }).parseAsync(data),
             responseValidator: async (data) => await zInvitationsResendResponse.parseAsync(data),
             security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/invitations/{token}/resend',
+            url: '/api/invitations/{id}/resend',
             ...options
         });
     }
@@ -1233,8 +1233,9 @@ export class Projects extends HeyApiClient {
     /**
      * POST /api/projects - Create a new project
      *
-     * Any authenticated user may create a project. A non-admin creator is
-     * automatically granted the project `admin` role so they can access it.
+     * Needs `projects:create` and a permission on at least one project, because
+     * the creator's own roles extend to the new one. A token limited to chosen
+     * projects can create one, but its list does not grow to reach it.
      */
     public create<ThrowOnError extends boolean = false>(options: Options<ProjectsCreateData, ThrowOnError>): RequestResult<ProjectsCreateResponses, ProjectsCreateErrors, ThrowOnError> {
         return (options.client ?? this.client).post<ProjectsCreateResponses, ProjectsCreateErrors, ThrowOnError>({
@@ -2267,7 +2268,7 @@ export class Members extends HeyApiClient {
     }
     
     /**
-     * Removes every role a user holds on the project.
+     * Removes the roles a user holds on this project; roles on all projects stay.
      */
     public remove<ThrowOnError extends boolean = false>(options: Options<MembersRemoveData, ThrowOnError>): RequestResult<MembersRemoveResponses, MembersRemoveErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<MembersRemoveResponses, MembersRemoveErrors, ThrowOnError>({
@@ -3162,7 +3163,7 @@ export class Tokens extends HeyApiClient {
     /**
      * DELETE /api/tokens/{id} - Revoke a token
      *
-     * Admins may revoke any token; non-admins may only revoke their own.
+     * Everyone may revoke their own; `api-tokens:delete` revokes any.
      */
     public delete<ThrowOnError extends boolean = false>(options: Options<TokensDeleteData, ThrowOnError>): RequestResult<TokensDeleteResponses, TokensDeleteErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<TokensDeleteResponses, TokensDeleteErrors, ThrowOnError>({

@@ -177,6 +177,7 @@ pub async fn new_issues_for_release(
     let (project_id, release) = path.into_inner();
 
     actor.require(Resource::Releases, Action::Read, Some(project_id))?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 

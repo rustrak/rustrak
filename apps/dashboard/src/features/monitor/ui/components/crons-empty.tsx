@@ -18,7 +18,8 @@ export function CronsEmpty({
   dsn,
   newHref,
 }: {
-  dsn: string;
+  /** Absent without `client-keys:read`: there is nothing to fill in. */
+  dsn: string | null;
   /** Absent when the reader may not create monitors by hand. */
   newHref?: string;
 }) {
@@ -58,11 +59,13 @@ export function CronsEmpty({
       </div>
 
       <div className="flex min-w-0 flex-col gap-3">
-        <CronSetupGuide
-          dsn={dsn}
-          slug={SAMPLE_SLUG}
-          schedule={SAMPLE_SCHEDULE}
-        />
+        {dsn ? (
+          <CronSetupGuide
+            dsn={dsn}
+            slug={SAMPLE_SLUG}
+            schedule={SAMPLE_SCHEDULE}
+          />
+        ) : null}
         <div className="flex items-center gap-2">
           <span className="size-2 shrink-0 animate-pulse rounded-full bg-fg-ghost" />
           <Text variant="label" tone="secondary">

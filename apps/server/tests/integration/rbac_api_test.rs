@@ -21,7 +21,10 @@ macro_rules! app {
                 .configure(routes::invitations::configure)
                 .configure(routes::team::configure)
                 .configure(routes::issues::configure)
-                .configure(routes::projects::configure),
+                .configure(routes::releases::configure)
+                .configure(routes::projects::configure)
+                .configure(routes::sourcemaps::configure)
+                .configure(routes::github::configure),
         )
         .await
     };
@@ -756,4 +759,386 @@ async fn only_an_owner_makes_or_unmakes_an_owner() {
         manager.token
     );
     assert_eq!(status, 204, "deleting a member is what users:delete is for");
+}
+
+/// A user holding `perms` where `project_id` says (`None`: everywhere).
+async fn holder(
+    pool: &DbPool,
+    email: &str,
+    perms: &[(Resource, Action)],
+    project_id: Option<i32>,
+) -> Who {
+    let u = who(pool, email, false).await;
+    let r = role(pool, email, perms).await;
+    RoleService::assign(pool, u.id, r, project_id)
+        .await
+        .unwrap();
+    u
+}
+
+/// An invitation's token claims its account, so reading the list must not hand
+/// out one the reader could not have created. The `id` is what manages it.
+#[actix_web::test]
+async fn an_invitation_token_only_reaches_who_could_create_that_invitation() {
+    let db = TestDb::new().await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let reader = holder(
+        &db.pool,
+        "reader@x.com",
+        &[(Resource::Invitations, Action::Read)],
+        None,
+    )
+    .await;
+    let inviter = holder(
+        &db.pool,
+        "inviter@x.com",
+        &[
+            (Resource::Invitations, Action::Read),
+            (Resource::Invitations, Action::Create),
+        ],
+        None,
+    )
+    .await;
+    let app = app!(db.pool.clone());
+
+    for (email, role) in [("boss@x.com", "admin"), ("dev@x.com", "member")] {
+        let (status, body) = call!(
+            app,
+            post,
+            "/api/invitations",
+            owner.token,
+            json!({ "email": email, "role": role })
+        );
+        assert_eq!(status, 201, "{body}");
+        assert!(body["token"].is_string(), "the creator gets the link");
+    }
+
+    let list = |body: &Value, email: &str| -> Value {
+        body.as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["email"] == email)
+            .unwrap()
+            .clone()
+    };
+
+    let (status, body) = call!(app, get, "/api/invitations", reader.token);
+    assert_eq!(status, 200, "{body}");
+    for email in ["boss@x.com", "dev@x.com"] {
+        assert!(list(&body, email)["token"].is_null(), "{body}");
+    }
+
+    let (_, body) = call!(app, get, "/api/invitations", inviter.token);
+    assert!(list(&body, "boss@x.com")["token"].is_null(), "{body}");
+    assert!(list(&body, "dev@x.com")["token"].is_string(), "{body}");
+
+    let (_, body) = call!(app, get, "/api/invitations", owner.token);
+    let boss = list(&body, "boss@x.com");
+    assert!(boss["token"].is_string(), "{body}");
+    let id = boss["id"].as_str().unwrap();
+    assert_ne!(boss["token"].as_str().unwrap(), id);
+
+    let (status, _) = call!(
+        app,
+        delete,
+        format!("/api/invitations/{}", boss["token"].as_str().unwrap()),
+        owner.token
+    );
+    assert_eq!(status, 404, "a token does not address an invitation");
+    let (status, _) = call!(app, delete, format!("/api/invitations/{id}"), owner.token);
+    assert_eq!(status, 204);
+}
+
+/// Resending names no secret either: the email goes to the invitee, and the
+/// response must not hand the link to whoever asked for it.
+#[actix_web::test]
+async fn resending_does_not_hand_out_an_owner_invitation_token() {
+    let db = TestDb::new().await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let inviter = holder(
+        &db.pool,
+        "inviter@x.com",
+        &[(Resource::Invitations, Action::Create)],
+        None,
+    )
+    .await;
+    let app = app!(db.pool.clone());
+    let (_, body) = call!(
+        app,
+        post,
+        "/api/invitations",
+        owner.token,
+        json!({ "email": "boss@x.com", "role": "admin" })
+    );
+    let id = body["id"].as_str().unwrap();
+
+    let (status, body) = call!(
+        app,
+        post,
+        format!("/api/invitations/{id}/resend"),
+        inviter.token
+    );
+    assert_eq!(status, 403, "{body}");
+}
+
+#[actix_web::test]
+async fn a_deleted_role_cannot_leave_a_pending_invitation_without_it() {
+    let db = TestDb::new().await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let r = role(&db.pool, "r", &[(Resource::Issues, Action::Read)]).await;
+    let app = app!(db.pool.clone());
+    let (_, body) = call!(
+        app,
+        post,
+        "/api/invitations",
+        owner.token,
+        json!({ "email": "dev@x.com", "role": "member", "role_id": r })
+    );
+    let id = body["id"].as_str().unwrap();
+
+    let (status, _) = call!(app, delete, format!("/api/roles/{r}"), owner.token);
+    assert_eq!(status, 409);
+
+    let (status, _) = call!(app, delete, format!("/api/invitations/{id}"), owner.token);
+    assert_eq!(status, 204);
+    let (status, _) = call!(app, delete, format!("/api/roles/{r}"), owner.token);
+    assert_eq!(status, 204, "a revoked invitation holds nothing back");
+}
+
+#[actix_web::test]
+async fn the_ingest_key_needs_client_keys_read() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let logs = holder(
+        &db.pool,
+        "logs@x.com",
+        &[(Resource::Logs, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let keys = holder(
+        &db.pool,
+        "keys@x.com",
+        &[(Resource::ClientKeys, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let app = app!(db.pool.clone());
+
+    let (status, body) = call!(app, get, format!("/api/projects/{p}"), logs.token);
+    assert_eq!(status, 200, "{body}");
+    assert!(
+        body["sentry_key"].is_null() && body["dsn"].is_null(),
+        "{body}"
+    );
+    let (_, body) = call!(app, get, "/api/projects", logs.token);
+    let listed = &body["items"][0];
+    assert!(
+        listed["sentry_key"].is_null() && listed["dsn"].is_null(),
+        "{body}"
+    );
+
+    let (_, body) = call!(app, get, format!("/api/projects/{p}"), keys.token);
+    assert!(
+        body["sentry_key"].is_string() && body["dsn"].is_string(),
+        "{body}"
+    );
+    let (_, body) = call!(app, get, "/api/projects", keys.token);
+    assert!(body["items"][0]["dsn"].is_string(), "{body}");
+}
+
+#[actix_web::test]
+async fn chunk_upload_needs_a_source_map_grant_somewhere() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let empty = AuthTokenService::create_for_user(
+        &db.pool,
+        CreateAuthToken {
+            permissions: Some(vec![]),
+            ..Default::default()
+        },
+        Some(owner.id),
+    )
+    .await
+    .unwrap()
+    .token;
+    let reader = holder(
+        &db.pool,
+        "reader@x.com",
+        &[(Resource::SourceMaps, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let uploader = holder(
+        &db.pool,
+        "up@x.com",
+        &[(Resource::SourceMaps, Action::Create)],
+        Some(p),
+    )
+    .await;
+    let app = app!(db.pool.clone());
+    let upload = "/api/0/organizations/o/chunk-upload/";
+    let multipart = ("content-type", "multipart/form-data; boundary=b");
+
+    for token in [empty, reader.token] {
+        let req = test::TestRequest::post()
+            .uri(upload)
+            .insert_header(("Authorization", format!("Bearer {token}")))
+            .insert_header(multipart)
+            .set_payload("--b--\r\n")
+            .to_request();
+        assert_eq!(test::call_service(&app, req).await.status(), 403);
+    }
+
+    let req = test::TestRequest::post()
+        .uri(upload)
+        .insert_header(("Authorization", format!("Bearer {}", uploader.token)))
+        .insert_header(multipart)
+        .set_payload("--b--\r\n")
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, req).await.status(),
+        400,
+        "past the check: an upload with no parts is invalid"
+    );
+}
+
+#[actix_web::test]
+async fn recording_a_github_installation_needs_update() {
+    let db = TestDb::new().await;
+    let reader = holder(
+        &db.pool,
+        "reader@x.com",
+        &[(Resource::GithubApp, Action::Read)],
+        None,
+    )
+    .await;
+    let app = app!(db.pool.clone());
+    let (status, body) = call!(
+        app,
+        get,
+        "/api/github/installed?installation_id=99",
+        reader.token
+    );
+    assert_eq!(status, 403, "{body}");
+}
+
+#[actix_web::test]
+async fn member_routes_answer_404_for_what_does_not_exist() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let app = app!(db.pool.clone());
+    let (nowhere, nobody) = (9_999, 9_999);
+
+    let (status, _) = call!(
+        app,
+        get,
+        format!("/api/projects/{nowhere}/members"),
+        owner.token
+    );
+    assert_eq!(status, 404);
+    let (status, _) = call!(
+        app,
+        delete,
+        format!("/api/projects/{nowhere}/members/{}", owner.id + 1),
+        owner.token
+    );
+    assert_eq!(status, 404);
+    let (status, _) = call!(
+        app,
+        put,
+        format!("/api/projects/{nowhere}/members"),
+        owner.token,
+        json!({ "user_id": nobody, "role_ids": [] })
+    );
+    assert_eq!(status, 404);
+    let (status, _) = call!(
+        app,
+        put,
+        format!("/api/projects/{p}/members"),
+        owner.token,
+        json!({ "user_id": nobody, "role_ids": [] })
+    );
+    assert_eq!(status, 404);
+    let (status, _) = call!(
+        app,
+        put,
+        format!("/api/users/{nobody}/assignments"),
+        owner.token,
+        json!({ "assignments": [] })
+    );
+    assert_eq!(status, 404);
+}
+
+#[actix_web::test]
+async fn project_stats_need_issues_read() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let members = holder(
+        &db.pool,
+        "m@x.com",
+        &[(Resource::ProjectMembers, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let issues = holder(
+        &db.pool,
+        "i@x.com",
+        &[(Resource::Issues, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let app = app!(db.pool.clone());
+    let uri = "/api/projects?stats_period=24h";
+
+    let (_, body) = call!(app, get, uri, members.token);
+    assert!(body["items"][0].get("stats").is_none(), "{body}");
+    let (_, body) = call!(app, get, uri, issues.token);
+    assert!(body["items"][0]["stats"].is_object(), "{body}");
+}
+
+#[actix_web::test]
+async fn a_releases_new_issues_need_issues_read() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    let u = holder(
+        &db.pool,
+        "r@x.com",
+        &[(Resource::Releases, Action::Read)],
+        Some(p),
+    )
+    .await;
+    let app = app!(db.pool.clone());
+    let (status, body) = call!(
+        app,
+        get,
+        format!("/api/projects/{p}/releases/1.0/new-issues"),
+        u.token
+    );
+    assert_eq!(status, 403, "{body}");
+}
+
+#[actix_web::test]
+async fn a_role_name_longer_than_its_column_is_a_validation_error() {
+    let db = TestDb::new().await;
+    let owner = who(&db.pool, "o@x.com", true).await;
+    let app = app!(db.pool.clone());
+    let (status, body) = call!(
+        app,
+        post,
+        "/api/roles",
+        owner.token,
+        json!({ "name": "x".repeat(101), "permissions": [] })
+    );
+    assert_eq!(status, 400, "{body}");
+    let (status, body) = call!(
+        app,
+        post,
+        "/api/roles",
+        owner.token,
+        json!({ "name": "é".repeat(100), "permissions": [] })
+    );
+    assert_eq!(status, 201, "the limit counts characters: {body}");
 }

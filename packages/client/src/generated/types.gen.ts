@@ -1113,11 +1113,19 @@ export type InvitationResponse = {
      */
     email_sent_at: string | null;
     expires_at: string;
+    /**
+     * What resending and revoking address it by.
+     */
+    id: string;
     project_id: number | null;
     role: UserRole;
     role_id: number | null;
     status: string;
-    token: string;
+    /**
+     * Claims the account, so it is `null` for a reader who could not have
+     * created this invitation.
+     */
+    token: string | null;
 };
 
 /**
@@ -1727,7 +1735,7 @@ export type ProjectResponse = {
      * Products whose data this project drops at ingest.
      */
     disabled_products: Array<Product>;
-    dsn: string;
+    dsn: string | null;
     id: number;
     name: string;
     platform: string | null;
@@ -1749,8 +1757,10 @@ export type ProjectResponse = {
      * The DSN's public key: its 32 hex digits in hyphenated UUID form
      * (8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the
      * same key without hyphens.
+     *
+     * `null` without `client-keys:read` on the project, as is `dsn`.
      */
-    sentry_key: string;
+    sentry_key: string | null;
     slug: string;
     stats?: ProjectListStats | null;
     stored_event_count: number;
@@ -3123,6 +3133,10 @@ export type SourceMapsChunkUploadErrors = {
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Missing source-maps:create on every project
+     */
+    403: ErrorResponse;
 };
 
 export type SourceMapsChunkUploadError = SourceMapsChunkUploadErrors[keyof SourceMapsChunkUploadErrors];
@@ -4218,12 +4232,12 @@ export type InvitationsRevokeData = {
     body?: never;
     path: {
         /**
-         * Invitation token
+         * Invitation id
          */
-        token: string;
+        id: string;
     };
     query?: never;
-    url: '/api/invitations/{token}';
+    url: '/api/invitations/{id}';
 };
 
 export type InvitationsRevokeErrors = {
@@ -4256,12 +4270,12 @@ export type InvitationsResendData = {
     body?: never;
     path: {
         /**
-         * Invitation token
+         * Invitation id
          */
-        token: string;
+        id: string;
     };
     query?: never;
-    url: '/api/invitations/{token}/resend';
+    url: '/api/invitations/{id}/resend';
 };
 
 export type InvitationsResendErrors = {
@@ -4475,7 +4489,7 @@ export type ProjectsListResponses = {
              * Products whose data this project drops at ingest.
              */
             disabled_products: Array<Product>;
-            dsn: string;
+            dsn: string | null;
             id: number;
             name: string;
             platform: string | null;
@@ -4497,8 +4511,10 @@ export type ProjectsListResponses = {
              * The DSN's public key: its 32 hex digits in hyphenated UUID form
              * (8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the
              * same key without hyphens.
+             *
+             * `null` without `client-keys:read` on the project, as is `dsn`.
              */
-            sentry_key: string;
+            sentry_key: string | null;
             slug: string;
             stats?: ProjectListStats | null;
             stored_event_count: number;

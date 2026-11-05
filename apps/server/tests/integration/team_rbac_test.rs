@@ -1003,7 +1003,7 @@ async fn resend_of_an_expired_invitation_is_400() {
         .set_json(json!({ "email": "exp@x.com", "role": "member" }))
         .to_request();
     let body: Value = test::read_body_json(test::call_service(&app, req).await).await;
-    let token = body["token"].as_str().unwrap().to_string();
+    let id = body["id"].as_str().unwrap().to_string();
     sqlx::query("UPDATE invitations SET expires_at = $1")
         .bind(Utc::now() - chrono::Duration::hours(1))
         .execute(&db.pool)
@@ -1011,7 +1011,7 @@ async fn resend_of_an_expired_invitation_is_400() {
         .unwrap();
 
     let req = test::TestRequest::post()
-        .uri(&format!("/api/invitations/{token}/resend"))
+        .uri(&format!("/api/invitations/{id}/resend"))
         .insert_header(bearer(&admin_token))
         .to_request();
     let resp = test::call_service(&app, req).await;

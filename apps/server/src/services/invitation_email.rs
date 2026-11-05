@@ -209,6 +209,7 @@ mod tests {
 
     fn invitation() -> Invitation {
         Invitation {
+            id: "i".to_string(),
             token: "tok123".to_string(),
             email: "invitee@example.com".to_string(),
             role: "member".to_string(),

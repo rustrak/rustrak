@@ -175,3 +175,77 @@ async fn the_migration_carries_over_existing_admins_and_memberships() {
         .collect();
     assert_eq!(names, ["Editor"]);
 }
+
+/// Rolling back keeps what the old levels can say: the level comes from what
+/// the role holds now, the highest wins, an all-project assignment becomes a
+/// membership of each project, and a role with no project permission none.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn rolling_the_migration_back_restores_memberships() {
+    const BEFORE_RBAC: i64 = 20261105000000 - 1;
+    let dir = tempfile::tempdir().unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(dir.path().join("m.sqlite"))
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    let migrator = sqlx::migrate!("./migrations/sqlite");
+    migrator.run(&pool).await.unwrap();
+
+    let (p1, p2) = (project(&pool, "one").await, project(&pool, "two").await);
+    let u = |email: &'static str| user(&pool, email);
+    let (both, everywhere, workspace) =
+        (u("b@x.com").await, u("e@x.com").await, u("w@x.com").await);
+    let held = |name: &'static str, perms: Vec<(Resource, Action)>| {
+        let pool = &pool;
+        async move {
+            RoleService::create(
+                pool,
+                name,
+                "",
+                perms
+                    .into_iter()
+                    .map(|(resource, action)| rustrak::models::Permission { resource, action })
+                    .collect(),
+            )
+            .await
+            .unwrap()
+            .id
+        }
+    };
+    let viewer = held("v", vec![(Resource::Issues, Action::Read)]).await;
+    let editor = held("e", vec![(Resource::Project, Action::Update)]).await;
+    let admin = held("a", vec![(Resource::ProjectMembers, Action::Update)]).await;
+    let settings = held("s", vec![(Resource::Storage, Action::Read)]).await;
+    for (who, role, project) in [
+        (both.id, viewer, Some(p1)),
+        (both.id, admin, Some(p1)),
+        (everywhere.id, editor, None),
+        (workspace.id, settings, None),
+    ] {
+        RoleService::assign(&pool, who, role, project)
+            .await
+            .unwrap();
+    }
+
+    migrator.undo(&pool, BEFORE_RBAC).await.unwrap();
+
+    let mut rows: Vec<(i32, i32, String)> =
+        sqlx::query_as("SELECT project_id, user_id, role FROM project_members")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    rows.sort();
+    assert_eq!(
+        rows,
+        [
+            (p1, both.id, "admin".to_string()),
+            (p1, everywhere.id, "editor".to_string()),
+            (p2, everywhere.id, "editor".to_string()),
+        ]
+    );
+}

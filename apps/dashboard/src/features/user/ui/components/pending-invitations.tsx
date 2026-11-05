@@ -33,8 +33,8 @@ interface PendingInvitationsProps {
  * Module scope: it reads  and the invitation it is handed, and closes
  * over nothing in the component.
  */
-async function handleCopy(invitation: InvitationResponse, t: Translate) {
-  const link = `${window.location.origin}/invite/${invitation.token}`;
+async function handleCopy(token: string, t: Translate) {
+  const link = `${window.location.origin}/invite/${token}`;
   if (await copyToClipboard(link)) {
     toast.success(t('toast.linkCopied'));
   } else {
@@ -53,7 +53,7 @@ export function PendingInvitations({
   const isPending = revoke.isPending;
 
   const handleRevoke = (invitation: InvitationResponse) => {
-    revoke.mutate(invitation.token, {
+    revoke.mutate(invitation.id, {
       onSuccess: () => toast.success(t('toast.revoked')),
       // No form here, so there is no input to attach a `fields` entry to;
       // the message is what the row can show.
@@ -66,21 +66,18 @@ export function PendingInvitations({
 
   /** Email the invite link again, like Sentry's "Resend invite". */
   const handleResend = (invitation: InvitationResponse) => {
-    resend.mutate(
-      { token: invitation.token },
-      {
-        onSuccess: () =>
-          toast.success(t('toast.resendSent'), {
-            description: t('toast.resendSentHint', {
-              email: invitation.email,
-            }),
+    resend.mutate(invitation.id, {
+      onSuccess: () =>
+        toast.success(t('toast.resendSent'), {
+          description: t('toast.resendSentHint', {
+            email: invitation.email,
           }),
-        onError: (error) =>
-          toast.error(t('toast.resendFailed'), {
-            description: error.error.message,
-          }),
-      },
-    );
+        }),
+      onError: (error) =>
+        toast.error(t('toast.resendFailed'), {
+          description: error.error.message,
+        }),
+    });
   };
 
   return (
@@ -96,7 +93,7 @@ export function PendingInvitations({
       ) : (
         invitations.map((invitation) => (
           <SettingsListItem
-            key={invitation.token}
+            key={invitation.id}
             leading={<Avatar name={invitation.email} />}
             title={
               <span className="flex min-w-0 items-center gap-2">
@@ -124,7 +121,9 @@ export function PendingInvitations({
             })}
             actions={
               <>
-                {emailAvailable &&
+                {/* No token: the reader could not have created this one. */}
+                {invitation.token !== null &&
+                  emailAvailable &&
                   new Date(invitation.expires_at).getTime() > Date.now() && (
                     <Tooltip content={t('pending.resend')}>
                       <Button
@@ -139,17 +138,19 @@ export function PendingInvitations({
                       />
                     </Tooltip>
                   )}
-                <Tooltip content={t('pending.copy')}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={CopyIcon}
-                    onClick={() => handleCopy(invitation, t)}
-                    aria-label={t('pending.copyAria', {
-                      email: invitation.email,
-                    })}
-                  />
-                </Tooltip>
+                {invitation.token !== null && (
+                  <Tooltip content={t('pending.copy')}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={CopyIcon}
+                      onClick={() => handleCopy(invitation.token ?? '', t)}
+                      aria-label={t('pending.copyAria', {
+                        email: invitation.email,
+                      })}
+                    />
+                  </Tooltip>
+                )}
                 <Tooltip content={t('pending.revoke')}>
                   <Button
                     variant="ghost"

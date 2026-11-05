@@ -40,8 +40,8 @@ pub struct InviteArgs {
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct InvitationArgs {
-    /// Invitation token to revoke
-    token: String,
+    /// Invitation id, as `list_invitations` returns it
+    id: String,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -123,7 +123,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "List invitations (pending, accepted, revoked) with their tokens, roles and expiry. Requires an admin token.",
+        description = "List invitations (pending, accepted, revoked) with their ids, roles and expiry, and the token of each one the caller could have created.",
         annotations(read_only_hint = true)
     )]
     async fn list_invitations(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
@@ -131,12 +131,12 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Revoke a pending invitation by its token so it can no longer be accepted. Requires an admin token.",
+        description = "Revoke a pending invitation by its id so it can no longer be accepted. Requires an admin token.",
         annotations(destructive_hint = true)
     )]
     async fn revoke_invitation(&self, Parameters(a): Parameters<InvitationArgs>) -> CallToolResult {
         done(
-            invitations::revoke_invitation(self.pool(), self.actor(), web::Path::from(a.token)),
+            invitations::revoke_invitation(self.pool(), self.actor(), web::Path::from(a.id)),
             "Invitation revoked.".to_string(),
         )
         .await
@@ -151,7 +151,7 @@ impl RustrakMcp {
             self.pool(),
             self.actor(),
             self.config(),
-            web::Path::from(a.token),
+            web::Path::from(a.id),
         ))
         .await
     }

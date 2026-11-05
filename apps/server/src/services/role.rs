@@ -170,13 +170,26 @@ impl RoleService {
         Ok(())
     }
 
-    /// Deletes a role nobody holds.
+    /// Deletes a role nobody holds and no pending invitation names.
     pub async fn delete(pool: &DbPool, id: i32) -> AppResult<()> {
         let role = Self::get(pool, id).await?;
         if role.assignment_count > 0 {
             return Err(AppError::Conflict(format!(
                 "Role '{}' is still assigned {} time(s)",
                 role.name, role.assignment_count
+            )));
+        }
+        // Accepting one would otherwise create the account without the role.
+        let (pending,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM invitations WHERE role_id = $1 AND status = 'pending'",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        if pending > 0 {
+            return Err(AppError::Conflict(format!(
+                "Role '{}' is named by {pending} pending invitation(s)",
+                role.name
             )));
         }
         sqlx::query("DELETE FROM roles WHERE id = $1")

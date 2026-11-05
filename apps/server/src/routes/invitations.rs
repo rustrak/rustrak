@@ -4,8 +4,8 @@
 //!   emailing the invite link
 //! - GET    /api/invitations                — list invitations
 //! - GET    /api/invitations/email-status   — can invitation emails be sent?
-//! - POST   /api/invitations/{token}/resend — email the invite link again
-//! - DELETE /api/invitations/{token}        — revoke a pending invitation
+//! - POST   /api/invitations/{id}/resend    — email the invite link again
+//! - DELETE /api/invitations/{id}           — revoke a pending invitation
 
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
@@ -15,7 +15,7 @@ use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
-use crate::models::{CreateInvitation, Invitation, InvitationResponse};
+use crate::models::{CreateInvitation, Invitation, InvitationResponse, Role};
 use crate::services::invitation_email::{EmailStatusResponse, InvitationMailer};
 use crate::services::{InvitationService, RoleService};
 
@@ -45,6 +45,21 @@ async fn deliver(
         ),
     }
     Ok(())
+}
+
+/// A token claims the invitation's account, so it only reaches who could have
+/// created this same invitation: reading the list must not outrank inviting.
+fn may_hold_token(actor: &ApiActor, roles: &[Role], invitation: &Invitation) -> bool {
+    actor
+        .access
+        .can(Resource::Invitations, Action::Create, None)
+        && (invitation.role != "admin" || actor.is_owner())
+        && invitation.role_id.is_none_or(|id| {
+            roles
+                .iter()
+                .find(|r| r.id == id)
+                .is_some_and(|r| actor.access.covers(&r.grants(), invitation.project_id))
+        })
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -148,10 +163,10 @@ pub async fn email_status(
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/api/invitations/{token}/resend",
+    path = "/api/invitations/{id}/resend",
     operation_id = "invitations.resend",
     tag = "Invitations",
-    params(("token" = String, Path, description = "Invitation token")),
+    params(("id" = String, Path, description = "Invitation id")),
     responses(
         (status = 200, description = "Invitation email sent", body = InvitationResponse),
         (status = 400, description = "Invitation expired or already used, or invitation emails are not configured", body = crate::error::ErrorResponse),
@@ -162,7 +177,7 @@ pub async fn email_status(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/invitations/{token}/resend — email the invite link again (admin only)
+/// POST /api/invitations/{id}/resend — email the invite link again (admin only)
 pub async fn resend_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -172,9 +187,15 @@ pub async fn resend_invitation(
     actor.require(Resource::Invitations, Action::Create, None)?;
 
     let inviter = actor.require_user()?;
-    let mut invitation = InvitationService::get(pool.get_ref(), &path.into_inner())
+    let mut invitation = InvitationService::get_by_id(pool.get_ref(), &path.into_inner())
         .await?
         .ok_or_else(|| AppError::NotFound("Invitation not found".to_string()))?;
+    let roles = RoleService::list_all(pool.get_ref()).await?;
+    if !may_hold_token(&actor, &roles, &invitation) {
+        return Err(AppError::Forbidden(
+            "You cannot resend an invitation you could not create".to_string(),
+        ));
+    }
     if !invitation.is_acceptable(Utc::now()) {
         return Err(AppError::Validation(
             "Invitation is expired or already used".to_string(),
@@ -206,9 +227,17 @@ pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppRe
     actor.require(Resource::Invitations, Action::Read, None)?;
 
     let invitations = InvitationService::list(pool.get_ref()).await?;
+    let roles = RoleService::list_all(pool.get_ref()).await?;
     let responses: Vec<InvitationResponse> = invitations
         .into_iter()
-        .map(InvitationResponse::from)
+        .map(|invitation| {
+            let hold = may_hold_token(&actor, &roles, &invitation);
+            let mut response = InvitationResponse::from(invitation);
+            if !hold {
+                response.token = None;
+            }
+            response
+        })
         .collect();
 
     Ok(HttpResponse::Ok().json(responses))
@@ -216,10 +245,10 @@ pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppRe
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
-    path = "/api/invitations/{token}",
+    path = "/api/invitations/{id}",
     operation_id = "invitations.revoke",
     tag = "Invitations",
-    params(("token" = String, Path, description = "Invitation token")),
+    params(("id" = String, Path, description = "Invitation id")),
     responses(
         (status = 204, description = "Invitation revoked"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
@@ -228,7 +257,7 @@ pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppRe
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/invitations/{token} — revoke a pending invitation (admin only)
+/// DELETE /api/invitations/{id} — revoke a pending invitation (admin only)
 pub async fn revoke_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -266,7 +295,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("", web::post().to(create_invitation))
             .route("", web::get().to(list_invitations))
             .route("/email-status", web::get().to(email_status))
-            .route("/{token}/resend", web::post().to(resend_invitation))
-            .route("/{token}", web::delete().to(revoke_invitation)),
+            .route("/{id}/resend", web::post().to(resend_invitation))
+            .route("/{id}", web::delete().to(revoke_invitation)),
     );
 }

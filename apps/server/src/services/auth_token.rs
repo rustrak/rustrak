@@ -18,13 +18,23 @@ fn hash(raw: &str) -> String {
 impl AuthTokenService {
     /// Fills in the permissions and projects a token is limited to.
     async fn load_scope(pool: &DbPool, mut tokens: Vec<AuthToken>) -> AppResult<Vec<AuthToken>> {
-        let perms: Vec<(i32, String, String)> =
-            sqlx::query_as("SELECT token_id, resource, action FROM auth_token_permissions")
-                .fetch_all(pool)
-                .await?;
-        let projects: Vec<(i32, i32)> = sqlx::query_as(
-            "SELECT token_id, project_id FROM auth_token_projects ORDER BY project_id",
-        )
+        if tokens.is_empty() {
+            return Ok(tokens);
+        }
+        // Integers from our own rows: nothing a caller wrote reaches the SQL.
+        let ids = tokens
+            .iter()
+            .map(|t| t.id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let perms: Vec<(i32, String, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+            "SELECT token_id, resource, action FROM auth_token_permissions WHERE token_id IN ({ids})"
+        )))
+        .fetch_all(pool)
+        .await?;
+        let projects: Vec<(i32, i32)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+            "SELECT token_id, project_id FROM auth_token_projects WHERE token_id IN ({ids}) ORDER BY project_id"
+        )))
         .fetch_all(pool)
         .await?;
         for t in &mut tokens {

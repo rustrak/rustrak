@@ -183,17 +183,29 @@ pub async fn chunk_upload_capability(
         (status = 200, description = "Chunks stored successfully"),
         (status = 400, description = "Invalid multipart or chunk too large", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing source-maps:create on every project", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
 /// POST /api/0/organizations/{org_slug}/chunk-upload/
 pub async fn chunk_upload(
     _path: web::Path<String>,
-    _actor: ApiActor,
+    actor: ApiActor,
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     mut payload: Multipart,
 ) -> AppResult<HttpResponse> {
+    // Chunks belong to no project until a bundle assembles them, and that
+    // checks the project: here it is enough to be able to upload somewhere.
+    if !actor
+        .access
+        .can_somewhere(Resource::SourceMaps, Action::Create)
+    {
+        return Err(AppError::Forbidden(
+            "Missing permission source-maps:create".to_string(),
+        ));
+    }
+
     let max_chunk_size = config.max_chunk_size_bytes;
     const MAX_PARTS: usize = 64;
     let max_total_bytes = max_chunk_size.saturating_mul(MAX_PARTS);

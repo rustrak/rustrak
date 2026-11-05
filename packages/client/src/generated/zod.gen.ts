@@ -1151,7 +1151,7 @@ export const zProjectResponse = z.object({
     created_at: z.iso.datetime({ offset: true }),
     digested_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     disabled_products: z.array(zProduct),
-    dsn: z.string(),
+    dsn: z.string().nullable(),
     id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     name: z.string(),
     platform: z.string().nullable(),
@@ -1159,7 +1159,7 @@ export const zProjectResponse = z.object({
     rate_limit_per_hour: z.int().nullable(),
     rate_limit_per_minute: z.int().nullable(),
     rate_limited_event_count: z.int(),
-    sentry_key: z.string(),
+    sentry_key: z.string().nullable(),
     slug: z.string(),
     stats: zProjectListStats.nullish(),
     stored_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
@@ -2216,11 +2216,12 @@ export const zInvitationResponse = z.object({
     email: z.string(),
     email_sent_at: z.iso.datetime({ offset: true }).nullable(),
     expires_at: z.iso.datetime({ offset: true }),
+    id: z.string(),
     project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
     role: zUserRole,
     role_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
     status: z.string(),
-    token: z.string()
+    token: z.string().nullable()
 });
 
 /**
@@ -2600,7 +2601,7 @@ export const zInvitationsCreateResponse = zInvitationResponse;
 export const zInvitationsEmailStatusResponse = zEmailStatusResponse;
 
 export const zInvitationsRevokePath = z.object({
-    token: z.string()
+    id: z.string()
 });
 
 /**
@@ -2609,7 +2610,7 @@ export const zInvitationsRevokePath = z.object({
 export const zInvitationsRevokeResponse = z.void();
 
 export const zInvitationsResendPath = z.object({
-    token: z.string()
+    id: z.string()
 });
 
 /**
@@ -2668,7 +2669,7 @@ export const zProjectsListResponse = z.object({
         created_at: z.iso.datetime({ offset: true }),
         digested_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
         disabled_products: z.array(zProduct),
-        dsn: z.string(),
+        dsn: z.string().nullable(),
         id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
         name: z.string(),
         platform: z.string().nullable(),
@@ -2676,7 +2677,7 @@ export const zProjectsListResponse = z.object({
         rate_limit_per_hour: z.int().nullable(),
         rate_limit_per_minute: z.int().nullable(),
         rate_limited_event_count: z.int(),
-        sentry_key: z.string(),
+        sentry_key: z.string().nullable(),
         slug: z.string(),
         stats: zProjectListStats.nullish(),
         stored_event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),

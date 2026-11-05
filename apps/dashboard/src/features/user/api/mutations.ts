@@ -203,15 +203,15 @@ export const userMutations = {
   /** Email an invitation's link again. */
   resendInvitation: () =>
     mutationOptions({
-      mutationFn: (input: { token: string }) =>
-        orThrow(api().invitations.resend({ path: { token: input.token } })),
+      mutationFn: (id: string) =>
+        orThrow(api().invitations.resend({ path: { id } })),
       meta: { invalidates: [userQueries.invitations().queryKey] },
     }),
-  /** The token is a variable: one mutation serves every pending row. */
+  /** The id is a variable: one mutation serves every pending row. */
   revokeInvitation: () =>
     mutationOptions({
-      mutationFn: (token: string) =>
-        orThrow(api().invitations.revoke({ path: { token } })),
+      mutationFn: (id: string) =>
+        orThrow(api().invitations.revoke({ path: { id } })),
       meta: { invalidates: [userQueries.invitationsRoot()] },
     }),
 };

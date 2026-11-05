@@ -5,9 +5,7 @@ use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-#[cfg(feature = "openapi")]
-use crate::models::ProjectResponse;
-use crate::models::{CreateProject, UpdateProject};
+use crate::models::{CreateProject, ProjectResponse, UpdateProject};
 use crate::pagination::{ListProjectsQuery, OffsetPaginatedResponse};
 use crate::routes::period::parse_period_hours;
 use crate::services::stats::StatsService;
@@ -15,6 +13,18 @@ use crate::services::{ProjectService, RoleService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
+
+/// Seeing a project takes any permission on it; its ingest key takes this one.
+fn keys_if_held(actor: &ApiActor, mut response: ProjectResponse) -> ProjectResponse {
+    if !actor
+        .access
+        .can(Resource::ClientKeys, Action::Read, Some(response.id))
+    {
+        response.sentry_key = None;
+        response.dsn = None;
+    }
+    response
+}
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -55,13 +65,20 @@ pub async fn list_projects(
     };
 
     let base_url = build_base_url(&config);
-    let mut responses: Vec<_> = projects.iter().map(|p| p.to_response(&base_url)).collect();
+    let mut responses: Vec<_> = projects
+        .iter()
+        .map(|p| keys_if_held(&actor, p.to_response(&base_url)))
+        .collect();
 
     // Stats are attached to the page that was already fetched, so the extra
     // work scales with `per_page` (capped at 100) and not with the number of
     // projects on the instance.
     if let Some(period_hours) = parse_period_hours(query.stats_period.as_deref()) {
-        let ids: Vec<i32> = responses.iter().map(|p| p.id).collect();
+        let ids: Vec<i32> = responses
+            .iter()
+            .map(|p| p.id)
+            .filter(|&id| actor.access.can(Resource::Issues, Action::Read, Some(id)))
+            .collect();
         let mut stats = StatsService::list_stats(pool.get_ref(), &ids, period_hours).await?;
         for response in &mut responses {
             response.stats = stats.remove(&response.id);
@@ -102,7 +119,7 @@ pub async fn get_project(
     let project = ProjectService::get_by_id(pool.get_ref(), id).await?;
     let base_url = build_base_url(&config);
 
-    Ok(HttpResponse::Ok().json(project.to_response(&base_url)))
+    Ok(HttpResponse::Ok().json(keys_if_held(&actor, project.to_response(&base_url))))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -121,8 +138,9 @@ pub async fn get_project(
 ))]
 /// POST /api/projects - Create a new project
 ///
-/// Any authenticated user may create a project. A non-admin creator is
-/// automatically granted the project `admin` role so they can access it.
+/// Needs `projects:create` and a permission on at least one project, because
+/// the creator's own roles extend to the new one. A token limited to chosen
+/// projects can create one, but its list does not grow to reach it.
 pub async fn create_project(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
@@ -139,15 +157,24 @@ pub async fn create_project(
     }
     let project = ProjectService::create(pool.get_ref(), body.into_inner()).await?;
 
-    // Whoever creates a project can reach it, unless they already reach every
-    // project: their own roles extend to it, so it grants nothing new.
+    // The creator's own roles extend to it, unless they already reach every
+    // project, so it grants nothing new.
     if let (Some(uid), ProjectScope::Only(_)) = (actor.user_id(), actor.visible_projects()) {
         RoleService::extend_to_project(pool.get_ref(), uid, project.id).await?;
     }
 
     let base_url = build_base_url(&config);
+    let mut response = project.to_response(&base_url);
+    // `actor` predates the new project; what they hold is what just extended.
+    if !actor
+        .access
+        .can_somewhere(Resource::ClientKeys, Action::Read)
+    {
+        response.sentry_key = None;
+        response.dsn = None;
+    }
 
-    Ok(HttpResponse::Created().json(project.to_response(&base_url)))
+    Ok(HttpResponse::Created().json(response))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -179,7 +206,7 @@ pub async fn update_project(
     let project = ProjectService::update(pool.get_ref(), id, body.into_inner()).await?;
     let base_url = build_base_url(&config);
 
-    Ok(HttpResponse::Ok().json(project.to_response(&base_url)))
+    Ok(HttpResponse::Ok().json(keys_if_held(&actor, project.to_response(&base_url))))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(

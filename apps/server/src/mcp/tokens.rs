@@ -25,7 +25,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Get the full token value by ID. Returns the complete 40-character hex token — useful for copying or verifying credentials.",
+        description = "Get a token by ID: its prefix, scope and expiry. The value itself is stored hashed and only ever shown on creation.",
         annotations(read_only_hint = true)
     )]
     async fn get_token(&self, Parameters(a): Parameters<TokenArgs>) -> CallToolResult {

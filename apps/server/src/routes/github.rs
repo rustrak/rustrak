@@ -308,7 +308,7 @@ pub async fn installed(
     query: web::Query<InstalledQuery>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    actor.require(Resource::GithubApp, Action::Read, None)?;
+    actor.require(Resource::GithubApp, Action::Update, None)?;
     let app = GitHubService::require_app(pool.get_ref()).await?;
     let (login, account_type) = GitHubClient::new(&app)
         .installation_account(query.installation_id)

@@ -16,7 +16,7 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 #[cfg(feature = "openapi")]
 use crate::services::role::ProjectMember;
-use crate::services::RoleService;
+use crate::services::{ProjectService, RoleService, UsersService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
@@ -94,6 +94,7 @@ pub async fn list_members(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
     actor.require(Resource::ProjectMembers, Action::Read, Some(project_id))?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
     let members = RoleService::project_members(pool.get_ref(), project_id).await?;
     Ok(HttpResponse::Ok().json(members))
 }
@@ -124,6 +125,10 @@ pub async fn upsert_member(
     let project_id = path.into_inner();
     actor.require(Resource::ProjectMembers, Action::Update, Some(project_id))?;
     not_yourself(&actor, body.user_id)?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    UsersService::get_by_id(pool.get_ref(), body.user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User {} not found", body.user_id)))?;
     require_covered(
         pool.get_ref(),
         &actor,
@@ -155,7 +160,7 @@ pub async fn upsert_member(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Removes every role a user holds on the project.
+/// Removes the roles a user holds on this project; roles on all projects stay.
 pub async fn remove_member(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -164,6 +169,7 @@ pub async fn remove_member(
     let (project_id, user_id) = path.into_inner();
     actor.require(Resource::ProjectMembers, Action::Update, Some(project_id))?;
     not_yourself(&actor, user_id)?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
     require_covered(pool.get_ref(), &actor, project_id, user_id, &[]).await?;
     RoleService::set_project_roles(pool.get_ref(), project_id, user_id, &[]).await?;
     Ok(HttpResponse::NoContent().finish())

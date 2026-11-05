@@ -400,8 +400,8 @@ Every method, grouped as it hangs off the client.
 | `invitations.create({ body })` | `POST /api/invitations` | Create an invitation (admin only) |
 | `invitations.emailStatus()` | `GET /api/invitations/email-status` | Whether invitation emails can be sent (admin only) |
 | `invitations.list()` | `GET /api/invitations` | List invitations (admin only) |
-| `invitations.resend({ path })` | `POST /api/invitations/{token}/resend` | Email the invite link again (admin only) |
-| `invitations.revoke({ path })` | `DELETE /api/invitations/{token}` | Revoke a pending invitation (admin only) |
+| `invitations.resend({ path })` | `POST /api/invitations/{id}/resend` | Email the invite link again (admin only) |
+| `invitations.revoke({ path })` | `DELETE /api/invitations/{id}` | Revoke a pending invitation (admin only) |
 
 ### Issues
 
@@ -440,7 +440,7 @@ Every method, grouped as it hangs off the client.
 | Method | Endpoint | Description |
 |---|---|---|
 | `members.list({ path })` | `GET /api/projects/{project_id}/members` | Lists everyone holding a role on the project, with those roles. |
-| `members.remove({ path })` | `DELETE /api/projects/{project_id}/members/{user_id}` | Removes every role a user holds on the project. |
+| `members.remove({ path })` | `DELETE /api/projects/{project_id}/members/{user_id}` | Removes the roles a user holds on this project; roles on all projects stay. |
 | `members.upsert({ path, body })` | `PUT /api/projects/{project_id}/members` | Sets the roles a user holds on the project. |
 
 ### Monitors

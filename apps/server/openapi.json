@@ -464,6 +464,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Missing source-maps:create on every project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2485,18 +2495,18 @@
         ]
       }
     },
-    "/api/invitations/{token}": {
+    "/api/invitations/{id}": {
       "delete": {
         "tags": [
           "Invitations"
         ],
-        "summary": "DELETE /api/invitations/{token} — revoke a pending invitation (admin only)",
+        "summary": "DELETE /api/invitations/{id} — revoke a pending invitation (admin only)",
         "operationId": "invitations.revoke",
         "parameters": [
           {
-            "name": "token",
+            "name": "id",
             "in": "path",
-            "description": "Invitation token",
+            "description": "Invitation id",
             "required": true,
             "schema": {
               "type": "string"
@@ -2545,18 +2555,18 @@
         ]
       }
     },
-    "/api/invitations/{token}/resend": {
+    "/api/invitations/{id}/resend": {
       "post": {
         "tags": [
           "Invitations"
         ],
-        "summary": "POST /api/invitations/{token}/resend — email the invite link again (admin only)",
+        "summary": "POST /api/invitations/{id}/resend — email the invite link again (admin only)",
         "operationId": "invitations.resend",
         "parameters": [
           {
-            "name": "token",
+            "name": "id",
             "in": "path",
-            "description": "Invitation token",
+            "description": "Invitation id",
             "required": true,
             "schema": {
               "type": "string"
@@ -2975,7 +2985,10 @@
                             "description": "Products whose data this project drops at ingest."
                           },
                           "dsn": {
-                            "type": "string"
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           },
                           "id": {
                             "type": "integer",
@@ -3018,8 +3031,11 @@
                             "description": "Events the quota dropped after ingest had accepted them."
                           },
                           "sentry_key": {
-                            "type": "string",
-                            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens."
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens.\n\n`null` without `client-keys:read` on the project, as is `dsn`."
                           },
                           "slug": {
                             "type": "string"
@@ -3089,7 +3105,7 @@
           "Projects"
         ],
         "summary": "POST /api/projects - Create a new project",
-        "description": "Any authenticated user may create a project. A non-admin creator is\nautomatically granted the project `admin` role so they can access it.",
+        "description": "Needs `projects:create` and a permission on at least one project, because\nthe creator's own roles extend to the new one. A token limited to chosen\nprojects can create one, but its list does not grow to reach it.",
         "operationId": "projects.create",
         "requestBody": {
           "content": {
@@ -8810,7 +8826,7 @@
         "tags": [
           "Members"
         ],
-        "summary": "Removes every role a user holds on the project.",
+        "summary": "Removes the roles a user holds on this project; roles on all projects stay.",
         "operationId": "members.remove",
         "parameters": [
           {
@@ -13332,7 +13348,7 @@
           "Tokens"
         ],
         "summary": "DELETE /api/tokens/{id} - Revoke a token",
-        "description": "Admins may revoke any token; non-admins may only revoke their own.",
+        "description": "Everyone may revoke their own; `api-tokens:delete` revokes any.",
         "operationId": "tokens.delete",
         "parameters": [
           {
@@ -16846,6 +16862,7 @@
         "type": "object",
         "description": "Public-facing invitation (no internal columns beyond what the UI needs).",
         "required": [
+          "id",
           "token",
           "email",
           "role",
@@ -16876,6 +16893,10 @@
             "type": "string",
             "format": "date-time"
           },
+          "id": {
+            "type": "string",
+            "description": "What resending and revoking address it by."
+          },
           "project_id": {
             "type": [
               "integer",
@@ -16897,7 +16918,11 @@
             "type": "string"
           },
           "token": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Claims the account, so it is `null` for a reader who could not have\ncreated this invitation."
           }
         }
       },
@@ -18275,7 +18300,10 @@
             "description": "Products whose data this project drops at ingest."
           },
           "dsn": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "integer",
@@ -18318,8 +18346,11 @@
             "description": "Events the quota dropped after ingest had accepted them."
           },
           "sentry_key": {
-            "type": "string",
-            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens.\n\n`null` without `client-keys:read` on the project, as is `dsn`."
           },
           "slug": {
             "type": "string"

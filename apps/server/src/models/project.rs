@@ -319,9 +319,12 @@ pub struct ProjectResponse {
     /// same key without hyphens.
     // A key carried over from Sentry is random hex, so the spec must not
     // promise the version and variant digits a UUID check asserts.
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
-    pub sentry_key: Uuid,
-    pub dsn: String,
+    ///
+    /// `null` without `client-keys:read` on the project, as is `dsn`.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, required))]
+    pub sentry_key: Option<Uuid>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub dsn: Option<String>,
     pub stored_event_count: i32,
     pub digested_event_count: i32,
     /// Events the quota dropped after ingest had accepted them.
@@ -370,8 +373,8 @@ impl Project {
             id: self.id,
             name: self.name.clone(),
             slug: self.slug.clone(),
-            sentry_key: self.sentry_key,
-            dsn: self.dsn(base_url),
+            sentry_key: Some(self.sentry_key),
+            dsn: Some(self.dsn(base_url)),
             stored_event_count: self.stored_event_count,
             digested_event_count: self.digested_event_count,
             rate_limited_event_count: self.rate_limited_event_count,

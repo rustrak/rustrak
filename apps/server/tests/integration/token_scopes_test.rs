@@ -341,3 +341,29 @@ async fn tokens_written_before_hashing_keep_working_once_hashed() {
     let app = app!(db.pool.clone());
     assert_eq!(status(&app, "/api/tokens", raw).await, 200);
 }
+
+/// An empty list limits to nothing; only an omitted one means unlimited. Each
+/// case empties one field, so a regression in either changes its own answer.
+#[actix_web::test]
+async fn an_empty_scope_field_reaches_nothing() {
+    let db = TestDb::new().await;
+    owner_token(&db.pool).await;
+    let p = project(&db.pool, "p").await;
+    let app = app!(db.pool.clone());
+    let session = login(&app, "o@x.com").await;
+    let logs = json!([{ "resource": "logs", "action": "read" }]);
+
+    for scope in [
+        json!({ "permissions": [], "project_ids": [p] }),
+        json!({ "permissions": logs, "project_ids": [] }),
+    ] {
+        let (code, body) = create(&app, &session, scope).await;
+        assert_eq!(code, 201, "{body}");
+        let token = body["token"].as_str().unwrap();
+        assert_eq!(
+            status(&app, &format!("/api/projects/{p}/logs"), token).await,
+            404,
+            "{body}"
+        );
+    }
+}

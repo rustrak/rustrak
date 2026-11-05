@@ -54,11 +54,12 @@ impl InvitationService {
 
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            INSERT INTO invitations (token, email, role, status, expires_at, invited_by, role_id, project_id)
-            VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
-            RETURNING token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
+            INSERT INTO invitations (id, token, email, role, status, expires_at, invited_by, role_id, project_id)
+            VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8)
+            RETURNING id, token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             "#,
         )
+        .bind(generate_token())
         .bind(&token)
         .bind(&email)
         .bind(role.as_str())
@@ -76,7 +77,7 @@ impl InvitationService {
     pub async fn get(pool: &DbPool, token: &str) -> AppResult<Option<Invitation>> {
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
+            SELECT id, token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             FROM invitations WHERE token = $1
             "#,
         )
@@ -87,11 +88,26 @@ impl InvitationService {
         Ok(invitation)
     }
 
+    /// Fetches an invitation by its id.
+    pub async fn get_by_id(pool: &DbPool, id: &str) -> AppResult<Option<Invitation>> {
+        let invitation = sqlx::query_as::<_, Invitation>(
+            r#"
+            SELECT id, token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
+            FROM invitations WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(invitation)
+    }
+
     /// Lists all invitations, newest first.
     pub async fn list(pool: &DbPool) -> AppResult<Vec<Invitation>> {
         let invitations = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
+            SELECT id, token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             FROM invitations ORDER BY created_at DESC
             "#,
         )
@@ -115,7 +131,7 @@ impl InvitationService {
     async fn pending_for_email(pool: &DbPool, email: &str) -> AppResult<Option<Invitation>> {
         let invitation = sqlx::query_as::<_, Invitation>(
             r#"
-            SELECT token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
+            SELECT id, token, email, role, status, expires_at, invited_by, created_at, accepted_at, email_sent_at, role_id, project_id
             FROM invitations WHERE LOWER(email) = LOWER($1) AND status = 'pending'
             "#,
         )
@@ -205,11 +221,11 @@ impl InvitationService {
     }
 
     /// Revokes a pending invitation.
-    pub async fn revoke(pool: &DbPool, token: &str) -> AppResult<()> {
+    pub async fn revoke(pool: &DbPool, id: &str) -> AppResult<()> {
         let result = sqlx::query(
-            "UPDATE invitations SET status = 'revoked' WHERE token = $1 AND status = 'pending'",
+            "UPDATE invitations SET status = 'revoked' WHERE id = $1 AND status = 'pending'",
         )
-        .bind(token)
+        .bind(id)
         .execute(pool)
         .await?;
 

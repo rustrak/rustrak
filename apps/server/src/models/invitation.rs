@@ -36,6 +36,7 @@ impl InvitationStatus {
 
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Invitation {
+    pub id: String,
     pub token: String,
     pub email: String,
     pub role: String,
@@ -96,7 +97,12 @@ pub struct AcceptInvitation {
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct InvitationResponse {
-    pub token: String,
+    /// What resending and revoking address it by.
+    pub id: String,
+    /// Claims the account, so it is `null` for a reader who could not have
+    /// created this invitation.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub token: Option<String>,
     pub email: String,
     #[cfg_attr(feature = "openapi", schema(value_type = crate::models::UserRole))]
     pub role: String,
@@ -115,7 +121,8 @@ pub struct InvitationResponse {
 impl From<Invitation> for InvitationResponse {
     fn from(i: Invitation) -> Self {
         Self {
-            token: i.token,
+            id: i.id,
+            token: Some(i.token),
             email: i.email,
             role: i.role,
             status: i.status,
@@ -135,6 +142,7 @@ mod tests {
 
     fn invite(status: &str, expires_at: DateTime<Utc>) -> Invitation {
         Invitation {
+            id: "i".to_string(),
             token: "t".repeat(40),
             email: "a@b.com".into(),
             role: "member".into(),
