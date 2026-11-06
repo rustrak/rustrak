@@ -1756,6 +1756,10 @@
     },
     "footer": {
       "docs": "文档"
+    },
+    "panel": {
+      "title": "自托管错误监控。",
+      "subtitle": "兼容 Sentry SDK。你的基础设施，你的数据。"
     }
   },
   "invite": {

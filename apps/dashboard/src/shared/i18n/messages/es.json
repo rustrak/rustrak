@@ -1756,6 +1756,10 @@
     },
     "footer": {
       "docs": "Documentación"
+    },
+    "panel": {
+      "title": "Monitorización de errores autoalojada.",
+      "subtitle": "Compatible con los SDK de Sentry. Tu infraestructura, tus datos."
     }
   },
   "invite": {

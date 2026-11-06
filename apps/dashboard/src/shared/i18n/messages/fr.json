@@ -1756,6 +1756,10 @@
     },
     "footer": {
       "docs": "Documentation"
+    },
+    "panel": {
+      "title": "Surveillance des erreurs auto-hébergée.",
+      "subtitle": "Compatible avec les SDK Sentry. Votre infrastructure, vos données."
     }
   },
   "invite": {

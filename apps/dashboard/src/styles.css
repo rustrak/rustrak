@@ -30,26 +30,12 @@
 }
 
 /*
- * The login's light coming on: the beam swings in from a steeper angle while
- * it fades up, the shadow settles, and only then does the card catch it -- the
- * edge first, then the highlight running along the top away from the source.
- * Every animation ends where the static page already is, so `motion-safe:`
- * alone is the reduced-motion story: without it nothing moves and the light is
- * simply there.
+ * The login's entrance. Every animation ends where the static page already is,
+ * so `motion-safe:` alone is the reduced-motion story: without it nothing moves.
  */
 @theme {
-  --animate-login-beam: login-beam 1.8s var(--ease-entrance) both;
   --animate-login-fade: login-fade 1.2s var(--ease-entrance) both;
-  --animate-login-wipe: login-wipe 1.6s var(--ease-entrance) both;
   --animate-login-rise: login-rise 0.7s var(--ease-entrance) both;
-  --animate-login-sweep: login-sweep 1.6s var(--ease-entrance) both;
-
-  @keyframes login-beam {
-    from {
-      opacity: 0;
-      rotate: 14deg;
-    }
-  }
 
   @keyframes login-fade {
     from {
@@ -65,31 +51,31 @@
     }
   }
 
-  /* Light coming on from a corner: it brightens while its reach grows, and
-     the reach is a mask with a long feathered edge rather than a clip, so
-     there is never a hard front. The mask is a radial gradient anchored at
-     the source and scaled up; the element's own classes hold the end size. */
-  @keyframes login-sweep {
-    from {
-      opacity: 0;
-      mask-size: 60% 60%;
-    }
-  }
-
-  /* The highlight along the top edge, arriving from the source side. A
-     feathered mask slides across instead of a clip, so it has no hard front;
-     the element's own classes hold the end position. */
-  @keyframes login-wipe {
-    from {
-      opacity: 0;
-      mask-position: 0% 0%;
+  @keyframes login-orbit {
+    to {
+      rotate: 360deg;
     }
   }
 }
 
+/* Inline, so it reads the duration each ring sets for itself. */
+@theme inline {
+  --animate-login-orbit: login-orbit var(--orbit-duration) linear infinite;
+}
+
+/* The login panel's edges falling away. In the dark theme they reach the
+   frame's tone; on white that is a pale veil that washes out the logos, so there
+   it is a tighter, greyer edge. */
+.login-vignette {
+  box-shadow: inset 0 0 180px 70px var(--surface-canvas);
+}
+[data-theme="light"] .login-vignette {
+  box-shadow: inset 0 0 110px 10px var(--surface-active);
+}
+
 /* The login form's own blocks -- heading, SSO, the fields, the button --
-   follow the card in one after another, a beat apart. The form itself does
-   not move; its children do, so a block is never animated twice. */
+   arrive one after another, a beat apart. The form itself does not move; its
+   children do, so a block is never animated twice. */
 @media (prefers-reduced-motion: no-preference) {
   .login-stagger > div > :not(form),
   .login-stagger form > * {
