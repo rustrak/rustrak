@@ -27,12 +27,17 @@ const THUD = 1.2;
 
 /** How curved a streak may be, as shares of its length, gentlest first. */
 const BENDS = [0.2, 0.32, 0.45, 0.6, 0.75];
-/** A tile's half-diagonal, plus how far one drifts in a streak's flight. */
-const CLEARANCE = 46;
+/**
+ * How far a streak keeps from another tile, as a share of a tile's width: its
+ * half-diagonal, plus how far one drifts in a streak's flight. Tiles and orbits
+ * are sized in rem, so all of it grows with the browser's font size.
+ */
+const CLEARANCE = 1.1;
+/** Where a streak leaves its own tile, as a share of a tile's width. */
+const TILE_EDGE = 0.55;
 
 const TONES = ['--sev-error', '--sev-warning', '--fg-subtle'];
 const TAIL = 0.4;
-const TILE_RADIUS = 24;
 const IMPACT_LIFE = 0.5;
 /** A streak's width, opacity, and share of the tail, back to front. */
 const COMET = [
@@ -70,7 +75,12 @@ function pointAt(points: Strike['points'], s: number): Point {
 }
 
 /** The gentlest curve from `from` to `to` that passes no other tile, if any. */
-function findCurve(from: Point, to: Point, obstacles: Point[]) {
+function findCurve(
+  from: Point,
+  to: Point,
+  obstacles: Point[],
+  clearance: number,
+) {
   const heading = Math.atan2(to.y - from.y, to.x - from.x);
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
   const side = Math.random() < 0.5 ? -1 : 1;
@@ -83,7 +93,7 @@ function findCurve(from: Point, to: Point, obstacles: Point[]) {
         y: (from.y + to.y) / 2 + Math.cos(heading) * offset,
       };
       const points = sampleCurve(from, control, to);
-      if (clearOf(points, obstacles, CLEARANCE)) return { control, points };
+      if (clearOf(points, obstacles, clearance)) return { control, points };
     }
   }
   return null;
@@ -175,9 +185,10 @@ export function runStrikes(canvas: HTMLCanvasElement, stage: HTMLElement) {
       (rect.height * (BODY_BOTTOM - BODY_TOP)) / 2,
     );
     const away = Math.atan2(land.y - tileCenter.y, land.x - tileCenter.x);
+    const tileWidth = tiles[index].offsetWidth;
     const from = {
-      x: tileCenter.x + Math.cos(away) * TILE_RADIUS,
-      y: tileCenter.y + Math.sin(away) * TILE_RADIUS,
+      x: tileCenter.x + Math.cos(away) * tileWidth * TILE_EDGE,
+      y: tileCenter.y + Math.sin(away) * tileWidth * TILE_EDGE,
     };
 
     // Boxed in by the others for now: this one waits for another turn.
@@ -185,6 +196,7 @@ export function runStrikes(canvas: HTMLCanvasElement, stage: HTMLElement) {
       from,
       land,
       centers.filter((_, i) => i !== index),
+      tileWidth * CLEARANCE,
     );
     if (!curve) return;
     const { control, points } = curve;
@@ -368,6 +380,9 @@ export function runStrikes(canvas: HTMLCanvasElement, stage: HTMLElement) {
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // What is in flight was aimed at where the wordmark used to be.
+    strikes.length = 0;
+    impacts.length = 0;
   };
   const sizes = new ResizeObserver(resize);
   sizes.observe(canvas);
@@ -383,5 +398,7 @@ export function runStrikes(canvas: HTMLCanvasElement, stage: HTMLElement) {
     cancelAnimationFrame(frame);
     sizes.disconnect();
     visibility.disconnect();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.style.mixBlendMode = '';
   };
 }

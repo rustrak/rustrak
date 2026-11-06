@@ -40,14 +40,32 @@ export function LoginOrbit() {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (
-      !stage.current ||
-      !canvas.current ||
-      matchMedia('(prefers-reduced-motion: reduce)').matches
-    ) {
-      return;
-    }
-    return runStrikes(canvas.current, stage.current);
+    const stageEl = stage.current;
+    const canvasEl = canvas.current;
+    if (!stageEl || !canvasEl) return;
+
+    // The effect reads the theme's colours when it starts, so a new theme, like
+    // a new motion preference, means starting it over.
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    let stop: (() => void) | undefined;
+    const restart = () => {
+      stop?.();
+      stop = motion.matches ? undefined : runStrikes(canvasEl, stageEl);
+    };
+    restart();
+
+    motion.addEventListener('change', restart);
+    const theme = new MutationObserver(restart);
+    theme.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+
+    return () => {
+      stop?.();
+      motion.removeEventListener('change', restart);
+      theme.disconnect();
+    };
   }, []);
 
   return (
