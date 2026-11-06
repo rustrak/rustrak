@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.4
+
+### Patch Changes
+
+- [`48c0479`](https://github.com/rustrak/rustrak/commit/48c04791b286e0bc622bf306a65f746d5724bbeb) Thanks [@AbianS](https://github.com/AbianS)! - Document roles and permissions, scoped API tokens and the upgrade to 0.25, and re-record the team and token demos.
+
 ## 0.17.3
 
 ### Patch Changes
