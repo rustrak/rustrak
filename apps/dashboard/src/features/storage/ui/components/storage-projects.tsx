@@ -23,10 +23,13 @@ const SEARCH_FROM = 8;
 export function StorageProjects({
   projects,
   settings,
+  readOnly,
   onEditRetention,
 }: {
   projects: readonly ProjectShare[];
   settings: RetentionSettings;
+  /** Without `storage:update`: each project's retention shows, not changes. */
+  readOnly: boolean;
   onEditRetention: (project: { id: number; name: string }) => void;
 }) {
   const t = useTranslations('storage');
@@ -127,6 +130,7 @@ export function StorageProjects({
                   <Button
                     variant="ghost"
                     size="sm"
+                    disabled={readOnly}
                     onClick={() => onEditRetention({ id: p.id, name: p.name })}
                     aria-label={t('projects.change', { project: p.name })}
                     title={

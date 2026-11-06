@@ -443,7 +443,12 @@
       "submit": "Invite",
       "sendEmailLabel": "Send the invite by email",
       "sendEmailAria": "Send the invite by email",
-      "sendEmailUnavailable": "Add an email integration in Settings → Integrations (or set SMTP_HOST), and set DASHBOARD_URL or PUBLIC_URL, to send invite emails"
+      "sendEmailUnavailable": "Add an email integration in Settings → Integrations (or set SMTP_HOST), and set DASHBOARD_URL or PUBLIC_URL, to send invite emails",
+      "accessHint": "Permissions granted once the invitation is accepted.",
+      "noRole": "No access",
+      "ownerHint": "Unrestricted access to all projects and settings, including management of other owners.",
+      "whereLabel": "Scope",
+      "allProjects": "All projects"
     },
     "toast": {
       "createFailed": "Failed to create invitation",
@@ -478,11 +483,13 @@
       "manageDescription": "Manage who can access this project and their roles.",
       "readOnlyDescription": "People with access to this project.",
       "addMember": "Add Member",
-      "empty": "No members yet"
+      "empty": "No members yet",
+      "save": "Save"
     },
     "remove": {
       "title": "Remove Member",
       "description": "Remove {email} from this project? They will lose access until they are added again.",
+      "keepsInherited": "Remove {email}'s roles on this project? They keep the roles they hold on every project.",
       "removing": "Removing...",
       "confirm": "Remove"
     },
@@ -539,9 +546,7 @@
       "description": "This permanently removes the user and their access to all projects. This action cannot be undone."
     },
     "roles": {
-      "viewer": "Viewer",
-      "editor": "Editor",
-      "admin": "Admin",
+      "admin": "Owner",
       "member": "Member"
     }
   },
@@ -608,7 +613,8 @@
     "selectedCount": "{count, plural, =1 {# selected} other {# selected}}",
     "empty": {
       "title": "No projects yet",
-      "hint": "Create your first project to start tracking errors"
+      "hint": "Create your first project to start tracking errors",
+      "noAccessHint": "Contact an owner to request access to a project."
     },
     "newProject": "New Project",
     "delete": "Delete",
@@ -1100,6 +1106,7 @@
       "editMetaTitle": "Edit {name} | Alerts | Rustrak",
       "emptyTitle": "No alerts yet",
       "emptyDescription": "Pick what you want to hear about to start. You can have as many alerts as you like — say, new issues in production by email and every new issue to Slack.",
+      "noRules": "No alert rules yet.",
       "failedCount": "{count, plural, one {# failed delivery} other {# failed deliveries}}",
       "tabRules": "Alerts",
       "tabDeliveries": "Deliveries"
@@ -1478,19 +1485,28 @@
     "create": {
       "trigger": "New Token",
       "createdTitle": "Token Created",
-      "createdDescription": "Copy your token now. You can also retrieve it later from the list.",
+      "createdDescription": "Copy your token now. It won't be shown again.",
       "copyTokenLabel": "Copy the new token",
-      "copyAgainHint": "You can copy this token again anytime from the token list.",
+      "copyAgainHint": "Once you close this dialog, the token can't be retrieved.",
       "done": "Done",
       "title": "Create API Token",
       "description": "Create a new token for programmatic API access.",
       "descriptionLabel": "Description (optional)",
       "descriptionPlaceholder": "e.g., CI/CD Pipeline",
-      "charCount": "{count}/{max} {count, plural, =1 {character} other {characters}}",
       "descriptionTooLong": "Description must be at most {max} characters",
       "cancel": "Cancel",
       "creating": "Creating...",
-      "submit": "Create Token"
+      "submit": "Create Token",
+      "allPermissions": "All my permissions",
+      "permissionsHint": "Limited to the permissions assigned to you.",
+      "projectsHint": "Access never extends beyond your own.",
+      "expiresLabel": "Expiration date (optional)",
+      "expiresHint": "If left blank, the token does not expire.",
+      "customPermissions": "Custom permissions",
+      "permissionsLabel": "Permissions",
+      "projectsLabel": "Projects",
+      "allProjects": "All authorized projects",
+      "allProjectsHint": "Every project you are authorized to access, now or in the future."
     },
     "copyTokenLabel": "Copy token {label}",
     "deleteTokenLabel": "Delete token {label}",
@@ -1529,6 +1545,15 @@
       "cancel": "Cancel",
       "deleting": "Deleting...",
       "confirm": "Delete"
+    },
+    "scope": {
+      "allPermissions": "All account permissions",
+      "permissions": "{count, plural, one {# permission} other {# permissions}}",
+      "allProjects": "all authorized projects",
+      "projects": "{count, plural, one {# project} other {# projects}}",
+      "noExpiry": "no expiration",
+      "expired": "expired",
+      "expires": "expires {date}"
     }
   },
   "storage": {
@@ -2017,7 +2042,8 @@
       "profile": "Profile",
       "preferences": "Preferences",
       "instance": "Instance",
-      "data": "Data"
+      "data": "Data",
+      "roles": "Roles"
     },
     "loadProjectFailed": "Could not load project",
     "loadProjectsFailed": "Could not load projects",
@@ -2062,7 +2088,7 @@
       },
       "title": "Members",
       "subtitle": "Manage your team members and invitations",
-      "notAuthorizedDescription": "Only instance administrators can manage the team. Contact an admin if you need access."
+      "notAuthorizedDescription": "Your access does not include the team. Contact an owner to request it."
     },
     "integrations": {
       "meta": {
@@ -2089,7 +2115,7 @@
       "server": {
         "title": "MCP server",
         "description": "Answers AI assistants at the endpoint below. Off by default; turning it off cuts off every assistant at once.",
-        "adminOnly": "Only an instance admin can turn the MCP server on or off.",
+        "adminOnly": "Your access does not include turning the MCP server on or off.",
         "on": "On",
         "off": "Off",
         "toggleLabel": "Turn the MCP server on or off",
@@ -2169,7 +2195,7 @@
       },
       "title": "Storage",
       "subtitle": "See what Rustrak holds and how long it keeps it",
-      "notAuthorizedDescription": "Only instance administrators can view storage usage and run cleanups. Contact an admin if you need access.",
+      "notAuthorizedDescription": "Your access does not include storage. Contact an owner to request it.",
       "loadFailed": "Could not read storage"
     },
     "account": {
@@ -2270,7 +2296,9 @@
     "data": {
       "title": "Data",
       "subtitle": "What this project keeps, and how much it accepts."
-    }
+    },
+    "projectNotAuthorizedDescription": "Your access does not include this section of the project. Contact an owner to request it.",
+    "workspaceNotAuthorizedDescription": "Your access does not include this section. Contact an owner to request it."
   },
   "github": {
     "section": {
@@ -2730,6 +2758,142 @@
       "start": "Start",
       "status": "Status",
       "spanId": "Span id"
+    }
+  },
+  "access": {
+    "meta": {
+      "title": "Roles · Settings"
+    },
+    "title": "Roles",
+    "subtitle": "Reusable permission sets for assigning consistent access across members.",
+    "notAuthorized": "Not authorized",
+    "notAuthorizedDescription": "Viewing roles requires the Roles permission.",
+    "resource": "Resource",
+    "actions": {
+      "read": "View",
+      "create": "Create",
+      "update": "Edit",
+      "delete": "Delete"
+    },
+    "wholeRow": "All actions on {resource}",
+    "general": "General",
+    "modules": {
+      "workspace": "Workspace",
+      "settings": "Settings",
+      "issues": "Issues",
+      "monitoring": "Monitoring",
+      "releases": "Releases",
+      "alerts": "Alerts",
+      "project": "Project"
+    },
+    "resources": {
+      "projects": "Projects",
+      "users": "Users",
+      "invitations": "Invitations",
+      "roles": "Roles",
+      "api-tokens": "Other users' API tokens",
+      "integrations": "Integrations (Slack, webhooks, email)",
+      "github-app": "GitHub app",
+      "storage": "Storage and retention",
+      "mcp": "AI assistants (MCP)",
+      "telemetry": "Telemetry",
+      "issues": "Issues and events",
+      "performance": "Performance and agents",
+      "logs": "Logs",
+      "sessions": "Release health",
+      "releases": "Releases",
+      "source-maps": "Source maps and debug files",
+      "alert-rules": "Alert rules",
+      "monitors": "Cron monitors",
+      "project": "Project settings",
+      "client-keys": "SDK keys (DSN)",
+      "project-members": "Project members",
+      "project-github": "Repository link"
+    },
+    "you": "(you)",
+    "owner": "Owner",
+    "save": "Save",
+    "cancel": "Cancel",
+    "users": {
+      "meta": "{email} · Members",
+      "ownerNote": "Owners have unrestricted access to all projects and settings. Roles do not apply.",
+      "roleAria": "Role",
+      "readOnlySelf": "You cannot modify your own access.",
+      "readOnlyPermission": "Modifying access requires the Users edit permission.",
+      "saved": "Access updated",
+      "saveFailed": "Unable to update access",
+      "accessTitle": "Access",
+      "addAccess": "Add access",
+      "removeAccess": "Remove access",
+      "customize": "Customize",
+      "customRole": "Custom permissions",
+      "customRoleHint": "Permissions specific to this member. Configure them below.",
+      "noAccessHint": "This member has no roles or permissions yet.",
+      "pickProject": "Select at least one project.",
+      "customTitle": "Custom permissions",
+      "sectionHint": "Define the permissions assigned to this member and where they apply.",
+      "whatLabel": "Role",
+      "whereLabel": "Scope",
+      "everywhere": "Entire workspace",
+      "pickRole": "Select a role",
+      "giveAccess": "Grant access",
+      "noAccessTitle": "No access assigned",
+      "ownerTitle": "Unrestricted access"
+    },
+    "roles": {
+      "title": "Roles",
+      "description": "Assign roles from each member’s page.",
+      "new": "New role",
+      "newTitle": "New role",
+      "empty": "No roles defined",
+      "permissionCount": "{count, plural, one {# permission} other {# permissions}}",
+      "name": "Name",
+      "descriptionLabel": "Description",
+      "copyFrom": "Copy permissions from",
+      "fromScratch": "None (start empty)",
+      "create": "Create role",
+      "createFailed": "Unable to create the role",
+      "saved": "Role saved",
+      "saveFailed": "Unable to save the role",
+      "delete": "Delete role",
+      "deleteTitle": "Delete {name}?",
+      "deleteDescription": "Only roles with no assignments can be deleted.",
+      "deleted": "Role deleted",
+      "deleteFailed": "Unable to delete the role",
+      "assignedTo": "{count, plural, =0 {Not assigned} one {# assignment} other {# assignments}}",
+      "meta": "{name} · Roles",
+      "descriptionPlaceholder": "Purpose of this role and the access it provides.",
+      "descriptionHint": "Displayed wherever this role is assigned.",
+      "allProjects": "All projects",
+      "detailsTitle": "Details",
+      "allProjectsHint": "Includes projects created in the future.",
+      "noProjects": "No projects",
+      "noProjectsYet": "No projects available.",
+      "projectCount": "{count, plural, one {# project} other {# projects}}"
+    },
+    "resourceHelp": {
+      "projects": "Create new projects. Requires at least one project permission, which extends to the projects created.",
+      "users": "View members, manage their access and remove them. Only owners can manage other owners.",
+      "invitations": "Send invitations by link or email, view pending invitations and revoke them. Invitations can only include permissions you hold.",
+      "roles": "View, create, edit and delete roles. Roles can only include permissions you hold.",
+      "api-tokens": "View and revoke API tokens belonging to other members. Members manage their own tokens without this permission.",
+      "integrations": "Slack, webhook and email delivery used for alerts and invitations.",
+      "github-app": "The GitHub app that links stack traces and releases to repositories.",
+      "storage": "Disk usage and data retention: configure retention periods and delete or compact historical data.",
+      "mcp": "Enable or disable the MCP server that gives AI assistants access to Rustrak.",
+      "telemetry": "View the anonymous usage report sent by Rustrak.",
+      "issues": "Errors and their events: view, resolve, ignore, assign, merge and delete.",
+      "performance": "Transactions, spans, endpoints and AI agent traces.",
+      "logs": "Project log stream.",
+      "sessions": "Release health: crash-free sessions and users.",
+      "releases": "Releases, their commits and deploys.",
+      "source-maps": "Source maps and debug files used to show readable stack traces.",
+      "alert-rules": "Rules that send notifications by Slack, webhook or email when conditions are met.",
+      "monitors": "Cron monitors and their check-ins.",
+      "project": "Project name, platform, data and products. Delete permanently removes the project and its data.",
+      "client-keys": "SDK keys (DSN) used by applications to send events. Edit allows rotating or disabling them.",
+      "project-members": "Project members and their roles. Edit allows assigning and removing roles in this project.",
+      "project-github": "The GitHub repository linked to this project."
     }
   }
 }

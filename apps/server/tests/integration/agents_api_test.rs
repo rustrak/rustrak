@@ -59,6 +59,7 @@ async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
         pool,
         rustrak::models::CreateAuthToken {
             description: Some("Test token".to_string()),
+            ..Default::default()
         },
     )
     .await

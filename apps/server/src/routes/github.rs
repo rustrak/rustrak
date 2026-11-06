@@ -7,6 +7,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
@@ -16,7 +17,6 @@ use crate::models::github::{
     IssueTemplate, LinkGitHubIssue, ManifestRequest, ManifestResponse, UpdateProjectRepository,
 };
 use crate::models::{Issue, Project};
-use crate::services::access::{self, Action};
 use crate::services::github::{
     client, codeowners_for, repo_path, sync, GitHubClient, GitHubService, CODEOWNERS_PATHS,
 };
@@ -25,16 +25,6 @@ use uuid::Uuid;
 
 const WEB_URL: &str = "https://github.com";
 const STATE_KEY: &str = "github_manifest_state";
-
-fn require_admin(actor: &ApiActor) -> AppResult<()> {
-    if actor.is_admin() {
-        Ok(())
-    } else {
-        Err(AppError::Forbidden(
-            "Admin privileges required to manage GitHub".to_string(),
-        ))
-    }
-}
 
 /// The address GitHub's webhooks reach this server at: `PUBLIC_URL`, else the
 /// bind address. Never the request's `Host`, which the client controls.
@@ -69,7 +59,7 @@ pub async fn status(
     config: web::Data<Config>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::GithubApp, Action::Read, None)?;
     let app = GitHubService::app(pool.get_ref()).await?;
     Ok(HttpResponse::Ok().json(GitHubStatus {
         app: app.as_ref().map(GitHubAppInfo::from),
@@ -131,7 +121,7 @@ pub async fn put_issue_template(
     body: web::Json<IssueTemplate>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::GithubApp, Action::Update, None)?;
     GitHubService::require_app(pool.get_ref()).await?;
     let template = savable_template(body.into_inner())?;
     GitHubService::set_issue_template(pool.get_ref(), &template).await?;
@@ -152,7 +142,7 @@ pub async fn put_issue_template(
 ))]
 /// DELETE /api/github
 pub async fn disconnect(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::GithubApp, Action::Update, None)?;
     GitHubService::delete_app(pool.get_ref()).await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -179,7 +169,7 @@ pub async fn manifest(
     body: web::Json<ManifestRequest>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::GithubApp, Action::Update, None)?;
     let base = public_base(&config);
     // The browser comes back to the dashboard's host, where the session
     // cookie lives; only the webhook goes to PUBLIC_URL.
@@ -245,7 +235,7 @@ pub async fn callback(
     query: web::Query<CallbackQuery>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::GithubApp, Action::Update, None)?;
     let expected: Option<String> = session.remove_as(STATE_KEY).and_then(Result::ok);
     if expected.as_deref() != Some(query.state.as_str()) {
         return Err(AppError::Validation(
@@ -318,7 +308,7 @@ pub async fn installed(
     query: web::Query<InstalledQuery>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::GithubApp, Action::Update, None)?;
     let app = GitHubService::require_app(pool.get_ref()).await?;
     let (login, account_type) = GitHubClient::new(&app)
         .installation_account(query.installation_id)
@@ -362,14 +352,11 @@ pub async fn repositories(
     query: web::Query<RepositoriesQuery>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        query.project_id,
-        Action::UpdateProject,
-    )
-    .await?;
+    actor.require(
+        Resource::ProjectGithub,
+        Action::Update,
+        Some(query.project_id),
+    )?;
     let app = GitHubService::require_app(pool.get_ref()).await?;
     let client = GitHubClient::new(&app);
     let mut repositories = Vec::new();
@@ -391,9 +378,10 @@ async fn require_project(
     pool: &DbPool,
     actor: &ApiActor,
     project_id: i32,
+    resource: Resource,
     action: Action,
 ) -> AppResult<()> {
-    access::require(pool, actor.is_admin(), actor.user_id(), project_id, action).await?;
+    actor.require(resource, action, Some(project_id))?;
     crate::services::ProjectService::get_by_id(pool, project_id).await?;
     Ok(())
 }
@@ -421,7 +409,14 @@ pub async fn get_project_repository(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    require_project(pool.get_ref(), &actor, project_id, Action::ViewProject).await?;
+    require_project(
+        pool.get_ref(),
+        &actor,
+        project_id,
+        Resource::ProjectGithub,
+        Action::Read,
+    )
+    .await?;
     Ok(HttpResponse::Ok()
         .json(GitHubService::project_repository(pool.get_ref(), project_id).await?))
 }
@@ -452,7 +447,14 @@ pub async fn put_project_repository(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    require_project(pool.get_ref(), &actor, project_id, Action::UpdateProject).await?;
+    require_project(
+        pool.get_ref(),
+        &actor,
+        project_id,
+        Resource::ProjectGithub,
+        Action::Update,
+    )
+    .await?;
     if !crate::services::github::is_repo_full_name(&body.repo_full_name) {
         return Err(AppError::Validation("Invalid repository name".into()));
     }
@@ -513,7 +515,14 @@ pub async fn delete_project_repository(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    require_project(pool.get_ref(), &actor, project_id, Action::UpdateProject).await?;
+    require_project(
+        pool.get_ref(),
+        &actor,
+        project_id,
+        Resource::ProjectGithub,
+        Action::Update,
+    )
+    .await?;
     GitHubService::delete_project_repository(pool.get_ref(), project_id).await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -542,7 +551,14 @@ pub async fn sync_codeowners(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    require_project(pool.get_ref(), &actor, project_id, Action::UpdateProject).await?;
+    require_project(
+        pool.get_ref(),
+        &actor,
+        project_id,
+        Resource::ProjectGithub,
+        Action::Update,
+    )
+    .await?;
     let app = GitHubService::require_app(pool.get_ref()).await?;
     let repo = GitHubService::project_repository_row(pool.get_ref(), project_id)
         .await?
@@ -574,9 +590,10 @@ async fn require_issue(
     actor: &ApiActor,
     project_id: i32,
     issue_id: Uuid,
+    resource: Resource,
     action: Action,
 ) -> AppResult<(Project, Issue)> {
-    access::require(pool, actor.is_admin(), actor.user_id(), project_id, action).await?;
+    actor.require(resource, action, Some(project_id))?;
     let project = ProjectService::get_by_id(pool, project_id).await?;
     let issue = IssueService::get_by_id(pool, issue_id).await?;
     if issue.project_id != project_id {
@@ -615,7 +632,8 @@ pub async fn issue_github(
         &actor,
         project_id,
         issue_id,
-        Action::ViewProject,
+        Resource::Issues,
+        Action::Read,
     )
     .await?;
     let mut answer = IssueGitHub {
@@ -681,7 +699,8 @@ pub async fn github_issue_draft(
         &actor,
         project_id,
         issue_id,
-        Action::MutateIssue,
+        Resource::Issues,
+        Action::Update,
     )
     .await?;
     let mut draft = sync::draft(pool.get_ref(), &project, &issue, &config.dashboard_url()).await?;
@@ -734,7 +753,8 @@ pub async fn create_github_issue(
         &actor,
         project_id,
         issue_id,
-        Action::MutateIssue,
+        Resource::Issues,
+        Action::Update,
     )
     .await?;
     let mut input = body.into_inner();
@@ -790,7 +810,8 @@ pub async fn link_github_issue(
         &actor,
         project_id,
         issue_id,
-        Action::MutateIssue,
+        Resource::Issues,
+        Action::Update,
     )
     .await?;
     let link = sync::link_issue(
@@ -835,7 +856,8 @@ pub async fn unlink_github_issue(
         &actor,
         project_id,
         issue_id,
-        Action::MutateIssue,
+        Resource::Issues,
+        Action::Update,
     )
     .await?;
     sync::unlink_issue(pool.get_ref(), issue_id, link_id, actor.user_id()).await?;

@@ -1,24 +1,139 @@
-//! Project member routes.
+//! Project members: who holds which roles on one project.
 //!
-//! Managing members requires the project `admin` role (or global admin).
+//! - GET    /api/projects/{id}/members            — list members (`project-members:read`)
+//! - GET    /api/projects/{id}/members/candidates — who and what can be given (`project-members:update`)
+//! - PUT    /api/projects/{id}/members            — set a member's roles (`project-members:update`)
+//! - DELETE /api/projects/{id}/members/{user_id}  — remove a member (`project-members:update`)
 //!
-//! - GET    /api/projects/{id}/members            — list members
-//! - PUT    /api/projects/{id}/members            — add/update a member
-//! - DELETE /api/projects/{id}/members/{user_id}  — remove a member
+//! Nobody changes their own membership, or hands out a role beyond what they
+//! hold on this project.
 
 use actix_web::{web, HttpResponse};
+use serde::{Deserialize, Serialize};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
-use crate::models::{ProjectRole, UpsertProjectMember};
-use crate::services::access::{self, Action};
-use crate::services::ProjectMemberService;
+#[cfg(feature = "openapi")]
+use crate::services::role::ProjectMember;
+use crate::services::role::RoleRef;
+use crate::services::{ProjectService, RoleService, UsersService};
 
 #[cfg(feature = "openapi")]
-use crate::models::ProjectMemberResponse;
-#[cfg(feature = "openapi")]
 use utoipa::OpenApi;
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SetProjectMember {
+    pub user_id: i32,
+    /// The member's roles on this project; empty removes them.
+    pub role_ids: Vec<i32>,
+}
+
+fn not_yourself(actor: &ApiActor, user_id: i32) -> AppResult<()> {
+    if actor.user_id() == Some(user_id) {
+        return Err(AppError::Forbidden(
+            "You cannot change your own project roles".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Every role being given or taken away must be within the caller's own
+/// permissions on this project.
+async fn require_covered(
+    pool: &DbPool,
+    actor: &ApiActor,
+    project_id: i32,
+    user_id: i32,
+    new_role_ids: &[i32],
+) -> AppResult<()> {
+    // Only roles of the list can be given; what is taken away may be anyone's.
+    let shared = RoleService::list(pool).await?;
+    let all = RoleService::list_all(pool).await?;
+    let current = RoleService::assignments_for(pool, user_id).await?;
+    let new = new_role_ids
+        .iter()
+        .map(|id| shared.iter().find(|r| r.id == *id).ok_or(*id));
+    let old = current
+        .iter()
+        .filter(|a| a.project_id == Some(project_id) && !a.is_personal)
+        .map(|a| all.iter().find(|r| r.id == a.role_id).ok_or(a.role_id));
+    for role in new.chain(old) {
+        let role = role.map_err(|id| {
+            AppError::Validation(format!("Unknown role {id}"))
+                .with_field("role_ids", FieldErrorCode::Invalid)
+        })?;
+        if !actor.access.covers(&role.grants(), Some(project_id)) {
+            return Err(AppError::Forbidden(
+                "You cannot grant permissions you do not hold".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Someone who can be made a member.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberCandidate {
+    pub id: i32,
+    pub email: String,
+}
+
+/// What the caller can choose from when setting a member's roles.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberCandidates {
+    pub users: Vec<MemberCandidate>,
+    pub roles: Vec<RoleRef>,
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/projects/{project_id}/members/candidates",
+    operation_id = "members.candidates",
+    tag = "Members",
+    params(("project_id" = i32, Path, description = "Project ID")),
+    responses(
+        (status = 200, description = "People and roles the caller can give", body = MemberCandidates),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing project-members:update", body = crate::error::ErrorResponse),
+        (status = 404, description = "Project not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Lists the people and the roles the caller can give on the project, so it takes neither `users:read` nor `roles:read` to manage its members.
+pub async fn member_candidates(
+    pool: web::Data<DbPool>,
+    actor: ApiActor,
+    path: web::Path<i32>,
+) -> AppResult<HttpResponse> {
+    let project_id = path.into_inner();
+    actor.require(Resource::ProjectMembers, Action::Update, Some(project_id))?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    // Owners already hold everything, and nobody edits their own membership.
+    let users = UsersService::list(pool.get_ref())
+        .await?
+        .into_iter()
+        .filter(|u| !u.is_admin() && actor.user_id() != Some(u.id))
+        .map(|u| MemberCandidate {
+            id: u.id,
+            email: u.email,
+        })
+        .collect();
+    let roles = RoleService::list(pool.get_ref())
+        .await?
+        .into_iter()
+        .filter(|r| actor.access.covers(&r.grants(), Some(project_id)))
+        .map(|r| RoleRef {
+            id: r.id,
+            name: r.name,
+        })
+        .collect();
+    Ok(HttpResponse::Ok().json(MemberCandidates { users, roles }))
+}
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -27,33 +142,23 @@ use utoipa::OpenApi;
     tag = "Members",
     params(("project_id" = i32, Path, description = "Project ID")),
     responses(
-        (status = 200, description = "List of project members", body = Vec<ProjectMemberResponse>),
+        (status = 200, description = "Project members", body = Vec<ProjectMember>),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing project-members:read", body = crate::error::ErrorResponse),
         (status = 404, description = "Project not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/members
+/// Lists everyone holding a role on the project, with those roles; personal permissions are not roles.
 pub async fn list_members(
     pool: web::Data<DbPool>,
     actor: ApiActor,
     path: web::Path<i32>,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    // Any project member (viewer+) may see who else is on the project; only
-    // mutating membership (PUT/DELETE below) requires the admin role.
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
-
-    let members = ProjectMemberService::list_for_project(pool.get_ref(), project_id).await?;
-
+    actor.require(Resource::ProjectMembers, Action::Read, Some(project_id))?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    let members = RoleService::project_members(pool.get_ref(), project_id).await?;
     Ok(HttpResponse::Ok().json(members))
 }
 
@@ -63,48 +168,42 @@ pub async fn list_members(
     operation_id = "members.upsert",
     tag = "Members",
     params(("project_id" = i32, Path, description = "Project ID")),
-    request_body = UpsertProjectMember,
+    request_body = SetProjectMember,
     responses(
-        (status = 200, description = "Member added or updated", body = crate::models::project_member::ProjectMember),
-        (status = 400, description = "Invalid role", body = crate::error::ErrorResponse),
+        (status = 200, description = "Project members now", body = Vec<ProjectMember>),
+        (status = 400, description = "Unknown role", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing project-members:update, own membership, or a role beyond the caller's", body = crate::error::ErrorResponse),
         (status = 404, description = "Project or user not found", body = crate::error::ErrorResponse),
-        (status = 409, description = "Cannot downgrade last project admin", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/projects/{project_id}/members
+/// Sets the roles a user holds on the project.
 pub async fn upsert_member(
     pool: web::Data<DbPool>,
     actor: ApiActor,
     path: web::Path<i32>,
-    body: web::Json<UpsertProjectMember>,
+    body: web::Json<SetProjectMember>,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    access::require(
+    actor.require(Resource::ProjectMembers, Action::Update, Some(project_id))?;
+    not_yourself(&actor, body.user_id)?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    UsersService::get_by_id(pool.get_ref(), body.user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User {} not found", body.user_id)))?;
+    require_covered(
         pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
+        &actor,
         project_id,
-        Action::ManageMembers,
+        body.user_id,
+        &body.role_ids,
     )
     .await?;
-
-    let body = body.into_inner();
-    // `(role, invalid)` on a 400, the sibling of the 409 raised by
-    // `ProjectMemberService::upsert` when the role is real but would orphan
-    // the last project admin. Same field, same code, different status; see the
-    // `FieldErrorCode::Invalid` docs.
-    let role = ProjectRole::parse(&body.role).ok_or_else(|| {
-        AppError::Validation(format!("Invalid project role: {}", body.role))
-            .with_field("role", FieldErrorCode::Invalid)
-    })?;
-
-    let member =
-        ProjectMemberService::upsert(pool.get_ref(), project_id, body.user_id, role).await?;
-
-    Ok(HttpResponse::Ok().json(member))
+    RoleService::set_project_roles(pool.get_ref(), project_id, body.user_id, &body.role_ids)
+        .await?;
+    let members = RoleService::project_members(pool.get_ref(), project_id).await?;
+    Ok(HttpResponse::Ok().json(members))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -117,42 +216,39 @@ pub async fn upsert_member(
         ("user_id" = i32, Path, description = "User ID"),
     ),
     responses(
-        (status = 204, description = "Member removed"),
+        (status = 204, description = "Removed"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
-        (status = 404, description = "Membership not found", body = crate::error::ErrorResponse),
-        (status = 409, description = "Cannot remove last project admin", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing project-members:update, own membership, or a role beyond the caller's", body = crate::error::ErrorResponse),
+        (status = 404, description = "Project not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{project_id}/members/{user_id}
+/// Removes the roles a user holds on this project; roles on all projects and personal permissions stay.
 pub async fn remove_member(
     pool: web::Data<DbPool>,
     actor: ApiActor,
     path: web::Path<(i32, i32)>,
 ) -> AppResult<HttpResponse> {
     let (project_id, user_id) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ManageMembers,
-    )
-    .await?;
-
-    ProjectMemberService::remove(pool.get_ref(), project_id, user_id).await?;
-
+    actor.require(Resource::ProjectMembers, Action::Update, Some(project_id))?;
+    not_yourself(&actor, user_id)?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    require_covered(pool.get_ref(), &actor, project_id, user_id, &[]).await?;
+    RoleService::set_project_roles(pool.get_ref(), project_id, user_id, &[]).await?;
     Ok(HttpResponse::NoContent().finish())
 }
 
 #[cfg(feature = "openapi")]
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_members, upsert_member, remove_member),
+    paths(list_members, member_candidates, upsert_member, remove_member),
     components(schemas(
-        crate::models::ProjectMemberResponse,
-        crate::models::UpsertProjectMember,
+        ProjectMember,
+        crate::services::role::MemberRole,
+        crate::services::role::RoleRef,
+        SetProjectMember,
+        MemberCandidate,
+        MemberCandidates
     ))
 )]
 pub struct MembersApi;
@@ -163,6 +259,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/api/projects/{project_id}/members")
             .route("", web::get().to(list_members))
             .route("", web::put().to(upsert_member))
+            .route("/candidates", web::get().to(member_candidates))
             .route("/{user_id}", web::delete().to(remove_member)),
     );
 }

@@ -9,6 +9,7 @@ import { ProjectsGrid } from '@/features/project/ui/components/projects-grid';
 import { searchPage } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 /**
  * Window for the per-row stats.
@@ -113,6 +114,7 @@ function ProjectsScreen({
   children: ReactNode;
 }) {
   const t = useTranslations('projectPages');
+  const canCreate = usePermissionsLater().canCreateProject;
   return (
     <div className="flex h-full flex-col">
       <title>{t('projectsList.meta.title')}</title>
@@ -120,13 +122,15 @@ function ProjectsScreen({
         title={t('projectsList.title')}
         summary={summary}
         actions={
-          <Button
-            variant="primary"
-            icon={NewIcon}
-            render={<Link href="/projects/new" />}
-          >
-            {t('projectsList.newProject')}
-          </Button>
+          canCreate ? (
+            <Button
+              variant="primary"
+              icon={NewIcon}
+              render={<Link href="/projects/new" />}
+            >
+              {t('projectsList.newProject')}
+            </Button>
+          ) : null
         }
       />
       <Page>{children}</Page>

@@ -5,7 +5,7 @@ import { tv } from '../../lib/tv';
 
 const popup = tv({
   base: [
-    'flex h-7 max-w-64 items-center gap-2 rounded-md px-2.5',
+    'flex min-h-7 max-w-64 items-center gap-2 rounded-md px-2.5 py-1',
     'border border-border-tooltip bg-surface-tooltip',
     'text-control text-fg-on-tooltip shadow-tooltip',
     popTransition,

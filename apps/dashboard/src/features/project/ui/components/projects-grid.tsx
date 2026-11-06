@@ -7,6 +7,7 @@ import { useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
 import { Link } from '@/shared/ui/components/link';
 import { TablePagination } from '@/shared/ui/components/table-pagination';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { DeleteProjectsDialog } from './delete-projects-dialog';
 import { ProjectCard } from './project-card';
@@ -25,6 +26,8 @@ export function ProjectsGrid({
   loading = false,
 }: ProjectsGridProps) {
   const t = useTranslations('projects');
+  const permissions = usePermissionsLater();
+  const canCreate = permissions.can('projects', 'create');
   const router = useRouter();
   const remove = useMutation(projectMutations.delete());
   const { items, total_count, total_pages, per_page } = page;
@@ -61,16 +64,18 @@ export function ProjectsGrid({
         <EmptyIcon size="2xl" className="mb-2 text-fg-ghost" />
         <Text variant="card-title">{t('empty.title')}</Text>
         <Text variant="meta" tone="subtle">
-          {t('empty.hint')}
+          {canCreate ? t('empty.hint') : t('empty.noAccessHint')}
         </Text>
-        <Button
-          variant="primary"
-          icon={NewIcon}
-          className="mt-4"
-          render={<Link href="/projects/new" />}
-        >
-          {t('newProject')}
-        </Button>
+        {canCreate ? (
+          <Button
+            variant="primary"
+            icon={NewIcon}
+            className="mt-4"
+            render={<Link href="/projects/new" />}
+          >
+            {t('newProject')}
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -82,7 +87,11 @@ export function ProjectsGrid({
           <ProjectCard
             key={project.id}
             project={project}
-            onDelete={setPendingDelete}
+            onDelete={
+              permissions.can('project', 'delete', project.id)
+                ? setPendingDelete
+                : undefined
+            }
           />
         ))}
       </div>

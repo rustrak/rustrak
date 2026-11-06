@@ -464,6 +464,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Missing source-maps:create on every project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1289,6 +1299,78 @@
         ]
       }
     },
+    "/api/access/catalog": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Lists every resource a permission can name, with its module, scope and actions.",
+        "operationId": "access.catalog",
+        "responses": {
+          "200": {
+            "description": "Every resource a permission can name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/access/me": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Returns what the caller may do, on the instance and on each project.",
+        "operationId": "access.me",
+        "responses": {
+          "200": {
+            "description": "What the caller may do",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/github": {
       "get": {
         "tags": [
@@ -1868,7 +1950,8 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "GET /api/alert-channels",
+        "summary": "Lists the channels alerts can go through.",
+        "description": "`integrations:read` sees their credentials masked, `integrations:update` in\nfull. Holding an alert-rules permission on any project is enough for the\nrest, without them: choosing where a rule notifies takes a channel's name,\nnot its secrets.",
         "operationId": "alertChannels.list",
         "responses": {
           "200": {
@@ -1886,6 +1969,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing integrations:read and every alert-rules permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -2238,7 +2331,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "GET /api/invitations — list invitations (admin only)",
+        "summary": "GET /api/invitations — list invitations (needs `invitations:read`)",
         "operationId": "invitations.list",
         "responses": {
           "200": {
@@ -2285,7 +2378,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "POST /api/invitations — create an invitation (admin only)",
+        "summary": "POST /api/invitations — create an invitation (needs `invitations:create`)",
         "description": "With `send_email: true` the invite link is also emailed. A failed send\nstill creates the invitation, with `email_sent_at: null`, so its link can\nbe shared by hand or the email resent.",
         "operationId": "invitations.create",
         "requestBody": {
@@ -2362,7 +2455,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "GET /api/invitations/email-status — whether invitation emails can be sent (admin only)",
+        "summary": "GET /api/invitations/email-status — whether invitation emails can be sent (needs `invitations:read`)",
         "operationId": "invitations.emailStatus",
         "responses": {
           "200": {
@@ -2413,18 +2506,18 @@
         ]
       }
     },
-    "/api/invitations/{token}": {
+    "/api/invitations/{id}": {
       "delete": {
         "tags": [
           "Invitations"
         ],
-        "summary": "DELETE /api/invitations/{token} — revoke a pending invitation (admin only)",
+        "summary": "DELETE /api/invitations/{id} — revoke a pending invitation (needs `invitations:delete`)",
         "operationId": "invitations.revoke",
         "parameters": [
           {
-            "name": "token",
+            "name": "id",
             "in": "path",
-            "description": "Invitation token",
+            "description": "Invitation id",
             "required": true,
             "schema": {
               "type": "string"
@@ -2473,18 +2566,18 @@
         ]
       }
     },
-    "/api/invitations/{token}/resend": {
+    "/api/invitations/{id}/resend": {
       "post": {
         "tags": [
           "Invitations"
         ],
-        "summary": "POST /api/invitations/{token}/resend — email the invite link again (admin only)",
+        "summary": "POST /api/invitations/{id}/resend — email the invite link again (needs `invitations:create`)",
         "operationId": "invitations.resend",
         "parameters": [
           {
-            "name": "token",
+            "name": "id",
             "in": "path",
-            "description": "Invitation token",
+            "description": "Invitation id",
             "required": true,
             "schema": {
               "type": "string"
@@ -2800,7 +2893,7 @@
           "Projects"
         ],
         "summary": "GET /api/projects - List projects with pagination",
-        "description": "Admins see every project. Non-admins see only the projects they belong to.",
+        "description": "Only the projects the caller holds a permission on.",
         "operationId": "projects.list",
         "parameters": [
           {
@@ -2903,7 +2996,10 @@
                             "description": "Products whose data this project drops at ingest."
                           },
                           "dsn": {
-                            "type": "string"
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           },
                           "id": {
                             "type": "integer",
@@ -2946,8 +3042,11 @@
                             "description": "Events the quota dropped after ingest had accepted them."
                           },
                           "sentry_key": {
-                            "type": "string",
-                            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens."
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens.\n\n`null` without `client-keys:read` on the project, as is `dsn`."
                           },
                           "slug": {
                             "type": "string"
@@ -3017,7 +3116,7 @@
           "Projects"
         ],
         "summary": "POST /api/projects - Create a new project",
-        "description": "Any authenticated user may create a project. A non-admin creator is\nautomatically granted the project `admin` role so they can access it.",
+        "description": "Needs `projects:create` and a permission on at least one project, because\nthe creator's own roles extend to the new one. A token limited to chosen\nprojects can create one, but its list does not grow to reach it.",
         "operationId": "projects.create",
         "requestBody": {
           "content": {
@@ -3042,6 +3141,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing projects:create, or no permission on projects",
             "content": {
               "application/json": {
                 "schema": {
@@ -8568,7 +8677,7 @@
         "tags": [
           "Members"
         ],
-        "summary": "GET /api/projects/{project_id}/members",
+        "summary": "Lists everyone holding a role on the project, with those roles; personal permissions are not roles.",
         "operationId": "members.list",
         "parameters": [
           {
@@ -8584,13 +8693,13 @@
         ],
         "responses": {
           "200": {
-            "description": "List of project members",
+            "description": "Project members",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/ProjectMemberResponse"
+                    "$ref": "#/components/schemas/ProjectMember"
                   }
                 }
               }
@@ -8607,7 +8716,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Missing project-members:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -8637,7 +8746,7 @@
         "tags": [
           "Members"
         ],
-        "summary": "PUT /api/projects/{project_id}/members",
+        "summary": "Sets the roles a user holds on the project.",
         "operationId": "members.upsert",
         "parameters": [
           {
@@ -8655,7 +8764,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpsertProjectMember"
+                "$ref": "#/components/schemas/SetProjectMember"
               }
             }
           },
@@ -8663,17 +8772,20 @@
         },
         "responses": {
           "200": {
-            "description": "Member added or updated",
+            "description": "Project members now",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectMember"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectMember"
+                  }
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid role",
+            "description": "Unknown role",
             "content": {
               "application/json": {
                 "schema": {
@@ -8693,7 +8805,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Missing project-members:update, own membership, or a role beyond the caller's",
             "content": {
               "application/json": {
                 "schema": {
@@ -8711,9 +8823,67 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/members/candidates": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Lists the people and the roles the caller can give on the project, so it takes neither `users:read` nor `roles:read` to manage its members.",
+        "operationId": "members.candidates",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "People and roles the caller can give",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberCandidates"
+                }
+              }
+            }
           },
-          "409": {
-            "description": "Cannot downgrade last project admin",
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing project-members:update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -8735,7 +8905,7 @@
         "tags": [
           "Members"
         ],
-        "summary": "DELETE /api/projects/{project_id}/members/{user_id}",
+        "summary": "Removes the roles a user holds on this project; roles on all projects and personal permissions stay.",
         "operationId": "members.remove",
         "parameters": [
           {
@@ -8761,7 +8931,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Member removed"
+            "description": "Removed"
           },
           "401": {
             "description": "Unauthorized",
@@ -8774,7 +8944,7 @@
             }
           },
           "403": {
-            "description": "Forbidden",
+            "description": "Missing project-members:update, own membership, or a role beyond the caller's",
             "content": {
               "application/json": {
                 "schema": {
@@ -8784,17 +8954,7 @@
             }
           },
           "404": {
-            "description": "Membership not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Cannot remove last project admin",
+            "description": "Project not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -11699,6 +11859,297 @@
         ]
       }
     },
+    "/api/roles": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Lists every role with its permissions and how often it is assigned.",
+        "operationId": "roles.list",
+        "responses": {
+          "200": {
+            "description": "Every role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Role"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing roles:read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Creates a role from permissions the caller holds themselves.",
+        "operationId": "roles.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Role"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing roles:create, or a permission the caller lacks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/roles/{id}": {
+      "put": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Replaces a role's name, description and permissions.",
+        "description": "The caller must hold both the permissions being added and those being\nremoved, so nobody strips a role of something they could not give back.",
+        "operationId": "roles.update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Role ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Role"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing roles:update, or a permission the caller lacks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Deletes a role nobody holds.",
+        "operationId": "roles.delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Role ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing roles:delete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Role still assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/schedules/preview": {
       "post": {
         "tags": [
@@ -11761,7 +12212,7 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Whether the MCP endpoint at `/mcp` is on.",
+        "summary": "Whether the MCP endpoint at `/mcp` is on. Open to every member: it is what\nthey point their own assistant at.",
         "operationId": "settings.getMcp",
         "responses": {
           "200": {
@@ -11795,7 +12246,7 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Turns the MCP endpoint at `/mcp` on or off. Instance admins only.",
+        "summary": "Turns the MCP endpoint at `/mcp` on or off (needs `mcp:update`).",
         "operationId": "settings.updateMcp",
         "requestBody": {
           "content": {
@@ -11829,7 +12280,7 @@
             }
           },
           "403": {
-            "description": "Not an instance admin",
+            "description": "Missing mcp:update",
             "content": {
               "application/json": {
                 "schema": {
@@ -11865,7 +12316,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -12250,7 +12701,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -12314,7 +12765,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:update",
             "content": {
               "application/json": {
                 "schema": {
@@ -12370,7 +12821,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -12416,7 +12867,7 @@
             }
           },
           "403": {
-            "description": "Admin privileges required",
+            "description": "Missing storage:delete",
             "content": {
               "application/json": {
                 "schema": {
@@ -12556,7 +13007,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "GET /api/team — list all users (admin only)",
+        "summary": "GET /api/team — list all users (needs `users:read`)",
         "operationId": "team.list",
         "responses": {
           "200": {
@@ -12605,7 +13056,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "DELETE /api/team/{user_id} — remove a user from the instance (admin only)",
+        "summary": "DELETE /api/team/{user_id} — remove a user from the instance (needs `users:delete`)",
         "operationId": "team.deleteUser",
         "parameters": [
           {
@@ -12676,7 +13127,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "PATCH /api/team/{user_id}/role — change a user's global role (admin only)",
+        "summary": "PATCH /api/team/{user_id}/role — change a user's global role (needs `users:update`)",
         "operationId": "team.updateRole",
         "parameters": [
           {
@@ -12814,7 +13265,7 @@
           "Tokens"
         ],
         "summary": "GET /api/tokens - List tokens (masked)",
-        "description": "Admins see all tokens; non-admins see only the tokens they own.",
+        "description": "Everyone sees their own tokens; `api-tokens:read` sees every token. A token\nlimited to other permissions sees none: it must not reach its owner's others.",
         "operationId": "tokens.list",
         "responses": {
           "200": {
@@ -12839,6 +13290,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "A token limited to other permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -12851,7 +13312,8 @@
         "tags": [
           "Tokens"
         ],
-        "summary": "POST /api/tokens - Create a new token (scoped to the acting user)",
+        "summary": "POST /api/tokens - Create a new token (from a signed-in session only)",
+        "description": "A token cannot create tokens: a limited or expiring one could otherwise\nmint itself a way out of its limits.",
         "operationId": "tokens.create",
         "requestBody": {
           "content": {
@@ -12883,6 +13345,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Called with a token, missing api-tokens:create, or a permission the caller lacks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -12897,8 +13369,8 @@
         "tags": [
           "Tokens"
         ],
-        "summary": "GET /api/tokens/{id} - Reveal full token value",
-        "description": "Returns the complete token string. Admins may view any token;\nnon-admins may only view their own.",
+        "summary": "GET /api/tokens/{id} - Token details, masked",
+        "description": "Tokens are stored hashed, so the full value is only ever shown on\ncreation. Everyone may view their own; `api-tokens:read` views any.",
         "operationId": "tokens.get",
         "parameters": [
           {
@@ -12914,11 +13386,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Token details (full token value)",
+            "description": "Token details (masked)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthTokenCreatedResponse"
+                  "$ref": "#/components/schemas/AuthTokenResponse"
                 }
               }
             }
@@ -12965,7 +13437,7 @@
           "Tokens"
         ],
         "summary": "DELETE /api/tokens/{id} - Revoke a token",
-        "description": "Admins may revoke any token; non-admins may only revoke their own.",
+        "description": "Everyone may revoke their own; `api-tokens:delete` revokes any.",
         "operationId": "tokens.delete",
         "parameters": [
           {
@@ -13005,6 +13477,151 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/users/{id}/assignments": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Lists the roles a user holds, on the instance and on each project.",
+        "operationId": "users.assignments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the user holds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing users:read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Replaces every role and personal permission a user holds.",
+        "description": "The caller must hold every role being given or taken away, on the scope\nit applies to.",
+        "operationId": "users.setAssignments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAccess"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "What the user holds now",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown role, or personal permissions with no project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing users:update, own assignments, or a role beyond the caller's",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such user or project",
             "content": {
               "application/json": {
                 "schema": {
@@ -13812,6 +14429,16 @@
           }
         }
       },
+      "Action": {
+        "type": "string",
+        "description": "Something a grant can allow.",
+        "enum": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
       "ActivityEntry": {
         "type": "object",
         "description": "An entry in an issue's activity log. Comments are stored as activity rows of\ntype `note` with `{\"text\": ...}` in `data` (Sentry models notes as activity).",
@@ -14468,6 +15095,26 @@
           }
         }
       },
+      "AssignmentInput": {
+        "type": "object",
+        "required": [
+          "role_id"
+        ],
+        "properties": {
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "`null` reaches every project."
+          },
+          "role_id": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "AttachmentBytes": {
         "description": "The raw bytes of an attachment. Untyped in the spec: the generated\nclient validates bodies with zod, which has no type for a binary one."
       },
@@ -14528,7 +15175,10 @@
           "id",
           "token",
           "description",
-          "created_at"
+          "created_at",
+          "permissions",
+          "project_ids",
+          "expires_at"
         ],
         "properties": {
           "created_at": {
@@ -14541,9 +15191,37 @@
               "null"
             ]
           },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
           "id": {
             "type": "integer",
             "format": "int32"
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "`null`: everything its owner may do."
+          },
+          "project_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "`null`: every project its owner reaches."
           },
           "token": {
             "type": "string"
@@ -14557,8 +15235,12 @@
           "id",
           "token_prefix",
           "description",
+          "user_id",
           "created_at",
-          "last_used_at"
+          "last_used_at",
+          "permissions",
+          "project_ids",
+          "expires_at"
         ],
         "properties": {
           "created_at": {
@@ -14571,6 +15253,13 @@
               "null"
             ]
           },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
           "id": {
             "type": "integer",
             "format": "int32"
@@ -14582,8 +15271,36 @@
             ],
             "format": "date-time"
           },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "`null`: everything its owner may do."
+          },
+          "project_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "`null`: every project its owner reaches."
+          },
           "token_prefix": {
             "type": "string"
+          },
+          "user_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -14780,6 +15497,46 @@
           "updated": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "Catalog": {
+        "type": "object",
+        "required": [
+          "resources"
+        ],
+        "properties": {
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogResource"
+            }
+          }
+        }
+      },
+      "CatalogResource": {
+        "type": "object",
+        "required": [
+          "key",
+          "module",
+          "scope",
+          "actions"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          },
+          "key": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
           }
         }
       },
@@ -15318,6 +16075,35 @@
               "string",
               "null"
             ]
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it stops working. Omitted or `null`: never."
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "What the token may do, within its owner's permissions. Omitted or\n`null`: everything its owner may do."
+          },
+          "project_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "The projects it may reach. Omitted or `null`: every project its owner reaches."
           }
         }
       },
@@ -15367,9 +16153,25 @@
           "email": {
             "type": "string"
           },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Where `role_id` applies; omitted or `null` is the whole instance."
+          },
           "role": {
             "$ref": "#/components/schemas/UserRole",
             "description": "Global role the invited user will receive (`admin` | `member`)."
+          },
+          "role_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "A role the new user holds once they accept, within the inviter's own\npermissions."
           },
           "send_email": {
             "type": "boolean",
@@ -16149,13 +16951,16 @@
         "type": "object",
         "description": "Public-facing invitation (no internal columns beyond what the UI needs).",
         "required": [
+          "id",
           "token",
           "email",
           "role",
           "status",
           "expires_at",
           "created_at",
-          "email_sent_at"
+          "email_sent_at",
+          "role_id",
+          "project_id"
         ],
         "properties": {
           "created_at": {
@@ -16177,14 +16982,36 @@
             "type": "string",
             "format": "date-time"
           },
+          "id": {
+            "type": "string",
+            "description": "What resending and revoking address it by."
+          },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "role": {
             "$ref": "#/components/schemas/UserRole"
+          },
+          "role_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           },
           "status": {
             "type": "string"
           },
           "token": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Claims the account, so it is `null` for a reader who could not have\ncreated this invitation."
           }
         }
       },
@@ -16849,6 +17676,67 @@
           }
         }
       },
+      "MemberCandidate": {
+        "type": "object",
+        "description": "Someone who can be made a member.",
+        "required": [
+          "id",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "MemberCandidates": {
+        "type": "object",
+        "description": "What the caller can choose from when setting a member's roles.",
+        "required": [
+          "users",
+          "roles"
+        ],
+        "properties": {
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleRef"
+            }
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberCandidate"
+            }
+          }
+        }
+      },
+      "MemberRole": {
+        "type": "object",
+        "description": "A role someone holds on a project.",
+        "required": [
+          "id",
+          "name",
+          "inherited"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inherited": {
+            "type": "boolean",
+            "description": "Held on every project: removing them from this one leaves it in place."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "MetricDelta": {
         "type": "object",
         "description": "A counter measured over the requested window alongside the same counter\nover the window immediately before it.\n\n`previous` is `None` when the request asked for all time: there is no\nearlier window to compare against, and reporting `0` there would render as\na misleading \"+100%\" in the UI.",
@@ -17152,6 +18040,42 @@
           }
         }
       },
+      "MyAccess": {
+        "type": "object",
+        "description": "What the caller may do. An owner may do everything and gets empty lists.",
+        "required": [
+          "is_owner",
+          "instance",
+          "all_projects",
+          "projects"
+        ],
+        "properties": {
+          "all_projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "Project permissions held on every project."
+          },
+          "instance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "Workspace permissions."
+          },
+          "is_owner": {
+            "type": "boolean"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectPermissions"
+            },
+            "description": "Project permissions held on one project."
+          }
+        }
+      },
       "OAuthGrant": {
         "type": "object",
         "description": "A connected client, as its user sees it.",
@@ -17202,6 +18126,48 @@
           },
           "slug": {
             "type": "string"
+          }
+        }
+      },
+      "Permission": {
+        "type": "object",
+        "description": "One `(resource, action)` grant.",
+        "required": [
+          "resource",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          }
+        }
+      },
+      "PersonalAccess": {
+        "type": "object",
+        "description": "Permissions given to one person directly, without a role of the list.",
+        "required": [
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          },
+          "project_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Where its project permissions apply. Omitted or `null`: every project."
           }
         }
       },
@@ -17339,28 +18305,21 @@
       },
       "ProjectMember": {
         "type": "object",
+        "description": "A member of one project: someone holding a role on it or on every project.",
         "required": [
-          "id",
-          "project_id",
           "user_id",
-          "role",
-          "created_at"
+          "email",
+          "roles"
         ],
         "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
+          "email": {
+            "type": "string"
           },
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "project_id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "role": {
-            "$ref": "#/components/schemas/ProjectRole"
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberRole"
+            }
           },
           "user_id": {
             "type": "integer",
@@ -17368,27 +18327,20 @@
           }
         }
       },
-      "ProjectMemberResponse": {
+      "ProjectPermissions": {
         "type": "object",
-        "description": "Member row joined with the user's email, for listing a project's team.",
         "required": [
-          "user_id",
-          "email",
-          "role",
-          "created_at"
+          "project_id",
+          "permissions"
         ],
         "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
           },
-          "email": {
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/ProjectRole"
-          },
-          "user_id": {
+          "project_id": {
             "type": "integer",
             "format": "int32"
           }
@@ -17498,7 +18450,10 @@
             "description": "Products whose data this project drops at ingest."
           },
           "dsn": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "integer",
@@ -17541,8 +18496,11 @@
             "description": "Events the quota dropped after ingest had accepted them."
           },
           "sentry_key": {
-            "type": "string",
-            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The DSN's public key: its 32 hex digits in hyphenated UUID form\n(8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the\nsame key without hyphens.\n\n`null` without `client-keys:read` on the project, as is `dsn`."
           },
           "slug": {
             "type": "string"
@@ -17604,15 +18562,6 @@
             "format": "int64"
           }
         }
-      },
-      "ProjectRole": {
-        "type": "string",
-        "description": "Per-project capability level for a member.\n\nOrdered by privilege: `Viewer` < `Editor` < `Admin` (derived `Ord` uses\ndeclaration order). An `Action` maps to the minimum role that may perform it.",
-        "enum": [
-          "viewer",
-          "editor",
-          "admin"
-        ]
       },
       "ProjectStatsSummary": {
         "type": "object",
@@ -18011,6 +18960,34 @@
           }
         }
       },
+      "Resource": {
+        "type": "string",
+        "description": "Every resource a permission can name.",
+        "enum": [
+          "projects",
+          "users",
+          "invitations",
+          "roles",
+          "api-tokens",
+          "integrations",
+          "github-app",
+          "storage",
+          "mcp",
+          "telemetry",
+          "issues",
+          "performance",
+          "logs",
+          "sessions",
+          "releases",
+          "source-maps",
+          "alert-rules",
+          "monitors",
+          "project",
+          "client-keys",
+          "project-members",
+          "project-github"
+        ]
+      },
       "RetentionResponse": {
         "type": "object",
         "required": [
@@ -18171,6 +19148,127 @@
           }
         }
       },
+      "Role": {
+        "type": "object",
+        "description": "A named set of permissions, given to users by an assignment.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "permissions",
+          "assignment_count",
+          "created_at"
+        ],
+        "properties": {
+          "assignment_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many assignments use this role."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          }
+        }
+      },
+      "RoleAssignment": {
+        "type": "object",
+        "description": "A role given to a user. `project_id = null` reaches every project. A role's\nworkspace permissions apply wherever it is held.",
+        "required": [
+          "id",
+          "user_id",
+          "role_id",
+          "role_name",
+          "project_id",
+          "is_personal",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_personal": {
+            "type": "boolean",
+            "description": "The user's own permissions rather than a role of the list."
+          },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "role_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "role_name": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "RoleInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          }
+        }
+      },
+      "RoleRef": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "Schedule": {
         "oneOf": [
           {
@@ -18234,6 +19332,14 @@
             }
           }
         }
+      },
+      "Scope": {
+        "type": "string",
+        "description": "Whether a resource belongs to the workspace or to one project.",
+        "enum": [
+          "instance",
+          "project"
+        ]
       },
       "SeenResponse": {
         "type": "object",
@@ -18763,6 +19869,53 @@
           "total": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "SetAccess": {
+        "type": "object",
+        "description": "Everything a user holds.",
+        "required": [
+          "assignments"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssignmentInput"
+            }
+          },
+          "personal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PersonalAccess",
+                "description": "Omitted or `null`: no personal permissions."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SetProjectMember": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "role_ids"
+        ],
+        "properties": {
+          "role_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "The member's roles on this project; empty removes them."
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -19943,19 +21096,26 @@
           }
         }
       },
-      "UpsertProjectMember": {
+      "UserAccess": {
         "type": "object",
+        "description": "Everything a user holds.",
         "required": [
-          "user_id",
-          "role"
+          "assignments",
+          "personal_permissions"
         ],
         "properties": {
-          "role": {
-            "$ref": "#/components/schemas/ProjectRole"
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleAssignment"
+            }
           },
-          "user_id": {
-            "type": "integer",
-            "format": "int32"
+          "personal_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "What their personal role holds; its places are in `assignments`."
           }
         }
       },

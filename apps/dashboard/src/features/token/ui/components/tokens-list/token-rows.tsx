@@ -7,7 +7,6 @@ import { TokenActions } from './token-actions';
 export interface TokenListProps {
   tokens: AuthTokenResponse[];
   isBusy: (token: AuthTokenResponse) => boolean;
-  onCopy: (token: AuthTokenResponse) => void;
   onDelete: (token: AuthTokenResponse) => void;
 }
 
@@ -18,12 +17,7 @@ export interface TokenListProps {
  * The row is the same at every width. The facts on the right fold away on a
  * phone, and the created / last-used line under the name carries them there.
  */
-export function TokenRows({
-  tokens,
-  isBusy,
-  onCopy,
-  onDelete,
-}: TokenListProps) {
+export function TokenRows({ tokens, isBusy, onDelete }: TokenListProps) {
   const t = useTranslations('tokens');
   const format = useFormatter();
 
@@ -31,6 +25,25 @@ export function TokenRows({
     const created = t('createdOn', {
       date: format.dateTime(new Date(token.created_at), 'date'),
     });
+    // The server already appends "..." to the prefix.
+    const prefix = token.token_prefix.replace(/\.+$/, '');
+    const expired =
+      token.expires_at !== null && new Date(token.expires_at) <= new Date();
+    const scope = [
+      token.permissions === null
+        ? t('scope.allPermissions')
+        : t('scope.permissions', { count: token.permissions.length }),
+      token.project_ids === null
+        ? t('scope.allProjects')
+        : t('scope.projects', { count: token.project_ids.length }),
+      token.expires_at === null
+        ? t('scope.noExpiry')
+        : expired
+          ? t('scope.expired')
+          : t('scope.expires', {
+              date: format.dateTime(new Date(token.expires_at), 'date'),
+            }),
+    ].join(' · ');
     const used = token.last_used_at
       ? t('usedOn', { time: format.relativeTime(new Date(token.last_used_at)) })
       : t('neverUsed');
@@ -45,14 +58,14 @@ export function TokenRows({
         }
         title={
           token.description || (
-            <span className="font-mono text-mono">{token.token_prefix}…</span>
+            <span className="font-mono text-mono">{prefix}…</span>
           )
         }
         description={
           <>
-            <span className="font-mono text-mono-sm">
-              {token.token_prefix}••••••••
-            </span>
+            <span className="font-mono text-mono-sm">{prefix}••••••••</span>
+            {' · '}
+            {scope}
             <span className="sm:hidden">
               {' · '}
               {used}
@@ -69,7 +82,6 @@ export function TokenRows({
           <TokenActions
             token={token}
             busy={isBusy(token)}
-            onCopy={onCopy}
             onDelete={onDelete}
           />
         }

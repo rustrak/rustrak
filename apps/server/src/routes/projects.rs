@@ -1,20 +1,30 @@
 use actix_web::{web, HttpResponse};
 
+use crate::auth::rbac::{Action, ProjectScope, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
-use crate::error::AppResult;
-#[cfg(feature = "openapi")]
-use crate::models::ProjectResponse;
-use crate::models::{CreateProject, ProjectRole, UpdateProject};
+use crate::error::{AppError, AppResult};
+use crate::models::{CreateProject, ProjectResponse, UpdateProject};
 use crate::pagination::{ListProjectsQuery, OffsetPaginatedResponse};
 use crate::routes::period::parse_period_hours;
-use crate::services::access::{self, Action};
 use crate::services::stats::StatsService;
-use crate::services::{ProjectMemberService, ProjectService};
+use crate::services::{ProjectService, RoleService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
+
+/// Seeing a project takes any permission on it; its ingest key takes this one.
+fn keys_if_held(actor: &ApiActor, mut response: ProjectResponse) -> ProjectResponse {
+    if !actor
+        .access
+        .can(Resource::ClientKeys, Action::Read, Some(response.id))
+    {
+        response.sentry_key = None;
+        response.dsn = None;
+    }
+    response
+}
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -30,38 +40,45 @@ use utoipa::OpenApi;
 ))]
 /// GET /api/projects - List projects with pagination
 ///
-/// Admins see every project. Non-admins see only the projects they belong to.
+/// Only the projects the caller holds a permission on.
 pub async fn list_projects(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     query: web::Query<ListProjectsQuery>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    let (projects, total_count) = if actor.is_admin() {
-        ProjectService::list_offset(pool.get_ref(), query.order, query.page, query.per_page).await?
-    } else {
-        let uid = actor
-            .user_id()
-            .ok_or_else(|| crate::error::AppError::Unauthorized("Not authenticated".to_string()))?;
-        let ids = ProjectMemberService::accessible_project_ids(pool.get_ref(), uid).await?;
-        ProjectService::list_offset_for_ids(
-            pool.get_ref(),
-            &ids,
-            query.order,
-            query.page,
-            query.per_page,
-        )
-        .await?
+    let (projects, total_count) = match actor.visible_projects() {
+        ProjectScope::All => {
+            ProjectService::list_offset(pool.get_ref(), query.order, query.page, query.per_page)
+                .await?
+        }
+        ProjectScope::Only(ids) => {
+            ProjectService::list_offset_for_ids(
+                pool.get_ref(),
+                &ids,
+                query.order,
+                query.page,
+                query.per_page,
+            )
+            .await?
+        }
     };
 
     let base_url = build_base_url(&config);
-    let mut responses: Vec<_> = projects.iter().map(|p| p.to_response(&base_url)).collect();
+    let mut responses: Vec<_> = projects
+        .iter()
+        .map(|p| keys_if_held(&actor, p.to_response(&base_url)))
+        .collect();
 
     // Stats are attached to the page that was already fetched, so the extra
     // work scales with `per_page` (capped at 100) and not with the number of
     // projects on the instance.
     if let Some(period_hours) = parse_period_hours(query.stats_period.as_deref()) {
-        let ids: Vec<i32> = responses.iter().map(|p| p.id).collect();
+        let ids: Vec<i32> = responses
+            .iter()
+            .map(|p| p.id)
+            .filter(|&id| actor.access.can(Resource::Issues, Action::Read, Some(id)))
+            .collect();
         let mut stats = StatsService::list_stats(pool.get_ref(), &ids, period_hours).await?;
         for response in &mut responses {
             response.stats = stats.remove(&response.id);
@@ -97,19 +114,12 @@ pub async fn get_project(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Project, Action::Read, Some(id))?;
 
     let project = ProjectService::get_by_id(pool.get_ref(), id).await?;
     let base_url = build_base_url(&config);
 
-    Ok(HttpResponse::Ok().json(project.to_response(&base_url)))
+    Ok(HttpResponse::Ok().json(keys_if_held(&actor, project.to_response(&base_url))))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -121,32 +131,50 @@ pub async fn get_project(
     responses(
         (status = 201, description = "Project created", body = ProjectResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing projects:create, or no permission on projects", body = crate::error::ErrorResponse),
         (status = 409, description = "Conflict", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
 /// POST /api/projects - Create a new project
 ///
-/// Any authenticated user may create a project. A non-admin creator is
-/// automatically granted the project `admin` role so they can access it.
+/// Needs `projects:create` and a permission on at least one project, because
+/// the creator's own roles extend to the new one. A token limited to chosen
+/// projects can create one, but its list does not grow to reach it.
 pub async fn create_project(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     body: web::Json<CreateProject>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
+    actor.require(Resource::Projects, Action::Create, None)?;
+    // Their own roles are what will reach the project: with none that reach
+    // projects, they could never see what they created.
+    if actor.visible_projects() == ProjectScope::Only(vec![]) {
+        return Err(AppError::Forbidden(
+            "Creating a project also requires a project permission".to_string(),
+        ));
+    }
     let project = ProjectService::create(pool.get_ref(), body.into_inner()).await?;
 
-    if !actor.is_admin() {
-        if let Some(uid) = actor.user_id() {
-            ProjectMemberService::upsert(pool.get_ref(), project.id, uid, ProjectRole::Admin)
-                .await?;
-        }
+    // The creator's own roles extend to it, unless they already reach every
+    // project, so it grants nothing new.
+    if let (Some(uid), ProjectScope::Only(_)) = (actor.user_id(), actor.visible_projects()) {
+        RoleService::extend_to_project(pool.get_ref(), uid, project.id).await?;
     }
 
     let base_url = build_base_url(&config);
+    let mut response = project.to_response(&base_url);
+    // `actor` predates the new project, so ask what holds on it.
+    if !actor
+        .access
+        .can_on_new_project(Resource::ClientKeys, Action::Read, project.id)
+    {
+        response.sentry_key = None;
+        response.dsn = None;
+    }
 
-    Ok(HttpResponse::Created().json(project.to_response(&base_url)))
+    Ok(HttpResponse::Created().json(response))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -173,19 +201,12 @@ pub async fn update_project(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        id,
-        Action::UpdateProject,
-    )
-    .await?;
+    actor.require(Resource::Project, Action::Update, Some(id))?;
 
     let project = ProjectService::update(pool.get_ref(), id, body.into_inner()).await?;
     let base_url = build_base_url(&config);
 
-    Ok(HttpResponse::Ok().json(project.to_response(&base_url)))
+    Ok(HttpResponse::Ok().json(keys_if_held(&actor, project.to_response(&base_url))))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -208,14 +229,7 @@ pub async fn delete_project(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        id,
-        Action::DeleteProject,
-    )
-    .await?;
+    actor.require(Resource::Project, Action::Delete, Some(id))?;
 
     ProjectService::delete(pool.get_ref(), id).await?;
 

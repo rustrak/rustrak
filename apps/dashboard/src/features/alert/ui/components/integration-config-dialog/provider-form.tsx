@@ -12,7 +12,8 @@ export interface ConfigFormProps {
     integration: AlertIntegration,
     routingOverride?: Record<string, unknown>,
   ) => void;
-  onDelete: (integration: AlertIntegration) => void;
+  /** Absent without `integrations:delete`. */
+  onDelete?: (integration: AlertIntegration) => void;
   isPending: boolean;
 }
 

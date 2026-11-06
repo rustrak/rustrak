@@ -443,7 +443,12 @@
       "submit": "邀请",
       "sendEmailLabel": "通过邮件发送邀请",
       "sendEmailAria": "通过邮件发送邀请",
-      "sendEmailUnavailable": "在 设置 → 集成 中添加邮件集成（或设置 SMTP_HOST），并设置 DASHBOARD_URL 或 PUBLIC_URL 后才能发送邀请邮件"
+      "sendEmailUnavailable": "在 设置 → 集成 中添加邮件集成（或设置 SMTP_HOST），并设置 DASHBOARD_URL 或 PUBLIC_URL 后才能发送邀请邮件",
+      "accessHint": "接受邀请后授予的权限。",
+      "noRole": "无访问权限",
+      "ownerHint": "不受限制地访问所有项目和设置，包括管理其他所有者。",
+      "whereLabel": "范围",
+      "allProjects": "所有项目"
     },
     "toast": {
       "createFailed": "创建邀请失败",
@@ -478,11 +483,13 @@
       "manageDescription": "管理可以访问此项目的人员及其角色。",
       "readOnlyDescription": "可以访问此项目的人员。",
       "addMember": "添加成员",
-      "empty": "还没有成员"
+      "empty": "还没有成员",
+      "save": "保存"
     },
     "remove": {
       "title": "移除成员",
       "description": "从该项目中移除 {email}？他们将失去访问权限，直到再次被添加。",
+      "keepsInherited": "移除 {email} 在此项目中的角色？其在所有项目中拥有的角色将保留。",
       "removing": "正在移除…",
       "confirm": "移除"
     },
@@ -539,9 +546,7 @@
       "description": "这将永久移除该用户及其对所有项目的访问权限。此操作无法撤销。"
     },
     "roles": {
-      "viewer": "查看者",
-      "editor": "编辑者",
-      "admin": "管理员",
+      "admin": "所有者",
       "member": "成员"
     }
   },
@@ -608,7 +613,8 @@
     "selectedCount": "已选择 {count} 项",
     "empty": {
       "title": "还没有项目",
-      "hint": "创建您的第一个项目以开始跟踪错误"
+      "hint": "创建您的第一个项目以开始跟踪错误",
+      "noAccessHint": "请联系所有者申请项目访问权限。"
     },
     "newProject": "新建项目",
     "delete": "删除",
@@ -1100,6 +1106,7 @@
       "editMetaTitle": "编辑 {name} | 告警 | Rustrak",
       "emptyTitle": "还没有告警",
       "emptyDescription": "选择你想获知的内容开始。告警数量不限：例如生产环境的新问题发邮件，所有新问题发到 Slack。",
+      "noRules": "暂无告警规则。",
       "failedCount": "{count} 次发送失败",
       "tabRules": "告警",
       "tabDeliveries": "发送记录"
@@ -1478,19 +1485,28 @@
     "create": {
       "trigger": "新建令牌",
       "createdTitle": "令牌已创建",
-      "createdDescription": "现在复制您的令牌，之后仍可从列表中获取。",
+      "createdDescription": "请立即复制令牌。它不会再次显示。",
       "copyTokenLabel": "复制新令牌",
-      "copyAgainHint": "您可以随时从令牌列表中再次复制此令牌。",
+      "copyAgainHint": "关闭此对话框后，将无法再获取该令牌。",
       "done": "完成",
       "title": "创建 API 令牌",
       "description": "创建用于程序化 API 访问的新令牌。",
       "descriptionLabel": "描述（可选）",
       "descriptionPlaceholder": "例如：CI/CD 流水线",
-      "charCount": "{count}/{max} 个字符",
       "descriptionTooLong": "描述最多只能有 {max} 个字符",
       "cancel": "取消",
       "creating": "正在创建...",
-      "submit": "创建令牌"
+      "submit": "创建令牌",
+      "allPermissions": "我的全部权限",
+      "permissionsHint": "仅限分配给你的权限。",
+      "projectsHint": "访问权限绝不会超出你的账户权限。",
+      "expiresLabel": "过期日期（可选）",
+      "expiresHint": "留空则令牌不会过期。",
+      "customPermissions": "自定义权限",
+      "permissionsLabel": "权限",
+      "projectsLabel": "项目",
+      "allProjects": "所有已授权项目",
+      "allProjectsHint": "你现在或将来有权访问的所有项目。"
     },
     "copyTokenLabel": "复制令牌 {label}",
     "deleteTokenLabel": "删除令牌 {label}",
@@ -1529,6 +1545,15 @@
       "cancel": "取消",
       "deleting": "正在删除...",
       "confirm": "删除"
+    },
+    "scope": {
+      "allPermissions": "账户的全部权限",
+      "permissions": "{count} 项权限",
+      "allProjects": "所有已授权项目",
+      "projects": "{count} 个项目",
+      "noExpiry": "永不过期",
+      "expired": "已过期",
+      "expires": "{date} 过期"
     }
   },
   "storage": {
@@ -2017,7 +2042,8 @@
       "profile": "个人资料",
       "preferences": "偏好设置",
       "instance": "实例",
-      "data": "数据"
+      "data": "数据",
+      "roles": "角色"
     },
     "loadProjectFailed": "无法加载项目",
     "loadProjectsFailed": "无法加载项目",
@@ -2062,7 +2088,7 @@
       },
       "title": "成员",
       "subtitle": "管理您的团队成员和邀请",
-      "notAuthorizedDescription": "只有实例管理员可以管理团队。如需访问权限，请联系管理员。"
+      "notAuthorizedDescription": "你的访问权限不包含团队。请联系所有者申请。"
     },
     "integrations": {
       "meta": {
@@ -2089,7 +2115,7 @@
       "server": {
         "title": "MCP 服务器",
         "description": "在下方端点响应 AI 助手。默认关闭；关闭后所有助手会立即断开。",
-        "adminOnly": "只有实例管理员可以开启或关闭 MCP 服务器。",
+        "adminOnly": "你的访问权限不包含开启或关闭 MCP 服务器。",
         "on": "已开启",
         "off": "已关闭",
         "toggleLabel": "开启或关闭 MCP 服务器",
@@ -2169,7 +2195,7 @@
       },
       "title": "存储",
       "subtitle": "Rustrak 保存了哪些数据以及保存多久",
-      "notAuthorizedDescription": "只有实例管理员可以查看存储用量并执行清理。如需访问权限，请联系管理员。",
+      "notAuthorizedDescription": "你的访问权限不包含存储。请联系所有者申请。",
       "loadFailed": "无法读取存储信息"
     },
     "account": {
@@ -2270,7 +2296,9 @@
     "data": {
       "title": "数据",
       "subtitle": "此项目保存哪些数据，以及接收多少。"
-    }
+    },
+    "projectNotAuthorizedDescription": "你的访问权限不包含此项目部分。请联系所有者申请。",
+    "workspaceNotAuthorizedDescription": "你的访问权限不包含此部分。请联系所有者申请。"
   },
   "github": {
     "section": {
@@ -2730,6 +2758,142 @@
       "start": "开始",
       "status": "状态",
       "spanId": "Span ID"
+    }
+  },
+  "access": {
+    "meta": {
+      "title": "角色 · 设置"
+    },
+    "title": "角色",
+    "subtitle": "可复用的权限集合，用于为多位成员分配一致的访问权限。",
+    "notAuthorized": "无权访问",
+    "notAuthorizedDescription": "查看角色需要“角色”权限。",
+    "resource": "资源",
+    "actions": {
+      "read": "查看",
+      "create": "创建",
+      "update": "编辑",
+      "delete": "删除"
+    },
+    "wholeRow": "{resource} 的所有操作",
+    "general": "常规",
+    "modules": {
+      "workspace": "工作区",
+      "settings": "设置",
+      "issues": "问题",
+      "monitoring": "监控",
+      "releases": "版本",
+      "alerts": "告警",
+      "project": "项目"
+    },
+    "resources": {
+      "projects": "项目",
+      "users": "用户",
+      "invitations": "邀请",
+      "roles": "角色",
+      "api-tokens": "其他用户的 API 令牌",
+      "integrations": "集成（Slack、Webhook、邮件）",
+      "github-app": "GitHub 应用",
+      "storage": "存储与保留",
+      "mcp": "AI 助手（MCP）",
+      "telemetry": "遥测",
+      "issues": "问题与事件",
+      "performance": "性能与智能体",
+      "logs": "日志",
+      "sessions": "版本健康度",
+      "releases": "版本",
+      "source-maps": "Source map 与调试文件",
+      "alert-rules": "告警规则",
+      "monitors": "Cron 监控",
+      "project": "项目设置",
+      "client-keys": "SDK 密钥（DSN）",
+      "project-members": "项目成员",
+      "project-github": "仓库关联"
+    },
+    "you": "（你）",
+    "owner": "所有者",
+    "save": "保存",
+    "cancel": "取消",
+    "users": {
+      "meta": "{email} · 成员",
+      "ownerNote": "所有者可不受限制地访问所有项目和设置，角色对其不适用。",
+      "roleAria": "角色",
+      "readOnlySelf": "你无法修改自己的访问权限。",
+      "readOnlyPermission": "修改访问权限需要“用户”的编辑权限。",
+      "saved": "访问权限已更新",
+      "saveFailed": "无法更新访问权限",
+      "accessTitle": "访问权限",
+      "addAccess": "添加访问权限",
+      "removeAccess": "移除访问权限",
+      "customize": "自定义",
+      "customRole": "自定义权限",
+      "customRoleHint": "此成员专属的权限，请在下方配置。",
+      "noAccessHint": "此成员尚无任何角色或权限。",
+      "pickProject": "请至少选择一个项目。",
+      "customTitle": "自定义权限",
+      "sectionHint": "定义分配给此成员的权限及其适用范围。",
+      "whatLabel": "角色",
+      "whereLabel": "范围",
+      "everywhere": "整个工作区",
+      "pickRole": "选择角色",
+      "giveAccess": "授予访问权限",
+      "noAccessTitle": "未分配访问权限",
+      "ownerTitle": "不受限制的访问权限"
+    },
+    "roles": {
+      "title": "角色",
+      "description": "可在每位成员的页面分配角色。",
+      "new": "新建角色",
+      "newTitle": "新建角色",
+      "empty": "尚未定义角色",
+      "permissionCount": "{count} 项权限",
+      "name": "名称",
+      "descriptionLabel": "描述",
+      "copyFrom": "复制权限自",
+      "fromScratch": "无（从空白开始）",
+      "create": "创建角色",
+      "createFailed": "无法创建角色",
+      "saved": "角色已保存",
+      "saveFailed": "无法保存角色",
+      "delete": "删除角色",
+      "deleteTitle": "删除 {name}？",
+      "deleteDescription": "只能删除没有分配的角色。",
+      "deleted": "角色已删除",
+      "deleteFailed": "无法删除角色",
+      "assignedTo": "{count, plural, =0 {未分配} other {# 项分配}}",
+      "meta": "{name} · 角色",
+      "descriptionPlaceholder": "此角色的用途及其提供的访问权限。",
+      "descriptionHint": "在分配此角色的位置显示。",
+      "allProjects": "所有项目",
+      "detailsTitle": "详情",
+      "allProjectsHint": "包括将来创建的项目。",
+      "noProjects": "无项目",
+      "noProjectsYet": "暂无可用项目。",
+      "projectCount": "{count, plural, other {# 个项目}}"
+    },
+    "resourceHelp": {
+      "projects": "创建新项目。至少需要一项项目权限，该权限会扩展到所创建的项目。",
+      "users": "查看成员、管理其访问权限并移除成员。只有所有者可以管理其他所有者。",
+      "invitations": "通过链接或邮件发送邀请、查看待处理的邀请并撤销。邀请只能包含你拥有的权限。",
+      "roles": "查看、创建、编辑和删除角色。角色只能包含你拥有的权限。",
+      "api-tokens": "查看和撤销其他成员的 API 令牌。成员无需此权限即可管理自己的令牌。",
+      "integrations": "用于告警和邀请的 Slack、Webhook 和邮件发送。",
+      "github-app": "将堆栈跟踪和版本关联到代码仓库的 GitHub 应用。",
+      "storage": "磁盘用量和数据保留：配置保留期限，并删除或压缩历史数据。",
+      "mcp": "启用或禁用让 AI 助手访问 Rustrak 的 MCP 服务器。",
+      "telemetry": "查看 Rustrak 发送的匿名使用情况报告。",
+      "issues": "错误及其事件：查看、解决、忽略、指派、合并和删除。",
+      "performance": "事务、Span、端点和 AI 代理追踪。",
+      "logs": "项目日志流。",
+      "sessions": "版本健康度：无崩溃会话和用户。",
+      "releases": "版本及其提交和部署。",
+      "source-maps": "用于显示可读堆栈的 Source Map 和调试文件。",
+      "alert-rules": "满足条件时通过 Slack、Webhook 或邮件发送通知的规则。",
+      "monitors": "Cron 监控及其签到。",
+      "project": "项目名称、平台、数据和产品。删除操作将永久移除项目及其数据。",
+      "client-keys": "应用用于发送事件的 SDK 密钥（DSN）。编辑权限可轮换或禁用密钥。",
+      "project-members": "项目成员及其角色。编辑权限可在此项目中分配和移除角色。",
+      "project-github": "与此项目关联的 GitHub 仓库。"
     }
   }
 }

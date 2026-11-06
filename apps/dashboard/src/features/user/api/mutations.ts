@@ -11,10 +11,13 @@ import type {
   AcceptInvitation,
   CreateInvitation,
   LoginRequest,
-  UpsertProjectMember,
+  RoleInput,
+  SetAccess,
+  SetProjectMember,
   UserRole,
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
+import { accessQueries } from '@/shared/api/permissions';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 import { session } from '@/shared/api/session';
@@ -134,13 +137,15 @@ export const userMutations = {
    * names `role` on what it can attribute, so the failure reaches the control.
    * The user is a variable: one mutation serves every row of the roster.
    */
-  updateRole: () =>
+  updateUserRole: () =>
     mutationOptions({
       mutationFn: ({ userId, role }: { userId: number; role: UserRole }) =>
         orThrow(
           api().team.updateRole({ path: { user_id: userId }, body: { role } }),
         ),
-      meta: { invalidates: [userQueries.team().queryKey] },
+      meta: {
+        invalidates: [userQueries.team().queryKey, accessQueries.root()],
+      },
     }),
   /**
    * Remove a user from the instance; the server refuses yourself, the primary
@@ -152,23 +157,50 @@ export const userMutations = {
         orThrow(api().team.deleteUser({ path: { user_id: userId } })),
       meta: { invalidates: [userQueries.team().queryKey, ['projects']] },
     }),
-  /**
-   * Add a member to a project or change their role (upsert by `user_id`). The
-   * server names `role` on a rejected role.
-   */
-  upsertMember: (projectId: number) =>
+  /** Create a role; it opens on its own page next. */
+  createRole: () =>
     mutationOptions({
-      mutationFn: (input: UpsertProjectMember) =>
+      mutationFn: (body: RoleInput) => orThrow(api().roles.create({ body })),
+      meta: { invalidates: [userQueries.roles().queryKey] },
+    }),
+  /** Replace a role's name, description and permissions. */
+  updateRole: (id: number) =>
+    mutationOptions({
+      mutationFn: (body: RoleInput) =>
+        orThrow(api().roles.update({ path: { id }, body })),
+      meta: {
+        invalidates: [userQueries.roles().queryKey, accessQueries.root()],
+      },
+    }),
+  /** Delete a role nobody holds; a role in use comes back as a `conflict`. */
+  deleteRole: () =>
+    mutationOptions({
+      mutationFn: (id: number) => orThrow(api().roles.delete({ path: { id } })),
+      meta: { invalidates: [userQueries.roles().queryKey] },
+    }),
+  /** Replace every role a user holds. */
+  setAssignments: (userId: number) =>
+    mutationOptions({
+      mutationFn: (body: SetAccess) =>
+        orThrow(api().users.setAssignments({ path: { id: userId }, body })),
+      meta: {
+        invalidates: [
+          userQueries.assignments(userId).queryKey,
+          userQueries.roles().queryKey,
+        ],
+      },
+    }),
+  /** Replace the roles someone holds on a project; none removes them. */
+  setProjectMember: (projectId: number) =>
+    mutationOptions({
+      mutationFn: (body: SetProjectMember) =>
         orThrow(
-          api().members.upsert({
-            path: { project_id: projectId },
-            body: input,
-          }),
+          api().members.upsert({ path: { project_id: projectId }, body }),
         ),
       meta: { invalidates: [userQueries.members(projectId).queryKey] },
     }),
-  /** The member is the variable: one mutation serves every row. */
-  removeMember: (projectId: number) =>
+  /** Takes someone's roles on a project away. */
+  removeProjectMember: (projectId: number) =>
     mutationOptions({
       mutationFn: (userId: number) =>
         orThrow(
@@ -192,15 +224,15 @@ export const userMutations = {
   /** Email an invitation's link again. */
   resendInvitation: () =>
     mutationOptions({
-      mutationFn: (input: { token: string }) =>
-        orThrow(api().invitations.resend({ path: { token: input.token } })),
+      mutationFn: (id: string) =>
+        orThrow(api().invitations.resend({ path: { id } })),
       meta: { invalidates: [userQueries.invitations().queryKey] },
     }),
-  /** The token is a variable: one mutation serves every pending row. */
+  /** The id is a variable: one mutation serves every pending row. */
   revokeInvitation: () =>
     mutationOptions({
-      mutationFn: (token: string) =>
-        orThrow(api().invitations.revoke({ path: { token } })),
+      mutationFn: (id: string) =>
+        orThrow(api().invitations.revoke({ path: { id } })),
       meta: { invalidates: [userQueries.invitationsRoot()] },
     }),
 };

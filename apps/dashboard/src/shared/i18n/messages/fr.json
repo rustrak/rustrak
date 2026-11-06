@@ -443,7 +443,12 @@
       "submit": "Inviter",
       "sendEmailLabel": "Envoyer l'invitation par e-mail",
       "sendEmailAria": "Envoyer l'invitation par e-mail",
-      "sendEmailUnavailable": "Ajoutez une intégration e-mail dans Paramètres → Intégrations (ou définissez SMTP_HOST), ainsi que DASHBOARD_URL ou PUBLIC_URL, pour envoyer des e-mails d'invitation"
+      "sendEmailUnavailable": "Ajoutez une intégration e-mail dans Paramètres → Intégrations (ou définissez SMTP_HOST), ainsi que DASHBOARD_URL ou PUBLIC_URL, pour envoyer des e-mails d'invitation",
+      "accessHint": "Permissions accordées une fois l’invitation acceptée.",
+      "noRole": "Aucun accès",
+      "ownerHint": "Accès illimité à tous les projets et réglages, y compris la gestion des autres propriétaires.",
+      "whereLabel": "Portée",
+      "allProjects": "Tous les projets"
     },
     "toast": {
       "createFailed": "Échec de la création de l’invitation",
@@ -478,11 +483,13 @@
       "manageDescription": "Gérez qui peut accéder à ce projet et avec quel rôle.",
       "readOnlyDescription": "Les personnes ayant accès à ce projet.",
       "addMember": "Ajouter un membre",
-      "empty": "Aucun membre pour le moment"
+      "empty": "Aucun membre pour le moment",
+      "save": "Enregistrer"
     },
     "remove": {
       "title": "Supprimer le membre",
       "description": "Supprimer {email} de ce projet ? Cette personne perdra l’accès jusqu’à ce qu’elle soit ajoutée à nouveau.",
+      "keepsInherited": "Retirer les rôles de {email} sur ce projet ? Cette personne conserve les rôles qu’elle détient sur tous les projets.",
       "removing": "Suppression...",
       "confirm": "Supprimer"
     },
@@ -539,9 +546,7 @@
       "description": "Cette action supprime définitivement l’utilisateur et son accès à tous les projets. Elle est irréversible."
     },
     "roles": {
-      "viewer": "Observateur",
-      "editor": "Éditeur",
-      "admin": "Admin",
+      "admin": "Propriétaire",
       "member": "Membre"
     }
   },
@@ -608,7 +613,8 @@
     "selectedCount": "{count, plural, =1 {# sélectionné} other {# sélectionnés}}",
     "empty": {
       "title": "Aucun projet pour le moment",
-      "hint": "Créez votre premier projet pour commencer à suivre les erreurs"
+      "hint": "Créez votre premier projet pour commencer à suivre les erreurs",
+      "noAccessHint": "Contactez un propriétaire pour demander l’accès à un projet."
     },
     "newProject": "Nouveau projet",
     "delete": "Supprimer",
@@ -1100,6 +1106,7 @@
       "editMetaTitle": "Modifier {name} | Alertes | Rustrak",
       "emptyTitle": "Aucune alerte pour l’instant",
       "emptyDescription": "Choisissez de quoi vous voulez être prévenu pour commencer. Vous pouvez avoir autant d’alertes que vous voulez : par exemple les nouveaux problèmes de production par email et tous les nouveaux problèmes sur Slack.",
+      "noRules": "Aucune règle d'alerte pour le moment.",
       "failedCount": "{count, plural, one {# envoi en échec} other {# envois en échec}}",
       "tabRules": "Alertes",
       "tabDeliveries": "Envois"
@@ -1478,19 +1485,28 @@
     "create": {
       "trigger": "Nouveau jeton",
       "createdTitle": "Jeton créé",
-      "createdDescription": "Copiez votre jeton maintenant. Vous pourrez aussi le récupérer plus tard dans la liste.",
+      "createdDescription": "Copiez votre jeton maintenant. Il ne sera plus affiché.",
       "copyTokenLabel": "Copier le nouveau jeton",
-      "copyAgainHint": "Vous pouvez recopier ce jeton à tout moment depuis la liste des jetons.",
+      "copyAgainHint": "Une fois cette fenêtre fermée, le jeton ne pourra plus être récupéré.",
       "done": "Terminé",
       "title": "Créer un jeton API",
       "description": "Créez un nouveau jeton pour un accès programmatique à l’API.",
       "descriptionLabel": "Description (facultatif)",
       "descriptionPlaceholder": "ex. Pipeline CI/CD",
-      "charCount": "{count}/{max} {count, plural, =1 {caractère} other {caractères}}",
       "descriptionTooLong": "La description doit contenir au plus {max} caractères",
       "cancel": "Annuler",
       "creating": "Création...",
-      "submit": "Créer le jeton"
+      "submit": "Créer le jeton",
+      "allPermissions": "Toutes mes permissions",
+      "permissionsHint": "Limitées aux permissions qui vous sont attribuées.",
+      "projectsHint": "L’accès ne dépasse jamais celui de votre compte.",
+      "expiresLabel": "Date d’expiration (facultatif)",
+      "expiresHint": "Si ce champ reste vide, le jeton n’expire pas.",
+      "customPermissions": "Permissions personnalisées",
+      "permissionsLabel": "Permissions",
+      "projectsLabel": "Projets",
+      "allProjects": "Tous les projets autorisés",
+      "allProjectsHint": "Tous les projets auxquels vous avez accès, maintenant ou à l’avenir."
     },
     "copyTokenLabel": "Copier le jeton {label}",
     "deleteTokenLabel": "Supprimer le jeton {label}",
@@ -1529,6 +1545,15 @@
       "cancel": "Annuler",
       "deleting": "Suppression...",
       "confirm": "Supprimer"
+    },
+    "scope": {
+      "allPermissions": "Toutes les permissions du compte",
+      "permissions": "{count, plural, one {# permission} other {# permissions}}",
+      "allProjects": "tous les projets autorisés",
+      "projects": "{count, plural, one {# projet} other {# projets}}",
+      "noExpiry": "sans expiration",
+      "expired": "expiré",
+      "expires": "expire le {date}"
     }
   },
   "storage": {
@@ -2017,7 +2042,8 @@
       "profile": "Profil",
       "preferences": "Préférences",
       "instance": "Instance",
-      "data": "Données"
+      "data": "Données",
+      "roles": "Rôles"
     },
     "loadProjectFailed": "Impossible de charger le projet",
     "loadProjectsFailed": "Impossible de charger les projets",
@@ -2062,7 +2088,7 @@
       },
       "title": "Membres",
       "subtitle": "Gérez les membres de votre équipe et les invitations",
-      "notAuthorizedDescription": "Seuls les administrateurs de l’instance peuvent gérer l’équipe. Contactez un admin si vous avez besoin d’y accéder."
+      "notAuthorizedDescription": "Votre accès n’inclut pas l’équipe. Contactez un propriétaire pour le demander."
     },
     "integrations": {
       "meta": {
@@ -2089,7 +2115,7 @@
       "server": {
         "title": "Serveur MCP",
         "description": "Répond aux assistants IA sur le point de terminaison ci-dessous. Désactivé par défaut ; le désactiver coupe tous les assistants d'un coup.",
-        "adminOnly": "Seul un administrateur de l'instance peut activer ou désactiver le serveur MCP.",
+        "adminOnly": "Votre accès ne permet pas d’activer ou de désactiver le serveur MCP.",
         "on": "Actif",
         "off": "Inactif",
         "toggleLabel": "Activer ou désactiver le serveur MCP",
@@ -2169,7 +2195,7 @@
       },
       "title": "Stockage",
       "subtitle": "Ce que Rustrak conserve et pendant combien de temps",
-      "notAuthorizedDescription": "Seuls les administrateurs de l’instance peuvent consulter l’utilisation du stockage et lancer des nettoyages. Contactez un admin si vous avez besoin d’y accéder.",
+      "notAuthorizedDescription": "Votre accès n’inclut pas le stockage. Contactez un propriétaire pour le demander.",
       "loadFailed": "Impossible de lire le stockage"
     },
     "account": {
@@ -2270,7 +2296,9 @@
     "data": {
       "title": "Données",
       "subtitle": "Ce que ce projet conserve, et combien il en accepte."
-    }
+    },
+    "projectNotAuthorizedDescription": "Votre accès n’inclut pas cette section du projet. Contactez un propriétaire pour le demander.",
+    "workspaceNotAuthorizedDescription": "Votre accès n’inclut pas cette section. Contactez un propriétaire pour le demander."
   },
   "github": {
     "section": {
@@ -2730,6 +2758,142 @@
       "start": "Début",
       "status": "Statut",
       "spanId": "Id du span"
+    }
+  },
+  "access": {
+    "meta": {
+      "title": "Rôles · Paramètres"
+    },
+    "title": "Rôles",
+    "subtitle": "Ensembles de permissions réutilisables pour attribuer le même accès à plusieurs membres.",
+    "notAuthorized": "Non autorisé",
+    "notAuthorizedDescription": "L’affichage des rôles nécessite la permission Rôles.",
+    "resource": "Ressource",
+    "actions": {
+      "read": "Voir",
+      "create": "Créer",
+      "update": "Modifier",
+      "delete": "Supprimer"
+    },
+    "wholeRow": "Toutes les actions sur {resource}",
+    "general": "Général",
+    "modules": {
+      "workspace": "Espace de travail",
+      "settings": "Paramètres",
+      "issues": "Problèmes",
+      "monitoring": "Supervision",
+      "releases": "Versions",
+      "alerts": "Alertes",
+      "project": "Projet"
+    },
+    "resources": {
+      "projects": "Projets",
+      "users": "Utilisateurs",
+      "invitations": "Invitations",
+      "roles": "Rôles",
+      "api-tokens": "Jetons d'API des autres utilisateurs",
+      "integrations": "Intégrations (Slack, webhooks, e-mail)",
+      "github-app": "Application GitHub",
+      "storage": "Stockage et rétention",
+      "mcp": "Assistants IA (MCP)",
+      "telemetry": "Télémétrie",
+      "issues": "Problèmes et événements",
+      "performance": "Performance et agents",
+      "logs": "Journaux",
+      "sessions": "Santé des versions",
+      "releases": "Versions",
+      "source-maps": "Source maps et fichiers de débogage",
+      "alert-rules": "Règles d'alerte",
+      "monitors": "Moniteurs cron",
+      "project": "Paramètres du projet",
+      "client-keys": "Clés SDK (DSN)",
+      "project-members": "Membres du projet",
+      "project-github": "Lien vers le dépôt"
+    },
+    "you": "(vous)",
+    "owner": "Propriétaire",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "users": {
+      "meta": "{email} · Membres",
+      "ownerNote": "Les propriétaires ont un accès illimité à tous les projets et réglages. Les rôles ne s’appliquent pas.",
+      "roleAria": "Rôle",
+      "readOnlySelf": "Vous ne pouvez pas modifier votre propre accès.",
+      "readOnlyPermission": "La modification de l’accès nécessite la permission de modification des utilisateurs.",
+      "saved": "Accès mis à jour",
+      "saveFailed": "Impossible de mettre à jour l’accès",
+      "accessTitle": "Accès",
+      "addAccess": "Ajouter un accès",
+      "removeAccess": "Retirer l’accès",
+      "customize": "Personnaliser",
+      "customRole": "Permissions personnalisées",
+      "customRoleHint": "Permissions propres à ce membre, à configurer ci-dessous.",
+      "noAccessHint": "Ce membre n'a encore aucun rôle ni aucune permission.",
+      "pickProject": "Sélectionnez au moins un projet.",
+      "customTitle": "Permissions personnalisées",
+      "sectionHint": "Définissez les permissions attribuées à ce membre et leur portée.",
+      "whatLabel": "Rôle",
+      "whereLabel": "Portée",
+      "everywhere": "Tout l’espace de travail",
+      "pickRole": "Sélectionnez un rôle",
+      "giveAccess": "Accorder l’accès",
+      "noAccessTitle": "Aucun accès attribué",
+      "ownerTitle": "Accès illimité"
+    },
+    "roles": {
+      "title": "Rôles",
+      "description": "Les rôles s’attribuent depuis la page de chaque membre.",
+      "new": "Nouveau rôle",
+      "newTitle": "Nouveau rôle",
+      "empty": "Aucun rôle défini",
+      "permissionCount": "{count, plural, one {# permission} other {# permissions}}",
+      "name": "Nom",
+      "descriptionLabel": "Description",
+      "copyFrom": "Copier les permissions de",
+      "fromScratch": "Aucun (commencer à vide)",
+      "create": "Créer le rôle",
+      "createFailed": "Impossible de créer le rôle",
+      "saved": "Rôle enregistré",
+      "saveFailed": "Impossible d’enregistrer le rôle",
+      "delete": "Supprimer le rôle",
+      "deleteTitle": "Supprimer {name} ?",
+      "deleteDescription": "Seuls les rôles sans attribution peuvent être supprimés.",
+      "deleted": "Rôle supprimé",
+      "deleteFailed": "Impossible de supprimer le rôle",
+      "assignedTo": "{count, plural, =0 {Non attribué} one {# attribution} other {# attributions}}",
+      "meta": "{name} · Rôles",
+      "descriptionPlaceholder": "Objet de ce rôle et accès qu’il confère.",
+      "descriptionHint": "Affiché partout où ce rôle est attribué.",
+      "allProjects": "Tous les projets",
+      "detailsTitle": "Détails",
+      "allProjectsHint": "Inclut les projets créés à l’avenir.",
+      "noProjects": "Aucun projet",
+      "noProjectsYet": "Aucun projet disponible.",
+      "projectCount": "{count, plural, one {# projet} other {# projets}}"
+    },
+    "resourceHelp": {
+      "projects": "Créer des projets. Nécessite au moins une permission de projet, étendue aux projets créés.",
+      "users": "Consulter les membres, gérer leur accès et les retirer. Seuls les propriétaires peuvent gérer d’autres propriétaires.",
+      "invitations": "Envoyer des invitations par lien ou e-mail, consulter celles en attente et les révoquer. Elles ne peuvent inclure que vos propres permissions.",
+      "roles": "Consulter, créer, modifier et supprimer des rôles. Ils ne peuvent inclure que vos propres permissions.",
+      "api-tokens": "Consulter et révoquer les jetons d’API d’autres membres. Chaque membre gère les siens sans cette permission.",
+      "integrations": "Slack, webhooks et envoi d’e-mails pour les alertes et les invitations.",
+      "github-app": "L’app GitHub qui relie stack traces et releases aux dépôts.",
+      "storage": "Utilisation du disque et rétention : configurer les durées de rétention, supprimer ou compacter les données historiques.",
+      "mcp": "Activer ou désactiver le serveur MCP qui donne aux assistants IA l’accès à Rustrak.",
+      "telemetry": "Consulter le rapport d’utilisation anonyme envoyé par Rustrak.",
+      "issues": "Erreurs et leurs événements : voir, résoudre, ignorer, assigner, fusionner et supprimer.",
+      "performance": "Transactions, spans, endpoints et traces d’agents IA.",
+      "logs": "Flux de journaux du projet.",
+      "sessions": "Santé des releases : sessions et utilisateurs sans crash.",
+      "releases": "Releases, leurs commits et déploiements.",
+      "source-maps": "Source maps et fichiers de débogage pour des stack traces lisibles.",
+      "alert-rules": "Règles qui envoient des notifications par Slack, webhook ou e-mail lorsque leurs conditions sont remplies.",
+      "monitors": "Moniteurs cron et leurs check-ins.",
+      "project": "Nom, plateforme, données et produits du projet. Supprimer retire définitivement le projet et ses données.",
+      "client-keys": "Clés du SDK (DSN) utilisées par les applications pour envoyer des événements. Modifier permet de les renouveler ou de les désactiver.",
+      "project-members": "Membres du projet et leurs rôles. Modifier permet d’attribuer et de retirer des rôles dans ce projet.",
+      "project-github": "Le dépôt GitHub lié à ce projet."
     }
   }
 }

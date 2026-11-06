@@ -5,11 +5,11 @@ import { useTranslations } from 'use-intl';
 import { storageQueries } from '@/features/storage/api/queries';
 import { StorageViewSkeleton } from '@/features/storage/ui/components/storage-skeletons';
 import { StorageView } from '@/features/storage/ui/components/storage-view';
-import { session } from '@/shared/api/session';
+import { startIfAllowed } from '@/shared/api/permissions';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { SettingsEmpty } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
-import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute('/_authenticated/settings/storage')({
   /**
@@ -21,14 +21,17 @@ export const Route = createFileRoute('/_authenticated/settings/storage')({
    * their own panels.
    */
   loader: ({ context: { queryClient } }) => {
-    const answer = session.peek();
-    if (answer?.state === 'authenticated' && answer.user.role === 'admin') {
-      void queryClient.query(storageQueries.retention()).catch(noop);
-      void queryClient.query(storageQueries.summary()).catch(noop);
-      void queryClient.query(storageQueries.projects()).catch(noop);
-      void queryClient.query(storageQueries.age()).catch(noop);
-      void queryClient.query(storageQueries.compaction()).catch(noop);
-    }
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('storage', 'read'),
+      () => {
+        void queryClient.query(storageQueries.retention()).catch(noop);
+        void queryClient.query(storageQueries.summary()).catch(noop);
+        void queryClient.query(storageQueries.projects()).catch(noop);
+        void queryClient.query(storageQueries.age()).catch(noop);
+        void queryClient.query(storageQueries.compaction()).catch(noop);
+      },
+    );
   },
   pendingComponent: StorageLoading,
   component: StoragePage,
@@ -40,10 +43,10 @@ function StoragePage() {
   // between these two is `_authenticated`'s now: telling a visitor "Not
   // authorized" when the truth is "we could not reach the API to find out" is
   // a lie about their permissions, and it is told in one place or none.
-  const user = useSessionUser();
+  const permissions = usePermissions();
 
-  // Guard: storage usage and cleanup are instance-admin only.
-  if (user.role !== 'admin') {
+  // Guard: storage usage and cleanup need `storage:read`.
+  if (!permissions.can('storage', 'read')) {
     return (
       <>
         <title>{t('storage.meta.title')}</title>
@@ -69,6 +72,8 @@ function StoragePage() {
       <StorageView
         title={t('storage.title')}
         subtitle={t('storage.subtitle')}
+        canUpdate={permissions.can('storage', 'update')}
+        canDelete={permissions.can('storage', 'delete')}
       />
     </>
   );

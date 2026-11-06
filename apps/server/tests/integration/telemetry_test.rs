@@ -929,14 +929,10 @@ mod preview {
         )
         .await
         .expect("user");
-        AuthTokenService::create_for_user(
-            pool,
-            CreateAuthToken { description: None },
-            Some(user.id),
-        )
-        .await
-        .expect("token")
-        .token
+        AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user.id))
+            .await
+            .expect("token")
+            .token
     }
 
     macro_rules! app {

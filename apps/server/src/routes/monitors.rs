@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
@@ -8,7 +9,6 @@ use crate::error::AppResult;
 use crate::models::monitor::{CheckInResponse, MonitorEnvironmentStats, MonitorResponse};
 use crate::models::monitor::{CreateMonitor, UpdateMonitor};
 use crate::pagination::OffsetPaginatedResponse;
-use crate::services::access::{self, Action};
 use crate::services::monitor::MonitorService;
 
 #[cfg(feature = "openapi")]
@@ -47,12 +47,13 @@ fn default_per_page() -> i64 {
 }
 
 async fn require(
-    pool: &DbPool,
+    _pool: &DbPool,
     actor: &ApiActor,
     project_id: i32,
+    resource: Resource,
     action: Action,
 ) -> AppResult<()> {
-    access::require(pool, actor.is_admin(), actor.user_id(), project_id, action).await
+    actor.require(resource, action, Some(project_id))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -75,7 +76,7 @@ pub async fn list_monitors(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    require(&pool, &actor, project_id, Action::ViewProject).await?;
+    require(&pool, &actor, project_id, Resource::Monitors, Action::Read).await?;
     let monitors = MonitorService::list(&pool, project_id).await?;
     Ok(HttpResponse::Ok().json(monitors))
 }
@@ -102,7 +103,7 @@ pub async fn get_monitor_stats(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    require(&pool, &actor, project_id, Action::ViewProject).await?;
+    require(&pool, &actor, project_id, Resource::Monitors, Action::Read).await?;
     let period_hours =
         crate::routes::period::parse_period_hours(query.period.as_deref()).unwrap_or(24);
     let stats = MonitorService::stats(
@@ -138,7 +139,14 @@ pub async fn create_monitor(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    require(&pool, &actor, project_id, Action::UpdateProject).await?;
+    require(
+        &pool,
+        &actor,
+        project_id,
+        Resource::Monitors,
+        Action::Create,
+    )
+    .await?;
     let monitor = MonitorService::create(&pool, project_id, body.into_inner()).await?;
     Ok(HttpResponse::Created().json(monitor))
 }
@@ -166,7 +174,7 @@ pub async fn get_monitor(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, slug) = path.into_inner();
-    require(&pool, &actor, project_id, Action::ViewProject).await?;
+    require(&pool, &actor, project_id, Resource::Monitors, Action::Read).await?;
     let monitor = MonitorService::get_by_slug(&pool, project_id, &slug).await?;
     Ok(HttpResponse::Ok().json(monitor))
 }
@@ -197,7 +205,14 @@ pub async fn update_monitor(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, slug) = path.into_inner();
-    require(&pool, &actor, project_id, Action::UpdateProject).await?;
+    require(
+        &pool,
+        &actor,
+        project_id,
+        Resource::Monitors,
+        Action::Update,
+    )
+    .await?;
     let monitor = MonitorService::update(&pool, project_id, &slug, body.into_inner()).await?;
     Ok(HttpResponse::Ok().json(monitor))
 }
@@ -225,7 +240,14 @@ pub async fn delete_monitor(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, slug) = path.into_inner();
-    require(&pool, &actor, project_id, Action::UpdateProject).await?;
+    require(
+        &pool,
+        &actor,
+        project_id,
+        Resource::Monitors,
+        Action::Delete,
+    )
+    .await?;
     MonitorService::delete(&pool, project_id, &slug).await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -255,7 +277,7 @@ pub async fn list_checkins(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, slug) = path.into_inner();
-    require(&pool, &actor, project_id, Action::ViewProject).await?;
+    require(&pool, &actor, project_id, Resource::Monitors, Action::Read).await?;
     let page = query.page.max(1);
     let per_page = query.per_page.clamp(1, 100);
     let (items, total) = MonitorService::list_checkins(

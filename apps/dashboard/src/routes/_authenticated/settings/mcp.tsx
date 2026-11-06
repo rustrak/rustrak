@@ -5,6 +5,7 @@ import { useTranslations } from 'use-intl';
 import { mcpQueries } from '@/features/mcp/api/queries';
 import { ConnectedApps } from '@/features/mcp/ui/components/connected-apps';
 import { McpSettings } from '@/features/mcp/ui/components/mcp-settings';
+import { accessQueries } from '@/shared/api/permissions';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import {
   SettingRow,
@@ -12,13 +13,14 @@ import {
   SettingsListSkeleton,
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
-import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute('/_authenticated/settings/mcp')({
   // Whether the server is on is the page; who is connected arrives after.
   loader: ({ context: { queryClient } }) => {
     void queryClient.query(mcpQueries.connections()).catch(noop);
     void queryClient.query(mcpQueries.settings()).catch(noop);
+    void queryClient.query(accessQueries.me()).catch(noop);
   },
   pendingComponent: McpLoading,
   component: McpPage,
@@ -27,13 +29,13 @@ export const Route = createFileRoute('/_authenticated/settings/mcp')({
 function McpPage() {
   const t = useTranslations('settings');
   const { data: settings } = useSuspenseQuery(mcpQueries.settings());
-  const user = useSessionUser();
+  const permissions = usePermissions();
   return (
     <>
       <title>{t('mcp.meta.title')}</title>
       <McpSettings
         settings={settings}
-        isAdmin={user.role === 'admin'}
+        isAdmin={permissions.can('mcp', 'update')}
         connected={<ConnectedApps />}
       />
     </>

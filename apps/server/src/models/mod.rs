@@ -71,8 +71,8 @@ pub mod issue;
 pub mod log;
 pub mod monitor;
 pub mod project;
-pub mod project_member;
 pub mod release;
+pub mod role;
 pub mod session;
 pub mod source_file;
 pub mod span_v2;
@@ -135,10 +135,10 @@ pub use project::{
     CreateProject, Product, Project, ProjectResponse, UpdateProject, SELECTABLE_PLATFORMS,
     VALID_PLATFORMS,
 };
-pub use project_member::{ProjectMember, ProjectMemberResponse, ProjectRole, UpsertProjectMember};
 pub use release::{
     is_valid_version, CreateRelease, Release, ReleaseResponse, ReleaseSummary, UpdateRelease,
 };
+pub use role::{Permission, PersonalAccess, Role, RoleAssignment};
 pub use span_v2::{parse_span_v2_container, SpanV2Entry};
 pub use stats::{EventTimeseriesPoint, MetricDelta, ProjectStatsSummary};
 pub use storage::{

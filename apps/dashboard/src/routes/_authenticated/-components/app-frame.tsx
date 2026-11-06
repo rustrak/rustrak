@@ -1,4 +1,4 @@
-import type { Product, UserResponse } from '@rustrak/client';
+import type { Product, Resource, UserResponse } from '@rustrak/client';
 import {
   AgentsIcon,
   AppearanceIcon,
@@ -25,6 +25,7 @@ import {
   PerformanceIcon,
   ProjectsIcon,
   ReleasesIcon,
+  SecurityIcon,
   SettingsIcon,
   Sidebar,
   SidebarBrand,
@@ -52,6 +53,7 @@ import {
 } from '@/features/project/model/products';
 import { userMutations } from '@/features/user/api/mutations';
 import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
+import type { Permissions } from '@/shared/lib/permissions';
 import { isSettingsPath } from '@/shared/lib/settings-path';
 import { CommandBar } from '@/shared/ui/components/command-bar/command-bar';
 import { Link } from '@/shared/ui/components/link';
@@ -60,6 +62,7 @@ import {
   usePageTrailCrumbs,
 } from '@/shared/ui/hooks/use-page-trail';
 import { usePathname } from '@/shared/ui/hooks/use-pathname';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
@@ -105,7 +108,10 @@ interface SettingsEntry {
   key: string;
   icon: IconComponent;
   href: string;
-  adminOnly?: boolean;
+  /** Shown only to who may open it; absent means everyone. */
+  visible?: (p: Permissions) => boolean;
+  /** A project page: shown only to who may read this on that project. */
+  reads?: Resource;
 }
 
 const ACCOUNT_SETTINGS: SettingsEntry[] = [
@@ -114,11 +120,23 @@ const ACCOUNT_SETTINGS: SettingsEntry[] = [
 ];
 
 const WORKSPACE_SETTINGS: SettingsEntry[] = [
-  { key: 'team', icon: TeamIcon, href: '/settings/team', adminOnly: true },
+  {
+    key: 'team',
+    icon: TeamIcon,
+    href: '/settings/team',
+    visible: (p) => p.can('users', 'read') || p.can('invitations', 'read'),
+  },
+  {
+    key: 'roles',
+    icon: SecurityIcon,
+    href: '/settings/roles',
+    visible: (p) => p.can('roles', 'read'),
+  },
   {
     key: 'integrations',
     icon: IntegrationsIcon,
     href: '/settings/integrations',
+    visible: (p) => p.can('integrations', 'read'),
   },
   { key: 'apiTokens', icon: TokensIcon, href: '/settings/tokens' },
   { key: 'mcp', icon: AgentsIcon, href: '/settings/mcp' },
@@ -126,18 +144,28 @@ const WORKSPACE_SETTINGS: SettingsEntry[] = [
     key: 'storage',
     icon: StorageIcon,
     href: '/settings/storage',
-    adminOnly: true,
+    visible: (p) => p.can('storage', 'read'),
   },
   { key: 'instance', icon: InfoIcon, href: '/settings/instance' },
 ];
 
 /** A project's settings pages, appended to `/projects/$id/settings`. */
 const PROJECT_SETTINGS: SettingsEntry[] = [
-  { key: 'general', icon: SettingsIcon, href: '/general' },
-  { key: 'data', icon: FacetsIcon, href: '/data' },
-  { key: 'clientKeys', icon: TokensIcon, href: '/client-keys' },
-  { key: 'members', icon: TeamIcon, href: '/members' },
-  { key: 'github', icon: LinkIcon, href: '/github' },
+  { key: 'general', icon: SettingsIcon, href: '/general', reads: 'project' },
+  { key: 'data', icon: FacetsIcon, href: '/data', reads: 'project' },
+  {
+    key: 'clientKeys',
+    icon: TokensIcon,
+    href: '/client-keys',
+    reads: 'client-keys',
+  },
+  { key: 'github', icon: LinkIcon, href: '/github', reads: 'project-github' },
+  {
+    key: 'members',
+    icon: TeamIcon,
+    href: '/members',
+    reads: 'project-members',
+  },
 ];
 
 type NavKey =
@@ -157,6 +185,19 @@ interface NavRoute {
   /** Appended to `/projects/$id`. */
   path: string;
 }
+
+/** What a project page shows, so who cannot read it does not see it. */
+const NAV_READS: Record<NavKey, Resource> = {
+  overview: 'project',
+  issues: 'issues',
+  feedback: 'issues',
+  releases: 'releases',
+  performance: 'performance',
+  logs: 'logs',
+  crons: 'monitors',
+  alerts: 'alert-rules',
+  agents: 'performance',
+};
 
 const OVERVIEW: NavRoute = { key: 'overview', icon: OverviewIcon, path: '' };
 
@@ -277,7 +318,7 @@ export function AppSidebar({ user }: { user: UserResponse }) {
 
   const base = project ? `/projects/${project.id}` : '';
   const { settingsMode, scope, depth } = sidebarScope(pathname, project);
-  const isAdmin = user.role === 'admin';
+  const permissions = usePermissionsLater();
   const switcher: MenuAction[] = [
     {
       id: 'all',
@@ -293,13 +334,17 @@ export function AppSidebar({ user }: { user: UserResponse }) {
       separated: index === 0,
       onSelect: () => router.push(`/projects/${option.id}`),
     })),
-    {
-      id: 'new',
-      label: t('switcher.new'),
-      icon: NewIcon,
-      separated: true,
-      onSelect: () => router.push('/projects/new'),
-    },
+    ...(permissions.canCreateProject
+      ? [
+          {
+            id: 'new',
+            label: t('switcher.new'),
+            icon: NewIcon,
+            separated: true,
+            onSelect: () => router.push('/projects/new'),
+          },
+        ]
+      : []),
   ];
 
   const signOut = () =>
@@ -386,7 +431,7 @@ export function AppSidebar({ user }: { user: UserResponse }) {
           <SettingsNav
             project={project}
             projects={projects}
-            isAdmin={isAdmin}
+            permissions={permissions}
           />
         ) : project ? (
           <ProjectNav project={project} />
@@ -406,11 +451,11 @@ type ProjectOption =
 function SettingsNav({
   project,
   projects,
-  isAdmin,
+  permissions,
 }: {
   project: FrameProject | null;
   projects: ProjectOption[];
-  isAdmin: boolean;
+  permissions: Permissions;
 }) {
   const t = useTranslations('projects');
   const tSettings = useTranslations('settings');
@@ -435,7 +480,7 @@ function SettingsNav({
         ))}
       </SidebarGroup>
       <SidebarGroup label={tSettings('nav.groupWorkspace')}>
-        {WORKSPACE_SETTINGS.filter((e) => !e.adminOnly || isAdmin).map(
+        {WORKSPACE_SETTINGS.filter((e) => e.visible?.(permissions) ?? true).map(
           (entry) => (
             <SettingsLink key={entry.key} entry={entry} pathname={pathname} />
           ),
@@ -452,7 +497,10 @@ function SettingsNav({
                 leading={<ProjectLogo project={option} size={18} />}
                 defaultOpen={option.id === project?.id}
               >
-                {PROJECT_SETTINGS.map((entry) => (
+                {PROJECT_SETTINGS.filter(
+                  (e) =>
+                    !e.reads || permissions.can(e.reads, 'read', option.id),
+                ).map((entry) => (
                   <SettingsLink
                     key={entry.key}
                     entry={{
@@ -475,13 +523,17 @@ function SettingsNav({
 function ProjectNav({ project }: { project: FrameProject }) {
   const t = useTranslations('projects');
   const pathname = usePathname();
+  const permissions = usePermissionsLater();
   const base = `/projects/${project.id}`;
   const active = activeRoute(pathname, base);
   const productRank = orderedProducts(project.product_order);
   // Alerts belongs to no product and is always there.
   const shown = (route: NavRoute) => {
     const product = PRODUCT_OF[route.key];
-    return !product || keepsProduct(project.disabled_products, product);
+    return (
+      permissions.can(NAV_READS[route.key], 'read', project.id) &&
+      (!product || keepsProduct(project.disabled_products, product))
+    );
   };
   const rank = (route: NavRoute) => {
     const product = PRODUCT_OF[route.key];
@@ -495,7 +547,7 @@ function ProjectNav({ project }: { project: FrameProject }) {
         active={active === OVERVIEW}
         render={<Link href={base} />}
       />
-      {GROUPS.map((group) => (
+      {GROUPS.filter((group) => group.routes.some(shown)).map((group) => (
         <SidebarGroup key={group.label} label={t(`nav.${group.label}`)}>
           {group.routes
             .filter(shown)
@@ -520,6 +572,9 @@ function WorkspaceNav({ projects }: { projects: ProjectOption[] }) {
   const t = useTranslations('projects');
   const tSettings = useTranslations('settings');
   const pathname = usePathname();
+  const permissions = usePermissionsLater();
+  const canSeeMembers =
+    permissions.can('users', 'read') || permissions.can('invitations', 'read');
   return (
     <>
       <SidebarItem
@@ -528,12 +583,14 @@ function WorkspaceNav({ projects }: { projects: ProjectOption[] }) {
         active={pathname === '/projects'}
         render={<Link href="/projects" />}
       />
-      <SidebarItem
-        icon={TeamIcon}
-        label={tSettings('nav.team')}
-        active={pathname.startsWith('/settings/team')}
-        render={<Link href="/settings/team" />}
-      />
+      {canSeeMembers ? (
+        <SidebarItem
+          icon={TeamIcon}
+          label={tSettings('nav.team')}
+          active={pathname.startsWith('/settings/team')}
+          render={<Link href="/settings/team" />}
+        />
+      ) : null}
       {projects.length > 0 ? (
         <SidebarGroup label={t('switcher.projects')}>
           {/* ponytail: the first few, until settings lets the reader

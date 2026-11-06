@@ -58,6 +58,7 @@ async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
         pool,
         rustrak::models::CreateAuthToken {
             description: Some("Test token".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -356,6 +357,7 @@ async fn test_delete_token_success() {
         &db.pool,
         rustrak::models::CreateAuthToken {
             description: Some("Token to delete".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -467,6 +469,7 @@ async fn test_cannot_delete_own_token_while_using_it() {
         &db.pool,
         rustrak::models::CreateAuthToken {
             description: Some("Self-delete test".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -512,6 +515,7 @@ async fn test_token_last_used_at_updated() {
         &db.pool,
         rustrak::models::CreateAuthToken {
             description: Some("Last used test".to_string()),
+            ..Default::default()
         },
     )
     .await
@@ -602,44 +606,6 @@ async fn test_empty_bearer_token() {
 // =============================================================================
 // Get Token Tests
 // =============================================================================
-
-#[actix_web::test]
-async fn test_get_token_returns_full_token() {
-    let db = TestDb::new().await;
-    let auth_token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-
-    // Create a token to retrieve
-    let token_to_get = AuthTokenService::create(
-        &db.pool,
-        rustrak::models::CreateAuthToken {
-            description: Some("Token to retrieve".to_string()),
-        },
-    )
-    .await
-    .expect("Failed to create token");
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .configure(routes::tokens::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/tokens/{}", token_to_get.id))
-        .insert_header(("Authorization", format!("Bearer {}", auth_token)))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 200);
-
-    let body: Value = test::read_body_json(resp).await;
-    assert_eq!(body["token"].as_str().unwrap(), token_to_get.token);
-    assert_eq!(body["id"].as_i64().unwrap(), token_to_get.id as i64);
-    assert_eq!(body["description"].as_str().unwrap(), "Token to retrieve");
-}
 
 #[actix_web::test]
 async fn test_get_token_not_found() {

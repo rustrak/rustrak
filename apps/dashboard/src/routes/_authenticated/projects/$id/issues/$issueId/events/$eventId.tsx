@@ -26,7 +26,9 @@ import { issueQueries } from '@/features/issue/api/queries';
 import { assignable } from '@/features/issue/model/assignable';
 import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
+import { startIfAllowed } from '@/shared/api/permissions';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { EventNavigator } from './$eventId/-components/event-navigator';
 import { EventRail } from './$eventId/-components/event-rail';
 import { EventSections } from './$eventId/-components/event-sections';
@@ -65,14 +67,22 @@ export const Route = createFileRoute(
     void queryClient.query(reads.issue).catch(noop);
     void queryClient.query(reads.event).catch(noop);
     void queryClient.query(reads.navigation).catch(noop);
-    void queryClient.query(reads.repository).catch(noop);
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('project-github', 'read', projectId),
+      () => void queryClient.query(reads.repository).catch(noop),
+    );
     void queryClient.infiniteQuery(reads.userReports).catch(noop);
     void queryClient.query(reads.attachments).catch(noop);
     void queryClient.query(reads.stats30d).catch(noop);
     void queryClient.query(reads.aggregates).catch(noop);
     void queryClient.query(reads.activity).catch(noop);
     void queryClient.query(reads.code).catch(noop);
-    void queryClient.query(reads.members).catch(noop);
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('project-members', 'read', projectId),
+      () => void queryClient.query(reads.members).catch(noop),
+    );
   },
   pendingComponent: EventLoading,
   component: EventView,
@@ -94,14 +104,26 @@ function EventView() {
   const { data: issue } = useSuspenseQuery(reads.issue);
   const { data: event } = useSuspenseQuery(reads.event);
   const { data: navigation } = useSuspenseQuery(reads.navigation);
-  const { data: repository } = useSuspenseQuery(reads.repository);
+  const permissions = usePermissions();
+  // Links to the source and assignees are extras: an issue opens without them.
+  const repository =
+    useQuery({
+      ...reads.repository,
+      enabled: permissions.can('project-github', 'read', projectId),
+    }).data ?? null;
   const { data: attachments } = useSuspenseQuery(reads.attachments);
   const stats30d = useQuery(reads.stats30d).data ?? null;
   const aggregates = useQuery(reads.aggregates).data ?? null;
   const activity = useQuery(reads.activity).data ?? [];
   const code = useQuery(reads.code).data ?? null;
   const user = context.state === 'authenticated' ? context.user : null;
-  const members = assignable(useQuery(reads.members).data ?? [], user);
+  const members = assignable(
+    useQuery({
+      ...reads.members,
+      enabled: permissions.can('project-members', 'read', projectId),
+    }).data ?? [],
+    user,
+  );
   const me = user?.id ?? 0;
   const t = useTranslations('projectPages');
   usePageTrail([{ label: issue.short_id, mono: true }]);

@@ -40,6 +40,7 @@ import { searchOneOf } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { QueryState } from '@/shared/ui/components/query-state';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 const VIEWS = ['rules', 'deliveries'] as const;
 const HISTORY = { limit: 100 };
@@ -110,6 +111,13 @@ function AlertsScreen({
   const projectId = Number.parseInt(id, 10);
   const history = useQuery(alertQueries.history(projectId, HISTORY));
   const update = useMutation(alertMutations.updateRule(projectId));
+  const permissions = usePermissionsLater();
+  const canCreate = permissions.can('alert-rules', 'create', projectId);
+  // Who cannot manage channels sees their names, and no way into settings.
+  const canManageChannels = permissions.can('integrations', 'read');
+  // A paused or resumed rule is an update; without it the switches stay put.
+  const busy =
+    update.isPending || !permissions.can('alert-rules', 'update', projectId);
 
   const failed = (history.data ?? []).filter(
     (h) => h.status === 'failed',
@@ -151,23 +159,10 @@ function AlertsScreen({
         }
         actions={
           <div className="flex items-center gap-2">
-            <Button
-              icon={IntegrationsIcon}
-              render={<Link href={channelsHref} />}
-            >
-              {integrations ? (
-                t('overview.channels', { count: integrations.length })
-              ) : (
-                <Skeleton className="h-3 w-16" />
-              )}
-            </Button>
-            <Button
-              variant="primary"
-              icon={NewIcon}
-              render={<Link href={newAlertHref(projectId)} />}
-            >
-              {t('overview.new')}
-            </Button>
+            {canManageChannels ? (
+              <ChannelsButton href={channelsHref} integrations={integrations} />
+            ) : null}
+            <NewAlertButton projectId={projectId} canCreate={canCreate} />
           </div>
         }
         tabs={
@@ -191,24 +186,101 @@ function AlertsScreen({
         }
       />
       <Page scroll={view === 'rules' && rules?.length === 0}>
-        {integrations?.length === 0 ? <NoChannels href={channelsHref} /> : null}
+        {integrations?.length === 0 && canManageChannels ? (
+          <NoChannels href={channelsHref} />
+        ) : null}
         {view === 'deliveries' ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel">
             <Deliveries projectId={projectId} rules={rules} history={history} />
           </div>
-        ) : rules?.length === 0 ? (
-          <AlertStarters projectId={projectId} />
         ) : (
-          <RulesTable
+          <RulesPane
             projectId={projectId}
             rules={rules}
-            integrations={integrations ?? []}
-            busy={update.isPending}
+            integrations={integrations}
+            canCreate={canCreate}
+            busy={busy}
             onToggle={toggle}
           />
         )}
       </Page>
     </div>
+  );
+}
+
+function ChannelsButton({
+  href,
+  integrations,
+}: {
+  href: string;
+  integrations?: AlertIntegration[];
+}) {
+  const t = useTranslations('alerts');
+  return (
+    <Button icon={IntegrationsIcon} render={<Link href={href} />}>
+      {integrations ? (
+        t('overview.channels', { count: integrations.length })
+      ) : (
+        <Skeleton className="h-3 w-16" />
+      )}
+    </Button>
+  );
+}
+
+/** The rules; with none, a way to start, or a word for who cannot create any. */
+function RulesPane({
+  projectId,
+  rules,
+  integrations,
+  canCreate,
+  busy,
+  onToggle,
+}: {
+  projectId: number;
+  rules?: AlertRuleResponse[];
+  integrations?: AlertIntegration[];
+  canCreate: boolean;
+  busy: boolean;
+  onToggle: (rule: AlertRuleResponse, enabled: boolean) => void;
+}) {
+  const t = useTranslations('alerts');
+  if (rules?.length === 0) {
+    return canCreate ? (
+      <AlertStarters projectId={projectId} />
+    ) : (
+      <p className="py-16 text-center text-fg-subtle text-meta">
+        {t('overview.noRules')}
+      </p>
+    );
+  }
+  return (
+    <RulesTable
+      projectId={projectId}
+      rules={rules}
+      integrations={integrations ?? []}
+      busy={busy}
+      onToggle={onToggle}
+    />
+  );
+}
+
+function NewAlertButton({
+  projectId,
+  canCreate,
+}: {
+  projectId: number;
+  canCreate: boolean;
+}) {
+  const t = useTranslations('alerts');
+  if (!canCreate) return null;
+  return (
+    <Button
+      variant="primary"
+      icon={NewIcon}
+      render={<Link href={newAlertHref(projectId)} />}
+    >
+      {t('overview.new')}
+    </Button>
   );
 }
 

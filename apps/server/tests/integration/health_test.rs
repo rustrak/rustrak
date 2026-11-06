@@ -250,6 +250,7 @@ async fn test_version_returns_version_to_an_authenticated_caller() {
         &db.pool,
         rustrak::models::CreateAuthToken {
             description: Some("Version test token".to_string()),
+            ..Default::default()
         },
     )
     .await

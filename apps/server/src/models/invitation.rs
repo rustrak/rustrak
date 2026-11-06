@@ -36,6 +36,7 @@ impl InvitationStatus {
 
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Invitation {
+    pub id: String,
     pub token: String,
     pub email: String,
     pub role: String,
@@ -46,6 +47,10 @@ pub struct Invitation {
     pub accepted_at: Option<DateTime<Utc>>,
     /// When the invitation email was last handed to SMTP; NULL when none was.
     pub email_sent_at: Option<DateTime<Utc>>,
+    /// A role the new user holds once they accept.
+    pub role_id: Option<i32>,
+    /// Where `role_id` applies; NULL is the whole instance.
+    pub project_id: Option<i32>,
 }
 
 impl Invitation {
@@ -59,7 +64,7 @@ impl Invitation {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateInvitation {
     pub email: String,
@@ -72,6 +77,13 @@ pub struct CreateInvitation {
     /// carries `token` for manual sharing either way.
     #[serde(default)]
     pub send_email: bool,
+    /// A role the new user holds once they accept, within the inviter's own
+    /// permissions.
+    #[serde(default)]
+    pub role_id: Option<i32>,
+    /// Where `role_id` applies; omitted or `null` is the whole instance.
+    #[serde(default)]
+    pub project_id: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,7 +97,12 @@ pub struct AcceptInvitation {
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct InvitationResponse {
-    pub token: String,
+    /// What resending and revoking address it by.
+    pub id: String,
+    /// Claims the account, so it is `null` for a reader who could not have
+    /// created this invitation.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub token: Option<String>,
     pub email: String,
     #[cfg_attr(feature = "openapi", schema(value_type = crate::models::UserRole))]
     pub role: String,
@@ -95,18 +112,25 @@ pub struct InvitationResponse {
     /// When the invitation email was last sent; null when none was.
     #[cfg_attr(feature = "openapi", schema(required))]
     pub email_sent_at: Option<DateTime<Utc>>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub role_id: Option<i32>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub project_id: Option<i32>,
 }
 
 impl From<Invitation> for InvitationResponse {
     fn from(i: Invitation) -> Self {
         Self {
-            token: i.token,
+            id: i.id,
+            token: Some(i.token),
             email: i.email,
             role: i.role,
             status: i.status,
             expires_at: i.expires_at,
             created_at: i.created_at,
             email_sent_at: i.email_sent_at,
+            role_id: i.role_id,
+            project_id: i.project_id,
         }
     }
 }
@@ -118,6 +142,7 @@ mod tests {
 
     fn invite(status: &str, expires_at: DateTime<Utc>) -> Invitation {
         Invitation {
+            id: "i".to_string(),
             token: "t".repeat(40),
             email: "a@b.com".into(),
             role: "member".into(),
@@ -127,6 +152,8 @@ mod tests {
             created_at: Utc::now(),
             accepted_at: None,
             email_sent_at: None,
+            role_id: None,
+            project_id: None,
         }
     }
 

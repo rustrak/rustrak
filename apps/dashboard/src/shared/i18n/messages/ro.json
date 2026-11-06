@@ -443,7 +443,12 @@
       "submit": "Invită",
       "sendEmailLabel": "Trimite invitația prin e-mail",
       "sendEmailAria": "Trimite invitația prin e-mail",
-      "sendEmailUnavailable": "Adaugă o integrare de e-mail în Setări → Integrări (sau setează SMTP_HOST) și DASHBOARD_URL sau PUBLIC_URL pentru a trimite e-mailuri de invitație"
+      "sendEmailUnavailable": "Adaugă o integrare de e-mail în Setări → Integrări (sau setează SMTP_HOST) și DASHBOARD_URL sau PUBLIC_URL pentru a trimite e-mailuri de invitație",
+      "accessHint": "Permisiuni acordate după acceptarea invitației.",
+      "noRole": "Fără acces",
+      "ownerHint": "Acces nerestricționat la toate proiectele și setările, inclusiv gestionarea altor proprietari.",
+      "whereLabel": "Domeniu",
+      "allProjects": "Toate proiectele"
     },
     "toast": {
       "createFailed": "Crearea invitației a eșuat",
@@ -478,11 +483,13 @@
       "manageDescription": "Administrează cine poate accesa acest proiect și cu ce roluri.",
       "readOnlyDescription": "Persoanele cu acces la acest proiect.",
       "addMember": "Adaugă membru",
-      "empty": "Încă nu există membri"
+      "empty": "Încă nu există membri",
+      "save": "Salvează"
     },
     "remove": {
       "title": "Elimină membru",
       "description": "Elimini {email} din acest proiect? Va pierde accesul până când este adăugat din nou.",
+      "keepsInherited": "Elimini rolurile lui {email} din acest proiect? Își păstrează rolurile pe care le are în toate proiectele.",
       "removing": "Se elimină...",
       "confirm": "Elimină"
     },
@@ -539,9 +546,7 @@
       "description": "Aceasta elimină definitiv utilizatorul și accesul său la toate proiectele. Acțiunea nu poate fi anulată."
     },
     "roles": {
-      "viewer": "Vizualizator",
-      "editor": "Editor",
-      "admin": "Admin",
+      "admin": "Proprietar",
       "member": "Membru"
     }
   },
@@ -608,7 +613,8 @@
     "selectedCount": "{count, plural, =1 {# selectat} few {# selectate} other {# de selectate}}",
     "empty": {
       "title": "Încă nu există proiecte",
-      "hint": "Creează primul proiect pentru a începe urmărirea erorilor"
+      "hint": "Creează primul proiect pentru a începe urmărirea erorilor",
+      "noAccessHint": "Contactează un proprietar pentru a solicita acces la un proiect."
     },
     "newProject": "Proiect nou",
     "delete": "Șterge",
@@ -1100,6 +1106,7 @@
       "editMetaTitle": "Editează {name} | Alerte | Rustrak",
       "emptyTitle": "Încă nu există alerte",
       "emptyDescription": "Alege despre ce vrei să afli ca să începi. Poți avea oricâte alerte: de exemplu, probleme noi din producție prin email și toate problemele noi pe Slack.",
+      "noRules": "Nu există încă reguli de alertă.",
       "failedCount": "{count, plural, one {# trimitere eșuată} few {# trimiteri eșuate} other {# de trimiteri eșuate}}",
       "tabRules": "Alerte",
       "tabDeliveries": "Trimiteri"
@@ -1478,19 +1485,28 @@
     "create": {
       "trigger": "Token nou",
       "createdTitle": "Token creat",
-      "createdDescription": "Copiază token-ul acum. Îl poți recupera ulterior și din listă.",
+      "createdDescription": "Copiază tokenul acum. Nu va mai fi afișat.",
       "copyTokenLabel": "Copiază token-ul nou",
-      "copyAgainHint": "Poți copia acest token oricând din lista de token-uri.",
+      "copyAgainHint": "După ce închizi această fereastră, tokenul nu mai poate fi recuperat.",
       "done": "Gata",
       "title": "Creează token API",
       "description": "Creează un token nou pentru acces programatic la API.",
       "descriptionLabel": "Descriere (opțional)",
       "descriptionPlaceholder": "de ex., Pipeline CI/CD",
-      "charCount": "{count}/{max} {count, plural, =1 {caracter} other {caractere}}",
       "descriptionTooLong": "Descrierea trebuie să aibă cel mult {max} caractere",
       "cancel": "Anulează",
       "creating": "Se creează...",
-      "submit": "Creează token-ul"
+      "submit": "Creează token-ul",
+      "allPermissions": "Toate permisiunile mele",
+      "permissionsHint": "Limitate la permisiunile care ți-au fost atribuite.",
+      "projectsHint": "Accesul nu depășește niciodată accesul contului tău.",
+      "expiresLabel": "Data expirării (opțional)",
+      "expiresHint": "Dacă rămâne gol, tokenul nu expiră.",
+      "customPermissions": "Permisiuni personalizate",
+      "permissionsLabel": "Permisiuni",
+      "projectsLabel": "Proiecte",
+      "allProjects": "Toate proiectele autorizate",
+      "allProjectsHint": "Toate proiectele la care ai acces, acum sau în viitor."
     },
     "copyTokenLabel": "Copiază token-ul {label}",
     "deleteTokenLabel": "Șterge token-ul {label}",
@@ -1529,6 +1545,15 @@
       "cancel": "Anulează",
       "deleting": "Se șterge...",
       "confirm": "Șterge"
+    },
+    "scope": {
+      "allPermissions": "Toate permisiunile contului",
+      "permissions": "{count, plural, one {# permisiune} few {# permisiuni} other {# de permisiuni}}",
+      "allProjects": "toate proiectele autorizate",
+      "projects": "{count, plural, one {# proiect} few {# proiecte} other {# de proiecte}}",
+      "noExpiry": "fără expirare",
+      "expired": "expirat",
+      "expires": "expiră pe {date}"
     }
   },
   "storage": {
@@ -2017,7 +2042,8 @@
       "profile": "Profil",
       "preferences": "Preferințe",
       "instance": "Instanță",
-      "data": "Date"
+      "data": "Date",
+      "roles": "Roluri"
     },
     "loadProjectFailed": "Proiectul nu a putut fi încărcat",
     "loadProjectsFailed": "Proiectele nu au putut fi încărcate",
@@ -2062,7 +2088,7 @@
       },
       "title": "Membri",
       "subtitle": "Administrează membrii echipei și invitațiile",
-      "notAuthorizedDescription": "Doar administratorii instanței pot administra echipa. Contactează un admin dacă ai nevoie de acces."
+      "notAuthorizedDescription": "Accesul tău nu include echipa. Contactează un proprietar pentru a-l solicita."
     },
     "integrations": {
       "meta": {
@@ -2089,7 +2115,7 @@
       "server": {
         "title": "Server MCP",
         "description": "Răspunde asistenților AI la endpointul de mai jos. Dezactivat implicit; oprirea lui deconectează toți asistenții deodată.",
-        "adminOnly": "Doar un administrator al instanței poate porni sau opri serverul MCP.",
+        "adminOnly": "Accesul tău nu include pornirea sau oprirea serverului MCP.",
         "on": "Activ",
         "off": "Inactiv",
         "toggleLabel": "Pornește sau oprește serverul MCP",
@@ -2169,7 +2195,7 @@
       },
       "title": "Stocare",
       "subtitle": "Ce păstrează Rustrak și cât timp",
-      "notAuthorizedDescription": "Doar administratorii instanței pot vedea utilizarea stocării și pot rula curățări. Contactează un admin dacă ai nevoie de acces.",
+      "notAuthorizedDescription": "Accesul tău nu include stocarea. Contactează un proprietar pentru a-l solicita.",
       "loadFailed": "Nu s-a putut citi stocarea"
     },
     "account": {
@@ -2270,7 +2296,9 @@
     "data": {
       "title": "Date",
       "subtitle": "Ce păstrează acest proiect și cât acceptă."
-    }
+    },
+    "projectNotAuthorizedDescription": "Accesul tău nu include această secțiune a proiectului. Contactează un proprietar pentru a-l solicita.",
+    "workspaceNotAuthorizedDescription": "Accesul tău nu include această secțiune. Contactează un proprietar pentru a-l solicita."
   },
   "github": {
     "section": {
@@ -2730,6 +2758,142 @@
       "start": "Început",
       "status": "Stare",
       "spanId": "Id span"
+    }
+  },
+  "access": {
+    "meta": {
+      "title": "Roluri · Setări"
+    },
+    "title": "Roluri",
+    "subtitle": "Seturi de permisiuni reutilizabile pentru a atribui același acces mai multor membri.",
+    "notAuthorized": "Neautorizat",
+    "notAuthorizedDescription": "Vizualizarea rolurilor necesită permisiunea Roluri.",
+    "resource": "Resursă",
+    "actions": {
+      "read": "Vizualizare",
+      "create": "Creare",
+      "update": "Editare",
+      "delete": "Șterge"
+    },
+    "wholeRow": "Toate acțiunile pentru {resource}",
+    "general": "General",
+    "modules": {
+      "workspace": "Spațiu de lucru",
+      "settings": "Setări",
+      "issues": "Probleme",
+      "monitoring": "Monitorizare",
+      "releases": "Versiuni",
+      "alerts": "Alerte",
+      "project": "Proiect"
+    },
+    "resources": {
+      "projects": "Proiecte",
+      "users": "Utilizatori",
+      "invitations": "Invitații",
+      "roles": "Roluri",
+      "api-tokens": "Tokenurile API ale altor utilizatori",
+      "integrations": "Integrări (Slack, webhooks, e-mail)",
+      "github-app": "Aplicația GitHub",
+      "storage": "Stocare și retenție",
+      "mcp": "Asistenți AI (MCP)",
+      "telemetry": "Telemetrie",
+      "issues": "Probleme și evenimente",
+      "performance": "Performanță și agenți",
+      "logs": "Jurnale",
+      "sessions": "Sănătatea versiunilor",
+      "releases": "Versiuni",
+      "source-maps": "Source maps și fișiere de depanare",
+      "alert-rules": "Reguli de alertă",
+      "monitors": "Monitoare cron",
+      "project": "Setările proiectului",
+      "client-keys": "Chei SDK (DSN)",
+      "project-members": "Membrii proiectului",
+      "project-github": "Legătura cu depozitul"
+    },
+    "you": "(tu)",
+    "owner": "Proprietar",
+    "save": "Salvează",
+    "cancel": "Anulează",
+    "users": {
+      "meta": "{email} · Membri",
+      "ownerNote": "Proprietarii au acces nerestricționat la toate proiectele și setările. Rolurile nu li se aplică.",
+      "roleAria": "Rol",
+      "readOnlySelf": "Nu îți poți modifica propriul acces.",
+      "readOnlyPermission": "Modificarea accesului necesită permisiunea de editare a utilizatorilor.",
+      "saved": "Acces actualizat",
+      "saveFailed": "Accesul nu a putut fi actualizat",
+      "accessTitle": "Acces",
+      "addAccess": "Adaugă acces",
+      "removeAccess": "Elimină accesul",
+      "customize": "Personalizează",
+      "customRole": "Permisiuni personalizate",
+      "customRoleHint": "Permisiuni specifice acestui membru. Se configurează mai jos.",
+      "noAccessHint": "Acest membru nu are încă roluri sau permisiuni.",
+      "pickProject": "Selectează cel puțin un proiect.",
+      "customTitle": "Permisiuni personalizate",
+      "sectionHint": "Definește permisiunile atribuite acestui membru și unde se aplică.",
+      "whatLabel": "Rol",
+      "whereLabel": "Domeniu",
+      "everywhere": "Tot spațiul de lucru",
+      "pickRole": "Selectează un rol",
+      "giveAccess": "Acordă acces",
+      "noAccessTitle": "Niciun acces atribuit",
+      "ownerTitle": "Acces nerestricționat"
+    },
+    "roles": {
+      "title": "Roluri",
+      "description": "Rolurile se atribuie din pagina fiecărui membru.",
+      "new": "Rol nou",
+      "newTitle": "Rol nou",
+      "empty": "Niciun rol definit",
+      "permissionCount": "{count, plural, one {# permisiune} few {# permisiuni} other {# de permisiuni}}",
+      "name": "Nume",
+      "descriptionLabel": "Descriere",
+      "copyFrom": "Copiază permisiunile de la",
+      "fromScratch": "Niciunul (începe gol)",
+      "create": "Creează rolul",
+      "createFailed": "Rolul nu a putut fi creat",
+      "saved": "Rol salvat",
+      "saveFailed": "Rolul nu a putut fi salvat",
+      "delete": "Șterge rolul",
+      "deleteTitle": "Ștergi {name}?",
+      "deleteDescription": "Pot fi șterse doar rolurile fără atribuiri.",
+      "deleted": "Rol șters",
+      "deleteFailed": "Rolul nu a putut fi șters",
+      "assignedTo": "{count, plural, =0 {Neatribuit} one {# atribuire} few {# atribuiri} other {# de atribuiri}}",
+      "meta": "{name} · Roluri",
+      "descriptionPlaceholder": "Scopul acestui rol și accesul oferit.",
+      "descriptionHint": "Afișat oriunde este atribuit acest rol.",
+      "allProjects": "Toate proiectele",
+      "detailsTitle": "Detalii",
+      "allProjectsHint": "Include proiectele create în viitor.",
+      "noProjects": "Niciun proiect",
+      "noProjectsYet": "Nu există proiecte disponibile.",
+      "projectCount": "{count, plural, one {# proiect} few {# proiecte} other {# de proiecte}}"
+    },
+    "resourceHelp": {
+      "projects": "Creează proiecte. Necesită cel puțin o permisiune de proiect, extinsă la proiectele create.",
+      "users": "Vizualizează membrii, gestionează accesul lor și elimină-i. Doar proprietarii pot gestiona alți proprietari.",
+      "invitations": "Trimite invitații prin link sau e-mail, vezi-le pe cele în așteptare și revocă-le. Pot include doar permisiuni pe care le ai.",
+      "roles": "Vizualizează, creează, editează și șterge roluri. Pot include doar permisiuni pe care le ai.",
+      "api-tokens": "Vizualizează și revocă tokenurile API ale altor membri. Fiecare membru le gestionează pe ale sale fără această permisiune.",
+      "integrations": "Slack, webhookuri și trimitere de e-mailuri pentru alerte și invitații.",
+      "github-app": "Aplicația GitHub care leagă stack trace-urile și release-urile de repository-uri.",
+      "storage": "Utilizarea discului și retenția: configurează perioadele de retenție, șterge sau compactează datele istorice.",
+      "mcp": "Activează sau dezactivează serverul MCP care oferă asistenților AI acces la Rustrak.",
+      "telemetry": "Vizualizează raportul anonim de utilizare trimis de Rustrak.",
+      "issues": "Erori și evenimentele lor: vezi, rezolvă, ignoră, asignează, unește și șterge.",
+      "performance": "Tranzacții, spanuri, endpointuri și trace-uri de agenți AI.",
+      "logs": "Fluxul de jurnale al proiectului.",
+      "sessions": "Sănătatea release-urilor: sesiuni și utilizatori fără crash.",
+      "releases": "Release-uri, commiturile și deploy-urile lor.",
+      "source-maps": "Source maps și fișiere de depanare pentru stack trace-uri lizibile.",
+      "alert-rules": "Reguli care trimit notificări prin Slack, webhook sau e-mail când condițiile sunt îndeplinite.",
+      "monitors": "Monitoare cron și check-in-urile lor.",
+      "project": "Numele, platforma, datele și produsele proiectului. Ștergerea elimină definitiv proiectul și datele sale.",
+      "client-keys": "Cheile SDK (DSN) folosite de aplicații pentru a trimite evenimente. Editarea permite rotirea sau dezactivarea lor.",
+      "project-members": "Membrii proiectului și rolurile lor. Editarea permite atribuirea și eliminarea rolurilor în acest proiect.",
+      "project-github": "Repository-ul GitHub legat de acest proiect."
     }
   }
 }

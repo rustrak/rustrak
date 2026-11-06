@@ -40,6 +40,51 @@ interface RepositorySettingsProps {
   projectId: number;
   projectSlug: string;
   repository: ProjectRepository | null;
+  /** Without `project-github:update`: shown, not changeable. */
+  readOnly?: boolean;
+}
+
+interface RepositoryChanges {
+  repo?: GitHubRepository;
+  code_mappings?: CodeMapping[];
+  auto_create_issues?: boolean;
+  auto_create_conditions?: AlertRuleResponse['conditions'];
+  issue_template?: ProjectRepository['issue_template'];
+}
+
+/** What to save: the changes, and the stored value for all the rest. */
+function withChanges(
+  repository: ProjectRepository | null,
+  changes: RepositoryChanges,
+) {
+  return {
+    installation_id:
+      changes.repo?.installation_id ?? repository?.installation_id ?? 0,
+    repo_full_name: changes.repo?.full_name ?? repository?.repo_full_name ?? '',
+    code_mappings: changes.code_mappings ?? repository?.code_mappings,
+    auto_create_issues:
+      changes.auto_create_issues ?? repository?.auto_create_issues,
+    auto_create_conditions:
+      changes.auto_create_conditions ?? repository?.auto_create_conditions,
+    issue_template: changes.issue_template ?? repository?.issue_template,
+  };
+}
+
+function CodeownersStatus({ repository }: { repository: ProjectRepository }) {
+  const t = useTranslations('github');
+  const format = useFormatter();
+  return (
+    <span className="text-hint text-fg-meta">
+      {repository.codeowners_synced_at
+        ? t('repository.codeownersStatus', {
+            count: repository.codeowners_rules ?? 0,
+            when: format.relativeTime(
+              new Date(repository.codeowners_synced_at),
+            ),
+          })
+        : t('repository.codeownersNever')}
+    </span>
+  );
 }
 
 /**
@@ -50,10 +95,14 @@ export function RepositorySettings({
   projectId,
   projectSlug,
   repository,
+  readOnly = false,
 }: RepositorySettingsProps) {
   const t = useTranslations('github');
-  const format = useFormatter();
-  const repositories = useQuery(githubQueries.repositories(projectId));
+  // Choosing one takes `project-github:update`, and so does listing them.
+  const repositories = useQuery({
+    ...githubQueries.repositories(projectId),
+    enabled: !readOnly,
+  });
   const failed = (failure: string) => (error: Error) =>
     toast.error(failure, { description: error.message });
   const setRepository = useMutation({
@@ -70,30 +119,15 @@ export function RepositorySettings({
   });
   // Pending until the saved values are back on screen: a draft keyed on them
   // would otherwise drop edits made between.
+  // Read-only rides on the same flag: every control already waits on it.
   const isPending =
+    readOnly ||
     setRepository.isPending ||
     removeRepository.isPending ||
     syncCodeowners.isPending;
 
-  const save = (changes: {
-    repo?: GitHubRepository;
-    code_mappings?: CodeMapping[];
-    auto_create_issues?: boolean;
-    auto_create_conditions?: AlertRuleResponse['conditions'];
-    issue_template?: ProjectRepository['issue_template'];
-  }) =>
-    setRepository.mutate({
-      installation_id:
-        changes.repo?.installation_id ?? repository?.installation_id ?? 0,
-      repo_full_name:
-        changes.repo?.full_name ?? repository?.repo_full_name ?? '',
-      code_mappings: changes.code_mappings ?? repository?.code_mappings,
-      auto_create_issues:
-        changes.auto_create_issues ?? repository?.auto_create_issues,
-      auto_create_conditions:
-        changes.auto_create_conditions ?? repository?.auto_create_conditions,
-      issue_template: changes.issue_template ?? repository?.issue_template,
-    });
+  const save = (changes: RepositoryChanges) =>
+    setRepository.mutate(withChanges(repository, changes));
 
   // Without the list the page still works for a repository already chosen:
   // GitHub being unreachable for a moment must not hide its settings.
@@ -251,16 +285,7 @@ export function RepositorySettings({
                 >
                   {t('repository.codeownersSync')}
                 </Button>
-                <span className="text-hint text-fg-meta">
-                  {repository.codeowners_synced_at
-                    ? t('repository.codeownersStatus', {
-                        count: repository.codeowners_rules ?? 0,
-                        when: format.relativeTime(
-                          new Date(repository.codeowners_synced_at),
-                        ),
-                      })
-                    : t('repository.codeownersNever')}
-                </span>
+                <CodeownersStatus repository={repository} />
               </div>
             </SettingRow>
           </SettingSection>

@@ -18,12 +18,11 @@ use rustrak::db::DbPool;
 use rustrak::error::{AppError, FieldErrorCode};
 use rustrak::models::{
     ChannelType, CreateAuthToken, CreateInvitation, CreateNotificationChannel, CreateProject,
-    CreateUserRequest, ProjectRole, UpdateAlertIntegration, UpdateProject, User, UserRole,
+    CreateUserRequest, UpdateAlertIntegration, UpdateProject, User, UserRole,
 };
 use rustrak::routes;
 use rustrak::services::{
-    AlertService, AuthTokenService, InvitationService, ProjectMemberService, ProjectService,
-    UsersService,
+    AlertService, AuthTokenService, InvitationService, ProjectService, UsersService,
 };
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -394,6 +393,7 @@ async fn inviting_an_existing_user_blames_email() {
             email: "taken@example.com".to_string(),
             role: "member".to_string(),
             send_email: false,
+            ..Default::default()
         },
         admin.id,
     )
@@ -414,6 +414,7 @@ async fn inviting_a_pending_email_blames_email() {
             email: "pending@example.com".to_string(),
             role: "member".to_string(),
             send_email: false,
+            ..Default::default()
         },
         admin.id,
     )
@@ -426,6 +427,7 @@ async fn inviting_a_pending_email_blames_email() {
             email: "pending@example.com".to_string(),
             role: "member".to_string(),
             send_email: false,
+            ..Default::default()
         },
         admin.id,
     )
@@ -480,28 +482,6 @@ async fn renaming_an_integration_onto_a_taken_name_blames_name() {
 }
 
 // =============================================================================
-// services/project_member.rs — UpsertProjectMember body
-// =============================================================================
-
-/// Downgrading the only project admin. `role` is the input the caller can
-/// change; `remove` (a DELETE, no body) stays deliberately field-less.
-#[actix_web::test]
-async fn downgrading_the_last_project_admin_blames_role() {
-    let db = TestDb::new().await;
-    let project = seed_project(&db.pool, "Members Project", None).await;
-    let user = seed_user(&db.pool, "member@example.com", UserRole::Member).await;
-
-    ProjectMemberService::upsert(&db.pool, project.id, user.id, ProjectRole::Admin)
-        .await
-        .expect("seeding the only project admin must succeed");
-
-    let result =
-        ProjectMemberService::upsert(&db.pool, project.id, user.id, ProjectRole::Editor).await;
-
-    assert_one_field(result, 409, "Conflict", "role", "invalid").await;
-}
-
-// =============================================================================
 // routes/team.rs — UpdateUserRole body
 //
 // The only one of the fourteen that lives in a route rather than a service, so
@@ -520,7 +500,7 @@ async fn demoting_the_last_admin_blames_role() {
     seed_user(&db.pool, "primary@example.com", UserRole::Member).await;
     let last_admin = seed_user(&db.pool, "admin@example.com", UserRole::Admin).await;
 
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .expect("seed admin-equivalent token")
         .token;
@@ -563,7 +543,7 @@ async fn an_unparseable_global_role_blames_role() {
     let db = TestDb::new().await;
     let target = seed_user(&db.pool, "member@example.com", UserRole::Member).await;
 
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .expect("seed admin-equivalent token")
         .token;
@@ -601,15 +581,14 @@ async fn an_unparseable_global_role_blames_role() {
 // routes/members.rs — UpsertProjectMember body
 // =============================================================================
 
-/// The 400 sibling of `downgrading_the_last_project_admin_blames_role` above:
-/// a project role the enum does not contain, blamed on the same `role` key.
+/// A role id that does not exist, blamed on `role_ids`.
 #[actix_web::test]
-async fn an_unparseable_project_role_blames_role() {
+async fn an_unknown_project_role_blames_role_ids() {
     let db = TestDb::new().await;
     let project = seed_project(&db.pool, "Role Parsing Project", None).await;
     let user = seed_user(&db.pool, "member@example.com", UserRole::Member).await;
 
-    let token = AuthTokenService::create(&db.pool, CreateAuthToken { description: None })
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
         .await
         .expect("seed admin-equivalent token")
         .token;
@@ -630,7 +609,7 @@ async fn an_unparseable_project_role_blames_role() {
     let request = test::TestRequest::put()
         .uri(&format!("/api/projects/{}/members", project.id))
         .insert_header(("Authorization", format!("Bearer {token}")))
-        .set_json(json!({ "user_id": user.id, "role": "overlord" }))
+        .set_json(json!({ "user_id": user.id, "role_ids": [999_999] }))
         .to_request();
     let response = test::call_service(&app, request).await;
 
@@ -639,6 +618,6 @@ async fn an_unparseable_project_role_blames_role() {
     assert_eq!(body["error"]["type"], "ValidationError");
     assert_eq!(
         body["error"]["fields"],
-        json!([{ "field": "role", "code": "invalid" }])
+        json!([{ "field": "role_ids", "code": "invalid" }])
     );
 }

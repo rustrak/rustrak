@@ -44,9 +44,15 @@ import {
 export function StorageView({
   title,
   subtitle,
+  canUpdate,
+  canDelete,
 }: {
   title: string;
   subtitle: string;
+  /** `storage:update`: change retention. */
+  canUpdate: boolean;
+  /** `storage:delete`: delete data now, compact. */
+  canDelete: boolean;
 }) {
   const t = useTranslations('storage');
   const ts = useTranslations('settings');
@@ -117,21 +123,25 @@ export function StorageView({
           // Usable at once: the figures only price what the dialogs delete,
           // and the price fills in when they land.
           <>
-            <Button
-              variant="danger"
-              icon={DeleteIcon}
-              onClick={() => setDeleting(true)}
-              disabled={cleanup.running}
-            >
-              {t('deleteAction')}
-            </Button>
-            <Button
-              variant="primary"
-              icon={ConfigureIcon}
-              onClick={() => setEditing(true)}
-            >
-              {t('action')}
-            </Button>
+            {canDelete ? (
+              <Button
+                variant="danger"
+                icon={DeleteIcon}
+                onClick={() => setDeleting(true)}
+                disabled={cleanup.running}
+              >
+                {t('deleteAction')}
+              </Button>
+            ) : null}
+            {canUpdate ? (
+              <Button
+                variant="primary"
+                icon={ConfigureIcon}
+                onClick={() => setEditing(true)}
+              >
+                {t('action')}
+              </Button>
+            ) : null}
           </>
         }
       />
@@ -163,7 +173,7 @@ export function StorageView({
           <LineSkeleton />
         )}
         <CompactionNotice
-          disabled={cleanup.running}
+          disabled={cleanup.running || !canDelete}
           onStarted={cleanup.follow}
         />
       </SettingSection>
@@ -182,6 +192,7 @@ export function StorageView({
         <StorageProjects
           projects={summary.projects}
           settings={retention.settings}
+          readOnly={!canUpdate}
           onEditRetention={setProject}
         />
       ) : (

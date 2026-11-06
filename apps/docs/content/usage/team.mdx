@@ -73,7 +73,7 @@ curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: applica
   -d '{"email": "lena@example.com", "role": "member", "send_email": true}' "$RUSTRAK_URL/api/invitations"
 
 # Email the invite link again
-curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/invitations/TOKEN/resend"
+curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/invitations/ID/resend"
 
 # Add user 2 to project 1 as an editor
 curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \

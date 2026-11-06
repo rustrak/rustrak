@@ -12,6 +12,7 @@ import {
   SETTINGS_COMMANDS,
 } from '@/shared/config/commands';
 import { filterCommand } from '@/shared/lib/command-score';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { CommandEmpty, CommandList } from '../primitives/command';
 import { Section } from '../primitives/section';
 import { ProjectBadge, ScopeBadge } from './badges';
@@ -48,6 +49,7 @@ export function ResultsList({
   onHighlight: (value: string) => void;
 }) {
   const t = useTranslations();
+  const permissions = usePermissionsLater();
   // Collapsed at rest, flattened while searching. A project is one row until
   // the viewer types, at which point every project's pages become candidates
   // and the list only gets long once a query is there to make it short again.
@@ -105,6 +107,11 @@ export function ResultsList({
     />
   );
 
+  const projectCommands = PROJECT_COMMANDS.filter(
+    (link) =>
+      link.href !== '/projects/new' || permissions.can('projects', 'create'),
+  );
+
   const linkRows = (links: CommandLink[], badgeLabel?: string) =>
     links.map((link) => (
       <CommandRow
@@ -134,7 +141,7 @@ export function ResultsList({
           {matches.map(({ project, page, value }) =>
             pageRow(project, page, value),
           )}
-          {linkRows(PROJECT_COMMANDS, t('commands.generalBadge'))}
+          {linkRows(projectCommands, t('commands.generalBadge'))}
           {linkRows(SETTINGS_COMMANDS, t('commands.settingsBadge'))}
         </Section>
       ) : (
@@ -169,7 +176,7 @@ export function ResultsList({
                 }
               />
             ))}
-            {linkRows(PROJECT_COMMANDS)}
+            {linkRows(projectCommands)}
           </Section>
 
           <Section heading={t('commands.settingsHeading')}>

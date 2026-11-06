@@ -1,10 +1,10 @@
 use actix_web::{web, HttpResponse};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::routes::period::parse_period_hours;
-use crate::services::access::{self, Action};
 use crate::services::scope::Scope;
 use crate::services::stats::StatsService;
 
@@ -64,14 +64,7 @@ pub async fn get_event_timeseries(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     let points = StatsService::event_timeseries(
         pool.get_ref(),
@@ -132,14 +125,7 @@ pub async fn get_stats_summary(
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     let summary = StatsService::project_summary(
         pool.get_ref(),

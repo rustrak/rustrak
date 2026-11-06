@@ -17,19 +17,17 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::auth::rbac::{Action, ProjectScope, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{Event, Issue, Project, UpdateIssueState};
 use crate::pagination::{IssueCategory, IssueFilter, SortOrder};
-use crate::services::access::{self, Action};
 use crate::services::grouping::exception_values;
 use crate::services::scope::Scope;
 
-use crate::services::{
-    EventService, IssueService, IssueSocialService, ProjectMemberService, ProjectService,
-};
+use crate::services::{EventService, IssueService, IssueSocialService, ProjectService};
 
 /// The synthetic organization's id, slug and name.
 const ORG_ID: &str = "1";
@@ -143,22 +141,21 @@ pub async fn list_projects(
         .unwrap_or(MAX_PER_PAGE)
         .clamp(1, MAX_PER_PAGE);
     let page = Page::from_cursor(query.cursor.as_deref(), limit)?;
-    let (projects, total) = if actor.is_admin() {
-        ProjectService::list_offset(pool.get_ref(), SortOrder::Desc, page.number + 1, page.size)
+    let (projects, total) = match actor.visible_projects() {
+        ProjectScope::All => {
+            ProjectService::list_offset(pool.get_ref(), SortOrder::Desc, page.number + 1, page.size)
+                .await?
+        }
+        ProjectScope::Only(ids) => {
+            ProjectService::list_offset_for_ids(
+                pool.get_ref(),
+                &ids,
+                SortOrder::Desc,
+                page.number + 1,
+                page.size,
+            )
             .await?
-    } else {
-        let uid = actor
-            .user_id()
-            .ok_or_else(|| AppError::Unauthorized("Not authenticated".to_string()))?;
-        let ids = ProjectMemberService::accessible_project_ids(pool.get_ref(), uid).await?;
-        ProjectService::list_offset_for_ids(
-            pool.get_ref(),
-            &ids,
-            SortOrder::Desc,
-            page.number + 1,
-            page.size,
-        )
-        .await?
+        }
     };
 
     let body: Vec<SentryProject> = projects.iter().map(SentryProject::from).collect();
@@ -608,14 +605,7 @@ pub async fn list_issues(
 ) -> AppResult<HttpResponse> {
     let (_org_slug, project_slug) = path.into_inner();
     let project = project_by_slug(pool.get_ref(), &project_slug).await?;
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project.id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Issues, Action::Read, Some(project.id))?;
 
     let search = parse_search(query.query.as_deref())?;
     let order = order_clause(query.sort.as_deref())?;
@@ -692,20 +682,14 @@ async fn issue_for(
     pool: &DbPool,
     actor: &ApiActor,
     issue_id: &str,
+    resource: Resource,
     action: Action,
 ) -> AppResult<(Issue, Project)> {
     let numeric_id: i64 = issue_id
         .parse()
         .map_err(|_| AppError::NotFound(format!("Issue {issue_id} not found")))?;
     let issue = IssueService::get_by_numeric_id(pool, numeric_id).await?;
-    access::require(
-        pool,
-        actor.is_admin(),
-        actor.user_id(),
-        issue.project_id,
-        action,
-    )
-    .await?;
+    actor.require(resource, action, Some(issue.project_id))?;
     let project = ProjectService::get_by_id(pool, issue.project_id).await?;
     Ok((issue, project))
 }
@@ -774,8 +758,14 @@ pub async fn get_issue(
     path: web::Path<IssuePath>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    let (issue, project) =
-        issue_for(pool.get_ref(), &actor, &path.issue_id, Action::ViewProject).await?;
+    let (issue, project) = issue_for(
+        pool.get_ref(),
+        &actor,
+        &path.issue_id,
+        Resource::Issues,
+        Action::Read,
+    )
+    .await?;
     Ok(HttpResponse::Ok().json(issue_details(pool.get_ref(), &issue, &project).await?))
 }
 
@@ -1029,7 +1019,14 @@ pub async fn latest_event(
     path: web::Path<String>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    let (issue, project) = issue_for(pool.get_ref(), &actor, &path, Action::ViewProject).await?;
+    let (issue, project) = issue_for(
+        pool.get_ref(),
+        &actor,
+        &path,
+        Resource::Issues,
+        Action::Read,
+    )
+    .await?;
     let (latest, _) =
         EventService::list_paginated(pool.get_ref(), issue.id, SortOrder::Desc, None, 1, None)
             .await?;
@@ -1080,7 +1077,14 @@ pub async fn update_issue(
     body: web::Json<IssueUpdate>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    let (issue, project) = issue_for(pool.get_ref(), &actor, &path, Action::MutateIssue).await?;
+    let (issue, project) = issue_for(
+        pool.get_ref(),
+        &actor,
+        &path,
+        Resource::Issues,
+        Action::Update,
+    )
+    .await?;
     let IssueUpdate { status, substatus } = body.into_inner();
     let update = UpdateIssueState {
         // "muted" is Sentry's legacy name for "ignored" (`STATUS_UPDATE_CHOICES`).
@@ -1166,8 +1170,14 @@ pub async fn issue_link(
         return Ok(redirect(format!("{dashboard}/login")));
     };
     let (_org_slug, _project_slug, issue_id) = path.into_inner();
-    let (issue, project) =
-        issue_for(pool.get_ref(), &actor, &issue_id, Action::ViewProject).await?;
+    let (issue, project) = issue_for(
+        pool.get_ref(),
+        &actor,
+        &issue_id,
+        Resource::Issues,
+        Action::Read,
+    )
+    .await?;
     Ok(redirect(format!(
         "{dashboard}/projects/{}/issues/{}",
         project.id, issue.id
@@ -1292,14 +1302,7 @@ pub async fn submit_user_feedback(
         }
     } else {
         let actor = ApiActor::extract(&req).await?;
-        access::require(
-            pool.get_ref(),
-            actor.is_admin(),
-            actor.user_id(),
-            project.id,
-            Action::MutateIssue,
-        )
-        .await?;
+        actor.require(Resource::Issues, Action::Update, Some(project.id))?;
     }
 
     let shim = crate::routes::ingest::user_report_to_feedback(

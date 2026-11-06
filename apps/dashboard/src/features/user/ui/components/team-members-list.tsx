@@ -13,6 +13,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
+import { Link } from '@/shared/ui/components/link';
 import {
   SettingSection,
   SettingsEmpty,
@@ -22,6 +23,10 @@ import {
 interface TeamMembersListProps {
   members: TeamMemberResponse[];
   currentUserId: number;
+  /** Only an owner makes, unmakes or removes an owner. */
+  isOwner: boolean;
+  /** `users:delete`. */
+  canDelete: boolean;
 }
 
 const USER_ROLES: UserRole[] = ['admin', 'member'];
@@ -39,10 +44,12 @@ const userRoleLabel = (role: UserRole) =>
 export function TeamMembersList({
   members,
   currentUserId,
+  isOwner,
+  canDelete,
 }: TeamMembersListProps) {
   const t = useTranslations('user');
   const format = useFormatter();
-  const updateRole = useMutation(userMutations.updateRole());
+  const updateRole = useMutation(userMutations.updateUserRole());
   const remove = useMutation(userMutations.removeFromTeam());
   const isPending = updateRole.isPending || remove.isPending;
 
@@ -89,6 +96,43 @@ export function TeamMembersList({
     });
   };
 
+  const actionsFor = (member: TeamMemberResponse) => {
+    return [
+      ...(isOwner
+        ? [
+            {
+              id: 'role',
+              label: t('table.changeRole'),
+              disabled: isPending,
+              items: USER_ROLES.map((role) => ({
+                id: role,
+                label: t(userRoleLabel(role)),
+                selected: member.role === role,
+                onSelect: () => {
+                  if (role !== member.role) {
+                    handleRoleChange(member, role);
+                  }
+                },
+              })),
+            },
+          ]
+        : []),
+      ...(canDelete && (isOwner || member.role !== 'admin')
+        ? [
+            {
+              id: 'remove',
+              label: t('remove.confirm'),
+              icon: DeleteIcon,
+              tone: 'danger' as const,
+              separated: true,
+              disabled: isPending,
+              onSelect: () => handleDelete(member),
+            },
+          ]
+        : []),
+    ];
+  };
+
   return (
     <SettingSection
       title={t('membersList.title')}
@@ -102,14 +146,19 @@ export function TeamMembersList({
       ) : (
         members.map((member) => {
           const isSelf = member.id === currentUserId;
-          const locked = isSelf || member.is_primary === true;
+          const actions = actionsFor(member);
+          const locked =
+            isSelf || member.is_primary === true || actions.length === 0;
           return (
             <SettingsListItem
               key={member.id}
               leading={<Avatar name={member.email} />}
               title={
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate">
+                  <Link
+                    href={`/settings/team/${member.id}`}
+                    className="truncate hover:underline"
+                  >
                     {member.email}
                     {isSelf && (
                       <span className="font-normal text-fg-subtle">
@@ -117,7 +166,7 @@ export function TeamMembersList({
                         {t('table.you')}
                       </span>
                     )}
-                  </span>
+                  </Link>
                   <Tag
                     variant="soft"
                     tone={member.role === 'admin' ? 'brand' : 'neutral'}
@@ -152,32 +201,7 @@ export function TeamMembersList({
                         aria-label={t('table.actionsAria')}
                       />
                     }
-                    actions={[
-                      {
-                        id: 'role',
-                        label: t('table.changeRole'),
-                        disabled: isPending,
-                        items: USER_ROLES.map((role) => ({
-                          id: role,
-                          label: t(userRoleLabel(role)),
-                          selected: member.role === role,
-                          onSelect: () => {
-                            if (role !== member.role) {
-                              handleRoleChange(member, role);
-                            }
-                          },
-                        })),
-                      },
-                      {
-                        id: 'remove',
-                        label: t('remove.confirm'),
-                        icon: DeleteIcon,
-                        tone: 'danger',
-                        separated: true,
-                        disabled: isPending,
-                        onSelect: () => handleDelete(member),
-                      },
-                    ]}
+                    actions={actions}
                   />
                 )
               }

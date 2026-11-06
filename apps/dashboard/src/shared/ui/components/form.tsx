@@ -96,7 +96,9 @@ function FormLabel({ className, ...props }: React.ComponentProps<'label'>) {
   return (
     <label
       data-slot="form-label"
-      className={cn('text-label text-fg-secondary', className)}
+      // As wide as its text: stretched by the column, its blank right side
+      // would focus the control too.
+      className={cn('w-fit text-label text-fg-secondary', className)}
       htmlFor={formItemId}
       {...props}
     />

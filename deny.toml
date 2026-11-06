@@ -30,6 +30,10 @@ ignore = [
     { id = "RUSTSEC-2026-0391", reason = "zstd 0.13 is only used through the bulk API (symbolic-debuginfo); no with_context streams" },
     { id = "RUSTSEC-2026-0398", reason = "zstd-safe 7 seekable feature is not enabled" },
     { id = "RUSTSEC-2026-0403", reason = "zstd 0.13 is only used through the bulk API (symbolic-debuginfo), which the advisory exempts" },
+    # `astral-tokio-tar` is unmaintained, with no replacement in `testcontainers`
+    # (0.28 still requires ^0.6.1). A dev-dependency: it only ever tars test
+    # images, and never ships. Drop this once testcontainers moves off it.
+    { id = "RUSTSEC-2026-0440", reason = "dev-dependency of testcontainers only; not in the shipped binary" },
 ]
 [licenses]
 version = 2

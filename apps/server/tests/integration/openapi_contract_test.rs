@@ -138,13 +138,10 @@ async fn seed(db: &TestDb) -> (Seed, String) {
     )
     .await
     .unwrap();
-    let token = AuthTokenService::create_for_user(
-        &db.pool,
-        CreateAuthToken { description: None },
-        Some(admin.id),
-    )
-    .await
-    .unwrap();
+    let token =
+        AuthTokenService::create_for_user(&db.pool, CreateAuthToken::default(), Some(admin.id))
+            .await
+            .unwrap();
     let project = ProjectService::create(
         &db.pool,
         CreateProject {
@@ -454,6 +451,7 @@ async fn every_get_matches_the_published_spec() {
             .configure(routes::alerts::configure_rules)
             .configure(routes::alerts::configure_history)
             .configure(routes::members::configure)
+            .configure(routes::roles::configure)
             .configure(routes::sessions::configure)
             .configure(routes::stats::configure)
             .configure(routes::releases::configure)
@@ -652,6 +650,6 @@ async fn the_spec_does_not_promise_an_rfc_4122_uuid_for_a_project_key() {
     let spec = serde_json::to_value(rustrak::openapi::ApiDoc::openapi()).unwrap();
     let key = &spec["components"]["schemas"]["ProjectResponse"]["properties"]["sentry_key"];
 
-    assert_eq!(key["type"], "string", "{key}");
+    assert_eq!(key["type"], serde_json::json!(["string", "null"]), "{key}");
     assert!(key.get("format").is_none(), "{key}");
 }

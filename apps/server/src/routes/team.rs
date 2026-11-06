@@ -1,4 +1,4 @@
-//! Team management routes (global admin only).
+//! Team management routes.
 //!
 //! - GET   /api/team                  — list all users
 //! - PATCH /api/team/{user_id}/role   — change a user's global role
@@ -7,6 +7,7 @@ use actix_web::{web, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
@@ -55,15 +56,6 @@ pub struct UpdateUserRole {
     pub role: String,
 }
 
-/// Ensures the actor is a global admin, else 403.
-fn require_admin(actor: &ApiActor) -> AppResult<()> {
-    if actor.is_admin() {
-        Ok(())
-    } else {
-        Err(AppError::Forbidden("Admin privileges required".to_string()))
-    }
-}
-
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/team",
@@ -76,9 +68,9 @@ fn require_admin(actor: &ApiActor) -> AppResult<()> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/team — list all users (admin only)
+/// GET /api/team — list all users (needs `users:read`)
 pub async fn list_team(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Users, Action::Read, None)?;
 
     let primary_id = UsersService::primary_user_id(pool.get_ref()).await?;
     let users = UsersService::list(pool.get_ref()).await?;
@@ -107,14 +99,14 @@ pub async fn list_team(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<Ht
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PATCH /api/team/{user_id}/role — change a user's global role (admin only)
+/// PATCH /api/team/{user_id}/role — change a user's global role (needs `users:update`)
 pub async fn update_team_role(
     pool: web::Data<DbPool>,
     actor: ApiActor,
     path: web::Path<i32>,
     body: web::Json<UpdateUserRole>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Users, Action::Update, None)?;
 
     let user_id = path.into_inner();
     // Same `(role, invalid)` pair as the last-admin guard below, and
@@ -127,6 +119,17 @@ pub async fn update_team_role(
             .with_field("role", FieldErrorCode::Invalid)
     })?;
 
+    // Owners are made and unmade only by owners: anything else would let
+    // `users:update` grant itself everything.
+    let target = UsersService::get_by_id(pool.get_ref(), user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("User {} not found", user_id)))?;
+    if (new_role == UserRole::Admin || target.is_admin()) && !actor.is_owner() {
+        return Err(AppError::Forbidden(
+            "Only an owner can change an owner".to_string(),
+        ));
+    }
+
     // Guard: the primary (first-registered) account must remain an admin.
     if new_role != UserRole::Admin
         && UsersService::primary_user_id(pool.get_ref()).await? == Some(user_id)
@@ -137,19 +140,17 @@ pub async fn update_team_role(
     }
 
     // Guard: never demote the last remaining admin.
-    if new_role == UserRole::Member {
-        let target = UsersService::get_by_id(pool.get_ref(), user_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("User {} not found", user_id)))?;
-        if target.is_admin() && UsersService::admin_count(pool.get_ref()).await? <= 1 {
-            // `invalid`, not `already_exists`: the role the caller picked is
-            // well-formed but not acceptable for this user right now. The
-            // blamed input is the role select, the only field in the body.
-            return Err(
-                AppError::Conflict("Cannot demote the last admin".to_string())
-                    .with_field("role", FieldErrorCode::Invalid),
-            );
-        }
+    if new_role == UserRole::Member
+        && target.is_admin()
+        && UsersService::admin_count(pool.get_ref()).await? <= 1
+    {
+        // `invalid`, not `already_exists`: the role the caller picked is
+        // well-formed but not acceptable for this user right now. The
+        // blamed input is the role select, the only field in the body.
+        return Err(
+            AppError::Conflict("Cannot demote the last admin".to_string())
+                .with_field("role", FieldErrorCode::Invalid),
+        );
     }
 
     UsersService::update_role(pool.get_ref(), user_id, new_role).await?;
@@ -172,13 +173,13 @@ pub async fn update_team_role(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/team/{user_id} — remove a user from the instance (admin only)
+/// DELETE /api/team/{user_id} — remove a user from the instance (needs `users:delete`)
 pub async fn delete_user(
     pool: web::Data<DbPool>,
     actor: ApiActor,
     path: web::Path<i32>,
 ) -> AppResult<HttpResponse> {
-    require_admin(&actor)?;
+    actor.require(Resource::Users, Action::Delete, None)?;
 
     let user_id = path.into_inner();
 
@@ -200,6 +201,11 @@ pub async fn delete_user(
     let target = UsersService::get_by_id(pool.get_ref(), user_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User {} not found", user_id)))?;
+    if target.is_admin() && !actor.is_owner() {
+        return Err(AppError::Forbidden(
+            "Only an owner can delete an owner".to_string(),
+        ));
+    }
     if target.is_admin() && UsersService::admin_count(pool.get_ref()).await? <= 1 {
         return Err(AppError::Conflict(
             "Cannot delete the last admin".to_string(),

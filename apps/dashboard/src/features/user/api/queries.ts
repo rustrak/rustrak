@@ -59,13 +59,35 @@ export const userQueries = {
       queryKey: ['team'],
       queryFn: ({ signal }) => orThrow(api().team.list({ signal })),
     }),
-  /** A project's members with their per-project role. */
+  /** Every role with its permissions. */
+  roles: () =>
+    queryOptions({
+      queryKey: ['roles'],
+      queryFn: ({ signal }) => orThrow(api().roles.list({ signal })),
+    }),
+  /** The roles a user holds, on the instance and on each project. */
+  assignments: (userId: number) =>
+    queryOptions({
+      queryKey: ['team', userId, 'assignments'],
+      queryFn: ({ signal }) =>
+        orThrow(api().users.assignments({ path: { id: userId }, signal })),
+    }),
+  /** A project's members with the roles they hold on it. */
   members: (projectId: number) =>
     queryOptions({
       queryKey: [...projectScope(projectId), 'members'],
       queryFn: ({ signal }) =>
         orThrow(
           api().members.list({ path: { project_id: projectId }, signal }),
+        ),
+    }),
+  /** The people and roles the reader can give on a project. */
+  memberCandidates: (projectId: number) =>
+    queryOptions({
+      queryKey: [...projectScope(projectId), 'members', 'candidates'],
+      queryFn: ({ signal }) =>
+        orThrow(
+          api().members.candidates({ path: { project_id: projectId }, signal }),
         ),
     }),
 };

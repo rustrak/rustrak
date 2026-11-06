@@ -1,11 +1,11 @@
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{CreateRelease, UpdateRelease};
-use crate::services::access::{self, Action};
 use crate::services::release::SummaryFilter;
 use crate::services::{IssueService, ProjectService, ReleaseService};
 
@@ -87,14 +87,7 @@ pub async fn list_releases(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Releases, Action::Read, Some(project_id))?;
     ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
     let per_page = query.per_page.clamp(1, 100);
@@ -147,14 +140,7 @@ pub async fn get_release(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, version) = path.into_inner();
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Releases, Action::Read, Some(project_id))?;
 
     let release = ReleaseService::summaries(pool.get_ref(), project_id, &query.filter())
         .await?
@@ -190,14 +176,8 @@ pub async fn new_issues_for_release(
 ) -> AppResult<HttpResponse> {
     let (project_id, release) = path.into_inner();
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::ViewProject,
-    )
-    .await?;
+    actor.require(Resource::Releases, Action::Read, Some(project_id))?;
+    actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
@@ -274,14 +254,7 @@ pub async fn create_release(
     let (_org_slug, project_slug) = path.into_inner();
     let project_id = resolve_project_id_by_slug(pool.get_ref(), &project_slug).await?;
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::UpdateProject,
-    )
-    .await?;
+    actor.require(Resource::Releases, Action::Create, Some(project_id))?;
 
     let (release, created) =
         ReleaseService::create(pool.get_ref(), project_id, body.into_inner()).await?;
@@ -327,14 +300,7 @@ pub async fn finalize_release(
     let (_org_slug, project_slug, version) = path.into_inner();
     let project_id = resolve_project_id_by_slug(pool.get_ref(), &project_slug).await?;
 
-    access::require(
-        pool.get_ref(),
-        actor.is_admin(),
-        actor.user_id(),
-        project_id,
-        Action::UpdateProject,
-    )
-    .await?;
+    actor.require(Resource::Releases, Action::Update, Some(project_id))?;
 
     let release =
         ReleaseService::finalize(pool.get_ref(), project_id, &version, body.into_inner()).await?;

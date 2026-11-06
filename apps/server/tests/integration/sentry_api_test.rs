@@ -8,11 +8,10 @@ use chrono::{DateTime, Utc};
 use rustrak::config::RateLimitConfig;
 use rustrak::db::DbPool;
 use rustrak::ingest::{store_event, EventMetadata};
-use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, ProjectRole, UserRole};
+use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, UserRole};
 use rustrak::routes;
 use rustrak::services::{
-    AuthTokenService, EventService, IssueService, ProjectMemberService, ProjectService,
-    UsersService,
+    AuthTokenService, EventService, IssueService, ProjectService, UsersService,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -78,25 +77,28 @@ fn config_at(public_url: Option<&str>) -> rustrak::config::Config {
 }
 
 async fn admin_token(pool: &DbPool) -> String {
-    AuthTokenService::create(pool, CreateAuthToken { description: None })
+    AuthTokenService::create(pool, CreateAuthToken::default())
         .await
         .expect("token")
         .token
 }
 
 /// A token for a non-admin user holding `role` on `project_id`.
-async fn member_token(pool: &DbPool, project_id: i32, role: ProjectRole) -> String {
+async fn member_token(pool: &DbPool, project_id: i32, role: &str) -> String {
     let req = CreateUserRequest {
-        email: format!("member-{project_id}-{}@example.com", role.as_str()),
+        email: format!(
+            "member-{project_id}-{}@example.com",
+            role.replace(' ', "-").to_lowercase()
+        ),
         password: "password123".to_string(),
     };
     let user = UsersService::create_user(pool, &req, UserRole::Member)
         .await
         .expect("user");
-    ProjectMemberService::upsert(pool, project_id, user.id, role)
+    crate::common::grant_project_role(pool, project_id, user.id, role)
         .await
         .expect("member");
-    AuthTokenService::create_for_user(pool, CreateAuthToken { description: None }, Some(user.id))
+    AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user.id))
         .await
         .expect("token")
         .token
@@ -248,7 +250,7 @@ async fn projects_shows_a_member_only_their_projects() {
     let db = TestDb::new().await;
     let mine = project(&db.pool, "Mine").await;
     project(&db.pool, "Not Mine").await;
-    let token = member_token(&db.pool, mine.id, ProjectRole::Viewer).await;
+    let token = member_token(&db.pool, mine.id, "Viewer").await;
     let app = app!(db.pool);
 
     let (status, body) = get_json(&app, "/api/0/projects/", &token).await;
@@ -648,7 +650,7 @@ async fn issue_details_404s_for_unknown_or_inaccessible_issues() {
     let p = project(&db.pool, "Demo App").await;
     let other = project(&db.pool, "Other").await;
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
-    let outsider = member_token(&db.pool, other.id, ProjectRole::Admin).await;
+    let outsider = member_token(&db.pool, other.id, "Project Admin").await;
     let token = admin_token(&db.pool).await;
     let app = app!(db.pool);
 
@@ -866,7 +868,7 @@ async fn update_issue_needs_an_editor() {
     let db = TestDb::new().await;
     let p = project(&db.pool, "Demo App").await;
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
-    let viewer = member_token(&db.pool, p.id, ProjectRole::Viewer).await;
+    let viewer = member_token(&db.pool, p.id, "Viewer").await;
     let app = app!(db.pool);
 
     let (status, _) = put_status(

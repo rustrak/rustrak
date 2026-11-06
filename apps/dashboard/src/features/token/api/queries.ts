@@ -10,11 +10,4 @@ export const tokenQueries = {
       queryKey: [...tokenQueries.all(), 'list'],
       queryFn: ({ signal }) => orThrow(api().tokens.list({ signal })),
     }),
-  /** One token with its full value (40-char hex), for the reveal and copy. */
-  detail: (id: number) =>
-    queryOptions({
-      queryKey: [...tokenQueries.all(), 'detail', id],
-      queryFn: ({ signal }) =>
-        orThrow(api().tokens.get({ path: { id }, signal })),
-    }),
 };

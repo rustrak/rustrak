@@ -1,73 +1,97 @@
-import { noop, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
-import { MembersSettings } from '@/features/user/ui/components/members-settings';
-import { session } from '@/shared/api/session';
+import { ProjectMembersList } from '@/features/user/ui/components/project-members-list';
+import { startIfAllowed } from '@/shared/api/permissions';
+import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import {
   SettingSection,
   SettingsListSkeleton,
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
 
+/** Who holds a role on this project, for who manages it without the team page. */
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/settings/members',
 )({
   loader: ({ context: { queryClient }, params }) => {
-    void queryClient
-      .query(userQueries.members(Number.parseInt(params.id, 10)))
-      .catch(noop);
-    // The instance's roster is who an admin can add; nobody else may read it.
-    const answer = session.peek();
-    if (answer?.state === 'authenticated' && answer.user.role === 'admin') {
-      void queryClient.query(userQueries.team()).catch(noop);
-    }
+    const projectId = Number.parseInt(params.id, 10);
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('project-members', 'read', projectId),
+      () => void queryClient.query(userQueries.members(projectId)).catch(noop),
+    );
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('project-members', 'update', projectId),
+      () =>
+        void queryClient
+          .query(userQueries.memberCandidates(projectId))
+          .catch(noop),
+    );
   },
-  pendingComponent: MembersSettingsLoading,
-  component: MembersSettingsPage,
+  pendingComponent: MembersLoading,
+  component: MembersPage,
 });
 
-function MembersSettingsPage() {
+function MembersPage() {
   const t = useTranslations('settings');
-  const { id } = Route.useParams();
-  const currentUser = useSessionUser();
-  const projectId = Number.parseInt(id, 10);
-  // Suspended on, not read beside the page: the members decide what the
-  // reader may do here, so a failed read ends in the error boundary rather
-  // than in an empty list beside a permission verdict computed from it.
-  const { data: members } = useSuspenseQuery(userQueries.members(projectId));
-
-  const currentMembership = members.find(
-    (member) => member.user_id === currentUser.id,
-  );
-  const canManageMembers =
-    currentUser.role === 'admin' || currentMembership?.role === 'admin';
-
+  const tUser = useTranslations('user');
+  const projectId = Number.parseInt(Route.useParams().id, 10);
+  const canRead = usePermissions().can('project-members', 'read', projectId);
+  if (canRead) {
+    return <Members projectId={projectId} />;
+  }
   return (
     <>
       <title>{t('members.meta.title')}</title>
-      <MembersSettings
+      <SettingsHeader title={tUser('members.title')} />
+      <NotAuthorized />
+    </>
+  );
+}
+
+/** Separate so the members are only read by who may read them. */
+function Members({ projectId }: { projectId: number }) {
+  const t = useTranslations('settings');
+  const user = useSessionUser();
+  const canUpdate = usePermissions().can(
+    'project-members',
+    'update',
+    projectId,
+  );
+  const { data: members } = useSuspenseQuery(userQueries.members(projectId));
+  // Not suspended: without them the list still stands, and can still remove.
+  const { data: candidates } = useQuery({
+    ...userQueries.memberCandidates(projectId),
+    enabled: canUpdate,
+  });
+  return (
+    <>
+      <title>{t('members.meta.title')}</title>
+      <ProjectMembersList
         projectId={projectId}
         members={members}
-        currentUserId={currentUser.id}
-        canManage={canManageMembers}
+        candidates={candidates ?? null}
+        canUpdate={canUpdate}
+        currentUserId={user.id}
       />
     </>
   );
 }
 
-function MembersSettingsLoading() {
+function MembersLoading() {
   const t = useTranslations('settings');
   const tUser = useTranslations('user');
   return (
     <PageLoading>
       <title>{t('members.meta.title')}</title>
-      {/* Its description and action depend on whether the reader may manage
-          the members, which the members decide. */}
       <SettingsHeader title={tUser('members.title')} />
-      <SettingSection title={tUser('membersList.title')}>
+      <SettingSection title={tUser('members.title')}>
         <SettingsListSkeleton />
       </SettingSection>
     </PageLoading>

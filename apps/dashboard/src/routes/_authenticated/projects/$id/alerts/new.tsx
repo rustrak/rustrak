@@ -1,6 +1,6 @@
 import type { AlertType } from '@rustrak/client';
 import { PageHeader } from '@rustrak/ui';
-import { noop, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { alertQueries } from '@/features/alert/api/queries';
@@ -11,9 +11,12 @@ import {
   RuleEditorSkeleton,
 } from '@/features/alert/ui/components/rule-editor/rule-editor';
 import { projectQueries } from '@/features/project/api/queries';
+import { startIfAllowed } from '@/shared/api/permissions';
 import { searchOneOf } from '@/shared/lib/search-params';
+import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
+import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 const TYPES = alertTypes.map((a) => a.type);
@@ -26,10 +29,19 @@ export const Route = createFileRoute('/_authenticated/projects/$id/alerts/new')(
     }),
     loader: ({ context: { queryClient }, params }) => {
       const projectId = Number.parseInt(params.id, 10);
-      void queryClient.query(alertQueries.integrations()).catch(noop);
-      void queryClient
-        .query(projectQueries.environments(projectId))
-        .catch(noop);
+      startIfAllowed(
+        queryClient,
+        (p) => p.can('alert-rules', 'create', projectId),
+        () => void queryClient.query(alertQueries.integrations()).catch(noop),
+      );
+      startIfAllowed(
+        queryClient,
+        (p) => p.can('issues', 'read', projectId),
+        () =>
+          void queryClient
+            .query(projectQueries.environments(projectId))
+            .catch(noop),
+      );
     },
     pendingComponent: NewAlertLoading,
     component: NewAlertPage,
@@ -37,15 +49,27 @@ export const Route = createFileRoute('/_authenticated/projects/$id/alerts/new')(
 );
 
 function NewAlertPage() {
+  const projectId = Number.parseInt(Route.useParams().id, 10);
+  return usePermissions().can('alert-rules', 'create', projectId) ? (
+    <NewAlert projectId={projectId} />
+  ) : (
+    <NotAuthorized />
+  );
+}
+
+/** Separate so its reads are only made by who may create an alert. */
+function NewAlert({ projectId }: { projectId: number }) {
   const t = useTranslations('alerts');
-  const { id } = Route.useParams();
   const { type } = Route.useSearch();
   const router = useRouter();
-  const projectId = Number.parseInt(id, 10);
   const { data: integrations } = useSuspenseQuery(alertQueries.integrations());
-  const { data: environments } = useSuspenseQuery(
-    projectQueries.environments(projectId),
-  );
+  // Only choices: without `issues:read` an environment is typed by hand.
+  const canReadIssues = usePermissions().can('issues', 'read', projectId);
+  const environments =
+    useQuery({
+      ...projectQueries.environments(projectId),
+      enabled: canReadIssues,
+    }).data ?? [];
   usePageTrail([{ label: t('overview.new') }]);
 
   return (

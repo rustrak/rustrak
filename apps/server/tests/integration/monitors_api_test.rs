@@ -60,6 +60,7 @@ macro_rules! setup {
             &$db.pool,
             rustrak::models::CreateAuthToken {
                 description: Some("test".to_string()),
+                ..Default::default()
             },
         )
         .await

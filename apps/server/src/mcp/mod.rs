@@ -125,6 +125,8 @@ impl RustrakMcp {
     fn actor(&self) -> ApiActor {
         ApiActor {
             user: self.actor.user.clone(),
+            access: self.actor.access.clone(),
+            via_session: false,
         }
     }
 

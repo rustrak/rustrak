@@ -80,6 +80,7 @@ pub(super) async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
         pool,
         CreateAuthToken {
             description: Some("Test token".to_string()),
+            ..Default::default()
         },
     )
     .await

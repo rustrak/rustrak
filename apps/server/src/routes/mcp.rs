@@ -18,6 +18,7 @@ use rmcp::transport::streamable_http_server::session::never::NeverSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use serde::{Deserialize, Serialize};
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::{ApiActor, BearerAuth};
 use crate::config::Config;
 use crate::db::DbPool;
@@ -73,7 +74,8 @@ async fn is_enabled(pool: &DbPool) -> AppResult<bool> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Whether the MCP endpoint at `/mcp` is on.
+/// Whether the MCP endpoint at `/mcp` is on. Open to every member: it is what
+/// they point their own assistant at.
 pub async fn get_settings(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
@@ -92,20 +94,18 @@ pub async fn get_settings(
     responses(
         (status = 200, description = "The MCP endpoint's new state, and its URL", body = McpStatus),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Not an instance admin", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing mcp:update", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Turns the MCP endpoint at `/mcp` on or off. Instance admins only.
+/// Turns the MCP endpoint at `/mcp` on or off (needs `mcp:update`).
 pub async fn update_settings(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     actor: ApiActor,
     body: web::Json<McpSettings>,
 ) -> AppResult<HttpResponse> {
-    if !actor.is_admin() {
-        return Err(AppError::Forbidden("Admin privileges required".to_string()));
-    }
+    actor.require(Resource::Mcp, Action::Update, None)?;
     sqlx::query("UPDATE installation SET mcp_enabled = $1 WHERE id = 1")
         .bind(body.enabled)
         .execute(pool.get_ref())
@@ -130,24 +130,32 @@ async fn caller(
     else {
         return Ok(None);
     };
-    let user_id = if token.starts_with(ACCESS_PREFIX) {
+    // An API token is narrowed to the scope it was created with; an OAuth
+    // grant acts as its user.
+    let (user_id, scope) = if token.starts_with(ACCESS_PREFIX) {
         // Without an issuer no OAuth token was ever valid here.
         let Some(resource) = resource else {
             return Ok(None);
         };
         match OAuthService::authenticate(pool, token.trim(), resource).await? {
-            Some(user_id) => Some(user_id),
+            Some(user_id) => (Some(user_id), None),
             None => return Ok(None),
         }
     } else {
         match BearerAuth::extract(req).await {
-            Ok(bearer) => bearer.token.user_id,
+            Ok(bearer) => (bearer.token.user_id, Some(bearer.token.scope())),
             Err(e) if matches!(e.kind(), AppError::Unauthorized(_)) => return Ok(None),
             Err(e) => return Err(e),
         }
     };
     match ApiActor::for_token(pool, user_id).await {
-        Ok(actor) => Ok(Some(actor)),
+        Ok(actor) => Ok(Some(match scope {
+            Some(scope) => ApiActor {
+                access: actor.access.capped(scope),
+                ..actor
+            },
+            None => actor,
+        })),
         Err(e) if matches!(e.kind(), AppError::Unauthorized(_)) => Ok(None),
         Err(e) => Err(e),
     }

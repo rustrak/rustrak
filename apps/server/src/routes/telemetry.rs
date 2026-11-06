@@ -5,8 +5,9 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use serde::Serialize;
 
+use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::telemetry::{Report, Reporter, TelemetryStatus};
 
 #[derive(Serialize)]
@@ -52,9 +53,7 @@ pub async fn preview(
     reporter: web::Data<Arc<Reporter>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    if !actor.is_admin() {
-        return Err(AppError::Forbidden("Admin privileges required".to_string()));
-    }
+    actor.require(Resource::Telemetry, Action::Read, None)?;
     let report = reporter.preview().await?;
     let (enabled, reason, sink) = match status.get_ref() {
         TelemetryStatus::Enabled { sink } => (true, None, Some(*sink)),
