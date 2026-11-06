@@ -1756,6 +1756,10 @@
     },
     "footer": {
       "docs": "Documentație"
+    },
+    "panel": {
+      "title": "Monitorizarea erorilor, găzduită de tine.",
+      "subtitle": "Compatibil cu SDK-urile Sentry. Infrastructura ta, datele tale."
     }
   },
   "invite": {

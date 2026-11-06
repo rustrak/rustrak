@@ -1756,6 +1756,10 @@
     },
     "footer": {
       "docs": "Docs"
+    },
+    "panel": {
+      "title": "Self-hosted error monitoring.",
+      "subtitle": "Compatible with Sentry SDKs. Your infrastructure, your data."
     }
   },
   "invite": {
