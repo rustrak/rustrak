@@ -17715,6 +17715,28 @@
           }
         }
       },
+      "MemberRole": {
+        "type": "object",
+        "description": "A role someone holds on a project.",
+        "required": [
+          "id",
+          "name",
+          "inherited"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inherited": {
+            "type": "boolean",
+            "description": "Held on every project: removing them from this one leaves it in place."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "MetricDelta": {
         "type": "object",
         "description": "A counter measured over the requested window alongside the same counter\nover the window immediately before it.\n\n`previous` is `None` when the request asked for all time: there is no\nearlier window to compare against, and reporting `0` there would render as\na misleading \"+100%\" in the UI.",
@@ -18296,7 +18318,7 @@
           "roles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/RoleRef"
+              "$ref": "#/components/schemas/MemberRole"
             }
           },
           "user_id": {

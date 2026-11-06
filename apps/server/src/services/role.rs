@@ -16,7 +16,17 @@ type RoleRow = (i32, String, String, DateTime<Utc>, i64);
 pub struct ProjectMember {
     pub user_id: i32,
     pub email: String,
-    pub roles: Vec<RoleRef>,
+    pub roles: Vec<MemberRole>,
+}
+
+/// A role someone holds on a project.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberRole {
+    pub id: i32,
+    pub name: String,
+    /// Held on every project: removing them from this one leaves it in place.
+    pub inherited: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -393,9 +403,9 @@ impl RoleService {
     /// Everyone holding a role of the list that reaches this project, by email.
     /// Owners hold no role, and personal permissions are no role of the list.
     pub async fn project_members(pool: &DbPool, project_id: i32) -> AppResult<Vec<ProjectMember>> {
-        let rows: Vec<(i32, String, i32, String)> = sqlx::query_as(
+        let rows: Vec<(i32, String, i32, String, Option<i32>)> = sqlx::query_as(
             r#"
-            SELECT u.id, u.email, r.id, r.name
+            SELECT u.id, u.email, r.id, r.name, a.project_id
             FROM role_assignments a
             JOIN users u ON u.id = a.user_id
             JOIN roles r ON r.id = a.role_id
@@ -418,14 +428,19 @@ impl RoleService {
             .collect();
         let rows = rows
             .into_iter()
-            .filter(|(_, _, id, _)| reaching.contains(id));
+            .filter(|(_, _, id, _, _)| reaching.contains(id));
         let mut members: Vec<ProjectMember> = Vec::new();
-        for (user_id, email, id, name) in rows {
-            let role = RoleRef { id, name };
+        for (user_id, email, id, name, place) in rows {
+            let role = MemberRole {
+                id,
+                name,
+                inherited: place.is_none(),
+            };
             match members.last_mut() {
                 Some(m) if m.user_id == user_id => {
-                    if !m.roles.contains(&role) {
-                        m.roles.push(role);
+                    match m.roles.iter_mut().find(|r| r.id == role.id) {
+                        Some(held) => held.inherited |= role.inherited,
+                        None => m.roles.push(role),
                     }
                 }
                 _ => members.push(ProjectMember {

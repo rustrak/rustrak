@@ -180,14 +180,8 @@ impl Grants {
 
     /// Whether both hold some project permission in common.
     fn shares_project_grant(&self, other: &Grants) -> bool {
-        match (self.all, other.all) {
-            (true, _) => other.any_project_grant(),
-            (_, true) => self.any_project_grant(),
-            _ => self
-                .pairs
-                .iter()
-                .any(|p| p.0.scope() == Scope::Project && other.pairs.contains(p)),
-        }
+        catalog_pairs()
+            .any(|(r, a)| r.scope() == Scope::Project && self.allows(r, a) && other.allows(r, a))
     }
 
     fn add(&mut self, other: &Grants) {

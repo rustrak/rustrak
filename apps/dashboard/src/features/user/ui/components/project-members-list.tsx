@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
+import { ownRoles } from '@/features/user/model/project-members';
 import {
   SettingSection,
   SettingsEmpty,
@@ -54,7 +55,10 @@ export function ProjectMembersList({
   const handleRemove = async (member: ProjectMember) => {
     const ok = await confirm({
       title: t('remove.title'),
-      description: t('remove.description', { email: member.email }),
+      description:
+        ownRoles(member).length < member.roles.length
+          ? t('remove.keepsInherited', { email: member.email })
+          : t('remove.description', { email: member.email }),
       tone: 'danger',
       confirmLabel: t('remove.confirm'),
       cancelLabel: t('cancel'),
@@ -68,6 +72,35 @@ export function ProjectMembersList({
           description: error.error.message,
         }),
     });
+  };
+
+  const actionsFor = (member: ProjectMember) => {
+    if (!canUpdate || member.user_id === currentUserId) return [];
+    return [
+      ...(candidates
+        ? [
+            {
+              id: 'role',
+              label: t('table.changeRole'),
+              onSelect: () => setEditing(member),
+            },
+          ]
+        : []),
+      // A role on every project cannot be taken away here.
+      ...(ownRoles(member).length > 0
+        ? [
+            {
+              id: 'remove',
+              label: t('remove.confirm'),
+              icon: DeleteIcon,
+              tone: 'danger' as const,
+              separated: true,
+              disabled: remove.isPending,
+              onSelect: () => handleRemove(member),
+            },
+          ]
+        : []),
+    ];
   };
 
   return (
@@ -115,13 +148,15 @@ export function ProjectMembersList({
                   </span>
                   {member.roles.map((role) => (
                     <Tag key={role.id} variant="soft" tone="neutral">
-                      {role.name}
+                      {role.inherited
+                        ? `${role.name} · ${t('invite.allProjects')}`
+                        : role.name}
                     </Tag>
                   ))}
                 </span>
               }
               actions={
-                canUpdate && member.user_id !== currentUserId ? (
+                actionsFor(member).length > 0 ? (
                   <Menu
                     align="end"
                     trigger={
@@ -132,26 +167,7 @@ export function ProjectMembersList({
                         aria-label={t('table.actionsAria')}
                       />
                     }
-                    actions={[
-                      ...(candidates
-                        ? [
-                            {
-                              id: 'role',
-                              label: t('table.changeRole'),
-                              onSelect: () => setEditing(member),
-                            },
-                          ]
-                        : []),
-                      {
-                        id: 'remove',
-                        label: t('remove.confirm'),
-                        icon: DeleteIcon,
-                        tone: 'danger' as const,
-                        separated: true,
-                        disabled: remove.isPending,
-                        onSelect: () => handleRemove(member),
-                      },
-                    ]}
+                    actions={actionsFor(member)}
                   />
                 ) : null
               }
@@ -200,9 +216,8 @@ function MemberForm({
   const t = useTranslations('user');
   const set = useMutation(userMutations.setProjectMember(projectId));
   const [userId, setUserId] = useState(member ? String(member.user_id) : '');
-  const [roleId, setRoleId] = useState(
-    member?.roles[0] ? String(member.roles[0].id) : '',
-  );
+  const current = member ? ownRoles(member)[0] : undefined;
+  const [roleId, setRoleId] = useState(current ? String(current.id) : '');
   const userItems = Object.fromEntries(
     candidates.users.map((u) => [String(u.id), u.email]),
   );

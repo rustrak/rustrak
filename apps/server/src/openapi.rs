@@ -299,6 +299,7 @@ impl Modify for SecurityAddon {
         crate::routes::members::MemberCandidates,
         crate::services::role::ProjectMember,
         crate::services::role::RoleRef,
+        crate::services::role::MemberRole,
         crate::routes::roles::Catalog,
         crate::routes::roles::CatalogResource,
         crate::routes::roles::MyAccess,

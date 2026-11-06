@@ -489,6 +489,7 @@
     "remove": {
       "title": "Remove Member",
       "description": "Remove {email} from this project? They will lose access until they are added again.",
+      "keepsInherited": "Remove {email}'s roles on this project? They keep the roles they hold on every project.",
       "removing": "Removing...",
       "confirm": "Remove"
     },

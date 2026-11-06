@@ -244,6 +244,7 @@ pub async fn remove_member(
     paths(list_members, member_candidates, upsert_member, remove_member),
     components(schemas(
         ProjectMember,
+        crate::services::role::MemberRole,
         crate::services::role::RoleRef,
         SetProjectMember,
         MemberCandidate,

@@ -489,6 +489,7 @@
     "remove": {
       "title": "Elimină membru",
       "description": "Elimini {email} din acest proiect? Va pierde accesul până când este adăugat din nou.",
+      "keepsInherited": "Elimini rolurile lui {email} din acest proiect? Își păstrează rolurile pe care le are în toate proiectele.",
       "removing": "Se elimină...",
       "confirm": "Elimină"
     },

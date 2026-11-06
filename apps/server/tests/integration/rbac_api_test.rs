@@ -231,7 +231,7 @@ async fn a_role_on_all_projects_makes_you_a_member_of_each() {
     assert_eq!(body[0]["user_id"], u.id, "{body}");
     assert_eq!(
         body[0]["roles"],
-        json!([{ "id": viewer, "name": "Viewer" }])
+        json!([{ "id": viewer, "name": "Viewer", "inherited": true }])
     );
 }
 
@@ -637,6 +637,67 @@ async fn a_member_manager_is_offered_who_and_what_they_can_give() {
     assert_eq!(status, 200);
 }
 
+/// A role on every project cannot be taken away from one project, so the list
+/// says which roles are this project's own.
+#[actix_web::test]
+async fn project_members_say_which_roles_come_from_every_project() {
+    let db = TestDb::new().await;
+    let owner = who(&db.pool, "boss@x.com", true).await;
+    let member = who(&db.pool, "member@x.com", false).await;
+    let p = project(&db.pool).await;
+    let everywhere = role(&db.pool, "everywhere", &[(Resource::Logs, Action::Read)]).await;
+    let here = role(&db.pool, "here", &[(Resource::Issues, Action::Read)]).await;
+    RoleService::assign(&db.pool, member.id, everywhere, None)
+        .await
+        .unwrap();
+    RoleService::assign(&db.pool, member.id, here, Some(p))
+        .await
+        .unwrap();
+    let app = app!(db.pool.clone());
+    let uri = format!("/api/projects/{p}/members");
+
+    let (status, body) = call!(app, get, uri, owner.token);
+    assert_eq!(status, 200, "{body}");
+    let row = &body.as_array().unwrap()[0];
+    let inherited = |name: &str| {
+        row["roles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["name"] == name)
+            .unwrap()["inherited"]
+            .clone()
+    };
+    assert_eq!(inherited("everywhere"), json!(true), "{body}");
+    assert_eq!(inherited("here"), json!(false), "{body}");
+}
+
+/// Held both ways, the role still reaches this project after losing its own
+/// assignment: inherited wins.
+#[actix_web::test]
+async fn a_role_held_on_every_project_and_here_counts_as_inherited() {
+    let db = TestDb::new().await;
+    let owner = who(&db.pool, "boss@x.com", true).await;
+    let member = who(&db.pool, "member@x.com", false).await;
+    let p = project(&db.pool).await;
+    let both = role(&db.pool, "both", &[(Resource::Logs, Action::Read)]).await;
+    RoleService::assign(&db.pool, member.id, both, Some(p))
+        .await
+        .unwrap();
+    RoleService::assign(&db.pool, member.id, both, None)
+        .await
+        .unwrap();
+    let app = app!(db.pool.clone());
+
+    let (_, body) = call!(app, get, format!("/api/projects/{p}/members"), owner.token);
+    let roles = body.as_array().unwrap()[0]["roles"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(roles.len(), 1, "{body}");
+    assert_eq!(roles[0]["inherited"], json!(true), "{body}");
+}
+
 #[actix_web::test]
 async fn a_project_admin_manages_that_projects_members() {
     let db = TestDb::new().await;
@@ -669,7 +730,10 @@ async fn a_project_admin_manages_that_projects_members() {
         .unwrap()
         .clone();
     assert_eq!(row["email"], "m@x.com");
-    assert_eq!(row["roles"], json!([{ "id": editor, "name": "Editor" }]));
+    assert_eq!(
+        row["roles"],
+        json!([{ "id": editor, "name": "Editor", "inherited": false }])
+    );
 
     let (status, _) = call!(
         app,

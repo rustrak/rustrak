@@ -489,6 +489,7 @@
     "remove": {
       "title": "Supprimer le membre",
       "description": "Supprimer {email} de ce projet ? Cette personne perdra l’accès jusqu’à ce qu’elle soit ajoutée à nouveau.",
+      "keepsInherited": "Retirer les rôles de {email} sur ce projet ? Cette personne conserve les rôles qu’elle détient sur tous les projets.",
       "removing": "Suppression...",
       "confirm": "Supprimer"
     },

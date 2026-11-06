@@ -489,6 +489,7 @@
     "remove": {
       "title": "移除成员",
       "description": "从该项目中移除 {email}？他们将失去访问权限，直到再次被添加。",
+      "keepsInherited": "移除 {email} 在此项目中的角色？其在所有项目中拥有的角色将保留。",
       "removing": "正在移除…",
       "confirm": "移除"
     },

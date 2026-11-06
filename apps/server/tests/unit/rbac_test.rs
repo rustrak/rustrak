@@ -99,6 +99,38 @@ fn a_token_limited_to_writing_a_resource_can_read_it() {
     assert!(!access.can(Resource::Logs, Action::Read, Some(1)));
 }
 
+/// A token keeps a read its owner only holds by writing, so it sees the project.
+#[test]
+fn a_token_limited_to_an_implied_read_sees_the_project() {
+    let access = Access::new(vec![on_project(
+        1,
+        grants(&[(Resource::Issues, Action::Update)]),
+    )])
+    .capped(TokenScope {
+        grants: grants(&[(Resource::Issues, Action::Read)]),
+        projects: None,
+    });
+    assert!(access.can(Resource::Project, Action::Read, Some(1)));
+    assert_eq!(access.visible_projects(), ProjectScope::Only(vec![1]));
+    assert!(access.can(Resource::Issues, Action::Read, Some(1)));
+    assert!(!access.can(Resource::Issues, Action::Update, Some(1)));
+}
+
+/// The other way round too: a token that writes shows what its owner reads
+/// only when the owner can write it as well.
+#[test]
+fn a_token_for_a_write_its_owner_lacks_does_not_show_the_project() {
+    let access = Access::new(vec![on_project(
+        1,
+        grants(&[(Resource::Issues, Action::Read)]),
+    )])
+    .capped(TokenScope {
+        grants: grants(&[(Resource::Issues, Action::Update)]),
+        projects: None,
+    });
+    assert!(!access.can(Resource::Issues, Action::Update, Some(1)));
+}
+
 /// `api-tokens:read` is everyone's tokens, not your own: making one must not
 /// show the others'.
 #[test]

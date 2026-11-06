@@ -1439,6 +1439,18 @@ export type MemberCandidates = {
 };
 
 /**
+ * A role someone holds on a project.
+ */
+export type MemberRole = {
+    id: number;
+    /**
+     * Held on every project: removing them from this one leaves it in place.
+     */
+    inherited: boolean;
+    name: string;
+};
+
+/**
  * A counter measured over the requested window alongside the same counter
  * over the window immediately before it.
  *
@@ -1706,7 +1718,7 @@ export type ProjectListStats = {
  */
 export type ProjectMember = {
     email: string;
-    roles: Array<RoleRef>;
+    roles: Array<MemberRole>;
     user_id: number;
 };
 

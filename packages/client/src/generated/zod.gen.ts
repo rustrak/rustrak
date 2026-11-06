@@ -1002,6 +1002,15 @@ export const zMemberCandidate = z.object({
 });
 
 /**
+ * A role someone holds on a project.
+ */
+export const zMemberRole = z.object({
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    inherited: z.boolean(),
+    name: z.string()
+});
+
+/**
  * A counter measured over the requested window alongside the same counter
  * over the window immediately before it.
  *
@@ -1136,6 +1145,15 @@ export const zProjectListStats = z.object({
     new_issues: zMetricDelta,
     open_issues: z.int(),
     trend: z.array(z.int())
+});
+
+/**
+ * A member of one project: someone holding a role on it or on every project.
+ */
+export const zProjectMember = z.object({
+    email: z.string(),
+    roles: z.array(zMemberRole),
+    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
 });
 
 export const zProjectRepository = z.object({
@@ -1529,15 +1547,6 @@ export const zRoleRef = z.object({
 export const zMemberCandidates = z.object({
     roles: z.array(zRoleRef),
     users: z.array(zMemberCandidate)
-});
-
-/**
- * A member of one project: someone holding a role on it or on every project.
- */
-export const zProjectMember = z.object({
-    email: z.string(),
-    roles: z.array(zRoleRef),
-    user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
 });
 
 export const zSchedule = z.union([
