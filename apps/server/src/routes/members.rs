@@ -1,6 +1,7 @@
 //! Project members: who holds which roles on one project.
 //!
 //! - GET    /api/projects/{id}/members            — list members (`project-members:read`)
+//! - GET    /api/projects/{id}/members/candidates — who and what can be given (`project-members:update`)
 //! - PUT    /api/projects/{id}/members            — set a member's roles (`project-members:update`)
 //! - DELETE /api/projects/{id}/members/{user_id}  — remove a member (`project-members:update`)
 //!
@@ -8,7 +9,7 @@
 //! hold on this project.
 
 use actix_web::{web, HttpResponse};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
@@ -16,6 +17,7 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 #[cfg(feature = "openapi")]
 use crate::services::role::ProjectMember;
+use crate::services::role::RoleRef;
 use crate::services::{ProjectService, RoleService, UsersService};
 
 #[cfg(feature = "openapi")]
@@ -70,6 +72,67 @@ async fn require_covered(
         }
     }
     Ok(())
+}
+
+/// Someone who can be made a member.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberCandidate {
+    pub id: i32,
+    pub email: String,
+}
+
+/// What the caller can choose from when setting a member's roles.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MemberCandidates {
+    pub users: Vec<MemberCandidate>,
+    pub roles: Vec<RoleRef>,
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/projects/{project_id}/members/candidates",
+    operation_id = "members.candidates",
+    tag = "Members",
+    params(("project_id" = i32, Path, description = "Project ID")),
+    responses(
+        (status = 200, description = "People and roles the caller can give", body = MemberCandidates),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing project-members:update", body = crate::error::ErrorResponse),
+        (status = 404, description = "Project not found", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Lists the people and the roles the caller can give on the project, so it takes neither `users:read` nor `roles:read` to manage its members.
+pub async fn member_candidates(
+    pool: web::Data<DbPool>,
+    actor: ApiActor,
+    path: web::Path<i32>,
+) -> AppResult<HttpResponse> {
+    let project_id = path.into_inner();
+    actor.require(Resource::ProjectMembers, Action::Update, Some(project_id))?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    // Owners already hold everything, and nobody edits their own membership.
+    let users = UsersService::list(pool.get_ref())
+        .await?
+        .into_iter()
+        .filter(|u| !u.is_admin() && actor.user_id() != Some(u.id))
+        .map(|u| MemberCandidate {
+            id: u.id,
+            email: u.email,
+        })
+        .collect();
+    let roles = RoleService::list(pool.get_ref())
+        .await?
+        .into_iter()
+        .filter(|r| actor.access.covers(&r.grants(), Some(project_id)))
+        .map(|r| RoleRef {
+            id: r.id,
+            name: r.name,
+        })
+        .collect();
+    Ok(HttpResponse::Ok().json(MemberCandidates { users, roles }))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -178,8 +241,14 @@ pub async fn remove_member(
 #[cfg(feature = "openapi")]
 #[derive(OpenApi)]
 #[openapi(
-    paths(list_members, upsert_member, remove_member),
-    components(schemas(ProjectMember, crate::services::role::RoleRef, SetProjectMember))
+    paths(list_members, member_candidates, upsert_member, remove_member),
+    components(schemas(
+        ProjectMember,
+        crate::services::role::RoleRef,
+        SetProjectMember,
+        MemberCandidate,
+        MemberCandidates
+    ))
 )]
 pub struct MembersApi;
 
@@ -189,6 +258,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/api/projects/{project_id}/members")
             .route("", web::get().to(list_members))
             .route("", web::put().to(upsert_member))
+            .route("/candidates", web::get().to(member_candidates))
             .route("/{user_id}", web::delete().to(remove_member)),
     );
 }

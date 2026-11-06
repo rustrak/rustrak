@@ -30,12 +30,12 @@ WITH legacy (level, resource, action) AS (VALUES
     (1, 'releases', 'read'), (1, 'source-maps', 'read'), (1, 'alert-rules', 'read'), (1, 'monitors', 'read'),
     (1, 'client-keys', 'read'), (1, 'project-members', 'read'), (1, 'project-github', 'read'),
     (2, 'issues', 'update'), (2, 'issues', 'delete'),
-    (2, 'releases', 'create'), (2, 'releases', 'update'), (2, 'releases', 'delete'),
-    (2, 'source-maps', 'create'), (2, 'source-maps', 'delete'),
+    (2, 'releases', 'create'), (2, 'releases', 'update'),
+    (2, 'source-maps', 'create'),
     (2, 'alert-rules', 'create'), (2, 'alert-rules', 'update'), (2, 'alert-rules', 'delete'),
     (2, 'monitors', 'create'), (2, 'monitors', 'update'), (2, 'monitors', 'delete'),
     (2, 'project', 'update'), (2, 'project-github', 'update'),
-    (3, 'project', 'delete'), (3, 'client-keys', 'update'), (3, 'project-members', 'update')
+    (3, 'project', 'delete'), (3, 'project-members', 'update')
 ), held AS (
     SELECT DISTINCT p.id AS project_id, ra.user_id, rp.resource, rp.action
     FROM role_assignments ra
@@ -44,8 +44,8 @@ WITH legacy (level, resource, action) AS (VALUES
 )
 SELECT project_id, user_id,
     CASE
-        WHEN COUNT(*) = 29 THEN 'admin'
-        WHEN SUM(CASE WHEN level <= 2 THEN 1 ELSE 0 END) = 26 THEN 'editor'
+        WHEN COUNT(*) = 26 THEN 'admin'
+        WHEN SUM(CASE WHEN level <= 2 THEN 1 ELSE 0 END) = 24 THEN 'editor'
         ELSE 'viewer'
     END
 FROM held JOIN legacy USING (resource, action)

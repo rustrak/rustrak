@@ -64,7 +64,7 @@ pub async fn list_tokens(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<
     responses(
         (status = 201, description = "Token created (full token shown once)", body = AuthTokenCreatedResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-        (status = 403, description = "Called with a token, or a permission the caller lacks", body = crate::error::ErrorResponse),
+        (status = 403, description = "Called with a token, missing api-tokens:create, or a permission the caller lacks", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
@@ -82,6 +82,7 @@ pub async fn create_token(
             "API tokens can only be created from a signed-in session".to_string(),
         ));
     }
+    actor.require(Resource::ApiTokens, Action::Create, None)?;
     let lacking = body
         .permissions
         .iter()

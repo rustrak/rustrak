@@ -3,17 +3,25 @@ import { useTranslations } from 'use-intl';
 import { SettingsEmpty } from './setting-row';
 
 /**
- * Where a page's content would be, for a reader whose roles do not reach it
- * on this project: said plainly, instead of a load that can only fail.
+ * Where a page's content would be, for a reader whose roles do not reach it:
+ * said plainly, instead of a load that can only fail.
  */
-export function NotAuthorized() {
+export function NotAuthorized({
+  scope = 'project',
+}: {
+  scope?: 'project' | 'workspace';
+}) {
   const t = useTranslations('settings');
   return (
     <div className="overflow-hidden rounded-2xl border border-border-subtle bg-surface">
       <SettingsEmpty
         icon={<SecurityIcon size="2xl" />}
         title={t('notAuthorized')}
-        description={t('projectNotAuthorizedDescription')}
+        description={
+          scope === 'project'
+            ? t('projectNotAuthorizedDescription')
+            : t('workspaceNotAuthorizedDescription')
+        }
       />
     </div>
   );

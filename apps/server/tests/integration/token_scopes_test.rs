@@ -204,6 +204,44 @@ async fn a_token_never_exceeds_its_owner() {
     assert_eq!(status(&app, "/api/integrations/1", &t.token).await, 403);
 }
 
+/// `api-tokens:create` is what makes a token, for anyone who is not an owner.
+#[actix_web::test]
+async fn creating_a_token_needs_the_permission() {
+    let db = TestDb::new().await;
+    let u = UsersService::create_user(
+        &db.pool,
+        &CreateUserRequest {
+            email: "noperm@example.com".into(),
+            password: "password123".into(),
+        },
+        UserRole::Member,
+    )
+    .await
+    .unwrap();
+    let app = app!(db.pool.clone());
+    let session = login(&app, "noperm@example.com").await;
+
+    let (status, _) = create(&app, &session, json!({"description": "t"})).await;
+    assert_eq!(status, 403);
+
+    rustrak::services::RoleService::set_assignments(
+        &db.pool,
+        u.id,
+        &[],
+        Some(&rustrak::models::PersonalAccess {
+            permissions: vec![rustrak::models::Permission {
+                resource: Resource::ApiTokens,
+                action: Action::Create,
+            }],
+            project_ids: None,
+        }),
+    )
+    .await
+    .unwrap();
+    let (status, _) = create(&app, &session, json!({"description": "t"})).await;
+    assert_eq!(status, 201);
+}
+
 #[actix_web::test]
 async fn a_token_cannot_create_tokens() {
     let db = TestDb::new().await;

@@ -2083,7 +2083,7 @@
       },
       "title": "Membri",
       "subtitle": "Administrează membrii echipei și invitațiile",
-      "notAuthorizedDescription": "Doar administratorii instanței pot administra echipa. Contactează un admin dacă ai nevoie de acces."
+      "notAuthorizedDescription": "Accesul tău nu include echipa. Contactează un proprietar pentru a-l solicita."
     },
     "integrations": {
       "meta": {
@@ -2110,7 +2110,7 @@
       "server": {
         "title": "Server MCP",
         "description": "Răspunde asistenților AI la endpointul de mai jos. Dezactivat implicit; oprirea lui deconectează toți asistenții deodată.",
-        "adminOnly": "Doar un administrator al instanței poate porni sau opri serverul MCP.",
+        "adminOnly": "Accesul tău nu include pornirea sau oprirea serverului MCP.",
         "on": "Activ",
         "off": "Inactiv",
         "toggleLabel": "Pornește sau oprește serverul MCP",
@@ -2190,7 +2190,7 @@
       },
       "title": "Stocare",
       "subtitle": "Ce păstrează Rustrak și cât timp",
-      "notAuthorizedDescription": "Doar administratorii instanței pot vedea utilizarea stocării și pot rula curățări. Contactează un admin dacă ai nevoie de acces.",
+      "notAuthorizedDescription": "Accesul tău nu include stocarea. Contactează un proprietar pentru a-l solicita.",
       "loadFailed": "Nu s-a putut citi stocarea"
     },
     "account": {
@@ -2292,7 +2292,8 @@
       "title": "Date",
       "subtitle": "Ce păstrează acest proiect și cât acceptă."
     },
-    "projectNotAuthorizedDescription": "Accesul tău nu include această secțiune a proiectului. Contactează un proprietar pentru a-l solicita."
+    "projectNotAuthorizedDescription": "Accesul tău nu include această secțiune a proiectului. Contactează un proprietar pentru a-l solicita.",
+    "workspaceNotAuthorizedDescription": "Accesul tău nu include această secțiune. Contactează un proprietar pentru a-l solicita."
   },
   "github": {
     "section": {

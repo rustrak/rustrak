@@ -81,4 +81,13 @@ export const userQueries = {
           api().members.list({ path: { project_id: projectId }, signal }),
         ),
     }),
+  /** The people and roles the reader can give on a project. */
+  memberCandidates: (projectId: number) =>
+    queryOptions({
+      queryKey: [...projectScope(projectId), 'members', 'candidates'],
+      queryFn: ({ signal }) =>
+        orThrow(
+          api().members.candidates({ path: { project_id: projectId }, signal }),
+        ),
+    }),
 };

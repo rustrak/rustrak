@@ -26,7 +26,11 @@ export const Route = createFileRoute('/_authenticated/settings/roles/$roleId')({
 });
 
 function RolePage() {
-  return usePermissions().can('roles', 'read') ? <Role /> : <NotAuthorized />;
+  return usePermissions().can('roles', 'read') ? (
+    <Role />
+  ) : (
+    <NotAuthorized scope="workspace" />
+  );
 }
 
 /** Separate so the roles are only read by who may read them. */

@@ -84,17 +84,22 @@ pub async fn ensure_role(pool: &DbPool, name: &str) -> i32 {
     }
     let keep: fn(Resource, Action) -> bool = match name {
         "Workspace Admin" => |r, _| r.scope() == Scope::Instance,
-        "Project Admin" => |r, _| r.scope() == Scope::Project,
+        "Project Admin" => {
+            |r, a| r.scope() == Scope::Project || (r, a) == (Resource::ApiTokens, Action::Create)
+        }
         "Editor" => |r, a| {
-            r.scope() == Scope::Project
-                && !matches!(
-                    (r, a),
-                    (Resource::Project, Action::Delete)
-                        | (Resource::ClientKeys, Action::Update)
-                        | (Resource::ProjectMembers, Action::Update)
-                )
+            (r, a) == (Resource::ApiTokens, Action::Create)
+                || (r.scope() == Scope::Project
+                    && !matches!(
+                        (r, a),
+                        (Resource::Project, Action::Delete)
+                            | (Resource::ProjectMembers, Action::Update)
+                    ))
         },
-        "Viewer" => |r, a| r.scope() == Scope::Project && a == Action::Read,
+        "Viewer" => |r, a| {
+            (r, a) == (Resource::ApiTokens, Action::Create)
+                || (r.scope() == Scope::Project && a == Action::Read)
+        },
         other => panic!("no such test role {other}"),
     };
     let permissions = Resource::ALL

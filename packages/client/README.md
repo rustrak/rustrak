@@ -386,6 +386,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 
 | Method | Endpoint | Description |
 |---|---|---|
+| `members.candidates({ path })` | `GET /api/projects/{project_id}/members/candidates` | Lists the people and the roles the caller can give on the project, so it takes neither `users:read` nor `roles:read` to manage its members. |
 | `members.list({ path })` | `GET /api/projects/{project_id}/members` | Lists everyone holding a role on the project, with those roles; personal permissions are not roles. |
 | `members.remove({ path })` | `DELETE /api/projects/{project_id}/members/{user_id}` | Removes the roles a user holds on this project; roles on all projects and personal permissions stay. |
 | `members.upsert({ path, body })` | `PUT /api/projects/{project_id}/members` | Sets the roles a user holds on the project. |

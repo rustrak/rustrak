@@ -96,23 +96,24 @@ catalog! {
     Integrations = "integrations", "settings", Instance, [R, C, U, D];
     GithubApp = "github-app", "settings", Instance, [R, U];
     Storage = "storage", "settings", Instance, [R, U, D];
-    Mcp = "mcp", "settings", Instance, [R, U];
-    Telemetry = "telemetry", "settings", Instance, [R, U];
+    // Reading MCP settings needs nothing: every member connects their assistant.
+    Mcp = "mcp", "settings", Instance, [U];
+    Telemetry = "telemetry", "settings", Instance, [R];
     // Project: issues and the data behind them
     Issues = "issues", "issues", Project, [R, U, D];
     Performance = "performance", "monitoring", Project, [R];
     Logs = "logs", "monitoring", Project, [R];
     Sessions = "sessions", "monitoring", Project, [R];
     // Project: releases
-    Releases = "releases", "releases", Project, [R, C, U, D];
-    SourceMaps = "source-maps", "releases", Project, [R, C, D];
+    Releases = "releases", "releases", Project, [R, C, U];
+    SourceMaps = "source-maps", "releases", Project, [R, C];
     // Project: alerting
     AlertRules = "alert-rules", "alerts", Project, [R, C, U, D];
     Monitors = "monitors", "alerts", Project, [R, C, U, D];
     // Project: the project itself. Seeing it needs no permission of its own:
     // any permission on the project implies it.
     Project = "project", "project", Project, [U, D];
-    ClientKeys = "client-keys", "project", Project, [R, U];
+    ClientKeys = "client-keys", "project", Project, [R];
     ProjectMembers = "project-members", "project", Project, [R, U];
     ProjectGithub = "project-github", "project", Project, [R, U];
 }
@@ -162,8 +163,15 @@ impl Grants {
         self.pairs.iter().copied().collect()
     }
 
+    /// Writing a resource implies reading it: a form cannot edit what it cannot
+    /// load. Not for API tokens, where reading is everyone's and creating is
+    /// your own.
     fn allows(&self, resource: Resource, action: Action) -> bool {
-        self.all || self.pairs.contains(&(resource, action))
+        self.all
+            || self.pairs.contains(&(resource, action))
+            || (action == Action::Read
+                && resource != Resource::ApiTokens
+                && self.pairs.iter().any(|(r, _)| *r == resource))
     }
 
     fn any_project_grant(&self) -> bool {

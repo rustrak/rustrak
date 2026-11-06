@@ -124,7 +124,7 @@ const WORKSPACE_SETTINGS: SettingsEntry[] = [
     key: 'team',
     icon: TeamIcon,
     href: '/settings/team',
-    visible: (p) => p.can('users', 'read'),
+    visible: (p) => p.can('users', 'read') || p.can('invitations', 'read'),
   },
   {
     key: 'roles',
@@ -160,6 +160,12 @@ const PROJECT_SETTINGS: SettingsEntry[] = [
     reads: 'client-keys',
   },
   { key: 'github', icon: LinkIcon, href: '/github', reads: 'project-github' },
+  {
+    key: 'members',
+    icon: TeamIcon,
+    href: '/members',
+    reads: 'project-members',
+  },
 ];
 
 type NavKey =
@@ -328,7 +334,7 @@ export function AppSidebar({ user }: { user: UserResponse }) {
       separated: index === 0,
       onSelect: () => router.push(`/projects/${option.id}`),
     })),
-    ...(permissions.can('projects', 'create')
+    ...(permissions.canCreateProject
       ? [
           {
             id: 'new',
@@ -566,7 +572,9 @@ function WorkspaceNav({ projects }: { projects: ProjectOption[] }) {
   const t = useTranslations('projects');
   const tSettings = useTranslations('settings');
   const pathname = usePathname();
-  const canSeeMembers = usePermissionsLater().can('users', 'read');
+  const permissions = usePermissionsLater();
+  const canSeeMembers =
+    permissions.can('users', 'read') || permissions.can('invitations', 'read');
   return (
     <>
       <SidebarItem

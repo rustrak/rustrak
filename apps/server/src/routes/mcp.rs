@@ -74,7 +74,8 @@ async fn is_enabled(pool: &DbPool) -> AppResult<bool> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Whether the MCP endpoint at `/mcp` is on.
+/// Whether the MCP endpoint at `/mcp` is on. Open to every member: it is what
+/// they point their own assistant at.
 pub async fn get_settings(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,

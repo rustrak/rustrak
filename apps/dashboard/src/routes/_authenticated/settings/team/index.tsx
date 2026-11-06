@@ -22,11 +22,11 @@ import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
 
 export const Route = createFileRoute('/_authenticated/settings/team/')({
   /**
-   * The roster is fetched only for an admin.
+   * Each read is started only for who may make it.
    *
-   * Not an optimisation: a non-admin gets a 403 from both endpoints, and
-   * loading them anyway would put "we could not load the team" underneath the
-   * "you are not authorised" panel that already explains why.
+   * Not an optimisation: anyone else gets a 403, and loading them anyway would
+   * put "we could not load the team" underneath the "you are not authorised"
+   * panel that already explains why.
    */
   loader: ({ context: { queryClient } }) => {
     startIfAllowed(
@@ -55,6 +55,8 @@ function TeamPage() {
 
   const [inviting, setInviting] = useState(false);
   const canInvite = permissions.can('invitations', 'create');
+  const canReadUsers = permissions.can('users', 'read');
+  const canSeeInvitations = permissions.can('invitations', 'read');
 
   const heading = (
     <>
@@ -63,7 +65,7 @@ function TeamPage() {
         title={t('team.title')}
         description={t('team.subtitle')}
         actions={
-          canInvite && permissions.can('users', 'read') ? (
+          canInvite ? (
             <Button
               variant="primary"
               icon={NewIcon}
@@ -77,11 +79,11 @@ function TeamPage() {
     </>
   );
 
-  // Guard: only instance admins may manage the team. The "we could not ask"
+  // Guard: this page is the roster and the invitations. The "we could not ask"
   // branch that used to sit above this one belongs to `_authenticated` now —
   // an outage is not a permission verdict, and reporting one as the other is
   // the bug that branch exists to prevent.
-  if (!permissions.can('users', 'read')) {
+  if (!canReadUsers && !canSeeInvitations) {
     return (
       <>
         {heading}
@@ -99,22 +101,24 @@ function TeamPage() {
   return (
     <>
       {heading}
-      <TeamRoster
+      <TeamAccess
+        canReadUsers={canReadUsers}
         currentUserId={user.id}
         isOwner={permissions.isOwner}
         canDelete={permissions.can('users', 'delete')}
         canInvite={canInvite}
         inviting={inviting}
         onInvitingChange={setInviting}
-        canSeeInvitations={permissions.can('invitations', 'read')}
+        canSeeInvitations={canSeeInvitations}
         canReadRoles={permissions.can('roles', 'read')}
       />
     </>
   );
 }
 
-/** The roster: separate so its reads are only subscribed for who may read it. */
-function TeamRoster({
+/** The people and the invitations, each for who may read it. */
+function TeamAccess({
+  canReadUsers,
   currentUserId,
   isOwner,
   canDelete,
@@ -124,6 +128,7 @@ function TeamRoster({
   inviting,
   onInvitingChange,
 }: {
+  canReadUsers: boolean;
   inviting: boolean;
   onInvitingChange: (open: boolean) => void;
   currentUserId: number;
@@ -133,7 +138,6 @@ function TeamRoster({
   canSeeInvitations: boolean;
   canReadRoles: boolean;
 }) {
-  const { data: members } = useSuspenseQuery(userQueries.team());
   // Not suspended: an unreadable status reads as "cannot send", not as a
   // failed page.
   const { data: emailStatus } = useQuery({
@@ -162,16 +166,38 @@ function TeamRoster({
           />
         ) : null}
       </Dialog>
-      <TeamMembersList
-        members={members}
-        currentUserId={currentUserId}
-        isOwner={isOwner}
-        canDelete={canDelete}
-      />
+      {canReadUsers ? (
+        <TeamRoster
+          currentUserId={currentUserId}
+          isOwner={isOwner}
+          canDelete={canDelete}
+        />
+      ) : null}
       {canSeeInvitations ? (
         <Invitations emailAvailable={emailAvailable} />
       ) : null}
     </>
+  );
+}
+
+/** Separate so the roster is only read by who may read it. */
+function TeamRoster({
+  currentUserId,
+  isOwner,
+  canDelete,
+}: {
+  currentUserId: number;
+  isOwner: boolean;
+  canDelete: boolean;
+}) {
+  const { data: members } = useSuspenseQuery(userQueries.team());
+  return (
+    <TeamMembersList
+      members={members}
+      currentUserId={currentUserId}
+      isOwner={isOwner}
+      canDelete={canDelete}
+    />
   );
 }
 
@@ -185,7 +211,7 @@ function Invitations({ emailAvailable }: { emailAvailable: boolean }) {
   );
 }
 
-/** Only an admin waits here: nobody else reads anything. */
+/** The wait for whichever of the two the reader may read. */
 function TeamLoading() {
   const t = useTranslations('settings');
   const tUser = useTranslations('user');

@@ -574,6 +574,69 @@ async fn nobody_edits_their_own_assignments_or_hands_out_more_than_they_hold() {
     assert_eq!(status, 200, "a role within the manager's own permissions");
 }
 
+/// Who manages a project's members needs people and roles to choose from,
+/// without being able to read the team or the roles of the whole instance.
+#[actix_web::test]
+async fn a_member_manager_is_offered_who_and_what_they_can_give() {
+    let db = TestDb::new().await;
+    let manager = who(&db.pool, "manager@x.com", false).await;
+    let member = who(&db.pool, "member@x.com", false).await;
+    let boss = who(&db.pool, "boss@x.com", true).await;
+    let p = project(&db.pool).await;
+    let manages = role(
+        &db.pool,
+        "manages",
+        &[
+            (Resource::ProjectMembers, Action::Update),
+            (Resource::Issues, Action::Read),
+        ],
+    )
+    .await;
+    let reads = role(&db.pool, "reads", &[(Resource::Issues, Action::Read)]).await;
+    role(&db.pool, "deletes", &[(Resource::Issues, Action::Delete)]).await;
+    RoleService::assign(&db.pool, manager.id, manages, Some(p))
+        .await
+        .unwrap();
+    RoleService::assign(&db.pool, member.id, reads, Some(p))
+        .await
+        .unwrap();
+    let app = app!(db.pool.clone());
+    let uri = format!("/api/projects/{p}/members/candidates");
+
+    let (status, body) = call!(app, get, uri, manager.token);
+    assert_eq!(status, 200, "{body}");
+    let emails: Vec<_> = body["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|u| u["email"].as_str().unwrap())
+        .collect();
+    assert_eq!(emails, ["member@x.com"], "not themselves, not an owner");
+    let roles: Vec<_> = body["roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["name"].as_str().unwrap())
+        .collect();
+    assert!(roles.contains(&"reads"), "{roles:?}");
+    assert!(
+        !roles.contains(&"deletes"),
+        "beyond what they hold: {roles:?}"
+    );
+
+    let (status, _) = call!(app, get, uri, member.token);
+    assert_eq!(status, 403, "sees the project, may not manage it");
+    let (status, _) = call!(
+        app,
+        get,
+        format!("/api/projects/{}/members/candidates", p + 1),
+        manager.token
+    );
+    assert_eq!(status, 404);
+    let (status, _) = call!(app, get, uri, boss.token);
+    assert_eq!(status, 200);
+}
+
 #[actix_web::test]
 async fn a_project_admin_manages_that_projects_members() {
     let db = TestDb::new().await;

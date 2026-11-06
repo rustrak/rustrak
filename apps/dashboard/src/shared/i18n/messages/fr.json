@@ -2083,7 +2083,7 @@
       },
       "title": "Membres",
       "subtitle": "Gérez les membres de votre équipe et les invitations",
-      "notAuthorizedDescription": "Seuls les administrateurs de l’instance peuvent gérer l’équipe. Contactez un admin si vous avez besoin d’y accéder."
+      "notAuthorizedDescription": "Votre accès n’inclut pas l’équipe. Contactez un propriétaire pour le demander."
     },
     "integrations": {
       "meta": {
@@ -2110,7 +2110,7 @@
       "server": {
         "title": "Serveur MCP",
         "description": "Répond aux assistants IA sur le point de terminaison ci-dessous. Désactivé par défaut ; le désactiver coupe tous les assistants d'un coup.",
-        "adminOnly": "Seul un administrateur de l'instance peut activer ou désactiver le serveur MCP.",
+        "adminOnly": "Votre accès ne permet pas d’activer ou de désactiver le serveur MCP.",
         "on": "Actif",
         "off": "Inactif",
         "toggleLabel": "Activer ou désactiver le serveur MCP",
@@ -2190,7 +2190,7 @@
       },
       "title": "Stockage",
       "subtitle": "Ce que Rustrak conserve et pendant combien de temps",
-      "notAuthorizedDescription": "Seuls les administrateurs de l’instance peuvent consulter l’utilisation du stockage et lancer des nettoyages. Contactez un admin si vous avez besoin d’y accéder.",
+      "notAuthorizedDescription": "Votre accès n’inclut pas le stockage. Contactez un propriétaire pour le demander.",
       "loadFailed": "Impossible de lire le stockage"
     },
     "account": {
@@ -2292,7 +2292,8 @@
       "title": "Données",
       "subtitle": "Ce que ce projet conserve, et combien il en accepte."
     },
-    "projectNotAuthorizedDescription": "Votre accès n’inclut pas cette section du projet. Contactez un propriétaire pour le demander."
+    "projectNotAuthorizedDescription": "Votre accès n’inclut pas cette section du projet. Contactez un propriétaire pour le demander.",
+    "workspaceNotAuthorizedDescription": "Votre accès n’inclut pas cette section. Contactez un propriétaire pour le demander."
   },
   "github": {
     "section": {

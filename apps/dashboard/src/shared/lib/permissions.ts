@@ -13,6 +13,11 @@ export interface Permissions {
   canAnywhere: (resource: Resource, action: Action) => boolean;
   /** On the workspace or on every project: what a role of the list can hold. */
   canEverywhere: (resource: Resource, action: Action) => boolean;
+  /**
+   * `projects:create` and a project permission: the creator's own roles are
+   * what reach a new project, so with none the server refuses.
+   */
+  canCreateProject: boolean;
 }
 
 type Grant = { resource: Resource; action: Action };
@@ -32,6 +37,10 @@ export function permissionsFrom(me: MyAccess): Permissions {
     me.projects.find((p) => p.project_id === projectId)?.permissions ?? [];
 
   return {
+    canCreateProject:
+      me.is_owner ||
+      (has(me.instance, 'projects', 'create') &&
+        (me.all_projects.length > 0 || me.projects.length > 0)),
     isOwner: me.is_owner,
     can: (resource, action, projectId) => {
       if (me.is_owner || has(me.instance, resource, action)) return true;

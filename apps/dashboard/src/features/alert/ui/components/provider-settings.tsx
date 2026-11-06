@@ -18,6 +18,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { alertMutations } from '@/features/alert/api/mutations';
+import { providerEditing } from '@/features/alert/lib/provider-view';
 import { slackDefaults } from '@/features/alert/model/integration-forms';
 import { ConfirmDeleteDialog } from '@/features/alert/ui/components/confirm-delete-dialog';
 import { ProviderForm } from '@/features/alert/ui/components/integration-config-dialog/provider-form';
@@ -48,6 +49,7 @@ export function ProviderSettings({
   description,
   integrations,
   edit,
+  can,
   onEdit,
 }: {
   provider: ProviderType;
@@ -55,6 +57,8 @@ export function ProviderSettings({
   description: string;
   integrations: AlertIntegration[];
   edit: EditParam;
+  /** What the reader may do to this provider's integrations. */
+  can: { create: boolean; update: boolean; delete: boolean };
   /** Moves the page to the list (`undefined`) or to a form. */
   onEdit: (edit: EditParam) => void;
 }) {
@@ -65,11 +69,7 @@ export function ProviderSettings({
   const isPending = test.isPending || remove.isPending;
   const [deleting, setDeleting] = useState<AlertIntegration | null>(null);
 
-  const editing: AlertIntegration | 'new' | null =
-    edit === 'new' || (edit === undefined && integrations.length === 0)
-      ? 'new'
-      : // An id that is gone -- deleted in another tab -- is the list.
-        (integrations.find((i) => i.id === edit) ?? null);
+  const editing = providerEditing(edit, integrations, can);
 
   const handleTest = (
     integration: AlertIntegration,
@@ -121,6 +121,7 @@ export function ProviderSettings({
         description={description}
         editing={editing}
         hasIntegrations={integrations.length > 0}
+        canCreate={can.create}
         onEdit={onEdit}
       />
 
@@ -134,7 +135,7 @@ export function ProviderSettings({
             if (!open) closeForm();
           }}
           onTest={handleTest}
-          onDelete={setDeleting}
+          onDelete={can.delete ? setDeleting : undefined}
           isPending={isPending}
         />
       ) : integrations.length > 0 ? (
@@ -146,6 +147,7 @@ export function ProviderSettings({
               key={integration.id}
               integration={integration}
               provider={provider}
+              can={can}
               onConfigure={() => onEdit(integration.id)}
               onTest={() =>
                 asksForDestination(provider, integration)
@@ -161,7 +163,9 @@ export function ProviderSettings({
           <SettingsEmpty
             icon={<ProviderIcon type={provider} className="size-6" />}
             title={t('integrations.notConfigured')}
-            action={<AddButton name={name} onEdit={onEdit} />}
+            action={
+              can.create ? <AddButton name={name} onEdit={onEdit} /> : null
+            }
           />
         </SettingSection>
       )}
@@ -198,12 +202,14 @@ function asksForDestination(
 function IntegrationRow({
   integration,
   provider,
+  can,
   onConfigure,
   onTest,
   onDelete,
 }: {
   integration: AlertIntegration;
   provider: ProviderType;
+  can: { update: boolean; delete: boolean };
   onConfigure: () => void;
   onTest: () => void;
   onDelete: () => void;
@@ -226,45 +232,57 @@ function IntegrationRow({
       }
       actions={
         <>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onConfigure}
-            aria-label={t('integrations.configureAria', {
-              name: integration.name,
-            })}
-          >
-            {t('integrations.configure')}
-          </Button>
-          <Menu
-            align="end"
-            trigger={
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={MoreIcon}
-                aria-label={t('manage.more', {
-                  name: integration.name,
-                })}
-              />
-            }
-            actions={[
-              {
-                id: 'test',
-                label: t('common.test'),
-                icon: TestIcon,
-                onSelect: onTest,
-              },
-              {
-                id: 'delete',
-                label: t('common.delete'),
-                icon: DeleteIcon,
-                tone: 'danger',
-                separated: true,
-                onSelect: onDelete,
-              },
-            ]}
-          />
+          {can.update ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onConfigure}
+              aria-label={t('integrations.configureAria', {
+                name: integration.name,
+              })}
+            >
+              {t('integrations.configure')}
+            </Button>
+          ) : null}
+          {can.update || can.delete ? (
+            <Menu
+              align="end"
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={MoreIcon}
+                  aria-label={t('manage.more', {
+                    name: integration.name,
+                  })}
+                />
+              }
+              actions={[
+                ...(can.update
+                  ? [
+                      {
+                        id: 'test',
+                        label: t('common.test'),
+                        icon: TestIcon,
+                        onSelect: onTest,
+                      },
+                    ]
+                  : []),
+                ...(can.delete
+                  ? [
+                      {
+                        id: 'delete',
+                        label: t('common.delete'),
+                        icon: DeleteIcon,
+                        tone: 'danger' as const,
+                        separated: true,
+                        onSelect: onDelete,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          ) : null}
         </>
       }
     />
@@ -315,6 +333,7 @@ function ProviderHeader({
   description,
   editing,
   hasIntegrations,
+  canCreate,
   onEdit,
 }: {
   provider: ProviderType;
@@ -322,6 +341,7 @@ function ProviderHeader({
   description: string;
   editing: AlertIntegration | 'new' | null;
   hasIntegrations: boolean;
+  canCreate: boolean;
   onEdit: (edit: EditParam) => void;
 }) {
   const t = useTranslations('alerts');
@@ -347,7 +367,9 @@ function ProviderHeader({
         // Nothing to go back to, or to add beside, while the form is the
         // only thing the provider has.
         !hasIntegrations ? null : editing === null ? (
-          <AddButton name={name} onEdit={onEdit} />
+          canCreate ? (
+            <AddButton name={name} onEdit={onEdit} />
+          ) : null
         ) : (
           <Button
             variant="ghost"

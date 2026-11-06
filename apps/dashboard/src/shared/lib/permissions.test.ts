@@ -23,6 +23,34 @@ describe('permissionsFrom', () => {
     expect(p.can('issues', 'delete', 7)).toBe(true);
   });
 
+  it('creates a project only with a way to reach it afterwards', () => {
+    const create = { resource: 'projects', action: 'create' } as const;
+    const read = { resource: 'issues', action: 'read' } as const;
+    expect(
+      permissionsFrom({ ...none, instance: [create] }).canCreateProject,
+    ).toBe(false);
+    expect(
+      permissionsFrom({ ...none, all_projects: [read] }).canCreateProject,
+    ).toBe(false);
+    expect(
+      permissionsFrom({
+        ...none,
+        instance: [create],
+        all_projects: [read],
+      }).canCreateProject,
+    ).toBe(true);
+    expect(
+      permissionsFrom({
+        ...none,
+        instance: [create],
+        projects: [{ project_id: 1, permissions: [read] }],
+      }).canCreateProject,
+    ).toBe(true);
+    expect(permissionsFrom({ ...none, is_owner: true }).canCreateProject).toBe(
+      true,
+    );
+  });
+
   it('reads workspace permissions without naming a project', () => {
     const p = permissionsFrom({
       ...none,

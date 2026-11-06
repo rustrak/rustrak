@@ -28,6 +28,8 @@ import { TokenRows } from './token-rows';
 
 interface TokensListProps {
   tokens: AuthTokenResponse[];
+  /** `api-tokens:create`: without it only the reader's own existing tokens. */
+  canCreate: boolean;
   /** The page's header is drawn here: its action, "New token", is this list's. */
   title: string;
   subtitle: string;
@@ -41,6 +43,7 @@ interface TokensListProps {
 
 export function TokensList({
   tokens,
+  canCreate,
   title,
   subtitle,
   footer,
@@ -112,19 +115,21 @@ export function TokensList({
         title={title}
         description={subtitle}
         actions={
-          <CreateTokenDialog
-            open={isCreateOpen}
-            onOpenChange={(open) =>
-              open ? setIsCreateOpen(true) : closeCreate()
-            }
-            newToken={newToken}
-            isPending={creation.isPending}
-            onCreate={create}
-            onDone={closeCreate}
-            onCopyToken={copyNewToken}
-            catalog={catalog}
-            projects={projects}
-          />
+          canCreate ? (
+            <CreateTokenDialog
+              open={isCreateOpen}
+              onOpenChange={(open) =>
+                open ? setIsCreateOpen(true) : closeCreate()
+              }
+              newToken={newToken}
+              isPending={creation.isPending}
+              onCreate={create}
+              onDone={closeCreate}
+              onCopyToken={copyNewToken}
+              catalog={catalog}
+              projects={projects}
+            />
+          ) : null
         }
       />
 
@@ -137,9 +142,11 @@ export function TokensList({
             icon={<TokensIcon size="2xl" />}
             title={t('empty.title')}
             action={
-              <Button icon={NewIcon} onClick={() => setIsCreateOpen(true)}>
-                {t('empty.createFirst')}
-              </Button>
+              canCreate ? (
+                <Button icon={NewIcon} onClick={() => setIsCreateOpen(true)}>
+                  {t('empty.createFirst')}
+                </Button>
+              ) : null
             }
           />
         ) : (

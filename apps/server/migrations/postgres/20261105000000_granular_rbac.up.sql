@@ -39,8 +39,8 @@ CREATE INDEX idx_role_assignments_project ON role_assignments(project_id);
 -- owners are not a role: they are users.role = 'admin', and hold everything.
 INSERT INTO roles (name, description)
 SELECT v.column1, v.column2 FROM (VALUES
-    ('Project Admin', 'Runs the project: everything Editor does, plus changing its SDK keys, managing its members and deleting the project.', 'admin'),
-    ('Editor', 'Does the daily work: triages, resolves and deletes issues; manages releases, source maps, alert rules and cron monitors; edits the project settings and repository link. Cannot touch SDK keys or members, or delete the project.', 'editor'),
+    ('Project Admin', 'Runs the project: everything Editor does, plus managing its members and deleting the project.', 'admin'),
+    ('Editor', 'Does the daily work: triages, resolves and deletes issues; manages releases, source maps, alert rules and cron monitors; edits the project settings and repository link. Cannot manage members or delete the project.', 'editor'),
     ('Viewer', 'Sees everything in the project (issues, performance, logs, releases, alerts, monitors, settings) and changes nothing.', 'viewer')
 ) AS v
 WHERE EXISTS (
@@ -52,12 +52,12 @@ INSERT INTO role_permissions (role_id, resource, action)
 SELECT r.id, v.column1, v.column2 FROM roles r, (VALUES
     ('issues', 'read'), ('issues', 'update'), ('issues', 'delete'),
     ('performance', 'read'), ('logs', 'read'), ('sessions', 'read'),
-    ('releases', 'read'), ('releases', 'create'), ('releases', 'update'), ('releases', 'delete'),
-    ('source-maps', 'read'), ('source-maps', 'create'), ('source-maps', 'delete'),
+    ('releases', 'read'), ('releases', 'create'), ('releases', 'update'),
+    ('source-maps', 'read'), ('source-maps', 'create'),
     ('alert-rules', 'read'), ('alert-rules', 'create'), ('alert-rules', 'update'), ('alert-rules', 'delete'),
     ('monitors', 'read'), ('monitors', 'create'), ('monitors', 'update'), ('monitors', 'delete'),
     ('project', 'update'), ('project', 'delete'),
-    ('client-keys', 'read'), ('client-keys', 'update'),
+    ('client-keys', 'read'),
     ('project-members', 'read'), ('project-members', 'update'),
     ('project-github', 'read'), ('project-github', 'update')
 ) AS v WHERE r.name = 'Project Admin';
@@ -66,8 +66,8 @@ INSERT INTO role_permissions (role_id, resource, action)
 SELECT r.id, v.column1, v.column2 FROM roles r, (VALUES
     ('issues', 'read'), ('issues', 'update'), ('issues', 'delete'),
     ('performance', 'read'), ('logs', 'read'), ('sessions', 'read'),
-    ('releases', 'read'), ('releases', 'create'), ('releases', 'update'), ('releases', 'delete'),
-    ('source-maps', 'read'), ('source-maps', 'create'), ('source-maps', 'delete'),
+    ('releases', 'read'), ('releases', 'create'), ('releases', 'update'),
+    ('source-maps', 'read'), ('source-maps', 'create'),
     ('alert-rules', 'read'), ('alert-rules', 'create'), ('alert-rules', 'update'), ('alert-rules', 'delete'),
     ('monitors', 'read'), ('monitors', 'create'), ('monitors', 'update'), ('monitors', 'delete'),
     ('project', 'update'),
@@ -80,6 +80,10 @@ SELECT r.id, v.column1, 'read' FROM roles r, (VALUES
     ('issues'), ('performance'), ('logs'), ('sessions'), ('releases'), ('source-maps'),
     ('alert-rules'), ('monitors'), ('client-keys'), ('project-members'), ('project-github')
 ) AS v WHERE r.name = 'Viewer';
+
+-- Anyone could create an API token before roles, limited to what they hold.
+INSERT INTO role_permissions (role_id, resource, action)
+SELECT id, 'api-tokens', 'create' FROM roles;
 
 -- Carry over existing access unchanged: each project membership becomes
 -- the matching project role, and project_members goes away.

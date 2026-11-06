@@ -96,9 +96,11 @@ export function DeleteSection({
 }: {
   integration: AlertIntegration;
   disabled: boolean;
-  onDelete: (integration: AlertIntegration) => void;
+  /** Absent: the reader may not delete it, so nothing is offered. */
+  onDelete?: (integration: AlertIntegration) => void;
 }) {
   const t = useTranslations('alerts');
+  if (!onDelete) return null;
   return (
     <SettingSection title={t('page.dangerTitle')} destructive>
       <SettingRow

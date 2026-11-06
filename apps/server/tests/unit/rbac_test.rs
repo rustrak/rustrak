@@ -58,6 +58,58 @@ fn grants_drop_actions_a_resource_does_not_accept() {
     assert_eq!(g.pairs(), vec![(Resource::Projects, Action::Create)]);
 }
 
+/// A permission no endpoint enforces is a checkbox that does nothing.
+#[test]
+fn the_catalog_only_offers_permissions_an_endpoint_enforces() {
+    for (resource, action) in [
+        (Resource::ClientKeys, Action::Update),
+        (Resource::Releases, Action::Delete),
+        (Resource::SourceMaps, Action::Delete),
+        (Resource::Telemetry, Action::Update),
+        (Resource::Mcp, Action::Read),
+    ] {
+        assert!(
+            !resource.accepts(action),
+            "{}:{}",
+            resource.key(),
+            action.key()
+        );
+    }
+}
+
+#[test]
+fn writing_a_resource_implies_reading_it() {
+    let access = Access::new(vec![on_project(
+        1,
+        grants(&[(Resource::Monitors, Action::Update)]),
+    )]);
+    assert!(access.can(Resource::Monitors, Action::Read, Some(1)));
+    assert!(!access.can(Resource::Monitors, Action::Read, Some(2)));
+    assert!(!access.can(Resource::Monitors, Action::Delete, Some(1)));
+    assert!(!access.can(Resource::Logs, Action::Read, Some(1)));
+}
+
+#[test]
+fn a_token_limited_to_writing_a_resource_can_read_it() {
+    let access = Access::new(vec![instance(Grants::all())]).capped(TokenScope {
+        grants: grants(&[(Resource::Monitors, Action::Update)]),
+        projects: None,
+    });
+    assert!(access.can(Resource::Monitors, Action::Read, Some(1)));
+    assert!(!access.can(Resource::Logs, Action::Read, Some(1)));
+}
+
+/// `api-tokens:read` is everyone's tokens, not your own: making one must not
+/// show the others'.
+#[test]
+fn creating_api_tokens_does_not_imply_reading_everyones() {
+    let access = Access::new(vec![instance(grants(&[(
+        Resource::ApiTokens,
+        Action::Create,
+    )]))]);
+    assert!(!access.can(Resource::ApiTokens, Action::Read, None));
+}
+
 #[test]
 fn nobody_has_access_by_default() {
     let access = Access::new(vec![]);

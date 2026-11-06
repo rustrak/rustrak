@@ -41,7 +41,7 @@ function ProviderPage() {
   return usePermissions().can('integrations', 'read') ? (
     <Provider />
   ) : (
-    <NotAuthorized />
+    <NotAuthorized scope="workspace" />
   );
 }
 
@@ -53,6 +53,7 @@ function Provider() {
   usePageTrail([{ label: provider?.name ?? '' }]);
   const { edit } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const permissions = usePermissions();
   if (!provider) throw notFound();
   const description = tAlerts(
     provider.descriptionKey as 'providers.slack.description',
@@ -69,6 +70,11 @@ function Provider() {
           (i) => i.provider_type === provider.type,
         )}
         edit={edit}
+        can={{
+          create: permissions.can('integrations', 'create'),
+          update: permissions.can('integrations', 'update'),
+          delete: permissions.can('integrations', 'delete'),
+        }}
         onEdit={(next) => navigate({ search: { edit: next } })}
       />
     </>

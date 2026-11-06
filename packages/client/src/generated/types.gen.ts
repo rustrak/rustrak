@@ -1423,6 +1423,22 @@ export type McpStatus = {
 };
 
 /**
+ * Someone who can be made a member.
+ */
+export type MemberCandidate = {
+    email: string;
+    id: number;
+};
+
+/**
+ * What the caller can choose from when setting a member's roles.
+ */
+export type MemberCandidates = {
+    roles: Array<RoleRef>;
+    users: Array<MemberCandidate>;
+};
+
+/**
  * A counter measured over the requested window alongside the same counter
  * over the window immediately before it.
  *
@@ -7324,6 +7340,44 @@ export type MembersUpsertResponses = {
 
 export type MembersUpsertResponse = MembersUpsertResponses[keyof MembersUpsertResponses];
 
+export type MembersCandidatesData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/members/candidates';
+};
+
+export type MembersCandidatesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing project-members:update
+     */
+    403: ErrorResponse;
+    /**
+     * Project not found
+     */
+    404: ErrorResponse;
+};
+
+export type MembersCandidatesError = MembersCandidatesErrors[keyof MembersCandidatesErrors];
+
+export type MembersCandidatesResponses = {
+    /**
+     * People and roles the caller can give
+     */
+    200: MemberCandidates;
+};
+
+export type MembersCandidatesResponse = MembersCandidatesResponses[keyof MembersCandidatesResponses];
+
 export type MembersRemoveData = {
     body?: never;
     path: {
@@ -9477,7 +9531,7 @@ export type TokensCreateErrors = {
      */
     401: ErrorResponse;
     /**
-     * Called with a token, or a permission the caller lacks
+     * Called with a token, missing api-tokens:create, or a permission the caller lacks
      */
     403: ErrorResponse;
 };

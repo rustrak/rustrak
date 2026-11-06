@@ -60,7 +60,12 @@ per combination of permissions and projects.
   scope (`Instance` or `Project`) and the `Action`s (read, create, update,
   delete) it accepts. Settings are one resource per area (`storage`,
   `integrations`, `mcp`, …). A new resource is one line there. Seeing a
-  project is not in it: any permission on the project implies it.
+  project is not in it: any permission on the project implies it. List only
+  what an endpoint enforces: a permission nothing checks is a checkbox that
+  does nothing.
+- **Writing implies reading** the same resource (`Grants::allows`): a form
+  cannot edit what it cannot load. Not `api-tokens`, where reading is everyone's
+  tokens and creating is your own.
 - **A role can mix workspace and project permissions.** A new install has no
   roles and code never names one; memberships from before roles existed migrate
   to ordinary, editable ones. Creating a project extends the creator's own roles
@@ -80,8 +85,9 @@ per combination of permissions and projects.
 - **No escalation**: writing a role, assigning one, inviting with one or
   adding a project member all need `Access::covers` (you hold it, where it
   applies). Nobody edits their own assignments or project roles.
-- **Tokens are created from a session only**, never with another token and never
-  with a permission the creator lacks, so a limited token cannot mint its way out.
+- **Tokens are created from a session only**, with `api-tokens:create`, never
+  with another token and never with a permission the creator lacks, so a
+  limited token cannot mint its way out.
 - **Tokens** act as their owner narrowed by their own scope
   (`Access::capped`: permissions, projects, expiry). A token with no owner
   (legacy) holds everything.

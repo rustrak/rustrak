@@ -13,6 +13,7 @@ import type {
   LoginRequest,
   RoleInput,
   SetAccess,
+  SetProjectMember,
   UserRole,
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
@@ -188,6 +189,26 @@ export const userMutations = {
           userQueries.roles().queryKey,
         ],
       },
+    }),
+  /** Replace the roles someone holds on a project; none removes them. */
+  setProjectMember: (projectId: number) =>
+    mutationOptions({
+      mutationFn: (body: SetProjectMember) =>
+        orThrow(
+          api().members.upsert({ path: { project_id: projectId }, body }),
+        ),
+      meta: { invalidates: [userQueries.members(projectId).queryKey] },
+    }),
+  /** Takes someone's roles on a project away. */
+  removeProjectMember: (projectId: number) =>
+    mutationOptions({
+      mutationFn: (userId: number) =>
+        orThrow(
+          api().members.remove({
+            path: { project_id: projectId, user_id: userId },
+          }),
+        ),
+      meta: { invalidates: [userQueries.members(projectId).queryKey] },
     }),
   /**
    * Invite an email with a role, optionally emailing the link. An address

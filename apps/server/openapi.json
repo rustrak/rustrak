@@ -1951,7 +1951,7 @@
           "Alert Channels"
         ],
         "summary": "Lists the channels alerts can go through.",
-        "description": "`integrations:read` sees their credentials, masked. Holding an alert-rules\npermission on any project is enough for the rest, without them: choosing\nwhere a rule notifies takes a channel's name, not its secrets.",
+        "description": "`integrations:read` sees their credentials masked, `integrations:update` in\nfull. Holding an alert-rules permission on any project is enough for the\nrest, without them: choosing where a rule notifies takes a channel's name,\nnot its secrets.",
         "operationId": "alertChannels.list",
         "responses": {
           "200": {
@@ -8832,6 +8832,74 @@
         ]
       }
     },
+    "/api/projects/{project_id}/members/candidates": {
+      "get": {
+        "tags": [
+          "Members"
+        ],
+        "summary": "Lists the people and the roles the caller can give on the project, so it takes neither `users:read` nor `roles:read` to manage its members.",
+        "operationId": "members.candidates",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "People and roles the caller can give",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberCandidates"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing project-members:update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/projects/{project_id}/members/{user_id}": {
       "delete": {
         "tags": [
@@ -12144,7 +12212,7 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Whether the MCP endpoint at `/mcp` is on.",
+        "summary": "Whether the MCP endpoint at `/mcp` is on. Open to every member: it is what\nthey point their own assistant at.",
         "operationId": "settings.getMcp",
         "responses": {
           "200": {
@@ -13279,7 +13347,7 @@
             }
           },
           "403": {
-            "description": "Called with a token, or a permission the caller lacks",
+            "description": "Called with a token, missing api-tokens:create, or a permission the caller lacks",
             "content": {
               "application/json": {
                 "schema": {
@@ -17605,6 +17673,45 @@
               "null"
             ],
             "description": "The configured endpoint (`PUBLIC_URL` + `/mcp`), which OAuth checks\nthe resource against; the browser's own origin may differ. `null`\nwithout `PUBLIC_URL`, when signing in is off."
+          }
+        }
+      },
+      "MemberCandidate": {
+        "type": "object",
+        "description": "Someone who can be made a member.",
+        "required": [
+          "id",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "MemberCandidates": {
+        "type": "object",
+        "description": "What the caller can choose from when setting a member's roles.",
+        "required": [
+          "users",
+          "roles"
+        ],
+        "properties": {
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleRef"
+            }
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberCandidate"
+            }
           }
         }
       },

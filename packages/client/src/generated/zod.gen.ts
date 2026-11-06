@@ -994,6 +994,14 @@ export const zMcpStatus = z.object({
 });
 
 /**
+ * Someone who can be made a member.
+ */
+export const zMemberCandidate = z.object({
+    email: z.string(),
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
  * A counter measured over the requested window alongside the same counter
  * over the window immediately before it.
  *
@@ -1513,6 +1521,14 @@ export const zRoleInput = z.object({
 export const zRoleRef = z.object({
     id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     name: z.string()
+});
+
+/**
+ * What the caller can choose from when setting a member's roles.
+ */
+export const zMemberCandidates = z.object({
+    roles: z.array(zRoleRef),
+    users: z.array(zMemberCandidate)
 });
 
 /**
@@ -3579,6 +3595,15 @@ export const zMembersUpsertPath = z.object({
  * Project members now
  */
 export const zMembersUpsertResponse = z.array(zProjectMember);
+
+export const zMembersCandidatesPath = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * People and roles the caller can give
+ */
+export const zMembersCandidatesResponse = zMemberCandidates;
 
 export const zMembersRemovePath = z.object({
     project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),

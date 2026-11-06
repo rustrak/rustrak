@@ -2083,7 +2083,7 @@
       },
       "title": "成员",
       "subtitle": "管理您的团队成员和邀请",
-      "notAuthorizedDescription": "只有实例管理员可以管理团队。如需访问权限，请联系管理员。"
+      "notAuthorizedDescription": "你的访问权限不包含团队。请联系所有者申请。"
     },
     "integrations": {
       "meta": {
@@ -2110,7 +2110,7 @@
       "server": {
         "title": "MCP 服务器",
         "description": "在下方端点响应 AI 助手。默认关闭；关闭后所有助手会立即断开。",
-        "adminOnly": "只有实例管理员可以开启或关闭 MCP 服务器。",
+        "adminOnly": "你的访问权限不包含开启或关闭 MCP 服务器。",
         "on": "已开启",
         "off": "已关闭",
         "toggleLabel": "开启或关闭 MCP 服务器",
@@ -2190,7 +2190,7 @@
       },
       "title": "存储",
       "subtitle": "Rustrak 保存了哪些数据以及保存多久",
-      "notAuthorizedDescription": "只有实例管理员可以查看存储用量并执行清理。如需访问权限，请联系管理员。",
+      "notAuthorizedDescription": "你的访问权限不包含存储。请联系所有者申请。",
       "loadFailed": "无法读取存储信息"
     },
     "account": {
@@ -2292,7 +2292,8 @@
       "title": "数据",
       "subtitle": "此项目保存哪些数据，以及接收多少。"
     },
-    "projectNotAuthorizedDescription": "你的访问权限不包含此项目部分。请联系所有者申请。"
+    "projectNotAuthorizedDescription": "你的访问权限不包含此项目部分。请联系所有者申请。",
+    "workspaceNotAuthorizedDescription": "你的访问权限不包含此部分。请联系所有者申请。"
   },
   "github": {
     "section": {

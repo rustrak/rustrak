@@ -2083,7 +2083,7 @@
       },
       "title": "Miembros",
       "subtitle": "Gestiona a los miembros de tu equipo y las invitaciones",
-      "notAuthorizedDescription": "Solo los administradores de la instancia pueden gestionar el equipo. Contacta con un admin si necesitas acceso."
+      "notAuthorizedDescription": "Tu acceso no incluye el equipo. Contacta con un propietario para solicitarlo."
     },
     "integrations": {
       "meta": {
@@ -2110,7 +2110,7 @@
       "server": {
         "title": "Servidor MCP",
         "description": "Atiende a los asistentes de IA en el endpoint de abajo. Desactivado por defecto; al apagarlo se desconectan todos los asistentes a la vez.",
-        "adminOnly": "Solo un administrador de la instancia puede activar o desactivar el servidor MCP.",
+        "adminOnly": "Tu acceso no incluye activar o desactivar el servidor MCP.",
         "on": "Activo",
         "off": "Inactivo",
         "toggleLabel": "Activar o desactivar el servidor MCP",
@@ -2190,7 +2190,7 @@
       },
       "title": "Almacenamiento",
       "subtitle": "Qué guarda Rustrak y cuánto tiempo lo guarda",
-      "notAuthorizedDescription": "Solo los administradores de la instancia pueden ver el uso de almacenamiento y ejecutar limpiezas. Contacta con un admin si necesitas acceso.",
+      "notAuthorizedDescription": "Tu acceso no incluye el almacenamiento. Contacta con un propietario para solicitarlo.",
       "loadFailed": "No se pudo leer el almacenamiento"
     },
     "account": {
@@ -2292,7 +2292,8 @@
       "title": "Datos",
       "subtitle": "Qué guarda este proyecto y cuánto acepta."
     },
-    "projectNotAuthorizedDescription": "Tu acceso no incluye esta sección del proyecto. Contacta con un propietario para solicitarlo."
+    "projectNotAuthorizedDescription": "Tu acceso no incluye esta sección del proyecto. Contacta con un propietario para solicitarlo.",
+    "workspaceNotAuthorizedDescription": "Tu acceso no incluye esta sección. Contacta con un propietario para solicitarlo."
   },
   "github": {
     "section": {

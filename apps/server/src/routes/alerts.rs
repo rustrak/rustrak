@@ -174,6 +174,30 @@ fn channel_to_safe_json(channel: &crate::models::AlertIntegration) -> serde_json
     value
 }
 
+/// Replaces every string in `value`, however deep, keeping its shape.
+fn mask_strings(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => *s = "****".to_string(),
+        serde_json::Value::Array(items) => items.iter_mut().for_each(mask_strings),
+        serde_json::Value::Object(fields) => fields.values_mut().for_each(mask_strings),
+        _ => {}
+    }
+}
+
+/// A channel as `actor` may see it: what it holds is for who may change it.
+fn channel_for(actor: &ApiActor, channel: &crate::models::AlertIntegration) -> serde_json::Value {
+    let mut value = channel_to_safe_json(channel);
+    if !actor
+        .access
+        .can(Resource::Integrations, Action::Update, None)
+    {
+        if let Some(credentials) = value.get_mut("credentials") {
+            mask_strings(credentials);
+        }
+    }
+    value
+}
+
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/integrations",
@@ -188,23 +212,24 @@ fn channel_to_safe_json(channel: &crate::models::AlertIntegration) -> serde_json
 ))]
 /// Lists the channels alerts can go through.
 ///
-/// `integrations:read` sees their credentials, masked. Holding an alert-rules
-/// permission on any project is enough for the rest, without them: choosing
-/// where a rule notifies takes a channel's name, not its secrets.
+/// `integrations:read` sees their credentials masked, `integrations:update` in
+/// full. Holding an alert-rules permission on any project is enough for the
+/// rest, without them: choosing where a rule notifies takes a channel's name,
+/// not its secrets.
 pub async fn list_channels(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
-    let full = actor.access.can(Resource::Integrations, Action::Read, None);
+    let readable = actor.access.can(Resource::Integrations, Action::Read, None);
     let names_only = [Action::Read, Action::Create, Action::Update]
         .iter()
         .any(|&a| actor.access.can_somewhere(Resource::AlertRules, a));
-    if !full && !names_only {
+    if !readable && !names_only {
         actor.require(Resource::Integrations, Action::Read, None)?;
     }
     let channels = AlertService::list_channels(pool.get_ref()).await?;
     let safe: Vec<serde_json::Value> = channels
         .iter()
         .map(|channel| {
-            let mut json = channel_to_safe_json(channel);
-            if !full {
+            let mut json = channel_for(&actor, channel);
+            if !readable {
                 json["credentials"] = serde_json::json!({});
             }
             json
@@ -233,7 +258,7 @@ pub async fn create_channel(
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Integrations, Action::Create, None)?;
     let channel = AlertService::create_channel(pool.get_ref(), body.into_inner()).await?;
-    Ok(HttpResponse::Created().json(channel_to_safe_json(&channel)))
+    Ok(HttpResponse::Created().json(channel_for(&actor, &channel)))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -257,7 +282,7 @@ pub async fn get_channel(
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Integrations, Action::Read, None)?;
     let channel = AlertService::get_channel(pool.get_ref(), path.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(channel_to_safe_json(&channel)))
+    Ok(HttpResponse::Ok().json(channel_for(&actor, &channel)))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(

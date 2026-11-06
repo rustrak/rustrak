@@ -2083,7 +2083,7 @@
       },
       "title": "Members",
       "subtitle": "Manage your team members and invitations",
-      "notAuthorizedDescription": "Only instance administrators can manage the team. Contact an admin if you need access."
+      "notAuthorizedDescription": "Your access does not include the team. Contact an owner to request it."
     },
     "integrations": {
       "meta": {
@@ -2110,7 +2110,7 @@
       "server": {
         "title": "MCP server",
         "description": "Answers AI assistants at the endpoint below. Off by default; turning it off cuts off every assistant at once.",
-        "adminOnly": "Only an instance admin can turn the MCP server on or off.",
+        "adminOnly": "Your access does not include turning the MCP server on or off.",
         "on": "On",
         "off": "Off",
         "toggleLabel": "Turn the MCP server on or off",
@@ -2190,7 +2190,7 @@
       },
       "title": "Storage",
       "subtitle": "See what Rustrak holds and how long it keeps it",
-      "notAuthorizedDescription": "Only instance administrators can view storage usage and run cleanups. Contact an admin if you need access.",
+      "notAuthorizedDescription": "Your access does not include storage. Contact an owner to request it.",
       "loadFailed": "Could not read storage"
     },
     "account": {
@@ -2292,7 +2292,8 @@
       "title": "Data",
       "subtitle": "What this project keeps, and how much it accepts."
     },
-    "projectNotAuthorizedDescription": "Your access does not include this section of the project. Contact an owner to request it."
+    "projectNotAuthorizedDescription": "Your access does not include this section of the project. Contact an owner to request it.",
+    "workspaceNotAuthorizedDescription": "Your access does not include this section. Contact an owner to request it."
   },
   "github": {
     "section": {

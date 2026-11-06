@@ -167,6 +167,14 @@ async fn the_migration_carries_over_existing_admins_and_memberships() {
     assert!(member.can(Resource::Issues, Action::Update, Some(p)));
     assert!(!member.can(Resource::Project, Action::Delete, Some(p)));
     assert!(!member.can(Resource::Users, Action::Read, None));
+    assert!(
+        member.can(Resource::ApiTokens, Action::Create, None),
+        "anyone could make a token before roles: an upgrade keeps that"
+    );
+    assert!(
+        !member.can(Resource::ApiTokens, Action::Read, None),
+        "their own tokens only"
+    );
     let names: Vec<_> = RoleService::list(&pool)
         .await
         .unwrap()
@@ -201,9 +209,7 @@ async fn rolling_the_migration_back_restores_only_complete_levels() {
         ("issues", "delete"),
         ("releases", "create"),
         ("releases", "update"),
-        ("releases", "delete"),
         ("source-maps", "create"),
-        ("source-maps", "delete"),
         ("alert-rules", "create"),
         ("alert-rules", "update"),
         ("alert-rules", "delete"),
@@ -213,11 +219,7 @@ async fn rolling_the_migration_back_restores_only_complete_levels() {
         ("project", "update"),
         ("project-github", "update"),
     ];
-    const ADMIN_ADDS: &[(&str, &str)] = &[
-        ("project", "delete"),
-        ("client-keys", "update"),
-        ("project-members", "update"),
-    ];
+    const ADMIN_ADDS: &[(&str, &str)] = &[("project", "delete"), ("project-members", "update")];
 
     let dir = tempfile::tempdir().unwrap();
     let pool = sqlx::sqlite::SqlitePoolOptions::new()

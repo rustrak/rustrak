@@ -114,7 +114,7 @@ function ProjectsScreen({
   children: ReactNode;
 }) {
   const t = useTranslations('projectPages');
-  const canCreate = usePermissionsLater().can('projects', 'create');
+  const canCreate = usePermissionsLater().canCreateProject;
   return (
     <div className="flex h-full flex-col">
       <title>{t('projectsList.meta.title')}</title>

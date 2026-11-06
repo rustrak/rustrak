@@ -93,6 +93,64 @@ where
     test::call_service(app, req).await.status().as_u16()
 }
 
+/// Reading an integration shows it is there; only who may change it sees what
+/// it holds.
+#[actix_web::test]
+async fn integration_credentials_are_masked_without_integrations_update() {
+    let db = TestDb::new().await;
+    let writer = user_with(
+        &db.pool,
+        &[
+            (Resource::Integrations, Action::Create),
+            (Resource::Integrations, Action::Update),
+        ],
+        None,
+    )
+    .await;
+    let reader = user_with(&db.pool, &[(Resource::Integrations, Action::Read)], None).await;
+    let creator = user_with(&db.pool, &[(Resource::Integrations, Action::Create)], None).await;
+    let app = app!(db.pool.clone());
+
+    let req = test::TestRequest::post()
+        .uri("/api/integrations")
+        .insert_header(("Authorization", format!("Bearer {writer}")))
+        .set_json(serde_json::json!({
+            "name": "hook",
+            "provider_type": "webhook",
+            "credentials": {
+                "url": "https://example.com/SECRETPATH",
+                "secret": "SECRETVALUE",
+                "headers": { "X-Key": "SECRETHEADER" },
+            },
+        }))
+        .to_request();
+    let created: Value = test::call_and_read_body_json(&app, req).await;
+    let id = created["id"].as_i64().unwrap();
+
+    for token in [&reader, &creator] {
+        for uri in [
+            "/api/integrations".to_string(),
+            format!("/api/integrations/{id}"),
+        ] {
+            let req = test::TestRequest::get()
+                .uri(&uri)
+                .insert_header(("Authorization", format!("Bearer {token}")))
+                .to_request();
+            let body = test::call_and_read_body(&app, req).await;
+            let text = String::from_utf8_lossy(&body);
+            assert!(text.contains("hook"), "{uri}: {text}");
+            assert!(!text.contains("SECRET"), "{uri}: {text}");
+        }
+    }
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/integrations/{id}"))
+        .insert_header(("Authorization", format!("Bearer {writer}")))
+        .to_request();
+    let full: Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(full["credentials"]["secret"], "SECRETVALUE");
+}
+
 #[actix_web::test]
 async fn a_settings_permission_opens_only_that_settings_area() {
     let db = TestDb::new().await;
