@@ -1,0 +1,91 @@
+---
+title: Upgrade to 0.25
+description: Moving a Rustrak 0.24 installation to 0.25. Project roles become editable roles, API tokens are hashed and can be limited, and what to change in scripts that manage members or tokens.
+---
+
+# Upgrade to 0.25
+
+In 0.25 access comes from **roles you define**, made of granular permissions, and API tokens can be limited to permissions, projects and a date. Everyone keeps the project access they had. Three things stop working unless you act: members creating projects, members with no project creating tokens, and scripts that create tokens or set project members.
+
+## At a glance
+
+| | |
+|---|---|
+| **Upgrade from** | Any 0.24.x |
+| **Downtime** | One server restart |
+| **Database** | Three migrations. The main one turns `project_members` into `roles`, `role_permissions` and `role_assignments`; the others add columns to `invitations`. At the first start the server hashes every stored API token |
+| **Going back** | Needs the backup you take before upgrading. See [Going back](#going-back) |
+| **Needs a decision** | Who may create projects from now on |
+
+## Before you upgrade
+
+**Take a backup**, as in [Upgrade to 0.15](/upgrading/0-15#before-you-upgrade). Tokens cannot be unhashed, so the backup is the only way back with them intact.
+
+**Copy any token you only keep in the dashboard.** After the upgrade Rustrak cannot show a token's value again. Tokens already in your CI keep working.
+
+## What changes
+
+### Project roles become editable roles
+
+Each project level in use becomes an ordinary role, under **Settings → Roles**. Rename, edit or delete them like any other.
+
+| Before | After |
+|---|---|
+| Project **Viewer** | Role **Viewer**, view on every project resource |
+| Project **Editor** | Role **Editor**: Viewer, plus changing issues, releases, source maps, alert rules, monitors, project settings and the repository link |
+| Project **Admin** | Role **Project Admin**: Editor, plus managing members and deleting the project |
+
+Only levels someone holds are created. Each person keeps the same level on the same projects. All three roles also get `api-tokens:create`, so their holders can still create tokens.
+
+Instance admins are now shown as **Owner** and keep full access. The API still says `admin`, and so does `OIDC_ADMIN_GROUPS`. Instance members stay members.
+
+A new install ships no roles at all. See [Roles & Permissions](/usage/roles).
+
+### Who may create projects
+
+**What changed.** Any signed-in user could create a project and became its admin. Now it takes `projects:create`, which no migrated role includes, plus at least one project permission. The creator's own roles extend to the new project; nobody becomes its admin.
+
+**What to do.** If members create projects, add **Projects** with **Create** to a role under the **Workspace** tab, or give it as [custom permissions](/usage/team#custom-permissions). Owners need nothing.
+
+### Who may create API tokens
+
+**What changed.** Creating a token takes `api-tokens:create`. A member with no project role has no permission to hold, so they can no longer create one. Their existing tokens keep working.
+
+**What to do.** Give those members a role that includes it, if they need new tokens.
+
+### API tokens
+
+**What changed.**
+
+- Tokens are stored as a SHA-256 hash. `GET /api/tokens/{id}` and the token list show the first 8 characters, as `token_prefix`. Only the response that creates a token shows its value.
+- Existing tokens keep full access, limited to what their owner holds.
+- A token can no longer create tokens. `POST /api/tokens` needs a signed-in session and answers `403` otherwise.
+- The MCP tool `create_token` is gone.
+- `POST /api/tokens` refuses permissions its caller does not hold.
+
+**What to do.** If a script creates tokens with a token, create them once from the dashboard instead and store them. To limit an existing token, replace it: limits are set at creation.
+
+### Other API changes
+
+**Who is affected.** Scripts and tools that call these endpoints, and anything built on [`@rustrak/client`](/sdks/client).
+
+| Endpoint | Before | Now |
+|---|---|---|
+| `PUT /api/projects/{id}/members` | `{"user_id": 2, "role": "editor"}` | `{"user_id": 2, "role_ids": [2]}` |
+| `GET /api/projects/{id}/members` | One `role` per member | A list of roles per member |
+| `DELETE /api/invitations/{id}` | Took the invitation token | Takes the invitation `id` |
+| `GET /api/projects`, `GET /api/projects/{id}` | Always returned `sentry_key` and `dsn` | Empty without `client-keys:read` |
+
+Team, invitation, storage, telemetry, GitHub and MCP settings endpoints used to require an instance admin. Each now checks its own permission, so a member with the right role passes. New endpoints: `/api/roles`, `/api/users/{id}/assignments`, `/api/access/catalog` and `/api/access/me`.
+
+## After you upgrade
+
+1. Open **Settings → Roles**: you should see the roles above, with their assignment counts.
+2. Open a member under **Settings → Members**: **Access** lists their roles and projects.
+3. Run a job that uses a token, such as a source map upload.
+
+The server log says how many tokens it hashed: `Hashed N API token(s) stored before tokens were hashed`.
+
+## Going back
+
+Stop the server, restore the backup you took before upgrading, and start your previous image, as in [Upgrade to 0.15](/upgrading/0-15#going-back). Whatever changed since the upgrade is lost, including roles and new tokens.

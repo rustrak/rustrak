@@ -4,12 +4,12 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "button", "name": "Add Member" } },
-    { "action": "click", "target": { "role": "button", "name": "Add Member" }, "tooltip": "A member sees a project only once they are added to it" },
+    { "action": "click", "target": { "role": "button", "name": "Add Member" }, "tooltip": "Give someone a role on this project alone" },
     { "action": "click", "target": { "role": "combobox", "name": "Select a user to add" }, "hotspot": false },
     { "action": "click", "target": { "role": "option", "name": "priya@linden.example" }, "hotspot": false },
-    { "action": "click", "target": { "role": "combobox", "name": "Role for new member" }, "tooltip": "Viewer reads. Editor also triages issues. Admin manages the project" },
+    { "action": "click", "target": { "role": "combobox", "name": "Role for new member" }, "tooltip": "You can only pick roles you hold yourself" },
     { "action": "click", "target": { "role": "option", "name": "Editor" }, "hotspot": false },
-    { "action": "click", "target": { "role": "button", "name": "Add", "exact": true }, "tooltip": "Add her. She now sees Billing worker and can triage it" },
+    { "action": "click", "target": { "role": "button", "name": "Add", "exact": true }, "tooltip": "Priya now sees Billing worker and can triage its issues" },
     { "action": "wait", "for": { "text": "priya@linden.example", "nth": 0 } },
     { "action": "wait", "ms": 800 }
   ]

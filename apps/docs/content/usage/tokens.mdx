@@ -1,5 +1,5 @@
 ---
-description: "Create API tokens to use the Rustrak API from scripts, CI, sentry-cli uploads and AI assistants, and how they differ from the DSN."
+description: "Create API tokens to use the Rustrak API from scripts, CI, sentry-cli uploads and AI assistants, limit them to permissions, projects and a date, and how they differ from the DSN."
 ---
 
 # API Tokens
@@ -10,11 +10,35 @@ It is not the DSN. The DSN only sends events; a token reads data and changes thi
 
 ## Create a token
 
-Go to **Settings → API Tokens**, click **New Token**, give it a description that says where it is used ("CI deploy") and click **Create Token**. Copy it from the dialog. You can copy it again later from the token list.
+1. Go to **Settings → API Tokens** and click **New Token**.
+2. Give it a **Description** that says where it is used ("CI deploy").
+3. Limit it, if you want:
+   - **Permissions**: **All my permissions**, or **Custom permissions** and tick what it needs.
+   - **Projects**: **All authorized projects**, or the ones you choose.
+   - **Expiration date**: the token stops working at the end of that day. Leave it blank and it never expires.
+4. Click **Create Token** and copy the token from the dialog.
 
-A token acts as the user who created it: it sees the same projects and can do the same things. Removing that user deletes their tokens.
+**Copy it now.** Rustrak stores only a SHA-256 hash, so no one can show you the token again. If you lose it, create another.
 
 <InteractiveDemo src="/demos/tokens.openshowcase" />
+
+Creating a token takes `api-tokens:create`, which owners always hold. For a member it comes from a role: the row is called **Other users' API tokens**, under **Workspace**, column **Create**. Without it, **New Token** does not appear.
+
+You can only create tokens from a signed-in session. A token cannot create another token, or a limited one could mint itself a way out of its limits. The server answers `403`, `API tokens can only be created from a signed-in session`.
+
+## What a token can do
+
+A token acts as the user who created it, narrowed by its limits. It never does more than that user can right now: take a role away from them and their tokens lose it too. Removing the user deletes their tokens.
+
+Give each job only what it needs:
+
+| Job | Permissions |
+|---|---|
+| Upload source maps or debug files | `source-maps:create` |
+| Create and update releases | `releases:create`, `releases:update` |
+| Read issues from a script | `issues:read` |
+
+A token limited to one project gets `404` on the others, as if they did not exist. The list of projects stays fixed: a project created later is only reached by a token on **All authorized projects**.
 
 ## Use it
 
@@ -26,8 +50,24 @@ curl -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/projects"
 
 Tools that speak Sentry's API, like `sentry-cli` and the bundler plugins, take it as `SENTRY_AUTH_TOKEN`. The [API reference](/api-reference) lists every endpoint.
 
+To create one over the API, sign in first: this needs the session cookie, not a token.
+
+```bash
+curl -X POST -b cookies.txt -H "Content-Type: application/json" \
+  -d '{"description": "CI deploy", "permissions": [{"resource": "source-maps", "action": "create"}], "project_ids": [1], "expires_at": "2027-01-31T23:59:59Z"}' \
+  "$RUSTRAK_URL/api/tokens"
+```
+
+Leave out `permissions` or `project_ids` for everything its owner has, and `expires_at` for a token that never expires. Only this response holds the `token` field.
+
 ## Manage tokens
 
-**Settings → API Tokens** lists your tokens with when each was created and last used. Delete one to revoke it at once. To rotate a token, create the new one, update whatever uses it, then delete the old one.
+**Settings → API Tokens** lists your tokens with their first 8 characters, what they are limited to and when each was created and last used. Delete one to revoke it at once. To rotate a token, create the new one, update whatever uses it, then delete the old one.
 
-A `401` means the header is missing or malformed, or the token was deleted. A token is 40 hexadecimal characters.
+With `api-tokens:read` you see everyone's tokens, and with `api-tokens:delete` you can revoke them. Their values stay hidden from you too.
+
+| Answer | Why |
+|---|---|
+| `401` | The header is missing or malformed, or the token was deleted or has expired. A token is 40 hexadecimal characters |
+| `403`, `Missing permission source-maps:create` | The token or its owner lacks that permission |
+| `404` on a project | The token or its owner does not reach that project |

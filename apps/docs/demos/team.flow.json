@@ -3,12 +3,14 @@
   "url": "http://localhost:8090/settings/team",
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
-    { "action": "wait", "for": { "role": "textbox", "name": "Email" } },
-    { "action": "click", "target": { "role": "textbox", "name": "Email" }, "tooltip": "There is no open sign-up: an admin invites each person" },
+    { "action": "wait", "for": { "role": "button", "name": "Invite", "exact": true } },
+    { "action": "click", "target": { "role": "button", "name": "Invite", "exact": true }, "tooltip": "There is no open sign-up: each person joins by invitation" },
     { "action": "fill", "target": { "role": "textbox", "name": "Email" }, "value": "lena@linden.example" },
-    { "action": "click", "target": { "role": "combobox", "name": "Invite role" }, "tooltip": "Admins see every project. Members only the ones they join" },
-    { "action": "click", "target": { "role": "option", "name": "Member" }, "hotspot": false },
-    { "action": "click", "target": { "role": "button", "name": "Invite", "exact": true }, "tooltip": "No email is sent: the link is copied for you to share" },
+    { "action": "click", "target": { "role": "combobox", "name": "Invite role" }, "tooltip": "Choose what they get on arrival. With No access they see nothing until someone gives them a role" },
+    { "action": "click", "target": { "role": "option", "name": "Editor" }, "hotspot": false },
+    { "action": "click", "target": { "role": "combobox", "name": "Scope" }, "tooltip": "The role can reach every project, or just one" },
+    { "action": "click", "target": { "role": "option", "name": "Storefront" }, "hotspot": false },
+    { "action": "click", "target": { "role": "button", "name": "Invite", "exact": true }, "tooltip": "No email is set up here, so the link is copied for you to share" },
     { "action": "wait", "for": { "role": "button", "name": "Copy invite link for lena@linden.example" } },
     { "action": "wait", "ms": 800 }
   ]

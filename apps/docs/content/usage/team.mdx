@@ -1,42 +1,38 @@
 ---
-description: "Invite your team to a self-hosted Rustrak: user accounts, roles and per-project access control."
+description: "Invite your team to a self-hosted Rustrak, give each person access per project and manage owners and members."
 ---
 
 # Team & Access
 
-One Rustrak serves a whole team. Each person has their own login, and roles decide which projects they see and what they can do there.
+One Rustrak serves a whole team. Each person has their own login, and their access decides which projects they see and what they can do there.
 
-## Roles
+## Owners and members
 
-There are two layers.
+Every account is an **Owner** or a **Member**.
 
-**Instance role.** Every user is an **Admin** or a **Member**. Admins see every project and manage the team. Members see only the projects they were added to.
+An owner can do everything, on every project, and roles do not apply to them. A member starts with nothing: no projects, no settings, not even an API token. What a member can do comes from the [roles](/usage/roles) you give them.
 
-The first account, created by `CREATE_SUPERUSER`, is the primary user: it cannot be demoted or removed, so the instance can never be locked out.
+The first account, created by `CREATE_SUPERUSER`, is the primary owner. It cannot be demoted or removed, so the instance can never be locked out. Only an owner can make someone an owner or change one.
 
-**Project role.** Members get a role on each project they join:
-
-| Role | Can |
-|---|---|
-| **Viewer** | Read issues, events and the project |
-| **Editor** | Also resolve, archive and delete issues, and change the project |
-| **Admin** | Also delete the project and manage its members |
-
-Instance admins have full access to every project without being added.
+The API calls an owner `admin`, in `POST /api/invitations` and `PATCH /api/team/{id}/role`. So does [`OIDC_ADMIN_GROUPS`](/configuration/sso#roles-from-provider-groups).
 
 ## Invite someone
 
-There is no open sign-up; only admins invite.
+There is no open sign-up. Inviting takes the **Invitations** permission with **Create**, which owners always hold.
 
-1. Go to **Settings → Members**.
-2. Under **Invite a member**, enter the email, pick **Member** or **Admin** and, if you want, turn on **Send the invite by email**.
-3. Click **Invite**. Without the email, the invitation link is copied to your clipboard: share it yourself.
+1. Go to **Settings → Members** and click **Invite**.
+2. Enter the email and pick a **Role**: one of your roles, **No access**, or **Owner** if you are one.
+3. If the role reaches projects, pick its **Scope**: **All projects** or one project.
+4. Turn on **Send the invite by email** if you want Rustrak to send it.
+5. Click **Invite**. Without the email, the invitation link is copied to your clipboard: share it yourself.
 
-**Pending invitations** lets you copy the link again, resend the email or revoke the invitation. A link works once and expires after 48 hours.
+You can only offer what you hold yourself: a role beyond your own permissions is refused. **Pending invitations** lets you copy the link again, resend the email or revoke the invitation. A link works once and expires after 48 hours.
 
-The invitee opens the link, sets a password and is signed in, with the email and role from the invitation.
+The invitee opens the link, sets a password and is signed in, with the role from the invitation. With **No access** they see an empty project list until someone gives them a role.
 
 With [single sign-on](/configuration/sso), people can also sign in through your identity provider.
+
+<InteractiveDemo src="/demos/team.openshowcase" />
 
 ### Invitation emails
 
@@ -44,48 +40,85 @@ They go out through the same SMTP as alert emails: the first enabled email integ
 
 If the email fails, the invitation is still created and its link copied, so you can share it yourself or resend it later.
 
-<InteractiveDemo src="/demos/team.openshowcase" />
+## Give someone access
+
+In **Settings → Members**, open the person. **Access** has one line per role, each with its **Scope**.
+
+1. Click **Add access** and pick a **Role**.
+2. Pick the **Scope**: **All projects**, which includes projects created later, or the projects you choose.
+3. Click **Save**.
+
+A role with only workspace permissions shows **Entire workspace** as its scope. A person can hold several lines, and they add up.
+
+You cannot change your own access. For anyone else you need the **Users** permission with **Edit**, and you must hold every role you give or take away, in the scope it applies to. Otherwise Rustrak answers `You cannot grant permissions you do not hold`.
+
+<InteractiveDemo src="/demos/team-access.openshowcase" />
+
+### Custom permissions
+
+When no role fits one person, pick **Custom permissions** as the **Role**, or click **Customize** on a line to start from that role's permissions. Tick what they need in the grid below, set the **Scope** and click **Save**.
+
+These permissions belong to that one person. They do not appear under **Settings → Roles** and go away with the account. A person has at most one set of custom permissions.
 
 ## Manage the team
 
-In **Settings → Members**, the **Actions** menu next to each person changes their instance role or removes them. Removing a user revokes their access and their API tokens. You cannot remove yourself, the primary user or the last admin.
+In **Settings → Members**, the **Actions** menu next to each person has **Change role**, for owners only, and **Remove**.
+
+Making a member an owner keeps their roles but ignores them. Making them a member again brings those roles back.
+
+**Remove** deletes the account, so its access and API tokens go with it. You cannot remove yourself, the primary owner or the last owner.
 
 ## Project members
 
-Open a project's **Settings → Members** to add someone with a project role, change their role or remove them. A project always keeps at least one admin. Whoever creates a project becomes its admin.
+Open a project's **Settings → Members** to see who holds a role on it, including roles on all projects. Owners are not listed: they reach every project anyway. Viewing the list takes **Project members** with **View**; changing it takes **Edit**.
+
+**Add Member** gives someone a role on this project alone. The **Actions** menu changes that role or removes it. Removing only takes away the roles on this project: someone with a role on all projects keeps it, and still sees the project.
 
 <InteractiveDemo src="/demos/team-project.openshowcase" />
 
+A project needs no admin of its own, and creating one does not make you its admin. Your own roles extend to the new project instead. See [Who can create a project](/usage/roles#who-can-create-a-project).
+
 ## API
 
-[API tokens](/usage/tokens) act as the user who made them, with that user's projects and permissions. Admins can manage the team over the API:
+[API tokens](/usage/tokens) act as the user who made them, up to the limits set on the token.
 
 ```bash
 # The team
 curl -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/team"
 
-# Invite someone; the response holds the invitation token
+# Invite someone with role 3 on project 1; the response holds the invitation token
 curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
-  -d '{"email": "lena@example.com", "role": "member"}' "$RUSTRAK_URL/api/invitations"
+  -d '{"email": "lena@example.com", "role": "member", "role_id": 3, "project_id": 1}' \
+  "$RUSTRAK_URL/api/invitations"
 
 # Same, and email the invite
 curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
-  -d '{"email": "lena@example.com", "role": "member", "send_email": true}' "$RUSTRAK_URL/api/invitations"
+  -d '{"email": "lena@example.com", "role": "member", "role_id": 3, "project_id": 1, "send_email": true}' \
+  "$RUSTRAK_URL/api/invitations"
 
 # Email the invite link again
 curl -X POST -H "Authorization: Bearer $RUSTRAK_TOKEN" "$RUSTRAK_URL/api/invitations/ID/resend"
 
-# Add user 2 to project 1 as an editor
+# Replace everything user 2 holds: role 2 on project 1, role 3 on every project
 curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
-  -d '{"user_id": 2, "role": "editor"}' "$RUSTRAK_URL/api/projects/1/members"
+  -d '{"assignments": [{"role_id": 2, "project_id": 1}, {"role_id": 3, "project_id": null}]}' \
+  "$RUSTRAK_URL/api/users/2/assignments"
+
+# Set user 2's roles on project 1 only; an empty list removes them
+curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: application/json" \
+  -d '{"user_id": 2, "role_ids": [2]}' "$RUSTRAK_URL/api/projects/1/members"
 ```
+
+`PUT /api/users/{id}/assignments` replaces everything, custom permissions included: leave `personal` out and they are gone.
 
 | Situation | Answer |
 |---|---|
-| A member opens a project they are not in | `404`, so the project's existence does not leak |
-| A viewer resolves or deletes an issue | `403` |
-| A non-admin calls a team or invitation endpoint | `403` |
+| Someone opens a project they have no permission on | `404`, so the project's existence does not leak |
+| Someone sees a project but lacks the permission, like a Viewer resolving an issue | `403`, `Missing permission issues:update` |
+| Giving a role or permission you do not hold | `403`, `You cannot grant permissions you do not hold` |
+| Changing your own access | `403` |
+| Inviting or changing an owner when you are not one | `403` |
 | `POST /auth/register` | `403`: sign-up is by invitation only |
 | `send_email: true` with no SMTP host, or no `DASHBOARD_URL` or `PUBLIC_URL` | `400`, naming `send_email` |
 | Resending an expired or accepted invitation | `400` |
-| Removing the last admin of the instance or a project | `409` |
+| Demoting or removing the last owner | `409` |

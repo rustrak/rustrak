@@ -12,6 +12,7 @@ export default {
   'source-maps': 'Source Maps',
   'debug-files': 'Debug Files',
   team: 'Team & Access',
+  roles: 'Roles & Permissions',
   tokens: 'API Tokens',
   storage: 'Storage',
   'language-and-region': 'Language & Region',

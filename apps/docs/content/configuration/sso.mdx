@@ -127,9 +127,9 @@ provider.
 
 **Nobody has their email.** With `OIDC_AUTO_PROVISION=true` an account is
 created for them. The first account on an empty installation becomes an
-administrator; every later one is a member who sees nothing until added to a
-team or project. With provisioning off, which is the default, they are turned
-away and an administrator has to invite them first. With
+owner; every later one is a member who sees nothing until someone gives them a
+[role](/usage/roles). With provisioning off, which is the default, they are
+turned away and someone has to invite them first. With
 `OIDC_ADMIN_GROUPS` set the provider decides the role instead; see
 [Roles from provider groups](#roles-from-provider-groups).
 
@@ -156,9 +156,9 @@ away and an administrator has to invite them first. With
 
 ## Roles from provider groups
 
-By default SSO never rewrites a role: a new account is a member and an
-existing one keeps the role an administrator gave it. To let the provider
-decide, name the groups that mean "admin":
+By default SSO never rewrites whether someone is an owner: a new account is a
+member and an existing one stays what it was. To let the provider decide, name
+the groups that mean owner, which the configuration and the API call `admin`:
 
 ```bash
 OIDC_ADMIN_GROUPS=rustrak-admins
@@ -171,6 +171,9 @@ in one of the listed groups becomes an `admin`, everyone else becomes a
 promotes them the next time they sign in and taking them out demotes them the
 same way. Accounts that sign in with a password are never touched.
 
+Groups only decide owner or member. Provider groups do not map to the
+[roles](/usage/roles) a member holds: give those in the dashboard.
+
 Worth knowing:
 
 - The first account on the installation (the one `CREATE_SUPERUSER` created)
@@ -178,10 +181,10 @@ Worth knowing:
   safeguard protects that account from demotion, and this must not be the way
   around it.
 - Leaving `OIDC_ADMIN_GROUPS` unset leaves every role exactly as it is.
-- The first account on an installation is created as an administrator even
-  when it is in no group, so a fresh deployment cannot end up with no
-  administrator. After that, a mapping nobody satisfies leaves only members:
-  keep at least one person in an admin group.
+- The first account on an installation is created as an owner even when it is
+  in no group, so a fresh deployment cannot end up with no owner. After that, a
+  mapping nobody satisfies leaves only members: keep at least one person in an
+  admin group.
 
 The claim may be a JSON array (`["rustrak-admins", "everyone"]`) or a
 comma-separated string, and group names are compared exactly, including case.

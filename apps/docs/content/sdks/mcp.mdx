@@ -22,13 +22,13 @@ Every tool runs the same handler as the matching REST endpoint, so it has the sa
 
 ### 1. Turn it on
 
-In the dashboard, open **Settings → AI assistants (MCP)** and switch the MCP server on. Only an instance admin can do this, and it is off by default: until someone turns it on, `/mcp` answers 404.
+In the dashboard, open **Settings → AI assistants (MCP)** and switch the MCP server on. This takes `mcp:update`, which owners always hold, and it is off by default: until someone turns it on, `/mcp` answers 404.
 
 The same page shows your endpoint URL and the configuration snippets below, already filled in.
 
 ### 2. Connect your assistant
 
-There are two ways in, and both act as one user: the assistant can do what that user can, and nothing more. A member only sees the projects they belong to; an admin can do anything an admin can, including the destructive tools.
+There are two ways in, and both act as one user: the assistant can do what that user can, and nothing more. A member only reaches what [their roles](/usage/roles) allow; an owner can do anything, including the destructive tools. An API token can narrow that further; an OAuth connection cannot.
 
 #### Web assistants: sign in and approve (claude.ai, ChatGPT)
 
@@ -212,7 +212,7 @@ Each tool needs the permission that its description names, such as `storage:read
 ## Security notes
 
 - Error events are written by the applications you monitor, so their text can be anything, including instructions aimed at an assistant. The server tells clients to treat event content as data, but review what an assistant proposes before letting it run destructive tools.
-- Give an assistant the least privileged token that does the job: a member's token cannot touch projects that member does not belong to.
+- Give an assistant the least privileged token that does the job: [limit it](/usage/tokens#create-a-token) to the permissions and projects it needs. A token never exceeds its owner, and the MCP server cannot create tokens.
 - Disconnecting the assistant, revoking its token, disabling its user or turning the switch off cuts it off at once.
 - The consent screen cannot be framed by another site, and an authorization request whose client or redirect Rustrak cannot verify is refused without sending the browser anywhere.
 

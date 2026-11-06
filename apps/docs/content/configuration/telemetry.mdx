@@ -105,7 +105,7 @@ to look up a machine from what is stored.
 
 ## How to see exactly what would be sent
 
-As an admin:
+With a token whose user holds `telemetry:read`, as owners always do:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/telemetry/preview

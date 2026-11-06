@@ -4,7 +4,7 @@ description: "See how much disk your Rustrak instance uses, set retention per da
 
 # Storage
 
-Every error, transaction, log and source map takes disk space. **Settings → Storage** shows what the instance holds, sets how long each kind of data is kept, and deletes old data. Only instance admins see it, since every cleanup deletes for good.
+Every error, transaction, log and source map takes disk space. **Settings → Storage** shows what the instance holds, sets how long each kind of data is kept, and deletes old data. Seeing it takes the **Storage and retention** permission, so by default only owners do: every cleanup deletes for good.
 
 ## Usage
 
@@ -39,62 +39,62 @@ What a cleanup does:
 
 ## API access
 
-Every endpoint requires an **admin** bearer token (or admin session). Non-admins get `403 Forbidden`.
+Every endpoint takes a [token](/usage/tokens) or a session whose user holds the permission: `storage:read` to look, `storage:update` to change retention, `storage:delete` to delete. Anyone else gets `403 Forbidden`.
 
 ```bash
 # Instance-wide summary
-curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/summary
 
 # Per-project breakdown
-curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/projects
 
 # Dry-run a cleanup (deletes nothing)
-curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"older_than_days":30}' \
   http://localhost:8080/api/storage/cleanup/preview
 
 # Start the cleanup (optionally scoped to one project). Answers 202 at once.
-curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"older_than_days":30,"project_id":1}' \
   http://localhost:8080/api/storage/cleanup
 
 # Follow it until it is no longer "running"
-curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/cleanup/status
 
 # How long ago each project's data arrived, per kind
-curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/age
 
 # Enforce the saved retention now (202, then follow the cleanup status)
-curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/retention/run
 
 # Retention: read it, see what new settings would delete, save them.
 # A null period keeps that kind forever; an override replaces the defaults
 # for its project.
-curl -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/retention
-curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"defaults": {"events_days": 90, "transactions_days": 30, "logs_days": 14},
        "overrides": [{"project_id": 1, "events_days": 365, "transactions_days": null, "logs_days": 7}],
        "frequency": "daily", "hour": 3, "weekday": 0}' \
   http://localhost:8080/api/storage/retention/preview
-curl -X PUT -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -X PUT -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"defaults": {"events_days": 90, "transactions_days": 30, "logs_days": 14},
        "overrides": [], "frequency": "weekly", "hour": 4, "weekday": 0}' \
   http://localhost:8080/api/storage/retention
 
 # Dry-run, then remove, orphaned source maps
-curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/source-maps/gc/preview
-curl -X POST -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:8080/api/storage/source-maps/gc
 ```
 

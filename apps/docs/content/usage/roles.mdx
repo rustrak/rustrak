@@ -1,0 +1,94 @@
+---
+description: "Create roles in Rustrak from granular permissions, decide where each one applies, and look up every permission and what it covers."
+---
+
+# Roles & Permissions
+
+A role is a named set of permissions you give to [members](/usage/team), on all projects or on the ones you choose. Owners do not need roles: they can already do everything.
+
+A new install has no roles. Create the first one before you invite anyone who is not an owner, or they arrive with **No access**. An upgraded install starts with the roles its project members already used: see [Upgrade to 0.25](/upgrading/0-25).
+
+## Create a role
+
+1. Go to **Settings → Roles** and click **New role**.
+2. Enter a **Name**. To start from an existing role, pick it under **Copy permissions from**.
+3. Click **Create role**. Rustrak opens the new role.
+4. Go through the tabs (**Workspace**, **Settings**, **Issues**, **Monitoring**, **Releases**, **Alerts**, **Project**) and tick what the role allows. Each tab counts what is on.
+5. Under **General**, add a **Description**. It shows wherever someone assigns the role.
+6. Click **Save**.
+
+The grid only offers permissions you hold. Then [give the role to someone](/usage/team#give-someone-access).
+
+<InteractiveDemo src="/demos/roles.openshowcase" />
+
+Saving a change reaches everyone holding the role at once, along with their API tokens. **Delete role** only works on a role nobody holds and no pending invitation names; otherwise Rustrak answers `409`.
+
+## How permissions add up
+
+Each permission is a resource and an action, like **Issues and events** with **Edit**. Someone's access is the sum of every role they hold. There are no deny rules, so a second role can only add.
+
+Where a permission applies depends on its kind:
+
+- **Project permissions** apply on the role's **Scope**: all projects, including ones created later, or the projects chosen.
+- **Workspace and settings permissions** have no project to apply to. They count as soon as the role is held, even if its scope is one project. A role with **Users** and **View** given on Storefront lets its holder list the whole team.
+
+Two rules save you some ticking. **Edit**, **Create** or **Delete** on a resource implies **View** on it, except for API tokens. And any permission on a project shows that project: there is no separate permission to see it.
+
+The dashboard follows the same permissions: settings pages and buttons that you cannot use are hidden or read-only. The server enforces them either way, for the dashboard, the API and the [MCP server](/sdks/mcp).
+
+## Who can change what
+
+Nobody hands out more than they hold. You can only write a permission into a role if you hold it, and in the case of a project permission, on every project. Editing an existing role also needs every permission it has now, so nobody strips one they could not give back. You cannot change your own roles.
+
+Only owners make or change owners.
+
+## Who can create a project
+
+Creating a project takes **Projects** with **Create** and at least one project permission somewhere. With only the first, the server refuses with `Creating a project also requires a project permission`, because the creator could never see the result.
+
+Creating one does not make you its admin. If your roles reach only some projects, those roles and your custom permissions extend to the new project. A Viewer who creates a project is a Viewer on it. If your roles reach all projects, nothing needs extending.
+
+## All permissions
+
+The API calls an action `read`, `create`, `update` or `delete`; the dashboard shows **View**, **Create**, **Edit** and **Delete**. A permission is written `resource:action`, like `issues:update`, in API errors and in role and token requests.
+
+### Workspace
+
+| Dashboard name | Resource | Actions | Covers |
+|---|---|---|---|
+| Projects | `projects` | create | Creating projects |
+| Users | `users` | read, update, delete | Seeing members, changing their access, removing them |
+| Invitations | `invitations` | read, create, delete | Pending invitations, inviting, revoking |
+| Roles | `roles` | read, create, update, delete | **Settings → Roles** |
+| Other users' API tokens | `api-tokens` | read, create, delete | `read` and `delete`: everyone's tokens. `create`: making your own tokens |
+
+Everyone can see and revoke their own tokens without any of these.
+
+### Settings
+
+| Dashboard name | Resource | Actions | Covers |
+|---|---|---|---|
+| Integrations (Slack, webhooks, email) | `integrations` | read, create, update, delete | Alert and invitation delivery channels |
+| GitHub app | `github-app` | read, update | Connecting [GitHub](/configuration/github) |
+| Storage and retention | `storage` | read, update, delete | [Storage](/usage/storage): usage, retention, deleting data |
+| AI assistants (MCP) | `mcp` | update | Turning the [MCP server](/sdks/mcp) on and off. Connecting an assistant takes no permission |
+| Telemetry | `telemetry` | read | The [telemetry preview](/configuration/telemetry) |
+
+### Project
+
+| Dashboard name | Resource | Actions | Covers |
+|---|---|---|---|
+| Issues and events | `issues` | read, update, delete | Viewing, resolving, archiving, assigning, merging and deleting |
+| Performance and agents | `performance` | read | Transactions, spans, endpoints, AI agent traces |
+| Logs | `logs` | read | The log stream |
+| Release health | `sessions` | read | Crash-free sessions and users |
+| Releases | `releases` | read, create, update | Releases, their commits and deploys |
+| Source maps and debug files | `source-maps` | read, create | Reading and uploading them |
+| Alert rules | `alert-rules` | read, create, update, delete | Rules on the project |
+| Cron monitors | `monitors` | read, create, update, delete | Monitors and their check-ins |
+| Project settings | `project` | update, delete | Name, platform, data and products; deleting the project |
+| SDK keys (DSN) | `client-keys` | read | Seeing the DSN. Without it, `sentry_key` and `dsn` come back empty |
+| Project members | `project-members` | read, update | The project's **Members** page |
+| Repository link | `project-github` | read, update | The project's **Repository** page |
+
+`GET /api/access/catalog` returns this list, and `GET /api/access/me` what the caller holds.

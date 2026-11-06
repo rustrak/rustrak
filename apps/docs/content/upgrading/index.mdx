@@ -15,10 +15,11 @@ order.
 | From | To | What needs your attention | Guide |
 |---|---|---|---|
 | 0.14.x | 0.15.x | The dashboard container goes away, telemetry arrives, going back needs a backup | [Upgrade to 0.15](/upgrading/0-15) |
+| 0.24.x | 0.25.x | Roles replace project levels, members need a permission to create projects, tokens are hashed and cannot create tokens | [Upgrade to 0.25](/upgrading/0-25) |
 
 ## For API client and MCP users
 
-Two releases changed what code that talks to Rustrak uses. Only the MCP change needs a step on the server: an admin turns the MCP server on, since it starts off.
+Two earlier releases changed what code that talks to Rustrak uses, and 0.25 changes the member and token endpoints (see [its guide](/upgrading/0-25#other-api-changes)). Only the MCP change needs a step on the server: an owner turns the MCP server on, since it starts off.
 
 - **0.19**: `@rustrak/client` is generated from the server's OpenAPI spec. Every method takes one `{ path, query, body }` object, and several methods and types were renamed. See [@rustrak/client](/sdks/client).
 - **0.19**: the MCP server moved inside Rustrak, at `/mcp`. The separate `@rustrak/mcp` package is no longer published; see [MCP server](/sdks/mcp) to connect an assistant to the built-in one.

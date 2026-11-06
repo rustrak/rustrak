@@ -35,8 +35,9 @@ it only sees the repositories you pick.
    account or organization whose repositories you want.
 4. In each project, open **Settings → Repository** and pick its repository.
 
-Only an instance admin can connect GitHub. Anyone who can edit a project can
-choose its repository.
+Connecting GitHub takes `github-app:update`, which owners always hold. Choosing
+a project's repository takes `project-github:update` on that project. See
+[Roles & Permissions](/usage/roles).
 
 ## What GitHub must be able to reach
 

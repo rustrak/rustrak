@@ -21,8 +21,9 @@ the part of Sentry's API that GitLab reads.
 ## Connect a GitLab project
 
 1. In Rustrak, create an API token under **Settings → API Tokens**. GitLab
-   acts with that token, so it sees the projects its owner sees. Resolving
-   needs at least the **Editor** role on the project.
+   acts with that token, so it sees the projects its owner sees. Reading
+   issues needs `issues:read` on the project and resolving them `issues:update`,
+   on both the token and its owner.
 2. In GitLab, open the project's **Settings → Monitor → Error Tracking**,
    enable it and choose **Sentry** as the backend.
 3. Set **Sentry API URL** to your Rustrak address, for example

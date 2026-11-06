@@ -1,0 +1,37 @@
+---
+version: v0.25.0
+title: Roles and Permissions
+description: Build your own roles from granular permissions, give them per project, and limit API tokens to what a job needs. Some API behavior changes, so read the upgrade guide first
+date: 2026-11-06
+tags: [access, api-tokens, dashboard, breaking]
+---
+
+> **Before you upgrade.** Read [Upgrade to 0.25](https://rustrak.dev/upgrading/0-25). Everyone keeps their project access, but members need a new permission to create projects, and tokens can no longer be copied again or create other tokens. Take a backup: going back needs it.
+
+## Roles and permissions
+
+A role is now a set of permissions you define, under **Settings → Roles**. See [Roles & Permissions](https://rustrak.dev/usage/roles).
+
+- 22 resources, from issues and logs to storage and integrations, each with its own actions
+- Give a role on all projects, including future ones, or on the projects you choose
+- A member's page shows everything they hold, with custom permissions for what no role covers
+- Nobody can give a permission they do not hold or change their own access
+- Screens hide or disable what you cannot use, and the server enforces it for the API and MCP too
+- Existing project levels become editable roles. Instance admins are now shown as **Owner**
+
+## Scoped API tokens
+
+- Limit a token to chosen permissions, chosen projects and an expiry date. It never exceeds its owner
+- Tokens are stored as a SHA-256 hash, so the value only shows once, when you create it
+- Creating a token needs a signed-in session: a token cannot create another, and the `create_token` MCP tool is gone
+
+## Invitations
+
+- Send an invitation by email, through your email integration or the `SMTP_*` variables, and resend it later ([@LiJoeAllen](https://github.com/LiJoeAllen))
+- An invitation can carry a role and a scope, held from the moment it is accepted
+
+## Improvements
+
+- The login page is redesigned
+- The issue list's tab says Archived, matching the Archive button
+- `GET /api/access/me` says what the caller may do, and `GET /api/access/catalog` lists every permission
