@@ -516,6 +516,90 @@ export const UnfinishedSpanHasNoLength: Story = {
   },
 };
 
+/** One that started where the trace ends still leaves its mark, at the edge. */
+export const UnfinishedSpanAtTheEndKeepsItsMark: Story = {
+  render: () => (
+    <Waterfall
+      {...LABELS}
+      spans={[
+        {
+          id: 'a',
+          op: 'http.server',
+          description: 'GET /',
+          startMs: 0,
+          endMs: 100,
+        },
+        {
+          id: 'b',
+          op: 'db.query',
+          description: 'SELECT late',
+          startMs: 200,
+          endMs: 9000,
+          unfinished: true,
+        },
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const rows = within(canvasElement).getAllByRole('treeitem');
+    const late = rows.find((row) => row.textContent?.includes('SELECT late'));
+    const bar = late?.querySelector<HTMLElement>('span[style*="width"]');
+    await expect(bar?.style.width).toBe('0.6%');
+  },
+};
+
+/** An unfinished parent's finished children still claim their time. */
+export const UnfinishedParentKeepsItsChildrensTime: Story = {
+  render: () => (
+    <Waterfall
+      {...LABELS}
+      showMissingInstrumentation
+      missingInstrumentationLabel="missing instrumentation"
+      spans={[
+        {
+          id: 'root',
+          op: 'http.server',
+          description: 'GET /',
+          startMs: 0,
+          endMs: 600,
+        },
+        {
+          id: 'parent',
+          parentId: 'root',
+          op: 'task',
+          description: 'stuck parent',
+          startMs: 100,
+          endMs: 9000,
+          unfinished: true,
+        },
+        {
+          id: 'child',
+          parentId: 'parent',
+          op: 'db.query',
+          description: 'finished child',
+          startMs: 120,
+          endMs: 350,
+        },
+        {
+          id: 'next',
+          parentId: 'root',
+          op: 'fn.render',
+          description: 'next sibling',
+          startMs: 500,
+          endMs: 550,
+        },
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const gap = within(canvasElement)
+      .getAllByRole('treeitem')
+      .find((row) => row.textContent?.includes('missing instrumentation'));
+    // 350 -> 500, after the child, not 100 -> 500.
+    await expect(gap).toHaveTextContent(formatSpanDuration(150));
+  },
+};
+
 /** A folded run says "unfinished" as soon as one of its members is. */
 export const GroupWithOneUnfinishedMember: Story = {
   render: () => (
