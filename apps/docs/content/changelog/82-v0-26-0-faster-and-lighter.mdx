@@ -1,0 +1,52 @@
+---
+version: v0.26.0
+title: Faster and Lighter
+description: Ingest takes about 20 times more events per second, the issue list loads about 118 times faster, and the server uses less memory. Everyone signs in once more after upgrading
+date: 2026-11-11
+tags: [performance, ingest, security, breaking]
+---
+
+> **Before you upgrade.** Sessions now live on the server, so everyone signs in once more after the upgrade. Webhook and Slack alerts no longer reach private or loopback addresses: if yours point at an internal Mattermost, n8n or similar, set `RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS=on`.
+
+## Faster and lighter
+
+Measured against v0.25.0 on the same machine, SQLite, the same load:
+
+| | v0.25.0 | v0.26.0 |
+|---|---|---|
+| Events accepted per second | 234 | 4,720 (~20×) |
+| Ingest latency, p50 / p99 | 208 / 350 ms | 9 / 18 ms |
+| Issue list, p50 | 1,710 ms | 14.5 ms (~118×) |
+| Transaction list throughput | 4,166 req/s | 10,624 req/s (2.5×) |
+| Memory at rest | 86 MB | 78 MB (−10%) |
+| Memory after dashboard reads | 369 MB | 210 MB (−43%) |
+| Database size, same events | 180 MB | 164 MB (−9%) |
+
+- The issue list counts users from a column filled at ingest instead of reading every event's payload
+- SQLite runs without its global memory locks, so concurrent reads stop queuing behind each other
+- Every write on the ingest path takes the same turn, so a busy server no longer answers `database is locked`
+- Events reach the disk with a plain `fsync` instead of a full drive-cache flush on macOS
+
+## Sessions on the server
+
+- A session is a row in the database; the cookie only carries an opaque id, stored as a SHA-256 hash
+- Signing out really ends the session, and changing your password signs out every other device
+- Sessions expire after a day idle or two weeks in total
+
+## Closer to Sentry and Relay
+
+- A compressed body is decoded once, with the size checked on both sides: an unsupported `Content-Encoding` answers 415, as Relay does
+- The legacy `/api/{project_id}/store/` endpoint accepts events again
+- Attachments sent with an error event are kept, listed and downloadable on the event page
+- Users are counted by Sentry's order: id, username, email, then IP
+- `per_page` above 100 answers 400 with Sentry's message, and every endpoint checks credentials before reading the request
+
+## Improvements
+
+- Webhook and Slack alerts only reach public addresses and ignore proxy variables; `RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS=on` allows internal ones
+- Long context values on the event page wrap instead of being cut off
+- The command bar lists the same pages as the sidebar, and hides products a project has turned off
+- Forms take you to the first field that needs fixing, including errors from the server
+- An attachment or user-feedback read that fails says so, with a retry, instead of looking empty
+- Removed: `/auth/register`, which always refused, and the deprecated issue fields `is_resolved` and `is_muted`
+- Dependencies patched for actix-files, actix-http, actix-web and rmcp advisories
