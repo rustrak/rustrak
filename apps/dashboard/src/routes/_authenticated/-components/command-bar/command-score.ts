@@ -77,12 +77,12 @@ function scoreCommand(haystack: string, query: string): number {
 }
 
 /**
- * cmdk scores each rendered row through this. `value` carries the project name
- * and page, `keywords` the synonyms that never appear on screen, and both are
- * searchable.
+ * cmdk scores each rendered row through this. `value` is the row's identity
+ * (`project:3`, `command:/projects`) and is not searched: `keywords` carry the
+ * row's text first, then the synonyms that never appear on screen.
  */
 export const filterCommand = (
-  value: string,
+  _value: string,
   search: string,
   keywords?: string[],
-) => scoreCommand([value, ...(keywords ?? [])].join(' '), search);
+) => scoreCommand((keywords ?? []).join(' '), search);

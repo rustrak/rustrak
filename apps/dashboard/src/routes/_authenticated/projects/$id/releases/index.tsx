@@ -175,7 +175,7 @@ function ReleasesScreen({
             environments={environments}
             onQueryChange={(updater) =>
               navigate({
-                search: (prev) => ({ ...prev, ...table.write(updater(query)) }),
+                search: (prev) => ({ ...prev, ...table.apply(updater, prev) }),
               })
             }
             scope={{

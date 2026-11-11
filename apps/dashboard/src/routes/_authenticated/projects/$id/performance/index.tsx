@@ -219,7 +219,7 @@ function PerformanceScreen({
               navigate({
                 search: (prev) => ({
                   ...prev,
-                  ...table.write(updater(query)),
+                  ...table.apply(updater, prev),
                 }),
               })
             }

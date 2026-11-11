@@ -27,7 +27,6 @@ import { useLocation, useMatch } from '@tanstack/react-router';
 import { PlatformIcon } from 'platformicons';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
-import { keepsProduct } from '@/features/project/model/products';
 import { userMutations } from '@/features/user/api/mutations';
 import type { Permissions } from '@/shared/lib/permissions';
 import { Link } from '@/shared/ui/components/link';
@@ -50,6 +49,7 @@ import {
   PROJECT_GROUPS,
   PROJECT_PAGES,
   PROJECT_SETTINGS,
+  shownInProject,
   WORKSPACE_SETTINGS,
 } from './nav';
 
@@ -387,9 +387,7 @@ function ProjectNav({
   const pathname = usePathname();
   const base = `/projects/${project.id}`;
   const active = activePage(pathname, base);
-  const shown = (page: NavPage) =>
-    allowed(page, permissions, project.id) &&
-    (!page.product || keepsProduct(project.disabled_products, page.product));
+  const shown = (page: NavPage) => shownInProject(page, permissions, project);
   return (
     <>
       <SidebarItem

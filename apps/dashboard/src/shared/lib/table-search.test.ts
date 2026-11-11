@@ -65,6 +65,26 @@ describe('tableSearch', () => {
   });
 });
 
+describe('tableSearch.apply', () => {
+  it('applies each change to the address it is given, so two in a row both land', () => {
+    const toPage2 = (q: DataTableQuery) => ({
+      ...q,
+      pagination: { ...q.pagination, pageIndex: 1 },
+    });
+    const byCount = (q: DataTableQuery) => ({
+      ...q,
+      sorting: [{ id: 'count', desc: true }],
+    });
+    const first = codec.apply(toPage2, { q: 'environment:prod' });
+    expect(codec.apply(byCount, { q: 'environment:prod', ...first })).toEqual({
+      q: 'environment:prod',
+      sort: '-count',
+      page: 2,
+      per: undefined,
+    });
+  });
+});
+
 describe('filterValue', () => {
   it('takes the first option or the text', () => {
     const query = codec.read({ q: 'environment:prod,staging' });

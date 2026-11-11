@@ -11,6 +11,7 @@ export const ROW_ICON =
  */
 export function CommandRow({
   value,
+  text,
   keywords,
   label,
   description,
@@ -20,8 +21,10 @@ export function CommandRow({
   onHover,
   trailing,
 }: {
-  /** What the matcher scores against; the label alone is often too thin. */
+  /** The row's unique identity for cmdk; never searched. */
   value: string;
+  /** What the matcher scores against; the label alone is often too thin. */
+  text: string;
   keywords?: string[];
   label: string;
   description: string;
@@ -35,7 +38,7 @@ export function CommandRow({
   return (
     <CommandItem
       value={value}
-      keywords={keywords}
+      keywords={[text, ...(keywords ?? [])]}
       onSelect={onSelect}
       // cmdk drives selection from the keyboard only. Without this the pointer
       // moves over a row and nothing happens, which reads as a dead list.

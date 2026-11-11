@@ -7,8 +7,10 @@ import { filterCommand } from '../command-score';
 import {
   type CommandLink,
   type CommandProject,
+  commandRow,
   generalCommands,
   projectCommands,
+  projectRow,
   settingsCommands,
 } from '../commands';
 import {
@@ -71,15 +73,18 @@ export function ResultsList({
     const scored: {
       project: CommandProject;
       page: CommandLink;
-      value: string;
+      text: string;
       score: number;
     }[] = [];
 
     for (const project of projects) {
-      for (const page of projectCommands(project.id, permissions)) {
-        const value = `${project.name} ${t(page.labelKey)}`;
-        const score = filterCommand(value, query, page.keywords);
-        if (score > 0) scored.push({ project, page, value, score });
+      for (const page of projectCommands(project, permissions)) {
+        const text = `${project.name} ${t(page.labelKey)}`;
+        const score = filterCommand(commandRow(page.href), query, [
+          text,
+          ...(page.keywords ?? []),
+        ]);
+        if (score > 0) scored.push({ project, page, text, score });
       }
     }
 
@@ -93,18 +98,19 @@ export function ResultsList({
   const pageRow = (
     project: CommandProject,
     page: CommandLink,
-    value: string,
+    text: string,
   ) => (
     <CommandRow
       key={page.href}
-      value={value}
+      value={commandRow(page.href)}
+      text={text}
       keywords={page.keywords}
       label={t(page.labelKey)}
       description={t(page.descriptionKey)}
       badge={<ProjectBadge project={project} />}
       media={<page.icon className={ROW_ICON} />}
       onSelect={() => onNavigate(page.href)}
-      onHover={() => onHighlight(value)}
+      onHover={() => onHighlight(commandRow(page.href))}
     />
   );
 
@@ -115,14 +121,15 @@ export function ResultsList({
     links.map((link) => (
       <CommandRow
         key={link.href}
-        value={t(link.labelKey)}
+        value={commandRow(link.href)}
+        text={t(link.labelKey)}
         keywords={link.keywords}
         label={t(link.labelKey)}
         description={t(link.descriptionKey)}
         badge={badgeLabel ? <ScopeBadge label={badgeLabel} /> : undefined}
         media={<link.icon className={ROW_ICON} />}
         onSelect={() => onNavigate(link.href)}
-        onHover={() => onHighlight(t(link.labelKey))}
+        onHover={() => onHighlight(commandRow(link.href))}
       />
     ));
 
@@ -137,8 +144,8 @@ export function ResultsList({
         // heading on every match, which for a query that hits one page per
         // project is three headings for three rows.
         <Section heading={t('commands.resultsHeading')}>
-          {matches.map(({ project, page, value }) =>
-            pageRow(project, page, value),
+          {matches.map(({ project, page, text }) =>
+            pageRow(project, page, text),
           )}
           {linkRows(general, t('commands.generalBadge'))}
           {linkRows(settings, t('commands.settingsBadge'))}
@@ -149,10 +156,11 @@ export function ResultsList({
             {projects.map((project) => (
               <CommandRow
                 key={project.id}
-                value={project.name}
+                value={projectRow(project.id)}
+                text={project.name}
                 keywords={['project', project.platform ?? '']}
                 label={project.name}
-                description={`${project.platform ?? t('commands.noPlatform')} · ${projectCommands(project.id, permissions).length} ${t('commands.pages')}`}
+                description={`${project.platform ?? t('commands.noPlatform')} · ${projectCommands(project, permissions).length} ${t('commands.pages')}`}
                 media={
                   <PlatformIcon
                     platform={project.platform ?? 'other'}
@@ -165,7 +173,7 @@ export function ResultsList({
                 // page. Its pages are one Tab away instead of behind a mode
                 // that replaced the whole list.
                 onSelect={() => onNavigate(`/projects/${project.id}`)}
-                onHover={() => onHighlight(project.name)}
+                onHover={() => onHighlight(projectRow(project.id))}
                 // Advertises the shortcut on the row it applies to, which is
                 // the only place anyone would look for it.
                 trailing={

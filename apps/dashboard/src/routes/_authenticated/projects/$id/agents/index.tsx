@@ -548,7 +548,7 @@ function TracesPanel({
           navigate({
             search: (prev) => ({
               ...prev,
-              ...withoutPer(table.write(updater(query))),
+              ...withoutPer(table.apply(updater, prev)),
             }),
           })
         }

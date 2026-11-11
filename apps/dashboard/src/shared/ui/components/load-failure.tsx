@@ -35,6 +35,7 @@ export function LoadFailure({
   error,
   title,
   notFoundOnMissing = true,
+  onRetry,
 }: {
   error: RustrakError;
   title: string;
@@ -43,6 +44,8 @@ export function LoadFailure({
    * particular endpoint had nothing", so the surrounding page survives it.
    */
   notFoundOnMissing?: boolean;
+  /** Offered on the in-place failure: a read the page can live without. */
+  onRetry?: () => void;
 }) {
   const router = useRouter();
   const expired = error.kind === 'unauthenticated';
@@ -61,5 +64,5 @@ export function LoadFailure({
     return <NotFoundScreen />;
   }
 
-  return <ServiceUnavailable error={error} title={title} />;
+  return <ServiceUnavailable error={error} title={title} onRetry={onRetry} />;
 }

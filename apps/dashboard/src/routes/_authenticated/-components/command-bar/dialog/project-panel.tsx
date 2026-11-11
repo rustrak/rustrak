@@ -27,7 +27,7 @@ export function ProjectPanel({
   focusIndex: number | null;
   onFocusIndexChange: (index: number) => void;
   onNavigate: (href: string) => void;
-  /** Tab, which closes the column and returns focus to the list. */
+  /** Tab or Shift+Tab, which closes the column and returns focus to the list. */
   onToggle: () => void;
 }) {
   const t = useTranslations();
@@ -46,7 +46,7 @@ export function ProjectPanel({
   // unstopped Enter reaches it and opens whatever row the *list* had selected,
   // and an unstopped arrow moves that list while the column walks its pages.
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (focusIndex === null) return;
+    if (focusIndex === null || pages.length === 0) return;
 
     const step =
       event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
@@ -58,8 +58,11 @@ export function ProjectPanel({
     } else if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
+      // In range: the guard above and the modulo keep it inside `pages`.
       onNavigate(pages[focusIndex].href);
-    } else if (event.key === 'Tab' && !event.shiftKey) {
+    } else if (event.key === 'Tab') {
+      // Either direction leaves the column, so the input's keys go back to
+      // the list rather than to a column that no longer has focus.
       event.preventDefault();
       event.stopPropagation();
       onToggle();

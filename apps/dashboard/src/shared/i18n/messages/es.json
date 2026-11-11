@@ -1993,7 +1993,9 @@
         "showOlderFailed": "No se pudieron cargar los comentarios anteriores."
       },
       "sectionAttachments": "Adjuntos",
-      "attachmentDownload": "Descargar"
+      "attachmentDownload": "Descargar",
+      "attachmentsFailed": "No se pudieron cargar los adjuntos",
+      "userFeedbackFailed": "No se pudo cargar el feedback de usuarios"
     },
     "feedback": {
       "title": "Feedback de usuarios",

@@ -1993,7 +1993,9 @@
         "showOlderFailed": "Impossible de charger les retours plus anciens."
       },
       "sectionAttachments": "Pièces jointes",
-      "attachmentDownload": "Télécharger"
+      "attachmentDownload": "Télécharger",
+      "attachmentsFailed": "Impossible de charger les pièces jointes",
+      "userFeedbackFailed": "Impossible de charger les retours des utilisateurs"
     },
     "feedback": {
       "title": "Retours utilisateurs",

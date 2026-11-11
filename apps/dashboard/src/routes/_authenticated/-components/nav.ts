@@ -22,7 +22,10 @@ import {
   TeamIcon,
   TokensIcon,
 } from '@rustrak/ui';
-import { orderedProducts } from '@/features/project/model/products';
+import {
+  keepsProduct,
+  orderedProducts,
+} from '@/features/project/model/products';
 import type { Permissions } from '@/shared/lib/permissions';
 
 /**
@@ -360,6 +363,21 @@ export function allowed(
     return permissions.can(page.reads, 'read', projectId);
   }
   return page.visible?.(permissions) ?? true;
+}
+
+/**
+ * Whether a project's page is offered: the reader may open it and the project
+ * keeps its product. The sidebar and the command bar both ask this.
+ */
+export function shownInProject(
+  page: NavPage,
+  permissions: Permissions,
+  project: { id: number; disabled_products: readonly Product[] },
+): boolean {
+  return (
+    allowed(page, permissions, project.id) &&
+    (!page.product || keepsProduct(project.disabled_products, page.product))
+  );
 }
 
 /** Whether `pathname` is `href` or a page under it. */

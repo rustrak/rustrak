@@ -6,19 +6,17 @@ import { useTranslations } from 'use-intl';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { filterCommand } from '../command-score';
-import { type CommandProject, projectCommands } from '../commands';
+import {
+  type CommandProject,
+  commandRow,
+  projectCommands,
+  projectRow,
+  rowProject,
+} from '../commands';
 import { Command } from '../primitives/command';
 import { ResultsList } from '../results/results-list';
 import { CommandBarFooter } from './footer';
 import { ProjectPanel } from './project-panel';
-
-/**
- * cmdk lowercases item values and collapses their whitespace before it reports
- * the selected one, so matching a row back to its project has to normalise the
- * same way or every selection misses.
- */
-const rowKey = (value: string) =>
-  value.toLowerCase().replace(/\s+/g, ' ').trim();
 
 interface CommandBarDialogProps {
   open: boolean;
@@ -53,20 +51,23 @@ export function CommandBarDialog({
   // controlled value matching no row leaves *nothing* highlighted instead of
   // falling back to the first one, so an empty initial value would open the
   // palette with a dead list.
-  const [selected, setSelected] = useState(
-    () => projects[0]?.name ?? t('commands.allProjects'),
+  const [selected, setSelected] = useState(() =>
+    projects[0] ? projectRow(projects[0].id) : commandRow('/projects'),
   );
 
-  // Only a project row can be previewed, and its row value is its name.
-  const selectedProject = useMemo(() => {
-    const key = rowKey(selected);
-    return projects.find((project) => rowKey(project.name) === key) ?? null;
-  }, [projects, selected]);
+  // Only a project row can be previewed, resolved by id: names are not unique.
+  const selectedProject = rowProject(projects, selected);
+  const pages = useMemo(
+    () =>
+      selectedProject ? projectCommands(selectedProject, permissions) : [],
+    [selectedProject, permissions],
+  );
 
   // Derived rather than stored, so a selection that stops being a project --
   // or a viewport that drops below `md` mid-session -- takes the column with
-  // it without an effect chasing it.
-  const canPreview = selectedProject !== null && !isMobile;
+  // it without an effect chasing it. A project with no page the reader may
+  // open has nothing to preview.
+  const canPreview = pages.length > 0 && !isMobile;
   const showPreview = canPreview && panelIndex !== null;
 
   // Nothing to tear down on the way out: `CommandBar` keys this component on
@@ -133,9 +134,7 @@ export function CommandBarDialog({
   const handlePanelKey = (
     event: React.KeyboardEvent<HTMLInputElement>,
     current: number,
-    projectId: number,
   ) => {
-    const pages = projectCommands(projectId, permissions);
     const step =
       event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
 
@@ -146,7 +145,8 @@ export function CommandBarDialog({
       return;
     }
 
-    if (event.key === 'Tab' && !event.shiftKey) {
+    // Either direction closes the column, as it does from inside it.
+    if (event.key === 'Tab') {
       event.preventDefault();
       togglePanel();
       return;
@@ -155,7 +155,8 @@ export function CommandBarDialog({
     if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
-      go(pages[current].href);
+      const page = pages[current];
+      if (page) go(page.href);
     }
   };
 
@@ -164,7 +165,9 @@ export function CommandBarDialog({
     // enter, and claiming Tab there would strand `panelIndexRef` non-null and
     // route every subsequent arrow and Enter into a hidden subtree, which
     // reads as the visible list having died.
-    if (!selectedProject || isMobile) return;
+    // `canPreview` also means `pages` is not empty, so nothing below divides
+    // by zero or reads a page that is not there.
+    if (!canPreview) return;
 
     // DOM focus reaches the column one render after `panelIndex` is set, so a
     // quick second keystroke still arrives here. Routing by intent rather than
@@ -172,7 +175,7 @@ export function CommandBarDialog({
     // key that follows it.
     const current = panelIndexRef.current;
     if (current !== null) {
-      handlePanelKey(event, current, selectedProject.id);
+      handlePanelKey(event, current);
       return;
     }
 
@@ -246,7 +249,7 @@ export function CommandBarDialog({
           {showPreview && selectedProject ? (
             <ProjectPanel
               project={selectedProject}
-              pages={projectCommands(selectedProject.id, permissions)}
+              pages={pages}
               focusIndex={panelIndex}
               onFocusIndexChange={movePanel}
               onNavigate={go}

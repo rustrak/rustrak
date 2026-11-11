@@ -1993,7 +1993,9 @@
         "showOlderFailed": "Nu s-a putut încărca feedbackul mai vechi."
       },
       "sectionAttachments": "Atașamente",
-      "attachmentDownload": "Descarcă"
+      "attachmentDownload": "Descarcă",
+      "attachmentsFailed": "Nu s-au putut încărca atașamentele",
+      "userFeedbackFailed": "Nu s-a putut încărca feedbackul utilizatorilor"
     },
     "feedback": {
       "title": "Feedback utilizatori",

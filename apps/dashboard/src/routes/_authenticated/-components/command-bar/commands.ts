@@ -7,6 +7,7 @@ import {
   type NavPage,
   PROJECT_PAGES,
   PROJECT_SETTINGS,
+  shownInProject,
   WORKSPACE_SETTINGS,
 } from '../nav';
 
@@ -19,7 +20,26 @@ export type CommandLink = {
   keywords?: string[];
 };
 
-export type CommandProject = Pick<ProjectResponse, 'id' | 'name' | 'platform'>;
+export type CommandProject = Pick<
+  ProjectResponse,
+  'id' | 'name' | 'platform' | 'disabled_products'
+>;
+
+/**
+ * cmdk values must be unique, and names are not: `API` and `api`, or a project
+ * called "All projects" beside the static row. Rows are keyed by identity and
+ * stay searchable by their text through `keywords`.
+ */
+export const projectRow = (id: number) => `project:${id}`;
+export const commandRow = (href: string) => `command:${href}`;
+
+/** The project a row value names, or `null` for any other row. */
+export function rowProject<P extends CommandProject>(
+  projects: P[],
+  value: string,
+): P | null {
+  return projects.find((project) => projectRow(project.id) === value) ?? null;
+}
 
 /** Under the label the sidebar gives it, from `labels` (its namespace). */
 const asCommands = (
@@ -33,12 +53,16 @@ const asCommands = (
     icon: page.icon,
   }));
 
-/** A project's pages the reader may open, as `href`s under the project. */
+/**
+ * A project's pages the reader may open and the project keeps, as `href`s
+ * under the project.
+ */
 export function projectCommands(
-  projectId: number,
+  project: CommandProject,
   permissions: Permissions,
 ): CommandLink[] {
-  const shown = (page: NavPage) => allowed(page, permissions, projectId);
+  const projectId = project.id;
+  const shown = (page: NavPage) => shownInProject(page, permissions, project);
   return [
     ...asCommands(PROJECT_PAGES.filter(shown), 'projects.nav'),
     ...asCommands(PROJECT_SETTINGS.filter(shown), 'settings.nav'),

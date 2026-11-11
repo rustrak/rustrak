@@ -108,7 +108,8 @@ function EventView() {
       ...reads.repository,
       enabled: permissions.can('project-github', 'read', projectId),
     }).data ?? null;
-  const attachments = useQuery(reads.attachments).data ?? [];
+  // Non-blocking, but a failure shows in its section rather than as "none".
+  const attachments = useQuery(reads.attachments);
   const stats30d = useQuery(reads.stats30d).data ?? null;
   const aggregates = useQuery(reads.aggregates).data ?? null;
   const activity = useQuery(reads.activity).data ?? [];
