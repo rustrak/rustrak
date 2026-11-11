@@ -22,8 +22,6 @@ import type { Release, ReleaseChunk } from '@/lib/release';
  * place that owns a fetch loop and two effects' worth of scroll restoration.
  */
 
-const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
-
 export type ArchiveStatus = 'idle' | 'loading' | 'error';
 
 type Options = {
@@ -68,9 +66,7 @@ export function useReleaseArchive({ initial, chunkByAnchor }: Options) {
     try {
       while (loadedRef.current < targetRef.current) {
         const chunk = loadedRef.current + 1;
-        const response = await fetch(
-          `${BASE_PATH}/changelog/releases/${chunk}`,
-        );
+        const response = await fetch(`/changelog/releases/${chunk}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = (await response.json()) as ReleaseChunk;
 

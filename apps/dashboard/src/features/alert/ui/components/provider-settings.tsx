@@ -6,6 +6,7 @@ import type {
 import {
   BackIcon,
   Button,
+  confirm,
   DeleteIcon,
   Menu,
   MoreIcon,
@@ -14,13 +15,11 @@ import {
   TestIcon,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { alertMutations } from '@/features/alert/api/mutations';
 import { providerEditing } from '@/features/alert/lib/provider-view';
 import { slackDefaults } from '@/features/alert/model/integration-forms';
-import { ConfirmDeleteDialog } from '@/features/alert/ui/components/confirm-delete-dialog';
 import { ProviderForm } from '@/features/alert/ui/components/integration-config-dialog/provider-form';
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
 import {
@@ -30,6 +29,7 @@ import {
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /** What `?edit=` asks for: a new integration, or the one with this id. */
 export type EditParam = 'new' | number | undefined;
@@ -51,6 +51,7 @@ export function ProviderSettings({
   edit,
   can,
   onEdit,
+  catalogHref,
 }: {
   provider: ProviderType;
   name: string;
@@ -61,13 +62,15 @@ export function ProviderSettings({
   can: { create: boolean; update: boolean; delete: boolean };
   /** Moves the page to the list (`undefined`) or to a form. */
   onEdit: (edit: EditParam) => void;
+  /** The integrations catalogue, keeping the project it was opened from. */
+  catalogHref: string;
 }) {
   const t = useTranslations('alerts');
+  const toastFailure = useToastFailure();
   const router = useRouter();
   const test = useMutation(alertMutations.testIntegration());
   const remove = useMutation(alertMutations.deleteIntegration());
   const isPending = test.isPending || remove.isPending;
-  const [deleting, setDeleting] = useState<AlertIntegration | null>(null);
 
   const editing = providerEditing(edit, integrations, can);
 
@@ -80,24 +83,26 @@ export function ProviderSettings({
       {
         // The request itself failed, which is not the same as the provider
         // refusing the message: that comes back as a successful request.
-        onError: (error) =>
-          toast.error(t('integrations.testFailed'), {
-            description: error.error.message,
-          }),
+        onError: (error) => toastFailure(t('integrations.testFailed'), error),
         onSuccess: (answer) => announceTest(answer, t),
       },
     );
 
-  const handleDelete = () => {
-    if (!deleting) return;
-    remove.mutate(deleting.id, {
-      onError: (error) =>
-        toast.error(t('integrations.deleteFailed'), {
-          description: error.error.message,
-        }),
+  const confirmDelete = async (integration: AlertIntegration) => {
+    const ok = await confirm({
+      title: t('integrations.deleteTitle'),
+      description: t('integrations.deleteDescription', {
+        name: integration.name,
+      }),
+      tone: 'danger',
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+    });
+    if (!ok) return;
+    remove.mutate(integration.id, {
+      onError: (error) => toastFailure(t('integrations.deleteFailed'), error),
       onSuccess: () => {
         toast.success(t('integrations.deleted'));
-        setDeleting(null);
         if (editing !== null) onEdit(undefined);
       },
     });
@@ -107,7 +112,7 @@ export function ProviderSettings({
     // With nothing configured the list is the form again, so the way out of
     // a form nobody filled in is the catalogue.
     if (integrations.length === 0) {
-      router.push('/settings/integrations');
+      router.push(catalogHref);
       return;
     }
     onEdit(undefined);
@@ -135,7 +140,7 @@ export function ProviderSettings({
             if (!open) closeForm();
           }}
           onTest={handleTest}
-          onDelete={can.delete ? setDeleting : undefined}
+          onDelete={can.delete ? confirmDelete : undefined}
           isPending={isPending}
         />
       ) : integrations.length > 0 ? (
@@ -154,7 +159,7 @@ export function ProviderSettings({
                   ? onEdit(integration.id)
                   : handleTest(integration)
               }
-              onDelete={() => setDeleting(integration)}
+              onDelete={() => confirmDelete(integration)}
             />
           ))}
         </SettingSection>
@@ -169,17 +174,6 @@ export function ProviderSettings({
           />
         </SettingSection>
       )}
-
-      <ConfirmDeleteDialog
-        open={!!deleting}
-        title={t('integrations.deleteTitle')}
-        description={t('integrations.deleteDescription', {
-          name: deleting?.name ?? '',
-        })}
-        isPending={isPending}
-        onConfirm={handleDelete}
-        onClose={() => setDeleting(null)}
-      />
     </>
   );
 }

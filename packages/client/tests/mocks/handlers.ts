@@ -131,42 +131,9 @@ export function appErrorResponse(
   );
 }
 
-/**
- * The one flat error body the server still emits: the ingest rate limiter in
- * `apps/server/src/routes/ingest.rs`, which is not an `AppError` and so keeps
- * its own shape plus the `Retry-After` header.
- */
-export function rateLimitResponse(retryAfter: number) {
-  return HttpResponse.json(
-    { error: 'rate_limit_exceeded', retry_after: retryAfter },
-    { status: 429, headers: { 'Retry-After': String(retryAfter) } },
-  );
-}
-
-/**
- * A missing project has two distinct wordings on the server and the actor
- * decides which one you get:
- *
- * - `ProjectService::get_by_id` (`services/project.rs:142`) says
- *   `Project with id {id} not found`. This is what an instance admin sees, and
- *   a Bearer token is either user-less (legacy, treated as admin) or owned by
- *   an admin in every fixture here, so `access::require` waves it through and
- *   the lookup is what 404s.
- * - `access::require` (`services/access.rs:65`) says `Project {id} not found`
- *   for a non-member, deliberately not leaking existence. Use
- *   `projectNotVisible` for endpoints whose only 404 comes from that guard.
- *
- * `services/project.rs:165` also has a bare `Project not found`, but it lives in
- * `get_by_sentry_key`, which is `#[allow(dead_code)]` and wired to no route, so
- * no client can ever observe it.
- */
+/** `ProjectService::get_by_id`'s 404, what an admin's Bearer token gets. */
 export function projectNotFound(id: string | number | readonly string[]) {
   return `Resource not found: Project with id ${id} not found`;
-}
-
-/** `access::require`'s non-member 404 (`services/access.rs:65`). */
-export function projectNotVisible(id: string | number | readonly string[]) {
-  return `Resource not found: Project ${id} not found`;
 }
 
 // Mock data
@@ -207,99 +174,7 @@ export const mockProjects = [
   },
 ];
 
-export const mockTeamMembers = [
-  {
-    id: 1,
-    email: 'test@example.com',
-    role: 'member',
-    is_active: true,
-    is_primary: false,
-    created_at: '2026-01-20T10:00:00.000Z',
-    last_login: '2026-01-20T11:00:00.000Z',
-  },
-  {
-    id: 2,
-    email: 'admin@example.com',
-    role: 'admin',
-    // Deactivated on purpose, and it is what makes the last-admin 409
-    // reachable at all. `UsersService::admin_count` counts
-    // `role = 'admin' AND is_active = true` (`services/users.rs:167`), so with
-    // an *active* primary admin in the roster there are always two active
-    // admins and the server would answer 204, never the 409 this suite
-    // asserts. An admin account that was switched off, leaving one active
-    // admin behind, is exactly the state the guard exists to protect.
-    is_active: false,
-    is_primary: true,
-    created_at: '2026-01-19T10:00:00.000Z',
-    last_login: null,
-  },
-  // A second admin who is NOT the primary account. Without this, the only admin
-  // in the roster was the primary one, and `routes/team.rs:118-137` checks the
-  // primary guard before the last-admin guard, so demoting them can only ever
-  // produce the 403, so the 409 fixture was unreachable on the real server.
-  {
-    id: 3,
-    email: 'second-admin@example.com',
-    role: 'admin',
-    is_active: true,
-    is_primary: false,
-    created_at: '2026-01-18T10:00:00.000Z',
-    last_login: null,
-  },
-];
-
 export const handlers = [
-  // ---------------------------------------------------------------------
-  // Status-transform fixtures.
-  //
-  // These paths do NOT exist on the server. They exist so the status ->
-  // error-class mapping in `src/utils/http.ts::transformHttpError` can be
-  // exercised for statuses whose only real sources are endpoints this client
-  // never calls:
-  //
-  //   - `AppError::PayloadTooLarge` is produced solely by envelope ingestion
-  //     (`ingest/decompression.rs:17,38`, `ingest/parser.rs:81,107`).
-  //   - The flat 429 body is produced solely by the ingest rate limiter
-  //     (`routes/ingest.rs:38-46`).
-  //   - `AppError::Database` / `AppError::Internal` can surface from any route,
-  //     so they are parked here too rather than pinned to one arbitrary GET.
-  //
-  // They used to hang off `GET /api/projects/:id` under reserved ids, which
-  // taught a contract the server does not honour: a bodyless GET can never
-  // answer "payload too large". Drive them through the client's transport
-  // directly, not with a method.
-  // ---------------------------------------------------------------------
-  http.get(`${BASE_URL}/__status-transform/payload-too-large`, () =>
-    appErrorResponse(
-      'PayloadTooLarge',
-      'Payload too large: Compressed payload exceeds 104857600 bytes',
-    ),
-  ),
-  http.get(`${BASE_URL}/__status-transform/rate-limited`, () =>
-    rateLimitResponse(59),
-  ),
-  http.get(`${BASE_URL}/__status-transform/database-error`, () =>
-    appErrorResponse('DatabaseError'),
-  ),
-  http.get(`${BASE_URL}/__status-transform/internal-error`, () =>
-    appErrorResponse('InternalError'),
-  ),
-  // 410 and the catch-all have no `AppError` producer at all: `status_code`
-  // cannot return either. They exist for a retired endpoint and for whatever a
-  // proxy invents, so both bodies are proxy-shaped rather than `appErrorResponse`.
-  http.get(`${BASE_URL}/__status-transform/gone`, () =>
-    HttpResponse.json(
-      { error: 'This endpoint has been retired' },
-      { status: 410 },
-    ),
-  ),
-  // 418 is deliberate: it is a real status, no `AppError` maps to it, and
-  // nothing in `transformHttpError`'s switch enumerates it, so it can only
-  // reach the `default` arm.
-  http.get(`${BASE_URL}/__status-transform/unenumerated`, () =>
-    HttpResponse.json({ error: "I'm a teapot" }, { status: 418 }),
-  ),
-
   // Projects
   http.get(`${BASE_URL}/api/projects`, () => {
     return HttpResponse.json({
@@ -351,15 +226,6 @@ export const handlers = [
 
     return HttpResponse.json(newProject, { status: 201 });
   }),
-  // `routes/auth.rs:106-115` ignores its body entirely and always returns
-  // `AppError::Forbidden("Registration is invite-only")`. There is no success
-  // path and no validation branch: signing up goes through
-  // `/auth/accept-invitation`. This fixture used to invent a 201 and three 400s
-  // that the endpoint cannot produce.
-  http.post(`${BASE_URL}/auth/register`, () =>
-    appErrorResponse('Forbidden', 'Forbidden: Registration is invite-only'),
-  ),
-
   // Only the failure: no test logs in successfully.
   http.post(`${BASE_URL}/auth/login`, () =>
     appErrorResponse('Unauthorized', 'Unauthorized: Invalid credentials'),
@@ -378,88 +244,13 @@ export const handlers = [
         ),
   ),
 
-  // Team (users)
-  http.get(`${BASE_URL}/api/team`, () => {
-    return HttpResponse.json(mockTeamMembers);
-  }),
-
-  http.patch(
-    `${BASE_URL}/api/team/:userId/role`,
-    async ({ params, request }) => {
-      const { userId } = params;
-      const body = (await request.json()) as { role: string };
-
-      // Guard order mirrors `routes/team.rs:113-137` exactly, because the order
-      // is observable: demoting the primary admin yields 403, never the 409.
-      if (body.role !== 'admin' && body.role !== 'member') {
-        return appErrorResponse(
-          'ValidationError',
-          `Validation error: Invalid role: ${body.role}`,
-        );
-      }
-
-      const member = mockTeamMembers.find((m) => m.id === Number(userId));
-
-      // 1. The primary account's role can never change (routes/team.rs:118-125).
-      //    This is checked before the user lookup on the server, so an unknown
-      //    id that happened to be primary could not exist anyway.
-      if (member?.is_primary && body.role !== 'admin') {
-        return appErrorResponse(
-          'Forbidden',
-          "Forbidden: The primary admin's role cannot be changed",
-        );
-      }
-
-      // 2. Then the user must exist (routes/team.rs:129-131).
-      if (!member) {
-        return appErrorResponse(
-          'NotFound',
-          `Resource not found: User ${userId} not found`,
-        );
-      }
-
-      // 3. Then the last-admin guard (routes/team.rs:134-147). The count is
-      //    computed rather than assumed: the server asks
-      //    `COUNT(*) WHERE role = 'admin' AND is_active = true` and only
-      //    refuses at `<= 1`. Hard-coding the 409 for any non-primary admin
-      //    made this fixture answer 409 where the real server answers 204,
-      //    which is the fixture-vs-server divergence this phase exists to
-      //    remove.
-      const activeAdmins = mockTeamMembers.filter(
-        (m) => m.role === 'admin' && m.is_active,
-      ).length;
-
-      if (
-        member.role === 'admin' &&
-        body.role === 'member' &&
-        activeAdmins <= 1
-      ) {
-        return appErrorResponse(
-          'Conflict',
-          'Conflict: Cannot demote the last admin',
-        );
-      }
-
-      return new HttpResponse(null, { status: 204 });
-    },
+  http.patch(`${BASE_URL}/api/team/:userId/role`, () =>
+    appErrorResponse('Conflict', 'Conflict: Cannot demote the last admin'),
   ),
-
-  http.delete(`${BASE_URL}/api/team/:userId`, ({ params }) => {
-    const { userId } = params;
-    const member = mockTeamMembers.find((m) => m.id === Number(userId));
-    if (!member) {
-      return appErrorResponse(
-        'NotFound',
-        `Resource not found: User ${userId} not found`,
-      );
-    }
-    // Simulate "the primary user cannot be deleted".
-    if (member.is_primary) {
-      return appErrorResponse(
-        'Forbidden',
-        'Forbidden: The primary admin cannot be deleted',
-      );
-    }
-    return new HttpResponse(null, { status: 204 });
-  }),
+  http.delete(`${BASE_URL}/api/team/:userId`, () =>
+    appErrorResponse(
+      'Forbidden',
+      'Forbidden: The primary admin cannot be deleted',
+    ),
+  ),
 ];

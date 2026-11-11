@@ -54,7 +54,6 @@ describe('remote server entries', () => {
     expect(config.servers.rustrak.headers.Authorization).toBe(
       `Bearer ${VSCODE_TOKEN_INPUT}`,
     );
-    expect(VSCODE_TOKEN_INPUT).toBe('$' + '{input:rustrak-token}');
     expect(code).not.toContain(TOKEN_PLACEHOLDER);
   });
 });

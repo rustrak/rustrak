@@ -1,4 +1,4 @@
-import type { MetricDelta, ProjectResponse } from '@rustrak/client';
+import type { ProjectResponse } from '@rustrak/client';
 import {
   ChevronRightIcon,
   cn,
@@ -161,12 +161,12 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
         <Figure
           label={t('columns.events24h')}
           value={stats ? format.number(stats.events.current, 'compact') : '–'}
-          delta={stats ? <Delta metric={stats.events} /> : null}
+          delta={stats ? <MetricDeltaText metric={stats.events} /> : null}
         />
         <Figure
           label={t('card.newIssues')}
           value={stats ? format.number(stats.new_issues.current) : '–'}
-          delta={stats ? <Delta metric={stats.new_issues} /> : null}
+          delta={stats ? <MetricDeltaText metric={stats.new_issues} /> : null}
         />
         <Figure
           label={t('card.openIssues')}
@@ -179,15 +179,6 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
       </dl>
     </article>
   );
-}
-
-/**
- * The change against the previous 24 hours, and nothing when there is no
- * previous to compare with: four dashes under four figures is noise.
- */
-function Delta({ metric }: { metric: MetricDelta }) {
-  if (!metric.previous) return null;
-  return <MetricDeltaText metric={metric} polarity="up-is-bad" />;
 }
 
 function Figure({

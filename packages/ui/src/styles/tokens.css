@@ -750,22 +750,6 @@
     }
   }
 
-  /*
-   * A toast's countdown, drawn as a bar emptying left to right. The duration
-   * is not here: each toast sets it inline from its own timeout, because the
-   * bar's one job is to tell that toast's remaining time truthfully.
-   */
-  --animate-toast-timer: toast-timer linear forwards;
-
-  @keyframes toast-timer {
-    from {
-      transform: scaleX(1);
-    }
-    to {
-      transform: scaleX(0);
-    }
-  }
-
   /* ---------------------------------------------------------------------- */
   /* Radii · 2 · 4 · 6 · 8 · 9 · 10 · 12 · 16 · pill                        */
   /* 8 is a menu item and a small control, 9 a nav row or a button, 10 the  */
@@ -807,7 +791,6 @@
   --spacing-row-head: 38px;
   --spacing-page-gutter: 28px;
   --spacing-search: 260px;
-  --spacing-toast: 380px; /* a corner notice: wide enough for two lines   */
   /* Dialog widths, by purpose rather than by content: confirming what is
      reversible, unlocking what is not, a short form, choosing in a table. */
   --spacing-dialog-sm: 420px;

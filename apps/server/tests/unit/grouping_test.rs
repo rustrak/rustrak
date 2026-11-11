@@ -8,10 +8,6 @@ use rustrak::services::grouping::{
 };
 use serde_json::json;
 
-// =============================================================================
-// Basic Grouping Tests
-// =============================================================================
-
 #[test]
 fn test_grouping_key_with_exception() {
     let event = json!({
@@ -61,10 +57,6 @@ fn test_get_type_and_value_log_message() {
     assert_eq!(type_, "Log Message");
     assert_eq!(value, "Something happened");
 }
-
-// =============================================================================
-// Exception Grouping Tests
-// =============================================================================
 
 #[test]
 fn test_exception_with_values_array() {
@@ -145,10 +137,6 @@ fn test_exception_multiline_value() {
     let (_, value) = get_type_and_value(&event);
     assert!(value.contains("Second line"));
 }
-
-// =============================================================================
-// Log Message Grouping Tests
-// =============================================================================
 
 #[test]
 fn test_logentry_message() {
@@ -372,10 +360,6 @@ fn test_log_multiline_uses_first_line() {
     assert_eq!(value, "First line of log");
 }
 
-// =============================================================================
-// Exception Group Tests
-// =============================================================================
-
 /// Python 3.11 `ExceptionGroup` / .NET `AggregateException` / JS `AggregateError`:
 /// a wrapper whose only job is to hold the real errors.
 fn exception_group_event(inner: &[(&str, &str)]) -> serde_json::Value {
@@ -524,10 +508,6 @@ fn test_a_malformed_exception_tree_changes_nothing() {
     assert_eq!(type_, "Outer");
     assert_eq!(value, "b");
 }
-
-// =============================================================================
-// Wrapper Exceptions (payloads and expectations from Sentry's own tests)
-// =============================================================================
 
 #[test]
 fn test_rxjava_wrapper_does_not_title_the_issue() {
@@ -704,10 +684,6 @@ fn test_a_single_exception_keeps_its_grouping_key() {
     );
 }
 
-// =============================================================================
-// Message Parameterization in the Grouping Key
-// =============================================================================
-
 #[test]
 fn test_the_same_bug_with_different_ids_is_one_issue() {
     let err = |value: &str| {
@@ -763,10 +739,6 @@ fn test_genuinely_different_bugs_still_split() {
     assert_ne!(calculate_grouping_key(&a), calculate_grouping_key(&b));
 }
 
-// =============================================================================
-// Transaction Grouping Tests
-// =============================================================================
-
 #[test]
 fn test_transaction_included_in_grouping() {
     let event1 = json!({
@@ -796,10 +768,6 @@ fn test_missing_transaction() {
     let key = calculate_grouping_key(&event);
     assert!(key.contains("<no transaction>"));
 }
-
-// =============================================================================
-// Fingerprint Tests
-// =============================================================================
 
 #[test]
 fn test_custom_fingerprint_only() {
@@ -1053,10 +1021,6 @@ fn test_non_synthetic_exception_still_groups_by_type() {
     assert_eq!(value, "boom");
 }
 
-// =============================================================================
-// Fallback and Edge Cases
-// =============================================================================
-
 #[test]
 fn test_no_exception_no_message() {
     let event = json!({
@@ -1094,10 +1058,6 @@ fn test_null_values_in_exception() {
     assert_eq!(value, "");
 }
 
-// =============================================================================
-// Hash Tests
-// =============================================================================
-
 #[test]
 fn test_hash_is_deterministic() {
     let key = "Error: something ⋄ /api";
@@ -1119,10 +1079,6 @@ fn test_different_keys_different_hashes() {
     assert_ne!(hash1, hash2);
 }
 
-// =============================================================================
-// Title Generation Tests
-// =============================================================================
-
 #[test]
 fn test_title_with_value() {
     let title = get_title("TypeError", "undefined is not a function");
@@ -1140,10 +1096,6 @@ fn test_title_multiline_value() {
     let title = get_title("Error", "first line\nsecond line\nthird line");
     assert_eq!(title, "Error: first line");
 }
-
-// =============================================================================
-// Denormalized Fields Tests
-// =============================================================================
 
 #[test]
 fn test_denormalized_fields_basic() {
@@ -1238,10 +1190,6 @@ fn test_denormalized_fields_no_stacktrace() {
     assert_eq!(fields.last_frame_function, "");
 }
 
-// =============================================================================
-// Truncation Tests
-// =============================================================================
-
 #[test]
 fn test_type_truncation() {
     let long_type = "A".repeat(200);
@@ -1314,10 +1262,6 @@ fn test_transaction_truncation() {
     // Transaction is truncated to 200 chars
     assert!(key.len() < long_transaction.len() + 200);
 }
-
-// =============================================================================
-// Unicode and Special Characters
-// =============================================================================
 
 #[test]
 fn test_unicode_in_error_message() {

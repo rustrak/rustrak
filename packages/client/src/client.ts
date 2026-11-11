@@ -1,23 +1,22 @@
 import { ZodError } from 'zod';
 import type { ClientConfig } from './config.js';
 import type { RustrakError } from './errors.js';
+import { BINARY } from './generated/binary.gen.js';
 import { createClient, createConfig } from './generated/client/index.js';
 import { Rustrak } from './generated/sdk.gen.js';
 import { Err, Ok, type Result } from './result.js';
 import {
   createFetch,
-  isTransportFailure,
+  RustrakTransportFailure,
   transformHttpError,
 } from './utils/http.js';
 
 /**
- * Operations whose 2xx is a file, not JSON: read as a `Blob`. The spec leaves
- * the body untyped (zod has no binary type), so the type comes from here.
+ * Operations whose 2xx is a file, read as a `Blob`. The spec leaves the body
+ * untyped (zod has no binary type), so the type comes from this list.
  */
-type Binary = 'events.downloadAttachment';
-const BINARY: ReadonlySet<string> = new Set<Binary>([
-  'events.downloadAttachment',
-]);
+type Binary = (typeof BINARY)[number];
+const BINARY_OPERATIONS: ReadonlySet<string> = new Set(BINARY);
 
 /** What a caller may pass: the request's own parts, never client plumbing. */
 type RequestKeys = 'path' | 'query' | 'body' | 'headers' | 'signal';
@@ -121,7 +120,9 @@ function createApi(config: ClientConfig): RustrakClient {
               Array.isArray(options.headers)
                 ? Object.fromEntries(new Headers(options.headers))
                 : options.headers,
-            ...(BINARY.has(`${name}.${method}`) && { parseAs: 'blob' }),
+            ...(BINARY_OPERATIONS.has(`${name}.${method}`) && {
+              parseAs: 'blob',
+            }),
             throwOnError: false,
           }),
         );
@@ -151,7 +152,7 @@ function toResult({
   response,
 }: Outcome): Result<unknown, RustrakError> {
   if (error === undefined) return Ok(data);
-  if (isTransportFailure(error)) return Err(error.rustrakError);
+  if (error instanceof RustrakTransportFailure) return Err(error.rustrakError);
   if (response && !response.ok) {
     // `error` is the parsed body, or its text when it is not JSON.
     return Err(transformHttpError(response, error));

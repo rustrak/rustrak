@@ -23,7 +23,7 @@ import { githubQueries } from '@/features/github/api/queries';
 import { frameSourceUrl } from '@/features/github/lib/source-url';
 import { IssueGitHubButton } from '@/features/github/ui/components/issue-github-button';
 import { issueQueries } from '@/features/issue/api/queries';
-import { assignable } from '@/features/issue/model/assignable';
+import { useAssignable } from '@/features/issue/ui/hooks/use-assignable';
 import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
 import { startIfAllowed } from '@/shared/api/permissions';
@@ -35,7 +35,6 @@ import { EventSections } from './$eventId/-components/event-sections';
 import { EventTrends } from './$eventId/-components/event-trends';
 import { IssueHeader } from './$eventId/-components/issue-header';
 
-/** The page's reads, built once for the loader and the component. */
 function eventReads(projectId: number, issueId: string, eventId: string) {
   return {
     issue: issueQueries.detail(projectId, issueId),
@@ -61,9 +60,8 @@ export const Route = createFileRoute(
   // failed aggregates read genuinely render the same panel, and neither is
   // worth taking the event view down for.
   loader: ({ context: { queryClient }, params }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     const reads = eventReads(projectId, params.issueId, params.eventId);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
     void queryClient.query(reads.issue).catch(noop);
     void queryClient.query(reads.event).catch(noop);
     void queryClient.query(reads.navigation).catch(noop);
@@ -96,11 +94,10 @@ export const Route = createFileRoute(
 function EventView() {
   const live = Route.useParams();
   const params = useDeferredValue(live);
-  const { id, issueId, eventId } = params;
-  const context = Route.useRouteContext();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, issueId, eventId } = params;
   const reads = eventReads(projectId, issueId, eventId);
-  const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
+  // Only for the title: the event opens without it.
+  const project = useQuery(projectQueries.detail(projectId)).data;
   const { data: issue } = useSuspenseQuery(reads.issue);
   const { data: event } = useSuspenseQuery(reads.event);
   const { data: navigation } = useSuspenseQuery(reads.navigation);
@@ -111,20 +108,16 @@ function EventView() {
       ...reads.repository,
       enabled: permissions.can('project-github', 'read', projectId),
     }).data ?? null;
-  const { data: attachments } = useSuspenseQuery(reads.attachments);
+  // Non-blocking, but a failure shows in its section rather than as "none".
+  const attachments = useQuery(reads.attachments);
   const stats30d = useQuery(reads.stats30d).data ?? null;
   const aggregates = useQuery(reads.aggregates).data ?? null;
   const activity = useQuery(reads.activity).data ?? [];
   const code = useQuery(reads.code).data ?? null;
-  const user = context.state === 'authenticated' ? context.user : null;
-  const members = assignable(
-    useQuery({
-      ...reads.members,
-      enabled: permissions.can('project-members', 'read', projectId),
-    }).data ?? [],
-    user,
+  const { me, members } = useAssignable(
+    projectId,
+    userQueries.members(projectId),
   );
-  const me = user?.id ?? 0;
   const t = useTranslations('projectPages');
   usePageTrail([{ label: issue.short_id, mono: true }]);
   const eventData = event.data as Record<string, unknown>;
@@ -182,7 +175,9 @@ function EventView() {
         params !== live && 'opacity-60',
       )}
     >
-      <title>{t('projectTitle', { project: project.name })}</title>
+      {project ? (
+        <title>{t('projectTitle', { project: project.name })}</title>
+      ) : null}
       <IssueHeader
         issue={issue}
         projectId={projectId}

@@ -1,6 +1,6 @@
 /**
- * GitHub's mark. lucide dropped its brand icons, and what comes from GitHub
- * has to be recognisable at a glance next to what Rustrak did itself.
+ * GitHub's mark, drawn here because the icon set has no brand icons: what
+ * comes from GitHub has to be recognisable at a glance next to what Rustrak did itself.
  */
 export function GitHubMark({ className }: { className?: string }) {
   return (

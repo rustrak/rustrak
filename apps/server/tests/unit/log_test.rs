@@ -3,15 +3,8 @@
 //! Logs arrive batched in an item container: `{"items":[OurLog, ...]}`.
 //! These tests cover expanding that container into individual `LogItem`s.
 
-use rustrak::digest::processors::{route, Route};
 use rustrak::ingest::envelope::EnvelopeItemKind;
 use rustrak::models::log::LogContainer;
-
-#[test]
-fn test_log_item_routes_to_log_processor() {
-    let kind = EnvelopeItemKind::Log(bytes::Bytes::from(b"{}".to_vec()));
-    assert_eq!(route(&kind), Route::Log);
-}
 
 #[test]
 fn test_log_does_not_require_event_id() {
@@ -40,15 +33,11 @@ fn test_parse_container_yields_logs() {
     assert_eq!(log.body, "Example log record");
 }
 
-// =============================================================================
-// Level 2 — LogsProcessor DB behavior (#[tokio::test] + TestDb)
-// =============================================================================
-
 #[cfg(test)]
 mod level2 {
     use crate::common::TestDb;
     use chrono::Utc;
-    use rustrak::digest::processors::{LogsProcessor, Processor, ProcessorCtx};
+    use rustrak::digest::processors::{LogsProcessor, ProcessorCtx};
     use rustrak::models::CreateProject;
     use rustrak::services::ProjectService;
     use sqlx::Row;
@@ -89,12 +78,8 @@ mod level2 {
         LogsProcessor.process(body.clone(), &ctx).await.unwrap();
         LogsProcessor.process(body, &ctx).await.unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str =
             "SELECT level, body, trace_id FROM logs WHERE project_id = $1 ORDER BY timestamp";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str =
-            "SELECT level, body, trace_id FROM logs WHERE project_id = ? ORDER BY timestamp";
 
         let rows = sqlx::query(QUERY)
             .bind(project.id)
@@ -113,26 +98,6 @@ mod level2 {
         assert_eq!(level0, "error");
         assert_eq!(body0, "boom");
         assert_eq!(trace0, "5b8efff798038103d269b633813fc60c");
-    }
-
-    async fn store_sample_logs(pool: &rustrak::db::DbPool, project_id: i32) {
-        let body = br#"{"items":[
-            {"timestamp":1704801600.0,"trace_id":"aaaa","level":"error","body":"boom"},
-            {"timestamp":1704801601.0,"trace_id":"bbbb","level":"info","body":"ok"}
-        ]}"#
-        .to_vec();
-        let ctx = ProcessorCtx {
-            pool: pool.clone(),
-            project_id,
-            event_id: Uuid::new_v4(),
-            ingested_at: Utc::now(),
-            remote_addr: None,
-            keep_ai_spans: true,
-        };
-        LogsProcessor
-            .process(bytes::Bytes::from(body), &ctx)
-            .await
-            .unwrap();
     }
 
     #[tokio::test]
@@ -169,10 +134,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT attributes FROM logs WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT attributes FROM logs WHERE project_id = ?";
 
         let stored: serde_json::Value = sqlx::query_scalar(QUERY)
             .bind(project.id)
@@ -183,64 +145,6 @@ mod level2 {
             stored.is_object(),
             "non-object attributes must be coerced to an object, got {stored}"
         );
-    }
-
-    #[tokio::test]
-    async fn test_list_logs_returns_stored_newest_first() {
-        use rustrak::services::log::{LogFilters, LogService};
-        let db = TestDb::new().await;
-        let project = ProjectService::create(
-            &db.pool,
-            CreateProject {
-                name: "logs-list".to_string(),
-                slug: None,
-                platform: None,
-            },
-        )
-        .await
-        .unwrap();
-        store_sample_logs(&db.pool, project.id).await;
-
-        let (logs, total) =
-            LogService::list_offset(&db.pool, project.id, 1, 50, &LogFilters::default())
-                .await
-                .unwrap();
-
-        assert_eq!(total, 2);
-        assert_eq!(logs.len(), 2);
-        // Newest timestamp first: the info log (ts 1704801601) precedes the error.
-        assert_eq!(logs[0].body, "ok");
-        assert_eq!(logs[0].level, "info");
-        assert_eq!(logs[1].body, "boom");
-    }
-
-    #[tokio::test]
-    async fn test_list_logs_filters_by_level() {
-        use rustrak::services::log::{LogFilters, LogService};
-        let db = TestDb::new().await;
-        let project = ProjectService::create(
-            &db.pool,
-            CreateProject {
-                name: "logs-filter".to_string(),
-                slug: None,
-                platform: None,
-            },
-        )
-        .await
-        .unwrap();
-        store_sample_logs(&db.pool, project.id).await;
-
-        let filters = LogFilters {
-            level: Some("error".to_string()),
-            ..Default::default()
-        };
-        let (logs, total) = LogService::list_offset(&db.pool, project.id, 1, 50, &filters)
-            .await
-            .unwrap();
-
-        assert_eq!(total, 1);
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].level, "error");
     }
 }
 

@@ -9,23 +9,18 @@
 //! hand-building the error, which is the only way this catches a dropped
 //! `.with_field(...)`.
 
+use crate::common::seed_user;
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::body::to_bytes;
-use actix_web::{cookie::Key, test, web, App, ResponseError};
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
+use actix_web::{test, ResponseError};
 use rustrak::db::DbPool;
 use rustrak::error::{AppError, FieldErrorCode};
 use rustrak::models::{
-    ChannelType, CreateAuthToken, CreateInvitation, CreateNotificationChannel, CreateProject,
-    CreateUserRequest, UpdateAlertIntegration, UpdateProject, User, UserRole,
+    CreateAlertIntegration, CreateAuthToken, CreateInvitation, CreateProject, ProviderType,
+    UpdateAlertIntegration, UpdateProject, UserRole,
 };
-use rustrak::routes;
-use rustrak::services::{
-    AlertService, AuthTokenService, InvitationService, ProjectService, UsersService,
-};
+use rustrak::services::{AlertService, AuthTokenService, InvitationService, ProjectService};
 use serde_json::{json, Value};
-use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,47 +60,6 @@ async fn assert_one_field<T: std::fmt::Debug>(
     );
 }
 
-fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
 async fn seed_project(pool: &DbPool, name: &str, slug: Option<&str>) -> rustrak::models::Project {
     ProjectService::create(
         pool,
@@ -119,25 +73,13 @@ async fn seed_project(pool: &DbPool, name: &str, slug: Option<&str>) -> rustrak:
     .expect("seed project")
 }
 
-async fn seed_user(pool: &DbPool, email: &str, role: UserRole) -> User {
-    UsersService::create_user(
-        pool,
-        &CreateUserRequest {
-            email: email.to_string(),
-            password: "password123".to_string(),
-        },
-        role,
-    )
-    .await
-    .expect("seed user")
-}
-
 async fn seed_channel(pool: &DbPool, name: &str) -> rustrak::models::AlertIntegration {
     AlertService::create_channel(
         pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: name.to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -145,10 +87,6 @@ async fn seed_channel(pool: &DbPool, name: &str) -> rustrak::models::AlertIntegr
     .await
     .expect("seed channel")
 }
-
-// =============================================================================
-// The shape itself
-// =============================================================================
 
 /// Every consumer written before `fields` existed reads a body with exactly
 /// two keys. An unannotated error must keep emitting exactly that.
@@ -376,10 +314,6 @@ async fn create_retrying_a_derived_slug_blames_name() {
     assert_one_field(result, 409, "Conflict", "name", "already_exists").await;
 }
 
-// =============================================================================
-// services/invitation.rs — CreateInvitation body
-// =============================================================================
-
 /// The address already belongs to a user.
 #[actix_web::test]
 async fn inviting_an_existing_user_blames_email() {
@@ -436,10 +370,6 @@ async fn inviting_a_pending_email_blames_email() {
     assert_one_field(result, 409, "Conflict", "email", "already_exists").await;
 }
 
-// =============================================================================
-// services/alert.rs — CreateAlertIntegration / UpdateAlertIntegration bodies
-// =============================================================================
-
 /// Creating an integration under a name already in use.
 #[actix_web::test]
 async fn creating_a_duplicate_integration_blames_name() {
@@ -448,9 +378,10 @@ async fn creating_a_duplicate_integration_blames_name() {
 
     let result = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Ops Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/other" }),
             is_enabled: true,
         },
@@ -469,6 +400,7 @@ async fn renaming_an_integration_onto_a_taken_name_blames_name() {
 
     let result = AlertService::update_channel(
         &db.pool,
+        &Default::default(),
         target.id,
         UpdateAlertIntegration {
             name: Some("Taken Integration".to_string()),
@@ -505,18 +437,7 @@ async fn demoting_the_last_admin_blames_role() {
         .expect("seed admin-equivalent token")
         .token;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::team::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let request = test::TestRequest::patch()
         .uri(&format!("/api/team/{}/role", last_admin.id))
@@ -548,18 +469,7 @@ async fn an_unparseable_global_role_blames_role() {
         .expect("seed admin-equivalent token")
         .token;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::team::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let request = test::TestRequest::patch()
         .uri(&format!("/api/team/{}/role", target.id))
@@ -577,10 +487,6 @@ async fn an_unparseable_global_role_blames_role() {
     );
 }
 
-// =============================================================================
-// routes/members.rs — UpsertProjectMember body
-// =============================================================================
-
 /// A role id that does not exist, blamed on `role_ids`.
 #[actix_web::test]
 async fn an_unknown_project_role_blames_role_ids() {
@@ -593,18 +499,7 @@ async fn an_unknown_project_role_blames_role_ids() {
         .expect("seed admin-equivalent token")
         .token;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::members::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let request = test::TestRequest::put()
         .uri(&format!("/api/projects/{}/members", project.id))

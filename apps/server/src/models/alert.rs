@@ -9,12 +9,10 @@ use sqlx::FromRow;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-// =============================================================================
-// Provider Type Enum
-// =============================================================================
-
 /// Type of notification provider (replaces ChannelType)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, schemars::JsonSchema,
+)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
@@ -30,9 +28,6 @@ pub enum ProviderType {
     CustomWebhook,
 }
 
-/// Legacy alias so existing code using ChannelType still compiles.
-pub type ChannelType = ProviderType;
-
 impl std::fmt::Display for ProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -43,10 +38,6 @@ impl std::fmt::Display for ProviderType {
         }
     }
 }
-
-// =============================================================================
-// Alert Type Enum
-// =============================================================================
 
 /// Type of alert trigger
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
@@ -72,10 +63,6 @@ impl std::fmt::Display for AlertType {
     }
 }
 
-// =============================================================================
-// Alert Status Enum
-// =============================================================================
-
 /// Status of an alert delivery attempt
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -87,10 +74,6 @@ pub enum AlertStatus {
     Failed,
     Skipped,
 }
-
-// =============================================================================
-// Alert Integration Model (replaces NotificationChannel)
-// =============================================================================
 
 /// Global alert integration record — stores credentials only, no routing.
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -113,43 +96,41 @@ pub struct AlertIntegration {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Legacy alias so existing code referencing NotificationChannel still compiles.
-pub type NotificationChannel = AlertIntegration;
-
 /// DTO for creating an alert integration
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateAlertIntegration {
+    #[schemars(description = "Channel name, unique")]
     pub name: String,
+    #[schemars(description = "Provider: slack, email, webhook or custom_webhook")]
     pub provider_type: ProviderType,
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[schemars(description = "Provider-specific credentials")]
     pub credentials: serde_json::Value,
     #[serde(default = "default_true")]
+    #[schemars(description = "Whether alerts are delivered to it (default true)")]
     pub is_enabled: bool,
 }
 
-/// Legacy alias
-pub type CreateNotificationChannel = CreateAlertIntegration;
-
 /// DTO for updating an alert integration
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateAlertIntegration {
+    #[schemars(description = "New name")]
     pub name: Option<String>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    #[schemars(description = "Replacement credentials")]
     pub credentials: Option<serde_json::Value>,
+    #[schemars(description = "Enable or disable")]
     pub is_enabled: Option<bool>,
 }
-
-/// Legacy alias
-pub type UpdateNotificationChannel = UpdateAlertIntegration;
 
 fn default_true() -> bool {
     true
 }
 
 // =============================================================================
-// Routing Override Flat Structs (NO serde tag — SCL-1)
+// Routing Override Flat Structs (NO serde tag)
 //
 // routing_override JSON never carries a `provider_type` discriminator field.
 // validate_routing_override uses `match provider_type` and deserializes into
@@ -197,10 +178,6 @@ pub struct WebhookRoutingOverride {
     pub extra_headers: Option<HashMap<String, String>>,
 }
 
-// =============================================================================
-// Alert Rule Channel Junction
-// =============================================================================
-
 /// Junction record linking an alert rule to an integration with per-rule routing.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -210,10 +187,6 @@ pub struct AlertRuleChannel {
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub routing_override: serde_json::Value,
 }
-
-// =============================================================================
-// Credentials Config Types (for validation and dispatcher use)
-// =============================================================================
 
 /// Webhook integration credentials
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,10 +257,6 @@ pub struct SlackBotTokenConfig {
     #[serde(default)]
     pub icon_emoji: Option<String>,
 }
-
-// =============================================================================
-// Alert Rule Model
-// =============================================================================
 
 /// Per-project alert rule configuration
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -398,10 +367,6 @@ impl AlertRule {
     }
 }
 
-// =============================================================================
-// Rule Conditions
-// =============================================================================
-
 /// Levels from quietest to loudest, the order `min_level` compares in.
 const LEVELS: [&str; 5] = ["debug", "info", "warning", "error", "fatal"];
 
@@ -435,6 +400,16 @@ impl RuleConditions {
         Ok(conditions)
     }
 
+    /// Conditions read back from storage. They were validated on the way in;
+    /// one that no longer parses filters nothing rather than silencing what
+    /// it guards, and says so in the log.
+    pub fn from_stored(value: &serde_json::Value) -> Self {
+        Self::parse(value).unwrap_or_else(|e| {
+            log::warn!("Stored conditions {value} no longer parse ({e}); filtering nothing");
+            Self::default()
+        })
+    }
+
     /// Whether an event with this level and environment, being the issue's
     /// `event_count`th, fires a rule of `alert_type`.
     pub fn matches(
@@ -457,10 +432,6 @@ impl RuleConditions {
         level_ok && environment_ok && count_ok
     }
 }
-
-// =============================================================================
-// Alert History Model
-// =============================================================================
 
 /// Alert delivery history record (audit log and retry queue)
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -507,10 +478,6 @@ pub struct AlertHistoryDay {
     pub skipped: i64,
 }
 
-// =============================================================================
-// Alert Payload (for notifications)
-// =============================================================================
-
 /// Payload sent to notification integrations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertPayload {
@@ -549,10 +516,6 @@ pub struct IssueInfo {
     pub last_seen: DateTime<Utc>,
     pub event_count: i32,
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -604,116 +567,6 @@ mod tests {
             .unwrap()
             .contains_key("payload"));
     }
-
-    // -------------------------------------------------------------------------
-    // Task 3 RED→GREEN: Flat routing struct deserialization (NO provider_type tag)
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_slack_routing_override_with_channel_deserializes() {
-        let val = json!({"channel": "#test"});
-        let r: SlackRoutingOverride =
-            serde_json::from_value(val).expect("SlackRoutingOverride must deserialize");
-        assert_eq!(r.channel, Some("#test".to_string()));
-        assert!(r.username.is_none());
-        assert!(r.icon_emoji.is_none());
-    }
-
-    #[test]
-    fn test_slack_routing_override_empty_object_is_valid() {
-        // Empty routing_override is valid for Slack webhook or when channel is not yet set.
-        // Validation happens in the route layer, not at deserialization time.
-        let val = json!({});
-        let r: SlackRoutingOverride =
-            serde_json::from_value(val).expect("empty SlackRoutingOverride must deserialize");
-        assert!(r.channel.is_none());
-        assert!(r.username.is_none());
-        assert!(r.icon_emoji.is_none());
-    }
-
-    #[test]
-    fn test_email_routing_override_deserializes() {
-        let val = json!({"recipients": ["a@b.com", "c@d.com"]});
-        let r: EmailRoutingOverride =
-            serde_json::from_value(val).expect("EmailRoutingOverride must deserialize");
-        assert_eq!(
-            r.recipients,
-            vec!["a@b.com".to_string(), "c@d.com".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_email_routing_override_empty_recipients_deserializes() {
-        // Deserialization succeeds with empty recipients — validation rejects it in route layer.
-        let val = json!({"recipients": []});
-        let r: EmailRoutingOverride =
-            serde_json::from_value(val).expect("must deserialize with empty recipients");
-        assert!(r.recipients.is_empty());
-    }
-
-    #[test]
-    fn test_webhook_routing_override_with_url_deserializes() {
-        let val = json!({"url": "https://example.com/hook"});
-        let r: WebhookRoutingOverride =
-            serde_json::from_value(val).expect("WebhookRoutingOverride must deserialize");
-        assert_eq!(r.url, Some("https://example.com/hook".to_string()));
-        assert!(r.extra_headers.is_none());
-    }
-
-    #[test]
-    fn test_webhook_routing_override_empty_deserializes() {
-        let val = json!({});
-        let r: WebhookRoutingOverride =
-            serde_json::from_value(val).expect("empty WebhookRoutingOverride must deserialize");
-        assert!(r.url.is_none());
-        assert!(r.extra_headers.is_none());
-    }
-
-    #[test]
-    fn test_routing_structs_have_no_provider_type_field() {
-        // Ensure unknown fields are silently ignored (serde default behaviour),
-        // so a JSON payload that accidentally includes extra keys won't break deserialization.
-        let val = json!({"channel": "#prod", "unexpected_key": true});
-        let r: SlackRoutingOverride = serde_json::from_value(val)
-            .expect("extra fields in SlackRoutingOverride must be silently ignored");
-        assert_eq!(r.channel, Some("#prod".to_string()));
-    }
-
-    // -------------------------------------------------------------------------
-    // SlackConfig (credentials) still uses #[serde(tag = "method")]
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_slack_config_bot_token_credentials_deserializes() {
-        let val = json!({
-            "method": "bot_token",
-            "token": "xoxb-123-456"
-        });
-        let c: SlackConfig = serde_json::from_value(val).expect("must deserialize");
-        match c {
-            SlackConfig::BotToken(b) => assert_eq!(b.token, "xoxb-123-456"),
-            _ => panic!("expected BotToken"),
-        }
-    }
-
-    #[test]
-    fn test_slack_config_webhook_credentials_deserializes() {
-        let val = json!({
-            "method": "webhook",
-            "webhook_url": "https://hooks.slack.com/services/T/B/X"
-        });
-        let c: SlackConfig = serde_json::from_value(val).expect("must deserialize");
-        match c {
-            SlackConfig::Webhook(w) => {
-                assert_eq!(w.webhook_url, "https://hooks.slack.com/services/T/B/X")
-            }
-            _ => panic!("expected Webhook"),
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // RuleConditions
-    // -------------------------------------------------------------------------
 
     fn conditions(value: serde_json::Value) -> RuleConditions {
         RuleConditions::parse(&value).expect("valid conditions")

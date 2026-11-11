@@ -8,6 +8,7 @@
 //!   - counters split the current window from the one before it
 //!   - everything is scoped to one project
 
+use crate::common::create_test_project;
 use rustrak::db::DbPool;
 use rustrak::services::release::SummaryFilter;
 use rustrak::services::scope::Scope;
@@ -129,26 +130,12 @@ async fn seed_issue(pool: &DbPool, project_id: i32, digest_order: i32, hours_ago
     id
 }
 
-async fn create_project(pool: &DbPool, name: &str) -> i32 {
-    rustrak::services::ProjectService::create(
-        pool,
-        rustrak::models::CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("create_project failed")
-    .id
-}
-
 // ── timeseries ───────────────────────────────────────────────────────────────
 
 #[actix_web::test]
 async fn timeseries_on_empty_project_is_all_zeros() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Empty").await;
+    let project_id = create_test_project(&db.pool, "Stats Empty").await.id;
 
     let points =
         StatsService::event_timeseries(&db.pool, project_id, Some(24), 1, Scope::default())
@@ -163,7 +150,7 @@ async fn timeseries_on_empty_project_is_all_zeros() {
 #[actix_web::test]
 async fn timeseries_splits_volume_by_severity() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Severity").await;
+    let project_id = create_test_project(&db.pool, "Stats Severity").await.id;
 
     seed_event(&db.pool, project_id, None, "fatal", "error", 2).await;
     seed_event(&db.pool, project_id, None, "error", "error", 2).await;
@@ -188,7 +175,9 @@ async fn timeseries_segments_always_sum_to_total() {
     // `debug` and any level we do not model must land in `info`, or the
     // stacked segments would not add up to the bar height.
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Unknown Level").await;
+    let project_id = create_test_project(&db.pool, "Stats Unknown Level")
+        .await
+        .id;
 
     seed_event(&db.pool, project_id, None, "debug", "error", 1).await;
     seed_event(&db.pool, project_id, None, "wat", "error", 1).await;
@@ -208,7 +197,7 @@ async fn timeseries_segments_always_sum_to_total() {
 #[actix_web::test]
 async fn timeseries_excludes_transactions() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Txn").await;
+    let project_id = create_test_project(&db.pool, "Stats Txn").await.id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 1).await;
     seed_event(&db.pool, project_id, None, "info", "transaction", 1).await;
@@ -225,7 +214,7 @@ async fn timeseries_excludes_transactions() {
 #[actix_web::test]
 async fn timeseries_respects_the_window() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Window").await;
+    let project_id = create_test_project(&db.pool, "Stats Window").await.id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 1).await;
     seed_event(&db.pool, project_id, None, "error", "error", 100).await;
@@ -241,8 +230,8 @@ async fn timeseries_respects_the_window() {
 #[actix_web::test]
 async fn timeseries_is_scoped_to_one_project() {
     let db = TestDb::new().await;
-    let mine = create_project(&db.pool, "Stats Mine").await;
-    let theirs = create_project(&db.pool, "Stats Theirs").await;
+    let mine = create_test_project(&db.pool, "Stats Mine").await.id;
+    let theirs = create_test_project(&db.pool, "Stats Theirs").await.id;
 
     seed_event(&db.pool, mine, None, "error", "error", 1).await;
     seed_event(&db.pool, theirs, None, "error", "error", 1).await;
@@ -258,7 +247,7 @@ async fn timeseries_is_scoped_to_one_project() {
 #[actix_web::test]
 async fn timeseries_honours_a_wider_interval() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Interval").await;
+    let project_id = create_test_project(&db.pool, "Stats Interval").await.id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 1).await;
 
@@ -275,7 +264,7 @@ async fn timeseries_honours_a_wider_interval() {
 #[actix_web::test]
 async fn timeseries_all_time_fills_from_the_first_event_to_now() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats All Time").await;
+    let project_id = create_test_project(&db.pool, "Stats All Time").await.id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 1).await;
     seed_event(&db.pool, project_id, None, "error", "error", 100).await;
@@ -297,7 +286,7 @@ async fn timeseries_all_time_fills_from_the_first_event_to_now() {
 #[actix_web::test]
 async fn summary_on_empty_project_is_zeroed() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Empty").await;
+    let project_id = create_test_project(&db.pool, "Summary Empty").await.id;
 
     let summary = StatsService::project_summary(&db.pool, project_id, Some(24), Scope::default())
         .await
@@ -313,7 +302,7 @@ async fn summary_on_empty_project_is_zeroed() {
 #[actix_web::test]
 async fn summary_splits_events_into_current_and_previous_windows() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Events").await;
+    let project_id = create_test_project(&db.pool, "Summary Events").await.id;
 
     // Inside the last 24h.
     seed_event(&db.pool, project_id, None, "error", "error", 1).await;
@@ -334,7 +323,7 @@ async fn summary_splits_events_into_current_and_previous_windows() {
 #[actix_web::test]
 async fn summary_counts_new_issues_by_first_seen() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary New Issues").await;
+    let project_id = create_test_project(&db.pool, "Summary New Issues").await.id;
 
     seed_issue(&db.pool, project_id, 1, 2).await;
     seed_issue(&db.pool, project_id, 2, 5).await;
@@ -351,7 +340,7 @@ async fn summary_counts_new_issues_by_first_seen() {
 #[actix_web::test]
 async fn summary_open_issues_ignores_the_window() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Open").await;
+    let project_id = create_test_project(&db.pool, "Summary Open").await.id;
 
     // Far older than the 24h window: a backlog count, not a windowed rate.
     seed_issue(&db.pool, project_id, 1, 500).await;
@@ -369,7 +358,7 @@ async fn summary_open_issues_ignores_the_window() {
 async fn summary_all_time_has_no_previous_period() {
     // Reporting 0 for "previous" over all time would render as a bogus +100%.
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary All Time").await;
+    let project_id = create_test_project(&db.pool, "Summary All Time").await.id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 1).await;
     seed_event(&db.pool, project_id, None, "error", "error", 5_000).await;
@@ -389,8 +378,8 @@ async fn summary_all_time_has_no_previous_period() {
 #[actix_web::test]
 async fn summary_is_scoped_to_one_project() {
     let db = TestDb::new().await;
-    let mine = create_project(&db.pool, "Summary Mine").await;
-    let theirs = create_project(&db.pool, "Summary Theirs").await;
+    let mine = create_test_project(&db.pool, "Summary Mine").await.id;
+    let theirs = create_test_project(&db.pool, "Summary Theirs").await.id;
 
     seed_event(&db.pool, mine, None, "error", "error", 1).await;
     seed_event(&db.pool, theirs, None, "error", "error", 1).await;
@@ -411,7 +400,7 @@ async fn summary_is_scoped_to_one_project() {
 #[actix_web::test]
 async fn summary_accepts_the_maximum_clamped_window() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Max Window").await;
+    let project_id = create_test_project(&db.pool, "Summary Max Window").await.id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 1).await;
 
@@ -536,8 +525,8 @@ async fn list_stats_with_no_ids_does_not_query() {
 #[actix_web::test]
 async fn list_stats_returns_an_entry_for_every_requested_project() {
     let db = TestDb::new().await;
-    let busy = create_project(&db.pool, "List Busy").await;
-    let quiet = create_project(&db.pool, "List Quiet").await;
+    let busy = create_test_project(&db.pool, "List Busy").await.id;
+    let quiet = create_test_project(&db.pool, "List Quiet").await.id;
 
     seed_event(&db.pool, busy, None, "error", "error", 2).await;
 
@@ -556,7 +545,7 @@ async fn list_stats_returns_an_entry_for_every_requested_project() {
 #[actix_web::test]
 async fn list_stats_trend_bucket_count_is_fixed_across_windows() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Buckets").await;
+    let project_id = create_test_project(&db.pool, "List Buckets").await.id;
 
     for hours in [24, 24 * 7, 24 * 30] {
         let stats = StatsService::list_stats(&db.pool, &[project_id], hours)
@@ -577,7 +566,9 @@ async fn list_stats_trend_bucket_count_is_fixed_across_windows() {
 #[actix_web::test]
 async fn list_stats_trend_counts_distinct_issues_not_events() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Trend Distinct").await;
+    let project_id = create_test_project(&db.pool, "List Trend Distinct")
+        .await
+        .id;
 
     let noisy = seed_issue(&db.pool, project_id, 1, 2).await;
     for _ in 0..10 {
@@ -598,7 +589,7 @@ async fn list_stats_trend_counts_distinct_issues_not_events() {
 #[actix_web::test]
 async fn list_stats_trend_stacks_concurrent_issues() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Trend Stack").await;
+    let project_id = create_test_project(&db.pool, "List Trend Stack").await.id;
 
     let first = seed_issue(&db.pool, project_id, 1, 2).await;
     let second = seed_issue(&db.pool, project_id, 2, 2).await;
@@ -617,7 +608,9 @@ async fn list_stats_trend_stacks_concurrent_issues() {
 #[actix_web::test]
 async fn list_stats_trend_ignores_events_with_no_issue() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Trend Undigested").await;
+    let project_id = create_test_project(&db.pool, "List Trend Undigested")
+        .await
+        .id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 2).await;
 
@@ -643,7 +636,7 @@ async fn list_stats_trend_ignores_events_with_no_issue() {
 #[actix_web::test]
 async fn list_stats_windows_cover_equal_spans() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Equal Windows").await;
+    let project_id = create_test_project(&db.pool, "List Equal Windows").await.id;
 
     // Half-hour offsets keep every event clear of a bucket edge, so the test
     // fails on a genuinely lopsided window rather than on rounding.
@@ -670,7 +663,7 @@ async fn list_stats_windows_cover_equal_spans() {
 #[actix_web::test]
 async fn list_stats_splits_new_issues_across_the_two_windows() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List New Issues").await;
+    let project_id = create_test_project(&db.pool, "List New Issues").await.id;
 
     // 2h ago -> current; 30h ago -> previous; 60h ago -> outside both.
     seed_issue(&db.pool, project_id, 1, 2).await;
@@ -693,7 +686,7 @@ async fn list_stats_splits_new_issues_across_the_two_windows() {
 #[actix_web::test]
 async fn list_stats_splits_the_current_window_from_the_one_before_it() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Delta").await;
+    let project_id = create_test_project(&db.pool, "List Delta").await.id;
 
     // One issue per age so the sparkline can be asserted alongside the
     // counters: 2h ago -> current window; 30h ago -> previous; 60h -> neither.
@@ -723,7 +716,7 @@ async fn list_stats_splits_the_current_window_from_the_one_before_it() {
 #[actix_web::test]
 async fn list_stats_counts_only_error_events() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Only Errors").await;
+    let project_id = create_test_project(&db.pool, "List Only Errors").await.id;
 
     seed_event(&db.pool, project_id, None, "error", "error", 2).await;
     seed_event(&db.pool, project_id, None, "info", "transaction", 2).await;
@@ -741,7 +734,7 @@ async fn list_stats_counts_only_error_events() {
 #[actix_web::test]
 async fn list_stats_counts_open_issues_and_the_fatal_subset() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "List Issues").await;
+    let project_id = create_test_project(&db.pool, "List Issues").await.id;
 
     seed_issue_with(&db.pool, project_id, 1, "unresolved", Some("fatal")).await;
     seed_issue_with(&db.pool, project_id, 2, "unresolved", Some("error")).await;
@@ -762,8 +755,8 @@ async fn list_stats_counts_open_issues_and_the_fatal_subset() {
 #[actix_web::test]
 async fn list_stats_never_mixes_two_projects() {
     let db = TestDb::new().await;
-    let mine = create_project(&db.pool, "List Mine").await;
-    let theirs = create_project(&db.pool, "List Theirs").await;
+    let mine = create_test_project(&db.pool, "List Mine").await.id;
+    let theirs = create_test_project(&db.pool, "List Theirs").await.id;
 
     seed_event(&db.pool, mine, None, "error", "error", 2).await;
     for _ in 0..4 {
@@ -788,8 +781,8 @@ async fn list_stats_never_mixes_two_projects() {
 #[actix_web::test]
 async fn list_stats_omits_projects_outside_the_requested_set() {
     let db = TestDb::new().await;
-    let asked = create_project(&db.pool, "List Asked").await;
-    let unasked = create_project(&db.pool, "List Unasked").await;
+    let asked = create_test_project(&db.pool, "List Asked").await.id;
+    let unasked = create_test_project(&db.pool, "List Unasked").await.id;
 
     seed_event(&db.pool, unasked, None, "error", "error", 2).await;
 
@@ -813,17 +806,14 @@ async fn place_in_environment(pool: &DbPool, project_id: i32, issue_id: Uuid, en
         .await
         .expect("set environment failed");
 
-    #[cfg(feature = "postgres")]
-    let sql = "INSERT INTO issue_environments (issue_id, project_id, environment, first_seen, last_seen) \
-               VALUES ($1, $2, $3, NOW(), NOW())";
-    #[cfg(not(feature = "postgres"))]
-    let sql = "INSERT INTO issue_environments (issue_id, project_id, environment, first_seen, last_seen) \
-               VALUES (?1, ?2, ?3, datetime('now'), datetime('now'))";
-
-    sqlx::query(sql)
+    sqlx::query(
+        "INSERT INTO issue_environments (issue_id, project_id, environment, first_seen, last_seen) \
+         VALUES ($1, $2, $3, $4, $4)",
+    )
         .bind(issue_id)
         .bind(project_id)
         .bind(environment)
+        .bind(chrono::Utc::now())
         .execute(pool)
         .await
         .expect("seed issue environment failed");
@@ -832,7 +822,7 @@ async fn place_in_environment(pool: &DbPool, project_id: i32, issue_id: Uuid, en
 #[actix_web::test]
 async fn timeseries_counts_only_the_asked_environment() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Env Series").await;
+    let project_id = create_test_project(&db.pool, "Stats Env Series").await.id;
 
     let prod = seed_issue(&db.pool, project_id, 1, 1).await;
     let staging = seed_issue(&db.pool, project_id, 2, 1).await;
@@ -862,7 +852,7 @@ async fn timeseries_counts_only_the_asked_environment() {
 #[actix_web::test]
 async fn summary_counts_only_the_asked_environment() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Env Summary").await;
+    let project_id = create_test_project(&db.pool, "Stats Env Summary").await.id;
 
     let prod = seed_issue(&db.pool, project_id, 1, 1).await;
     let staging = seed_issue(&db.pool, project_id, 2, 1).await;
@@ -918,7 +908,7 @@ fn in_release(release: &str) -> Scope<'_> {
 #[actix_web::test]
 async fn timeseries_and_summary_count_only_the_asked_release() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Stats Release").await;
+    let project_id = create_test_project(&db.pool, "Stats Release").await.id;
 
     let old = seed_issue(&db.pool, project_id, 1, 1).await;
     let new = seed_issue(&db.pool, project_id, 2, 1).await;
@@ -946,7 +936,7 @@ async fn timeseries_and_summary_count_only_the_asked_release() {
 #[actix_web::test]
 async fn issue_list_shows_only_the_issues_seen_in_the_asked_release() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Issues Release").await;
+    let project_id = create_test_project(&db.pool, "Issues Release").await.id;
 
     let old = seed_issue(&db.pool, project_id, 1, 1).await;
     let new = seed_issue(&db.pool, project_id, 2, 1).await;
@@ -978,7 +968,7 @@ async fn issue_list_shows_only_the_issues_seen_in_the_asked_release() {
 #[actix_web::test]
 async fn releases_include_the_ones_only_sessions_arrived_in() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Healthy release").await;
+    let project_id = create_test_project(&db.pool, "Healthy release").await.id;
     let issue = seed_issue(&db.pool, project_id, 1, 1).await;
     seed_event(&db.pool, project_id, Some(issue), "error", "error", 1).await;
     place_in_release(&db.pool, issue, "1.0.0").await;

@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
-  feedbackSender,
   isWebUrl,
   landingAfter,
   nextAfter,
-  shortUrl,
+  toggleSpam,
 } from './feedback-mailbox';
+
+// Sentry's `useFeedbackActions`: spam is a bare `ignored`, inbox `unresolved`.
+describe('toggleSpam', () => {
+  it('marks as spam with plain ignored, no substatus', () => {
+    expect(toggleSpam('unresolved')).toEqual({ status: 'ignored' });
+    expect(toggleSpam('resolved')).toEqual({ status: 'ignored' });
+  });
+
+  it('moves spam back to the inbox', () => {
+    expect(toggleSpam('ignored')).toEqual({ status: 'unresolved' });
+  });
+});
 
 describe('landingAfter', () => {
   it('stays on the page and opens the neighbour', () => {
@@ -52,23 +63,5 @@ describe('nextAfter', () => {
   it('opens nothing when the only row leaves, or an unknown one', () => {
     expect(nextAfter(['a'], 'a')).toBeUndefined();
     expect(nextAfter(['a'], 'z')).toBeUndefined();
-  });
-});
-
-describe('feedbackSender', () => {
-  it('prefers the name, then the email', () => {
-    expect(feedbackSender({ name: 'Ana', contact_email: 'a@x.io' })).toBe(
-      'Ana',
-    );
-    expect(feedbackSender({ name: '', contact_email: 'a@x.io' })).toBe(
-      'a@x.io',
-    );
-  });
-});
-
-describe('shortUrl', () => {
-  it('drops the scheme only', () => {
-    expect(shortUrl('https://shop.io/cart?x=1')).toBe('shop.io/cart?x=1');
-    expect(shortUrl('/relative')).toBe('/relative');
   });
 });

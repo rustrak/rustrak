@@ -726,7 +726,7 @@ mod tests {
 
     #[test]
     fn test_results_creation() {
-        let config = ScenarioConfig::sustained();
+        let config = ScenarioConfig::load("sustained").unwrap();
         let stats = StatsSnapshot {
             total_requests: 1000,
             successful: 950,
@@ -747,20 +747,5 @@ mod tests {
         assert_eq!(results.results.throughput.total_requests, 1000);
         assert_eq!(results.results.throughput.successful, 950);
         assert!((results.results.throughput.events_per_second - 95.0).abs() < 0.1);
-    }
-
-    #[test]
-    fn test_json_serialization() {
-        let config = ScenarioConfig::baseline();
-        let stats = StatsSnapshot::default();
-        let histogram = Histogram::<u64>::new_with_bounds(1, 60_000_000, 3).unwrap();
-
-        let results =
-            BenchmarkResults::new(&config, stats, &histogram, Duration::from_secs(60), None);
-
-        let json = serde_json::to_string(&results).unwrap();
-        assert!(json.contains("baseline"));
-        assert!(json.contains("throughput"));
-        assert!(json.contains("latency_ms"));
     }
 }

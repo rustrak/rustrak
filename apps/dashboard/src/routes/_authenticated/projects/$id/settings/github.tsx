@@ -18,7 +18,7 @@ export const Route = createFileRoute(
   '/_authenticated/projects/$id/settings/github',
 )({
   loader: ({ context: { queryClient }, params }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     // The picker's choices fill in on their own; their failure is how the
     // page says GitHub is not connected yet.
     startIfAllowed(
@@ -42,7 +42,7 @@ export const Route = createFileRoute(
 
 function GitHubSettingsPage() {
   const t = useTranslations('github');
-  const projectId = Number.parseInt(Route.useParams().id, 10);
+  const projectId = Route.useParams().id;
   const canRead = usePermissions().can('project-github', 'read', projectId);
 
   return (

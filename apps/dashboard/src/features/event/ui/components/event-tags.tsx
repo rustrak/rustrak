@@ -1,8 +1,6 @@
 import { Button, CopyIcon, InfoIcon, SelectedIcon } from '@rustrak/ui';
-import { useState } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
-import { copyToClipboard } from '@/shared/lib/clipboard';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 
 interface EventTagsProps {
   tags: Record<string, string> | undefined;
@@ -16,20 +14,7 @@ interface TagRowProps {
 function TagRow({ tagKey, tagValue }: TagRowProps) {
   const t = useTranslations('events');
   const common = useTranslations('common');
-  const mcp = useTranslations('settings.mcp');
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    if (!(await copyToClipboard(`${tagKey}:${tagValue}`))) {
-      toast.info(common('clipboardUnavailable'), {
-        description: t('clipboardValueHint'),
-      });
-      return;
-    }
-
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const { copied, copy } = useCopy(t('clipboardValueHint'));
 
   return (
     <div className="group flex items-center gap-4 border-border-divider border-b px-4 py-3 last:border-b-0 hover:bg-surface-hover">
@@ -46,8 +31,8 @@ function TagRow({ tagKey, tagValue }: TagRowProps) {
           variant="ghost"
           size="xs"
           icon={copied ? SelectedIcon : CopyIcon}
-          aria-label={mcp('copyLabel', { label: tagKey })}
-          onClick={handleCopy}
+          aria-label={common('copyLabel', { label: tagKey })}
+          onClick={() => copy(`${tagKey}:${tagValue}`)}
           className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
         />
       </div>

@@ -17,30 +17,13 @@
       "!**/dist",
       "!**/.next",
       "!**/logs",
-      "!**/postgres",
       "!**/.turbo",
-      "!**/playwright-report",
-      "!**/test-results",
-      "!**/src-tauri",
+      "!**/next-env.d.ts",
       "!apps/dashboard/src/routeTree.gen.ts",
       "!packages/client/src/generated"
     ]
   },
   "formatter": {
-    "includes": [
-      "**",
-      "!**/node_modules",
-      "!**/dist",
-      "!**/.next",
-      "!**/logs",
-      "!**/postgres",
-      "!**/.turbo",
-      "!**/playwright-report",
-      "!**/test-results",
-      "!**/src-tauri",
-      "!apps/dashboard/src/routeTree.gen.ts",
-      "!packages/client/src/generated"
-    ],
     "enabled": true,
     "formatWithErrors": false,
     "indentStyle": "space",
@@ -57,8 +40,12 @@
     }
   },
   "markdown": {
-    "formatter": { "enabled": false },
-    "linter": { "enabled": false }
+    "formatter": {
+      "enabled": false
+    },
+    "linter": {
+      "enabled": false
+    }
   },
   "linter": {
     "enabled": true,
@@ -118,21 +105,7 @@
         "noUnknownAtRules": "off",
         "noAssignInExpressions": "off"
       }
-    },
-    "includes": [
-      "**",
-      "!**/node_modules",
-      "!**/dist",
-      "!**/.next",
-      "!**/logs",
-      "!**/postgres",
-      "!**/.turbo",
-      "!**/playwright-report",
-      "!**/test-results",
-      "!**/src-tauri",
-      "!apps/dashboard/src/routeTree.gen.ts",
-      "!packages/client/src/generated"
-    ]
+    }
   },
   "overrides": [
     {
@@ -141,16 +114,6 @@
         "rules": {
           "style": {
             "useFilenamingConvention": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["**/src/shared/ui/components/shadcn/**"],
-      "linter": {
-        "rules": {
-          "a11y": {
-            "useSemanticElements": "off"
           }
         }
       }
@@ -178,9 +141,6 @@
     }
   ],
   "javascript": {
-    "parser": {
-      "unsafeParameterDecoratorsEnabled": true
-    },
     "formatter": {
       "jsxQuoteStyle": "double",
       "quoteProperties": "asNeeded",

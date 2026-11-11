@@ -8,13 +8,14 @@
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
+use crate::config::SmtpSettings;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::alert::RuleConditions;
 use crate::models::{
     AlertHistory, AlertHistoryDay, AlertIntegration, AlertPayload, AlertRule, AlertRuleChannel,
-    AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, Issue, IssueInfo,
-    Project, ProjectInfo, UpdateAlertIntegration, UpdateAlertRule,
+    AlertRuleChannelInput, AlertRuleResponse, AlertType, CreateAlertIntegration, CreateAlertRule,
+    Issue, IssueInfo, Project, ProjectInfo, UpdateAlertIntegration, UpdateAlertRule,
 };
 use crate::services::notification::create_dispatcher;
 
@@ -40,11 +41,6 @@ pub const MAX_ALERT_RETRIES: i32 = 5;
 const RETRY_CLAIM_LEASE_SECS: i64 = 120;
 
 impl AlertService {
-    // =========================================================================
-    // Alert Integration CRUD (replaces Notification Channel CRUD)
-    // =========================================================================
-
-    /// Lists all alert integrations
     pub async fn list_channels(pool: &DbPool) -> AppResult<Vec<AlertIntegration>> {
         let integrations = sqlx::query_as::<_, AlertIntegration>(
             r#"
@@ -61,7 +57,6 @@ impl AlertService {
         Ok(integrations)
     }
 
-    /// Gets an alert integration by ID
     pub async fn get_channel(pool: &DbPool, id: i32) -> AppResult<AlertIntegration> {
         sqlx::query_as::<_, AlertIntegration>(
             r#"
@@ -78,14 +73,12 @@ impl AlertService {
         .ok_or_else(|| AppError::NotFound(format!("Integration {} not found", id)))
     }
 
-    /// Creates an alert integration
     pub async fn create_channel(
         pool: &DbPool,
+        smtp: &SmtpSettings,
         input: CreateAlertIntegration,
     ) -> AppResult<AlertIntegration> {
-        // Validate credentials based on provider type
-        let dispatcher = create_dispatcher(input.provider_type);
-        dispatcher.validate_config(&input.credentials)?;
+        create_dispatcher(input.provider_type, smtp).validate_config(&input.credentials)?;
 
         let integration = sqlx::query_as::<_, AlertIntegration>(
             r#"
@@ -118,18 +111,15 @@ impl AlertService {
         Ok(integration)
     }
 
-    /// Updates an alert integration
     pub async fn update_channel(
         pool: &DbPool,
+        smtp: &SmtpSettings,
         id: i32,
         input: UpdateAlertIntegration,
     ) -> AppResult<AlertIntegration> {
         let existing = Self::get_channel(pool, id).await?;
-
-        // If credentials are being updated, validate them
         if let Some(ref credentials) = input.credentials {
-            let dispatcher = create_dispatcher(existing.provider_type);
-            dispatcher.validate_config(credentials)?;
+            create_dispatcher(existing.provider_type, smtp).validate_config(credentials)?;
         }
 
         let integration = sqlx::query_as::<_, AlertIntegration>(
@@ -164,7 +154,6 @@ impl AlertService {
         Ok(integration)
     }
 
-    /// Deletes an alert integration
     pub async fn delete_channel(pool: &DbPool, id: i32) -> AppResult<()> {
         let result = sqlx::query("DELETE FROM alert_integrations WHERE id = $1")
             .bind(id)
@@ -178,11 +167,6 @@ impl AlertService {
         Ok(())
     }
 
-    // =========================================================================
-    // Alert Rule CRUD
-    // =========================================================================
-
-    /// Lists alert rules for a project
     pub async fn list_rules(pool: &DbPool, project_id: i32) -> AppResult<Vec<AlertRule>> {
         let rules = sqlx::query_as::<_, AlertRule>(
             r#"
@@ -200,7 +184,6 @@ impl AlertService {
         Ok(rules)
     }
 
-    /// Gets an alert rule by ID
     pub async fn get_rule(pool: &DbPool, id: i32) -> AppResult<AlertRule> {
         sqlx::query_as::<_, AlertRule>(
             r#"
@@ -219,8 +202,7 @@ impl AlertService {
     /// Gets all integration_ids linked to a rule (regardless of is_enabled).
     ///
     /// Returns all links so clients can round-trip without silently losing
-    /// disabled integrations. Dispatch uses get_rule_channel_records which
-    /// still filters by is_enabled.
+    /// disabled integrations.
     pub async fn get_rule_channels(pool: &DbPool, rule_id: i32) -> AppResult<Vec<i32>> {
         let rows: Vec<(i32,)> = sqlx::query_as(
             "SELECT integration_id FROM alert_rule_channels WHERE alert_rule_id = $1",
@@ -232,47 +214,42 @@ impl AlertService {
         Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 
-    /// Gets full AlertRuleChannel records for dispatch (includes routing_override).
-    ///
-    /// Filters disabled integrations (SCL-1).
-    pub async fn get_rule_channel_records(
+    /// The rule, if it belongs to `project_id`.
+    pub async fn get_rule_in_project(
         pool: &DbPool,
+        project_id: i32,
         rule_id: i32,
-    ) -> AppResult<Vec<AlertRuleChannel>> {
-        let channels: Vec<AlertRuleChannel> = sqlx::query_as(
-            r#"
-            SELECT arc.alert_rule_id, arc.integration_id, arc.routing_override
-            FROM alert_rule_channels arc
-            INNER JOIN alert_integrations i ON arc.integration_id = i.id
-            WHERE arc.alert_rule_id = $1 AND i.is_enabled = TRUE
-            "#,
-        )
-        .bind(rule_id)
-        .fetch_all(pool)
-        .await?;
-
-        Ok(channels)
+    ) -> AppResult<AlertRule> {
+        let rule = Self::get_rule(pool, rule_id).await?;
+        if rule.project_id != project_id {
+            return Err(AppError::NotFound(
+                "Alert rule not found in this project".to_string(),
+            ));
+        }
+        Ok(rule)
     }
 
-    /// Gets all AlertRuleChannel records for a rule regardless of is_enabled.
-    ///
-    /// Used for API responses so clients can round-trip without losing links to
-    /// disabled integrations. Dispatch uses get_rule_channel_records (SCL-1).
-    pub async fn get_all_rule_channel_records(
-        pool: &DbPool,
-        rule_id: i32,
-    ) -> AppResult<Vec<AlertRuleChannel>> {
+    /// The rule as the API returns it, with every channel link regardless of
+    /// whether the integration is enabled, so clients can round-trip without
+    /// silently losing links to disabled integrations.
+    pub async fn rule_response(pool: &DbPool, rule: AlertRule) -> AppResult<AlertRuleResponse> {
         let channels: Vec<AlertRuleChannel> = sqlx::query_as(
             "SELECT alert_rule_id, integration_id, routing_override FROM alert_rule_channels WHERE alert_rule_id = $1",
         )
-        .bind(rule_id)
+        .bind(rule.id)
         .fetch_all(pool)
         .await?;
-
-        Ok(channels)
+        Ok(rule.to_response(
+            channels
+                .into_iter()
+                .map(|r| AlertRuleChannelInput {
+                    integration_id: r.integration_id,
+                    routing_override: r.routing_override,
+                })
+                .collect(),
+        ))
     }
 
-    /// Creates an alert rule
     pub async fn create_rule(
         pool: &DbPool,
         project_id: i32,
@@ -339,7 +316,6 @@ impl AlertService {
         Ok(rule)
     }
 
-    /// Updates an alert rule
     pub async fn update_rule(
         pool: &DbPool,
         id: i32,
@@ -378,7 +354,6 @@ impl AlertService {
         let channels_update = input.channels;
 
         if let Some(ref channels) = channels_update {
-            // Remove existing links
             sqlx::query("DELETE FROM alert_rule_channels WHERE alert_rule_id = $1")
                 .bind(id)
                 .execute(&mut *tx)
@@ -423,7 +398,6 @@ impl AlertService {
         Ok(rule)
     }
 
-    /// Deletes an alert rule
     pub async fn delete_rule(pool: &DbPool, id: i32) -> AppResult<()> {
         let result = sqlx::query("DELETE FROM alert_rules WHERE id = $1")
             .bind(id)
@@ -435,90 +409,6 @@ impl AlertService {
         }
 
         Ok(())
-    }
-
-    // =========================================================================
-    // Alert Triggering
-    // =========================================================================
-
-    /// Triggers an alert for a new issue
-    pub async fn trigger_new_issue_alert(
-        pool: &DbPool,
-        project: &Project,
-        issue: &Issue,
-        dashboard_url: &str,
-    ) -> AppResult<()> {
-        Self::trigger_alert(
-            pool,
-            project,
-            issue,
-            AlertType::NewIssue,
-            dashboard_url,
-            None,
-            EventFacts::default(),
-        )
-        .await
-    }
-
-    /// Triggers an alert for a regression
-    pub async fn trigger_regression_alert(
-        pool: &DbPool,
-        project: &Project,
-        issue: &Issue,
-        dashboard_url: &str,
-    ) -> AppResult<()> {
-        Self::trigger_alert(
-            pool,
-            project,
-            issue,
-            AlertType::Regression,
-            dashboard_url,
-            None,
-            EventFacts::default(),
-        )
-        .await
-    }
-
-    /// Enqueues the alert for one durable event with a retry-stable identity.
-    pub async fn trigger_event_alert(
-        pool: &DbPool,
-        project: &Project,
-        issue: &Issue,
-        alert_type: AlertType,
-        event_id: Uuid,
-        facts: EventFacts<'_>,
-        dashboard_url: &str,
-    ) -> AppResult<()> {
-        Self::trigger_alert(
-            pool,
-            project,
-            issue,
-            alert_type,
-            dashboard_url,
-            Some(event_alert_id(project.id, event_id, &alert_type)),
-            facts,
-        )
-        .await
-    }
-
-    /// Triggers an alert for an unmute
-    #[allow(dead_code)]
-    pub async fn trigger_unmute_alert(
-        pool: &DbPool,
-        project: &Project,
-        issue: &Issue,
-        dashboard_url: &str,
-    ) -> AppResult<()> {
-        Self::trigger_alert(
-            pool,
-            project,
-            issue,
-            AlertType::Unmute,
-            dashboard_url,
-            None,
-            EventFacts::default(),
-        )
-        .await
     }
 
     /// Builds the dashboard URL for viewing an issue.
@@ -588,17 +478,21 @@ impl AlertService {
         Ok(reserved)
     }
 
-    /// Core alert triggering logic
-    async fn trigger_alert(
+    /// Enqueues the alert for one durable event with a retry-stable identity.
+    /// `smtp` is `Config::smtp`, the fallback of email integrations.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn trigger_event_alert(
         pool: &DbPool,
         project: &Project,
         issue: &Issue,
         alert_type: AlertType,
-        dashboard_url: &str,
-        stable_alert_id: Option<String>,
+        event_id: Uuid,
         facts: EventFacts<'_>,
+        dashboard_url: &str,
+        smtp: &SmtpSettings,
     ) -> AppResult<()> {
-        // 1. Every enabled rule for this trigger. Rules are independent: each
+        let alert_id = event_alert_id(project.id, event_id, &alert_type);
+        // Every enabled rule for this trigger. Rules are independent: each
         // has its own filters, cooldown and channels, and fires on its own.
         let rules: Vec<AlertRule> = sqlx::query_as(
             r#"
@@ -633,8 +527,9 @@ impl AlertService {
                 alert_type,
                 rule,
                 dashboard_url,
-                stable_alert_id.clone(),
+                &alert_id,
                 facts,
+                smtp,
             )
             .await
             {
@@ -655,12 +550,11 @@ impl AlertService {
         alert_type: AlertType,
         rule: AlertRule,
         dashboard_url: &str,
-        stable_alert_id: Option<String>,
+        alert_id: &str,
         facts: EventFacts<'_>,
+        smtp: &SmtpSettings,
     ) -> AppResult<()> {
-        // Stored conditions were validated on the way in; one that no longer
-        // parses filters nothing rather than silencing the rule.
-        let conditions = RuleConditions::parse(&rule.conditions).unwrap_or_default();
+        let conditions = RuleConditions::from_stored(&rule.conditions);
         if !conditions.matches(
             alert_type,
             facts.level,
@@ -673,24 +567,22 @@ impl AlertService {
         // rules commit one by one, so a crash can leave some done and some not.
         // Keys written before alert ids carried the project
         // (`event-{event_id}-{type}-…`) were one per trigger and still count.
-        if let Some(alert_id) = &stable_alert_id {
-            let legacy = alert_id
-                .strip_prefix(&format!("event-{}-", project.id))
-                .map(|rest| format!("event-{rest}-%"));
-            let recorded: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM alert_history WHERE \
-                 (alert_rule_id = $1 AND idempotency_key LIKE $2) \
-                 OR (project_id = $3 AND idempotency_key LIKE $4))",
-            )
-            .bind(rule.id)
-            .bind(format!("{alert_id}-%"))
-            .bind(project.id)
-            .bind(legacy)
-            .fetch_one(pool)
-            .await?;
-            if recorded {
-                return Ok(());
-            }
+        let legacy = alert_id
+            .strip_prefix(&format!("event-{}-", project.id))
+            .map(|rest| format!("event-{rest}-%"));
+        let recorded: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM alert_history WHERE \
+             (alert_rule_id = $1 AND idempotency_key LIKE $2) \
+             OR (project_id = $3 AND idempotency_key LIKE $4))",
+        )
+        .bind(rule.id)
+        .bind(format!("{alert_id}-%"))
+        .bind(project.id)
+        .bind(legacy)
+        .fetch_one(pool)
+        .await?;
+        if recorded {
+            return Ok(());
         }
         // A rule fires once per new issue. Retention lowers an issue's count,
         // so a later event can bring it back to `min_events`; its history
@@ -709,7 +601,7 @@ impl AlertService {
             }
         }
 
-        // 2. Get associated rule channels (only enabled integrations — SCL-1)
+        // Only enabled integrations get the alert.
         let rule_channels: Vec<AlertRuleChannel> = sqlx::query_as(
             r#"
             SELECT arc.alert_rule_id, arc.integration_id, arc.routing_override
@@ -733,16 +625,8 @@ impl AlertService {
             channels.push((rule_channel, integration));
         }
 
-        // 3. Build payload
         let payload = AlertPayload {
-            alert_id: stable_alert_id.unwrap_or_else(|| {
-                format!(
-                    "{}-{}-{}",
-                    project.id,
-                    issue.id,
-                    Utc::now().timestamp_millis()
-                )
-            }),
+            alert_id: alert_id.to_string(),
             alert_type: alert_type.to_string(),
             triggered_at: Utc::now(),
             project: ProjectInfo {
@@ -770,7 +654,7 @@ impl AlertService {
             project.name
         );
 
-        // 4. Reserve the cooldown and record every delivery atomically.
+        // Reserve the cooldown and record every delivery atomically.
         // Zero disables suppression, including same-second SQLite timestamps or
         // a backward clock adjustment. Event idempotency still prevents replays.
         let mut tx = pool.begin().await?;
@@ -835,16 +719,18 @@ impl AlertService {
             return Ok(());
         }
 
-        // 5. Deliver off the caller's path. The committed pending rows are the
+        // Deliver off the caller's path. The committed pending rows are the
         // durability guarantee (they survive a crash and the retry worker picks
         // them up once the lease expires); the caller — the digest pipeline —
         // must not stall on notification I/O, matching Relay, which never
         // couples ingestion to delivery.
         let dispatch_pool = pool.clone();
+        let smtp = smtp.clone();
         tokio::spawn(async move {
             for (history_id, rule_channel) in history_ids {
                 if let Err(error) = Self::dispatch_history(
                     &dispatch_pool,
+                    &smtp,
                     history_id,
                     0,
                     &payload,
@@ -865,6 +751,7 @@ impl AlertService {
 
     async fn dispatch_existing_history(
         pool: &DbPool,
+        smtp: &SmtpSettings,
         history: &AlertHistory,
         rule_channel: &AlertRuleChannel,
         max_retries: i32,
@@ -885,6 +772,7 @@ impl AlertService {
         };
         Self::dispatch_history(
             pool,
+            smtp,
             history.id,
             history.attempt_count,
             &payload,
@@ -896,6 +784,7 @@ impl AlertService {
 
     async fn dispatch_history(
         pool: &DbPool,
+        smtp: &SmtpSettings,
         history_id: i64,
         previous_attempt_count: i32,
         payload: &AlertPayload,
@@ -903,7 +792,18 @@ impl AlertService {
         max_retries: i32,
     ) -> AppResult<()> {
         let integration = Self::get_channel(pool, rule_channel.integration_id).await?;
-        let result = create_dispatcher(integration.provider_type)
+        // Disabled after the delivery was queued: nothing is sent, and the row
+        // says so instead of claiming a delivery.
+        if !integration.is_enabled {
+            sqlx::query(
+                "UPDATE alert_history SET status = 'skipped', next_retry_at = NULL WHERE id = $1",
+            )
+            .bind(history_id)
+            .execute(pool)
+            .await?;
+            return Ok(());
+        }
+        let result = create_dispatcher(integration.provider_type, smtp)
             .send(&integration, &rule_channel.routing_override, payload)
             .await;
         let attempt_count = next_attempt_count(previous_attempt_count);
@@ -964,10 +864,6 @@ impl AlertService {
         Ok(())
     }
 
-    // =========================================================================
-    // Alert History
-    // =========================================================================
-
     /// Lists alert history for a project
     /// A project's deliveries, newest first; with `rule_id`, only that rule's.
     pub async fn list_history(
@@ -1008,7 +904,7 @@ impl AlertService {
     ) -> AppResult<Vec<AlertHistoryDay>> {
         const DAY: i64 = 86_400;
         let first = now.timestamp().div_euclid(DAY) * DAY - (days - 1) * DAY;
-        let epoch = super::scope::epoch("created_at");
+        let epoch = crate::db::dialect::epoch("created_at");
         let sql = format!(
             "SELECT ({epoch} / {DAY}) * {DAY} AS day, status, COUNT(*) \
              FROM alert_history \
@@ -1114,9 +1010,12 @@ impl AlertService {
         Ok(claimed)
     }
 
-    /// Processes pending retries (for background worker)
-    #[allow(dead_code)]
-    pub async fn process_retry_queue(pool: &DbPool, max_retries: i32) -> AppResult<u32> {
+    /// Delivers the pending retries that are due.
+    pub async fn process_retry_queue(
+        pool: &DbPool,
+        smtp: &SmtpSettings,
+        max_retries: i32,
+    ) -> AppResult<u32> {
         let pending = Self::claim_due_retries(pool, max_retries, 100).await?;
 
         let mut processed = 0u32;
@@ -1166,7 +1065,7 @@ impl AlertService {
             };
 
             if let Err(e) =
-                Self::dispatch_existing_history(pool, &history, &channel, max_retries).await
+                Self::dispatch_existing_history(pool, smtp, &history, &channel, max_retries).await
             {
                 log::error!("Failed to retry alert history {}: {}", history.id, e);
             }

@@ -4,34 +4,19 @@ import type { RustrakError } from '@rustrak/client';
  * The app's own sentences for a `RustrakError`, chosen from `kind`.
  *
  * One module rather than one per surface, because a failure reads the same
- * whether it lands on a full-page card, in a single tile, or under a form
- * input. Before this existed the page surfaces branched on `kind` and the forms
- * did not, so an unreachable API said "The Rustrak API could not be reached."
- * on a page and "Failed to create project" in a dialog.
+ * whether it lands on a full-page card, in a single tile, a toast, or under a
+ * form input.
  *
  * `network` and `server_error` carry a fixed, redacted `message` by design (the
  * real ones name the deployment's internal host, or a database error), so their
  * copy is written here. The rest carry a message the server meant a human to
  * read, and it is rendered rather than replaced.
  *
- * **Why a translator parameter.** This module is part of the portable core,
- * which does not know Next. Every sentence is a message key resolved by the
- * caller's translator, so the copy can be localised without this module
- * importing anything framework-shaped.
- *
- * **And why it is required.** It was optional, with a table of 21 English
- * sentences in this file standing in when it was omitted -- a second dictionary
- * keyed by the same message keys as `messages/en.json`. All eleven call sites
- * passed a translator, so the table was unreachable code that could only ever
- * drift out of sync with the file it duplicated. A required parameter is one
- * source of truth and one compile error at any call site that forgets.
+ * Every sentence is a message key resolved by the caller's translator, which
+ * is required: `messages/*.json` stays the one dictionary.
  */
 
-/**
- * The smallest translator shape the core needs: `t(key, values)` -> string.
- *
- * next-intl's `t` from `useTranslations` / `getTranslations` satisfies it.
- */
+/** The smallest translator shape: `t(key, values)` -> string. */
 export type Translate = (
   key: string,
   values?: Record<string, string | number>,
@@ -56,8 +41,21 @@ export function describeError(error: RustrakError, t: Translate): string {
       });
     case 'invalid_response':
       return t('error.describe.invalidResponse');
-    default:
+    case 'validation':
+    case 'unauthenticated':
+    case 'not_found':
+    case 'conflict':
+    case 'gone':
+    case 'payload_too_large':
+    case 'client_error':
+    case 'invalid_request':
       return error.message;
+    default: {
+      // A kind added to the client fails to compile here, so it gets copy
+      // (or joins the list above) on purpose rather than by default.
+      const unknown: never = error;
+      return (unknown as RustrakError).message;
+    }
   }
 }
 
@@ -65,11 +63,8 @@ export function describeError(error: RustrakError, t: Translate): string {
  * What the reader should do about it, or `null` when there is nothing useful
  * to add.
  *
- * This is the half that used to be a single hardcoded line. "You are still
- * signed in, reload once the API is back" is true for an outage and actively
- * misleading for everything else: it tells a user who lacks permission, or
- * whose dashboard is a version ahead of its API, to wait for a server that is
- * already up.
+ * By kind, because "reload once the API is back" is true for an outage and
+ * misleading for everything else.
  */
 export function errorGuidance(
   error: RustrakError,

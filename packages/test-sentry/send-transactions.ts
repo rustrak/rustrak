@@ -8,15 +8,11 @@
  * `spans`, which is why the detail view looked bare.
  *
  * Usage: tsx packages/test-sentry/send-transactions.ts [dsn]
- * Default DSN: http://0cabb1ed-295f-4cf6-b414-11220caa8eb6@localhost:8080/1
  */
 import { randomBytes } from 'node:crypto';
+import { DSN } from './src/env.js';
 
-const DSN =
-  process.argv[2] ??
-  'http://0cabb1ed-295f-4cf6-b414-11220caa8eb6@localhost:8080/1';
-
-const url = new URL(DSN);
+const url = new URL(process.argv[2] ?? DSN);
 const SENTRY_KEY = url.username;
 const PROJECT_ID = url.pathname.replace(/\//g, '');
 const ENDPOINT = `${url.protocol}//${url.host}/api/${PROJECT_ID}/envelope/`;
@@ -266,6 +262,7 @@ async function main() {
       },
       body,
     });
+    if (!res.ok) process.exitCode = 1;
     const status = res.ok ? '✓' : '✗';
     console.log(
       `${status} ${txn.name} — ${txn.durationMs}ms, ${txn.spans.length} spans (HTTP ${res.status})`,
@@ -275,4 +272,7 @@ async function main() {
   console.log('\nDone. Open the Performance tab and click a transaction.');
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

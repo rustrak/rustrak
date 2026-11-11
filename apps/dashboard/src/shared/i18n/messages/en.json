@@ -23,6 +23,7 @@
     "copyAs": "Copy as",
     "clipboardUnavailable": "Clipboard unavailable",
     "clipboardUnavailableHint": "Select the content and copy it manually, or access Rustrak over HTTPS.",
+    "clipboardLabelHint": "Select the {label} and copy it manually, or access Rustrak over HTTPS.",
     "openSidebar": "Open sidebar",
     "showSidebar": "Show sidebar",
     "closeSidebar": "Close sidebar",
@@ -30,7 +31,20 @@
     "close": "Close",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
-    "loading": "Loading"
+    "loading": "Loading",
+    "copyLabel": "Copy {label}",
+    "unfinished": "unfinished",
+    "noSpans": "No spans",
+    "noSpansHint": "This trace carries no timing to draw.",
+    "resizeNameColumn": "Resize the name column",
+    "mainNavigation": "Main navigation",
+    "breadcrumb": "Breadcrumb",
+    "notifications": "Notifications",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "account": "Account: {name}",
+    "openNavigation": "Open navigation",
+    "closeNavigation": "Close navigation"
   },
   "theme": {
     "light": "Light",
@@ -57,7 +71,17 @@
     "footerCount": "{count} platforms · search to look across every category",
     "pickerPlaceholder": "Search platforms...",
     "pickerAria": "Platform",
-    "noResults": "No platforms found."
+    "noResults": "No platforms found.",
+    "categories": {
+      "popular": "Popular",
+      "browser": "Browser",
+      "server": "Server",
+      "mobile": "Mobile",
+      "desktop": "Desktop",
+      "serverless": "Serverless",
+      "gaming": "Gaming",
+      "all": "All"
+    }
   },
   "statTile": {
     "noPriorPeriod": "No prior period",
@@ -107,46 +131,35 @@
     "suggestions": "Suggestions",
     "filterAndSearch": "Filter by key:value, or search…",
     "addFilter": "Add a filter…",
-    "clearAll": "Clear filters and search"
+    "clearAll": "Clear filters and search",
+    "hintNavigate": "navigate",
+    "hintSelect": "select",
+    "hintClose": "esc closes",
+    "typeValueThen": "Type a value, then",
+    "removeFilter": "Remove {name} filter",
+    "searchFor": "Search “{text}”"
   },
   "commands": {
-    "overview": "Overview",
     "overviewDescription": "Health, volume and the latest issues at a glance.",
-    "issues": "Issues",
     "issuesDescription": "Errors and exceptions, grouped by fingerprint.",
-    "releases": "Releases",
     "releasesDescription": "Deploys and the health of each version.",
-    "performance": "Performance",
     "performanceDescription": "Transaction timings and span waterfalls.",
-    "agents": "Agents",
     "agentsDescription": "AI agent traces and the spans inside them.",
-    "logs": "Logs",
     "logsDescription": "The raw log stream as it arrives.",
-    "general": "General",
     "generalDescription": "Name, slug, platform and the danger zone.",
-    "alerts": "Alerts",
     "alertsDescription": "Rules that fire when something breaks.",
-    "members": "Members",
     "membersDescription": "Who has access to this project, and as what.",
-    "clientKeys": "Client keys",
     "clientKeysDescription": "The DSN and the SDK setup snippet.",
     "allProjects": "All projects",
     "allProjectsDescription": "Every project on this instance you can see.",
     "newProject": "New project",
     "newProjectDescription": "Pick a platform and create one.",
-    "apiTokens": "API tokens",
     "apiTokensDescription": "Bearer tokens for the API and for SDK ingestion.",
-    "integrations": "Integrations",
     "integrationsDescription": "Where alerts get delivered.",
-    "team": "Team",
     "teamDescription": "Members of this instance and pending invitations.",
-    "storage": "Storage",
     "storageDescription": "Retention windows and source map cleanup.",
-    "account": "Account",
     "accountDescription": "Your own profile and password.",
-    "appearance": "Appearance",
     "appearanceDescription": "Light, dark or whatever the system says.",
-    "about": "About",
     "aboutDescription": "Which version of Rustrak this is.",
     "noResultsFor": "No results for “{query}”",
     "resultsHeading": "Results",
@@ -165,10 +178,12 @@
     "open": "open",
     "close": "close",
     "hidePages": "hide pages",
-    "crons": "Crons",
     "cronsDescription": "Scheduled jobs and how their runs went.",
-    "feedback": "User Feedback",
-    "feedbackDescription": "What your users reported from the app."
+    "feedbackDescription": "What your users reported from the app.",
+    "rolesDescription": "Define what each role may do",
+    "mcpDescription": "Connect AI assistants over MCP",
+    "dataDescription": "Event limits and what the project stores",
+    "githubDescription": "Link a GitHub repository"
   },
   "charts": {
     "errors": "Errors",
@@ -193,6 +208,7 @@
     "alreadyExists": "{subject} is already taken.",
     "tooShort": "{subject} is too short.",
     "tooLong": "{subject} is too long.",
+    "incorrect": "{subject} is incorrect.",
     "rejected": "This value was rejected.",
     "defaultSubject": "This value"
   },
@@ -267,6 +283,7 @@
       "events": "Events",
       "users": "Users",
       "lastSeen": "Last seen",
+      "lastSeenShort": "Last seen",
       "level": "Level",
       "assignee": "Assignee",
       "firstSeen": "First seen"
@@ -504,7 +521,8 @@
       "noUsers": "No users available",
       "selectUser": "Select a user",
       "roleAria": "Role for new member",
-      "submit": "Add"
+      "submit": "Add",
+      "selectRole": "Select a role"
     },
     "pending": {
       "title": "Pending invitations",
@@ -598,15 +616,12 @@
       "deleteTitle": "Delete \"{name}\"?",
       "deleteDescription": "This will permanently delete this project and all associated issues and events. This action cannot be undone.",
       "cancel": "Cancel",
-      "deleting": "Deleting...",
       "confirm": "Delete"
     },
     "deleteDialog": {
       "titleNamed": "Delete \"{name}\"?",
-      "titleCount": "{count, plural, =1 {Delete # project?} other {Delete # projects?}}",
       "description": "This will permanently delete {subject} and all associated issues and events. This action cannot be undone.",
       "cancel": "Cancel",
-      "deleting": "Deleting...",
       "confirm": "Delete",
       "subject": "{count, plural, =1 {this project} other {# projects}}"
     },
@@ -665,8 +680,6 @@
       "new": "New project",
       "count": "{count, plural, one {# project} other {# projects}}"
     },
-    "copyUnavailable": "Clipboard unavailable",
-    "copyUnavailableHint": "Select the {label} and copy it manually, or access Rustrak over HTTPS.",
     "clientKeys": {
       "dsn": "DSN",
       "dsnDescription": "Point any Sentry SDK at this string to send events to this project.",
@@ -700,7 +713,8 @@
       "saveFailed": "Failed to save the limit",
       "invalid": "Enter a whole number of at least 1, or leave it empty.",
       "dropped": "Dropped by the limit",
-      "droppedDescription": "Events that were accepted but not stored because a limit was already reached."
+      "droppedDescription": "Events that were accepted but not stored because a limit was already reached.",
+      "tooHigh": "Enter a limit no higher than the server's, {max, number}."
     },
     "card": {
       "newIssues": "New issues",
@@ -722,7 +736,6 @@
       "fieldName": "That name",
       "cancel": "Cancel",
       "delete": "Delete",
-      "deleting": "Deleting...",
       "saveChanges": "Save Changes",
       "test": "Test"
     },
@@ -761,7 +774,8 @@
       "optional": "(optional)"
     },
     "channelCard": {
-      "botToken": "bot token"
+      "botToken": "bot token",
+      "disabledHint": "Turn it on in Integrations to notify through it."
     },
     "ruleDialog": {
       "titleNew": "New Alert Rule",
@@ -1202,7 +1216,6 @@
       "url": "URL",
       "queryString": "Query String",
       "headers": "Headers",
-      "modules": "Modules",
       "extraData": "Extra Data"
     },
     "highlights": {
@@ -1506,7 +1519,8 @@
       "permissionsLabel": "Permissions",
       "projectsLabel": "Projects",
       "allProjects": "All authorized projects",
-      "allProjectsHint": "Every project you are authorized to access, now or in the future."
+      "allProjectsHint": "Every project you are authorized to access, now or in the future.",
+      "expiresInPast": "Choose today or a later date."
     },
     "copyTokenLabel": "Copy token {label}",
     "deleteTokenLabel": "Delete token {label}",
@@ -1543,7 +1557,6 @@
       "title": "Delete Token?",
       "description": "This will permanently delete this token. Any services using it will lose access immediately. This action cannot be undone.",
       "cancel": "Cancel",
-      "deleting": "Deleting...",
       "confirm": "Delete"
     },
     "scope": {
@@ -1577,13 +1590,7 @@
       "compacting": "Compacting the database…"
     },
     "status": {
-      "lastRunRunning": "Last cleanup running since {when}",
-      "lastRunFailed": "Last cleanup {when} failed: {error}",
-      "lastRunNothing": "Last cleanup {when}: nothing to delete",
-      "lastRunRemoved": "Last cleanup {when}: removed {parts}",
-      "off": "Everything is kept forever",
-      "nextRun": "Next cleanup {when}",
-      "nextRunPending": "Scheduling…"
+      "lastRunFailed": "Last cleanup {when} failed: {error}"
     },
     "age": {
       "title": "Age of the data",
@@ -1597,8 +1604,7 @@
       "bucket5": "180 days – 1 year",
       "bucket6": "> 1 year",
       "empty": "No data yet.",
-      "goes": "Deleted at the next cleanup",
-      "goesInBucket": "{size} deleted at the next cleanup"
+      "goes": "Deleted at the next cleanup"
     },
     "projects": {
       "title": "Projects",
@@ -1985,7 +1991,11 @@
         "errorNotFound": "That error event has not arrived, or it has been deleted.",
         "showOlder": "Show older ({count})",
         "showOlderFailed": "Could not load older feedback."
-      }
+      },
+      "sectionAttachments": "Attachments",
+      "attachmentDownload": "Download",
+      "attachmentsFailed": "Could not load the attachments",
+      "userFeedbackFailed": "Could not load the user feedback"
     },
     "feedback": {
       "title": "User Feedback",
@@ -2110,8 +2120,6 @@
       "copy": "Copy",
       "copied": "Copied",
       "copyLabel": "Copy {label}",
-      "copyUnavailable": "Copying is not available here",
-      "copyUnavailableHint": "Select the {label} and copy it by hand.",
       "server": {
         "title": "MCP server",
         "description": "Answers AI assistants at the endpoint below. Off by default; turning it off cuts off every assistant at once.",
@@ -2224,7 +2232,8 @@
         "changed": "Password changed",
         "change": "Change password",
         "dialogDescription": "Enter your current password, then the new one twice.",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "incorrect": "The current password is incorrect."
       }
     },
     "appearance": {
@@ -2507,9 +2516,7 @@
     },
     "setup": {
       "copy": "Copy",
-      "copied": "Copied",
-      "copyUnavailable": "Copying is not available here",
-      "copyUnavailableHint": "Select the {label} snippet and copy it by hand."
+      "copied": "Copied"
     },
     "guides": {
       "curl": "cURL",
@@ -2573,7 +2580,6 @@
       "deleteTitle": "Delete {monitor}?",
       "deleteDescription": "Its check-ins are deleted with it; the issues it opened stay. A job that keeps checking in with a schedule creates it again.",
       "cancel": "Cancel",
-      "deleting": "Deleting…",
       "confirmDelete": "Delete monitor",
       "deleted": "Monitor deleted",
       "deleteFailed": "Could not delete the monitor"
@@ -2757,12 +2763,13 @@
       "selfTime": "Self time",
       "start": "Start",
       "status": "Status",
-      "spanId": "Span id"
+      "spanId": "Span id",
+      "missingInstrumentation": "missing instrumentation"
     }
   },
   "access": {
     "meta": {
-      "title": "Roles · Settings"
+      "title": "Roles | Rustrak"
     },
     "title": "Roles",
     "subtitle": "Reusable permission sets for assigning consistent access across members.",
@@ -2861,7 +2868,7 @@
       "deleted": "Role deleted",
       "deleteFailed": "Unable to delete the role",
       "assignedTo": "{count, plural, =0 {Not assigned} one {# assignment} other {# assignments}}",
-      "meta": "{name} · Roles",
+      "meta": "{name} | Roles | Rustrak",
       "descriptionPlaceholder": "Purpose of this role and the access it provides.",
       "descriptionHint": "Displayed wherever this role is assigned.",
       "allProjects": "All projects",

@@ -11,6 +11,7 @@ import {
   type SpanAttributes,
   tokenBreakdown,
 } from '@/features/agent-trace/model/gen-ai';
+import { FactList } from '@/shared/ui/components/figures';
 
 /** The four kinds of AI span, in the waterfall's colours. */
 const OPERATION_TONE: Record<string, TagTone> = {
@@ -159,16 +160,11 @@ function Highlights({ span }: { span: SpanDetailResponse }) {
   if (shown.length === 0) return null;
 
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-meta">
-      {shown.map(([label, value]) => (
-        <div key={label} className="contents">
-          <dt className="text-fg-subtle">{label}</dt>
-          <dd className="break-all font-mono text-fg-secondary text-mono-sm">
-            {value}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <FactList
+      facts={shown}
+      className="gap-y-1.5"
+      valueClassName="break-all font-mono text-fg-secondary text-mono-sm"
+    />
   );
 }
 

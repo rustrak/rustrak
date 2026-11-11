@@ -1,9 +1,10 @@
 import type { AttachmentInfo, EventDetailResponse } from '@rustrak/client';
-import { useSuspenseInfiniteQuery } from '@tanstack/react-query';
+import { type UseQueryResult, useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslations } from 'use-intl';
 import type { readEventPayload } from '@/features/event/lib/event-payload';
 import { readFeedback } from '@/features/event/lib/feedback';
 import { formatStackTraceAsText } from '@/features/event/lib/format-stack-trace';
+import { AttachmentsSection } from '@/features/event/ui/components/attachments-section';
 import { Breadcrumbs } from '@/features/event/ui/components/breadcrumbs';
 import { EventContext } from '@/features/event/ui/components/event-context';
 import { EventDetails } from '@/features/event/ui/components/event-details';
@@ -16,8 +17,10 @@ import { StackTrace } from '@/features/event/ui/components/stack-trace';
 import { ThreadsSection } from '@/features/event/ui/components/threads-section';
 import { issueQueries } from '@/features/issue/api/queries';
 import { UserFeedback } from '@/features/issue/ui/components/user-feedback';
-import { Section } from '@/shared/ui/components/collapsible-section';
+import type { ApiError } from '@/shared/api/query';
 import { CopyAsDropdown } from '@/shared/ui/components/copy-as-dropdown';
+import { LoadFailure } from '@/shared/ui/components/load-failure';
+import { Section } from './collapsible-section';
 
 type EventPayload = ReturnType<typeof readEventPayload>;
 
@@ -32,7 +35,7 @@ type EventPayload = ReturnType<typeof readEventPayload>;
 export function EventSections({
   projectId,
   issueId,
-  attachments,
+  attachments: attachmentsRead,
   event,
   payload,
   eventData,
@@ -40,8 +43,8 @@ export function EventSections({
 }: {
   projectId: number;
   issueId: string;
-  /** Files sent with the event, shown with a feedback. */
-  attachments: AttachmentInfo[];
+  /** Files sent with the event: inside a feedback, or a section of their own. */
+  attachments: UseQueryResult<AttachmentInfo[], ApiError>;
   event: EventDetailResponse;
   payload: EventPayload;
   eventData: Record<string, unknown>;
@@ -59,10 +62,14 @@ export function EventSections({
     has,
   } = payload;
   const feedback = readFeedback(eventData);
+  const attachmentHref = (attachment: AttachmentInfo) =>
+    `/api/projects/${projectId}/attachments/${attachment.id}`;
+  const attachments = attachmentsRead.data ?? [];
   // The feedback users sent about the issue, which the loader started.
-  const { data: userReports } = useSuspenseInfiniteQuery(
+  const userReportsRead = useInfiniteQuery(
     issueQueries.userReports(projectId, issueId),
   );
+  const userReports = userReportsRead.data;
 
   return (
     <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
@@ -76,14 +83,19 @@ export function EventSections({
                 : null
             }
             attachments={attachments}
-            attachmentHref={(attachment) =>
-              `/api/projects/${projectId}/attachments/${attachment.id}`
-            }
+            attachmentHref={attachmentHref}
           />
         </Section>
       )}
 
-      {(userReports.pages[0]?.items.length ?? 0) > 0 && (
+      <FailedRead
+        id="user-feedback"
+        section={t('event.sectionUserFeedback')}
+        title={t('event.userFeedbackFailed')}
+        read={userReportsRead}
+      />
+
+      {(userReports?.pages[0]?.items.length ?? 0) > 0 && (
         <Section id="user-feedback" title={t('event.sectionUserFeedback')}>
           <UserFeedback projectId={projectId} issueId={issueId} />
         </Section>
@@ -103,9 +115,8 @@ export function EventSections({
           id="stacktrace"
           title={t('event.sectionStackTrace')}
           actions={
-            // ThreadsSection owns its own copy control — the active
-            // thread/exception pairing is client state the section
-            // header (a Server Component) can't see.
+            // ThreadsSection owns its own copy control: the active
+            // thread/exception pairing is its state.
             has.threads ? undefined : (
               <CopyAsDropdown
                 formats={[
@@ -170,6 +181,22 @@ export function EventSections({
         </Section>
       )}
 
+      <FailedRead
+        id="attachments"
+        section={t('event.sectionAttachments')}
+        title={t('event.attachmentsFailed')}
+        read={attachmentsRead}
+      />
+
+      {!feedback && attachments.length > 0 && (
+        <Section id="attachments" title={t('event.sectionAttachments')}>
+          <AttachmentsSection
+            attachments={attachments}
+            attachmentHref={attachmentHref}
+          />
+        </Section>
+      )}
+
       <Section id="details" title={t('event.sectionDetails')}>
         <EventDetails event={event} />
       </Section>
@@ -178,5 +205,39 @@ export function EventSections({
         <RawJson data={eventData} />
       </Section>
     </div>
+  );
+}
+
+/**
+ * A read the event opens without, failed: shown in the section it would have
+ * filled, with a retry, rather than as if there were nothing. Data wins over
+ * a later failure, as in `QueryState`: a failed background refetch keeps what
+ * was on screen.
+ */
+function FailedRead({
+  id,
+  section,
+  title,
+  read,
+}: {
+  id: string;
+  section: string;
+  title: string;
+  read: {
+    data: unknown;
+    error: ApiError | null;
+    refetch: () => Promise<unknown>;
+  };
+}) {
+  if (read.data !== undefined || !read.error) return null;
+  return (
+    <Section id={id} title={section}>
+      <LoadFailure
+        error={read.error.error}
+        title={title}
+        notFoundOnMissing={false}
+        onRetry={() => void read.refetch()}
+      />
+    </Section>
   );
 }

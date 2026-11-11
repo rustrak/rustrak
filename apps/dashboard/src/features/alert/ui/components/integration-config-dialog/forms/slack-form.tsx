@@ -1,7 +1,6 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import { SegmentedControl, SegmentedItem } from '@rustrak/ui';
+import { useSelector } from '@tanstack/react-form';
 import { useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { filledCredentials } from '@/features/alert/lib/credentials';
 import {
@@ -12,7 +11,7 @@ import {
   slackFormSchema,
 } from '@/features/alert/model/integration-forms';
 import { useIntegrationSubmit } from '@/features/alert/ui/hooks/use-integration-submit';
-import { Form } from '@/shared/ui/components/form';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
@@ -34,12 +33,14 @@ export function SlackForm({
   const [testChannel, setTestChannel] = useState('');
 
   const schema = useMemo(() => slackFormSchema(t), [t]);
-  const form = useForm<SlackFormData>({
-    resolver: zodResolver(schema),
+  const form = useAppForm({
     defaultValues: slackDefaults(existingIntegration),
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: schema },
+    onSubmit: ({ value }) => submit(value),
   });
 
-  const method = form.watch('method') as SlackMethod;
+  const method = useSelector(form.store, (state) => state.values.method);
 
   const { submit, isPending } = useIntegrationSubmit<SlackFormData>({
     form,
@@ -73,14 +74,20 @@ export function SlackForm({
   const channel = testChannel.trim();
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(submit)}>
+    <form.AppForm>
+      <form.Form>
         <SettingSection title={t('page.general')}>
-          <NameField<SlackFormData>
-            placeholder={t('slack.namePlaceholder')}
-            disabled={isLoading}
-          />
-          <EnabledField<SlackFormData> disabled={isLoading} />
+          <form.AppField name="name">
+            {() => (
+              <NameField
+                placeholder={t('slack.namePlaceholder')}
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="is_enabled">
+            {() => <EnabledField disabled={isLoading} />}
+          </form.AppField>
         </SettingSection>
 
         <SettingSection
@@ -95,7 +102,7 @@ export function SlackForm({
               aria-label={t('slack.methodLabel')}
               value={method}
               onValueChange={(v) =>
-                form.setValue('method', v as SlackMethod, { shouldDirty: true })
+                form.setFieldValue('method', v as SlackMethod)
               }
               disabled={isLoading}
             >
@@ -109,29 +116,33 @@ export function SlackForm({
           </SettingRow>
 
           {method === 'webhook' ? (
-            <TextInputField<SlackFormData>
-              key="webhook_url"
-              name="webhook_url"
-              label={t('slack.webhookUrlLabel')}
-              placeholder={t('slack.webhookUrlPlaceholder')}
-              description={t('slack.webhookUrlDescription')}
-              type="url"
-              disabled={isLoading}
-            />
+            <form.AppField key="webhook_url" name="webhook_url">
+              {() => (
+                <TextInputField
+                  label={t('slack.webhookUrlLabel')}
+                  placeholder={t('slack.webhookUrlPlaceholder')}
+                  description={t('slack.webhookUrlDescription')}
+                  type="url"
+                  disabled={isLoading}
+                />
+              )}
+            </form.AppField>
           ) : (
-            <TextInputField<SlackFormData>
-              key="token"
-              name="token"
-              label={
-                existingIntegration
-                  ? `${t('slack.botTokenTab')} ${t('slack.tokenLabelSuffix')}`
-                  : t('slack.botTokenTab')
-              }
-              placeholder={t('slack.tokenPlaceholder')}
-              description={t('slack.tokenDescription')}
-              type="password"
-              disabled={isLoading}
-            />
+            <form.AppField key="token" name="token">
+              {() => (
+                <TextInputField
+                  label={
+                    existingIntegration
+                      ? `${t('slack.botTokenTab')} ${t('slack.tokenLabelSuffix')}`
+                      : t('slack.botTokenTab')
+                  }
+                  placeholder={t('slack.tokenPlaceholder')}
+                  description={t('slack.tokenDescription')}
+                  type="password"
+                  disabled={isLoading}
+                />
+              )}
+            </form.AppField>
           )}
 
           {existingIntegration ? (
@@ -170,8 +181,9 @@ export function SlackForm({
           }
           isLoading={isLoading}
           onCancel={() => onOpenChange(false)}
+          error={<form.RootError />}
         />
-      </form>
-    </Form>
+      </form.Form>
+    </form.AppForm>
   );
 }

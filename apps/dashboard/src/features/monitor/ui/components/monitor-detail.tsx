@@ -6,11 +6,16 @@ import { checkInFill } from '@/features/monitor/lib/check-in-fill';
 import { formatRunDuration } from '@/features/monitor/lib/duration';
 import {
   lastCheckIn,
+  NEXT_TONE,
   lastRun as newestRun,
   nextCheckIn,
+  nextCheckInState,
 } from '@/features/monitor/lib/status';
 import { successRate, windowDuration } from '@/features/monitor/lib/timeline';
-import { ScheduleText } from '@/shared/ui/components/schedule-text';
+import { ScheduleText } from '@/features/monitor/ui/components/schedule-text';
+import { isDaily } from '@/shared/lib/chart-format';
+import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
+import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 import { CheckInStrip, StripAxis } from './check-in-strip';
 
 /**
@@ -31,7 +36,13 @@ export function MonitorFigures({
   const buckets = stats.flatMap((env) => env.buckets);
   const last = lastCheckIn(monitor);
   const next = nextCheckIn(monitor);
-  const late = next !== null && Date.parse(next) < now;
+  const state = nextCheckInState(monitor, now);
+  const nextText = {
+    missed: t('status.missed'),
+    late: t('detail.late'),
+    due: next ? format.relativeTime(new Date(next)) : '—',
+    none: '—',
+  }[state];
   const lastRun = newestRun(monitor);
   const rate = successRate(buckets);
   const duration = windowDuration(buckets);
@@ -47,13 +58,7 @@ export function MonitorFigures({
     ],
     [
       t('detail.nextCheckIn'),
-      <span className={late ? 'text-sev-warning-fg' : undefined}>
-        {next
-          ? late
-            ? t('detail.late')
-            : format.relativeTime(new Date(next))
-          : '—'}
-      </span>,
+      <span className={NEXT_TONE[state]}>{nextText}</span>,
       next ? format.dateTime(new Date(next), 'dateTime') : null,
     ],
     [
@@ -77,20 +82,11 @@ export function MonitorFigures({
   ];
 
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border-subtle bg-border-subtle xl:grid-cols-4">
+    <FigureStrip className="grid-cols-2 xl:grid-cols-4">
       {figures.map(([label, value, footnote]) => (
-        <div
-          key={label}
-          className="flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5"
-        >
-          <dt className="truncate text-fg-meta text-meta">{label}</dt>
-          <dd className="text-fg text-title tabular-nums">{value}</dd>
-          <dd className="truncate text-fg-subtle text-hint">
-            {footnote ?? ' '}
-          </dd>
-        </div>
+        <Figure key={label} label={label} value={value} footnote={footnote} />
       ))}
-    </dl>
+    </FigureStrip>
   );
 }
 
@@ -165,12 +161,7 @@ export function MonitorTimeline({
 /** How long the runs took, bucket by bucket, one line per environment. */
 export function DurationChart({ stats }: { stats: MonitorEnvironmentStats[] }) {
   const t = useTranslations('crons');
-  const format = useFormatter();
-  const [first, second] = stats[0]?.buckets ?? [];
-  const daily =
-    first && second
-      ? Date.parse(second.bucket) - Date.parse(first.bucket) >= 86_400_000
-      : false;
+  const bucketLabel = useBucketLabel(isDaily(stats[0]?.buckets ?? []));
   // Series keyed by position, not by name: an environment named `t` would
   // otherwise overwrite the timestamp the axis reads.
   const data = (stats[0]?.buckets ?? []).map((bucket, index) => {
@@ -193,14 +184,7 @@ export function DurationChart({ stats }: { stats: MonitorEnvironmentStats[] }) {
       }))}
       xKey="t"
       height={180}
-      formatX={(value) =>
-        format.dateTime(
-          new Date(value),
-          daily
-            ? { month: 'short', day: 'numeric' }
-            : { month: 'short', day: 'numeric', hour: 'numeric' },
-        )
-      }
+      formatX={bucketLabel}
       formatY={formatRunDuration}
       label={t('detail.duration')}
     />
@@ -247,15 +231,10 @@ export function MonitorFacts({ monitor }: { monitor: MonitorResponse }) {
   ];
 
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-meta">
-      {facts
-        .filter(([, value]) => value)
-        .map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-fg-subtle">{label}</dt>
-            <dd className="min-w-0 text-right text-fg-secondary">{value}</dd>
-          </div>
-        ))}
-    </dl>
+    <FactList
+      facts={facts.filter(([, value]) => value)}
+      className="gap-y-2.5"
+      valueClassName="text-right text-fg-secondary"
+    />
   );
 }

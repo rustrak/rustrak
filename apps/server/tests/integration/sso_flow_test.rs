@@ -3,8 +3,7 @@
 //! authorize redirect, `/auth/sso/callback`, and the session that results.
 
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::cookie::{Cookie, Key};
+use actix_web::cookie::Cookie;
 use actix_web::dev::{Service, ServiceResponse};
 use actix_web::{test, web, App, HttpRequest, HttpResponse, HttpServer};
 use base64::Engine;
@@ -21,7 +20,6 @@ use openidconnect::{
 };
 use rustrak::auth::{OidcService, SsoClaims};
 use rustrak::config::OidcConfig;
-use rustrak::routes;
 use rustrak::services::UsersService;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -32,10 +30,6 @@ use std::sync::{Arc, Mutex};
 const CLIENT_ID: &str = "rustrak";
 const CLIENT_SECRET: &str = "secret";
 const REDIRECT_URL: &str = "http://localhost:8080/auth/sso/callback";
-
-// =============================================================================
-// A minimal OpenID provider
-// =============================================================================
 
 /// The person the provider signs in next.
 #[derive(Clone)]
@@ -274,10 +268,6 @@ async fn token(
     ))
 }
 
-// =============================================================================
-// Driving Rustrak like a browser
-// =============================================================================
-
 fn person(subject: &str, email: &str) -> ProviderUser {
     ProviderUser {
         subject: subject.to_string(),
@@ -300,24 +290,15 @@ async fn rustrak_app(
     pool: &rustrak::db::DbPool,
     oidc: Option<OidcService>,
 ) -> impl Service<actix_http::Request, Response = ServiceResponse, Error = actix_web::Error> {
-    test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(oidc))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::auth::configure),
-    )
-    .await
+    let mut state = crate::common::state(pool, crate::common::config()).await;
+    state.oidc = web::Data::new(oidc);
+    crate::common::app_with(&state).await
 }
 
 fn session_cookie(resp: &ServiceResponse) -> Option<Cookie<'static>> {
     resp.response()
         .cookies()
-        .find(|cookie| cookie.name() == "id")
+        .find(|cookie| cookie.name() == rustrak::app::SESSION_COOKIE)
         .map(|cookie| cookie.into_owned())
 }
 
@@ -406,10 +387,6 @@ where
         None
     }
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[actix_web::test]
 async fn test_sso_config_reports_the_provider_only_when_configured() {

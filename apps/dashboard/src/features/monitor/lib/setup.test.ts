@@ -77,8 +77,8 @@ describe('cronGuide', () => {
       value: 10,
       unit: 'minute' as const,
     };
-    expect(cronGuide('node', { dsn, slug: 'job', schedule }).code).toContain(
-      'type: "interval",\n    value: 10,\n    unit: "minute",',
+    expect(cronGuide('node', { dsn, slug: 'job', schedule }).code).toMatch(
+      /type: "interval",\s*value: 10,\s*unit: "minute",/,
     );
   });
 

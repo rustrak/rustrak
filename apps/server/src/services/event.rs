@@ -2,10 +2,10 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::db::DbPool;
-use crate::digest::processors::{clamp, extract_timestamp, relay_level};
 use crate::error::{AppError, AppResult};
 use crate::models::{AlertType, Event, EventSummary};
 use crate::pagination::{EventCursor, SortOrder};
+use crate::protocol::{clamp, extract_timestamp, relay_level};
 use crate::services::grouping::DenormalizedFields;
 
 /// Columns the event list renders — deliberately not `SELECT *`: the full
@@ -130,7 +130,6 @@ impl EventService {
         .await?)
     }
 
-    /// Gets an event by ID
     pub async fn get_by_id(pool: &DbPool, id: Uuid) -> AppResult<Event> {
         let event = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = $1")
             .bind(id)
@@ -225,9 +224,10 @@ impl EventService {
                 calculated_type, calculated_value, "transaction",
                 last_frame_filename, last_frame_module, last_frame_function,
                 level, platform, release, environment, server_name,
-                sdk_name, sdk_version, remote_addr, alert_type, issue_event_count, event_type
+                sdk_name, sdk_version, remote_addr, alert_type, issue_event_count, event_type,
+                user_identity
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
             "#,
         )
         .bind(id)
@@ -255,6 +255,11 @@ impl EventService {
         .bind(alert_type)
         .bind(issue_event_count)
         .bind(event_type)
+        .bind(
+            event_data
+                .get("user")
+                .and_then(crate::services::issue::user_identity_from_user_field),
+        )
         .execute(executor)
         .await?;
 

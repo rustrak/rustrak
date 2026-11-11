@@ -45,7 +45,7 @@ jobs:
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       # Rust from rust-toolchain.toml. No cache: this job runs once per
       # release and its compile is not worth a cache entry.
       - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
@@ -123,7 +123,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
 
       # If there are NO changesets, we just merged a version PR - cut the release.
-      # The shipped artifacts (server, ui, client) are a `fixed` group in
+      # The shipped artifacts (server, dashboard, client) are a `fixed` group in
       # .changeset/config.json, so they share one version and ship together: one
       # tag, one GitHub release. `docs` is deliberately outside that group and
       # carries its own version - it is private, never published, and nothing
@@ -150,18 +150,19 @@ jobs:
           fi
           echo "Releasing $TAG (prerelease: $PRERELEASE)"
 
-          # Sanity check: the fixed group must be aligned. If it drifted, the
-          # single tag would be a lie about what the other images contain.
-          # `apps/docs` is not in the group and is expected to drift - do not
-          # add it back here.
-          for pkg in apps/dashboard packages/client; do
-            PKG_VERSION=$(node -p "require('./$pkg/package.json').version")
-            if [[ "$PKG_VERSION" != "$VERSION" ]]; then
-              echo "::error::$pkg is at $PKG_VERSION but the release is $VERSION."
-              echo "::error::The fixed group in .changeset/config.json is out of sync."
-              exit 1
-            fi
-          done
+          # Sanity check: the fixed group in .changeset/config.json must be
+          # aligned. If it drifted, the single tag would be a lie about what
+          # the other images contain.
+          pnpm ls -r --depth -1 --json | VERSION="$VERSION" node -e '
+            const fixed = new Set(require("./.changeset/config.json").fixed[0]);
+            const group = JSON.parse(require("fs").readFileSync(0, "utf8"))
+              .filter((p) => fixed.has(p.name));
+            const stale = group.filter((p) => p.version !== process.env.VERSION);
+            for (const p of stale) {
+              console.log(`::error::${p.name} is at ${p.version} but the release is ${process.env.VERSION}.`);
+            }
+            process.exit(group.length === fixed.size && stale.length === 0 ? 0 : 1);
+          '
 
           # Release body: prefer the curated changelog entry written for the docs
           # site, fall back to the changesets-generated server CHANGELOG section.

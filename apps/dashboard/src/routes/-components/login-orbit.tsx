@@ -1,6 +1,6 @@
+import { Wordmark } from '@rustrak/ui';
 import { PlatformIcon } from 'platformicons';
 import { type CSSProperties, useEffect, useRef } from 'react';
-import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { runStrikes } from './login-strikes';
 
 const RINGS = [
@@ -79,7 +79,7 @@ export function LoginOrbit() {
           data-orbit-mark
           className="absolute top-1/2 left-1/2 -translate-1/2 text-fg"
         >
-          <RustrakWordmark still className="block h-[26px] w-auto" />
+          <Wordmark still className="block h-[26px] w-auto" />
         </div>
 
         {RINGS.map(({ radius, duration, platforms }) => (

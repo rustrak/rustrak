@@ -23,11 +23,9 @@ import { useRouter } from '@/shared/ui/hooks/use-router';
  * `title` says which fetch failed, so a page that loads several things does not
  * leave the reader guessing which one is missing.
  *
- * **The two navigating branches moved into the render, and they had to.**
- * Under Next this was a Server Component calling `redirect()` and
- * `notFound()`, which throw and are caught by the framework before anything
- * paints. A router redirect thrown from a component is not: the tree is
- * already rendering. So the sign-out case navigates from an effect and paints
+ * **The two navigating branches are in the render.** A router redirect thrown
+ * from a component is not caught before paint: the tree is already
+ * rendering. So the sign-out case navigates from an effect and paints
  * nothing in the meantime, and the missing-record case renders the same 404
  * screen the route-level handler renders rather than routing to it — the
  * reader sees the same thing either way, and the address stays on the record
@@ -37,6 +35,7 @@ export function LoadFailure({
   error,
   title,
   notFoundOnMissing = true,
+  onRetry,
 }: {
   error: RustrakError;
   title: string;
@@ -45,6 +44,8 @@ export function LoadFailure({
    * particular endpoint had nothing", so the surrounding page survives it.
    */
   notFoundOnMissing?: boolean;
+  /** Offered on the in-place failure: a read the page can live without. */
+  onRetry?: () => void;
 }) {
   const router = useRouter();
   const expired = error.kind === 'unauthenticated';
@@ -63,5 +64,5 @@ export function LoadFailure({
     return <NotFoundScreen />;
   }
 
-  return <ServiceUnavailable error={error} title={title} />;
+  return <ServiceUnavailable error={error} title={title} onRetry={onRetry} />;
 }

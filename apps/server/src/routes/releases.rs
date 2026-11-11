@@ -1,10 +1,10 @@
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, Resource};
 use crate::models::{CreateRelease, UpdateRelease};
 use crate::services::release::SummaryFilter;
 use crate::services::{IssueService, ProjectService, ReleaseService};
@@ -33,14 +33,10 @@ pub struct ReleasesQuery {
     pub environment: Option<String>,
     pub period: Option<String>,
     pub query: Option<String>,
-    #[serde(default = "first_page")]
+    #[serde(default = "crate::pagination::default_page")]
     pub page: i64,
     #[serde(default = "default_per_page")]
     pub per_page: i64,
-}
-
-fn first_page() -> i64 {
-    1
 }
 
 fn default_per_page() -> i64 {
@@ -90,7 +86,7 @@ pub async fn list_releases(
     actor.require(Resource::Releases, Action::Read, Some(project_id))?;
     ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
-    let per_page = query.per_page.clamp(1, 100);
+    let per_page = crate::pagination::per_page(query.per_page)?;
     let page = query.page.max(1);
     let filter = query.filter();
     let mut all = ReleaseService::summaries(pool.get_ref(), project_id, &filter).await?;
@@ -150,6 +146,7 @@ pub async fn get_release(
     Ok(HttpResponse::Ok().json(release))
 }
 
+/// Lists the issues first seen in a release.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/releases/{release}/new-issues",
@@ -167,7 +164,6 @@ pub async fn get_release(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/releases/{release}/new-issues
 pub async fn new_issues_for_release(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, String)>,
@@ -203,15 +199,9 @@ pub async fn new_issues_for_release(
 // `ApiActor` (not `SentryAuth`), matching the other CI-facing endpoints in
 // `sourcemaps.rs`.
 
-/// Resolves a project id from its slug, matching the pattern used by the
-/// source-maps CI endpoints (`sourcemaps.rs`).
 async fn resolve_project_id_by_slug(pool: &DbPool, project_slug: &str) -> AppResult<i32> {
-    let project: Option<(i32,)> = sqlx::query_as("SELECT id FROM projects WHERE slug = $1")
-        .bind(project_slug)
-        .fetch_optional(pool)
-        .await?;
-    project
-        .map(|(id,)| id)
+    ProjectService::id_by_slug_or_id(pool, project_slug)
+        .await?
         .ok_or_else(|| AppError::NotFound(format!("project not found: {}", project_slug)))
 }
 
@@ -234,8 +224,6 @@ async fn resolve_project_id_by_slug(pool: &DbPool, project_slug: &str) -> AppRes
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/0/projects/{org_slug}/{project_slug}/releases/
-///
 /// Sentry-compatible release creation. Idempotent: repeating the same
 /// `(project, version)` returns 208 rather than erroring — sentry-cli and JS
 /// bundler plugins call this on every build. Triggers date-based regression
@@ -287,8 +275,6 @@ pub async fn create_release(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/0/projects/{org_slug}/{project_slug}/releases/{version}/
-///
 /// Generic partial update (`ref`, `url`, `dateReleased`). Setting
 /// `dateReleased` IS "finalize" — there is no separate status flag.
 pub async fn finalize_release(
@@ -322,18 +308,17 @@ pub async fn finalize_release(
 )]
 pub struct ReleasesApi;
 
-/// Configure release routes.
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/releases", web::get().to(list_releases))
+        .route("/releases/{release}", web::get().to(get_release))
+        .route(
+            "/releases/{release}/new-issues",
+            web::get().to(new_issues_for_release),
+        );
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/projects/{project_id}/releases")
-            .route("", web::get().to(list_releases))
-            .route("/{release}", web::get().to(get_release))
-            .route(
-                "/{release}/new-issues",
-                web::get().to(new_issues_for_release),
-            ),
-    )
-    .route(
+    cfg.route(
         "/api/0/projects/{org_slug}/{project_slug}/releases/",
         web::post().to(create_release),
     )

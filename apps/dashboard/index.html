@@ -6,10 +6,8 @@
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="apple-touch-icon" href="/apple-icon.png" />
     <!--
-      The title and `lang` are what the Next app rendered per request out of the
-      message catalogue. A static shell has no request, so English is the
-      starting value and `<DocumentLanguage>` replaces both once the reader's
-      locale is known. Anything a crawler would read is behind a login anyway.
+      English until the reader's locale is known: `Messages` then sets `lang`,
+      and each page renders its own <title>.
     -->
     <title>Rustrak - Error Tracking System</title>
     <meta
@@ -18,10 +16,8 @@
     />
     <!--
       `dark` on <html> above is the same default `ThemeProvider` carries
-      (`defaultTheme="dark"`). Spelled out here as well so the first paint is
-      already dark: next-themes injected a blocking script into the document
-      for this, and a static shell has to state it instead of flashing white
-      until React mounts and swaps the class.
+      (`defaultTheme="dark"`), so the first paint is already dark rather than
+      white until React mounts and swaps the class.
     -->
   </head>
   <body class="antialiased min-h-screen flex flex-col">

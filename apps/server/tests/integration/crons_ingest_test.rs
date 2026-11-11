@@ -3,58 +3,17 @@
 //! through to the issue a failure opens and the recovery that resolves it.
 
 use crate::common::TestDb;
-use actix_web::dev::{Service, ServiceResponse};
-use actix_web::{test, web, App};
+use actix_web::test;
 use base64::Engine as _;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
+use rustrak::config::Config;
 use rustrak::db::DbPool;
-use rustrak::digest::processors::Processors;
 use rustrak::models::monitor::CheckInStatus;
-use rustrak::routes;
 use rustrak::services::monitor::MonitorService;
 use rustrak::services::ProjectService;
-use std::time::Duration;
 use uuid::Uuid;
 
 fn config(ingest_dir: &std::path::Path) -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: Some(ingest_dir.to_string_lossy().to_string()),
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
+    crate::common::config_with_ingest_dir(ingest_dir)
 }
 
 struct Setup {
@@ -84,25 +43,6 @@ async fn setup() -> Setup {
     }
 }
 
-async fn app(
-    s: &Setup,
-) -> impl Service<actix_http::Request, Response = ServiceResponse, Error = actix_web::Error> {
-    let config = config(s._ingest.path());
-    test::init_service(
-        App::new()
-            .app_data(web::Data::new(s.db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(Processors::new(
-                s._ingest.path().to_path_buf(),
-                config.rate_limit.clone(),
-                crate::common::null_sourcemap_provider(),
-                None,
-            )))
-            .configure(routes::ingest::configure),
-    )
-    .await
-}
-
 fn envelope(check_in: &str) -> Vec<u8> {
     format!(
         "{{}}\n{{\"type\":\"check_in\",\"length\":{}}}\n{}",
@@ -126,10 +66,7 @@ fn post_envelope(s: &Setup, body: Vec<u8>) -> actix_http::Request {
 const UPSERT: &str = r#"{"monitor_slug":"nightly","status":"ok","monitor_config":{"schedule":{"type":"crontab","value":"0 3 * * *"}}}"#;
 
 async fn issue_status(pool: &DbPool, project_id: i32) -> Vec<String> {
-    #[cfg(feature = "postgres")]
     const Q: &str = "SELECT status FROM issues WHERE project_id = $1";
-    #[cfg(not(feature = "postgres"))]
-    const Q: &str = "SELECT status FROM issues WHERE project_id = ?";
     sqlx::query_scalar(Q)
         .bind(project_id)
         .fetch_all(pool)
@@ -140,7 +77,7 @@ async fn issue_status(pool: &DbPool, project_id: i32) -> Vec<String> {
 #[actix_web::test]
 async fn check_in_envelope_upserts_the_monitor() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
 
     let resp = test::call_service(&app, post_envelope(&s, envelope(UPSERT))).await;
     assert_eq!(resp.status(), 200);
@@ -157,7 +94,7 @@ async fn check_in_envelope_upserts_the_monitor() {
 #[actix_web::test]
 async fn malformed_check_in_is_dropped_without_failing_the_envelope() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
 
     // No status: Relay rejects the item as invalid JSON, not the envelope.
     let resp = test::call_service(
@@ -175,7 +112,7 @@ async fn malformed_check_in_is_dropped_without_failing_the_envelope() {
 #[actix_web::test]
 async fn failed_check_in_opens_an_issue_and_recovery_resolves_it() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
     test::call_service(&app, post_envelope(&s, envelope(UPSERT))).await;
 
     let failed = r#"{"monitor_slug":"nightly","status":"error"}"#;
@@ -203,7 +140,7 @@ async fn failed_check_in_opens_an_issue_and_recovery_resolves_it() {
 #[actix_web::test]
 async fn http_get_check_in_with_key_in_path() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
     test::call_service(&app, post_envelope(&s, envelope(UPSERT))).await;
 
     let req = test::TestRequest::get()
@@ -226,7 +163,7 @@ async fn http_get_check_in_with_key_in_path() {
 #[actix_web::test]
 async fn http_post_json_upserts_with_slug_from_path() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
 
     let body = r#"{"monitor_slug":"ignored","status":"in_progress","monitor_config":{"schedule":{"type":"interval","value":2,"unit":"hour"},"checkin_margin":5}}"#;
     let req = test::TestRequest::post()
@@ -246,7 +183,7 @@ async fn http_post_json_upserts_with_slug_from_path() {
 #[actix_web::test]
 async fn http_check_in_accepts_basic_auth_without_key_in_path() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
     test::call_service(&app, post_envelope(&s, envelope(UPSERT))).await;
 
     let basic = base64::engine::general_purpose::STANDARD.encode(format!("{}:", s.key));
@@ -261,7 +198,7 @@ async fn http_check_in_accepts_basic_auth_without_key_in_path() {
 #[actix_web::test]
 async fn http_check_in_with_wrong_key_is_unauthorized() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -277,7 +214,7 @@ async fn http_check_in_with_wrong_key_is_unauthorized() {
 #[actix_web::test]
 async fn http_check_in_for_unknown_monitor_says_why() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -292,18 +229,20 @@ async fn http_check_in_for_unknown_monitor_says_why() {
 #[actix_web::test]
 async fn sweep_failures_open_an_issue() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
     test::call_service(&app, post_envelope(&s, envelope(UPSERT))).await;
 
-    let processors = Processors::new(
-        s._ingest.path().to_path_buf(),
-        config(s._ingest.path()).rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
+    let processors = crate::common::processors_with_config(
+        &s.db.pool,
+        &rustrak::config::Config {
+            ingest_dir: s._ingest.path().to_path_buf(),
+            rate_limit: config(s._ingest.path()).rate_limit,
+            ..crate::common::config()
+        },
     );
     // Two days on, the 03:00 run has certainly been missed.
     let later = chrono::Utc::now() + chrono::Duration::days(2);
-    rustrak::routes::ingest::run_monitor_sweep(&processors, &s.db.pool, later)
+    rustrak::ingest::pipeline::run_monitor_sweep(&processors, &s.db.pool, later)
         .await
         .unwrap();
 
@@ -316,7 +255,7 @@ async fn a_result_racing_ahead_of_the_upsert_on_the_first_run_is_kept() {
     // result (without it) as two concurrent requests. On a job's first run
     // the result can reach the server before the monitor exists.
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
     let id = Uuid::new_v4().simple().to_string();
     let start = format!(
         r#"{{"check_in_id":"{id}","monitor_slug":"racy","status":"in_progress","monitor_config":{{"schedule":{{"type":"crontab","value":"0 * * * *"}}}}}}"#
@@ -345,14 +284,16 @@ async fn the_monitor_sweep_runs_as_a_scheduled_job() {
     use rustrak::scheduler::jobs::MonitorSweepJob;
 
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
     test::call_service(&app, post_envelope(&s, envelope(UPSERT))).await;
 
-    let processors = web::Data::new(Processors::new(
-        s._ingest.path().to_path_buf(),
-        config(s._ingest.path()).rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
+    let processors = std::sync::Arc::new(crate::common::processors_with_config(
+        &s.db.pool,
+        &rustrak::config::Config {
+            ingest_dir: s._ingest.path().to_path_buf(),
+            rate_limit: config(s._ingest.path()).rate_limit,
+            ..crate::common::config()
+        },
     ));
     let scheduler = Scheduler::new(vec![std::sync::Arc::new(MonitorSweepJob::new(processors))]);
     let later = chrono::Utc::now() + chrono::Duration::days(2);
@@ -372,7 +313,7 @@ async fn the_monitor_sweep_runs_as_a_scheduled_job() {
 #[actix_web::test]
 async fn an_ok_check_in_resolves_an_issue_left_open_on_a_healthy_monitor() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s._ingest.path())).await;
     test::call_service(&app, post_envelope(&s, envelope(UPSERT))).await;
     let failed = r#"{"monitor_slug":"nightly","status":"error"}"#;
     test::call_service(&app, post_envelope(&s, envelope(failed))).await;

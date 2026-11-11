@@ -15,7 +15,10 @@ import {
 } from '@rustrak/ui';
 import { type ReactNode, useMemo } from 'react';
 import { useTranslations } from 'use-intl';
-import { failureTone } from '@/features/transaction/model/endpoints';
+import {
+  FAILURE_TEXT,
+  failureTone,
+} from '@/features/transaction/model/endpoints';
 import { RelativeTime } from '@/shared/ui/components/relative-time';
 import { useStableFormatter } from '@/shared/ui/hooks/use-stable-formatter';
 
@@ -28,11 +31,6 @@ const NO_ENDPOINTS: TransactionStatsResponse[] = [];
 function endpointId(row: { transaction_name: string; op: string | null }) {
   return `${row.op ?? ''} ${row.transaction_name}`;
 }
-
-const FAILURE_TEXT = {
-  warning: 'text-sev-warning-fg',
-  bad: 'text-sev-error-fg',
-} as const;
 
 /**
  * The endpoints, ranked by the time they take in all. The first column says

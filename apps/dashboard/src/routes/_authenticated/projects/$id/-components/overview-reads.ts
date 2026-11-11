@@ -1,12 +1,12 @@
 import { issueQueries } from '@/features/issue/api/queries';
 import { projectQueries } from '@/features/project/api/queries';
-import { periodHours } from '@/features/project/lib/overview-series';
 import { releaseQueries } from '@/features/release/api/queries';
+import { transactionQueries } from '@/features/transaction/api/queries';
 import {
   type OverviewPeriod,
   overviewInterval,
-} from '@/features/release/model/session-health';
-import { transactionQueries } from '@/features/transaction/api/queries';
+  periodHours,
+} from '@/shared/lib/period';
 
 export interface OverviewFilters {
   projectId: number;
@@ -70,3 +70,27 @@ export function overviewReads(filters: OverviewFilters, compare: boolean) {
 }
 
 export type OverviewReads = ReturnType<typeof overviewReads>;
+
+const HELD = { enabled: false, subscribed: false } as const;
+
+/**
+ * The same reads, never asked for: the skeleton draws each panel's
+ * placeholder from them. An observer that unmounts mid-flight cancels the
+ * loader's request, and the page would ask again.
+ */
+export function heldReads(reads: OverviewReads): OverviewReads {
+  return {
+    summary: { ...reads.summary, ...HELD },
+    events: { ...reads.events, ...HELD },
+    previousEvents: reads.previousEvents && {
+      ...reads.previousEvents,
+      ...HELD,
+    },
+    sessionSummary: { ...reads.sessionSummary, ...HELD },
+    sessionTrend: { ...reads.sessionTrend, ...HELD },
+    issues: (view) => ({ ...reads.issues(view), ...HELD }),
+    latency: { ...reads.latency, ...HELD },
+    environments: { ...reads.environments, ...HELD },
+    releases: { ...reads.releases, ...HELD },
+  };
+}

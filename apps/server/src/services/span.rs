@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 
+use crate::db::dialect::{bucket, bucket_time, since_stored};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{
@@ -88,7 +89,7 @@ pub struct AgentTraceFilters {
 }
 
 /// How the agent traces are ranked; every ranking but newest is largest first.
-#[derive(Debug, Default, Clone, Copy, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AgentTraceSort {
@@ -236,7 +237,6 @@ impl SpanService {
         filters: &SpanFilters,
     ) -> AppResult<(Vec<SpanResponse>, i64)> {
         let page = page.max(1);
-        let per_page = per_page.clamp(1, 100);
         let offset = crate::pagination::offset(page, per_page);
 
         let total_count: (i64,) = sqlx::query_as(
@@ -334,64 +334,30 @@ impl SpanService {
         period_hours: Option<i64>,
         interval_hours: i64,
     ) -> AppResult<Vec<AgentDurationPoint>> {
-        let interval_seconds = interval_hours.max(1) * 3600;
         let scope = filters.sql(2);
-
-        #[cfg(feature = "postgres")]
-        let rows: Vec<(DateTime<Utc>, f64)> = {
-            let time_filter = pg_span_time_filter(period_hours);
-            let sql = format!(
-                r#"
-                SELECT
-                    to_timestamp(
-                        floor(extract(epoch FROM start_timestamp) / {interval_seconds}) * {interval_seconds}
-                    ) AS bucket,
-                    duration_ms
-                FROM spans
-                WHERE project_id = $1
-                  AND gen_ai_operation_type IN ('agent', 'ai_client')
-                  AND duration_ms IS NOT NULL
-                  {scope}
-                  {time_filter}
-                ORDER BY bucket ASC
-                "#,
-            );
-            sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-                .bind(project_id)
-                .bind(filters.environment.as_deref())
-                .fetch_all(pool)
-                .await?
-        };
-
-        #[cfg(not(feature = "postgres"))]
-        let rows: Vec<(DateTime<Utc>, f64)> = {
-            let time_filter = sqlite_span_time_filter(period_hours);
-            let sql = format!(
-                r#"
-                SELECT
-                    strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', start_timestamp) AS INTEGER) / {interval_seconds}) * {interval_seconds}, 'unixepoch') AS bucket,
-                    duration_ms
-                FROM spans
-                WHERE project_id = ?1
-                  AND gen_ai_operation_type IN ('agent', 'ai_client')
-                  AND duration_ms IS NOT NULL
-                  {scope}
-                  {time_filter}
-                ORDER BY bucket ASC
-                "#,
-            );
-            let raw: Vec<(String, f64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-                .bind(project_id)
-                .bind(filters.environment.as_deref())
-                .fetch_all(pool)
-                .await?;
-            raw.into_iter()
-                .map(|(bucket, duration)| {
-                    let bucket = crate::models::session::parse_ts(&bucket).unwrap_or_else(Utc::now);
-                    (bucket, duration)
-                })
-                .collect()
-        };
+        let time_filter = span_time_filter(period_hours);
+        let sql = format!(
+            r#"
+            SELECT {bucket} AS bucket, duration_ms
+            FROM spans
+            WHERE project_id = $1
+              AND gen_ai_operation_type IN ('agent', 'ai_client')
+              AND duration_ms IS NOT NULL
+              {scope}
+              {time_filter}
+            ORDER BY bucket ASC
+            "#,
+            bucket = bucket("start_timestamp", interval_hours.max(1) * 3600),
+        );
+        let raw: Vec<(i64, f64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+            .bind(project_id)
+            .bind(filters.environment.as_deref())
+            .fetch_all(pool)
+            .await?;
+        let rows = raw
+            .into_iter()
+            .map(|(bucket, duration)| Ok((bucket_time(bucket)?, duration)))
+            .collect::<AppResult<Vec<(DateTime<Utc>, f64)>>>()?;
 
         // Group consecutive same-bucket rows (already ORDER BY bucket ASC)
         // and compute avg/p95 per bucket in Rust.
@@ -514,10 +480,7 @@ impl SpanService {
         period_hours: Option<i64>,
         filters: &AgentFilters,
     ) -> AppResult<AgentSummary> {
-        #[cfg(feature = "postgres")]
-        let time_filter = pg_span_time_filter(period_hours);
-        #[cfg(not(feature = "postgres"))]
-        let time_filter = sqlite_span_time_filter(period_hours);
+        let time_filter = span_time_filter(period_hours);
 
         let scope = filters.sql(2);
         let sql = format!(
@@ -573,12 +536,16 @@ impl SpanService {
             values.iter().sum::<f64>() / values.len() as f64
         };
 
+        let count =
+            |key: &str| -> AppResult<i64> { Ok(row.try_get::<Option<i64>, _>(key)?.unwrap_or(0)) };
         Ok(AgentSummary {
-            agent_runs: row.try_get("agent_runs").unwrap_or(0),
-            llm_calls: row.try_get("llm_calls").unwrap_or(0),
-            tool_calls: row.try_get("tool_calls").unwrap_or(0),
-            error_count: row.try_get("error_count").unwrap_or(0),
-            total_tokens: row.try_get("total_tokens").unwrap_or(0.0),
+            agent_runs: count("agent_runs")?,
+            llm_calls: count("llm_calls")?,
+            tool_calls: count("tool_calls")?,
+            error_count: count("error_count")?,
+            total_tokens: row
+                .try_get::<Option<f64>, _>("total_tokens")?
+                .unwrap_or(0.0),
             avg_duration_ms,
             p95_duration_ms: percentile_cont(&values, 0.95),
         })
@@ -591,10 +558,7 @@ impl SpanService {
         period_hours: Option<i64>,
         filters: &AgentFilters,
     ) -> AppResult<Vec<AgentModelRow>> {
-        #[cfg(feature = "postgres")]
-        let time_filter = pg_span_time_filter(period_hours);
-        #[cfg(not(feature = "postgres"))]
-        let time_filter = sqlite_span_time_filter(period_hours);
+        let time_filter = span_time_filter(period_hours);
 
         let scope = filters.sql(2);
         // Response model where reported, request model otherwise: a failed
@@ -606,11 +570,16 @@ impl SpanService {
             SELECT COALESCE(gen_ai_response_model, gen_ai_request_model) AS model,
                    duration_ms,
                    status,
-                   COALESCE(gen_ai_usage_input_tokens, 0)            AS input_tokens,
-                   COALESCE(gen_ai_usage_cached_input_tokens, 0)     AS cached_input_tokens,
-                   COALESCE(gen_ai_usage_output_tokens, 0)           AS output_tokens,
-                   COALESCE(gen_ai_usage_reasoning_output_tokens, 0) AS reasoning_output_tokens,
-                   COALESCE(gen_ai_usage_total_tokens, 0)            AS total_tokens
+                   CAST(COALESCE(gen_ai_usage_input_tokens, 0) AS DOUBLE PRECISION)
+                       AS input_tokens,
+                   CAST(COALESCE(gen_ai_usage_cached_input_tokens, 0) AS DOUBLE PRECISION)
+                       AS cached_input_tokens,
+                   CAST(COALESCE(gen_ai_usage_output_tokens, 0) AS DOUBLE PRECISION)
+                       AS output_tokens,
+                   CAST(COALESCE(gen_ai_usage_reasoning_output_tokens, 0) AS DOUBLE PRECISION)
+                       AS reasoning_output_tokens,
+                   CAST(COALESCE(gen_ai_usage_total_tokens, 0) AS DOUBLE PRECISION)
+                       AS total_tokens
             FROM spans
             WHERE project_id = $1
               AND gen_ai_operation_type = 'ai_client'
@@ -632,18 +601,19 @@ impl SpanService {
         for row in &rows {
             let model: String = row.get("model");
             let entry = tokens.entry(model.clone()).or_insert([0.0; 5]);
-            // Read as f64 with a fallback: SQLite hands back INTEGER for a
-            // column whose every value is a zero literal.
-            let read = |key: &str| -> f64 {
-                row.try_get::<f64, _>(key)
-                    .or_else(|_| row.try_get::<i64, _>(key).map(|v| v as f64))
-                    .unwrap_or(0.0)
-            };
-            entry[0] += read("input_tokens");
-            entry[1] += read("cached_input_tokens");
-            entry[2] += read("output_tokens");
-            entry[3] += read("reasoning_output_tokens");
-            entry[4] += read("total_tokens");
+            // CAST in SQL: SQLite hands back INTEGER for a zero literal.
+            for (i, key) in [
+                "input_tokens",
+                "cached_input_tokens",
+                "output_tokens",
+                "reasoning_output_tokens",
+                "total_tokens",
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                entry[i] += row.try_get::<f64, _>(key)?;
+            }
 
             latency_rows.push((model, row.get("duration_ms"), row.get("status")));
         }
@@ -675,10 +645,7 @@ impl SpanService {
         period_hours: Option<i64>,
         filters: &AgentFilters,
     ) -> AppResult<Vec<AgentToolRow>> {
-        #[cfg(feature = "postgres")]
-        let time_filter = pg_span_time_filter(period_hours);
-        #[cfg(not(feature = "postgres"))]
-        let time_filter = sqlite_span_time_filter(period_hours);
+        let time_filter = span_time_filter(period_hours);
 
         let scope = filters.sql(2);
         let sql = format!(
@@ -743,13 +710,9 @@ impl SpanService {
         period_hours: Option<i64>,
         filters: &AgentFilters,
     ) -> AppResult<(Vec<AgentConversationSummary>, i64)> {
-        let per_page = per_page.clamp(1, 100);
         let offset = crate::pagination::offset(page, per_page);
         let scope = filters.sql(2);
-        #[cfg(feature = "postgres")]
-        let time_filter = pg_span_time_filter(period_hours);
-        #[cfg(not(feature = "postgres"))]
-        let time_filter = sqlite_span_time_filter(period_hours);
+        let time_filter = span_time_filter(period_hours);
         let turns = format!(
             "SELECT DISTINCT gen_ai_conversation_id AS conversation_id, trace_id FROM spans \
              WHERE project_id = $1 AND gen_ai_conversation_id IS NOT NULL AND trace_id IS NOT NULL \
@@ -937,14 +900,10 @@ impl SpanService {
         filters: &AgentFilters,
         trace: &AgentTraceFilters,
     ) -> AppResult<(Vec<AgentTraceSummary>, i64)> {
-        let per_page = per_page.clamp(1, 100);
         let offset = crate::pagination::offset(page, per_page);
 
         let scope = filters.sql(2);
-        #[cfg(feature = "postgres")]
-        let time_filter = pg_span_time_filter(period_hours);
-        #[cfg(not(feature = "postgres"))]
-        let time_filter = sqlite_span_time_filter(period_hours);
+        let time_filter = span_time_filter(period_hours);
 
         let total_sql = format!(
             r#"
@@ -1080,29 +1039,15 @@ impl SpanService {
                 FROM spans
                 WHERE project_id = "#;
 
-        #[cfg(feature = "postgres")]
-        let rows: Vec<(String, Option<f64>)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-            "{RANKED}$1 AND gen_ai_operation_type IS NOT NULL AND trace_id = ANY($2)
-            ) t WHERE rn = 1"
-        )))
-        .bind(project_id)
-        .bind(trace_ids)
-        .fetch_all(pool)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let rows: Vec<(String, Option<f64>)> = {
-            use sqlx::QueryBuilder;
-            let mut qb = QueryBuilder::new(RANKED);
-            qb.push_bind(project_id);
-            qb.push(" AND gen_ai_operation_type IS NOT NULL AND trace_id IN (");
-            let mut sep = qb.separated(", ");
-            for trace_id in trace_ids {
-                sep.push_bind(trace_id.clone());
-            }
-            qb.push(")) t WHERE rn = 1");
-            qb.build_query_as().fetch_all(pool).await?
-        };
+        let mut qb = QueryBuilder::new(RANKED);
+        qb.push_bind(project_id);
+        qb.push(" AND gen_ai_operation_type IS NOT NULL AND trace_id IN (");
+        let mut sep = qb.separated(", ");
+        for trace_id in trace_ids {
+            sep.push_bind(trace_id.clone());
+        }
+        qb.push(")) t WHERE rn = 1");
+        let rows: Vec<(String, Option<f64>)> = qb.build_query_as().fetch_all(pool).await?;
 
         Ok(rows.into_iter().collect())
     }
@@ -1127,28 +1072,15 @@ impl SpanService {
               AND gen_ai_agent_name IS NOT NULL
               AND project_id = "#;
 
-        #[cfg(feature = "postgres")]
-        let rows: Vec<(String, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-            "{SELECT}$1 AND trace_id = ANY($2) ORDER BY start_timestamp ASC"
-        )))
-        .bind(project_id)
-        .bind(trace_ids)
-        .fetch_all(pool)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let rows: Vec<(String, String)> = {
-            use sqlx::QueryBuilder;
-            let mut qb = QueryBuilder::new(SELECT);
-            qb.push_bind(project_id);
-            qb.push(" AND trace_id IN (");
-            let mut sep = qb.separated(", ");
-            for trace_id in trace_ids {
-                sep.push_bind(trace_id.clone());
-            }
-            qb.push(") ORDER BY start_timestamp ASC");
-            qb.build_query_as().fetch_all(pool).await?
-        };
+        let mut qb = QueryBuilder::new(SELECT);
+        qb.push_bind(project_id);
+        qb.push(" AND trace_id IN (");
+        let mut sep = qb.separated(", ");
+        for trace_id in trace_ids {
+            sep.push_bind(trace_id.clone());
+        }
+        qb.push(") ORDER BY start_timestamp ASC");
+        let rows: Vec<(String, String)> = qb.build_query_as().fetch_all(pool).await?;
 
         let mut out: HashMap<String, Vec<String>> = HashMap::new();
         for (trace_id, agent_name) in rows {
@@ -1171,25 +1103,9 @@ const TRACE_INDEX: &str = "";
 #[cfg(not(feature = "postgres"))]
 const TRACE_INDEX: &str = "INDEXED BY idx_spans_gen_ai_trace_cover";
 
-/// `AND start_timestamp >= ...` time filter for a `spans` query. Empty
-/// string when `period_hours` is `None` (no time filter). Mirrors
-/// `services::session`'s `pg_bucket_time_filter`.
-#[cfg(feature = "postgres")]
-fn pg_span_time_filter(period_hours: Option<i64>) -> String {
-    match period_hours {
-        Some(hours) => format!("AND start_timestamp >= NOW() - '{hours} hours'::interval"),
-        None => String::new(),
-    }
-}
-
-#[cfg(not(feature = "postgres"))]
-fn sqlite_span_time_filter(period_hours: Option<i64>) -> String {
-    match period_hours {
-        Some(hours) => {
-            format!("AND start_timestamp >= datetime('now', '-' || '{hours}' || ' hours')")
-        }
-        None => String::new(),
-    }
+/// `AND start_timestamp >= ...` time filter for a `spans` query.
+fn span_time_filter(period_hours: Option<i64>) -> String {
+    format!("AND {}", since_stored("start_timestamp", period_hours))
 }
 
 /// Time-bucketed `COUNT(*)` of spans matching `operation_type`.
@@ -1215,11 +1131,7 @@ async fn count_timeseries(
 
 /// Shared time-bucketing core for the "Agent Runs" widget —
 /// `aggregate_expr` is a pre-cast SQL expression (`CAST(... AS DOUBLE
-/// PRECISION)`) so both dialects decode into `f64` uniformly. Mirrors
-/// `services::session::query_session_timeseries`'s dual-backend bucketing
-/// exactly (same `floor(extract(epoch...))` / `strftime` approach), just
-/// scoped to `spans.start_timestamp` and gated by `gen_ai_operation_type`
-/// instead of `session_counts.bucket`.
+/// PRECISION)`) so both dialects decode into `f64` uniformly.
 #[allow(clippy::too_many_arguments)]
 async fn bucketed_aggregate(
     pool: &DbPool,
@@ -1230,79 +1142,40 @@ async fn bucketed_aggregate(
     period_hours: Option<i64>,
     interval_hours: i64,
 ) -> AppResult<Vec<AgentTimeseriesPoint>> {
-    let interval_seconds = interval_hours.max(1) * 3600;
     // $3, not $2: this query already spends $2 on the operation type.
     let scope = filters.sql(3);
-
-    #[cfg(feature = "postgres")]
-    {
-        let time_filter = pg_span_time_filter(period_hours);
-        let sql = format!(
-            r#"
-            SELECT
-                to_timestamp(
-                    floor(extract(epoch FROM start_timestamp) / {interval_seconds}) * {interval_seconds}
-                ) AS bucket,
-                {aggregate_expr} AS value,
-                CAST(SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END) AS BIGINT) AS errors
-            FROM spans
-            WHERE project_id = $1
-              AND gen_ai_operation_type = $2
-              {scope}
-              {time_filter}
-            GROUP BY 1
-            ORDER BY 1 ASC
-            "#,
-        );
-        let rows: Vec<(DateTime<Utc>, f64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .bind(project_id)
-            .bind(operation_type)
-            .bind(filters.environment.as_deref())
-            .fetch_all(pool)
-            .await?;
-        Ok(rows
-            .into_iter()
-            .map(|(bucket, value, errors)| AgentTimeseriesPoint {
-                bucket,
+    let time_filter = span_time_filter(period_hours);
+    let sql = format!(
+        r#"
+        SELECT
+            {bucket} AS bucket,
+            {aggregate_expr} AS value,
+            CAST(SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END) AS BIGINT) AS errors
+        FROM spans
+        WHERE project_id = $1
+          AND gen_ai_operation_type = $2
+          {scope}
+          {time_filter}
+        GROUP BY 1
+        ORDER BY 1 ASC
+        "#,
+        bucket = bucket("start_timestamp", interval_hours.max(1) * 3600),
+    );
+    let rows: Vec<(i64, f64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+        .bind(project_id)
+        .bind(operation_type)
+        .bind(filters.environment.as_deref())
+        .fetch_all(pool)
+        .await?;
+    rows.into_iter()
+        .map(|(bucket, value, errors)| {
+            Ok(AgentTimeseriesPoint {
+                bucket: bucket_time(bucket)?,
                 value,
                 errors,
             })
-            .collect())
-    }
-
-    #[cfg(not(feature = "postgres"))]
-    {
-        let time_filter = sqlite_span_time_filter(period_hours);
-        let sql = format!(
-            r#"
-            SELECT
-                strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', start_timestamp) AS INTEGER) / {interval_seconds}) * {interval_seconds}, 'unixepoch') AS bucket,
-                {aggregate_expr} AS value,
-                CAST(SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END) AS BIGINT) AS errors
-            FROM spans
-            WHERE project_id = ?1
-              AND gen_ai_operation_type = ?2
-              {scope}
-              {time_filter}
-            GROUP BY 1
-            ORDER BY 1 ASC
-            "#,
-        );
-        let rows: Vec<(String, f64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .bind(project_id)
-            .bind(operation_type)
-            .bind(filters.environment.as_deref())
-            .fetch_all(pool)
-            .await?;
-        Ok(rows
-            .into_iter()
-            .map(|(bucket, value, errors)| AgentTimeseriesPoint {
-                bucket: crate::models::session::parse_ts(&bucket).unwrap_or_else(Utc::now),
-                value,
-                errors,
-            })
-            .collect())
-    }
+        })
+        .collect()
 }
 
 /// Shared "GROUP BY column, aggregate, top N" query for the 3 breakdown
@@ -1328,10 +1201,7 @@ async fn breakdown_query(
     // — Postgres rejects a negative LIMIT and SQLite reads it as "no cap".
     let limit = limit.clamp(1, 100);
 
-    #[cfg(feature = "postgres")]
-    let time_filter = pg_span_time_filter(period_hours);
-    #[cfg(not(feature = "postgres"))]
-    let time_filter = sqlite_span_time_filter(period_hours);
+    let time_filter = span_time_filter(period_hours);
 
     let scope = filters.sql(3);
 

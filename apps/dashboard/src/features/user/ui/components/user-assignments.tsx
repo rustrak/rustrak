@@ -41,6 +41,7 @@ import {
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 const PERSONAL = 'personal';
 
@@ -72,16 +73,14 @@ export function UserAssignments({
   readOnlyReason: string | null;
 }) {
   const t = useTranslations('access');
+  const toastFailure = useToastFailure();
   const reader = usePermissionsLater();
   // The callbacks live here, not on `mutate`: a saved access remounts this
   // page, and `mutate`'s own callbacks do not run once it has unmounted.
   const save = useMutation({
     ...userMutations.setAssignments(user.id),
     onSuccess: () => toast.success(t('users.saved')),
-    onError: (error) =>
-      toast.error(t('users.saveFailed'), {
-        description: error.error.message,
-      }),
+    onError: (error) => toastFailure(t('users.saveFailed'), error),
   });
   const [rows, setRows] = useState<AccessRow[]>(() =>
     rowsFrom(access.assignments),

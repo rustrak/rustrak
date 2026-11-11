@@ -1,106 +1,14 @@
-//! Integration tests for the Source Maps API
-//!
-//! Story: source-map-upload-frame-rewriting
-//!
-//! ## Coverage Map
-//!
-//! | Test group                        | Task    | AC          |
-//! |-----------------------------------|---------|-------------|
-//! | org_probe_*                       | T6      | AC1 prereq  |
-//! | chunk_capability_*                | T6      | AC1 prereq  |
-//! | chunk_upload_*                    | T6      | AC1, AC3    |
-//! | assemble_*                        | T6, T7  | AC1, AC3, AC6, AC7 |
-//! | list_source_maps_*                | T6      | AC1         |
-//! | digest_rewrite_*                  | T8      | AC2         |
-//! | cross_project_*                   | T5, T8  | AC5         |
-//! | worker_recovery_*                 | T7      | AC7         |
+//! The source map upload API: org probe, chunk upload, assemble, listing.
 
+use crate::common::create_test_token;
 use crate::common::TestDb;
-use actix_web::{test, web, App};
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
-use rustrak::models::{CreateAuthToken, CreateProject};
-use rustrak::routes;
-use rustrak::services::{
-    AuthTokenService, DbSourceMapProvider, LocalSourceMapStore, ProjectService, SourceMapProvider,
-    SourceMapStore,
-};
+use actix_web::test;
+use rustrak::models::CreateProject;
+use rustrak::services::{LocalSourceMapStore, ProjectService};
 use serde_json::Value;
 use sha1::{Digest as _, Sha1};
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
-
-// =============================================================================
-// Test helpers
-// =============================================================================
-
-pub(super) fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
-pub(super) async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
-    AuthTokenService::create(
-        pool,
-        CreateAuthToken {
-            description: Some("Test token".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("Failed to create test token")
-    .token
-}
-
-/// Build the sourcemap app data components from a pool + config.
-/// Returns `(Arc<dyn SourceMapProvider>, web::Data<Config>)` so tests can
-/// call `test::init_service(App::new().app_data(...)...)` inline.
-pub(super) fn sourcemap_app_data(
-    pool: &rustrak::db::DbPool,
-    config: &Config,
-) -> (Arc<dyn SourceMapProvider>, web::Data<Config>) {
-    let store: Arc<dyn SourceMapStore> =
-        Arc::new(LocalSourceMapStore::new(&config.sourcemap_storage_path));
-    let provider: Arc<dyn SourceMapProvider> =
-        Arc::new(DbSourceMapProvider::new(pool.clone(), store));
-    (provider, web::Data::new(config.clone()))
-}
 
 pub(super) fn sha1_hex(data: &[u8]) -> String {
     let mut h = Sha1::new();
@@ -127,15 +35,8 @@ fn build_multipart(boundary: &str, parts: &[(&str, &[u8])]) -> Vec<u8> {
     body
 }
 
-// ---------------------------------------------------------------------------
-// DB helpers — backend-agnostic (SQLite `?` vs Postgres `$N`)
-// ---------------------------------------------------------------------------
-
 async fn count_where_eq(pool: &rustrak::db::DbPool, table: &str, col: &str, val: &str) -> i64 {
-    #[cfg(feature = "postgres")]
     let sql = format!("SELECT COUNT(*) FROM {} WHERE {} = $1", table, col);
-    #[cfg(not(feature = "postgres"))]
-    let sql = format!("SELECT COUNT(*) FROM {} WHERE {} = ?", table, col);
     sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(&*sql))
         .bind(val)
         .fetch_one(pool)
@@ -144,10 +45,7 @@ async fn count_where_eq(pool: &rustrak::db::DbPool, table: &str, col: &str, val:
 }
 
 async fn count_sfm_for_project(pool: &rustrak::db::DbPool, project_id: i32) -> i64 {
-    #[cfg(feature = "postgres")]
     let sql = "SELECT COUNT(*) FROM source_file_metadata WHERE project_id = $1";
-    #[cfg(not(feature = "postgres"))]
-    let sql = "SELECT COUNT(*) FROM source_file_metadata WHERE project_id = ?";
     sqlx::query_scalar::<_, i64>(sql)
         .bind(project_id)
         .fetch_one(pool)
@@ -162,33 +60,7 @@ async fn insert_assembly_job_with_state(
     state: &str,
     detail: Option<&str>,
 ) {
-    #[cfg(feature = "postgres")]
-    sqlx::query(
-        "INSERT INTO assembly_jobs(bundle_checksum, project_id, chunks, state, detail) \
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(checksum)
-    .bind(project_id)
-    .bind(&Vec::<String>::new() as &Vec<String>)
-    .bind(state)
-    .bind(detail)
-    .execute(pool)
-    .await
-    .expect("insert assembly_jobs must succeed");
-
-    #[cfg(not(feature = "postgres"))]
-    sqlx::query(
-        "INSERT INTO assembly_jobs(bundle_checksum, project_id, chunks, state, detail) \
-         VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(checksum)
-    .bind(project_id)
-    .bind("[]")
-    .bind(state)
-    .bind(detail)
-    .execute(pool)
-    .await
-    .expect("insert assembly_jobs must succeed");
+    insert_assembly_job_with_state_and_chunks(pool, checksum, project_id, state, detail, &[]).await;
 }
 
 async fn set_assembly_job_state(
@@ -197,7 +69,6 @@ async fn set_assembly_job_state(
     project_id: i32,
     state: &str,
 ) {
-    #[cfg(feature = "postgres")]
     sqlx::query(
         "UPDATE assembly_jobs SET state = $1 WHERE bundle_checksum = $2 AND project_id = $3",
     )
@@ -207,26 +78,10 @@ async fn set_assembly_job_state(
     .execute(pool)
     .await
     .expect("update assembly_jobs state must succeed");
-
-    #[cfg(not(feature = "postgres"))]
-    sqlx::query("UPDATE assembly_jobs SET state = ? WHERE bundle_checksum = ? AND project_id = ?")
-        .bind(state)
-        .bind(checksum)
-        .bind(project_id)
-        .execute(pool)
-        .await
-        .expect("update assembly_jobs state must succeed");
 }
 
-/// Binds a UUID-typed column: Postgres requires a native `Uuid` value (a bare
-/// `&str` is sent as `text`, which Postgres refuses to assign into a `uuid`
-/// column — code 42804), while SQLite's `uuid` columns are untyped `TEXT` and
-/// accept the string form directly.
 fn push_uuid_bind(qb: &mut sqlx::QueryBuilder<rustrak::db::Db>, value: &str) {
-    #[cfg(feature = "postgres")]
     qb.push_bind(uuid::Uuid::parse_str(value).expect("value must be a valid uuid"));
-    #[cfg(not(feature = "postgres"))]
-    qb.push_bind(value);
 }
 
 async fn insert_source_file(
@@ -277,24 +132,12 @@ async fn insert_source_file_metadata(
         .expect("insert source_file_metadata");
 }
 
-// =============================================================================
-// Group 1: Org probe — no DB, no auth needed
-// =============================================================================
-
 #[actix_web::test]
 async fn test_org_probe_any_slug_returns_200() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/organizations/any-random-slug/")
@@ -322,19 +165,10 @@ async fn test_org_probe_any_slug_returns_200() {
 #[actix_web::test]
 async fn test_org_probe_different_slugs_all_return_200() {
     let db = TestDb::new().await;
-    let config = create_test_config();
+    let config = crate::common::config();
 
     for slug in &["my-org", "123", "a-b-c-d", "UPPERCASE"] {
-        let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(db.pool.clone()))
-                .app_data(config_data)
-                .app_data(web::Data::new(Arc::clone(&provider)))
-                .configure(routes::sourcemaps::configure),
-        )
-        .await;
+        let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
         let req = test::TestRequest::get()
             .uri(&format!("/api/0/organizations/{}/", slug))
@@ -356,25 +190,13 @@ async fn test_org_probe_different_slugs_all_return_200() {
     }
 }
 
-// =============================================================================
-// Group 2: Chunk upload capability — needs BearerAuth
-// =============================================================================
-
 #[actix_web::test]
 async fn test_chunk_capability_includes_artifact_bundles_v2() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/organizations/my-org/chunk-upload/")
@@ -413,17 +235,9 @@ async fn test_chunk_capability_includes_artifact_bundles_v2() {
 async fn test_chunk_capability_advertises_no_compression() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/organizations/my-org/chunk-upload/")
@@ -443,25 +257,13 @@ async fn test_chunk_capability_advertises_no_compression() {
     assert!(compression.is_empty(), "chunks are read uncompressed");
 }
 
-// =============================================================================
-// Group 3: Chunk upload — needs BearerAuth + multipart
-// =============================================================================
-
 #[actix_web::test]
 async fn test_chunk_upload_stores_chunks_in_db() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let chunk1 = b"hello world chunk data";
     let chunk2 = b"another chunk of data";
@@ -510,18 +312,10 @@ async fn test_chunk_upload_chunk_too_large_returns_400() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     // Config with max_chunk_size_bytes = 100 bytes
-    let mut config = create_test_config();
+    let mut config = crate::common::config();
     config.max_chunk_size_bytes = 100;
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // Build a chunk that exceeds 100 bytes
     let oversized: Vec<u8> = vec![0xAA; 200];
@@ -546,17 +340,9 @@ async fn test_chunk_upload_chunk_too_large_returns_400() {
 async fn test_chunk_upload_empty_multipart_returns_400() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // Empty multipart body — no parts at all
     let boundary = "emptyboundary9876";
@@ -582,17 +368,9 @@ async fn test_chunk_upload_sha1_field_name_accepted() {
     // Rustrak must accept any non-empty field name.
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let chunk_data = b"source map chunk from real sentry-cli";
     let sha1 = sha1_hex(chunk_data);
@@ -632,21 +410,13 @@ async fn test_chunk_upload_sha1_field_name_accepted() {
 async fn test_chunk_upload_dedup_same_sha1() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
+    let config = crate::common::config();
     let sha1_val = sha1_hex(b"deduplicated chunk data");
     let boundary = "dedup1234";
 
     // Upload the same chunk twice
     for _ in 0..2 {
-        let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(db.pool.clone()))
-                .app_data(config_data)
-                .app_data(web::Data::new(Arc::clone(&provider)))
-                .configure(routes::sourcemaps::configure),
-        )
-        .await;
+        let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
         let body = build_multipart(
             boundary,
@@ -674,16 +444,11 @@ async fn test_chunk_upload_dedup_same_sha1() {
     );
 }
 
-// =============================================================================
-// Group 4: Assemble — needs BearerAuth + JSON + project in DB
-// =============================================================================
-
 #[actix_web::test]
 async fn test_assemble_before_upload_returns_not_found_with_missing_chunks() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
 
-    // Create a project
     let project = ProjectService::create(
         &db.pool,
         CreateProject {
@@ -695,17 +460,9 @@ async fn test_assemble_before_upload_returns_not_found_with_missing_chunks() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let sha1_a = "aabbccddaabbccddaabbccddaabbccddaabbccdd";
     let sha1_b = "bbccddeebbccddeebbccddeebbccddeebbccddee";
@@ -751,9 +508,8 @@ async fn test_assemble_after_upload_enqueues_job_returns_created() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
 
-    // Store two chunks directly in the DB
     let chunk1: &[u8] = b"chunk one data here";
     let chunk2: &[u8] = b"chunk two data here";
     rustrak::services::sourcemap::store_chunks(
@@ -771,16 +527,7 @@ async fn test_assemble_after_upload_enqueues_job_returns_created() {
     let mut joined = chunk1.to_vec();
     joined.extend_from_slice(chunk2);
     let bundle_checksum = sha1_hex(&joined);
-
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/0/organizations/my-org/artifactbundle/assemble/")
@@ -826,17 +573,9 @@ async fn test_assemble_wait_poll_returns_ok_after_chunks_uploaded() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let bundle = build_test_artifact_bundle();
     let chunk_sha1 = sha1_hex(&bundle);
@@ -942,17 +681,9 @@ async fn test_assemble_poll_returns_ok_after_worker_deleted_chunks() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let bundle = build_test_artifact_bundle();
     let chunk_sha1 = sha1_hex(&bundle);
@@ -1034,7 +765,7 @@ async fn test_assemble_idempotent_same_bundle_twice() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
 
     // Pre-store chunks
     let chunk1: &[u8] = b"idempotent chunk data one";
@@ -1056,16 +787,7 @@ async fn test_assemble_idempotent_same_bundle_twice() {
 
     // Insert an assembly_jobs row with state='ok' directly
     insert_assembly_job_with_state(&db.pool, &bundle_checksum, project.id, "ok", None).await;
-
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // POST assemble — should return the existing 'ok' job
     let req = test::TestRequest::post()
@@ -1100,17 +822,9 @@ async fn test_assemble_idempotent_same_bundle_twice() {
 async fn test_assemble_unknown_project_slug_returns_404() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/0/organizations/my-org/artifactbundle/assemble/")
@@ -1131,17 +845,9 @@ async fn test_assemble_unknown_project_slug_returns_404() {
 async fn test_assemble_empty_projects_array_returns_400() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/0/organizations/my-org/artifactbundle/assemble/")
@@ -1156,34 +862,6 @@ async fn test_assemble_empty_projects_array_returns_400() {
 
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 400, "empty projects array must return 400");
-}
-
-#[actix_web::test]
-#[ignore = "requires assembly worker to process ZIP and set error state"]
-async fn test_assemble_zip_path_traversal_sets_error_state() {
-    // This test requires the background assembly worker to process the job.
-    // When a ZIP containing a path traversal entry (e.g. "../../../etc/passwd") is
-    // submitted, the worker must set assembly_jobs.state = 'error'.
-    //
-    // Setup: insert an assembly_jobs row pointing to a ZIP with path traversal entries,
-    // start the AssemblyWorker, wait for job processing, then assert:
-    //   let job: AssemblyJob = sqlx::query_as("SELECT * FROM assembly_jobs WHERE ...").fetch_one(&pool).await.unwrap();
-    //   assert_eq!(job.state, "error");
-    //   assert!(job.detail.unwrap().contains("path traversal"));
-    todo!("enable once assembly worker is running in test context")
-}
-
-#[actix_web::test]
-#[ignore = "requires assembly worker to process ZIP and set error state"]
-async fn test_assemble_zip_symlink_sets_error_state() {
-    // This test requires the background assembly worker.
-    // When a ZIP containing a symlink entry (CVE-2025-29787) is submitted,
-    // the worker must skip it and not create any symlink on disk.
-    //
-    // Setup: build a ZIP with a symlink entry, store its chunks, submit to assemble,
-    // start AssemblyWorker, wait for processing, then assert:
-    //   assert!(job.state == "ok" || job.state == "error"); // no symlink created on disk
-    todo!("enable once assembly worker is running in test context")
 }
 
 #[actix_web::test]
@@ -1206,9 +884,8 @@ async fn test_assemble_checksum_mismatch_enqueues_job() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
 
-    // Store two chunks
     let chunk1: &[u8] = b"mismatch chunk alpha";
     let chunk2: &[u8] = b"mismatch chunk beta";
     rustrak::services::sourcemap::store_chunks(
@@ -1221,16 +898,7 @@ async fn test_assemble_checksum_mismatch_enqueues_job() {
     )
     .await
     .expect("store_chunks must succeed");
-
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let wrong_checksum = "0000000000000000000000000000000000000000";
 
@@ -1281,16 +949,8 @@ async fn test_assemble_failed_job_returns_400_on_retry() {
     )
     .await;
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let config = crate::common::config();
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // POST assemble — must return the existing 'error' job → 400
     let req = test::TestRequest::post()
@@ -1319,10 +979,6 @@ async fn test_assemble_failed_job_returns_400_on_retry() {
         body["state"]
     );
 }
-
-// =============================================================================
-// Group 5: List source maps
-// =============================================================================
 
 #[actix_web::test]
 async fn test_list_source_maps_returns_paginated_list() {
@@ -1382,16 +1038,8 @@ async fn test_list_source_maps_returns_paginated_list() {
     )
     .await;
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let config = crate::common::config();
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -1427,17 +1075,9 @@ async fn test_list_source_maps_returns_paginated_list() {
 async fn test_list_source_maps_unknown_project_returns_404() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/projects/my-org/ghost-project/files/source-maps/")
@@ -1518,16 +1158,8 @@ async fn test_list_source_maps_scoped_to_project() {
     )
     .await;
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let config = crate::common::config();
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // GET source maps for project A only
     let req = test::TestRequest::get()
@@ -1558,10 +1190,6 @@ async fn test_list_source_maps_scoped_to_project() {
         "project B's debug_id must not appear in project A's results"
     );
 }
-
-// =============================================================================
-// Group 5b: assemble_bundle regression — manifest.json extraction
-// =============================================================================
 
 /// Build a minimal but valid artifact bundle ZIP in memory.
 ///
@@ -1624,7 +1252,7 @@ async fn test_assemble_bundle_finds_manifest_json() {
     .await
     .expect("store_chunks must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
     let store: std::sync::Arc<dyn rustrak::services::SourceMapStore> = std::sync::Arc::new(
         rustrak::services::LocalSourceMapStore::new(&config.sourcemap_storage_path),
     );
@@ -1701,10 +1329,8 @@ async fn test_assemble_bundle_keeps_chunk_owned_by_another_job() {
         &chunks,
     )
     .await;
-    insert_assembly_job_chunk(&db.pool, job_a, &checksum).await;
-    insert_assembly_job_chunk(&db.pool, job_b, &checksum).await;
 
-    let config = create_test_config();
+    let config = crate::common::config();
     let store: std::sync::Arc<dyn rustrak::services::SourceMapStore> = std::sync::Arc::new(
         rustrak::services::LocalSourceMapStore::new(&config.sourcemap_storage_path),
     );
@@ -1749,10 +1375,6 @@ async fn test_assemble_bundle_keeps_chunk_owned_by_another_job() {
     assert_eq!(deleted, 0, "the last owner may release the chunk");
 }
 
-// =============================================================================
-// Group 5c: Bundle size limit — Cycle 4
-// =============================================================================
-
 #[actix_web::test]
 async fn test_assemble_bundle_rejects_oversized_bundle() {
     // When total assembled chunk bytes exceed max_bundle_size_bytes, assemble_bundle
@@ -1776,7 +1398,7 @@ async fn test_assemble_bundle_rejects_oversized_bundle() {
     let sha1_1 = sha1_hex(&chunk1);
     let sha1_2 = sha1_hex(&chunk2);
 
-    let config = create_test_config();
+    let config = crate::common::config();
     rustrak::services::sourcemap::store_chunks(
         &db.pool,
         vec![(sha1_1.clone(), chunk1), (sha1_2.clone(), chunk2)],
@@ -1818,10 +1440,6 @@ async fn test_assemble_bundle_rejects_oversized_bundle() {
     );
 }
 
-// =============================================================================
-// Group 5d: Postgres enum regression — only meaningful with --features postgres
-// =============================================================================
-
 // Guard: assembly_state ENUM in Postgres must be decodable as String.
 //
 // Regression: the first implementation of artifact_bundle_assemble used
@@ -1862,17 +1480,9 @@ async fn test_assemble_state_column_decodable_in_postgres() {
     .await
     .expect("store_chunks must succeed");
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/0/organizations/my-org/artifactbundle/assemble/")
@@ -1903,10 +1513,6 @@ async fn test_assemble_state_column_decodable_in_postgres() {
     );
 }
 
-// =============================================================================
-// Group 5e: chunkSize capability reflects config — Fix #2/#6
-// =============================================================================
-
 #[actix_web::test]
 async fn test_chunk_capability_chunk_size_reflects_config() {
     // Before fix: chunkSize is hardcoded to 2_097_152 regardless of config.
@@ -1914,18 +1520,9 @@ async fn test_chunk_capability_chunk_size_reflects_config() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
 
-    let mut config = create_test_config();
+    let mut config = crate::common::config();
     config.max_chunk_size_bytes = 5 * 1024 * 1024; // 5 MB
-
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/organizations/my-org/chunk-upload/")
@@ -1957,27 +1554,15 @@ async fn test_chunk_capability_chunk_size_reflects_config() {
     );
 }
 
-// =============================================================================
-// Group 5f: multipart total-size guard — Fix #7
-// =============================================================================
-
 #[actix_web::test]
 async fn test_chunk_upload_too_many_parts_returns_400() {
     // Before fix: no part-count guard — 65 parts are accepted.
     // After fix:  any request with more than 64 parts returns 400.
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let boundary = "toomanypartsboundary1";
     // 65 distinct parts (unique names so each is accepted as a separate part)
@@ -2019,18 +1604,9 @@ async fn test_chunk_upload_total_bytes_exceeded_returns_400() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
 
-    let mut config = create_test_config();
+    let mut config = crate::common::config();
     config.max_chunk_size_bytes = 10; // 10 bytes per chunk
-
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let boundary = "totalbytesexceed2";
     // 65 distinct 10-byte parts — total 650 bytes > limit 640 (64 × 10)
@@ -2061,10 +1637,6 @@ async fn test_chunk_upload_total_bytes_exceeded_returns_400() {
         resp.status()
     );
 }
-
-// =============================================================================
-// Group 5g: path traversal in manifest.json — Fix #11
-// =============================================================================
 
 fn build_traversal_bundle() -> Vec<u8> {
     use std::io::Write as _;
@@ -2124,7 +1696,7 @@ async fn test_assemble_bundle_manifest_path_traversal_rejected() {
     .await
     .expect("store_chunks must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
     let store: std::sync::Arc<dyn rustrak::services::SourceMapStore> = std::sync::Arc::new(
         rustrak::services::LocalSourceMapStore::new(&config.sourcemap_storage_path),
     );
@@ -2144,10 +1716,6 @@ async fn test_assemble_bundle_manifest_path_traversal_rejected() {
         "manifest path traversal must be rejected with an error; got Ok(())"
     );
 }
-
-// =============================================================================
-// Group 5h: ~/prefix path normalisation — Fix #1
-// =============================================================================
 
 fn build_tilde_bundle_with_debug_id() -> Vec<u8> {
     use std::io::Write as _;
@@ -2205,7 +1773,7 @@ async fn test_assemble_bundle_tilde_prefix_with_debug_id_stores_source_file() {
     .await
     .expect("store_chunks must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
     let store: std::sync::Arc<dyn rustrak::services::SourceMapStore> = std::sync::Arc::new(
         rustrak::services::LocalSourceMapStore::new(&config.sourcemap_storage_path),
     );
@@ -2273,7 +1841,7 @@ async fn test_assemble_bundle_reupload_same_debug_id_replaces_map() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
     let store: std::sync::Arc<dyn rustrak::services::SourceMapStore> = std::sync::Arc::new(
         rustrak::services::LocalSourceMapStore::new(&config.sourcemap_storage_path),
     );
@@ -2320,31 +1888,6 @@ async fn test_assemble_bundle_reupload_same_debug_id_replaces_map() {
     );
 }
 
-// =============================================================================
-// Group 6: Worker recovery — keep #[ignore = "requires worker"]
-// =============================================================================
-
-#[actix_web::test]
-#[ignore = "requires AssemblyWorker running in test context to reset stuck jobs"]
-async fn test_worker_restart_recovery_resets_stuck_assembling_jobs() {
-    // GIVEN: an assembly_jobs row with state='assembling', locked_until < NOW() (expired lock),
-    //        retry_count=0
-    // WHEN:  AssemblyWorker::run() starts (simulating server restart)
-    // THEN:  the startup recovery query resets the row to state='created', locked_until=NULL
-    //        AND the job is picked up in the next poll cycle
-    //
-    // Setup:
-    //   sqlx::query("INSERT INTO assembly_jobs(bundle_checksum, project_id, chunks, state, locked_until) ...")
-    //     .bind(checksum).bind(project_id).bind("[]").bind("assembling")
-    //     .bind(some_past_datetime)
-    //     .execute(&db.pool).await.unwrap();
-    //   // Start worker, wait one poll cycle
-    //   let job: AssemblyJob = sqlx::query_as("SELECT * FROM assembly_jobs WHERE ...").fetch_one(&pool).await.unwrap();
-    //   assert_eq!(job.state, "created");
-    //   assert!(job.locked_until.is_none());
-    todo!("enable once AssemblyWorker is injectable in tests")
-}
-
 #[actix_web::test]
 async fn test_worker_terminal_failure_releases_exclusive_chunks_only() {
     let db = TestDb::new().await;
@@ -2383,7 +1926,7 @@ async fn test_worker_terminal_failure_releases_exclusive_chunks_only() {
         &[shared_checksum.clone(), exclusive_checksum.clone()],
     )
     .await;
-    let other_job = insert_assembly_job_with_state_and_chunks(
+    insert_assembly_job_with_state_and_chunks(
         &db.pool,
         &exclusive_checksum,
         project.id,
@@ -2392,9 +1935,6 @@ async fn test_worker_terminal_failure_releases_exclusive_chunks_only() {
         std::slice::from_ref(&shared_checksum),
     )
     .await;
-    insert_assembly_job_chunk(&db.pool, job, &shared_checksum).await;
-    insert_assembly_job_chunk(&db.pool, job, &exclusive_checksum).await;
-    insert_assembly_job_chunk(&db.pool, other_job, &shared_checksum).await;
     sqlx::query("UPDATE assembly_jobs SET retry_count = max_retries - 1 WHERE id = $1")
         .bind(job)
         .execute(&db.pool)
@@ -2435,56 +1975,6 @@ async fn test_worker_terminal_failure_releases_exclusive_chunks_only() {
     }
 }
 
-// =============================================================================
-// Group 7: Digest integration — keep #[ignore = "requires worker"]
-// =============================================================================
-
-#[actix_web::test]
-#[ignore = "requires full digest pipeline with source map rewriting (T8)"]
-async fn test_digest_rewrites_frames_when_sourcemap_present() {
-    // GIVEN: source maps assembled and stored for project "test-proj"
-    //        AND a Sentry event arrives with debug_meta.images pointing to a known debug_id
-    //        AND the frame's (lineno, colno) maps to a known original position in the source map
-    // WHEN:  the digest worker processes the event
-    // THEN:  events.data has the frame rewritten:
-    //          - filename changed to the original source file
-    //          - lineno changed to the original 1-indexed line
-    //          - context_line is a non-empty string
-    todo!("enable after T8 digest integration is complete")
-}
-
-#[actix_web::test]
-#[ignore = "requires full digest pipeline to verify graceful no-op (T8, AC4)"]
-async fn test_digest_leaves_frame_unchanged_when_no_sourcemap() {
-    // GIVEN: no source maps stored for the project
-    //        AND a Sentry event with a frame that has debug_meta.images
-    // WHEN:  the digest worker processes the event
-    // THEN:  events.data has the frame with its original minified values
-    //        AND the digest completes without error (non-fatal frame rewriting)
-    todo!("enable after T8 digest integration is complete")
-}
-
-// =============================================================================
-// Group 8: Cross-project isolation — keep #[ignore = "requires worker"]
-// =============================================================================
-
-#[actix_web::test]
-#[ignore = "requires full digest pipeline with project-scoped source map isolation (T5 + T8, AC5)"]
-async fn test_cross_project_source_maps_do_not_leak() {
-    // GIVEN: source maps assembled for project A with debug_id X
-    //        AND a Sentry event from project B with the same debug_id X in debug_meta.images
-    // WHEN:  the digest worker processes project B's event
-    // THEN:  project B's frames are NOT rewritten (source_file_metadata scoped by project_id)
-    //        AND events.data for project B still has the original minified frame values
-    todo!("enable after T5 project_id scoping + T8 are complete")
-}
-
-// =============================================================================
-// Bug-fix regression tests (2026-05-25 PR review)
-// =============================================================================
-
-// --- Bug 1: chunk upload must validate field_name == computed SHA1 ---
-
 #[actix_web::test]
 async fn test_chunk_upload_mismatched_sha1_field_name_returns_400() {
     // GIVEN: a chunk upload where the field name is a valid SHA1 string
@@ -2493,17 +1983,9 @@ async fn test_chunk_upload_mismatched_sha1_field_name_returns_400() {
     // THEN:  400 Bad Request is returned (checksum mismatch)
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let real_data = b"the actual chunk bytes";
     let wrong_sha1 = sha1_hex(b"different data entirely"); // does not match real_data
@@ -2530,8 +2012,6 @@ async fn test_chunk_upload_mismatched_sha1_field_name_returns_400() {
     );
 }
 
-// --- Bug 2: ON CONFLICT assemble must update chunks column ---
-
 #[actix_web::test]
 async fn test_assemble_re_enqueue_error_job_updates_chunks() {
     // GIVEN: an assembly_jobs row in state='error' with an old chunk list
@@ -2553,14 +2033,17 @@ async fn test_assemble_re_enqueue_error_job_updates_chunks() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
+    let config = crate::common::config();
 
-    // Create the new chunk and store it
     let new_chunk: &[u8] = b"new corrected chunk data";
     let new_chunk_sha1 = sha1_hex(new_chunk);
+    let old_chunk_sha1 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
     rustrak::services::sourcemap::store_chunks(
         &db.pool,
-        vec![(new_chunk_sha1.clone(), new_chunk.to_vec())],
+        vec![
+            (new_chunk_sha1.clone(), new_chunk.to_vec()),
+            (old_chunk_sha1.clone(), b"old".to_vec()),
+        ],
         config.max_chunk_size_bytes,
     )
     .await
@@ -2569,7 +2052,6 @@ async fn test_assemble_re_enqueue_error_job_updates_chunks() {
     let bundle_checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     // Pre-insert a failed job with an OLD chunk list (the stale one)
-    let old_chunk_sha1 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
     insert_assembly_job_with_state_and_chunks(
         &db.pool,
         bundle_checksum,
@@ -2579,16 +2061,7 @@ async fn test_assemble_re_enqueue_error_job_updates_chunks() {
         std::slice::from_ref(&old_chunk_sha1),
     )
     .await;
-
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // Re-submit assemble with the NEW chunk list
     let req = test::TestRequest::post()
@@ -2614,7 +2087,6 @@ async fn test_assemble_re_enqueue_error_job_updates_chunks() {
         "re-enqueued job must be in created state"
     );
 
-    // Verify DB chunks column was updated to the NEW chunk list
     let stored_chunks = fetch_assembly_job_chunks(&db.pool, bundle_checksum, project.id).await;
     assert!(
         stored_chunks.contains(&new_chunk_sha1),
@@ -2627,8 +2099,6 @@ async fn test_assemble_re_enqueue_error_job_updates_chunks() {
         stored_chunks
     );
 }
-
-// --- Bug 5: assemble must accept numeric project ID, not just slug ---
 
 #[actix_web::test]
 async fn test_assemble_with_numeric_project_id_returns_not_found_or_created() {
@@ -2650,17 +2120,9 @@ async fn test_assemble_with_numeric_project_id_returns_not_found_or_created() {
     .await
     .expect("project creation must succeed");
 
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // Use the numeric project ID as a string in the projects array
     let req = test::TestRequest::post()
@@ -2691,10 +2153,6 @@ async fn test_assemble_with_numeric_project_id_returns_not_found_or_created() {
     assert_eq!(body["state"], "not_found");
 }
 
-// ---------------------------------------------------------------------------
-// New test helpers needed by the bug-fix tests above
-// ---------------------------------------------------------------------------
-
 async fn insert_assembly_job_with_state_and_chunks(
     pool: &rustrak::db::DbPool,
     checksum: &str,
@@ -2703,49 +2161,29 @@ async fn insert_assembly_job_with_state_and_chunks(
     detail: Option<&str>,
     chunks: &[String],
 ) -> i64 {
-    #[cfg(feature = "postgres")]
     let id: i64 = sqlx::query_scalar(
-        "INSERT INTO assembly_jobs(bundle_checksum, project_id, chunks, state, detail) \
-         VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        "INSERT INTO assembly_jobs(bundle_checksum, project_id, state, detail) \
+         VALUES ($1, $2, $3, $4) RETURNING id",
     )
     .bind(checksum)
     .bind(project_id)
-    .bind(chunks)
     .bind(state)
     .bind(detail)
     .fetch_one(pool)
     .await
     .expect("insert assembly_jobs must succeed");
-
-    #[cfg(not(feature = "postgres"))]
-    let id: i64 = {
-        let chunks_json = serde_json::to_string(chunks).expect("chunks serialization must succeed");
-        sqlx::query_scalar(
-            "INSERT INTO assembly_jobs(bundle_checksum, project_id, chunks, state, detail) \
-             VALUES (?, ?, ?, ?, ?) RETURNING id",
+    for (position, checksum) in chunks.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO assembly_job_chunks(job_id, position, checksum) VALUES ($1, $2, $3)",
         )
+        .bind(id)
+        .bind(position as i32)
         .bind(checksum)
-        .bind(project_id)
-        .bind(&chunks_json)
-        .bind(state)
-        .bind(detail)
-        .fetch_one(pool)
+        .execute(pool)
         .await
-        .expect("insert assembly_jobs must succeed")
-    };
-
+        .expect("insert assembly_job_chunks must succeed");
+    }
     id
-}
-
-async fn insert_assembly_job_chunk(pool: &rustrak::db::DbPool, job_id: i64, checksum: &str) {
-    sqlx::query(
-        "INSERT INTO assembly_job_chunks(job_id, checksum) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-    )
-    .bind(job_id)
-    .bind(checksum)
-    .execute(pool)
-    .await
-    .expect("insert assembly_job_chunks must succeed");
 }
 
 async fn fetch_assembly_job_chunks(
@@ -2753,29 +2191,98 @@ async fn fetch_assembly_job_chunks(
     checksum: &str,
     project_id: i32,
 ) -> Vec<String> {
-    #[cfg(feature = "postgres")]
-    {
-        let chunks: Vec<String> = sqlx::query_scalar(
-            "SELECT chunks FROM assembly_jobs WHERE bundle_checksum = $1 AND project_id = $2",
+    sqlx::query_scalar(
+        "SELECT r.checksum FROM assembly_job_chunks r \
+         JOIN assembly_jobs j ON j.id = r.job_id \
+         WHERE j.bundle_checksum = $1 AND j.project_id = $2 ORDER BY r.position",
+    )
+    .bind(checksum)
+    .bind(project_id)
+    .fetch_all(pool)
+    .await
+    .expect("fetch assembly job chunks must succeed")
+}
+
+/// Source map rows written before the migration (UUIDs as hyphenated text,
+/// the chunk list as JSON) read the same after it.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn the_migration_keeps_stored_maps_and_queued_chunk_lists() {
+    use sqlx::migrate::Migrator;
+    use std::borrow::Cow;
+
+    const VERSION: i64 = 20261110000000;
+    let dir = tempfile::tempdir().unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(dir.path().join("m.sqlite"))
+                .create_if_missing(true),
         )
-        .bind(checksum)
-        .bind(project_id)
-        .fetch_one(pool)
         .await
-        .expect("fetch assembly job chunks must succeed");
-        chunks
+        .unwrap();
+    let all = sqlx::migrate!("./migrations/sqlite");
+    let mut before = Migrator::new(std::path::Path::new("./migrations/sqlite"))
+        .await
+        .unwrap();
+    before.migrations = Cow::Owned(
+        all.migrations
+            .iter()
+            .filter(|m| m.version < VERSION)
+            .cloned()
+            .collect(),
+    );
+    before.run(&pool).await.unwrap();
+
+    let project = ProjectService::create(
+        &pool,
+        CreateProject {
+            name: "legacy".into(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    let debug_id = "8a8b8c8d-1111-2222-3333-444455556666";
+    let file_id = "0f0e0d0c-aaaa-bbbb-cccc-ddddeeeeffff";
+    let (a, b) = ("a".repeat(40), "b".repeat(40));
+    for statement in [
+        format!("INSERT INTO source_file(id, checksum, size, storage_path) VALUES ('{file_id}', '{a}', 3, '{a}')"),
+        format!(
+            "INSERT INTO source_file_metadata(id, project_id, debug_id, file_type, file_id) \
+             VALUES ('{}', {}, '{debug_id}', 'source_map', '{file_id}')",
+            Uuid::new_v4(),
+            project.id
+        ),
+        format!("INSERT INTO chunk(checksum, size, data) VALUES ('{a}', 1, x'61'), ('{b}', 1, x'62')"),
+        format!(
+            "INSERT INTO assembly_jobs(id, bundle_checksum, project_id, chunks) \
+             VALUES (7, '{}', {}, '[\"{a}\",\"{b}\",\"{a}\"]')",
+            "c".repeat(40),
+            project.id
+        ),
+        format!("INSERT INTO assembly_job_chunks(job_id, checksum) VALUES (7, '{a}'), (7, '{b}')"),
+    ] {
+        sqlx::query(sqlx::AssertSqlSafe(statement))
+            .execute(&pool)
+            .await
+            .unwrap();
     }
 
-    #[cfg(not(feature = "postgres"))]
-    {
-        let chunks_json: String = sqlx::query_scalar(
-            "SELECT chunks FROM assembly_jobs WHERE bundle_checksum = ? AND project_id = ?",
-        )
-        .bind(checksum)
-        .bind(project_id)
-        .fetch_one(pool)
+    all.run(&pool).await.unwrap();
+
+    let files = rustrak::services::sourcemap::list_files(&pool, project.id)
         .await
-        .expect("fetch assembly job chunks must succeed");
-        serde_json::from_str(&chunks_json).expect("chunks json must be valid")
-    }
+        .unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].debug_id, debug_id);
+    let chunks: Vec<String> = sqlx::query_scalar(
+        "SELECT checksum FROM assembly_job_chunks WHERE job_id = 7 ORDER BY position",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(chunks, [a.clone(), b, a]);
 }

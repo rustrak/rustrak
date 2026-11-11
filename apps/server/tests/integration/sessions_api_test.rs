@@ -9,6 +9,8 @@
 //!   - filters by project_id
 //!   - orders by total DESC
 
+use crate::common::create_test_project;
+use crate::common::create_test_token;
 use crate::common::TestDb;
 use chrono::Utc;
 use rustrak::db::DbPool;
@@ -118,27 +120,12 @@ async fn seed_user(
     .expect("seed_user failed");
 }
 
-/// Create a project and return its id.
-async fn create_project(pool: &DbPool, name: &str) -> i32 {
-    rustrak::services::ProjectService::create(
-        pool,
-        rustrak::models::CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("create_project failed")
-    .id
-}
-
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 #[actix_web::test]
 async fn test_release_health_empty_returns_empty() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Empty Project").await;
+    let project_id = create_test_project(&db.pool, "Empty Project").await.id;
 
     let (rows, _total) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
         .await
@@ -152,7 +139,7 @@ async fn test_release_health_sums_across_buckets() {
     // This is the primary regression test for the SUM(BIGINT)→NUMERIC issue.
     // Two buckets for the same release — totals must be summed, not returned as separate rows.
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Sum Project").await;
+    let project_id = create_test_project(&db.pool, "Sum Project").await.id;
 
     seed_count(&db.pool, project_id, "1.0.0", "production", 1, 100, 5, 3, 2).await;
     seed_count(
@@ -185,7 +172,7 @@ async fn test_release_health_sums_across_buckets() {
 #[actix_web::test]
 async fn test_release_health_healthy_is_total_minus_unhealthy() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Healthy Project").await;
+    let project_id = create_test_project(&db.pool, "Healthy Project").await.id;
 
     // total=100, errored=5, crashed=3, abnormal=2 → healthy=90
     seed_count(&db.pool, project_id, "2.0.0", "staging", 1, 100, 5, 3, 2).await;
@@ -204,7 +191,9 @@ async fn test_release_health_healthy_never_goes_negative() {
     // session twice. Sentry clamps healthy as max(0, init - errored_all);
     // crash_free_sessions_rate is left unclamped, as Sentry leaves it.
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Resent Crash Project").await;
+    let project_id = create_test_project(&db.pool, "Resent Crash Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "3.0.0", "production", 1, 1, 0, 2, 0).await;
 
@@ -220,7 +209,7 @@ async fn test_release_health_healthy_never_goes_negative() {
 #[actix_web::test]
 async fn test_release_health_excludes_buckets_outside_window() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Window Project").await;
+    let project_id = create_test_project(&db.pool, "Window Project").await.id;
 
     // 1h ago: inside 24h window
     seed_count(&db.pool, project_id, "3.0.0", "production", 1, 50, 0, 0, 0).await;
@@ -249,7 +238,7 @@ async fn test_release_health_excludes_buckets_outside_window() {
 #[actix_web::test]
 async fn test_release_health_no_period_returns_all_buckets() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "No Period Project").await;
+    let project_id = create_test_project(&db.pool, "No Period Project").await.id;
 
     // 1h ago
     seed_count(&db.pool, project_id, "4.0.0", "production", 1, 10, 0, 0, 0).await;
@@ -284,8 +273,8 @@ async fn test_release_health_no_period_returns_all_buckets() {
 #[actix_web::test]
 async fn test_release_health_excludes_other_projects() {
     let db = TestDb::new().await;
-    let project_a = create_project(&db.pool, "Project A").await;
-    let project_b = create_project(&db.pool, "Project B").await;
+    let project_a = create_test_project(&db.pool, "Project A").await.id;
+    let project_b = create_test_project(&db.pool, "Project B").await.id;
 
     seed_count(&db.pool, project_a, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_b, "1.0.0", "prod", 1, 999, 0, 0, 0).await;
@@ -304,7 +293,7 @@ async fn test_release_health_excludes_other_projects() {
 #[actix_web::test]
 async fn test_release_health_orders_by_total_desc() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Order Project").await;
+    let project_id = create_test_project(&db.pool, "Order Project").await.id;
 
     seed_count(&db.pool, project_id, "small", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "large", "prod", 1, 500, 0, 0, 0).await;
@@ -323,7 +312,7 @@ async fn test_release_health_orders_by_total_desc() {
 #[actix_web::test]
 async fn test_release_health_paginates_and_reports_total() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Paginated Project").await;
+    let project_id = create_test_project(&db.pool, "Paginated Project").await.id;
 
     seed_count(&db.pool, project_id, "small", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "large", "prod", 1, 500, 0, 0, 0).await;
@@ -356,7 +345,7 @@ async fn test_release_health_paginates_and_reports_total() {
 #[actix_web::test]
 async fn test_release_health_pagination_breaks_ties_deterministically() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Tie Project").await;
+    let project_id = create_test_project(&db.pool, "Tie Project").await.id;
 
     // Identical totals: without a tiebreaker the DB is free to order these
     // differently per query, which would let offset pagination skip or repeat.
@@ -379,7 +368,9 @@ async fn test_release_health_pagination_breaks_ties_deterministically() {
 #[actix_web::test]
 async fn test_release_health_extreme_page_yields_empty_page() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Overflow Page Project").await;
+    let project_id = create_test_project(&db.pool, "Overflow Page Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 0, 0).await;
 
@@ -399,7 +390,9 @@ async fn test_release_health_extreme_page_yields_empty_page() {
 #[actix_web::test]
 async fn test_release_health_for_release_reports_scoped_total() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Scoped Total Project").await;
+    let project_id = create_test_project(&db.pool, "Scoped Total Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "staging", 1, 40, 0, 0, 0).await;
@@ -418,7 +411,9 @@ async fn test_release_health_for_release_reports_scoped_total() {
 #[actix_web::test]
 async fn test_release_health_crash_free_sessions_rate() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "CFR Sessions Project").await;
+    let project_id = create_test_project(&db.pool, "CFR Sessions Project")
+        .await
+        .id;
 
     // 100 total, 10 crashed → crash_free_sessions_rate = 0.90
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 10, 0).await;
@@ -437,7 +432,9 @@ async fn test_release_health_crash_free_sessions_rate() {
 #[actix_web::test]
 async fn test_release_health_crash_free_sessions_rate_is_none_when_no_sessions() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Zero Sessions Project").await;
+    let project_id = create_test_project(&db.pool, "Zero Sessions Project")
+        .await
+        .id;
 
     // 0 total → rate must be None (CASE WHEN total > 0)
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 0, 0, 0, 0).await;
@@ -461,7 +458,7 @@ async fn test_release_health_crash_free_sessions_rate_is_none_when_no_sessions()
 #[actix_web::test]
 async fn test_release_health_crash_free_users_rate() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "CFR Users Project").await;
+    let project_id = create_test_project(&db.pool, "CFR Users Project").await.id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 10, 0, 2, 0).await;
 
@@ -488,7 +485,9 @@ async fn test_release_health_total_not_inflated_by_multiple_users() {
     // test_project_summary_total_not_inflated_by_multiple_users, but for the
     // per-release endpoint.
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Release Health No Inflation").await;
+    let project_id = create_test_project(&db.pool, "Release Health No Inflation")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 2, 50, 0, 0, 0).await;
@@ -518,7 +517,9 @@ async fn test_release_health_total_not_inflated_by_multiple_users() {
 #[actix_web::test]
 async fn test_release_health_for_release_filters_server_side() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Scoped Release Project").await;
+    let project_id = create_test_project(&db.pool, "Scoped Release Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "staging", 1, 40, 0, 0, 0).await;
@@ -548,7 +549,9 @@ async fn test_release_health_for_release_filters_server_side() {
 #[actix_web::test]
 async fn test_project_summary_empty_project_returns_zeros() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Empty Summary Project").await;
+    let project_id = create_test_project(&db.pool, "Empty Summary Project")
+        .await
+        .id;
 
     let summary = SessionService::project_summary(&db.pool, project_id, Some(24), Scope::default())
         .await
@@ -566,7 +569,9 @@ async fn test_project_summary_empty_project_returns_zeros() {
 #[actix_web::test]
 async fn test_project_summary_aggregates_across_releases() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Multi Release").await;
+    let project_id = create_test_project(&db.pool, "Summary Multi Release")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 5, 10, 2).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 50, 1, 0, 0).await;
@@ -588,7 +593,9 @@ async fn test_project_summary_aggregates_across_releases() {
 #[actix_web::test]
 async fn test_project_summary_excludes_buckets_outside_window() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Window Project").await;
+    let project_id = create_test_project(&db.pool, "Summary Window Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 50, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 48, 9999, 0, 0, 0).await;
@@ -603,7 +610,9 @@ async fn test_project_summary_excludes_buckets_outside_window() {
 #[actix_web::test]
 async fn test_project_summary_crash_free_rates() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary CFR Project").await;
+    let project_id = create_test_project(&db.pool, "Summary CFR Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 10, 0).await;
     seed_user(&db.pool, project_id, "1.0.0", "prod", "user-1", false).await;
@@ -637,7 +646,9 @@ async fn test_project_summary_total_not_inflated_by_multiple_users() {
     // session_counts row gets duplicated once per matching session_users row,
     // multiplying SUM(total) by the user count instead of leaving it correct.
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary No Inflation Project").await;
+    let project_id = create_test_project(&db.pool, "Summary No Inflation Project")
+        .await
+        .id;
 
     // 2 count buckets (total 100 + 50 = 150) and 5 distinct users for the same
     // release/environment. A many-to-many join would multiply total by 5.
@@ -668,7 +679,9 @@ async fn test_project_summary_total_not_inflated_by_multiple_users() {
 #[actix_web::test]
 async fn test_project_summary_active_releases_excludes_zero_total_releases() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Active Releases").await;
+    let project_id = create_test_project(&db.pool, "Summary Active Releases")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "0.9.0-empty", "prod", 1, 0, 0, 0, 0).await;
@@ -686,8 +699,8 @@ async fn test_project_summary_active_releases_excludes_zero_total_releases() {
 #[actix_web::test]
 async fn test_project_summary_excludes_other_projects() {
     let db = TestDb::new().await;
-    let project_a = create_project(&db.pool, "Summary Project A").await;
-    let project_b = create_project(&db.pool, "Summary Project B").await;
+    let project_a = create_test_project(&db.pool, "Summary Project A").await.id;
+    let project_b = create_test_project(&db.pool, "Summary Project B").await.id;
 
     seed_count(&db.pool, project_a, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_b, "1.0.0", "prod", 1, 999, 0, 0, 0).await;
@@ -708,7 +721,9 @@ async fn test_project_summary_excludes_other_projects() {
 #[actix_web::test]
 async fn test_session_timeseries_empty_project_returns_empty() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Empty Timeseries Project").await;
+    let project_id = create_test_project(&db.pool, "Empty Timeseries Project")
+        .await
+        .id;
 
     let points =
         SessionService::session_timeseries(&db.pool, project_id, Some(24), 1, Scope::default())
@@ -721,7 +736,9 @@ async fn test_session_timeseries_empty_project_returns_empty() {
 #[actix_web::test]
 async fn test_session_timeseries_aggregates_across_releases_in_same_bucket() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Timeseries Agg Project").await;
+    let project_id = create_test_project(&db.pool, "Timeseries Agg Project")
+        .await
+        .id;
 
     // Both 1h ago, same hourly bucket, different releases — must be summed together.
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 5, 10, 2).await;
@@ -744,7 +761,9 @@ async fn test_session_timeseries_aggregates_across_releases_in_same_bucket() {
 #[actix_web::test]
 async fn test_session_timeseries_separates_buckets_outside_interval() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Timeseries Interval Project").await;
+    let project_id = create_test_project(&db.pool, "Timeseries Interval Project")
+        .await
+        .id;
 
     // 1h ago and 5h ago: with interval_hours=1 these fall in different hourly buckets.
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 0, 0).await;
@@ -765,7 +784,9 @@ async fn test_session_timeseries_separates_buckets_outside_interval() {
 #[actix_web::test]
 async fn test_session_timeseries_excludes_buckets_outside_window() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Timeseries Window Project").await;
+    let project_id = create_test_project(&db.pool, "Timeseries Window Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 50, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 48, 9999, 0, 0, 0).await;
@@ -785,7 +806,9 @@ async fn test_session_timeseries_excludes_buckets_outside_window() {
 #[actix_web::test]
 async fn test_session_timeseries_ordered_chronologically() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Timeseries Order Project").await;
+    let project_id = create_test_project(&db.pool, "Timeseries Order Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "prod", 5, 20, 0, 0, 0).await;
@@ -812,7 +835,9 @@ async fn test_session_timeseries_bucket_values_are_parsed_correctly() {
     // — the ordering-only test above can't catch that because "all buckets are
     // ~now" still happens to be non-decreasing.
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Timeseries Value Project").await;
+    let project_id = create_test_project(&db.pool, "Timeseries Value Project")
+        .await
+        .id;
 
     let before = Utc::now();
     seed_count(&db.pool, project_id, "1.0.0", "prod", 10, 30, 0, 0, 0).await;
@@ -842,7 +867,9 @@ async fn test_session_timeseries_bucket_values_are_parsed_correctly() {
 #[actix_web::test]
 async fn test_session_timeseries_crash_free_rate() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Timeseries CFR Project").await;
+    let project_id = create_test_project(&db.pool, "Timeseries CFR Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 0, 10, 0).await;
 
@@ -861,8 +888,12 @@ async fn test_session_timeseries_crash_free_rate() {
 #[actix_web::test]
 async fn test_session_timeseries_excludes_other_projects() {
     let db = TestDb::new().await;
-    let project_a = create_project(&db.pool, "Timeseries Project A").await;
-    let project_b = create_project(&db.pool, "Timeseries Project B").await;
+    let project_a = create_test_project(&db.pool, "Timeseries Project A")
+        .await
+        .id;
+    let project_b = create_test_project(&db.pool, "Timeseries Project B")
+        .await
+        .id;
 
     seed_count(&db.pool, project_a, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
     seed_count(&db.pool, project_b, "1.0.0", "prod", 1, 999, 0, 0, 0).await;
@@ -879,7 +910,9 @@ async fn test_session_timeseries_excludes_other_projects() {
 #[actix_web::test]
 async fn test_release_health_multiple_releases_independent() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Multi Release Project").await;
+    let project_id = create_test_project(&db.pool, "Multi Release Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 100, 5, 10, 2).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 50, 1, 0, 0).await;
@@ -901,39 +934,21 @@ async fn test_release_health_multiple_releases_independent() {
 
 // ── route-level tests ────────────────────────────────────────────────────────
 
-/// Minimal app wiring for the sessions routes. Bearer auth needs a real token,
-/// so the caller creates one from the same pool.
-async fn create_test_token(pool: &DbPool) -> String {
-    rustrak::services::AuthTokenService::create(
-        pool,
-        rustrak::models::CreateAuthToken {
-            description: Some("Test token".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("Failed to create test token")
-    .token
-}
-
 #[actix_web::test]
 async fn test_get_stats_returns_paginated_envelope() {
-    use actix_web::{test, web, App};
+    use actix_web::test;
 
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let project_id = create_project(&db.pool, "Stats Route Project").await;
+    let project_id = create_test_project(&db.pool, "Stats Route Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 300, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "2.0.0", "prod", 1, 200, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "3.0.0", "prod", 1, 100, 0, 0, 0).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .configure(rustrak::routes::sessions::configure),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -958,20 +973,17 @@ async fn test_get_stats_returns_paginated_envelope() {
 
 #[actix_web::test]
 async fn test_get_stats_defaults_to_first_page() {
-    use actix_web::{test, web, App};
+    use actix_web::test;
 
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let project_id = create_project(&db.pool, "Stats Default Page Project").await;
+    let project_id = create_test_project(&db.pool, "Stats Default Page Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "prod", 1, 10, 0, 0, 0).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .configure(rustrak::routes::sessions::configure),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{project_id}/sessions/stats"))
@@ -992,7 +1004,9 @@ async fn test_get_stats_defaults_to_first_page() {
 #[actix_web::test]
 async fn test_project_summary_counts_only_the_asked_environment() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Env Project").await;
+    let project_id = create_test_project(&db.pool, "Summary Env Project")
+        .await
+        .id;
 
     seed_count(
         &db.pool,
@@ -1027,7 +1041,9 @@ async fn test_project_summary_counts_only_the_asked_environment() {
 #[actix_web::test]
 async fn test_session_timeseries_counts_only_the_asked_environment() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Timeseries Env Project").await;
+    let project_id = create_test_project(&db.pool, "Timeseries Env Project")
+        .await
+        .id;
 
     seed_count(&db.pool, project_id, "1.0.0", "production", 1, 100, 0, 0, 0).await;
     seed_count(&db.pool, project_id, "1.0.0", "staging", 1, 40, 0, 0, 0).await;
@@ -1048,7 +1064,9 @@ async fn test_session_timeseries_counts_only_the_asked_environment() {
 #[actix_web::test]
 async fn test_project_summary_counts_only_the_asked_release() {
     let db = TestDb::new().await;
-    let project_id = create_project(&db.pool, "Summary Release Project").await;
+    let project_id = create_test_project(&db.pool, "Summary Release Project")
+        .await
+        .id;
 
     seed_count(
         &db.pool,

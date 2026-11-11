@@ -1,8 +1,8 @@
 //! Unit tests for the AI Agent Monitoring aggregation queries
-//! (story-ai-agent-monitoring.md, GH #180) — powers the 7 dashboard widgets.
+//! — powers the 7 dashboard widgets.
 
 use chrono::Utc;
-use rustrak::digest::processors::{Processor, ProcessorCtx, SpanProcessor};
+use rustrak::digest::processors::{ProcessorCtx, SpanProcessor};
 use rustrak::models::CreateProject;
 use rustrak::services::span::{SpanFilters, SpanService};
 use rustrak::services::ProjectService;
@@ -29,10 +29,6 @@ async fn store_span(pool: &rustrak::db::DbPool, project_id: i32, payload: serde_
         .await
         .unwrap();
 }
-
-// =============================================================================
-// SpanFilters::operation_type
-// =============================================================================
 
 #[tokio::test]
 async fn test_list_spans_filters_by_operation_type() {
@@ -80,10 +76,6 @@ async fn test_list_spans_filters_by_operation_type() {
     assert_eq!(total, 1);
     assert_eq!(list[0].span_id.as_deref(), Some("aaaaaaaaaaaaaaaa"));
 }
-
-// =============================================================================
-// Breakdown widgets: LLM Calls by Model / Tokens Used by Model / Tool Calls by Tool
-// =============================================================================
 
 #[tokio::test]
 async fn test_llm_calls_by_model_counts_and_orders_by_frequency() {
@@ -242,10 +234,6 @@ async fn test_tool_calls_by_tool_counts() {
     assert_eq!(rows[0].value, 2.0);
 }
 
-// =============================================================================
-// Time-series widgets: Agent Runs / Duration avg+p95
-// =============================================================================
-
 #[tokio::test]
 async fn test_agent_runs_timeseries_counts_agent_spans() {
     let db = TestDb::new().await;
@@ -337,10 +325,6 @@ async fn test_agent_duration_timeseries_computes_avg_and_p95() {
         "avg of 100/200/300ms must be ~200ms, got {avg}"
     );
 }
-
-// =============================================================================
-// Traces table
-// =============================================================================
 
 #[tokio::test]
 async fn test_agent_traces_aggregates_per_trace_id() {

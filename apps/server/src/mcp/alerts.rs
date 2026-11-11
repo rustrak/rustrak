@@ -3,46 +3,21 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use super::{args, reply, NoArgs, ProjectArgs, RustrakMcp};
+use super::{reply, NoArgs, ProjectArgs, RustrakMcp};
+use crate::models::{CreateAlertIntegration, UpdateAlertIntegration};
 use crate::routes::alerts;
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct CreateChannelArgs {
-    /// Channel name, unique
-    name: String,
-    /// Provider: slack, email, webhook or custom_webhook
-    provider_type: String,
-    /// Provider-specific credentials
-    credentials: serde_json::Map<String, serde_json::Value>,
-    /// Whether alerts are delivered to it (default true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    is_enabled: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct UpdateChannelArgs {
     /// Alert channel ID
     channel_id: i32,
-    /// New name
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    /// Replacement credentials
-    #[serde(skip_serializing_if = "Option::is_none")]
-    credentials: Option<serde_json::Map<String, serde_json::Value>>,
-    /// Enable or disable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    is_enabled: Option<bool>,
+    #[serde(flatten)]
+    changes: UpdateAlertIntegration,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct TemplateArgs {
-    /// JSON body with {{ field }} expressions
-    template: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ChannelArgs {
     /// Alert channel ID to test
     channel_id: i32,
@@ -64,10 +39,10 @@ impl RustrakMcp {
     )]
     async fn create_alert_channel(
         &self,
-        Parameters(a): Parameters<CreateChannelArgs>,
+        Parameters(a): Parameters<CreateAlertIntegration>,
     ) -> CallToolResult {
         reply(async {
-            alerts::create_channel(self.pool(), self.actor(), web::Json(args(&a)?)).await
+            alerts::create_channel(self.pool(), self.config(), self.actor(), web::Json(a)).await
         })
         .await
     }
@@ -83,9 +58,10 @@ impl RustrakMcp {
         reply(async {
             alerts::update_channel(
                 self.pool(),
+                self.config(),
                 self.actor(),
                 web::Path::from(a.channel_id),
-                web::Json(args(&a)?),
+                web::Json(a.changes),
             )
             .await
         })
@@ -98,9 +74,9 @@ impl RustrakMcp {
     )]
     async fn preview_alert_template(
         &self,
-        Parameters(a): Parameters<TemplateArgs>,
+        Parameters(a): Parameters<alerts::PreviewTemplateBody>,
     ) -> CallToolResult {
-        reply(async { alerts::preview_template(self.actor(), web::Json(args(&a)?)).await }).await
+        reply(alerts::preview_template(self.actor(), web::Json(a))).await
     }
 
     #[tool(
@@ -110,6 +86,7 @@ impl RustrakMcp {
     async fn test_alert_channel(&self, Parameters(a): Parameters<ChannelArgs>) -> CallToolResult {
         reply(alerts::test_channel(
             self.pool(),
+            self.config(),
             self.actor(),
             web::Path::from(a.channel_id),
             None,

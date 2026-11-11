@@ -18,6 +18,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
   "include": ["src", ".storybook/**/*", "*.config.ts"],

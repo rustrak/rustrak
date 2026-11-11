@@ -33,18 +33,6 @@ export default defineConfig({
         },
       },
     ],
-    coverage: {
-      provider: 'v8',
-      include: ['src/**/*.{ts,tsx}'],
-      exclude: [
-        'src/**/*.stories.tsx',
-        'src/**/*.test.ts',
-        'src/index.ts',
-        // The blocks the documentation pages are written with. They ship no
-        // behaviour and they are exercised every time a docs page renders.
-        'src/docs/**',
-      ],
-    },
     root: dirname,
   },
 });

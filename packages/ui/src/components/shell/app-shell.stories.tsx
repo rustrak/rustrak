@@ -91,9 +91,12 @@ const GROUPS = [
 function ShellSidebar({ active }: { active: string }) {
   return (
     <Sidebar
+      aria-label="Main navigation"
       header={
         <>
           <SidebarBrand
+            collapseLabel="Collapse sidebar"
+            expandLabel="Expand sidebar"
             render={<a href="#home" />}
             switcher={
               <SidebarProject
@@ -119,6 +122,7 @@ function ShellSidebar({ active }: { active: string }) {
             render={<a href="#docs" />}
           />
           <SidebarUser
+            label="Account: Mara Kovač"
             name="Mara Kovač"
             detail="Admin"
             email="mara@acme.dev"
@@ -180,7 +184,15 @@ function Frame({
       defaultCollapsed={defaultCollapsed}
       sidebar={<ShellSidebar active={active} />}
     >
-      <Topbar menu={<TopbarMenuButton />} actions={actions}>
+      <Topbar
+        menu={
+          <TopbarMenuButton
+            openLabel="Open navigation"
+            closeLabel="Close navigation"
+          />
+        }
+        actions={actions}
+      >
         <Breadcrumbs
           items={[
             {
@@ -534,9 +546,14 @@ function ScopeSidebar() {
     <AppShell
       sidebar={
         <Sidebar
+          aria-label="Main navigation"
           header={
             <>
-              <SidebarBrand render={<a href="#home" />} />
+              <SidebarBrand
+                collapseLabel="Collapse sidebar"
+                expandLabel="Expand sidebar"
+                render={<a href="#home" />}
+              />
               <Menu
                 trigger={
                   <SidebarProject

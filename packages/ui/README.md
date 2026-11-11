@@ -4,7 +4,8 @@ The design system behind the Rustrak dashboard: pure grey, Inter, lime for the
 one thing on the screen that is the point, and colour otherwise reserved for
 severity.
 
-Nothing imports it yet. It is developed and reviewed in Storybook.
+`apps/dashboard` and `apps/docs` import it. It is developed and reviewed in
+Storybook.
 
 ```bash
 pnpm storybook   -w @rustrak/ui   # http://localhost:6008
@@ -227,10 +228,9 @@ optional hatched missing-instrumentation rows, and a roving-tabindex tree
 for the keyboard. Colour by kind — db / internal / http — plus the error as
 the page's only red.
 
-**Overlays** · `ToastProvider`/`useToast` (a stacked corner notice: tones
-with their own lifetimes, actions, progress, `promise`), `Dialog` with its
-`Header`/`Body`/`Footer`, `createDialog`/`DialogProvider` (modals opened by
-calling and awaited), and `confirm`/`alert` on top.
+**Overlays** · `Dialog` with its `Header`/`Body`/`Footer`,
+`createDialog`/`DialogProvider` (modals opened by calling and awaited), and
+`confirm`/`alert` on top.
 
 **Data** · the table family — `useDataTable` (TanStack Table v9, fully manual)
 with `DataTable`, `DataTablePagination`, `DataTableColumnsButton`, the
@@ -333,15 +333,16 @@ lime for selection and links. The docs pages get the same theme through
 
 Two things are worth knowing about it.
 
-**The values are duplicated, and they have to be.** The manager is a separate
-bundle from the preview: it never loads the stories' stylesheet, so it cannot
-read a CSS custom property. Every line in `theme.ts` names the token it is
-copying, so a palette change has one obvious second place to go.
+**The values come from the tokens.** The manager is a separate bundle from
+the preview: it never loads the stories' stylesheet, so it cannot read a CSS
+custom property. `.storybook/main.ts` resolves the tokens it needs from
+`styles/tokens.css` in Node and hands them to the manager in its head, so a
+palette change has no second place to go.
 
 **The mark is lime here and white in the product.** Deliberate: this is the
 workshop, not the application, and the lime mark makes the tab findable in a row
-of twenty. `.storybook/public/rustrak-wordmark.svg` is generated from the same
-paths as `components/brand/wordmark.tsx`.
+of twenty. `.storybook/public/rustrak-wordmark.svg` is a hand copy of the paths
+in `components/brand/wordmark.tsx`.
 
 `.storybook/manager-head.html` carries the handful of things `create()` cannot
 reach — the mark's size, the small-caps section headings. It is the only part of

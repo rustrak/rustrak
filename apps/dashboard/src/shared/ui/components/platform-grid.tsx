@@ -101,7 +101,7 @@ export function PlatformGrid({
                   : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
               )}
             >
-              {c.name}
+              {t(`categories.${c.id}`)}
             </button>
           ))}
         </div>

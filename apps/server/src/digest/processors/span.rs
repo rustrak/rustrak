@@ -1,5 +1,6 @@
-use super::{clamp, clamp_opt, extract_timestamp, is_stale, Processor, ProcessorCtx};
+use super::ProcessorCtx;
 use crate::error::{AppError, AppResult};
+use crate::protocol::{clamp_opt, extract_timestamp, is_stale};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -29,6 +30,58 @@ pub(crate) struct SpanRow {
     pub environment: Option<String>,
     pub tags: Option<serde_json::Value>,
     pub data: serde_json::Value,
+}
+
+impl SpanRow {
+    /// The row of one span object, from its own fields only: a producer that
+    /// knows more (a transaction's id, trace and scope) sets it afterwards.
+    pub(crate) fn from_span(mut span: serde_json::Value) -> Self {
+        let start_timestamp = extract_timestamp(&span, "start_timestamp");
+        let timestamp = extract_timestamp(&span, "timestamp");
+        let duration_ms = match (start_timestamp, timestamp) {
+            (Some(st), Some(ts)) => (ts - st)
+                .num_microseconds()
+                .map(|us| (us as f64 / 1000.0).max(0.0)),
+            _ => None,
+        };
+        // Relay's span `op` max_chars is 128.
+        let op = text(&span, "op", 128);
+        // gen_ai.* normalization + cost, on the span's own `data` attributes
+        // bag. Mutates it in place, so it runs before `span` moves into `data`.
+        let gen_ai = match span.get_mut("data") {
+            Some(span_data) => extract_gen_ai_columns(span_data, op.as_deref()),
+            None => GenAiColumns::default(),
+        };
+        Self {
+            transaction_id: None,
+            span_id: text(&span, "span_id", 32),
+            trace_id: text(&span, "trace_id", 64),
+            start_timestamp,
+            timestamp,
+            duration_ms,
+            // Relay's exclusive_time is already in milliseconds.
+            exclusive_time_ms: span.get("exclusive_time").and_then(|v| v.as_f64()),
+            op,
+            gen_ai,
+            parent_span_id: text(&span, "parent_span_id", 32),
+            description: span
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            status: text(&span, "status", 32),
+            segment_id: text(&span, "segment_id", 32),
+            is_segment: span
+                .get("is_segment")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            platform: text(&span, "platform", 64),
+            release: text(&span, "release", 200),
+            environment: text(&span, "environment", 64),
+            // The spec promises an object; anything else is dropped.
+            tags: span.get("tags").filter(|t| t.is_object()).cloned(),
+            data: span,
+        }
+    }
 }
 
 /// Rows per INSERT. A span is 31 binds, so 256 stays well under both SQLite's
@@ -125,7 +178,7 @@ pub(crate) async fn insert_span_rows(
 }
 
 /// A string field cut to its VARCHAR column, which Postgres enforces.
-fn text(data: &serde_json::Value, key: &str, max_chars: usize) -> Option<String> {
+pub(crate) fn text(data: &serde_json::Value, key: &str, max_chars: usize) -> Option<String> {
     clamp_opt(
         data.get(key).and_then(|v| v.as_str()).map(str::to_string),
         max_chars,
@@ -139,23 +192,20 @@ impl SpanProcessor {
     /// Parses and validates one standalone span payload (Relay's legacy
     /// "span" schema — one flat span object per envelope item).
     fn parse_item(work: &[u8]) -> AppResult<SpanRow> {
-        let mut data: serde_json::Value = serde_json::from_slice(work)
+        let data: serde_json::Value = serde_json::from_slice(work)
             .map_err(|e| AppError::Validation(format!("Invalid span JSON: {e}")))?;
 
         // span_id and trace_id are required for a standalone span to be
         // accepted.
-        let span_id = data
-            .get("span_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|s| clamp(s, 32))
-            .ok_or_else(|| AppError::Validation("span missing span_id".to_string()))?;
-        let trace_id = data
-            .get("trace_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|s| clamp(s, 64))
-            .ok_or_else(|| AppError::Validation("span missing trace_id".to_string()))?;
+        for key in ["span_id", "trace_id"] {
+            if data
+                .get(key)
+                .and_then(|v| v.as_str())
+                .is_none_or(str::is_empty)
+            {
+                return Err(AppError::Validation(format!("span missing {key}")));
+            }
+        }
 
         // Relay's `TimestampProcessor` removes a span from before 1970.
         if is_stale(&data, "start_timestamp") || is_stale(&data, "timestamp") {
@@ -178,65 +228,7 @@ impl SpanProcessor {
             ));
         }
 
-        let duration_ms = (timestamp - start_timestamp)
-            .num_microseconds()
-            .map(|us| (us as f64 / 1000.0).max(0.0));
-        // Relay's exclusive_time is already in milliseconds.
-        let exclusive_time_ms = data.get("exclusive_time").and_then(|v| v.as_f64());
-
-        // Relay's span `op` max_chars is 128 too.
-        let op = text(&data, "op", 128);
-
-        // gen_ai.* normalization + cost, on the span's own `data` attributes
-        // bag. Mutates data["data"] in place, so must run before the other
-        // fields are read as borrows and before the final `data` bind below.
-        let gen_ai = match data.get_mut("data") {
-            Some(span_data) => extract_gen_ai_columns(span_data, op.as_deref()),
-            None => GenAiColumns::default(),
-        };
-
-        let parent_span_id = text(&data, "parent_span_id", 32);
-        let description = data
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-        let status = text(&data, "status", 32);
-        let segment_id = text(&data, "segment_id", 32);
-        let is_segment = data
-            .get("is_segment")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        // A standalone span has no parent transaction row to inherit these
-        // from, so it carries its own (or they stay NULL).
-        let platform = text(&data, "platform", 64);
-        let release = text(&data, "release", 200);
-        let environment = text(&data, "environment", 64);
-
-        // The spec promises an object; anything else is dropped.
-        let tags = data.get("tags").filter(|t| t.is_object()).cloned();
-
-        Ok(SpanRow {
-            transaction_id: None,
-            span_id: Some(span_id),
-            trace_id: Some(trace_id),
-            start_timestamp: Some(start_timestamp),
-            timestamp: Some(timestamp),
-            duration_ms,
-            exclusive_time_ms,
-            op,
-            gen_ai,
-            parent_span_id,
-            description,
-            status,
-            segment_id,
-            is_segment,
-            platform,
-            release,
-            environment,
-            tags,
-            data,
-        })
+        Ok(SpanRow::from_span(data))
     }
 
     /// Writes one chunk in one transaction.
@@ -270,14 +262,12 @@ impl SpanProcessor {
     }
 }
 
-impl Processor for SpanProcessor {
-    type Input = Bytes;
-
+impl SpanProcessor {
     /// Stores a standalone span payload into `spans` with
     /// `transaction_id = NULL`. Mirrors `TransactionProcessor::insert_span`'s
     /// column extraction so both producers write a consistent row shape.
     /// Single items share the batched write path.
-    async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
+    pub async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
         let item = Self::parse_item(&work)?;
         self.insert_all(ctx, vec![item]).await
     }

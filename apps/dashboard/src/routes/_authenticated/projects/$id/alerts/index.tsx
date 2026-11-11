@@ -28,7 +28,11 @@ import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { alertMutations } from '@/features/alert/api/mutations';
 import { alertQueries } from '@/features/alert/api/queries';
-import { alertHref, newAlertHref } from '@/features/alert/model/rule-summary';
+import {
+  alertHref,
+  channelsHref,
+  newAlertHref,
+} from '@/features/alert/model/rule-summary';
 import { HistoryTable } from '@/features/alert/ui/components/alert-history';
 import {
   AlertStarters,
@@ -41,6 +45,7 @@ import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 const VIEWS = ['rules', 'deliveries'] as const;
 const HISTORY = { limit: 100 };
@@ -57,8 +62,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/alerts/')({
   // The deliveries are read on both tabs: their own, and the failures counted
   // in the header of the rules tab.
   loader: ({ context: { queryClient }, params }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    const projectId = params.id;
     void queryClient.query(alertQueries.ruleList(projectId)).catch(noop);
     void queryClient.query(alertQueries.integrations()).catch(noop);
     void queryClient
@@ -70,13 +74,11 @@ export const Route = createFileRoute('/_authenticated/projects/$id/alerts/')({
 });
 
 /**
- * The lists used to fall back to `[]`, which drew "no alert rules yet" over
- * an outage and invited the admin to recreate rules that already exist, so
- * the page suspends on them. The deliveries arrive on their own.
+ * The page suspends on the rules and channels: an empty fallback would draw
+ * "no alert rules yet" over an outage. The deliveries arrive on their own.
  */
 function AlertsPage() {
-  const { id } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId } = Route.useParams();
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: rules } = useSuspenseQuery(alertQueries.ruleList(projectId));
   const { data: integrations } = useSuspenseQuery(alertQueries.integrations());
@@ -86,7 +88,6 @@ function AlertsPage() {
   );
 }
 
-/** The same screen, with the project's rules and channels still to come. */
 function AlertsLoading() {
   return (
     <PageLoading>
@@ -105,11 +106,17 @@ function AlertsScreen({
   integrations?: AlertIntegration[];
 }) {
   const t = useTranslations('alerts');
-  const { id } = Route.useParams();
+  const toastFailure = useToastFailure();
+  const { id: projectId } = Route.useParams();
   const { view = 'rules' } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(id, 10);
-  const history = useQuery(alertQueries.history(projectId, HISTORY));
+  // The skeleton reads nothing: an observer that unmounts mid-flight cancels
+  // the loader's request, and the page would ask again.
+  const history = useQuery({
+    ...alertQueries.history(projectId, HISTORY),
+    enabled: !!project,
+    subscribed: !!project,
+  });
   const update = useMutation(alertMutations.updateRule(projectId));
   const permissions = usePermissionsLater();
   const canCreate = permissions.can('alert-rules', 'create', projectId);
@@ -122,16 +129,12 @@ function AlertsScreen({
   const failed = (history.data ?? []).filter(
     (h) => h.status === 'failed',
   ).length;
-  const channelsHref = `/settings/integrations?projectId=${projectId}`;
 
   const toggle = (rule: AlertRuleResponse, enabled: boolean) =>
     update.mutate(
       { ruleId: rule.id, body: { is_enabled: enabled } },
       {
-        onError: (error) =>
-          toast.error(t('ruleDialog.saveFailed'), {
-            description: error.error.message,
-          }),
+        onError: (error) => toastFailure(t('ruleDialog.saveFailed'), error),
         onSuccess: () =>
           toast.success(t(enabled ? 'list.resumed' : 'list.pausedToast')),
       },
@@ -160,7 +163,10 @@ function AlertsScreen({
         actions={
           <div className="flex items-center gap-2">
             {canManageChannels ? (
-              <ChannelsButton href={channelsHref} integrations={integrations} />
+              <ChannelsButton
+                href={channelsHref(projectId)}
+                integrations={integrations}
+              />
             ) : null}
             <NewAlertButton projectId={projectId} canCreate={canCreate} />
           </div>
@@ -187,7 +193,7 @@ function AlertsScreen({
       />
       <Page scroll={view === 'rules' && rules?.length === 0}>
         {integrations?.length === 0 && canManageChannels ? (
-          <NoChannels href={channelsHref} />
+          <NoChannels href={channelsHref(projectId)} />
         ) : null}
         {view === 'deliveries' ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel">

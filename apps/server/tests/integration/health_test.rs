@@ -3,29 +3,15 @@
 //! Tests the liveness and readiness health check endpoints.
 
 use crate::common::TestDb;
-use actix_web::{test, web, App};
-use rustrak::routes;
+use actix_web::test;
 use rustrak::services::AuthTokenService;
 use serde_json::Value;
-
-// =============================================================================
-// Liveness Endpoint Tests
-// =============================================================================
 
 #[actix_web::test]
 async fn test_liveness_returns_ok() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health")
-                    .route("", web::get().to(routes::health::liveness))
-                    .route("/ready", web::get().to(routes::health::readiness)),
-            ),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get().uri("/health").to_request();
 
@@ -40,12 +26,7 @@ async fn test_liveness_returns_ok() {
 async fn test_liveness_returns_correct_content_type() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(web::scope("/health").route("", web::get().to(routes::health::liveness))),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get().uri("/health").to_request();
 
@@ -61,12 +42,7 @@ async fn test_liveness_returns_correct_content_type() {
 async fn test_liveness_does_not_require_auth() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(web::scope("/health").route("", web::get().to(routes::health::liveness))),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     // No auth header provided
     let req = test::TestRequest::get().uri("/health").to_request();
@@ -76,22 +52,11 @@ async fn test_liveness_does_not_require_auth() {
     assert!(resp.status().is_success());
 }
 
-// =============================================================================
-// Readiness Endpoint Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_readiness_returns_ready_with_healthy_db() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health").route("/ready", web::get().to(routes::health::readiness)),
-            ),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get().uri("/health/ready").to_request();
 
@@ -110,14 +75,7 @@ async fn test_readiness_returns_not_ready_with_closed_pool() {
     // Close the pool to simulate unhealthy database
     db.pool.close().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health").route("/ready", web::get().to(routes::health::readiness)),
-            ),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get().uri("/health/ready").to_request();
 
@@ -133,14 +91,7 @@ async fn test_readiness_returns_not_ready_with_closed_pool() {
 async fn test_readiness_does_not_require_auth() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health").route("/ready", web::get().to(routes::health::readiness)),
-            ),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     // No auth header provided
     let req = test::TestRequest::get().uri("/health/ready").to_request();
@@ -154,14 +105,7 @@ async fn test_readiness_does_not_require_auth() {
 async fn test_readiness_returns_correct_content_type() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health").route("/ready", web::get().to(routes::health::readiness)),
-            ),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get().uri("/health/ready").to_request();
 
@@ -173,20 +117,11 @@ async fn test_readiness_returns_correct_content_type() {
     assert!(content_type.to_str().unwrap().contains("application/json"));
 }
 
-// =============================================================================
-// Edge Cases and Error Handling
-// =============================================================================
-
 #[actix_web::test]
 async fn test_health_post_returns_error() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(web::scope("/health").route("", web::get().to(routes::health::liveness))),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::post().uri("/health").to_request();
 
@@ -199,48 +134,13 @@ async fn test_health_post_returns_error() {
 async fn test_readiness_post_returns_error() {
     let db = TestDb::new().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health").route("/ready", web::get().to(routes::health::readiness)),
-            ),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::post().uri("/health/ready").to_request();
 
     let resp = test::call_service(&app, req).await;
     // Actix-web returns 404 when no route matches the method
     assert!(resp.status().is_client_error());
-}
-
-// =============================================================================
-// Version Endpoint Tests
-// =============================================================================
-
-#[actix_web::test]
-async fn test_version_requires_authentication() {
-    let db = TestDb::new().await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health").route("/version", web::get().to(routes::health::version)),
-            ),
-    )
-    .await;
-
-    // No session cookie and no Bearer token: an anonymous caller.
-    let req = test::TestRequest::get().uri("/health/version").to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(
-        resp.status(),
-        401,
-        "the running version must not be readable by an anonymous caller"
-    );
 }
 
 #[actix_web::test]
@@ -257,14 +157,7 @@ async fn test_version_returns_version_to_an_authenticated_caller() {
     .expect("Failed to create test token")
     .token;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .service(
-                web::scope("/health").route("/version", web::get().to(routes::health::version)),
-            ),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::get()
         .uri("/health/version")

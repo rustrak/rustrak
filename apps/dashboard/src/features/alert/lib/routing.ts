@@ -27,13 +27,9 @@ export function getSlackMethod(integration: AlertIntegration): string {
 }
 
 /**
- * Everything one provider knows about routing, in one place.
- *
- * The three questions below used to be three `provider_type` chains in three
- * functions, which meant a new provider was three edits in three places and
- * nothing failed if only two of them happened. Keyed by `ProviderType`, a
- * provider added to the client is a type error here until it answers all
- * three.
+ * Everything one provider knows about routing, in one place. Keyed by
+ * `ProviderType`, so a provider added to the client is a type error here
+ * until it answers all three questions.
  */
 interface RoutingBehaviour {
   /** Which override inputs to render for this integration. */

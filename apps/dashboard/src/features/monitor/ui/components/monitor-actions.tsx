@@ -1,11 +1,8 @@
 import type { MonitorResponse } from '@rustrak/client';
 import {
   Button,
+  confirm,
   DeleteIcon,
-  Dialog,
-  DialogClose,
-  DialogFooter,
-  DialogHeader,
   EditIcon,
   Menu,
   MoreIcon,
@@ -13,14 +10,15 @@ import {
   NotificationIcon,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { monitorMutations } from '@/features/monitor/api/mutations';
-import { monitorHref } from '@/features/monitor/lib/href';
+import { editMonitorHref, monitorsHref } from '@/features/monitor/lib/href';
+import type { ApiError } from '@/shared/api/query';
 import { Link } from '@/shared/ui/components/link';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /**
  * Mute, the verb a failing monitor gets most, then edit, and delete behind
@@ -34,13 +32,11 @@ export function MonitorActions({
   monitor: MonitorResponse;
 }) {
   const t = useTranslations('crons');
+  const toastFailure = useToastFailure();
   const router = useRouter();
   const update = useMutation(monitorMutations.update(projectId));
   const del = useMutation(monitorMutations.delete(projectId, monitor.slug));
   const isPending = update.isPending || del.isPending;
-  const [confirming, setConfirming] = useState(false);
-  const base = `/projects/${projectId}/crons`;
-  const href = monitorHref(projectId, monitor.slug);
   const permissions = usePermissionsLater();
   const canUpdate = permissions.can('monitors', 'update', projectId);
   const canDelete = permissions.can('monitors', 'delete', projectId);
@@ -49,7 +45,7 @@ export function MonitorActions({
     update.mutate(
       { slug: monitor.slug, body: { is_muted: !monitor.is_muted } },
       {
-        onError: () => toast.error(t('actions.updateFailed')),
+        onError: (error) => toastFailure(t('actions.updateFailed'), error),
         onSuccess: () =>
           toast.success(
             t(monitor.is_muted ? 'actions.unmuted' : 'actions.muted'),
@@ -57,15 +53,23 @@ export function MonitorActions({
       },
     );
 
-  const remove = () =>
-    del.mutate(undefined, {
-      onError: () => toast.error(t('actions.deleteFailed')),
-      onSuccess: () => {
-        toast.success(t('actions.deleted'));
-        setConfirming(false);
-        router.push(base);
-      },
+  const remove = async () => {
+    const ok = await confirm({
+      title: t('actions.deleteTitle', { monitor: monitor.name }),
+      description: t('actions.deleteDescription'),
+      tone: 'danger',
+      confirmLabel: t('actions.confirmDelete'),
+      cancelLabel: t('actions.cancel'),
     });
+    if (!ok) return;
+    // Leave first: this page re-reading a deleted monitor can only 404, and
+    // unmounting would drop `mutate`'s callbacks with it.
+    router.push(monitorsHref(projectId));
+    await del.mutateAsync().then(
+      () => toast.success(t('actions.deleted')),
+      (error: ApiError) => toastFailure(t('actions.deleteFailed'), error),
+    );
+  };
 
   return (
     <div className="flex items-center gap-2">
@@ -78,7 +82,10 @@ export function MonitorActions({
           >
             {t(monitor.is_muted ? 'actions.unmute' : 'actions.mute')}
           </Button>
-          <Button icon={EditIcon} render={<Link href={`${href}/edit`} />}>
+          <Button
+            icon={EditIcon}
+            render={<Link href={editMonitorHref(projectId, monitor.slug)} />}
+          >
             {t('actions.edit')}
           </Button>
         </>
@@ -100,36 +107,11 @@ export function MonitorActions({
               label: t('actions.delete'),
               icon: DeleteIcon,
               tone: 'danger',
-              onSelect: () => setConfirming(true),
+              onSelect: remove,
             },
           ]}
         />
       ) : null}
-
-      <Dialog
-        alert
-        open={confirming}
-        onOpenChange={(open) => !open && !isPending && setConfirming(false)}
-      >
-        <DialogHeader
-          dismissible={false}
-          title={t('actions.deleteTitle', { monitor: monitor.name })}
-          description={t('actions.deleteDescription')}
-        />
-        <DialogFooter>
-          <DialogClose
-            disabled={isPending}
-            render={<Button variant="secondary">{t('actions.cancel')}</Button>}
-          />
-          <Button
-            variant="danger-primary"
-            onClick={remove}
-            disabled={isPending}
-          >
-            {isPending ? t('actions.deleting') : t('actions.confirmDelete')}
-          </Button>
-        </DialogFooter>
-      </Dialog>
     </div>
   );
 }

@@ -28,6 +28,8 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS builder
 ARG FEATURES
 COPY --from=planner /app/recipe.json recipe.json
+# The bundled SQLite's build flags (.cargo/config.toml) apply to the cook too.
+COPY .cargo .cargo
 RUN cargo chef cook --release --locked --no-default-features --features ${FEATURES} --recipe-path recipe.json
 
 # Build the application binary.

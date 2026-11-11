@@ -3,26 +3,18 @@ import type {
   CatalogResource,
   CreateAuthToken,
 } from '@rustrak/client';
-import {
-  Button,
-  Dialog,
-  DialogClose,
-  DialogFooter,
-  DialogHeader,
-  NewIcon,
-  TokensIcon,
-} from '@rustrak/ui';
+import { Button, confirm, NewIcon, TokensIcon } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { tokenMutations } from '@/features/token/api/mutations';
-import { copyToClipboard } from '@/shared/lib/clipboard';
 import {
   SettingSection,
   SettingsEmpty,
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { CreateTokenDialog } from './create-token-dialog';
 import { TokenRows } from './token-rows';
 
@@ -51,16 +43,12 @@ export function TokensList({
   projects,
 }: TokensListProps) {
   const t = useTranslations('tokens');
-  const commonT = useTranslations('common');
+  const toastFailure = useToastFailure();
   const creation = useMutation(tokenMutations.create());
   const removal = useMutation(tokenMutations.delete());
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   // The full value, shown once: the creation's answer, until it is closed.
   const newToken = creation.data?.token ?? null;
-
-  const [pendingDelete, setPendingDelete] = useState<AuthTokenResponse | null>(
-    null,
-  );
 
   const closeCreate = () => {
     setIsCreateOpen(false);
@@ -69,44 +57,33 @@ export function TokensList({
 
   const create = (input: CreateAuthToken) =>
     creation.mutate(input, {
-      onError: (error) =>
-        toast.error(t('toasts.createFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('toasts.createFailed'), error),
       onSuccess: () =>
         toast.success(t('toasts.created'), {
           description: t('toasts.createdHint'),
         }),
     });
 
-  const confirmDelete = () => {
-    if (!pendingDelete) return;
-    const id = pendingDelete.id;
-    setPendingDelete(null);
-    removal.mutate(id, {
-      onError: (error) =>
-        toast.error(t('toasts.deleteFailed'), {
-          description: error.error.message,
-        }),
+  const confirmDelete = async (token: AuthTokenResponse) => {
+    const ok = await confirm({
+      title: t('deleteDialog.title'),
+      description: t('deleteDialog.description'),
+      tone: 'danger',
+      confirmLabel: t('deleteDialog.confirm'),
+      cancelLabel: t('deleteDialog.cancel'),
+    });
+    if (!ok) return;
+    removal.mutate(token.id, {
+      onError: (error) => toastFailure(t('toasts.deleteFailed'), error),
       onSuccess: () => toast.success(t('toasts.deleted')),
     });
-  };
-
-  const copyNewToken = async () => {
-    if (!newToken) return false;
-    if (await copyToClipboard(newToken)) return true;
-
-    toast.info(commonT('clipboardUnavailable'), {
-      description: commonT('clipboardUnavailableHint'),
-    });
-    return false;
   };
 
   const rowProps = {
     tokens,
     isBusy: (token: AuthTokenResponse) =>
       removal.isPending && removal.variables === token.id,
-    onDelete: setPendingDelete,
+    onDelete: confirmDelete,
   };
 
   return (
@@ -125,7 +102,6 @@ export function TokensList({
               isPending={creation.isPending}
               onCreate={create}
               onDone={closeCreate}
-              onCopyToken={copyNewToken}
               catalog={catalog}
               projects={projects}
             />
@@ -155,35 +131,6 @@ export function TokensList({
       </SettingSection>
 
       {footer}
-
-      <Dialog
-        alert
-        open={pendingDelete !== null}
-        onOpenChange={(open) => !open && setPendingDelete(null)}
-      >
-        <DialogHeader
-          dismissible={false}
-          title={t('deleteDialog.title')}
-          description={t('deleteDialog.description')}
-        />
-        <DialogFooter>
-          <DialogClose
-            disabled={removal.isPending}
-            render={
-              <Button variant="secondary">{t('deleteDialog.cancel')}</Button>
-            }
-          />
-          <Button
-            variant="danger-primary"
-            onClick={confirmDelete}
-            disabled={removal.isPending}
-          >
-            {removal.isPending
-              ? t('deleteDialog.deleting')
-              : t('deleteDialog.confirm')}
-          </Button>
-        </DialogFooter>
-      </Dialog>
     </>
   );
 }

@@ -15,7 +15,6 @@ async fn test_bootstrap_creates_superuser_when_empty() {
     let result = bootstrap::create_superuser_if_needed(&db.pool, spec).await;
     assert!(result.is_ok());
 
-    // Verify user was created
     let user = UsersService::get_by_email(&db.pool, "admin@example.com")
         .await
         .unwrap()
@@ -30,7 +29,6 @@ async fn test_bootstrap_creates_superuser_when_empty() {
 async fn test_bootstrap_skips_when_users_exist() {
     let db = TestDb::new().await;
 
-    // Create an existing user
     let req = rustrak::models::CreateUserRequest {
         email: "existing@example.com".to_string(),
         password: "password123".to_string(),
@@ -119,7 +117,6 @@ async fn test_bootstrap_creates_admin_user() {
         .unwrap()
         .unwrap();
 
-    // Verify it's an admin user
     assert!(user.is_admin());
 }
 
@@ -141,7 +138,6 @@ async fn test_bootstrap_password_is_hashed() {
     assert_ne!(user.password_hash, "testpassword123");
     assert!(user.password_hash.starts_with("$argon2"));
 
-    // Verify password can be verified
     assert!(user.verify_password("testpassword123").unwrap());
 }
 

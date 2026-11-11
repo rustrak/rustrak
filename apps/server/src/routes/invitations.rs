@@ -1,21 +1,14 @@
 //! Invitation routes.
-//!
-//! - POST   /api/invitations                — create an invitation, optionally
-//!   emailing the invite link
-//! - GET    /api/invitations                — list invitations
-//! - GET    /api/invitations/email-status   — can invitation emails be sent?
-//! - POST   /api/invitations/{id}/resend    — email the invite link again
-//! - DELETE /api/invitations/{id}           — revoke a pending invitation
 
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
-use crate::models::{CreateInvitation, Invitation, InvitationResponse, Role};
+use crate::models::rbac::{Action, Resource};
+use crate::models::{CreateInvitation, Invitation, InvitationResponse, Role, UserRole};
 use crate::services::invitation_email::{EmailStatusResponse, InvitationMailer};
 use crate::services::{InvitationService, RoleService};
 
@@ -53,7 +46,7 @@ fn may_hold_token(actor: &ApiActor, roles: &[Role], invitation: &Invitation) -> 
     actor
         .access
         .can(Resource::Invitations, Action::Create, None)
-        && (invitation.role != "admin" || actor.is_owner())
+        && (UserRole::from_db(&invitation.role) != UserRole::Admin || actor.is_owner())
         && invitation.role_id.is_none_or(|id| {
             roles
                 .iter()
@@ -77,7 +70,7 @@ fn may_hold_token(actor: &ApiActor, roles: &[Role], invitation: &Invitation) -> 
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/invitations — create an invitation (needs `invitations:create`)
+/// Create an invitation (needs `invitations:create`)
 ///
 /// With `send_email: true` the invite link is also emailed. A failed send
 /// still creates the invitation, with `email_sent_at: null`, so its link can
@@ -93,23 +86,20 @@ pub async fn create_invitation(
     let inviter = actor.require_user()?;
     let input = body.into_inner();
     // An invitation hands out access: never beyond the inviter's own.
-    if input.role == "admin" && !actor.is_owner() {
+    if UserRole::from_db(&input.role) == UserRole::Admin && !actor.is_owner() {
         return Err(AppError::Forbidden(
             "Only an owner can invite an owner".to_string(),
         ));
     }
     if let Some(role_id) = input.role_id {
-        let role = RoleService::get(pool.get_ref(), role_id)
-            .await
-            .map_err(|_| {
-                AppError::Validation(format!("Unknown role {role_id}"))
-                    .with_field("role_id", FieldErrorCode::Invalid)
-            })?;
-        if !actor.access.covers(&role.grants(), input.project_id) {
-            return Err(AppError::Forbidden(
-                "You cannot grant permissions you do not hold".to_string(),
-            ));
-        }
+        RoleService::check_grantable(
+            pool.get_ref(),
+            &actor.access,
+            &[(role_id, input.project_id)],
+            &[],
+            "role_id",
+        )
+        .await?;
     }
     let mailer = if input.send_email {
         Some(
@@ -147,7 +137,7 @@ pub async fn create_invitation(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/invitations/email-status — whether invitation emails can be sent (needs `invitations:read`)
+/// Whether invitation emails can be sent (needs `invitations:read`)
 pub async fn email_status(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
@@ -177,7 +167,7 @@ pub async fn email_status(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/invitations/{id}/resend — email the invite link again (needs `invitations:create`)
+/// Email the invite link again (needs `invitations:create`)
 pub async fn resend_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -222,7 +212,7 @@ pub async fn resend_invitation(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/invitations — list invitations (needs `invitations:read`)
+/// List invitations (needs `invitations:read`)
 pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     actor.require(Resource::Invitations, Action::Read, None)?;
 
@@ -257,7 +247,7 @@ pub async fn list_invitations(pool: web::Data<DbPool>, actor: ApiActor) -> AppRe
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/invitations/{id} — revoke a pending invitation (needs `invitations:delete`)
+/// Revoke a pending invitation (needs `invitations:delete`)
 pub async fn revoke_invitation(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -288,7 +278,6 @@ pub async fn revoke_invitation(
 )]
 pub struct InvitationsApi;
 
-/// Configure invitation routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/invitations")

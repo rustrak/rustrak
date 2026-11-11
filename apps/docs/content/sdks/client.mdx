@@ -129,8 +129,8 @@ if (!result.success) {
 | `gone` | 410 | ❌ | The resource was retired |
 | `payload_too_large` | 413 | ❌ | Envelope ingestion only |
 | `rate_limited` | 429 | ✅ | Rate limit exceeded; carries `retryAfter?: number` |
-| `client_error` | other &lt; 500 | ❌ | Any sub-500 status no other member claims |
-| `server_error` | 500+ | ✅ | Any 5xx; the server's own message is discarded |
+| `client_error` | other &lt; 500 | 408 only | Any sub-500 status no other member claims |
+| `server_error` | 500+ | 500, 502, 503, 504 | Any 5xx; the server's own message is discarded |
 | `invalid_request` | n/a | ❌ | Your input failed a pre-flight check; never sent |
 | `network` | n/a | ✅ | DNS, connection refused, TLS, timeout, abort |
 | `invalid_response` | n/a | ❌ | A 2xx arrived with a body the schema rejects |
@@ -301,54 +301,53 @@ Every method, grouped as it hangs off the client.
 | `agents.duration({ path, query? })` | `GET /api/projects/{project_id}/agents/duration` | Time-bucketed avg/p95 duration for `agent`/`ai_client` spans. |
 | `agents.environments({ path })` | `GET /api/projects/{project_id}/agents/environments` | The options the environment filter offers, read from the data rather than hardcoded — an installation may name its environments anything. |
 | `agents.modelsCalls({ path, query? })` | `GET /api/projects/{project_id}/agents/models/calls` | Top models by LLM call count (`gen_ai.operation.type:ai_client`). |
-| `agents.modelsTable({ path, query? })` | `GET /api/projects/{project_id}/agents/models` |  |
+| `agents.modelsTable({ path, query? })` | `GET /api/projects/{project_id}/agents/models` | Lists the AI models a project's agents called, with requests, tokens and latency. |
 | `agents.modelsTokens({ path, query? })` | `GET /api/projects/{project_id}/agents/models/tokens` | Top models by total tokens used (`gen_ai.operation.type:ai_client`). |
 | `agents.runs({ path, query? })` | `GET /api/projects/{project_id}/agents/runs` | Time-bucketed count of agent-run spans (`gen_ai.operation.type:agent`). |
 | `agents.summary({ path, query? })` | `GET /api/projects/{project_id}/agents/summary` | Agent runs, LLM calls, tool calls, errors, tokens and latency over the selected window — the numbers the six charts cannot state outright. |
 | `agents.tools({ path, query? })` | `GET /api/projects/{project_id}/agents/tools` | Top tools by call count (`gen_ai.operation.type:tool`). |
-| `agents.toolsTable({ path, query? })` | `GET /api/projects/{project_id}/agents/tools/stats` |  |
+| `agents.toolsTable({ path, query? })` | `GET /api/projects/{project_id}/agents/tools/stats` | Lists the tools a project's agents called, with calls, errors and latency. |
 | `agents.traces({ path, query? })` | `GET /api/projects/{project_id}/agents/traces` | Paginated per-trace_id aggregate (duration, tokens, tool usage) across all AI spans sharing that trace, regardless of origin. |
 
 ### Alert Channels
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `alertChannels.create({ body })` | `POST /api/integrations` |  |
-| `alertChannels.delete({ path })` | `DELETE /api/integrations/{id}` |  |
-| `alertChannels.get({ path })` | `GET /api/integrations/{id}` |  |
+| `alertChannels.create({ body })` | `POST /api/integrations` | Creates a notification integration (webhook, Slack, email…). |
+| `alertChannels.delete({ path })` | `DELETE /api/integrations/{id}` | Deletes a notification integration. |
+| `alertChannels.get({ path })` | `GET /api/integrations/{id}` | Gets one notification integration. |
 | `alertChannels.list()` | `GET /api/integrations` | Lists the channels alerts can go through. |
 | `alertChannels.previewTemplate({ body })` | `POST /api/integrations/preview-template` | Renders a Custom Webhook template against a sample payload and hands back the body that would be sent. |
-| `alertChannels.test({ path, body })` | `POST /api/integrations/{id}/test` |  |
-| `alertChannels.update({ path, body })` | `PATCH /api/integrations/{id}` |  |
+| `alertChannels.test({ path, body })` | `POST /api/integrations/{id}/test` | Sends a test notification through an integration. |
+| `alertChannels.update({ path, body })` | `PATCH /api/integrations/{id}` | Updates a notification integration. |
 
 ### Alert Rules
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `alertRules.create({ path, body })` | `POST /api/projects/{project_id}/alert-rules` |  |
-| `alertRules.delete({ path })` | `DELETE /api/projects/{project_id}/alert-rules/{rule_id}` |  |
-| `alertRules.get({ path })` | `GET /api/projects/{project_id}/alert-rules/{rule_id}` |  |
+| `alertRules.create({ path, body })` | `POST /api/projects/{project_id}/alert-rules` | Creates an alert rule in a project. |
+| `alertRules.delete({ path })` | `DELETE /api/projects/{project_id}/alert-rules/{rule_id}` | Deletes an alert rule. |
+| `alertRules.get({ path })` | `GET /api/projects/{project_id}/alert-rules/{rule_id}` | Gets one alert rule. |
 | `alertRules.historyByDay({ path, query? })` | `GET /api/projects/{project_id}/alert-history/daily` | Count a project's alert deliveries per day, by outcome. |
-| `alertRules.list({ path })` | `GET /api/projects/{project_id}/alert-rules` |  |
-| `alertRules.listHistory({ path, query? })` | `GET /api/projects/{project_id}/alert-history` |  |
-| `alertRules.update({ path, body })` | `PATCH /api/projects/{project_id}/alert-rules/{rule_id}` |  |
+| `alertRules.list({ path })` | `GET /api/projects/{project_id}/alert-rules` | Lists a project's alert rules. |
+| `alertRules.listHistory({ path, query? })` | `GET /api/projects/{project_id}/alert-history` | Lists the alerts a project sent, newest first. |
+| `alertRules.update({ path, body })` | `PATCH /api/projects/{project_id}/alert-rules/{rule_id}` | Updates an alert rule. |
 
 ### Auth
 
 | Method | Endpoint | Description |
 |---|---|---|
 | `auth.acceptInvitation({ body })` | `POST /auth/accept-invitation` | Accept a pending invitation: creates the user (with the invite's email + role) and logs in. |
-| `auth.changePassword({ body })` | `POST /auth/me/password` | Change the current user's password |
+| `auth.changePassword({ body })` | `POST /auth/me/password` | Change the current user's password. |
 | `auth.confirmSsoLink({ body })` | `POST /auth/sso/link` | Link the pending SSO identity to its account once the account's password is given, and sign in. |
 | `auth.getCurrentUser()` | `GET /auth/me` | Get current authenticated user |
 | `auth.getInvitation({ path })` | `GET /auth/invitation/{token}` | Returns the invitation's details if it is still acceptable (for the accept page). |
 | `auth.login({ body })` | `POST /auth/login` | Authenticate user and create session |
 | `auth.logout()` | `POST /auth/logout` | Clear session |
-| `auth.register({ body })` | `POST /auth/register` | Registration is invite-only — always rejected. |
 | `auth.ssoCallback({ query? })` | `GET /auth/sso/callback` | Validate the provider response, resolve or provision the local account, and establish the normal Rustrak session. |
 | `auth.ssoConfig()` | `GET /auth/sso/config` | Public, non-sensitive information used to render the login page. |
 | `auth.ssoLink()` | `GET /auth/sso/link` | The account an SSO login matched, shown while its owner confirms. |
-| `auth.ssoStart()` | `POST /auth/sso/start` | Create a one-time OIDC authorization request and retain its protections in the encrypted session cookie. |
+| `auth.ssoStart()` | `POST /auth/sso/start` | Create a one-time OIDC authorization request and retain its protections in the session. |
 | `auth.updateCurrentUser({ body })` | `PATCH /auth/me` | Update the current user's presentation preferences |
 
 ### Events
@@ -367,20 +366,20 @@ Every method, grouped as it hangs off the client.
 |---|---|---|
 | `github.callback({ query })` | `GET /api/github/callback` | GitHub sends the browser here after creating the app; the code trades for its credentials. |
 | `github.createIssue({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/github/issues` | Opens a GitHub issue and links it. |
-| `github.deleteProjectRepository({ path })` | `DELETE /api/projects/{project_id}/github` |  |
-| `github.disconnect()` | `DELETE /api/github` |  |
+| `github.deleteProjectRepository({ path })` | `DELETE /api/projects/{project_id}/github` | Unlinks a project from its GitHub repository. |
+| `github.disconnect()` | `DELETE /api/github` | Disconnects the GitHub App from this instance. |
 | `github.getMyLogin()` | `GET /api/github/me` | The GitHub username assignees sync through. |
-| `github.getProjectRepository({ path })` | `GET /api/projects/{project_id}/github` |  |
+| `github.getProjectRepository({ path })` | `GET /api/projects/{project_id}/github` | Gets the GitHub repository a project is linked to. |
 | `github.installed({ query })` | `GET /api/github/installed` | GitHub sends the browser here after the app is installed on an account. |
 | `github.issue({ path })` | `GET /api/projects/{project_id}/issues/{issue_id}/github` | The issue's links, the commits that may have caused it, and who owns its culprit file. |
 | `github.issueDraft({ path })` | `GET /api/projects/{project_id}/issues/{issue_id}/github/draft` | What creating a GitHub issue sends by default, with the templates applied, for the person to edit first. |
 | `github.linkIssue({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/github/links` | Links an existing GitHub issue or pull request. |
 | `github.manifest({ body })` | `POST /api/github/manifest` | What the dashboard posts to GitHub so GitHub creates an app already configured for this server. |
 | `github.putIssueTemplate({ body })` | `PUT /api/github/issue-template` | The labels, title prefix and body footer every GitHub issue starts with, before a project's own. |
-| `github.putMyLogin({ body })` | `PUT /api/github/me` |  |
-| `github.putProjectRepository({ path, body })` | `PUT /api/projects/{project_id}/github` |  |
+| `github.putMyLogin({ body })` | `PUT /api/github/me` | Sets or clears the caller's GitHub username, which assignees sync through. |
+| `github.putProjectRepository({ path, body })` | `PUT /api/projects/{project_id}/github` | Links a project to a GitHub repository. |
 | `github.repositories({ query })` | `GET /api/github/repositories` | The repositories a project can point at, for whoever may change that project's settings. |
-| `github.status()` | `GET /api/github` |  |
+| `github.status()` | `GET /api/github` | Shows whether a GitHub App is connected, and how. |
 | `github.syncCodeowners({ path })` | `POST /api/projects/{project_id}/github/codeowners` | Copies the repository's CODEOWNERS so ownership can be answered without asking GitHub each time. |
 | `github.unlinkIssue({ path })` | `DELETE /api/projects/{project_id}/issues/{issue_id}/github/links/{link_id}` |  |
 | `github.webhook({ body })` | `POST /api/github/webhook` | Public, and trusted only through the signature GitHub computes with the app's webhook secret. |
@@ -409,8 +408,8 @@ Every method, grouped as it hangs off the client.
 |---|---|---|
 | `environments.list({ path })` | `GET /api/projects/{project_id}/environments` | Lists the environments a project's issues have been seen in, by name. |
 | `feedback.list({ path, query? })` | `GET /api/projects/{project_id}/feedback` | Lists user feedback with what each user submitted. |
-| `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` | Bulk delete by ids or filter |
-| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` | Bulk mutate |
+| `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` | Deletes many issues at once, selected by id or by filter. |
+| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` | Sets the status or priority of many issues at once, by id. |
 | `issues.createComment({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/comments` | Add a note. |
 | `issues.createUserReport({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/user-reports` | Attach user feedback to an issue. |
 | `issues.delete({ path })` | `DELETE /api/projects/{project_id}/issues/{issue_id}` | Hard-deletes an issue and all associated events |
@@ -448,13 +447,13 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `monitors.create({ path, body })` | `POST /api/projects/{project_id}/monitors` |  |
-| `monitors.delete({ path })` | `DELETE /api/projects/{project_id}/monitors/{slug}` |  |
-| `monitors.get({ path })` | `GET /api/projects/{project_id}/monitors/{slug}` |  |
-| `monitors.list({ path })` | `GET /api/projects/{project_id}/monitors` |  |
-| `monitors.listCheckins({ path, query? })` | `GET /api/projects/{project_id}/monitors/{slug}/checkins` |  |
+| `monitors.create({ path, body })` | `POST /api/projects/{project_id}/monitors` | Creates a cron monitor in a project. |
+| `monitors.delete({ path })` | `DELETE /api/projects/{project_id}/monitors/{slug}` | Deletes a cron monitor and its check-ins. |
+| `monitors.get({ path })` | `GET /api/projects/{project_id}/monitors/{slug}` | Gets one cron monitor. |
+| `monitors.list({ path })` | `GET /api/projects/{project_id}/monitors` | Lists a project's cron monitors. |
+| `monitors.listCheckins({ path, query? })` | `GET /api/projects/{project_id}/monitors/{slug}/checkins` | Lists a cron monitor's check-ins, newest first. |
 | `monitors.stats({ path, query? })` | `GET /api/projects/{project_id}/monitor-stats` | Counts the check-ins of a project's monitors by status over a window, bucket by bucket. |
-| `monitors.update({ path, body })` | `PUT /api/projects/{project_id}/monitors/{slug}` |  |
+| `monitors.update({ path, body })` | `PUT /api/projects/{project_id}/monitors/{slug}` | Updates a cron monitor. |
 
 ### OAuth
 
@@ -473,7 +472,7 @@ Every method, grouped as it hangs off the client.
 | `projects.delete({ path })` | `DELETE /api/projects/{id}` | Delete a project |
 | `projects.get({ path })` | `GET /api/projects/{id}` | Get a project by ID |
 | `projects.getRateLimits()` | `GET /api/rate-limits` | What a project without limits of its own follows |
-| `projects.list({ query? })` | `GET /api/projects` | List projects with pagination |
+| `projects.list({ query? })` | `GET /api/projects` | List projects with pagination. |
 | `projects.update({ path, body })` | `PATCH /api/projects/{id}` | Update a project |
 
 ### Releases
@@ -484,7 +483,7 @@ Every method, grouped as it hangs off the client.
 | `releases.finalize({ path, body })` | `PUT /api/0/projects/{org_slug}/{project_slug}/releases/{version}/` | Generic partial update (`ref`, `url`, `dateReleased`). |
 | `releases.get({ path, query? })` | `GET /api/projects/{project_id}/releases/{release}` | Gets one release with its events, new issues, environments and session health. |
 | `releases.list({ path, query? })` | `GET /api/projects/{project_id}/releases` | Lists a project's releases, newest first, with the events, new issues, environments and session health of each. |
-| `releases.newIssues({ path, query? })` | `GET /api/projects/{project_id}/releases/{release}/new-issues` |  |
+| `releases.newIssues({ path, query? })` | `GET /api/projects/{project_id}/releases/{release}/new-issues` | Lists the issues first seen in a release. |
 
 ### Schedules
 
@@ -498,7 +497,7 @@ Every method, grouped as it hangs off the client.
 |---|---|---|
 | `sentry.getIssue({ path })` | `GET /api/0/issues/{issue_id}/` | One issue with its releases and its 24h and 30d series (Sentry's `GroupDetailsEndpoint`). |
 | `sentry.getLatestEvent({ path })` | `GET /api/0/issues/{issue_id}/events/latest/` | The issue's most recent event (Sentry's `GroupEventDetailsEndpoint`, `issues/endpoints/group_event_details.py`). |
-| `sentry.listIssues({ path, query? })` | `GET /api/0/projects/{org_slug}/{project_slug}/issues/` | A project's issues, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `ProjectGroupIndexEndpoint`, `issues/endpoints/project_group_index.py`). |
+| `sentry.listIssues({ path, query? })` | `GET /api/0/projects/{org_slug}/{project_slug}/issues/` | Issues, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `ProjectGroupIndexEndpoint`, `issues/endpoints/project_group_index.py`). |
 | `sentry.listOrganizations()` | `GET /api/0/organizations/` | The organizations the token belongs to (Sentry's `OrganizationIndexEndpoint`): always the one synthetic org. |
 | `sentry.listProjects({ query? })` | `GET /api/0/projects/` | The projects the token can see, newest first (Sentry's `ProjectIndexEndpoint`, `core/endpoints/project_index.py`). |
 | `sentry.listRepos({ path })` | `GET /api/0/organizations/{org_slug}/repos/` | The code repositories connected to the organization (Sentry's `OrganizationRepositoriesEndpoint`). |
@@ -510,9 +509,9 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `sessions.getStats({ path, query? })` | `GET /api/projects/{project_id}/sessions/stats` |  |
-| `sessions.getSummary({ path, query? })` | `GET /api/projects/{project_id}/sessions/summary` |  |
-| `sessions.getTimeseries({ path, query? })` | `GET /api/projects/{project_id}/sessions/timeseries` |  |
+| `sessions.getStats({ path, query? })` | `GET /api/projects/{project_id}/sessions/stats` | Session counts by release, for release health. |
+| `sessions.getSummary({ path, query? })` | `GET /api/projects/{project_id}/sessions/summary` | Totals and crash-free rates for a project's sessions. |
+| `sessions.getTimeseries({ path, query? })` | `GET /api/projects/{project_id}/sessions/timeseries` | Session counts over time, bucketed for a chart. |
 
 ### Settings
 
@@ -527,10 +526,10 @@ Every method, grouped as it hangs off the client.
 |---|---|---|
 | `debugFiles.assemble({ path, body })` | `POST /api/0/projects/{org_slug}/{project_slug}/files/difs/assemble/` | Assemble uploaded chunks into debug information files (ProGuard mappings, JVM source bundles). |
 | `debugFiles.upload({ path, body })` | `POST /api/0/projects/{org_slug}/{project_slug}/files/dsyms/` | Upload a zip of debug information files (the path `sentry-cli upload-proguard` takes). |
-| `sourceMaps.artifactBundleAssemble({ path, body })` | `POST /api/0/organizations/{org_slug}/artifactbundle/assemble/` |  |
-| `sourceMaps.chunkUpload({ path, body })` | `POST /api/0/organizations/{org_slug}/chunk-upload/` |  |
-| `sourceMaps.chunkUploadCapability({ path })` | `GET /api/0/organizations/{org_slug}/chunk-upload/` |  |
-| `sourceMaps.list({ path })` | `GET /api/0/projects/{org_slug}/{project_slug}/files/source-maps/` |  |
+| `sourceMaps.artifactBundleAssemble({ path, body })` | `POST /api/0/organizations/{org_slug}/artifactbundle/assemble/` | Assembles uploaded chunks into an artifact bundle (sentry-cli `sourcemaps upload`). |
+| `sourceMaps.chunkUpload({ path, body })` | `POST /api/0/organizations/{org_slug}/chunk-upload/` | Receives chunks of a source map or debug file upload from sentry-cli. |
+| `sourceMaps.chunkUploadCapability({ path })` | `GET /api/0/organizations/{org_slug}/chunk-upload/` | Describes how sentry-cli should upload chunks: size, concurrency and accepted kinds. |
+| `sourceMaps.list({ path })` | `GET /api/0/projects/{org_slug}/{project_slug}/files/source-maps/` | Lists a project's uploaded source map artifacts (sentry-cli). |
 | `sourceMaps.orgDetails({ path })` | `GET /api/0/organizations/{org_slug}/` | Always returns 200 with synthetic org data — sentry-cli validates this before uploading. |
 
 ### Spans
@@ -544,8 +543,8 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `stats.getEventTimeseries({ path, query? })` | `GET /api/projects/{project_id}/events/stats` |  |
-| `stats.getSummary({ path, query? })` | `GET /api/projects/{project_id}/stats/summary` |  |
+| `stats.getEventTimeseries({ path, query? })` | `GET /api/projects/{project_id}/events/stats` | Counts a project's events over time, bucketed for a chart. |
+| `stats.getSummary({ path, query? })` | `GET /api/projects/{project_id}/stats/summary` | Headline figures for a project's overview: events, new and open issues. |
 
 ### Storage
 
@@ -558,13 +557,13 @@ Every method, grouped as it hangs off the client.
 | `storage.getCleanupStatus()` | `GET /api/storage/cleanup/status` | Progress of the running cleanup, or the outcome of the last one. |
 | `storage.getCompaction()` | `GET /api/storage/compaction` | Whether the database file shrinks when data is deleted, and the disk a one-off compaction needs. |
 | `storage.getProjects()` | `GET /api/storage/projects` | Per-project counts and estimated weight. |
-| `storage.getRetention()` | `GET /api/storage/retention` |  |
+| `storage.getRetention()` | `GET /api/storage/retention` | Gets the retention settings and the cleanup schedule. |
 | `storage.getSummary()` | `GET /api/storage/summary` | Row counts, DB size, and source-map weight. |
 | `storage.previewCleanup({ body })` | `POST /api/storage/cleanup/preview` | Dry-run count, mutates nothing. |
 | `storage.previewRetention({ body })` | `POST /api/storage/retention/preview` | What saving these settings would delete on the next cleanup, without saving or deleting anything. |
 | `storage.previewSourceMapGc()` | `POST /api/storage/source-maps/gc/preview` | Dry-run orphan count, deletes nothing. |
 | `storage.runRetention()` | `POST /api/storage/retention/run` | Enforces the saved retention now, without waiting for the schedule. |
-| `storage.updateRetention({ body })` | `PUT /api/storage/retention` |  |
+| `storage.updateRetention({ body })` | `PUT /api/storage/retention` | Updates the retention settings; the next cleanup is scheduled at once. |
 
 ### Team
 
@@ -578,7 +577,7 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `telemetry.preview()` | `GET /api/telemetry/preview` |  |
+| `telemetry.preview()` | `GET /api/telemetry/preview` | Shows the exact anonymous telemetry report this instance would send. |
 
 ### Tokens
 

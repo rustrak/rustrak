@@ -1,16 +1,13 @@
 //! Team management routes.
-//!
-//! - GET   /api/team                  — list all users
-//! - PATCH /api/team/{user_id}/role   — change a user's global role
 
 use actix_web::{web, HttpResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
+use crate::models::rbac::{Action, Resource};
 use crate::models::{User, UserRole};
 use crate::services::UsersService;
 
@@ -49,10 +46,11 @@ impl TeamMemberResponse {
 }
 
 /// Request body for changing a user's global role.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateUserRole {
     #[cfg_attr(feature = "openapi", schema(value_type = crate::models::UserRole))]
+    #[schemars(description = "New global role: admin or member")]
     pub role: String,
 }
 
@@ -68,7 +66,7 @@ pub struct UpdateUserRole {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/team — list all users (needs `users:read`)
+/// List all users (needs `users:read`)
 pub async fn list_team(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     actor.require(Resource::Users, Action::Read, None)?;
 
@@ -99,7 +97,7 @@ pub async fn list_team(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<Ht
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PATCH /api/team/{user_id}/role — change a user's global role (needs `users:update`)
+/// Change a user's global role (needs `users:update`)
 pub async fn update_team_role(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -173,7 +171,7 @@ pub async fn update_team_role(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/team/{user_id} — remove a user from the instance (needs `users:delete`)
+/// Remove a user from the instance (needs `users:delete`)
 pub async fn delete_user(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -225,7 +223,6 @@ pub async fn delete_user(
 )]
 pub struct TeamApi;
 
-/// Configure team routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/team")

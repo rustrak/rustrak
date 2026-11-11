@@ -3,74 +3,22 @@
 //!
 //! Uses a real wire fixture captured off the wire from an actual
 //! @sentry/node 10.65 + Vercel AI SDK `generateText()` + tool call (via a
-//! local echo server acting as the DSN target) — the exact envelope shape
-//! that motivated story-span-v2-protocol.md. This is the closest automated
-//! equivalent to running `packages/test-sentry/demo/src/ai-agent.ts`
-//! against a live server (the story's Task 6).
+//! local echo server acting as the DSN target).
 
+use crate::common::create_ingest_project;
 use crate::common::TestDb;
-use actix_web::{test, web, App};
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
-use rustrak::routes;
-use rustrak::services::{DbSourceMapProvider, LocalSourceMapStore, ProjectService};
+use actix_web::test;
+use rustrak::config::Config;
 use serde_json::json;
-use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 fn create_test_config() -> Config {
     Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: Some("/tmp/rustrak_test_ingest_span_v2".to_string()),
-        public_url: None,
         sourcemap_storage_path: "/tmp/test_sourcemaps_span_v2".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+        ..crate::common::config_with_ingest_dir(std::path::Path::new(
+            "/tmp/rustrak_test_ingest_span_v2",
+        ))
     }
-}
-
-async fn create_test_project(pool: &rustrak::db::DbPool, name: &str) -> (i32, String) {
-    let project = ProjectService::create(
-        pool,
-        rustrak::models::CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("Failed to create test project");
-    (project.id, project.sentry_key.to_string())
 }
 
 /// Real wire fixture: a `research_agent` trace, as actually sent by
@@ -195,30 +143,10 @@ fn span_v2_envelope(trace_id: &str) -> Vec<u8> {
 #[actix_web::test]
 async fn test_real_sdk_span_v2_envelope_populates_agents_dashboard() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Span V2 Ingest Test").await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Span V2 Ingest Test").await;
     let config = create_test_config();
 
-    let sourcemap_store = Arc::new(LocalSourceMapStore::new(&config.sourcemap_storage_path))
-        as Arc<dyn rustrak::services::SourceMapStore>;
-    let sourcemap_provider = Arc::new(DbSourceMapProvider::new(db.pool.clone(), sourcemap_store))
-        as Arc<dyn rustrak::services::SourceMapProvider>;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(sourcemap_provider))
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let trace_id = Uuid::new_v4().to_string().replace("-", "");
     let body = span_v2_envelope(&trace_id);
@@ -237,25 +165,15 @@ async fn test_real_sdk_span_v2_envelope_populates_agents_dashboard() {
         "span v2 envelope must return 200"
     );
 
-    // The processor runs in a spawned task; poll (bounded) instead of a
-    // fixed sleep so the assertion isn't flaky on slower CI runners.
-    #[cfg(feature = "postgres")]
-    const COUNT_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-    #[cfg(not(feature = "postgres"))]
-    const COUNT_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
-
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-    let stored: i64 = loop {
-        let count: i64 = sqlx::query_scalar(COUNT_QUERY)
+    let stored: i64 = crate::common::eventually(|| async {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM spans WHERE project_id = $1")
             .bind(project_id)
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        if count >= 4 || tokio::time::Instant::now() >= deadline {
-            break count;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    };
+        (count >= 4).then_some(count)
+    })
+    .await;
     assert_eq!(
         stored, 4,
         "3 spans from the v2 batch plus the promoted transaction root span"

@@ -2,10 +2,11 @@ use std::collections::{BTreeSet, HashMap};
 
 use chrono::{DateTime, Utc};
 
+use crate::db::dialect::{since, since_day};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::session::crash_free_rate;
 use crate::models::{is_valid_version, CreateRelease, Release, ReleaseSummary, UpdateRelease};
-use crate::services::scope::{since, since_day};
 
 const RELEASE_COLUMNS: &str = "id, project_id, version, ref, url, date_created, date_released";
 
@@ -319,12 +320,12 @@ impl ReleaseService {
                     .remove(&r.version)
                     .map(|set| set.into_iter().collect())
                     .unwrap_or_default();
+                r.crash_free_sessions = crash_free_rate(r.crashed, r.sessions);
                 if r.sessions > 0 {
-                    r.crash_free_sessions = Some(1.0 - r.crashed as f64 / r.sessions as f64);
                     r.adoption = Some(r.sessions as f64 / total_sessions as f64);
                 }
-                if let Some(&(all, crashed)) = users.get(&r.version).filter(|(all, _)| *all > 0) {
-                    r.crash_free_users = Some(1.0 - crashed as f64 / all as f64);
+                if let Some(&(all, crashed)) = users.get(&r.version) {
+                    r.crash_free_users = crash_free_rate(crashed, all);
                 }
                 r
             })

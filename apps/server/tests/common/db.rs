@@ -19,50 +19,122 @@ use testcontainers::{runners::AsyncRunner, ContainerAsync, ImageExt};
 #[cfg(feature = "postgres")]
 use testcontainers_modules::postgres::Postgres;
 
-/// A test database with connection pool (Postgres variant includes a container)
 #[cfg(feature = "postgres")]
-#[allow(dead_code)]
 pub struct TestDb {
-    /// The running PostgreSQL container (kept alive for the duration of the test)
-    #[allow(dead_code)]
-    container: ContainerAsync<Postgres>,
     pub pool: DbPool,
+}
+
+/// One container per test binary, holding a migrated `template` database
+/// every test copies. A container per test cost seconds each and, hundreds at
+/// a time, Docker sometimes started one without publishing its port.
+#[cfg(feature = "postgres")]
+struct PgServer {
+    /// `postgres://…@host:port`, without a database name.
+    base_url: String,
+    /// `CREATE DATABASE … TEMPLATE` refuses while another copy reads the
+    /// template, so the copies take turns.
+    copying: tokio::sync::Mutex<()>,
 }
 
 #[cfg(feature = "postgres")]
 impl TestDb {
     pub async fn new() -> Self {
-        let container = Postgres::default()
-            .with_tag("16-alpine")
-            .start()
-            .await
-            .expect("Failed to start PostgreSQL container");
+        use sqlx::Connection;
+        use std::sync::atomic::{AtomicUsize, Ordering};
 
-        let host = container.get_host().await.expect("Failed to get host");
-        let port = container
-            .get_host_port_ipv4(5432)
-            .await
-            .expect("Failed to get port");
+        static SERVER: tokio::sync::OnceCell<PgServer> = tokio::sync::OnceCell::const_new();
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
 
-        let database_url = format!("postgres://postgres:postgres@{}:{}/postgres", host, port);
+        let server = SERVER.get_or_init(start_pg_server).await;
+        let name = format!("test_{}", NEXT.fetch_add(1, Ordering::Relaxed));
+
+        {
+            let _turn = server.copying.lock().await;
+            let mut admin = sqlx::PgConnection::connect(&format!("{}/postgres", server.base_url))
+                .await
+                .expect("Failed to connect to the test server");
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "CREATE DATABASE {name} TEMPLATE template"
+            )))
+            .execute(&mut admin)
+            .await
+            .expect("Failed to copy the template database");
+            admin.close().await.ok();
+        }
 
         let pool = sqlx::postgres::PgPoolOptions::new()
-            .connect(&database_url)
+            .max_connections(5)
+            .connect(&format!("{}/{name}", server.base_url))
             .await
             .expect("Failed to connect to test database");
 
-        // Enable pgcrypto extension (needed for some Postgres-specific functions)
-        sqlx::query("CREATE EXTENSION IF NOT EXISTS pgcrypto")
-            .execute(&pool)
-            .await
-            .expect("Failed to enable pgcrypto extension");
+        TestDb { pool }
+    }
+}
 
-        sqlx::migrate!("./migrations/postgres")
-            .run(&pool)
-            .await
-            .expect("Failed to run migrations");
+#[cfg(feature = "postgres")]
+static PG_CONTAINER_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-        TestDb { container, pool }
+#[cfg(feature = "postgres")]
+extern "C" fn remove_pg_container() {
+    if let Some(id) = PG_CONTAINER_ID.get() {
+        let _ = std::process::Command::new("docker")
+            .args(["rm", "--force", "--volumes", id])
+            .output();
+    }
+}
+
+#[cfg(feature = "postgres")]
+async fn start_pg_server() -> PgServer {
+    use sqlx::Connection;
+
+    let container: ContainerAsync<Postgres> = Postgres::default()
+        .with_tag("16-alpine")
+        .with_cmd(["-c", "fsync=off", "-c", "max_connections=1000"])
+        .start()
+        .await
+        .expect("Failed to start PostgreSQL container");
+    let host = container.get_host().await.expect("Failed to get host");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("Failed to get port");
+    // Shared by every test of this binary, so it is never dropped; it is
+    // removed when the binary exits (testcontainers 0.27 has no reaper).
+    if std::env::var("TESTCONTAINERS_COMMAND").as_deref() != Ok("keep") {
+        let _ = PG_CONTAINER_ID.set(container.id().to_string());
+        // SAFETY: registers a plain `extern "C"` function with no arguments.
+        unsafe { libc::atexit(remove_pg_container) };
+    }
+    std::mem::forget(container);
+
+    let base_url = format!("postgres://postgres:postgres@{host}:{port}");
+
+    let mut admin = sqlx::PgConnection::connect(&format!("{base_url}/postgres"))
+        .await
+        .expect("Failed to connect to the test server");
+    sqlx::query("CREATE DATABASE template")
+        .execute(&mut admin)
+        .await
+        .expect("Failed to create the template database");
+    admin.close().await.ok();
+
+    let mut template = sqlx::PgConnection::connect(&format!("{base_url}/template"))
+        .await
+        .expect("Failed to connect to the template database");
+    sqlx::query("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        .execute(&mut template)
+        .await
+        .expect("Failed to enable pgcrypto extension");
+    sqlx::migrate!("./migrations/postgres")
+        .run(&mut template)
+        .await
+        .expect("Failed to run migrations");
+    template.close().await.ok();
+
+    PgServer {
+        base_url,
+        copying: tokio::sync::Mutex::new(()),
     }
 }
 

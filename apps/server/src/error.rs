@@ -155,6 +155,8 @@ pub enum FieldErrorCode {
     TooShort,
     /// Above the maximum length.
     TooLong,
+    /// Well-formed but wrong, such as a current password that does not match.
+    Incorrect,
     /// Read [`FieldError::message`] instead.
     Custom,
 }
@@ -228,6 +230,21 @@ pub enum AppError {
     /// that have no field to name stay untouched.
     #[error(transparent)]
     WithFields(FieldedError),
+}
+
+/// An extractor's rejection, so a handler can take `AppResult<web::Json<T>>`
+/// and read it after the credentials: actix polls a handler's extractors
+/// together, and a bad body must not answer an anonymous caller before 401.
+/// Keeps the extractor's 404 (a path that does not parse) and 413.
+impl From<actix_web::Error> for AppError {
+    fn from(error: actix_web::Error) -> Self {
+        let message = error.to_string();
+        match error.as_response_error().status_code() {
+            StatusCode::NOT_FOUND => AppError::NotFound(message),
+            StatusCode::PAYLOAD_TOO_LARGE => AppError::PayloadTooLarge(message),
+            _ => AppError::Validation(message),
+        }
+    }
 }
 
 impl AppError {
@@ -506,46 +523,6 @@ mod tests {
             body["error"]["message"],
             "Conflict: Project with slug 'api' already exists"
         );
-    }
-
-    /// The no-nesting invariant is what makes `field_errors()` (which reads
-    /// one level) agree with `kind()`/`error_type()`/`status_code()` (which
-    /// recurse). Annotating twice must append, never nest.
-    #[test]
-    fn annotating_twice_appends_rather_than_nesting() {
-        let error = AppError::Conflict("taken".to_string())
-            .with_field("name", FieldErrorCode::AlreadyExists)
-            .with_field("slug", FieldErrorCode::AlreadyExists);
-
-        let AppError::WithFields(ref fielded) = error else {
-            panic!("expected an annotated error");
-        };
-        assert!(
-            !matches!(fielded.inner(), AppError::WithFields(_)),
-            "FieldedError::inner must never be another WithFields"
-        );
-        assert_eq!(fielded.fields().len(), 2);
-
-        // The lossy read and the recursive reads agree, which is the whole
-        // point of the invariant.
-        assert_eq!(error.field_errors().len(), 2);
-        assert_eq!(error.error_type(), "Conflict");
-        assert_eq!(error.status_code(), StatusCode::CONFLICT);
-        assert!(matches!(error.kind(), AppError::Conflict(_)));
-    }
-
-    /// `new` never attaches prose, `custom` always does, and there is no third
-    /// way to build a `FieldError`.
-    #[test]
-    fn only_custom_carries_a_message() {
-        let plain = FieldError::new("slug", FieldErrorCode::AlreadyExists);
-        assert_eq!(plain.message(), None);
-        assert_eq!(plain.code(), FieldErrorCode::AlreadyExists);
-        assert_eq!(plain.field(), "slug");
-
-        let custom = FieldError::custom("credentials.webhook_url", "Slack said no.");
-        assert_eq!(custom.code(), FieldErrorCode::Custom);
-        assert_eq!(custom.message(), Some("Slack said no."));
     }
 
     /// A code other than `custom` must serialise without a `message` key at

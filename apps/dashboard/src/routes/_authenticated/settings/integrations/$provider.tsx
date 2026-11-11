@@ -5,23 +5,27 @@ import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { alertQueries } from '@/features/alert/api/queries';
 import { alertProviders } from '@/features/alert/model/providers';
+import { channelsHref } from '@/features/alert/model/rule-summary';
 import {
   type EditParam,
   ProviderSettings,
 } from '@/features/alert/ui/components/provider-settings';
+import { searchId } from '@/shared/lib/search-params';
 import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { SettingsListSkeleton } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
-import { integrationProjectId } from '../-components/integrations-back-link';
 
 export const Route = createFileRoute(
   '/_authenticated/settings/integrations/$provider',
 )({
-  validateSearch: (search: Record<string, unknown>): { edit?: EditParam } => ({
-    edit: search.edit === 'new' ? 'new' : integrationProjectId(search.edit),
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { edit?: EditParam; projectId?: number } => ({
+    edit: search.edit === 'new' ? 'new' : searchId(search.edit),
+    projectId: searchId(search.projectId),
   }),
   loader: ({ context: { queryClient } }) => {
     void queryClient.query(alertQueries.integrations()).catch(noop);
@@ -51,7 +55,7 @@ function Provider() {
   const provider = useProvider();
   const { data: integrations } = useSuspenseQuery(alertQueries.integrations());
   usePageTrail([{ label: provider?.name ?? '' }]);
-  const { edit } = Route.useSearch();
+  const { edit, projectId } = Route.useSearch();
   const navigate = Route.useNavigate();
   const permissions = usePermissions();
   if (!provider) throw notFound();
@@ -75,7 +79,10 @@ function Provider() {
           update: permissions.can('integrations', 'update'),
           delete: permissions.can('integrations', 'delete'),
         }}
-        onEdit={(next) => navigate({ search: { edit: next } })}
+        onEdit={(next) =>
+          navigate({ search: (prev) => ({ ...prev, edit: next }) })
+        }
+        catalogHref={channelsHref(projectId)}
       />
     </>
   );

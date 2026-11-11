@@ -1,40 +1,21 @@
 //! Alert routes for managing notification channels and alert rules.
-//!
-//! ## Alert Integrations (Global)
-//! - GET /api/integrations - List all integrations
-//! - POST /api/integrations - Create integration
-//! - GET /api/integrations/{id} - Get integration
-//! - PATCH /api/integrations/{id} - Update integration
-//! - DELETE /api/integrations/{id} - Delete integration
-//! - POST /api/integrations/{id}/test - Test integration
-//!
-//! ## Alert Rules (Per-Project)
-//! - GET /api/projects/{project_id}/alert-rules - List rules
-//! - POST /api/projects/{project_id}/alert-rules - Create rule
-//! - GET /api/projects/{project_id}/alert-rules/{rule_id} - Get rule
-//! - PATCH /api/projects/{project_id}/alert-rules/{rule_id} - Update rule
-//! - DELETE /api/projects/{project_id}/alert-rules/{rule_id} - Delete rule
-//!
-//! ## Alert History
-//! - GET /api/projects/{project_id}/alert-history - List history
-//! - GET /api/projects/{project_id}/alert-history/daily - Deliveries per day
 
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
+use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::models::ChannelType;
-use crate::models::{
-    AlertPayload, CreateAlertRule, CreateNotificationChannel, EmailRoutingOverride, IssueInfo,
-    ProjectInfo, ProviderType, SlackRoutingOverride, UpdateAlertRule, UpdateNotificationChannel,
-    WebhookRoutingOverride,
-};
+use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
-use crate::models::{AlertRuleResponse, NotificationChannel};
+use crate::models::AlertRuleResponse;
+use crate::models::{
+    AlertIntegration, AlertPayload, CreateAlertIntegration, CreateAlertRule, EmailRoutingOverride,
+    IssueInfo, ProjectInfo, ProviderType, SlackRoutingOverride, UpdateAlertIntegration,
+    UpdateAlertRule, WebhookRoutingOverride,
+};
 use crate::services::notification::webhook::validate_headers;
 use crate::services::{create_dispatcher, AlertService, ProjectService};
 
@@ -50,8 +31,8 @@ use utoipa::OpenApi;
 /// `channel_type == slack` and `config.method == "bot_token"`.
 ///
 /// This prevents live `xoxb-…` tokens from being exposed via GET responses.
-pub fn redact_slack_bot_token(channel_type: ChannelType, config: &mut serde_json::Value) {
-    if channel_type == ChannelType::Slack
+pub fn redact_slack_bot_token(channel_type: ProviderType, config: &mut serde_json::Value) {
+    if channel_type == ProviderType::Slack
         && config.get("method").and_then(|v| v.as_str()) == Some("bot_token")
     {
         if let Some(obj) = config.as_object_mut() {
@@ -65,14 +46,10 @@ pub fn redact_slack_bot_token(channel_type: ChannelType, config: &mut serde_json
     }
 }
 
-// =============================================================================
-// Routing Override Validation
-// =============================================================================
-
 /// Validates routing_override for a given provider type and credentials.
 ///
 /// Dispatches to provider-specific rules using the known `provider_type` —
-/// NO serde-tagged enum, flat structs only (SCL-1/SCL-2).
+/// NO serde-tagged enum, flat structs only.
 pub fn validate_routing_override(
     provider_type: ProviderType,
     credentials: &serde_json::Value,
@@ -162,16 +139,10 @@ pub struct TestIntegrationBody {
     pub routing_override: Option<serde_json::Value>,
 }
 
-// =============================================================================
-// Notification Channel Endpoints
-// =============================================================================
-
-fn channel_to_safe_json(channel: &crate::models::AlertIntegration) -> serde_json::Value {
-    let mut value = serde_json::to_value(channel).unwrap_or_default();
-    if let Some(config) = value.get_mut("credentials") {
-        redact_slack_bot_token(channel.provider_type, config);
-    }
-    value
+fn channel_to_safe_json(channel: &AlertIntegration) -> AlertIntegration {
+    let mut safe = channel.clone();
+    redact_slack_bot_token(safe.provider_type, &mut safe.credentials);
+    safe
 }
 
 /// Replaces every string in `value`, however deep, keeping its shape.
@@ -185,17 +156,15 @@ fn mask_strings(value: &mut serde_json::Value) {
 }
 
 /// A channel as `actor` may see it: what it holds is for who may change it.
-fn channel_for(actor: &ApiActor, channel: &crate::models::AlertIntegration) -> serde_json::Value {
-    let mut value = channel_to_safe_json(channel);
+fn channel_for(actor: &ApiActor, channel: &AlertIntegration) -> AlertIntegration {
+    let mut safe = channel_to_safe_json(channel);
     if !actor
         .access
         .can(Resource::Integrations, Action::Update, None)
     {
-        if let Some(credentials) = value.get_mut("credentials") {
-            mask_strings(credentials);
-        }
+        mask_strings(&mut safe.credentials);
     }
-    value
+    safe
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -204,7 +173,7 @@ fn channel_for(actor: &ApiActor, channel: &crate::models::AlertIntegration) -> s
     operation_id = "alertChannels.list",
     tag = "Alert Channels",
     responses(
-        (status = 200, description = "List of notification channels", body = Vec<NotificationChannel>),
+        (status = 200, description = "List of notification channels", body = Vec<AlertIntegration>),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 403, description = "Missing integrations:read and every alert-rules permission", body = crate::error::ErrorResponse),
     ),
@@ -225,42 +194,45 @@ pub async fn list_channels(pool: web::Data<DbPool>, actor: ApiActor) -> AppResul
         actor.require(Resource::Integrations, Action::Read, None)?;
     }
     let channels = AlertService::list_channels(pool.get_ref()).await?;
-    let safe: Vec<serde_json::Value> = channels
+    let safe: Vec<AlertIntegration> = channels
         .iter()
         .map(|channel| {
-            let mut json = channel_for(&actor, channel);
+            let mut safe = channel_for(&actor, channel);
             if !readable {
-                json["credentials"] = serde_json::json!({});
+                safe.credentials = serde_json::json!({});
             }
-            json
+            safe
         })
         .collect();
     Ok(HttpResponse::Ok().json(safe))
 }
 
+/// Creates a notification integration (webhook, Slack, email…).
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/integrations",
     operation_id = "alertChannels.create",
     tag = "Alert Channels",
-    request_body = CreateNotificationChannel,
+    request_body = CreateAlertIntegration,
     responses(
-        (status = 201, description = "Channel created", body = NotificationChannel),
+        (status = 201, description = "Channel created", body = AlertIntegration),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/alert-channels
 pub async fn create_channel(
     pool: web::Data<DbPool>,
+    config: web::Data<Config>,
     actor: ApiActor,
-    body: web::Json<CreateNotificationChannel>,
+    body: web::Json<CreateAlertIntegration>,
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Integrations, Action::Create, None)?;
-    let channel = AlertService::create_channel(pool.get_ref(), body.into_inner()).await?;
+    let channel =
+        AlertService::create_channel(pool.get_ref(), &config.smtp, body.into_inner()).await?;
     Ok(HttpResponse::Created().json(channel_for(&actor, &channel)))
 }
 
+/// Gets one notification integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/integrations/{id}",
@@ -268,13 +240,12 @@ pub async fn create_channel(
     tag = "Alert Channels",
     params(("id" = i32, Path, description = "Channel ID")),
     responses(
-        (status = 200, description = "Channel details", body = NotificationChannel),
+        (status = 200, description = "Channel details", body = AlertIntegration),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/alert-channels/{id}
 pub async fn get_channel(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -285,33 +256,40 @@ pub async fn get_channel(
     Ok(HttpResponse::Ok().json(channel_for(&actor, &channel)))
 }
 
+/// Updates a notification integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
     path = "/api/integrations/{id}",
     operation_id = "alertChannels.update",
     tag = "Alert Channels",
     params(("id" = i32, Path, description = "Channel ID")),
-    request_body = UpdateNotificationChannel,
+    request_body = UpdateAlertIntegration,
     responses(
-        (status = 200, description = "Channel updated", body = NotificationChannel),
+        (status = 200, description = "Channel updated", body = AlertIntegration),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PATCH /api/alert-channels/{id}
 pub async fn update_channel(
     pool: web::Data<DbPool>,
+    config: web::Data<Config>,
     actor: ApiActor,
     path: web::Path<i32>,
-    body: web::Json<UpdateNotificationChannel>,
+    body: web::Json<UpdateAlertIntegration>,
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Integrations, Action::Update, None)?;
-    let channel =
-        AlertService::update_channel(pool.get_ref(), path.into_inner(), body.into_inner()).await?;
+    let channel = AlertService::update_channel(
+        pool.get_ref(),
+        &config.smtp,
+        path.into_inner(),
+        body.into_inner(),
+    )
+    .await?;
     Ok(HttpResponse::Ok().json(channel_to_safe_json(&channel)))
 }
 
+/// Deletes a notification integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/integrations/{id}",
@@ -325,7 +303,6 @@ pub async fn update_channel(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/alert-channels/{id}
 pub async fn delete_channel(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -337,9 +314,10 @@ pub async fn delete_channel(
 }
 
 /// Body of a template preview request.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PreviewTemplateBody {
+    #[schemars(description = "JSON body with {{ field }} expressions")]
     pub template: String,
 }
 
@@ -366,8 +344,6 @@ pub struct PreviewTemplateResponse {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/integrations/preview-template
-///
 /// Renders a Custom Webhook template against a sample payload and hands back
 /// the body that would be sent. The dashboard cannot run the template engine,
 /// so it asks while the reader types; going through the dispatcher's own
@@ -405,6 +381,7 @@ pub struct TestChannelResponse {
     pub response_body: Option<String>,
 }
 
+/// Sends a test notification through an integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/integrations/{id}/test",
@@ -418,9 +395,9 @@ pub struct TestChannelResponse {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/integrations/{id}/test
 pub async fn test_channel(
     pool: web::Data<DbPool>,
+    config: web::Data<Config>,
     actor: ApiActor,
     path: web::Path<i32>,
     body: Option<web::Json<TestIntegrationBody>>,
@@ -434,7 +411,6 @@ pub async fn test_channel(
 
     validate_routing_override(channel.provider_type, &channel.credentials, &routing)?;
 
-    // Create a test payload
     let test_payload = AlertPayload {
         alert_id: format!("test-{}", Utc::now().timestamp_millis()),
         alert_type: "test".to_string(),
@@ -457,9 +433,9 @@ pub async fn test_channel(
         actor: "Rustrak Test".to_string(),
     };
 
-    // Send test notification
-    let dispatcher = create_dispatcher(channel.provider_type);
-    let result = dispatcher.send(&channel, &routing, &test_payload).await;
+    let result = create_dispatcher(channel.provider_type, &config.smtp)
+        .send(&channel, &routing, &test_payload)
+        .await;
 
     // The endpoint's own answer rides along on both outcomes. Rustrak judges
     // a delivery by the HTTP status and does not interpret the body, so a
@@ -479,10 +455,7 @@ pub async fn test_channel(
     }))
 }
 
-// =============================================================================
-// Alert Rule Endpoints
-// =============================================================================
-
+/// Lists a project's alert rules.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/alert-rules",
@@ -496,7 +469,6 @@ pub async fn test_channel(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/alert-rules
 pub async fn list_rules(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -506,27 +478,19 @@ pub async fn list_rules(
 
     actor.require(Resource::AlertRules, Action::Read, Some(project_id))?;
 
-    // Verify project exists
-    let _ = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
     let rules = AlertService::list_rules(pool.get_ref(), project_id).await?;
 
     let mut responses = Vec::new();
     for rule in rules {
-        let records = AlertService::get_all_rule_channel_records(pool.get_ref(), rule.id).await?;
-        let channels = records
-            .into_iter()
-            .map(|r| crate::models::AlertRuleChannelInput {
-                integration_id: r.integration_id,
-                routing_override: r.routing_override,
-            })
-            .collect();
-        responses.push(rule.to_response(channels));
+        responses.push(AlertService::rule_response(pool.get_ref(), rule).await?);
     }
 
     Ok(HttpResponse::Ok().json(responses))
 }
 
+/// Creates an alert rule in a project.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/projects/{project_id}/alert-rules",
@@ -541,7 +505,6 @@ pub async fn list_rules(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/projects/{project_id}/alert-rules
 pub async fn create_rule(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -552,8 +515,7 @@ pub async fn create_rule(
 
     actor.require(Resource::AlertRules, Action::Create, Some(project_id))?;
 
-    // Verify project exists
-    let _ = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
     let body = body.into_inner();
 
@@ -568,16 +530,8 @@ pub async fn create_rule(
     }
 
     let rule = AlertService::create_rule(pool.get_ref(), project_id, body).await?;
-    let records = AlertService::get_all_rule_channel_records(pool.get_ref(), rule.id).await?;
-    let channels = records
-        .into_iter()
-        .map(|r| crate::models::AlertRuleChannelInput {
-            integration_id: r.integration_id,
-            routing_override: r.routing_override,
-        })
-        .collect();
 
-    Ok(HttpResponse::Created().json(rule.to_response(channels)))
+    Ok(HttpResponse::Created().json(AlertService::rule_response(pool.get_ref(), rule).await?))
 }
 
 #[derive(Deserialize)]
@@ -586,6 +540,7 @@ pub struct RulePath {
     pub rule_id: i32,
 }
 
+/// Gets one alert rule.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/alert-rules/{rule_id}",
@@ -602,7 +557,6 @@ pub struct RulePath {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/alert-rules/{rule_id}
 pub async fn get_rule(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -612,30 +566,15 @@ pub async fn get_rule(
 
     actor.require(Resource::AlertRules, Action::Read, Some(params.project_id))?;
 
-    // Verify project exists
-    let _ = ProjectService::get_by_id(pool.get_ref(), params.project_id).await?;
+    ProjectService::get_by_id(pool.get_ref(), params.project_id).await?;
 
-    let rule = AlertService::get_rule(pool.get_ref(), params.rule_id).await?;
+    let rule = AlertService::get_rule_in_project(pool.get_ref(), params.project_id, params.rule_id)
+        .await?;
 
-    // Verify rule belongs to project
-    if rule.project_id != params.project_id {
-        return Err(crate::error::AppError::NotFound(
-            "Alert rule not found in this project".to_string(),
-        ));
-    }
-
-    let records = AlertService::get_all_rule_channel_records(pool.get_ref(), rule.id).await?;
-    let channels = records
-        .into_iter()
-        .map(|r| crate::models::AlertRuleChannelInput {
-            integration_id: r.integration_id,
-            routing_override: r.routing_override,
-        })
-        .collect();
-
-    Ok(HttpResponse::Ok().json(rule.to_response(channels)))
+    Ok(HttpResponse::Ok().json(AlertService::rule_response(pool.get_ref(), rule).await?))
 }
 
+/// Updates an alert rule.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
     path = "/api/projects/{project_id}/alert-rules/{rule_id}",
@@ -653,7 +592,6 @@ pub async fn get_rule(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PATCH /api/projects/{project_id}/alert-rules/{rule_id}
 pub async fn update_rule(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -668,16 +606,9 @@ pub async fn update_rule(
         Some(params.project_id),
     )?;
 
-    // Verify project exists
-    let _ = ProjectService::get_by_id(pool.get_ref(), params.project_id).await?;
+    ProjectService::get_by_id(pool.get_ref(), params.project_id).await?;
 
-    // Verify rule belongs to project
-    let existing = AlertService::get_rule(pool.get_ref(), params.rule_id).await?;
-    if existing.project_id != params.project_id {
-        return Err(crate::error::AppError::NotFound(
-            "Alert rule not found in this project".to_string(),
-        ));
-    }
+    AlertService::get_rule_in_project(pool.get_ref(), params.project_id, params.rule_id).await?;
 
     let body = body.into_inner();
 
@@ -694,18 +625,11 @@ pub async fn update_rule(
     }
 
     let rule = AlertService::update_rule(pool.get_ref(), params.rule_id, body).await?;
-    let records = AlertService::get_all_rule_channel_records(pool.get_ref(), rule.id).await?;
-    let channels = records
-        .into_iter()
-        .map(|r| crate::models::AlertRuleChannelInput {
-            integration_id: r.integration_id,
-            routing_override: r.routing_override,
-        })
-        .collect();
 
-    Ok(HttpResponse::Ok().json(rule.to_response(channels)))
+    Ok(HttpResponse::Ok().json(AlertService::rule_response(pool.get_ref(), rule).await?))
 }
 
+/// Deletes an alert rule.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/projects/{project_id}/alert-rules/{rule_id}",
@@ -722,7 +646,6 @@ pub async fn update_rule(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{project_id}/alert-rules/{rule_id}
 pub async fn delete_rule(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -736,25 +659,14 @@ pub async fn delete_rule(
         Some(params.project_id),
     )?;
 
-    // Verify project exists
-    let _ = ProjectService::get_by_id(pool.get_ref(), params.project_id).await?;
+    ProjectService::get_by_id(pool.get_ref(), params.project_id).await?;
 
-    // Verify rule belongs to project
-    let existing = AlertService::get_rule(pool.get_ref(), params.rule_id).await?;
-    if existing.project_id != params.project_id {
-        return Err(crate::error::AppError::NotFound(
-            "Alert rule not found in this project".to_string(),
-        ));
-    }
+    AlertService::get_rule_in_project(pool.get_ref(), params.project_id, params.rule_id).await?;
 
     AlertService::delete_rule(pool.get_ref(), params.rule_id).await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
-
-// =============================================================================
-// Alert History Endpoints
-// =============================================================================
 
 #[derive(Deserialize)]
 pub struct HistoryQuery {
@@ -768,6 +680,7 @@ fn default_limit() -> i64 {
     50
 }
 
+/// Lists the alerts a project sent, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/alert-history",
@@ -786,7 +699,6 @@ fn default_limit() -> i64 {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/alert-history
 pub async fn list_history(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -797,8 +709,7 @@ pub async fn list_history(
 
     actor.require(Resource::AlertRules, Action::Read, Some(project_id))?;
 
-    // Verify project exists
-    let _ = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
     let limit = query.limit.clamp(1, 100);
     let history =
@@ -847,7 +758,7 @@ pub async fn history_by_day(
     let project_id = path.into_inner();
 
     actor.require(Resource::AlertRules, Action::Read, Some(project_id))?;
-    let _ = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
     let days = query.days.clamp(1, 90);
     let history = AlertService::history_by_day(
@@ -860,10 +771,6 @@ pub async fn history_by_day(
     .await?;
     Ok(HttpResponse::Ok().json(history))
 }
-
-// =============================================================================
-// Route Configuration
-// =============================================================================
 
 #[cfg(feature = "openapi")]
 #[derive(OpenApi)]
@@ -885,10 +792,10 @@ pub async fn history_by_day(
         history_by_day,
     ),
     components(schemas(
-        crate::models::NotificationChannel,
-        crate::models::CreateNotificationChannel,
-        crate::models::UpdateNotificationChannel,
-        crate::models::ChannelType,
+        crate::models::AlertIntegration,
+        crate::models::CreateAlertIntegration,
+        crate::models::UpdateAlertIntegration,
+        crate::models::ProviderType,
         crate::models::AlertRuleResponse,
         crate::models::CreateAlertRule,
         crate::models::UpdateAlertRule,
@@ -900,8 +807,7 @@ pub async fn history_by_day(
 )]
 pub struct AlertsApi;
 
-/// Configure alert channel routes (global)
-pub fn configure_channels(cfg: &mut web::ServiceConfig) {
+pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/integrations")
             .route("", web::get().to(list_channels))
@@ -915,42 +821,20 @@ pub fn configure_channels(cfg: &mut web::ServiceConfig) {
     );
 }
 
-/// Configure alert rule routes (per-project)
-pub fn configure_rules(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/projects/{project_id}/alert-rules")
-            .route("", web::get().to(list_rules))
-            .route("", web::post().to(create_rule))
-            .route("/{rule_id}", web::get().to(get_rule))
-            .route("/{rule_id}", web::patch().to(update_rule))
-            .route("/{rule_id}", web::delete().to(delete_rule)),
-    );
-}
-
-/// Configure alert history routes
-pub fn configure_history(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::resource("/api/projects/{project_id}/alert-history")
-            .route(web::get().to(list_history)),
-    )
-    .service(
-        web::resource("/api/projects/{project_id}/alert-history/daily")
-            .route(web::get().to(history_by_day)),
-    );
-}
-
-/// Configure all alert routes
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    configure_channels(cfg);
-    configure_rules(cfg);
-    configure_history(cfg);
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/alert-rules", web::get().to(list_rules))
+        .route("/alert-rules", web::post().to(create_rule))
+        .route("/alert-rules/{rule_id}", web::get().to(get_rule))
+        .route("/alert-rules/{rule_id}", web::patch().to(update_rule))
+        .route("/alert-rules/{rule_id}", web::delete().to(delete_rule))
+        .route("/alert-history", web::get().to(list_history))
+        .route("/alert-history/daily", web::get().to(history_by_day));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Cycle 5 RED: redact_slack_bot_token replaces token value for bot_token method
     #[test]
     fn test_redact_slack_bot_token_replaces_token() {
         let mut config = serde_json::json!({
@@ -958,7 +842,7 @@ mod tests {
             "token": "xoxb-real-secret-token",
             "channel": "#alerts"
         });
-        redact_slack_bot_token(ChannelType::Slack, &mut config);
+        redact_slack_bot_token(ProviderType::Slack, &mut config);
         assert_eq!(config["token"], "xoxb-****");
         // Other fields untouched
         assert_eq!(config["channel"], "#alerts");
@@ -971,7 +855,7 @@ mod tests {
             "method": "webhook",
             "webhook_url": "https://hooks.slack.com/services/T/B/X"
         });
-        redact_slack_bot_token(ChannelType::Slack, &mut config);
+        redact_slack_bot_token(ProviderType::Slack, &mut config);
         // Must not touch webhook config at all
         assert!(config.get("token").is_none());
         assert_eq!(
@@ -987,7 +871,7 @@ mod tests {
             "channel": "#alerts"
             // no "token" key — malformed but possible via direct DB insert
         });
-        redact_slack_bot_token(ChannelType::Slack, &mut config);
+        redact_slack_bot_token(ProviderType::Slack, &mut config);
         // must NOT synthesise a fake token key that wasn't there
         assert!(config.get("token").is_none());
     }
@@ -998,14 +882,10 @@ mod tests {
             "method": "bot_token",
             "token": "xoxb-real-secret"
         });
-        // Using ChannelType::Webhook — should not redact
-        redact_slack_bot_token(ChannelType::Webhook, &mut config);
+        // Using ProviderType::Webhook — should not redact
+        redact_slack_bot_token(ProviderType::Webhook, &mut config);
         assert_eq!(config["token"], "xoxb-real-secret");
     }
-
-    // -------------------------------------------------------------------------
-    // validate_routing_override tests (SCL-2)
-    // -------------------------------------------------------------------------
 
     #[test]
     fn test_validate_routing_slack_bot_token_with_channel_ok() {

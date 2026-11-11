@@ -7,6 +7,7 @@ import {
   type RustrakError,
   SERVER_ERROR_MESSAGE,
   TIMEOUT_ERROR_MESSAGE,
+  TRANSIENT_STATUSES,
 } from '../errors.js';
 
 /**
@@ -27,13 +28,6 @@ export class RustrakTransportFailure extends Error {
     this.name = 'RustrakTransportFailure';
     this.rustrakError = error;
   }
-}
-
-/** Narrow a caught value to the internal carrier. */
-export function isTransportFailure(
-  value: unknown,
-): value is RustrakTransportFailure {
-  return value instanceof RustrakTransportFailure;
 }
 
 /**
@@ -109,27 +103,6 @@ function warnUnknownFieldErrorCode(code: string, field: string): void {
 }
 
 /**
- * Read `error.fields` out of an `AppError` body.
- *
- * Returns `undefined` rather than `[]` when there is nothing usable, so the
- * key stays absent on the `RustrakError` and a consumer can test for it.
- *
- * Entries are validated one by one and a malformed or unrecognised one is
- * dropped, never coerced. `FieldErrorCode` is a closed union: admitting a code
- * this build has never heard of would hand a consumer a value its own
- * exhaustive `switch` cannot see. A newer server adding a code therefore
- * degrades to a form-level error here, which is the same place an older client
- * already lands, and is announced once via
- * {@link warnUnknownFieldErrorCode} so the skew is not silent.
- *
- * `message` survives only alongside `code: 'custom'`. The server enforces the
- * same rule at construction, but the docs on both sides tell consumers to
- * select translated copy from `(field, code)` for every other code, so a
- * `message` that reaches them there is untranslatable English a careless
- * consumer would render. Dropping it here makes the rule true of the value, not
- * only of its producer.
- */
-/**
  * Read `error.incident_id` out of a 5xx `AppError` body.
  *
  * The one thing a 500 is willing to say about itself. `error_response` replaced
@@ -151,6 +124,27 @@ function readIncidentId(body: unknown): string | undefined {
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
 }
 
+/**
+ * Read `error.fields` out of an `AppError` body.
+ *
+ * Returns `undefined` rather than `[]` when there is nothing usable, so the
+ * key stays absent on the `RustrakError` and a consumer can test for it.
+ *
+ * Entries are validated one by one and a malformed or unrecognised one is
+ * dropped, never coerced. `FieldErrorCode` is a closed union: admitting a code
+ * this build has never heard of would hand a consumer a value its own
+ * exhaustive `switch` cannot see. A newer server adding a code therefore
+ * degrades to a form-level error here, which is the same place an older client
+ * already lands, and is announced once via
+ * {@link warnUnknownFieldErrorCode} so the skew is not silent.
+ *
+ * `message` survives only alongside `code: 'custom'`. The server enforces the
+ * same rule at construction, but the docs on both sides tell consumers to
+ * select translated copy from `(field, code)` for every other code, so a
+ * `message` that reaches them there is untranslatable English a careless
+ * consumer would render. Dropping it here makes the rule true of the value, not
+ * only of its producer.
+ */
 function readFieldErrors(body: unknown): FieldError[] | undefined {
   const raw =
     body && typeof body === 'object'
@@ -277,8 +271,6 @@ export function transformHttpError(
 
   switch (status) {
     case 400:
-      // The key is omitted rather than set to `undefined` so that
-      // `'fields' in error` stays an honest test, matching `retryAfter` below.
       return annotate({ kind: 'validation', status, message }, fields);
     case 401:
       return annotate({ kind: 'unauthenticated', status, message }, fields);
@@ -309,9 +301,6 @@ export function transformHttpError(
 /** Statuses a `Response` may not be constructed with a body for. */
 const NULL_BODY = new Set([101, 103, 204, 205, 304]);
 
-/** Statuses worth repeating: the request may well succeed a moment later. */
-const RETRY_STATUSES = new Set([408, 500, 502, 503, 504]);
-
 /**
  * Only methods that are safe to send twice. A `POST` that timed out at the
  * proxy may still have created the row, and a second one creates another.
@@ -340,10 +329,12 @@ export function createFetch(config: ClientConfig): typeof fetch {
 
     for (let n = 0; ; n++) {
       const outcome = await attempt(request, timeout);
-      // A timeout is not repeated: the server may still be working on it.
+      // `isRetryable`'s rule, less the two failures whose wait only the
+      // caller can pick: a 429 names its own in `Retry-After`, and a request
+      // that timed out may still be running on the server.
       const retryable =
         outcome instanceof Response
-          ? RETRY_STATUSES.has(outcome.status)
+          ? outcome.status !== 429 && TRANSIENT_STATUSES.has(outcome.status)
           : outcome.reason === 'unreachable';
       if (n < retries && retryable) {
         await sleep(n);

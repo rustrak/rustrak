@@ -1,12 +1,6 @@
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import {
-  DEFAULT_PERIOD,
-  PERIOD_CHOICES,
-  type PeriodChoice,
-} from '@/features/release/model/session-health';
-import { PeriodFilter } from '@/features/release/ui/components/period-filter';
 import { transactionQueries } from '@/features/transaction/api/queries';
 import { windowHours } from '@/features/transaction/model/endpoints';
 import {
@@ -16,8 +10,26 @@ import {
   LatencyChart,
   SlowestSamples,
 } from '@/features/transaction/ui/components/endpoint-detail';
+import {
+  apiPeriod,
+  DEFAULT_PERIOD,
+  PERIOD_CHOICES,
+  type PeriodChoice,
+  periodParam,
+} from '@/shared/lib/period';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
-import { Panel, RailBlock } from '@/shared/ui/components/panel';
+import {
+  DetailBody,
+  DetailHeader,
+  DetailMain,
+  DetailRail,
+} from '@/shared/ui/components/detail-layout';
+import {
+  Panel,
+  PanelPlaceholder,
+  RailBlock,
+} from '@/shared/ui/components/panel';
+import { PeriodFilter } from '@/shared/ui/components/period-filter';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
@@ -37,7 +49,7 @@ function endpointReads(projectId: number, search: EndpointSearch) {
   const group = {
     name: search.name ?? '',
     op: search.op,
-    period: period === 'all' ? undefined : period,
+    period: apiPeriod(period),
     environment: search.environment,
   };
   return {
@@ -75,7 +87,7 @@ export const Route = createFileRoute(
   // suspends: the header is the address's, and each panel draws its own
   // placeholder, so the page needs no skeleton of its own.
   loader: ({ context: { queryClient }, params, deps }) => {
-    const reads = endpointReads(Number.parseInt(params.id, 10), deps);
+    const reads = endpointReads(params.id, deps);
     void queryClient.query(reads.stats).catch(noop);
     void queryClient.query(reads.trend).catch(noop);
     void queryClient.query(reads.samples).catch(noop);
@@ -86,10 +98,9 @@ export const Route = createFileRoute(
 function EndpointPage() {
   const t = useTranslations('performance.detail');
   const tPages = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(id, 10);
   const period = search.period ?? DEFAULT_PERIOD;
   const name = search.name ?? '';
   const op = search.op ?? null;
@@ -107,84 +118,80 @@ function EndpointPage() {
           name: search.name ?? tPages('summary.meta.fallbackName'),
         })}
       </title>
-      <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
-        <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
-          <div className="flex min-w-0 flex-col gap-1">
-            {op ? <span className="text-fg-meta text-meta">{op}</span> : null}
-            <h1 className="break-all font-mono text-fg text-page-title">
-              {name}
-            </h1>
-          </div>
-          <PeriodFilter
-            period={period}
-            onChange={(next) =>
-              navigate({
-                search: (prev) => ({
-                  ...prev,
-                  period: next === DEFAULT_PERIOD ? undefined : next,
-                }),
-                replace: true,
-              })
-            }
-          />
+      <DetailHeader>
+        <div className="flex min-w-0 flex-col gap-1">
+          {op ? <span className="text-fg-meta text-meta">{op}</span> : null}
+          <h1 className="break-all font-mono text-fg text-page-title">
+            {name}
+          </h1>
         </div>
-      </header>
+        <PeriodFilter
+          period={period}
+          onChange={(next) =>
+            navigate({
+              search: (prev) => ({
+                ...prev,
+                period: periodParam(next),
+              }),
+              replace: true,
+            })
+          }
+        />
+      </DetailHeader>
 
-      <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
-        <main className="min-w-0 flex-1 lg:overflow-y-auto">
-          <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
+      <DetailBody>
+        <DetailMain>
+          <QueryState
+            query={stats}
+            placeholder={<PanelPlaceholder height={104} />}
+            title={t('figures')}
+          >
+            {(group) =>
+              group ? (
+                <EndpointFigures
+                  group={group}
+                  windowHours={windowHours(period)}
+                />
+              ) : (
+                <p className="text-fg-subtle text-meta">{t('noSamples')}</p>
+              )
+            }
+          </QueryState>
+          <Panel title={t('latency')} hint={t('latencyHint')}>
             <QueryState
-              query={stats}
-              placeholder={<Placeholder height={104} />}
-              title={t('figures')}
+              query={trend}
+              placeholder={<PanelPlaceholder height={220} />}
+              title={t('latency')}
             >
-              {(group) =>
-                group ? (
-                  <EndpointFigures
-                    group={group}
-                    windowHours={windowHours(period)}
-                  />
-                ) : (
-                  <p className="text-fg-subtle text-meta">{t('noSamples')}</p>
-                )
-              }
+              {(points) => <LatencyChart points={points} />}
             </QueryState>
-            <Panel title={t('latency')} hint={t('latencyHint')}>
-              <QueryState
-                query={trend}
-                placeholder={<Placeholder height={220} />}
-                title={t('latency')}
-              >
-                {(points) => <LatencyChart points={points} />}
-              </QueryState>
-            </Panel>
-            <Panel title={t('calls')} hint={t('callsHint')}>
-              <QueryState
-                query={trend}
-                placeholder={<Placeholder height={220} />}
-                title={t('calls')}
-              >
-                {(points) => <CallsChart points={points} />}
-              </QueryState>
-            </Panel>
-            <Panel flush title={t('slowest')} hint={t('slowestHint')}>
-              <QueryState
-                query={samples}
-                placeholder={<Placeholder height={240} />}
-                title={t('slowest')}
-              >
-                {(page) => (
-                  <SlowestSamples projectId={projectId} rows={page.items} />
-                )}
-              </QueryState>
-            </Panel>
-          </div>
-        </main>
-        <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
+          </Panel>
+          <Panel title={t('calls')} hint={t('callsHint')}>
+            <QueryState
+              query={trend}
+              placeholder={<PanelPlaceholder height={220} />}
+              title={t('calls')}
+            >
+              {(points) => <CallsChart points={points} />}
+            </QueryState>
+          </Panel>
+          <Panel flush title={t('slowest')} hint={t('slowestHint')}>
+            <QueryState
+              query={samples}
+              placeholder={<PanelPlaceholder height={240} />}
+              title={t('slowest')}
+            >
+              {(page) => (
+                <SlowestSamples projectId={projectId} rows={page.items} />
+              )}
+            </QueryState>
+          </Panel>
+        </DetailMain>
+        <DetailRail>
           <RailBlock title={t('details')}>
             <QueryState
               query={stats}
-              placeholder={<Placeholder height={160} />}
+              placeholder={<PanelPlaceholder height={160} />}
               title={t('details')}
             >
               {(group) =>
@@ -198,17 +205,8 @@ function EndpointPage() {
               }
             </QueryState>
           </RailBlock>
-        </aside>
-      </div>
+        </DetailRail>
+      </DetailBody>
     </div>
-  );
-}
-
-function Placeholder({ height }: { height: number }) {
-  return (
-    <div
-      className="animate-pulse rounded-lg bg-surface-hover motion-reduce:animate-none"
-      style={{ height }}
-    />
   );
 }

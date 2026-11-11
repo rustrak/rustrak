@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-use crate::auth::rbac::{Grants, TokenScope};
+use crate::models::rbac::{Grants, TokenScope};
 use crate::models::Permission;
 
 /// An API token. `token` holds the SHA-256 hash, except on a token just

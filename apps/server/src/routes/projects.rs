@@ -1,12 +1,12 @@
 use actix_web::{web, HttpResponse};
 
-use crate::auth::rbac::{Action, ProjectScope, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, ProjectScope, Resource};
 use crate::models::{CreateProject, ProjectResponse, UpdateProject};
-use crate::pagination::{ListProjectsQuery, OffsetPaginatedResponse};
+use crate::pagination::{OffsetPaginatedResponse, SortOrder};
 use crate::routes::period::parse_period_hours;
 use crate::services::stats::StatsService;
 use crate::services::{ProjectService, RoleService};
@@ -26,6 +26,36 @@ fn keys_if_held(actor: &ApiActor, mut response: ProjectResponse) -> ProjectRespo
     response
 }
 
+/// Query parameters for listing projects (offset-based)
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct ListProjectsQuery {
+    /// Page number (1-indexed, default: 1)
+    #[serde(default = "crate::pagination::default_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1))]
+    pub page: i64,
+
+    /// Items per page (default: 20, max: 100)
+    #[serde(default = "crate::pagination::default_per_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
+    pub per_page: i64,
+
+    /// Sort order direction (default: desc = newest first)
+    #[serde(default)]
+    pub order: SortOrder,
+
+    /// Window for the per-project stats on each row (e.g. `24h`, `7d`).
+    ///
+    /// Omitted means the caller does not want stats at all, and the extra
+    /// aggregate queries are skipped entirely — this is what keeps the plain
+    /// `GET /api/projects` that SDK tooling and the project picker use as
+    /// cheap as it was before the list table grew a sparkline. Sentry's own
+    /// projects endpoint gates its `stats` field on `?statsPeriod=` the same
+    /// way.
+    #[serde(default)]
+    pub stats_period: Option<String>,
+}
+
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects",
@@ -38,7 +68,7 @@ fn keys_if_held(actor: &ApiActor, mut response: ProjectResponse) -> ProjectRespo
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects - List projects with pagination
+/// List projects with pagination.
 ///
 /// Only the projects the caller holds a permission on.
 pub async fn list_projects(
@@ -47,10 +77,10 @@ pub async fn list_projects(
     query: web::Query<ListProjectsQuery>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
+    let per_page = crate::pagination::per_page(query.per_page)?;
     let (projects, total_count) = match actor.visible_projects() {
         ProjectScope::All => {
-            ProjectService::list_offset(pool.get_ref(), query.order, query.page, query.per_page)
-                .await?
+            ProjectService::list_offset(pool.get_ref(), query.order, query.page, per_page).await?
         }
         ProjectScope::Only(ids) => {
             ProjectService::list_offset_for_ids(
@@ -58,13 +88,13 @@ pub async fn list_projects(
                 &ids,
                 query.order,
                 query.page,
-                query.per_page,
+                per_page,
             )
             .await?
         }
     };
 
-    let base_url = build_base_url(&config);
+    let base_url = config.base_url();
     let mut responses: Vec<_> = projects
         .iter()
         .map(|p| keys_if_held(&actor, p.to_response(&base_url)))
@@ -89,7 +119,7 @@ pub async fn list_projects(
         responses,
         total_count,
         query.page,
-        query.per_page,
+        per_page,
     )))
 }
 
@@ -106,7 +136,7 @@ pub async fn list_projects(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{id} - Get a project by ID
+/// Get a project by ID
 pub async fn get_project(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
@@ -117,7 +147,7 @@ pub async fn get_project(
     actor.require(Resource::Project, Action::Read, Some(id))?;
 
     let project = ProjectService::get_by_id(pool.get_ref(), id).await?;
-    let base_url = build_base_url(&config);
+    let base_url = config.base_url();
 
     Ok(HttpResponse::Ok().json(keys_if_held(&actor, project.to_response(&base_url))))
 }
@@ -136,7 +166,7 @@ pub async fn get_project(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/projects - Create a new project
+/// Create a new project
 ///
 /// Needs `projects:create` and a permission on at least one project, because
 /// the creator's own roles extend to the new one. A token limited to chosen
@@ -144,10 +174,11 @@ pub async fn get_project(
 pub async fn create_project(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
-    body: web::Json<CreateProject>,
+    body: AppResult<web::Json<CreateProject>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Projects, Action::Create, None)?;
+    let body = body?;
     // Their own roles are what will reach the project: with none that reach
     // projects, they could never see what they created.
     if actor.visible_projects() == ProjectScope::Only(vec![]) {
@@ -163,7 +194,7 @@ pub async fn create_project(
         RoleService::extend_to_project(pool.get_ref(), uid, project.id).await?;
     }
 
-    let base_url = build_base_url(&config);
+    let base_url = config.base_url();
     let mut response = project.to_response(&base_url);
     // `actor` predates the new project, so ask what holds on it.
     if !actor
@@ -186,13 +217,14 @@ pub async fn create_project(
     request_body = UpdateProject,
     responses(
         (status = 200, description = "Project updated", body = ProjectResponse),
+        (status = 400, description = "Invalid value, such as a limit above the server's", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
         (status = 409, description = "Conflict", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PATCH /api/projects/{id} - Update a project
+/// Update a project
 pub async fn update_project(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
@@ -202,9 +234,31 @@ pub async fn update_project(
 ) -> AppResult<HttpResponse> {
     let id = path.into_inner();
     actor.require(Resource::Project, Action::Update, Some(id))?;
+    // A project's limit can only tighten the operator's: one above it would
+    // be stored and silently never apply.
+    let limits = &config.rate_limit;
+    for (field, limit, max) in [
+        (
+            "rate_limit_per_minute",
+            body.rate_limit_per_minute,
+            limits.max_events_per_project_per_minute,
+        ),
+        (
+            "rate_limit_per_hour",
+            body.rate_limit_per_hour,
+            limits.max_events_per_project_per_hour,
+        ),
+    ] {
+        if matches!(limit, Some(Some(value)) if value > max) {
+            return Err(
+                AppError::Validation(format!("{field} cannot exceed the server's {max}"))
+                    .with_field(field, crate::error::FieldErrorCode::Invalid),
+            );
+        }
+    }
 
     let project = ProjectService::update(pool.get_ref(), id, body.into_inner()).await?;
-    let base_url = build_base_url(&config);
+    let base_url = config.base_url();
 
     Ok(HttpResponse::Ok().json(keys_if_held(&actor, project.to_response(&base_url))))
 }
@@ -222,7 +276,7 @@ pub async fn update_project(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{id} - Delete a project
+/// Delete a project
 pub async fn delete_project(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -236,7 +290,6 @@ pub async fn delete_project(
     Ok(HttpResponse::NoContent().finish())
 }
 
-/// Configure project routes
 /// The server's per-project event limits (`MAX_EVENTS_PER_PROJECT_*`).
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -256,7 +309,7 @@ pub struct RateLimitsResponse {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/rate-limits - What a project without limits of its own follows
+/// What a project without limits of its own follows
 pub async fn get_rate_limits(
     config: web::Data<Config>,
     _actor: ApiActor,
@@ -268,85 +321,15 @@ pub async fn get_rate_limits(
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route("/api/rate-limits", web::get().to(get_rate_limits));
-    cfg.service(
-        web::scope("/api/projects")
-            .route("", web::get().to(list_projects))
-            .route("", web::post().to(create_project))
-            .route("/{id}", web::get().to(get_project))
-            .route("/{id}", web::patch().to(update_project))
-            .route("/{id}", web::delete().to(delete_project)),
-    );
+    cfg.route("/api/rate-limits", web::get().to(get_rate_limits))
+        .route("/api/projects", web::get().to(list_projects))
+        .route("/api/projects", web::post().to(create_project));
 }
 
-/// Build base URL from config
-fn build_base_url(config: &Config) -> String {
-    config
-        .public_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.host, config.port))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::{DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
-    use std::time::Duration;
-
-    fn make_config(public_url: Option<String>, host: &str, port: u16) -> Config {
-        Config {
-            host: host.to_string(),
-            port,
-            public_url,
-            database: DatabaseConfig {
-                url: "postgres://test:test@localhost/test".to_string(),
-                max_connections: 10,
-                min_connections: 1,
-                acquire_timeout: Duration::from_secs(5),
-                idle_timeout: Duration::from_secs(600),
-                max_lifetime: Duration::from_secs(1800),
-            },
-            rate_limit: RateLimitConfig {
-                max_events_per_minute: 1000,
-                max_events_per_hour: 10000,
-                max_events_per_project_per_minute: 500,
-                max_events_per_project_per_hour: 5000,
-            },
-            security: SecurityConfig {
-                ssl_proxy: false,
-                session_secret_key: None,
-            },
-            ingest_dir: None,
-            sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-            sourcemap_cache_bytes: 64 * 1024 * 1024,
-            max_chunk_size_bytes: 10 * 1024 * 1024,
-            session_flush_interval_secs: 30,
-            session_cardinality_cap: 10_000,
-            dashboard: DashboardConfig {
-                dir: "./static".to_string(),
-                enabled: true,
-                url: None,
-            },
-            telemetry: crate::config::TelemetryConfig {
-                enabled: false,
-                do_not_track: false,
-            },
-        }
-    }
-
-    #[test]
-    fn test_build_base_url_uses_public_url_when_set() {
-        let config = make_config(Some("https://api.example.com".to_string()), "0.0.0.0", 8080);
-        let result = build_base_url(&config);
-        assert_eq!(result, "https://api.example.com");
-    }
-
-    #[test]
-    fn test_build_base_url_fallback_when_no_public_url() {
-        let config = make_config(None, "127.0.0.1", 9090);
-        let result = build_base_url(&config);
-        assert_eq!(result, "http://127.0.0.1:9090");
-    }
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("", web::get().to(get_project))
+        .route("", web::patch().to(update_project))
+        .route("", web::delete().to(delete_project));
 }
 
 #[cfg(feature = "openapi")]

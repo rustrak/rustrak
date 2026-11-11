@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, DurationRound, Utc};
 use chrono_tz::Tz;
 use serde_json::Value;
 use sqlx::types::Json;
@@ -18,7 +18,7 @@ use tokio::task::JoinHandle;
 
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::scheduler::schedule::{truncate_to_minute, Schedule};
+use crate::models::schedule::{truncate_to_minute, Schedule};
 
 /// What to do when the server was down at a job's run time (Quartz's
 /// misfire instruction).
@@ -209,9 +209,31 @@ impl Scheduler {
         })
     }
 
-    /// Records a run of `key` started outside the schedule (one asked for
-    /// now), so it is the job's last run like any other.
-    pub async fn record_start(pool: &DbPool, key: &str, at: DateTime<Utc>) -> AppResult<()> {
+    /// Records a run of `key` asked for now, outside the schedule, so it is
+    /// the job's last run like any other: its start at `started_at`, then the
+    /// outcome of `run` in the background. The run has already started, so a
+    /// failure to record it is logged, not returned.
+    pub async fn record_run_now(
+        pool: DbPool,
+        key: &'static str,
+        started_at: DateTime<Utc>,
+        run: impl std::future::Future<Output = AppResult<Value>> + Send + 'static,
+    ) {
+        // Milliseconds, so the finish matches the start on every backend
+        // (Postgres keeps microseconds).
+        let started_at = started_at
+            .duration_trunc(Duration::milliseconds(1))
+            .unwrap_or(started_at);
+        if let Err(e) = Self::record_start(&pool, key, started_at).await {
+            log::error!("Could not record the start of scheduled job {key}: {e}");
+        }
+        tokio::spawn(async move {
+            let outcome = run.await;
+            Self::record_finish(&pool, key, started_at, outcome).await;
+        });
+    }
+
+    async fn record_start(pool: &DbPool, key: &str, at: DateTime<Utc>) -> AppResult<()> {
         Self::ensure(pool, key).await?;
         sqlx::query("UPDATE scheduled_jobs SET last_started_at = $2 WHERE key = $1")
             .bind(key)
@@ -224,7 +246,7 @@ impl Scheduler {
     /// Records how the run of `key` started at `started_at` ended, unless a
     /// later run has started since (its own finish will be recorded). A
     /// failure to record is logged: the run itself already happened.
-    pub async fn record_finish(
+    async fn record_finish(
         pool: &DbPool,
         key: &str,
         started_at: DateTime<Utc>,
@@ -289,6 +311,25 @@ impl Scheduler {
             .bind(Json(settings))
             .execute(pool)
             .await?;
+        Self::job(pool, key).await
+    }
+
+    /// [`Self::update_settings`], with the next run computed now, as the next
+    /// tick would, so the caller can show it at once.
+    /// `schedule` is what the job's [`ScheduledJob::schedule`] reads from
+    /// `settings`.
+    pub async fn save_settings(
+        pool: &DbPool,
+        key: &str,
+        settings: Value,
+        schedule: Option<(Schedule, Tz)>,
+        now: DateTime<Utc>,
+    ) -> AppResult<JobState> {
+        Self::update_settings(pool, key, settings.clone()).await?;
+        if let Some((schedule, tz)) = schedule {
+            let next = schedule.next_after(truncate_to_minute(now), tz);
+            set_next_run(pool, key, Some(next), &settings).await?;
+        }
         Self::job(pool, key).await
     }
 }

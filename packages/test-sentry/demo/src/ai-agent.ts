@@ -46,9 +46,15 @@ const model = new MockLanguageModelV3({
   doGenerate: [
     // Step 1: model decides to call the tool.
     {
-      finishReason: 'tool-calls',
+      finishReason: { unified: 'tool-calls', raw: undefined },
+      warnings: [],
       usage: {
-        inputTokens: { total: 210, noCache: 210, cacheRead: undefined, cacheWrite: undefined },
+        inputTokens: {
+          total: 210,
+          noCache: 210,
+          cacheRead: undefined,
+          cacheWrite: undefined,
+        },
         outputTokens: { total: 34, text: 34, reasoning: undefined },
       },
       content: [
@@ -62,9 +68,15 @@ const model = new MockLanguageModelV3({
     },
     // Step 2: model produces the final answer using the tool result.
     {
-      finishReason: 'stop',
+      finishReason: { unified: 'stop', raw: undefined },
+      warnings: [],
       usage: {
-        inputTokens: { total: 302, noCache: 302, cacheRead: undefined, cacheWrite: undefined },
+        inputTokens: {
+          total: 302,
+          noCache: 302,
+          cacheRead: undefined,
+          cacheWrite: undefined,
+        },
         outputTokens: { total: 96, text: 96, reasoning: undefined },
       },
       content: [

@@ -4,19 +4,16 @@
  * The shape deliberately mirrors Zod's `safeParse`: discriminant `success`,
  * payload `data`. Everything inside is a plain object with `Object.prototype`,
  * no class instances and no methods, because React's Flight serializer refuses
- * to send anything else across the server/client boundary. Operations are
- * standalone functions for the same reason.
+ * to send anything else across the server/client boundary.
  */
 export type Result<T, E> =
   | { readonly success: true; readonly data: T }
   | { readonly success: false; readonly error: E };
 
-/** Wrap a value as a successful `Result`. */
 export function Ok<T>(data: T): Result<T, never> {
   return { success: true, data };
 }
 
-/** Wrap an error as a failed `Result`. */
 export function Err<E>(error: E): Result<never, E> {
   return { success: false, error };
 }

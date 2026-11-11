@@ -42,9 +42,3 @@ include_tags = true
 # count alone would.
 include_extra = true
 distinct_groups = 2000
-
-[docker]
-server_cpus = "2"
-server_memory = "256M"
-postgres_cpus = "1"
-postgres_memory = "512M"

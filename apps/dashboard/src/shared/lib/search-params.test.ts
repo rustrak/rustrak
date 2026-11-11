@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { searchOneOf, searchPage, searchString } from './search-params';
+import {
+  searchId,
+  searchOneOf,
+  searchPage,
+  searchString,
+} from './search-params';
 
 /**
  * Whatever these return becomes the URL, not just the props: the router writes
@@ -56,4 +61,18 @@ describe('searchOneOf', () => {
     expect(searchOneOf(undefined, filters)).toBeUndefined();
     expect(searchOneOf(7, filters)).toBeUndefined();
   });
+});
+
+describe('searchId', () => {
+  it('reads an id written as a string or handed over as a number', () => {
+    expect(searchId('3')).toBe(3);
+    expect(searchId(3)).toBe(3);
+  });
+
+  it.each(['0', '-1', '3abc', '/projects/3', '9007199254740992', 0, 3.5])(
+    'is absent for %s',
+    (value) => {
+      expect(searchId(value)).toBeUndefined();
+    },
+  );
 });

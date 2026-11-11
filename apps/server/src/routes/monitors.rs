@@ -1,13 +1,13 @@
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
 #[cfg(feature = "openapi")]
 use crate::models::monitor::{CheckInResponse, MonitorEnvironmentStats, MonitorResponse};
 use crate::models::monitor::{CreateMonitor, UpdateMonitor};
+use crate::models::rbac::{Action, Resource};
 use crate::pagination::OffsetPaginatedResponse;
 use crate::services::monitor::MonitorService;
 
@@ -15,11 +15,11 @@ use crate::services::monitor::MonitorService;
 use utoipa::OpenApi;
 
 /// Query parameters for listing a monitor's check-ins.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 pub struct ListCheckInsQuery {
     /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
+    #[serde(default = "crate::pagination::default_page")]
     pub page: i64,
     /// Items per page (default: 50, max: 100)
     #[serde(default = "default_per_page")]
@@ -38,10 +38,6 @@ pub struct MonitorStatsQuery {
     pub slug: Option<String>,
 }
 
-fn default_page() -> i64 {
-    1
-}
-
 fn default_per_page() -> i64 {
     50
 }
@@ -56,6 +52,7 @@ async fn require(
     actor.require(resource, action, Some(project_id))
 }
 
+/// Lists a project's cron monitors.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/monitors",
@@ -69,7 +66,6 @@ async fn require(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/monitors
 pub async fn list_monitors(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -94,7 +90,6 @@ pub async fn list_monitors(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/monitor-stats
 /// Counts the check-ins of a project's monitors by status over a window, bucket by bucket.
 pub async fn get_monitor_stats(
     pool: web::Data<DbPool>,
@@ -116,6 +111,7 @@ pub async fn get_monitor_stats(
     Ok(HttpResponse::Ok().json(stats))
 }
 
+/// Creates a cron monitor in a project.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/projects/{project_id}/monitors",
@@ -131,11 +127,10 @@ pub async fn get_monitor_stats(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/projects/{project_id}/monitors
 pub async fn create_monitor(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
-    body: web::Json<CreateMonitor>,
+    body: AppResult<web::Json<CreateMonitor>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
@@ -147,10 +142,11 @@ pub async fn create_monitor(
         Action::Create,
     )
     .await?;
-    let monitor = MonitorService::create(&pool, project_id, body.into_inner()).await?;
+    let monitor = MonitorService::create(&pool, project_id, body?.into_inner()).await?;
     Ok(HttpResponse::Created().json(monitor))
 }
 
+/// Gets one cron monitor.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/monitors/{slug}",
@@ -167,7 +163,6 @@ pub async fn create_monitor(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/monitors/{slug}
 pub async fn get_monitor(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, String)>,
@@ -179,6 +174,7 @@ pub async fn get_monitor(
     Ok(HttpResponse::Ok().json(monitor))
 }
 
+/// Updates a cron monitor.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/projects/{project_id}/monitors/{slug}",
@@ -197,7 +193,6 @@ pub async fn get_monitor(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/projects/{project_id}/monitors/{slug}
 pub async fn update_monitor(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, String)>,
@@ -217,6 +212,7 @@ pub async fn update_monitor(
     Ok(HttpResponse::Ok().json(monitor))
 }
 
+/// Deletes a cron monitor and its check-ins.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/projects/{project_id}/monitors/{slug}",
@@ -233,7 +229,6 @@ pub async fn update_monitor(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{project_id}/monitors/{slug}
 pub async fn delete_monitor(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, String)>,
@@ -252,6 +247,7 @@ pub async fn delete_monitor(
     Ok(HttpResponse::NoContent().finish())
 }
 
+/// Lists a cron monitor's check-ins, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/monitors/{slug}/checkins",
@@ -269,7 +265,6 @@ pub async fn delete_monitor(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/monitors/{slug}/checkins
 pub async fn list_checkins(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, String)>,
@@ -279,7 +274,7 @@ pub async fn list_checkins(
     let (project_id, slug) = path.into_inner();
     require(&pool, &actor, project_id, Resource::Monitors, Action::Read).await?;
     let page = query.page.max(1);
-    let per_page = query.per_page.clamp(1, 100);
+    let per_page = crate::pagination::per_page(query.per_page)?;
     let (items, total) = MonitorService::list_checkins(
         &pool,
         project_id,
@@ -305,19 +300,12 @@ pub async fn list_checkins(
 ))]
 pub struct MonitorsApi;
 
-/// Configure monitor routes
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/projects/{project_id}/monitors")
-            .route("", web::get().to(list_monitors))
-            .route("", web::post().to(create_monitor))
-            .route("/{slug}", web::get().to(get_monitor))
-            .route("/{slug}", web::put().to(update_monitor))
-            .route("/{slug}", web::delete().to(delete_monitor))
-            .route("/{slug}/checkins", web::get().to(list_checkins)),
-    )
-    .route(
-        "/api/projects/{project_id}/monitor-stats",
-        web::get().to(get_monitor_stats),
-    );
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/monitors", web::get().to(list_monitors))
+        .route("/monitors", web::post().to(create_monitor))
+        .route("/monitors/{slug}", web::get().to(get_monitor))
+        .route("/monitors/{slug}", web::put().to(update_monitor))
+        .route("/monitors/{slug}", web::delete().to(delete_monitor))
+        .route("/monitors/{slug}/checkins", web::get().to(list_checkins))
+        .route("/monitor-stats", web::get().to(get_monitor_stats));
 }

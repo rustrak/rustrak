@@ -101,6 +101,12 @@ export interface DataTableColumnMeta {
   /** Tabular mono figures: counts, durations. */
   numeric?: boolean;
   /**
+   * Optional when space is short: while the table would be wider than its
+   * card, columns with a `drop` step aside, lowest first, instead of
+   * sliding under the pinned actions column. Absent: always drawn.
+   */
+  drop?: number;
+  /**
    * The sort menu's wording, said in the data's own terms. "Most events
    * first" reads; "Descending" makes the reader translate. Defaults to
    * A→Z / Z→A wording for text and high/low wording for numeric columns.

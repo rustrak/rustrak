@@ -15,6 +15,9 @@ import {
 } from '@rustrak/ui';
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
+import { axisDuration, isDaily } from '@/shared/lib/chart-format';
+import { Figure, FigureStrip } from '@/shared/ui/components/figures';
+import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 
 /**
  * The window in six figures: how many runs, model and tool calls, what they
@@ -54,44 +57,19 @@ export function AgentFigures({ summary }: { summary: AgentSummary }) {
   ];
 
   return (
-    <dl className="grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border-subtle bg-border-subtle sm:grid-cols-3 xl:grid-cols-6">
+    <FigureStrip className="shrink-0 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
       {figures.map(([label, value, footnote]) => (
-        <div
-          key={label}
-          className="flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5"
-        >
-          <dt className="truncate text-fg-meta text-meta">{label}</dt>
-          <dd className="text-fg text-title tabular-nums">{value}</dd>
-          <dd className="truncate text-fg-subtle text-hint">
-            {footnote ?? ' '}
-          </dd>
-        </div>
+        <Figure key={label} label={label} value={value} footnote={footnote} />
       ))}
-    </dl>
+    </FigureStrip>
   );
-}
-
-function useBucketLabel(buckets: { bucket: string }[]) {
-  const format = useFormatter();
-  const [first, second] = buckets;
-  const daily =
-    first && second
-      ? Date.parse(second.bucket) - Date.parse(first.bucket) >= 86_400_000
-      : false;
-  return (value: string | number) =>
-    format.dateTime(
-      new Date(value),
-      daily
-        ? { month: 'short', day: 'numeric' }
-        : { month: 'short', day: 'numeric', hour: 'numeric' },
-    );
 }
 
 /** Agent runs per bucket, the failed ones stacked on top in red. */
 export function RunsChart({ points }: { points: AgentTimeseriesPoint[] }) {
   const t = useTranslations('agents.charts');
   const format = useFormatter();
-  const label = useBucketLabel(points);
+  const label = useBucketLabel(isDaily(points));
   return (
     <BarsChart
       data={points.map((p) => ({
@@ -104,6 +82,7 @@ export function RunsChart({ points }: { points: AgentTimeseriesPoint[] }) {
         { key: 'failed', label: t('runsFailed'), color: 'var(--sev-error)' },
       ]}
       xKey="t"
+      integer
       height={200}
       formatX={label}
       formatY={(v) => format.number(v, 'compact')}
@@ -115,7 +94,7 @@ export function RunsChart({ points }: { points: AgentTimeseriesPoint[] }) {
 /** Average and p95 duration of agent runs and model calls per bucket. */
 export function DurationChart({ points }: { points: AgentDurationPoint[] }) {
   const t = useTranslations('agents.charts');
-  const label = useBucketLabel(points);
+  const label = useBucketLabel(isDaily(points));
   return (
     <TimeSeriesChart
       data={points.map((p) => ({
@@ -134,11 +113,6 @@ export function DurationChart({ points }: { points: AgentDurationPoint[] }) {
       label={t('duration')}
     />
   );
-}
-
-/** A duration short enough for an axis tick: whole seconds, or milliseconds. */
-function axisDuration(ms: number): string {
-  return ms >= 1000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms)}ms`;
 }
 
 /**

@@ -6,25 +6,32 @@
  */
 import type { ProjectsListData } from '@rustrak/client';
 import { queryOptions } from '@tanstack/react-query';
-import { projectScope } from '@/shared/api/keys';
+import { allProjects, projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 
-/** What the overview's page filters narrow every read to. */
-export interface OverviewScope {
+/**
+ * How many projects a picker (the sidebar, the command bar, the token and team
+ * dialogs) carries. The frame reads it on *every* authenticated page, so it is
+ * one request, not a page-through; an instance past this many needs a
+ * server-side search, which is a different change to making this bigger.
+ */
+const PICKER_LIMIT = 100;
+
+interface OverviewScope {
   environment?: string;
   release?: string;
 }
 
-/** Reads of projects, as `queryOptions` for the cache. */
 export const projectQueries = {
-  /** Every list of projects, whatever its page. */
-  lists: () => ['projects', 'list'] as const,
+  lists: () => [...allProjects(), 'list'] as const,
   list: (query: ProjectsListData['query'] = {}) =>
     queryOptions({
       queryKey: [...projectQueries.lists(), query],
       queryFn: ({ signal }) => orThrow(api().projects.list({ query, signal })),
     }),
+  /** The first projects, for every picker; one cache entry for all of them. */
+  picker: () => projectQueries.list({ per_page: PICKER_LIMIT }),
   detail: (id: number) =>
     queryOptions({
       queryKey: [...projectScope(id), 'detail'],

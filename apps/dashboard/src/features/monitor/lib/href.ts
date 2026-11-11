@@ -6,3 +6,15 @@
 export function monitorHref(projectId: number, slug: string): string {
   return `/projects/${projectId}/crons/m/${encodeURIComponent(slug)}`;
 }
+
+export function monitorsHref(projectId: number): string {
+  return `/projects/${projectId}/crons`;
+}
+
+export function newMonitorHref(projectId: number): string {
+  return `${monitorsHref(projectId)}/new`;
+}
+
+export function editMonitorHref(projectId: number, slug: string): string {
+  return `${monitorHref(projectId, slug)}/edit`;
+}

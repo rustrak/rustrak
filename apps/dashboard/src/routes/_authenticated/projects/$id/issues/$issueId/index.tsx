@@ -16,13 +16,16 @@ import { issueQueries } from '@/features/issue/api/queries';
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/issues/$issueId/',
 )({
-  loader: ({ context: { queryClient }, params }) => {
-    const projectId = Number.parseInt(params.id, 10);
+  loader: ({ context: { queryClient }, params, preload }) => {
+    const projectId = params.id;
     const latest = eventQueries.latest(projectId, params.issueId);
     // Asked every time: a cached answer would open an older event than the
-    // one that just brought the reader here.
-    queryClient.removeQueries({ queryKey: latest.queryKey, exact: true });
-    void queryClient.query(latest).catch(noop);
+    // one that just brought the reader here. Not on a hover: the click
+    // would drop that answer and ask again.
+    if (!preload) {
+      queryClient.removeQueries({ queryKey: latest.queryKey, exact: true });
+      void queryClient.query(latest).catch(noop);
+    }
     // The event page reads it next; on its way already.
     void queryClient
       .query(issueQueries.detail(projectId, params.issueId))
@@ -33,8 +36,7 @@ export const Route = createFileRoute(
 });
 
 function LatestEvent() {
-  const { id, issueId } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, issueId } = Route.useParams();
   // The issue too, so a missing one reads as a missing issue.
   useSuspenseQuery(issueQueries.detail(projectId, issueId));
   const { data: latest } = useSuspenseQuery(
@@ -45,13 +47,13 @@ function LatestEvent() {
     <Navigate
       replace
       to="/projects/$id/issues/$issueId/events/$eventId"
-      params={{ id, issueId, eventId: String(latest.id) }}
+      params={{ id: projectId, issueId, eventId: String(latest.id) }}
     />
   ) : (
     <Navigate
       replace
       to="/projects/$id/issues/$issueId/events/empty"
-      params={{ id, issueId }}
+      params={{ id: projectId, issueId }}
     />
   );
 }

@@ -4,7 +4,6 @@ import type {
   IssueGitHub,
   IssueResponse,
 } from '@rustrak/client';
-import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { IssueCodeBlock } from '@/features/github/ui/components/issue-code-block';
 import { IssueActivity } from '@/features/issue/ui/components/issue-activity';
@@ -13,6 +12,7 @@ import {
   IssueProperties,
 } from '@/features/issue/ui/components/issue-properties';
 import { TagDistribution } from '@/features/issue/ui/components/tag-distribution';
+import { RailBlock } from '@/shared/ui/components/panel';
 
 /**
  * The rail: everything about the **issue**, beside the event being read.
@@ -89,20 +89,5 @@ export function EventRail({
         />
       </RailBlock>
     </div>
-  );
-}
-
-function RailBlock({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="border-border-divider border-b px-5 py-4 last:border-b-0">
-      <h2 className="mb-2 text-column text-fg-meta">{title}</h2>
-      {children}
-    </section>
   );
 }

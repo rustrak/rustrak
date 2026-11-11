@@ -4,19 +4,18 @@ use futures_util::StreamExt as _;
 use serde::{Deserialize, Serialize};
 use sha1::Digest as _;
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::models::source_file::DIF_JOB_KIND;
-use crate::services::sourcemap::{get_missing_chunks, store_chunks, SourceMapProvider};
-
-// ---------------------------------------------------------------------------
-// Request / Response types
-// ---------------------------------------------------------------------------
+use crate::models::rbac::{Action, Resource};
+#[cfg(feature = "openapi")]
+use crate::models::source_file::AssembleResponse;
+use crate::models::source_file::{SourceMapFile, DIF_JOB_KIND};
+use crate::services::sourcemap::{enqueue_assembly, not_found, store_chunks, NewJob};
+use crate::services::ProjectService;
+use crate::workers::sourcemap_assembly::AssemblyQueue;
 
 /// Multipart chunk upload.
 /// Each part's **field name** may be the SHA-1 hex digest of that part's binary content
@@ -32,16 +31,6 @@ pub struct AssembleBody {
     pub checksum: String,
     pub chunks: Vec<String>,
     pub projects: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct AssembleResponse {
-    pub state: String,
-    #[serde(rename = "missingChunks")]
-    pub missing_chunks: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
 }
 
 /// Synthetic organization sentry-cli checks before uploading.
@@ -74,24 +63,9 @@ pub struct ChunkUploadOptions {
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "camelCase")]
-pub struct SourceMapFile {
-    pub debug_id: String,
-    pub file_type: String,
-    pub size: i32,
-    pub times_used: i32,
-    pub date_uploaded: String,
-}
-
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SourceMapList {
     pub data: Vec<SourceMapFile>,
 }
-
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -103,7 +77,6 @@ pub struct SourceMapList {
         (status = 200, description = "Synthetic org metadata accepted by sentry-cli", body = OrgDetails),
     ),
 ))]
-/// GET /api/0/organizations/{org_slug}/
 /// Always returns 200 with synthetic org data — sentry-cli validates this before uploading.
 pub async fn org_details(path: web::Path<String>) -> AppResult<HttpResponse> {
     let org_slug = path.into_inner();
@@ -118,6 +91,7 @@ pub async fn org_details(path: web::Path<String>) -> AppResult<HttpResponse> {
     }))
 }
 
+/// Describes how sentry-cli should upload chunks: size, concurrency and accepted kinds.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/0/organizations/{org_slug}/chunk-upload/",
@@ -130,7 +104,6 @@ pub async fn org_details(path: web::Path<String>) -> AppResult<HttpResponse> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/organizations/{org_slug}/chunk-upload/
 pub async fn chunk_upload_capability(
     path: web::Path<String>,
     _actor: ApiActor,
@@ -138,10 +111,7 @@ pub async fn chunk_upload_capability(
 ) -> AppResult<HttpResponse> {
     let org_slug = path.into_inner();
 
-    let base_url = config
-        .public_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.host, config.port));
+    let base_url = config.base_url();
 
     let chunk_size = config.max_chunk_size_bytes as u64;
     Ok(HttpResponse::Ok().json(ChunkUploadOptions {
@@ -168,6 +138,7 @@ pub async fn chunk_upload_capability(
     }))
 }
 
+/// Receives chunks of a source map or debug file upload from sentry-cli.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/0/organizations/{org_slug}/chunk-upload/",
@@ -187,7 +158,6 @@ pub async fn chunk_upload_capability(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/0/organizations/{org_slug}/chunk-upload/
 pub async fn chunk_upload(
     _path: web::Path<String>,
     actor: ApiActor,
@@ -274,6 +244,7 @@ pub async fn chunk_upload(
     Ok(HttpResponse::Ok().finish())
 }
 
+/// Assembles uploaded chunks into an artifact bundle (sentry-cli `sourcemaps upload`).
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/0/organizations/{org_slug}/artifactbundle/assemble/",
@@ -289,12 +260,11 @@ pub async fn chunk_upload(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/0/organizations/{org_slug}/artifactbundle/assemble/
 pub async fn artifact_bundle_assemble(
     _path: web::Path<String>,
     actor: ApiActor,
     pool: web::Data<DbPool>,
-    _provider: web::Data<Arc<dyn SourceMapProvider>>,
+    queue: web::Data<AssemblyQueue>,
     body: web::Json<AssembleBody>,
 ) -> AppResult<HttpResponse> {
     // Guard: projects array must not be empty
@@ -304,7 +274,9 @@ pub async fn artifact_bundle_assemble(
         })));
     }
 
-    let Some(project_id) = resolve_project(pool.get_ref(), &body.projects[0]).await? else {
+    let Some(project_id) =
+        ProjectService::id_by_slug_or_id(pool.get_ref(), &body.projects[0]).await?
+    else {
         return Ok(HttpResponse::NotFound().json(serde_json::json!({
             "detail": "project not found"
         })));
@@ -315,6 +287,7 @@ pub async fn artifact_bundle_assemble(
 
     let response = enqueue_assembly(
         pool.get_ref(),
+        &queue,
         project_id,
         NewJob {
             checksum: &body.checksum,
@@ -326,224 +299,6 @@ pub async fn artifact_bundle_assemble(
     )
     .await?;
     Ok(HttpResponse::Ok().json(response))
-}
-
-/// The project a sentry-cli request names: by slug first, then by numeric ID
-/// (sentry-cli may send either).
-async fn resolve_project(pool: &DbPool, project_ref: &str) -> AppResult<Option<i32>> {
-    let by_slug: Option<(i32,)> = sqlx::query_as("SELECT id FROM projects WHERE slug = $1")
-        .bind(project_ref)
-        .fetch_optional(pool)
-        .await?;
-    if let Some((id,)) = by_slug {
-        return Ok(Some(id));
-    }
-    let Ok(numeric_id) = project_ref.parse::<i32>() else {
-        return Ok(None);
-    };
-    let by_id: Option<(i32,)> = sqlx::query_as("SELECT id FROM projects WHERE id = $1")
-        .bind(numeric_id)
-        .fetch_optional(pool)
-        .await?;
-    Ok(by_id.map(|(id,)| id))
-}
-
-/// One file to assemble, as an assemble request describes it.
-struct NewJob<'a> {
-    checksum: &'a str,
-    chunks: &'a [String],
-    kind: &'a str,
-    name: Option<&'a str>,
-    debug_id: Option<&'a str>,
-}
-
-/// Answers an assemble request for one file: the state of its job, or the
-/// chunks still missing, queueing the job once they are all there.
-async fn enqueue_assembly(
-    pool: &DbPool,
-    project_id: i32,
-    new: NewJob<'_>,
-) -> AppResult<AssembleResponse> {
-    // A finished (or in-flight) job answers the poll before the chunk check:
-    // the assembly worker deletes the consumed chunk rows on success, so a
-    // sentry-cli `--wait` poll after completion would otherwise see its own
-    // chunks as missing forever. Error jobs fall through so a re-submit with
-    // corrected chunks can re-queue via the ON CONFLICT below.
-    let existing_job: Option<crate::models::source_file::AssemblyJob> = sqlx::query_as(
-        "SELECT * FROM assembly_jobs WHERE bundle_checksum = $1 AND project_id = $2",
-    )
-    .bind(new.checksum)
-    .bind(project_id)
-    .fetch_optional(pool)
-    .await?;
-    let failed = match existing_job {
-        Some(job) if job.state == "ok" && job.kind == DIF_JOB_KIND => {
-            match dif_reupload(pool, project_id, &job, &new).await? {
-                Some(response) => return Ok(response),
-                None => None,
-            }
-        }
-        Some(job) if job.state != "error" => {
-            return Ok(job_response(job.state.as_str(), job.detail))
-        }
-        Some(job) => Some(job),
-        None => None,
-    };
-
-    // Check for missing chunks
-    let missing = get_missing_chunks(pool, new.chunks).await?;
-    if !missing.is_empty() {
-        // A failed job's chunks are gone, so a poll after the failure must
-        // hear the failure, as Sentry answers, not be asked to upload again.
-        // Sentry forgets that state after 10 minutes (`set_assemble_status`,
-        // `ex=600`); then the file is unknown and its chunks are asked for.
-        if let Some(job) = failed {
-            if chrono::Utc::now() - job.updated_at < chrono::Duration::minutes(10) {
-                return Ok(job_response("error", job.detail));
-            }
-        }
-        return Ok(not_found(missing));
-    }
-
-    // INSERT ... ON CONFLICT: re-queue if the existing job errored, otherwise leave it.
-    // Keep ownership rows in the same transaction so a worker cannot complete
-    // between the job update and the reference insert.
-    let mut tx = pool.begin().await?;
-    let mut missing = Vec::new();
-    for checksum in new.chunks {
-        let present: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM chunk WHERE checksum = $1)")
-                .bind(checksum)
-                .fetch_one(&mut *tx)
-                .await?;
-        if !present {
-            missing.push(checksum.clone());
-        }
-    }
-    if !missing.is_empty() {
-        return Ok(not_found(missing));
-    }
-
-    const UPSERT: &str = r#"
-        INSERT INTO assembly_jobs(bundle_checksum, project_id, chunks, state, kind, name, debug_id)
-        VALUES ($1, $2, $3, 'created', $4, $5, $6)
-        ON CONFLICT(bundle_checksum, project_id) DO UPDATE
-          SET state = 'created', detail = NULL, chunks = EXCLUDED.chunks, retry_count = 0,
-              kind = EXCLUDED.kind, name = EXCLUDED.name, debug_id = EXCLUDED.debug_id
-          WHERE assembly_jobs.state = 'error'
-        RETURNING *
-        "#;
-
-    #[cfg(feature = "postgres")]
-    let chunks = new.chunks.to_vec();
-    #[cfg(not(feature = "postgres"))]
-    let chunks =
-        serde_json::to_string(new.chunks).map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let job: Option<crate::models::source_file::AssemblyJob> = sqlx::query_as(UPSERT)
-        .bind(new.checksum)
-        .bind(project_id)
-        .bind(&chunks)
-        .bind(new.kind)
-        .bind(new.name)
-        .bind(new.debug_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-    // If None (conflict — job already exists): fetch existing
-    let inserted_job = job.is_some();
-    let job = match job {
-        Some(j) => j,
-        None => {
-            sqlx::query_as(
-                "SELECT * FROM assembly_jobs WHERE bundle_checksum = $1 AND project_id = $2",
-            )
-            .bind(new.checksum)
-            .bind(project_id)
-            .fetch_one(&mut *tx)
-            .await?
-        }
-    };
-
-    if inserted_job {
-        sqlx::query("DELETE FROM assembly_job_chunks WHERE job_id = $1")
-            .bind(job.id)
-            .execute(&mut *tx)
-            .await?;
-        for checksum in new.chunks {
-            sqlx::query(
-                "INSERT INTO assembly_job_chunks(job_id, checksum) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            )
-            .bind(job.id)
-            .bind(checksum)
-            .execute(&mut *tx)
-            .await?;
-        }
-    }
-
-    tx.commit().await?;
-
-    Ok(job_response(job.state.as_str(), job.detail.clone()))
-}
-
-/// Answers for a DIF already assembled, from the debug files that still hold
-/// it, as Sentry's `batch_assemble` does. The same ProGuard mapping requested
-/// under another UUID is stored for that UUID too
-/// (`_is_proguard_reupload_clone_request`).
-///
-/// `None` when no debug ID holds the file any more: the job is forgotten and
-/// the file is assembled again like a new one.
-async fn dif_reupload(
-    pool: &DbPool,
-    project_id: i32,
-    job: &crate::models::source_file::AssemblyJob,
-    new: &NewJob<'_>,
-) -> AppResult<Option<AssembleResponse>> {
-    use crate::services::debug_file::{
-        alias_proguard_mapping, debug_file_holder, proguard_uuid_from_name, COVERED_BY_DSYM,
-    };
-    let requested = new.name.and_then(proguard_uuid_from_name);
-    if requested.is_some()
-        && job
-            .name
-            .as_deref()
-            .and_then(proguard_uuid_from_name)
-            .is_none()
-    {
-        return Ok(Some(job_response(
-            "error",
-            Some("This file is not a ProGuard mapping.".into()),
-        )));
-    }
-    let file_type = requested.map(|_| crate::services::jvm::PROGUARD_FILE_TYPE);
-    match (
-        debug_file_holder(pool, project_id, &job.bundle_checksum, file_type).await?,
-        requested,
-    ) {
-        (Some(from), Some(to)) if from != to => {
-            alias_proguard_mapping(pool, project_id, from, to).await?
-        }
-        (Some(_), _) => {}
-        // An executable whose dSYMs were already stored is held by them.
-        (None, _) if job.detail.as_deref() == Some(COVERED_BY_DSYM) => {}
-        // Every debug ID it was stored under now holds another file.
-        (None, _) => {
-            sqlx::query("DELETE FROM assembly_jobs WHERE id = $1")
-                .bind(job.id)
-                .execute(pool)
-                .await?;
-            return Ok(None);
-        }
-    }
-    Ok(Some(job_response(job.state.as_str(), job.detail.clone())))
-}
-
-fn not_found(missing_chunks: Vec<String>) -> AssembleResponse {
-    AssembleResponse {
-        state: "not_found".to_string(),
-        missing_chunks,
-        detail: None,
-    }
 }
 
 /// One file of a debug information file assemble request.
@@ -586,6 +341,7 @@ pub async fn dif_assemble(
     path: web::Path<(String, String)>,
     actor: ApiActor,
     pool: web::Data<DbPool>,
+    queue: web::Data<AssemblyQueue>,
     body: web::Json<HashMap<String, DifAssembleFile>>,
 ) -> AppResult<HttpResponse> {
     let (_, project_slug) = path.into_inner();
@@ -604,7 +360,8 @@ pub async fn dif_assemble(
         }
     }
 
-    let Some(project_id) = resolve_project(pool.get_ref(), &project_slug).await? else {
+    let Some(project_id) = ProjectService::id_by_slug_or_id(pool.get_ref(), &project_slug).await?
+    else {
         return Err(AppError::NotFound(format!(
             "project not found: {project_slug}"
         )));
@@ -618,6 +375,7 @@ pub async fn dif_assemble(
         } else {
             enqueue_assembly(
                 pool.get_ref(),
+                &queue,
                 project_id,
                 NewJob {
                     checksum,
@@ -691,18 +449,20 @@ pub async fn dif_upload(
     path: web::Path<(String, String)>,
     actor: ApiActor,
     pool: web::Data<DbPool>,
+    queue: web::Data<AssemblyQueue>,
     config: web::Data<Config>,
     mut payload: Multipart,
 ) -> AppResult<HttpResponse> {
     let (_, project_slug) = path.into_inner();
-    let Some(project_id) = resolve_project(pool.get_ref(), &project_slug).await? else {
+    let Some(project_id) = ProjectService::id_by_slug_or_id(pool.get_ref(), &project_slug).await?
+    else {
         return Err(AppError::NotFound(format!(
             "project not found: {project_slug}"
         )));
     };
     actor.require(Resource::SourceMaps, Action::Create, Some(project_id))?;
 
-    let max_size = config.max_chunk_size_bytes.saturating_mul(64);
+    let max_size = config.max_bundle_size_bytes();
     let mut upload: Option<Vec<u8>> = None;
     while let Some(field) = payload.next().await {
         let mut field =
@@ -750,6 +510,7 @@ pub async fn dif_upload(
         store_chunks(pool.get_ref(), parts, chunk_size).await?;
         enqueue_assembly(
             pool.get_ref(),
+            &queue,
             project_id,
             NewJob {
                 checksum: &checksum,
@@ -817,6 +578,7 @@ fn sha1_hex(data: &[u8]) -> String {
     hex::encode(sha1::Sha1::digest(data))
 }
 
+/// Lists a project's uploaded source map artifacts (sentry-cli).
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/0/projects/{org_slug}/{project_slug}/files/source-maps/",
@@ -833,7 +595,6 @@ fn sha1_hex(data: &[u8]) -> String {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/projects/{org_slug}/{project_slug}/files/source-maps/
 pub async fn list_source_maps(
     path: web::Path<(String, String)>,
     actor: ApiActor,
@@ -841,86 +602,15 @@ pub async fn list_source_maps(
 ) -> AppResult<HttpResponse> {
     let (_, project_slug) = path.into_inner();
 
-    let project: Option<(i32,)> = sqlx::query_as("SELECT id FROM projects WHERE slug = $1")
-        .bind(&project_slug)
-        .fetch_optional(pool.get_ref())
-        .await?;
-    let project_id = match project {
-        Some((id,)) => id,
-        None => {
-            return Err(AppError::NotFound(format!(
-                "project not found: {}",
-                project_slug
-            )));
-        }
-    };
+    let project_id = ProjectService::id_by_slug_or_id(pool.get_ref(), &project_slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("project not found: {project_slug}")))?;
 
     actor.require(Resource::SourceMaps, Action::Read, Some(project_id))?;
 
-    #[derive(sqlx::FromRow)]
-    struct Row {
-        debug_id: String,
-        file_type: String,
-        size: i32,
-        times_used: i32,
-        date_uploaded: String,
-    }
-
-    #[cfg(feature = "postgres")]
-    let rows: Vec<Row> = sqlx::query_as(
-        r#"
-        SELECT
-            sfm.debug_id::text AS debug_id,
-            sfm.file_type,
-            sf.size,
-            sfm.times_used,
-            sfm.created_at::text AS date_uploaded
-        FROM source_file_metadata sfm
-        JOIN source_file sf ON sf.id = sfm.file_id
-        WHERE sfm.project_id = $1
-        ORDER BY sfm.created_at DESC
-        "#,
-    )
-    .bind(project_id)
-    .fetch_all(pool.get_ref())
-    .await?;
-
-    #[cfg(not(feature = "postgres"))]
-    let rows: Vec<Row> = sqlx::query_as(
-        r#"
-        SELECT
-            sfm.debug_id AS debug_id,
-            sfm.file_type,
-            sf.size,
-            sfm.times_used,
-            sfm.created_at AS date_uploaded
-        FROM source_file_metadata sfm
-        JOIN source_file sf ON sf.id = sfm.file_id
-        WHERE sfm.project_id = $1
-        ORDER BY sfm.created_at DESC
-        "#,
-    )
-    .bind(project_id)
-    .fetch_all(pool.get_ref())
-    .await?;
-
-    let data = rows
-        .into_iter()
-        .map(|r| SourceMapFile {
-            debug_id: r.debug_id,
-            file_type: r.file_type,
-            size: r.size,
-            times_used: r.times_used,
-            date_uploaded: r.date_uploaded,
-        })
-        .collect();
-
+    let data = crate::services::sourcemap::list_files(pool.get_ref(), project_id).await?;
     Ok(HttpResponse::Ok().json(SourceMapList { data }))
 }
-
-// ---------------------------------------------------------------------------
-// configure
-// ---------------------------------------------------------------------------
 
 /// Returns the storage key for a chunk given the multipart field name and computed SHA1.
 ///
@@ -974,20 +664,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         );
 }
 
-/// Maps an assembly job state to the appropriate HTTP response.
-/// All terminal states return HTTP 200; the state field in the body signals outcome.
-fn job_response(state: &str, detail: Option<String>) -> AssembleResponse {
-    AssembleResponse {
-        state: state.to_string(),
-        missing_chunks: vec![],
-        // Only a failed job says why.
-        detail: detail.filter(|_| state == "error"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::sourcemap::job_response;
     use actix_web::body::to_bytes;
 
     #[actix_web::test]

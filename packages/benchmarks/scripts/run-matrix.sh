@@ -172,16 +172,15 @@ for VARIANT in $VARIANTS; do
             # shellcheck disable=SC1090
             source "$BENCH_DIR/.bench-credentials"
 
-            # Prefer the matrix-tuned config; fall back to the built-in preset.
-            SCENARIO_ARGS=(--scenario "$SCENARIO")
-            SCENARIO_FILE="$BENCH_DIR/scenarios/matrix/${SCENARIO}.toml"
-            if [ -f "$SCENARIO_FILE" ]; then
-                SCENARIO_ARGS=(--config-file "$SCENARIO_FILE")
+            # Prefer the matrix-tuned config; fall back to scenarios/<name>.toml.
+            SCENARIO_ARG="$SCENARIO"
+            if [ -f "$BENCH_DIR/scenarios/matrix/${SCENARIO}.toml" ]; then
+                SCENARIO_ARG="$BENCH_DIR/scenarios/matrix/${SCENARIO}.toml"
             fi
 
             echo "Running $SCENARIO..."
             if "$BENCH_BIN" \
-                "${SCENARIO_ARGS[@]}" \
+                --scenario "$SCENARIO_ARG" \
                 --server "$SERVER_URL" \
                 --project-id "$PROJECT_ID" \
                 --sentry-key "$SENTRY_KEY" \

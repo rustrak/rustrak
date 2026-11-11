@@ -54,7 +54,7 @@ pnpm run ci                       # what CI runs: ci:web (turbo) then ci:rust (c
 
 Speed comes from one runner per concern. `ci.yml` runs `pnpm run ci:web`
 (turbo over the JavaScript packages), `rust-lint` (rustfmt, clippy for both
-backends and for the benchmark crate), `rust-test` (the SQLite suites and the
+backends, and the benchmark crate's lint and tests), `rust-test` (the SQLite suites and the
 OpenAPI drift check) and `postgres-e2e`, four runners in parallel.
 `docker-publish.yml` builds each image once per architecture on a native
 runner and merges the digests into one manifest list.
@@ -74,7 +74,8 @@ runner and merges the digests into one manifest list.
   `apps/server/Dockerfile`, and `rust-lint` fails when the two disagree.
 - **Turbo never caches a cargo task** (`cache: false` in `turbo.json`), and
   cargo tasks do not run in parallel under turbo: they queue on the target
-  directory lock. CI calls cargo directly for that reason.
+  directory lock. CI runs each crate's package scripts with `pnpm run` on its
+  own runner for that reason, so a command lives in one `package.json`.
 - **The two crates stay separate.** `apps/server` and `packages/benchmarks`
   cannot share a Cargo workspace: `testcontainers` pins `bollard 0.20` and the
   benchmarks need `bollard 0.21`, and their `bollard-stubs` `=` pins conflict

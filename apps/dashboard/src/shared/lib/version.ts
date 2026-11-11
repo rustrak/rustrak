@@ -20,9 +20,6 @@ export interface UpdateInfo {
  * (there is nothing to compare against), `feed` means the published release list
  * could not be read (there is nothing to compare with). Neither is "you are up
  * to date", and neither may be rendered as one.
- *
- * This type lives here rather than beside the action because `version-check.ts`
- * is a `'use server'` module, and client components need to name the type.
  */
 export type UpdateCheck =
   | { state: 'update-available'; info: UpdateInfo }
@@ -30,9 +27,6 @@ export type UpdateCheck =
   | { state: 'disabled' }
   | { state: 'unknown'; reason: 'server-version' | 'feed' };
 
-// Not exported: `parse` below is the only caller. It was public solely so the
-// deleted unit test could reach it, which is the wrong reason for a helper to
-// be part of a module's surface.
 function normalizeVersion(version: string): string {
   return version.trim().replace(/^v/i, '');
 }

@@ -8,6 +8,12 @@ export function failureTone(rate: number): 'warning' | 'bad' | null {
   return null;
 }
 
+/** The text colour of each `failureTone`. */
+export const FAILURE_TEXT = {
+  warning: 'text-sev-warning-fg',
+  bad: 'text-sev-error-fg',
+} as const;
+
 /** Calls per minute over a window of `hours`. */
 export function perMinute(count: number, hours: number): number {
   return count / (hours * 60);
@@ -31,10 +37,4 @@ export function windowHours(period: string): number | undefined {
   const match = /^(\d+)([hd])$/.exec(period);
   if (!match) return undefined;
   return Number(match[1]) * (match[2] === 'd' ? 24 : 1);
-}
-
-/** A duration on a chart axis: whole milliseconds, or seconds to one place. */
-export function axisDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  return `${Number((ms / 1000).toFixed(1))} s`;
 }

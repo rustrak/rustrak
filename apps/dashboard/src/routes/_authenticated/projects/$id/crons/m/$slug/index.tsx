@@ -23,13 +23,19 @@ import {
   MonitorTimeline,
 } from '@/features/monitor/ui/components/monitor-detail';
 import { MonitorStatus } from '@/features/monitor/ui/components/monitor-status';
+import { ScheduleText } from '@/features/monitor/ui/components/schedule-text';
 import { TimelinePeriodFilter } from '@/features/monitor/ui/components/timeline-period';
 import { projectQueries } from '@/features/project/api/queries';
 import { searchOneOf, searchPage } from '@/shared/lib/search-params';
+import {
+  DetailBody,
+  DetailHeader,
+  DetailMain,
+  DetailRail,
+} from '@/shared/ui/components/detail-layout';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { Panel, RailBlock } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
-import { ScheduleText } from '@/shared/ui/components/schedule-text';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
 const PER_PAGE = 25;
@@ -53,7 +59,6 @@ export const Route = createFileRoute(
   // the figures and the charts, all drawn from the stats, arrive after.
   loader: ({ context: { queryClient }, params, deps }) => {
     const reads = monitorReads(params, deps);
-    void queryClient.query(projectQueries.detail(reads.projectId)).catch(noop);
     void queryClient.query(reads.monitor).catch(noop);
     void queryClient.query(reads.checkIns).catch(noop);
     void queryClient.query(reads.stats).catch(noop);
@@ -62,12 +67,11 @@ export const Route = createFileRoute(
   component: MonitorPage,
 });
 
-/** The page's reads for a URL, built once for the loader and the component. */
 function monitorReads(
-  params: { id: string; slug: string },
+  params: { id: number; slug: string },
   search: { page?: number; period?: TimelinePeriod },
 ) {
-  const projectId = Number.parseInt(params.id, 10);
+  const projectId = params.id;
   return {
     projectId,
     monitor: monitorQueries.detail(projectId, params.slug),
@@ -92,7 +96,7 @@ function MonitorPage() {
   const live = Route.useSearch();
   const search = useDeferredValue(live);
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(params.id, 10);
+  const projectId = params.id;
   const period = live.period ?? DEFAULT_PERIOD;
   const reads = monitorReads(params, search);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
@@ -108,138 +112,124 @@ function MonitorPage() {
   return (
     <div className="flex h-full flex-col">
       <title>{t('meta.detailTitle', { monitor: monitor.name })}</title>
-      <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
-        <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-              <h1 className="truncate text-fg text-page-title">
-                {monitor.name}
-              </h1>
-              <MonitorStatus monitor={monitor} />
-            </div>
-            <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-fg-subtle text-meta">
-              <span className="font-mono text-mono-sm">{monitor.slug}</span>
-              <span aria-hidden="true">·</span>
-              <span className="text-fg-secondary">
-                <ScheduleText
-                  schedule={monitor.config.schedule}
-                  timezone={monitor.config.timezone}
-                />
-              </span>
-              {monitor.config.schedule.type === 'crontab' ? (
-                <span className="font-mono text-mono-sm">
-                  {monitor.config.schedule.value}
-                </span>
-              ) : null}
-            </p>
+      <DetailHeader>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <h1 className="truncate text-fg text-page-title">{monitor.name}</h1>
+            <MonitorStatus monitor={monitor} />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {waiting ? null : (
-              <TimelinePeriodFilter
-                period={period}
-                onChange={(next) =>
-                  navigate({
-                    search: (prev) => ({
-                      ...prev,
-                      period: next === DEFAULT_PERIOD ? undefined : next,
-                    }),
-                    replace: true,
-                  })
-                }
+          <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-fg-subtle text-meta">
+            <span className="font-mono text-mono-sm">{monitor.slug}</span>
+            <span aria-hidden="true">·</span>
+            <span className="text-fg-secondary">
+              <ScheduleText
+                schedule={monitor.config.schedule}
+                timezone={monitor.config.timezone}
               />
-            )}
-            <MonitorActions projectId={projectId} monitor={monitor} />
-          </div>
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
-        <main className="min-w-0 flex-1 lg:overflow-y-auto">
-          <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
-            {monitor.is_muted ? (
-              <p className="flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-fg-secondary text-meta">
-                <MuteIcon size="sm" className="shrink-0" aria-hidden="true" />
-                {t('detail.mutedBanner')}
-              </p>
+            </span>
+            {monitor.config.schedule.type === 'crontab' ? (
+              <span className="font-mono text-mono-sm">
+                {monitor.config.schedule.value}
+              </span>
             ) : null}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {waiting ? null : (
+            <TimelinePeriodFilter
+              period={period}
+              onChange={(next) =>
+                navigate({
+                  search: (prev) => ({
+                    ...prev,
+                    period: next === DEFAULT_PERIOD ? undefined : next,
+                  }),
+                  replace: true,
+                })
+              }
+            />
+          )}
+          <MonitorActions projectId={projectId} monitor={monitor} />
+        </div>
+      </DetailHeader>
 
-            {waiting ? (
+      <DetailBody>
+        <DetailMain>
+          {monitor.is_muted ? (
+            <p className="flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-fg-secondary text-meta">
+              <MuteIcon size="sm" className="shrink-0" aria-hidden="true" />
+              {t('detail.mutedBanner')}
+            </p>
+          ) : null}
+
+          {waiting ? (
+            <Panel
+              title={t('detail.waitingTitle')}
+              hint={t('detail.waitingDescription')}
+            >
+              {project.dsn ? (
+                <CronSetupGuide dsn={project.dsn} slug={monitor.slug} />
+              ) : null}
+            </Panel>
+          ) : (
+            <>
+              <QueryState query={stats} placeholder={null} title={loadFailed}>
+                {(loaded) => (
+                  <MonitorFigures monitor={monitor} stats={loaded} />
+                )}
+              </QueryState>
               <Panel
-                title={t('detail.waitingTitle')}
-                hint={t('detail.waitingDescription')}
+                title={t('detail.timeline')}
+                hint={t('detail.timelineHint')}
               >
-                {project.dsn ? (
-                  <CronSetupGuide dsn={project.dsn} slug={monitor.slug} />
-                ) : null}
-              </Panel>
-            ) : (
-              <>
                 <QueryState query={stats} placeholder={null} title={loadFailed}>
                   {(loaded) => (
-                    <MonitorFigures monitor={monitor} stats={loaded} />
+                    <MonitorTimeline monitor={monitor} stats={loaded} />
                   )}
                 </QueryState>
-                <Panel
-                  title={t('detail.timeline')}
-                  hint={t('detail.timelineHint')}
-                >
-                  <QueryState
-                    query={stats}
-                    placeholder={null}
-                    title={loadFailed}
-                  >
-                    {(loaded) => (
-                      <MonitorTimeline monitor={monitor} stats={loaded} />
-                    )}
-                  </QueryState>
-                </Panel>
-                <Panel
-                  title={t('detail.duration')}
-                  hint={t('detail.durationHint')}
-                >
-                  <QueryState
-                    query={stats}
-                    placeholder={null}
-                    title={loadFailed}
-                  >
-                    {(loaded) => <DurationChart stats={loaded} />}
-                  </QueryState>
-                </Panel>
-              </>
-            )}
-
-            <Panel
-              flush
-              title={t('detail.checkIns')}
-              hint={t('detail.checkInsHint')}
-            >
-              <CheckInsTable
-                page={checkIns}
-                currentPage={search.page ?? 1}
-                showEnvironment={monitor.environments.length > 1}
-                pending={search !== live}
-                onPageChange={(next) =>
-                  navigate({
-                    search: (prev) => ({
-                      ...prev,
-                      page: next === 1 ? undefined : next,
-                    }),
-                  })
-                }
-              />
-            </Panel>
-
-            {waiting || !project.dsn ? null : (
-              <Panel
-                title={t('detail.instrument')}
-                hint={t('detail.instrumentHint')}
-              >
-                <CronSetupGuide dsn={project.dsn} slug={monitor.slug} />
               </Panel>
-            )}
-          </div>
-        </main>
-        <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
+              <Panel
+                title={t('detail.duration')}
+                hint={t('detail.durationHint')}
+              >
+                <QueryState query={stats} placeholder={null} title={loadFailed}>
+                  {(loaded) => <DurationChart stats={loaded} />}
+                </QueryState>
+              </Panel>
+            </>
+          )}
+
+          <Panel
+            flush
+            title={t('detail.checkIns')}
+            hint={t('detail.checkInsHint')}
+          >
+            <CheckInsTable
+              page={checkIns}
+              currentPage={search.page ?? 1}
+              showEnvironment={monitor.environments.length > 1}
+              pending={search !== live}
+              onPageChange={(next) =>
+                navigate({
+                  search: (prev) => ({
+                    ...prev,
+                    page: next === 1 ? undefined : next,
+                  }),
+                })
+              }
+            />
+          </Panel>
+
+          {waiting || !project.dsn ? null : (
+            <Panel
+              title={t('detail.instrument')}
+              hint={t('detail.instrumentHint')}
+            >
+              <CronSetupGuide dsn={project.dsn} slug={monitor.slug} />
+            </Panel>
+          )}
+        </DetailMain>
+        <DetailRail>
           <RailBlock title={t('detail.config')}>
             <MonitorFacts monitor={monitor} />
           </RailBlock>
@@ -272,8 +262,8 @@ function MonitorPage() {
               </ul>
             )}
           </RailBlock>
-        </aside>
-      </div>
+        </DetailRail>
+      </DetailBody>
     </div>
   );
 }
@@ -297,40 +287,32 @@ function MonitorLoading() {
   return (
     <PageLoading>
       <div className="flex h-full flex-col">
-        <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
+        <DetailHeader>
           <div className="flex flex-col gap-1.5">
             <Skeleton className="h-7 w-56 max-w-full" />
             <Skeleton className="my-0.5 h-3.5 w-72 max-w-full" />
           </div>
-        </header>
+        </DetailHeader>
 
-        <div className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
-          <main className="min-w-0 flex-1 lg:overflow-y-auto">
-            <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
-              <Skeleton className="h-20 w-full rounded-2xl" />
-              <Panel
-                title={t('detail.timeline')}
-                hint={t('detail.timelineHint')}
-              >
-                <Skeleton className="h-6 w-full" />
-              </Panel>
-              <Panel
-                title={t('detail.checkIns')}
-                hint={t('detail.checkInsHint')}
-              >
-                {lines(['w-full', 'w-full', 'w-full', 'w-2/3'])}
-              </Panel>
-            </div>
-          </main>
-          <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
+        <DetailBody>
+          <DetailMain>
+            <Skeleton className="h-20 w-full rounded-2xl" />
+            <Panel title={t('detail.timeline')} hint={t('detail.timelineHint')}>
+              <Skeleton className="h-6 w-full" />
+            </Panel>
+            <Panel title={t('detail.checkIns')} hint={t('detail.checkInsHint')}>
+              {lines(['w-full', 'w-full', 'w-full', 'w-2/3'])}
+            </Panel>
+          </DetailMain>
+          <DetailRail>
             <RailBlock title={t('detail.config')}>
               {lines(['w-full', 'w-full', 'w-2/3'])}
             </RailBlock>
             <RailBlock title={t('detail.environments')}>
               {lines(['w-32'])}
             </RailBlock>
-          </aside>
-        </div>
+          </DetailRail>
+        </DetailBody>
       </div>
     </PageLoading>
   );

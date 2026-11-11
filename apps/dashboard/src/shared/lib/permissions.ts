@@ -1,4 +1,5 @@
 import type { Action, MyAccess, Resource } from '@rustrak/client';
+import { hasPermission as has } from './permission-matrix';
 
 /**
  * What the reader may do, from `GET /api/access/me`. Mirrors `Access::can`
@@ -19,11 +20,6 @@ export interface Permissions {
    */
   canCreateProject: boolean;
 }
-
-type Grant = { resource: Resource; action: Action };
-
-const has = (grants: Grant[], resource: Resource, action: Action) =>
-  grants.some((g) => g.resource === resource && g.action === action);
 
 export const NO_PERMISSIONS: MyAccess = {
   is_owner: false,

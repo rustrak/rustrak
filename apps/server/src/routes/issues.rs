@@ -1,29 +1,33 @@
 use actix_web::{web, HttpResponse};
 use uuid::Uuid;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
 use crate::models::IssueResponse;
 use crate::models::{BulkDeleteIssues, BulkUpdateIssues, UpdateIssueState};
-use crate::pagination::{ListIssuesQuery, OffsetPaginatedResponse};
+use crate::pagination::{
+    IssueCategory, IssueFilter, IssueSort, OffsetPaginatedResponse, SortOrder,
+};
 use crate::services::github;
+use crate::services::issue::RESOLVED_IN_NEXT_RELEASE;
 use crate::services::scope::Scope;
 use crate::services::{EventService, IssueService, IssueSocialService, ProjectService};
 use serde::Deserialize;
 use serde_json::json;
 
 /// Body for creating an issue comment (note).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CommentRequest {
+    #[schemars(description = "Comment body")]
     pub text: String,
 }
 
 /// Body for toggling a per-user flag (bookmark/subscription).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ToggleRequest {
     #[serde(default)]
@@ -31,7 +35,7 @@ pub struct ToggleRequest {
 }
 
 /// Body for submitting user feedback on an issue.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UserReportRequest {
     #[serde(default)]
@@ -46,6 +50,111 @@ pub struct UserReportRequest {
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
+
+/// Query parameters for listing issues (offset-based)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct ListIssuesQuery {
+    /// Page number (1-indexed, default: 1)
+    #[serde(default = "crate::pagination::default_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1))]
+    pub page: i64,
+
+    /// Items per page (default: 20, max: 100)
+    #[serde(default = "crate::pagination::default_per_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
+    pub per_page: i64,
+
+    /// Sort mode (default: last_seen)
+    #[serde(default)]
+    pub sort: IssueSort,
+
+    /// Sort order direction (default: desc)
+    #[serde(default)]
+    pub order: SortOrder,
+
+    /// Filter: open (not resolved, not muted), resolved, muted, all
+    #[serde(default)]
+    pub filter: IssueFilter,
+
+    /// Issue category: error (default) or feedback
+    #[serde(default)]
+    pub category: IssueCategory,
+
+    /// Free-text search across type, value, transaction, and culprit.
+    #[serde(default)]
+    pub q: Option<String>,
+
+    /// Only issues seen in this environment, with that environment's first
+    /// and last seen, event count, users and trend.
+    #[serde(default)]
+    pub environment: Option<String>,
+
+    /// Only issues that had an event in this release.
+    #[serde(default)]
+    pub release: Option<String>,
+
+    /// Only these levels, comma-separated: `fatal,error`.
+    #[serde(default)]
+    pub level: Option<String>,
+
+    /// Only these priorities, comma-separated: `high,medium`.
+    #[serde(default)]
+    pub priority: Option<String>,
+
+    /// `none` for unassigned issues, or a user id.
+    #[serde(default)]
+    pub assigned: Option<String>,
+
+    /// Only issues first seen within this window: `24h`, `7d`.
+    #[serde(default)]
+    pub first_seen: Option<String>,
+
+    /// Only issues last seen within this window: `24h`, `7d`.
+    #[serde(default)]
+    pub last_seen: Option<String>,
+
+    /// Only issues with at least this many events.
+    #[serde(default)]
+    pub events_min: Option<i64>,
+
+    /// Only issues with at most this many events.
+    #[serde(default)]
+    pub events_max: Option<i64>,
+}
+
+impl ListIssuesQuery {
+    /// The table's narrowing filters, read out of the query string. A value
+    /// that does not parse narrows nothing rather than failing the list.
+    pub fn issue_filters(&self) -> crate::services::issue::IssueFilters {
+        let list = |raw: &Option<String>| -> Vec<String> {
+            raw.as_deref()
+                .unwrap_or("")
+                .split(',')
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+        let period = |raw: &Option<String>| {
+            raw.as_deref()
+                .and_then(|p| crate::routes::period::parse_period_hours(Some(p)))
+        };
+        crate::services::issue::IssueFilters {
+            levels: list(&self.level),
+            priorities: list(&self.priority),
+            assigned: match self.assigned.as_deref() {
+                Some("none") => Some(crate::services::issue::Assignee::Nobody),
+                Some(id) => id.parse().ok().map(crate::services::issue::Assignee::User),
+                None => None,
+            },
+            first_seen_hours: period(&self.first_seen),
+            last_seen_hours: period(&self.last_seen),
+            events_min: self.events_min,
+            events_max: self.events_max,
+        }
+    }
+}
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -63,7 +172,6 @@ use utoipa::OpenApi;
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues
 /// Lists issues for a project with offset-based pagination
 pub async fn list_issues(
     pool: web::Data<DbPool>,
@@ -144,7 +252,6 @@ pub async fn list_issues(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/environments
 /// Lists the environments a project's issues have been seen in, by name.
 pub async fn list_environments(
     pool: web::Data<DbPool>,
@@ -159,11 +266,11 @@ pub async fn list_environments(
 }
 
 /// Query of the feedback list.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 pub struct ListFeedbackQuery {
     /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
+    #[serde(default = "crate::pagination::default_page")]
     pub page: i64,
     /// Items per page (default: 25, max: 100)
     #[serde(default = "default_feedback_per_page")]
@@ -173,19 +280,15 @@ pub struct ListFeedbackQuery {
     pub filter: crate::pagination::IssueFilter,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 pub struct ListUserReportsQuery {
     /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
+    #[serde(default = "crate::pagination::default_page")]
     pub page: i64,
     /// Items per page (default: 25, max: 100)
     #[serde(default = "default_feedback_per_page")]
     pub per_page: i64,
-}
-
-fn default_page() -> i64 {
-    1
 }
 
 fn default_feedback_per_page() -> i64 {
@@ -208,7 +311,6 @@ fn default_feedback_per_page() -> i64 {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/feedback
 /// Lists user feedback with what each user submitted. Every feedback is an
 /// issue of category `feedback`; spam is a muted one.
 pub async fn list_feedback(
@@ -274,7 +376,6 @@ pub async fn list_feedback(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}
 /// Gets a single issue by ID
 pub async fn get_issue(
     pool: web::Data<DbPool>,
@@ -288,12 +389,7 @@ pub async fn get_issue(
     // Verify project exists and get slug
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
-    // Get issue and verify it belongs to the project
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    let issue = IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     // Enrich with per-user and aggregate fields.
     let mut response = issue.to_response(&project.slug);
@@ -328,7 +424,6 @@ pub async fn get_issue(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PATCH /api/projects/{project_id}/issues/{issue_id}
 /// Updates issue state (resolve, mute, etc.)
 pub async fn update_issue(
     pool: web::Data<DbPool>,
@@ -343,33 +438,27 @@ pub async fn update_issue(
     // Verify project exists and get slug
     let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
-    // Verify issue belongs to the project
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    let issue = IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
-    // Apply state changes. `status` (canonical) and is_resolved/is_muted
-    // (deprecated) are unified via `resolved_status()`.
+    // Resolving in the next release suppresses regressions until a new
+    // deploy is recorded.
     let mut updated = issue;
-    // Special case: resolve in the next release (suppresses regression until a
-    // new deploy is recorded).
-    if body.status.as_deref() == Some("resolvedInNextRelease") {
-        updated = IssueService::resolve_in_next_release(pool.get_ref(), issue_id).await?;
-        IssueSocialService::record_status_change(
+    let status = match body.status.as_deref() {
+        Some(RESOLVED_IN_NEXT_RELEASE) => Some((RESOLVED_IN_NEXT_RELEASE, None)),
+        _ => match body.resolved_status()? {
+            Some(status) => Some((status, body.validated_substatus()?)),
+            None => None,
+        },
+    };
+    if let Some((status, substatus)) = status {
+        updated = IssueService::change_status(
             pool.get_ref(),
             issue_id,
+            status,
+            substatus,
             actor.user_id(),
-            "resolvedInNextRelease",
         )
         .await?;
-        mirror_status(pool.get_ref(), issue_id);
-    } else if let Some(status) = body.resolved_status(&updated.status)? {
-        let substatus = body.validated_substatus()?;
-        updated = IssueService::set_status(pool.get_ref(), issue_id, status, substatus).await?;
-        IssueSocialService::record_status_change(pool.get_ref(), issue_id, actor.user_id(), status)
-            .await?;
-        mirror_status(pool.get_ref(), issue_id);
     }
     if let Some(priority) = body.priority.as_deref() {
         updated = IssueService::set_priority(pool.get_ref(), issue_id, priority).await?;
@@ -407,7 +496,6 @@ pub async fn update_issue(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{project_id}/issues/{issue_id}
 /// Hard-deletes an issue and all associated events
 pub async fn delete_issue(
     pool: web::Data<DbPool>,
@@ -418,11 +506,7 @@ pub async fn delete_issue(
 
     actor.require(Resource::Issues, Action::Delete, Some(project_id))?;
 
-    // Verify issue belongs to the project before deleting
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     IssueService::delete(pool.get_ref(), issue_id).await?;
 
@@ -444,7 +528,6 @@ pub async fn delete_issue(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}/hashes
 /// Lists the grouping hashes that map to an issue.
 pub async fn get_issue_hashes(
     pool: web::Data<DbPool>,
@@ -454,10 +537,7 @@ pub async fn get_issue_hashes(
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     let hashes = IssueService::list_hashes(pool.get_ref(), issue_id).await?;
     Ok(HttpResponse::Ok().json(hashes))
@@ -479,7 +559,6 @@ pub async fn get_issue_hashes(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}/tags/{key}
 /// Lists the distinct values (with counts) for a tag key across the issue.
 pub async fn get_issue_tag_values(
     pool: web::Data<DbPool>,
@@ -489,10 +568,7 @@ pub async fn get_issue_tag_values(
     let (project_id, issue_id, key) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     let values = IssueService::tag_values(pool.get_ref(), issue_id, &key).await?;
     Ok(HttpResponse::Ok().json(values))
@@ -513,7 +589,6 @@ pub async fn get_issue_tag_values(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}/aggregates
 /// Returns the unique user count and top tags for the issue.
 pub async fn get_issue_aggregates(
     pool: web::Data<DbPool>,
@@ -523,15 +598,13 @@ pub async fn get_issue_aggregates(
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     let aggregates = IssueService::aggregates(pool.get_ref(), issue_id).await?;
     Ok(HttpResponse::Ok().json(aggregates))
 }
 
+/// Sets the status or priority of many issues at once, by id.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/projects/{project_id}/issues",
@@ -545,57 +618,31 @@ pub async fn get_issue_aggregates(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/projects/{project_id}/issues  (bulk mutate)
 pub async fn bulk_update_issues(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
-    body: web::Json<BulkUpdateIssues>,
+    body: AppResult<web::Json<BulkUpdateIssues>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
     actor.require(Resource::Issues, Action::Update, Some(project_id))?;
+    let body = body?;
     body.validate_size()?;
 
-    // Status and priority are applied in one transaction so a request that sets
-    // both never leaves issues with the new status but the old priority (or
-    // vice versa) if one of the two updates fails partway through.
-    // Write-first (UPDATE opens the tx) — deferred BEGIN deliberate, see db::begin_write.
-    let mut tx = pool.get_ref().begin().await?;
-
-    let mut updated = 0u64;
-    if let Some(status) = body.status.as_deref() {
-        updated = if status == "resolvedInNextRelease" {
-            IssueService::bulk_resolve_in_next_release(&mut tx, project_id, &body.ids).await?
-        } else {
-            IssueService::bulk_set_status(&mut tx, project_id, &body.ids, status).await?
-        };
-    }
-    if let Some(priority) = body.priority.as_deref() {
-        let priority_updated =
-            IssueService::bulk_set_priority(&mut tx, project_id, &body.ids, priority).await?;
-        if body.status.is_none() {
-            updated = priority_updated;
-        }
-    }
-
-    tx.commit().await?;
-
-    if body.status.is_some() {
-        for &issue_id in &body.ids {
-            let pool = pool.get_ref().clone();
-            // The UPDATE skipped other projects' issues; so does the sync.
-            github::sync::spawn("status sync", async move {
-                if IssueService::get_by_id(&pool, issue_id).await?.project_id == project_id {
-                    github::sync::mirror_status(pool, issue_id).await?;
-                }
-                Ok(())
-            });
-        }
-    }
+    let updated = IssueService::bulk_update(
+        pool.get_ref(),
+        project_id,
+        &body.ids,
+        body.status.as_deref(),
+        body.priority.as_deref(),
+        actor.user_id(),
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(json!({ "updated": updated })))
 }
 
+/// Deletes many issues at once, selected by id or by filter.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/projects/{project_id}/issues",
@@ -610,7 +657,6 @@ pub async fn bulk_update_issues(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{project_id}/issues  (bulk delete by ids or filter)
 pub async fn bulk_delete_issues(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -654,23 +700,6 @@ pub async fn delete_issues(
     Ok(HttpResponse::Ok().json(json!({ "deleted": deleted })))
 }
 
-/// Closes or reopens the GitHub issues linked to this one, in the background.
-fn mirror_status(pool: &DbPool, issue_id: Uuid) {
-    github::sync::spawn(
-        "status sync",
-        github::sync::mirror_status(pool.clone(), issue_id),
-    );
-}
-
-/// Loads an issue and verifies it belongs to the project (helper for sub-routes).
-async fn require_issue_in_project(pool: &DbPool, project_id: i32, issue_id: Uuid) -> AppResult<()> {
-    let issue = IssueService::get_by_id(pool, issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
-    Ok(())
-}
-
 fn require_user(actor: &ApiActor) -> AppResult<i32> {
     actor
         .user_id()
@@ -693,7 +722,7 @@ fn require_user(actor: &ApiActor) -> AppResult<i32> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /{issue_id}/stats?window=24h|30d — zero-filled event-count timeseries.
+/// Zero-filled event-count timeseries.
 pub async fn get_issue_stats(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
@@ -702,7 +731,7 @@ pub async fn get_issue_stats(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     // window=24h → 24 hourly buckets; window=30d → 30 daily buckets.
     let (bucket_secs, buckets) = match query.get("window").map(String::as_str) {
@@ -732,7 +761,7 @@ pub async fn get_issue_stats(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /{issue_id}/activity — chronological activity log (incl. comments).
+/// Chronological activity log (incl. comments).
 pub async fn get_issue_activity(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
@@ -740,7 +769,7 @@ pub async fn get_issue_activity(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
     let activity = IssueSocialService::list_activity(pool.get_ref(), issue_id).await?;
     Ok(HttpResponse::Ok().json(activity))
 }
@@ -761,16 +790,17 @@ pub async fn get_issue_activity(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /{issue_id}/comments — add a note.
+/// Add a note.
 pub async fn create_issue_comment(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
-    body: web::Json<CommentRequest>,
+    body: AppResult<web::Json<CommentRequest>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Update, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    let body = body?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
     let entry =
         IssueSocialService::add_comment(pool.get_ref(), issue_id, actor.user_id(), &body.text)
             .await?;
@@ -802,7 +832,7 @@ pub async fn create_issue_comment(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /{issue_id}/bookmark — set/clear the per-user bookmark.
+/// Set/clear the per-user bookmark.
 pub async fn set_issue_bookmark(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
@@ -811,7 +841,7 @@ pub async fn set_issue_bookmark(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
     let user_id = require_user(&actor)?;
     let enabled = body.enabled.unwrap_or(true);
     IssueSocialService::set_bookmark(pool.get_ref(), issue_id, user_id, enabled).await?;
@@ -834,7 +864,7 @@ pub async fn set_issue_bookmark(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /{issue_id}/subscription — set/clear the per-user subscription.
+/// Set/clear the per-user subscription.
 pub async fn set_issue_subscription(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
@@ -843,7 +873,7 @@ pub async fn set_issue_subscription(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
     let user_id = require_user(&actor)?;
     let enabled = body.enabled.unwrap_or(true);
     IssueSocialService::set_subscription(pool.get_ref(), issue_id, user_id, enabled, "manual")
@@ -866,7 +896,7 @@ pub async fn set_issue_subscription(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /{issue_id}/seen — mark the issue as seen by the current user.
+/// Mark the issue as seen by the current user.
 pub async fn mark_issue_seen(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
@@ -874,7 +904,7 @@ pub async fn mark_issue_seen(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
     let user_id = require_user(&actor)?;
     IssueSocialService::mark_seen(pool.get_ref(), issue_id, user_id).await?;
     Ok(HttpResponse::Ok().json(json!({ "has_seen": true })))
@@ -896,7 +926,7 @@ pub async fn mark_issue_seen(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /{issue_id}/user-reports — list user feedback for an issue.
+/// List user feedback for an issue.
 pub async fn list_issue_user_reports(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
@@ -905,9 +935,9 @@ pub async fn list_issue_user_reports(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
     let page = query.page.max(1);
-    let per_page = query.per_page.clamp(1, 100);
+    let per_page = crate::pagination::per_page(query.per_page)?;
     let reports =
         IssueSocialService::list_user_reports_page(pool.get_ref(), issue_id, page, per_page)
             .await?;
@@ -936,7 +966,7 @@ pub async fn list_issue_user_reports(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /{issue_id}/user-reports — attach user feedback to an issue.
+/// Attach user feedback to an issue.
 pub async fn create_issue_user_report(
     pool: web::Data<DbPool>,
     path: web::Path<(i32, Uuid)>,
@@ -945,7 +975,7 @@ pub async fn create_issue_user_report(
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
     actor.require(Resource::Issues, Action::Update, Some(project_id))?;
-    require_issue_in_project(pool.get_ref(), project_id, issue_id).await?;
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     // If an event_id is supplied, verify it actually belongs to this issue so
     // the report can't be linked to an event from another issue/project.
@@ -974,7 +1004,6 @@ pub async fn create_issue_user_report(
 
 /// OpenAPI-only response schemas for endpoints that return ad-hoc JSON objects.
 #[cfg(feature = "openapi")]
-#[allow(dead_code)]
 pub mod resp {
     use utoipa::ToSchema;
 
@@ -1052,50 +1081,49 @@ pub mod resp {
 )]
 pub struct IssuesApi;
 
-/// Configure issue routes
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route(
-        "/api/projects/{project_id}/environments",
-        web::get().to(list_environments),
-    );
-    cfg.route(
-        "/api/projects/{project_id}/feedback",
-        web::get().to(list_feedback),
-    );
-    cfg.service(
-        web::scope("/api/projects/{project_id}/issues")
-            .route("", web::get().to(list_issues))
-            .route("", web::put().to(bulk_update_issues))
-            .route("", web::delete().to(bulk_delete_issues))
-            .route("/{issue_id}/hashes", web::get().to(get_issue_hashes))
-            .route(
-                "/{issue_id}/aggregates",
-                web::get().to(get_issue_aggregates),
-            )
-            .route(
-                "/{issue_id}/tags/{key}",
-                web::get().to(get_issue_tag_values),
-            )
-            .route("/{issue_id}/stats", web::get().to(get_issue_stats))
-            .route("/{issue_id}/activity", web::get().to(get_issue_activity))
-            .route("/{issue_id}/comments", web::post().to(create_issue_comment))
-            .route("/{issue_id}/bookmark", web::put().to(set_issue_bookmark))
-            .route(
-                "/{issue_id}/subscription",
-                web::put().to(set_issue_subscription),
-            )
-            .route("/{issue_id}/seen", web::post().to(mark_issue_seen))
-            .route(
-                "/{issue_id}/user-reports",
-                web::get().to(list_issue_user_reports),
-            )
-            .route(
-                "/{issue_id}/user-reports",
-                web::post().to(create_issue_user_report),
-            )
-            .route("/{issue_id}", web::get().to(get_issue))
-            .route("/{issue_id}", web::patch().to(update_issue))
-            .route("/{issue_id}", web::put().to(update_issue))
-            .route("/{issue_id}", web::delete().to(delete_issue)),
-    );
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/environments", web::get().to(list_environments))
+        .route("/feedback", web::get().to(list_feedback))
+        .route("/issues", web::get().to(list_issues))
+        .route("/issues", web::put().to(bulk_update_issues))
+        .route("/issues", web::delete().to(bulk_delete_issues))
+        .route("/issues/{issue_id}/hashes", web::get().to(get_issue_hashes))
+        .route(
+            "/issues/{issue_id}/aggregates",
+            web::get().to(get_issue_aggregates),
+        )
+        .route(
+            "/issues/{issue_id}/tags/{key}",
+            web::get().to(get_issue_tag_values),
+        )
+        .route("/issues/{issue_id}/stats", web::get().to(get_issue_stats))
+        .route(
+            "/issues/{issue_id}/activity",
+            web::get().to(get_issue_activity),
+        )
+        .route(
+            "/issues/{issue_id}/comments",
+            web::post().to(create_issue_comment),
+        )
+        .route(
+            "/issues/{issue_id}/bookmark",
+            web::put().to(set_issue_bookmark),
+        )
+        .route(
+            "/issues/{issue_id}/subscription",
+            web::put().to(set_issue_subscription),
+        )
+        .route("/issues/{issue_id}/seen", web::post().to(mark_issue_seen))
+        .route(
+            "/issues/{issue_id}/user-reports",
+            web::get().to(list_issue_user_reports),
+        )
+        .route(
+            "/issues/{issue_id}/user-reports",
+            web::post().to(create_issue_user_report),
+        )
+        .route("/issues/{issue_id}", web::get().to(get_issue))
+        .route("/issues/{issue_id}", web::patch().to(update_issue))
+        .route("/issues/{issue_id}", web::put().to(update_issue))
+        .route("/issues/{issue_id}", web::delete().to(delete_issue));
 }

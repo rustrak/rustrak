@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
+use crate::models::rbac::{Action, Resource};
 use crate::routes::period::parse_period_hours;
 use crate::services::scope::Scope;
 use crate::services::stats::StatsService;
@@ -14,7 +14,7 @@ use crate::models::stats::{EventTimeseriesPoint, MetricDelta, ProjectStatsSummar
 use utoipa::OpenApi;
 
 /// Query params for the event timeseries endpoint.
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct EventTimeseriesQuery {
     /// Time window, e.g. "24h" or "7d". Omit for all time.
     pub period: Option<String>,
@@ -36,6 +36,7 @@ impl EventTimeseriesQuery {
     }
 }
 
+/// Counts a project's events over time, bucketed for a chart.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/events/stats",
@@ -55,7 +56,6 @@ impl EventTimeseriesQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/events/stats
 pub async fn get_event_timeseries(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -82,7 +82,7 @@ pub async fn get_event_timeseries(
 }
 
 /// Query params for the project stats summary endpoint.
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct StatsSummaryQuery {
     /// Time window, e.g. "24h" or "7d". Omit for all time (no comparison).
     pub period: Option<String>,
@@ -98,6 +98,7 @@ impl StatsSummaryQuery {
     }
 }
 
+/// Headline figures for a project's overview: events, new and open issues.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/stats/summary",
@@ -116,7 +117,6 @@ impl StatsSummaryQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/stats/summary
 pub async fn get_stats_summary(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -149,18 +149,11 @@ pub async fn get_stats_summary(
 )]
 pub struct StatsApi;
 
-/// Configure project stats routes.
 ///
 /// `/events/stats` sits under its own `/events` scope rather than the existing
 /// one in `routes::events`, which is nested under an issue
 /// (`/issues/{issue_id}/events`) and so cannot host a project-level path.
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/projects/{project_id}/events")
-            .route("/stats", web::get().to(get_event_timeseries)),
-    )
-    .service(
-        web::scope("/api/projects/{project_id}/stats")
-            .route("/summary", web::get().to(get_stats_summary)),
-    );
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/events/stats", web::get().to(get_event_timeseries))
+        .route("/stats/summary", web::get().to(get_stats_summary));
 }

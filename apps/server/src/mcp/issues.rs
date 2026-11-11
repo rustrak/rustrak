@@ -3,14 +3,15 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde::Deserialize;
 
-use super::{args, done, reply, uuid, RustrakMcp};
+use super::{done, reply, uuid, InProject, RustrakMcp};
 use crate::error::AppResult;
+use crate::models::{BulkDeleteIssues, BulkUpdateIssues, UpdateIssueState};
+use crate::pagination::IssueFilter;
 use crate::routes::issues;
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct IssueArgs {
     /// Project ID
     project_id: i32,
@@ -19,7 +20,7 @@ pub struct IssueArgs {
 }
 
 impl IssueArgs {
-    fn path(&self) -> AppResult<web::Path<(i32, uuid::Uuid)>> {
+    pub(super) fn path(&self) -> AppResult<web::Path<(i32, uuid::Uuid)>> {
         Ok(web::Path::from((
             self.project_id,
             uuid("issue_id", &self.issue_id)?,
@@ -27,63 +28,26 @@ impl IssueArgs {
     }
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ListIssuesArgs {
-    /// Project ID
-    project_id: i32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    /// Items per page (max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_page: Option<i64>,
-    /// Filter issues by state: open (default), resolved, muted or all
-    #[serde(skip_serializing_if = "Option::is_none")]
-    filter: Option<String>,
-    /// error (default) or feedback, to list user feedback instead
-    #[serde(skip_serializing_if = "Option::is_none")]
-    category: Option<String>,
-    /// Free-text search across type, value, transaction, culprit
-    #[serde(skip_serializing_if = "Option::is_none")]
-    q: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ListFeedbackArgs {
-    /// Project ID
-    project_id: i32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    /// Items per page (max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_page: Option<i64>,
-    /// open (the inbox, default), resolved, muted (spam) or all
-    #[serde(skip_serializing_if = "Option::is_none")]
-    filter: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ListUserReportsArgs {
+/// An issue and the handler's own query or body for it.
+#[derive(Deserialize, JsonSchema)]
+pub struct OnIssue<T> {
     #[serde(flatten)]
-    issue: IssueArgs,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    /// Items per page (max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_page: Option<i64>,
+    pub(super) issue: IssueArgs,
+    #[serde(flatten)]
+    pub(super) rest: T,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct UpdateStatusArgs {
     #[serde(flatten)]
     issue: IssueArgs,
     /// New status: unresolved, resolved, ignored or resolvedInNextRelease
     status: String,
     /// low, medium or high
-    #[serde(skip_serializing_if = "Option::is_none")]
     priority: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct AssignArgs {
     #[serde(flatten)]
     issue: IssueArgs,
@@ -93,30 +57,14 @@ pub struct AssignArgs {
     assignee_type: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct BulkUpdateArgs {
-    /// Project ID
-    project_id: i32,
-    /// Issue IDs to update
-    ids: Vec<String>,
-    /// unresolved, resolved, ignored or resolvedInNextRelease
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<String>,
-    /// low, medium or high
-    #[serde(skip_serializing_if = "Option::is_none")]
-    priority: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct BulkDeleteArgs {
     /// Project ID
     project_id: i32,
     /// Issue IDs to delete
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ids: Option<Vec<String>>,
+    ids: Option<Vec<uuid::Uuid>>,
     /// Delete every issue in this state: open, resolved, muted or all
-    #[serde(skip_serializing_if = "Option::is_none")]
-    filter: Option<String>,
+    filter: Option<IssueFilter>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -135,15 +83,7 @@ pub struct StatsArgs {
     window: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct CommentArgs {
-    #[serde(flatten)]
-    issue: IssueArgs,
-    /// Comment body
-    text: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ToggleArgs {
     #[serde(flatten)]
     issue: IssueArgs,
@@ -151,32 +91,12 @@ pub struct ToggleArgs {
     enabled: bool,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct UserReportArgs {
-    #[serde(flatten)]
-    issue: IssueArgs,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    email: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    comments: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    event_id: Option<String>,
-}
-
 #[tool_router(router = issue_tools, vis = "pub(super)")]
 impl RustrakMcp {
     /// `PATCH` an issue with a fixed body.
-    async fn update_issue(&self, a: &IssueArgs, body: serde_json::Value) -> CallToolResult {
+    async fn update_issue(&self, a: &IssueArgs, body: UpdateIssueState) -> CallToolResult {
         reply(async {
-            issues::update_issue(
-                self.pool(),
-                a.path()?,
-                web::Json(args(&body)?),
-                self.actor(),
-            )
-            .await
+            issues::update_issue(self.pool(), a.path()?, web::Json(body), self.actor()).await
         })
         .await
     }
@@ -185,12 +105,15 @@ impl RustrakMcp {
         description = "List issues for a Rustrak project. Returns paginated grouped error occurrences.",
         annotations(read_only_hint = true)
     )]
-    async fn list_issues(&self, Parameters(a): Parameters<ListIssuesArgs>) -> CallToolResult {
+    async fn list_issues(
+        &self,
+        Parameters(a): Parameters<InProject<issues::ListIssuesQuery>>,
+    ) -> CallToolResult {
         reply(async {
             issues::list_issues(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -202,12 +125,15 @@ impl RustrakMcp {
         description = "List user feedback for a Rustrak project: each message with the sender's name, email, page, the error event it is about and its attachments (such as a screenshot). Resolve or mute (spam) one with the issue tools, using its id.",
         annotations(read_only_hint = true)
     )]
-    async fn list_feedback(&self, Parameters(a): Parameters<ListFeedbackArgs>) -> CallToolResult {
+    async fn list_feedback(
+        &self,
+        Parameters(a): Parameters<InProject<issues::ListFeedbackQuery>>,
+    ) -> CallToolResult {
         reply(async {
             issues::list_feedback(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -228,15 +154,15 @@ impl RustrakMcp {
         annotations(destructive_hint = false)
     )]
     async fn resolve_issue(&self, Parameters(a): Parameters<IssueArgs>) -> CallToolResult {
-        self.update_issue(&a, json!({ "is_resolved": true })).await
+        self.update_issue(&a, status("resolved")).await
     }
 
     #[tool(
-        description = "Mark a resolved issue as unresolved (re-open it).",
+        description = "Mark an issue as unresolved (re-open it).",
         annotations(destructive_hint = false)
     )]
     async fn unresolve_issue(&self, Parameters(a): Parameters<IssueArgs>) -> CallToolResult {
-        self.update_issue(&a, json!({ "is_resolved": false })).await
+        self.update_issue(&a, status("unresolved")).await
     }
 
     #[tool(
@@ -244,7 +170,7 @@ impl RustrakMcp {
         annotations(destructive_hint = false)
     )]
     async fn mute_issue(&self, Parameters(a): Parameters<IssueArgs>) -> CallToolResult {
-        self.update_issue(&a, json!({ "is_muted": true })).await
+        self.update_issue(&a, status("ignored")).await
     }
 
     #[tool(
@@ -267,16 +193,12 @@ impl RustrakMcp {
         &self,
         Parameters(a): Parameters<UpdateStatusArgs>,
     ) -> CallToolResult {
-        reply(async {
-            issues::update_issue(
-                self.pool(),
-                a.issue.path()?,
-                web::Json(args(&a)?),
-                self.actor(),
-            )
-            .await
-        })
-        .await
+        let body = UpdateIssueState {
+            status: Some(a.status),
+            priority: a.priority,
+            ..Default::default()
+        };
+        self.update_issue(&a.issue, body).await
     }
 
     #[tool(
@@ -284,18 +206,13 @@ impl RustrakMcp {
         annotations(destructive_hint = false)
     )]
     async fn assign_issue(&self, Parameters(a): Parameters<AssignArgs>) -> CallToolResult {
-        // `null` must reach the handler, which reads it as "clear".
-        let body = json!({ "assigned_to": a.assigned_to, "assignee_type": a.assignee_type });
-        reply(async {
-            issues::update_issue(
-                self.pool(),
-                a.issue.path()?,
-                web::Json(args(&body)?),
-                self.actor(),
-            )
-            .await
-        })
-        .await
+        // An absent assignee reaches the handler as `null`, which clears it.
+        let body = UpdateIssueState {
+            assigned_to: Some(a.assigned_to),
+            assignee_type: Some(a.assignee_type),
+            ..Default::default()
+        };
+        self.update_issue(&a.issue, body).await
     }
 
     #[tool(
@@ -304,13 +221,13 @@ impl RustrakMcp {
     )]
     async fn bulk_update_issues(
         &self,
-        Parameters(a): Parameters<BulkUpdateArgs>,
+        Parameters(a): Parameters<InProject<BulkUpdateIssues>>,
     ) -> CallToolResult {
         reply(async {
             issues::bulk_update_issues(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Json(args(&a)?),
+                Ok(web::Json(a.rest)),
                 self.actor(),
             )
             .await
@@ -326,22 +243,14 @@ impl RustrakMcp {
         &self,
         Parameters(a): Parameters<BulkDeleteArgs>,
     ) -> CallToolResult {
-        if a.ids.is_some() == a.filter.is_some() {
-            return super::refuse("Specify exactly one of ids or filter.");
-        }
-        // The handler's body refuses any field but the one it names.
-        let body = match &a.ids {
-            Some(ids) => json!({ "ids": ids }),
-            None => json!({ "filter": a.filter }),
+        let body = match (a.ids, a.filter) {
+            (Some(ids), None) => BulkDeleteIssues::Ids { ids },
+            (None, Some(filter)) => BulkDeleteIssues::Filter { filter },
+            _ => return super::refuse("Specify exactly one of ids or filter."),
         };
         reply(async {
-            issues::delete_issues(
-                self.pool(),
-                a.project_id,
-                args(&body).map(web::Json),
-                self.actor(),
-            )
-            .await
+            issues::delete_issues(self.pool(), a.project_id, Ok(web::Json(body)), self.actor())
+                .await
         })
         .await
     }
@@ -417,12 +326,15 @@ impl RustrakMcp {
         description = "Add a comment (note) to an issue.",
         annotations(destructive_hint = false)
     )]
-    async fn comment_on_issue(&self, Parameters(a): Parameters<CommentArgs>) -> CallToolResult {
+    async fn comment_on_issue(
+        &self,
+        Parameters(a): Parameters<OnIssue<issues::CommentRequest>>,
+    ) -> CallToolResult {
         reply(async {
             issues::create_issue_comment(
                 self.pool(),
                 a.issue.path()?,
-                web::Json(args(&a)?),
+                Ok(web::Json(a.rest)),
                 self.actor(),
             )
             .await
@@ -439,7 +351,9 @@ impl RustrakMcp {
             issues::set_issue_bookmark(
                 self.pool(),
                 a.issue.path()?,
-                web::Json(args(&a)?),
+                web::Json(issues::ToggleRequest {
+                    enabled: Some(a.enabled),
+                }),
                 self.actor(),
             )
             .await
@@ -456,7 +370,9 @@ impl RustrakMcp {
             issues::set_issue_subscription(
                 self.pool(),
                 a.issue.path()?,
-                web::Json(args(&a)?),
+                web::Json(issues::ToggleRequest {
+                    enabled: Some(a.enabled),
+                }),
                 self.actor(),
             )
             .await
@@ -478,13 +394,13 @@ impl RustrakMcp {
     )]
     async fn list_user_reports(
         &self,
-        Parameters(a): Parameters<ListUserReportsArgs>,
+        Parameters(a): Parameters<OnIssue<issues::ListUserReportsQuery>>,
     ) -> CallToolResult {
         reply(async {
             issues::list_issue_user_reports(
                 self.pool(),
                 a.issue.path()?,
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -498,17 +414,24 @@ impl RustrakMcp {
     )]
     async fn submit_user_report(
         &self,
-        Parameters(a): Parameters<UserReportArgs>,
+        Parameters(a): Parameters<OnIssue<issues::UserReportRequest>>,
     ) -> CallToolResult {
         reply(async {
             issues::create_issue_user_report(
                 self.pool(),
                 a.issue.path()?,
-                web::Json(args(&a)?),
+                web::Json(a.rest),
                 self.actor(),
             )
             .await
         })
         .await
+    }
+}
+
+fn status(status: &str) -> UpdateIssueState {
+    UpdateIssueState {
+        status: Some(status.into()),
+        ..Default::default()
     }
 }

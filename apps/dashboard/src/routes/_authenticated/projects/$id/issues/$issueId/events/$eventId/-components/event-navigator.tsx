@@ -10,15 +10,15 @@ import {
   Tooltip,
 } from '@rustrak/ui';
 import { useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import type { EventNavigation } from '@/features/event/api/queries';
 import {
   type EventJumpTarget,
   sectionInView,
 } from '@/features/event/lib/event-jumps';
-import { useShortcuts } from '@/features/issue/ui/components/issue-actions';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';
 
 /**
  * Which of the issue's events is on screen, how to step to another, and
@@ -43,6 +43,7 @@ export function EventNavigator({
   jumps: { id: EventJumpTarget; label: string }[];
 }) {
   const t = useTranslations('issues');
+  const { copy } = useCopy();
   const tEvents = useTranslations('events');
   const format = useFormatter();
   const router = useRouter();
@@ -131,12 +132,7 @@ export function EventNavigator({
     ']': () => go(lastEventId),
   });
 
-  const copyId = () => {
-    navigator.clipboard
-      ?.writeText(event.event_id)
-      .then(() => toast.success(t('table.copied')))
-      .catch(() => {});
-  };
+  const copyId = () => copy(event.event_id, t('table.copied'));
 
   return (
     <div
@@ -228,14 +224,20 @@ export function EventNavigator({
             {format.relativeTime(new Date(event.timestamp))}
           </Text>
           {event.environment ? (
-            <Tag variant="soft">{event.environment}</Tag>
+            <Tag variant="soft" verbatim>
+              {event.environment}
+            </Tag>
           ) : null}
           {event.release ? (
-            <Tag variant="soft" className="font-mono">
+            <Tag variant="soft" verbatim className="font-mono">
               {event.release}
             </Tag>
           ) : null}
-          {event.platform ? <Tag variant="soft">{event.platform}</Tag> : null}
+          {event.platform ? (
+            <Tag variant="soft" verbatim>
+              {event.platform}
+            </Tag>
+          ) : null}
         </div>
       </div>
 

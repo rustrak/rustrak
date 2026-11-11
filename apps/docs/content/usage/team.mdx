@@ -118,7 +118,6 @@ curl -X PUT -H "Authorization: Bearer $RUSTRAK_TOKEN" -H "Content-Type: applicat
 | Giving a role or permission you do not hold | `403`, `You cannot grant permissions you do not hold` |
 | Changing your own access | `403` |
 | Inviting or changing an owner when you are not one | `403` |
-| `POST /auth/register` | `403`: sign-up is by invitation only |
 | `send_email: true` with no SMTP host, or no `DASHBOARD_URL` or `PUBLIC_URL` | `400`, naming `send_email` |
 | Resending an expired or accepted invitation | `400` |
 | Demoting or removing the last owner | `409` |

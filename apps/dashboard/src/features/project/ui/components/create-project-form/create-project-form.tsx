@@ -1,45 +1,26 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Button } from '@rustrak/ui';
+import { Button, Field, FieldError, FieldLabel } from '@rustrak/ui';
+import { useSelector } from '@tanstack/react-form';
 import { useMutation } from '@tanstack/react-query';
 import { PlatformIcon } from 'platformicons';
 import { useMemo } from 'react';
-import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
-import { z } from 'zod';
 import { projectMutations } from '@/features/project/api/mutations';
 import {
-  projectNameField,
-  projectSlugField,
+  buildCreateProjectFormSchema,
+  type CreateProjectFormData,
 } from '@/features/project/model/fields';
 import { useProjectSlug } from '@/features/project/ui/hooks/use-project-slug';
 import { platformLabel } from '@/shared/config/platforms';
-import type { Translate } from '@/shared/lib/error-copy';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormRootError,
-} from '@/shared/ui/components/form';
+  fieldErrorText,
+  revalidateLogic,
+  useAppForm,
+} from '@/shared/ui/components/app-form';
 import { PlatformGrid } from '@/shared/ui/components/platform-grid';
 import { useRouter } from '@/shared/ui/hooks/use-router';
-import { IdentityFields } from './identity-fields';
-
-function buildCreateProjectFormSchema(t: Translate) {
-  return z.object({
-    platform: z.string().min(1, t('platformRequired')),
-    name: projectNameField(t),
-    slug: projectSlugField(t),
-  });
-}
-
-export type CreateProjectFormData = z.infer<
-  ReturnType<typeof buildCreateProjectFormSchema>
->;
+import { NameField, SlugField } from './identity-fields';
 
 interface CreateProjectFormProps {
   /**
@@ -87,13 +68,19 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
     [t],
   );
 
-  const form = useForm<CreateProjectFormData>({
-    resolver: zodResolver(createProjectFormSchema),
-    defaultValues: { platform: '', name: '', slug: '' },
+  const form = useAppForm({
+    defaultValues: {
+      platform: '',
+      name: '',
+      slug: '',
+    },
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: createProjectFormSchema },
+    onSubmit: ({ value }) => onSubmit(value),
   });
 
   const slug = useProjectSlug(form);
-  const platform = form.watch('platform');
+  const platform = useSelector(form.store, (state) => state.values.platform);
   const taken = new Set(existingNames);
 
   // The slug is generated from the name until the user explicitly takes it
@@ -103,22 +90,19 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
   // In a handler rather than an effect: this is a reaction to the user typing,
   // not to a render.
   const handlePlatformChange = (platformId: string) => {
-    form.setValue('platform', platformId, { shouldValidate: true });
+    form.setFieldValue('platform', platformId);
 
     // Only auto-fill while the user has not taken over the field, matching
-    // Sentry's `hasUserModifiedProjectName` guard. `shouldDirty: false` is
-    // what makes `dirtyFields.name` mean "the user typed", not "we filled it".
-    if (!form.formState.dirtyFields.name) {
+    // Sentry's `hasUserModifiedProjectName` guard. `dontUpdateMeta` is what
+    // makes `isDirty` on the name mean "the user typed", not "we filled it".
+    if (!form.getFieldMeta('name')?.isDirty) {
       const suggested = suggestName(platformId, taken);
-      form.setValue('name', suggested, {
-        shouldDirty: false,
-        shouldValidate: true,
-      });
+      form.setFieldValue('name', suggested, { dontUpdateMeta: true });
       slug.syncFromName(suggested);
     }
   };
 
-  const onSubmit = (data: CreateProjectFormData) => {
+  function onSubmit(data: CreateProjectFormData) {
     create.mutate(
       {
         name: data.name,
@@ -161,39 +145,37 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
         },
       },
     );
-  };
+  }
 
   // Rendered in two places (the aside on desktop, the fixed bar on mobile), so
   // it lives here rather than being written twice.
   const submitLabel = isPending ? t('creating') : t('create');
 
   return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
+    <form.AppForm>
+      <form.Form
         // Bottom padding clears the fixed mobile bar, which would otherwise
         // cover the last field.
         className="grid gap-6 pb-24 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:pb-0"
       >
-        <FormField
-          control={form.control}
-          name="platform"
-          render={({ field }) => (
-            <FormItem className="min-w-0">
-              <FormLabel className="text-label text-fg-muted">
-                {t('fields.platform')}
-              </FormLabel>
-              <FormControl>
+        <form.Field name="platform">
+          {(field) => {
+            const error = fieldErrorText(field.state.meta.errors);
+            return (
+              <Field name={field.name} invalid={!!error} className="min-w-0">
+                <FieldLabel className="text-label text-fg-muted">
+                  {t('fields.platform')}
+                </FieldLabel>
                 <PlatformGrid
-                  value={field.value || null}
+                  value={field.state.value || null}
                   onValueChange={handlePlatformChange}
                   disabled={isPending}
                 />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+                {error ? <FieldError match>{error}</FieldError> : null}
+              </Field>
+            );
+          }}
+        </form.Field>
 
         {/* Labelled like the platform column, with the same gap, so both
             panels start on the same line. */}
@@ -231,10 +213,14 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
               )}
             </div>
 
-            <IdentityFields slug={slug} disabled={isPending} />
+            <form.AppField name="name">
+              {() => <NameField slug={slug} disabled={isPending} />}
+            </form.AppField>
+            <form.AppField name="slug">
+              {() => <SlugField slug={slug} disabled={isPending} />}
+            </form.AppField>
 
-            {/* Where a server failure that named no field of this form lands. */}
-            <FormRootError className="mt-4" />
+            <form.RootError className="mt-4" />
 
             {/* Hidden on mobile: the fixed bar below owns the action there, and
               two live submit buttons would be one too many. */}
@@ -288,7 +274,7 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
             </Button>
           </div>
         </div>
-      </form>
-    </Form>
+      </form.Form>
+    </form.AppForm>
   );
 }

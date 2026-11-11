@@ -1,31 +1,11 @@
 use actix_web::web;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
-use serde::{Deserialize, Serialize};
 
-use super::{args, reply, ProjectArgs, RustrakMcp};
+use super::{reply, ProjectArgs, RustrakMcp};
+use crate::models::CreateProject;
 use crate::routes::projects;
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ListProjectsArgs {
-    /// Page number
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    /// Items per page (max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_page: Option<i64>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct CreateProjectArgs {
-    /// Project name
-    name: String,
-    /// URL-safe slug (auto-generated if omitted)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    slug: Option<String>,
-}
 
 #[tool_router(router = project_tools, vis = "pub(super)")]
 impl RustrakMcp {
@@ -33,15 +13,12 @@ impl RustrakMcp {
         description = "List all Rustrak projects you have access to.",
         annotations(read_only_hint = true)
     )]
-    async fn list_projects(&self, Parameters(a): Parameters<ListProjectsArgs>) -> CallToolResult {
+    async fn list_projects(
+        &self,
+        Parameters(a): Parameters<projects::ListProjectsQuery>,
+    ) -> CallToolResult {
         reply(async {
-            projects::list_projects(
-                self.pool(),
-                self.config(),
-                web::Query(args(&a)?),
-                self.actor(),
-            )
-            .await
+            projects::list_projects(self.pool(), self.config(), web::Query(a), self.actor()).await
         })
         .await
     }
@@ -64,15 +41,10 @@ impl RustrakMcp {
         description = "Create a new Rustrak project.",
         annotations(destructive_hint = false)
     )]
-    async fn create_project(&self, Parameters(a): Parameters<CreateProjectArgs>) -> CallToolResult {
+    async fn create_project(&self, Parameters(a): Parameters<CreateProject>) -> CallToolResult {
         reply(async {
-            projects::create_project(
-                self.pool(),
-                self.config(),
-                web::Json(args(&a)?),
-                self.actor(),
-            )
-            .await
+            projects::create_project(self.pool(), self.config(), Ok(web::Json(a)), self.actor())
+                .await
         })
         .await
     }

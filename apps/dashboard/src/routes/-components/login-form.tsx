@@ -1,9 +1,7 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import type { RustrakError, SsoConfigResponse } from '@rustrak/client';
 import {
   Button,
   ConcealIcon,
-  Input,
   InputAction,
   RevealIcon,
   Separator,
@@ -11,20 +9,11 @@ import {
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { userMutations } from '@/features/user/api/mutations';
-import { SERVER_ERROR_PATH } from '@/shared/lib/form-errors';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormRootError,
-} from '@/shared/ui/components/form';
+import { setServerErrors } from '@/shared/lib/form-errors';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 type LoginFormData = {
@@ -71,7 +60,7 @@ function stillBusy(mutation: { isPending: boolean; isSuccess: boolean }) {
 function loginFailure(
   error: RustrakError,
   t: LoginTranslator,
-): ['password' | typeof SERVER_ERROR_PATH, string] {
+): { form?: string; fields?: Record<string, string> } {
   if (error.kind === 'unauthenticated') {
     // **This form deliberately gets no per-field errors, and that is not an
     // oversight the field-error work should "fix".**
@@ -90,18 +79,14 @@ function loginFailure(
     // will retype. The server helps by making them indistinguishable
     // upstream too: it checks `is_active` *before* verifying the password,
     // so a distinct "account disabled" answer would leak the same fact.
-    return ['password', t('form.invalidCredentials')];
+    return { fields: { password: t('form.invalidCredentials') } };
   }
 
   // Not a verdict on the credentials, so it does not go on a credential
   // field. "An unexpected error occurred" under the password box, when the
   // API is simply down, sends the user off to retype a password that was
   // right all along.
-  //
-  // The path is imported rather than written out: `FormRootError` reads
-  // the same key, so a literal here would be a third copy of a constant
-  // nothing checks.
-  return [SERVER_ERROR_PATH, loginFailureMessage(error, t)];
+  return { form: loginFailureMessage(error, t) };
 }
 
 function formatWait(seconds: number, t: LoginTranslator): string {
@@ -185,27 +170,19 @@ export function LoginForm({
     password: z.string().min(1, t('form.passwordRequired')),
   });
 
-  const form = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: '',
-      password: '',
+  const form = useAppForm({
+    defaultValues: { email: '', password: '' } as LoginFormData,
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: loginSchema },
+    onSubmit: ({ value }) => {
+      if (busy) return;
+
+      login.mutate(value, {
+        onSuccess: () => router.push('/'),
+        onError: ({ error }) => setServerErrors(form, loginFailure(error, t)),
+      });
     },
   });
-
-  const onSubmit = (data: LoginFormData) => {
-    if (busy) return;
-
-    form.clearErrors();
-
-    login.mutate(data, {
-      onSuccess: () => router.push('/'),
-      onError: ({ error }) => {
-        const [path, message] = loginFailure(error, t);
-        form.setError(path, { type: 'server', message });
-      },
-    });
-  };
 
   const onSsoLogin = () => {
     setSsoErrorDismissed(true);
@@ -266,71 +243,46 @@ export function LoginForm({
       )}
 
       {passwordFormVisible && (
-        <Form {...form}>
-          <form
-            noValidate
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-col gap-4"
-          >
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem className="gap-1.5">
-                  <FormLabel className="text-label text-fg-secondary">
-                    {t('form.emailLabel')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      placeholder={t('form.emailPlaceholder')}
-                      autoComplete="email"
-                      autoFocus
-                      disabled={busy}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage className="text-hint" />
-                </FormItem>
+        <form.AppForm>
+          <form.Form className="flex flex-col gap-4">
+            <form.AppField name="email">
+              {(field) => (
+                <field.TextField
+                  label={t('form.emailLabel')}
+                  type="email"
+                  placeholder={t('form.emailPlaceholder')}
+                  autoComplete="email"
+                  autoFocus
+                  disabled={busy}
+                />
               )}
-            />
+            </form.AppField>
 
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem className="gap-1.5">
-                  <FormLabel className="text-label text-fg-secondary">
-                    {t('form.passwordLabel')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder={t('form.passwordPlaceholder')}
-                      autoComplete="current-password"
-                      disabled={busy}
-                      action={
-                        <InputAction
-                          icon={showPassword ? ConcealIcon : RevealIcon}
-                          tabIndex={-1}
-                          onClick={() => setShowPassword((prev) => !prev)}
-                          aria-label={
-                            showPassword
-                              ? t('form.hidePassword')
-                              : t('form.showPassword')
-                          }
-                        />
+            <form.AppField name="password">
+              {(field) => (
+                <field.TextField
+                  label={t('form.passwordLabel')}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder={t('form.passwordPlaceholder')}
+                  autoComplete="current-password"
+                  disabled={busy}
+                  action={
+                    <InputAction
+                      icon={showPassword ? ConcealIcon : RevealIcon}
+                      tabIndex={-1}
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={
+                        showPassword
+                          ? t('form.hidePassword')
+                          : t('form.showPassword')
                       }
-                      {...field}
                     />
-                  </FormControl>
-                  <FormMessage className="text-hint" />
-                </FormItem>
+                  }
+                />
               )}
-            />
+            </form.AppField>
 
-            {/* Where an outage lands, kept off the credential fields. */}
-            <FormRootError className="text-hint" />
+            <form.RootError />
 
             <Button
               type="submit"
@@ -342,8 +294,8 @@ export function LoginForm({
             >
               {isPending ? t('form.signingIn') : t('form.login')}
             </Button>
-          </form>
-        </Form>
+          </form.Form>
+        </form.AppForm>
       )}
     </div>
   );

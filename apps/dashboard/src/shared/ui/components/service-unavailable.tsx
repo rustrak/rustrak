@@ -1,5 +1,5 @@
 import type { RustrakError } from '@rustrak/client';
-import { IntegrationsIcon, Text } from '@rustrak/ui';
+import { Button, IntegrationsIcon, RefreshIcon, Text } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
 import {
   describeError,
@@ -20,20 +20,19 @@ import {
  * failure sends a signed-in user to a login form that cannot help: logging in
  * issues the same request, which fails the same way, and they bounce again.
  *
- * Every line comes from `kind`. It used to assert an outage unconditionally --
- * heading "Rustrak is not responding", footer "reload once the API is back" --
- * which is right for `network` and `server_error` and wrong for the eleven
- * other kinds that reach it. A `forbidden` was told to wait for a server that
- * was already answering, and an `invalid_response` from a dashboard deployed
- * ahead of its API was told to reload, which can never fix a schema mismatch.
+ * Every line comes from `kind`: only `network` and `server_error` are an
+ * outage, and telling a `forbidden` to wait for the server would be wrong.
  */
 export function ServiceUnavailable({
   error,
   title,
+  onRetry,
 }: {
   error: RustrakError;
   /** Names the read that failed, for a page that does several. */
   title?: string;
+  /** Asks again, for a read that failed without taking the page down. */
+  onRetry?: () => void;
 }) {
   const t = useTranslations();
   const guidance = errorGuidance(error, t);
@@ -62,6 +61,17 @@ export function ServiceUnavailable({
           >
             {guidance}
           </Text>
+        ) : null}
+        {onRetry ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={RefreshIcon}
+            className="mt-5"
+            onClick={onRetry}
+          >
+            {t('errors.tryAgain')}
+          </Button>
         ) : null}
       </div>
     </div>

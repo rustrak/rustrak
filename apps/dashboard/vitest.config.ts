@@ -2,12 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 /**
- * Architecture rules and the portable core, in Node.
- *
- * Inherited wholesale from `webview-ui`, including what is deliberately
- * absent: no jsdom, no React plugin, no testing-library. Nothing collected
- * here renders. Component behaviour is not covered by a jsdom that cannot see
- * a layout; a rendering test still has to arrive in the commit that needs it.
+ * Architecture rules and pure modules, in Node. Deliberately no jsdom, no
+ * React plugin, no testing-library: nothing collected here renders.
  */
 export default defineConfig({
   /**
@@ -45,16 +41,13 @@ export default defineConfig({
     // `globals` is required by archunit's `toPassAsync` matcher, which the
     // rules assert with. Not a convenience.
     globals: true,
-    // The architecture rules, plus unit tests for the portable core: a
-    // feature's `model` and `lib` segments, `shared/lib`, and the two `shared`
-    // segments the SPA had to write for itself — `shared/i18n` resolves the
-    // locale and the zone that Next used to resolve per request, and
-    // `shared/api` holds the session store the router guards on.
-    //
-    // Anywhere else, a `.test.ts` is still not collected.
+    // The architecture rules, plus unit tests for pure modules: a feature's
+    // `model` and `lib`, `shared/{lib,i18n,api}`, and a route's own
+    // `-components` helpers. Anywhere else, a `.test.ts` is not collected.
     include: [
       'src/__tests__/architecture/**/*.test.ts',
       'src/{features/*/{model,lib},shared/{lib,i18n,api}}/**/*.test.ts',
+      'src/routes/**/-components/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
     // Whichever test runs first pays for the whole graph extraction; the rest

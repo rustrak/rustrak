@@ -4,12 +4,33 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "link", "name": "New Project" } },
-    { "action": "click", "target": { "role": "link", "name": "New Project" }, "tooltip": "Each app you monitor gets its own project" },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "New Project" },
+      "tooltip": "Each app you monitor gets its own project"
+    },
     { "action": "wait", "for": { "role": "button", "name": "Create Project" } },
-    { "action": "click", "target": { "role": "button", "name": "node Node.js" }, "tooltip": "Pick its platform. It decides the setup snippet you get" },
-    { "action": "fill", "target": { "role": "textbox", "name": "Project name" }, "value": "Newsletter" },
-    { "action": "click", "target": { "role": "button", "name": "Create Project" }, "tooltip": "The slug comes from the name. Create the project" },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "node Node.js" },
+      "tooltip": "Pick its platform. It decides the setup snippet you get"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Project name" },
+      "value": "Newsletter"
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Create Project" },
+      "tooltip": "The slug comes from the name. Create the project"
+    },
     { "action": "wait", "for": { "role": "button", "name": "Copy DSN" } },
-    { "action": "click", "target": { "role": "button", "name": "Copy DSN" }, "tooltip": "The DSN is the one setting a Sentry SDK needs", "zoom": 1.8 }
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Copy DSN" },
+      "tooltip": "The DSN is the one setting a Sentry SDK needs",
+      "zoom": 1.8
+    }
   ]
 }

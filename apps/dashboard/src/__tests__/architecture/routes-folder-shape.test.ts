@@ -1,6 +1,6 @@
 import { projectFiles } from 'archunit';
 import { describe, expect, it } from 'vitest';
-import { isTestFile } from './predicates';
+import { isTestFile, posix } from './predicates';
 
 /**
  * Everything under `routes/` is either a route or a component in a
@@ -24,8 +24,6 @@ import { isTestFile } from './predicates';
  * rot, and the six-component threshold this pattern replaced is what let the
  * sixteen accumulate.
  */
-
-const posix = (path: string) => path.split('\\').join('/');
 
 /** Anything inside a folder the route generator skips. */
 const isIgnoredByTheGenerator = (path: string) =>

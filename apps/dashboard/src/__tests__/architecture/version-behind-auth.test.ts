@@ -1,6 +1,6 @@
 import { projectFiles } from 'archunit';
 import { describe, expect, it } from 'vitest';
-import { isTestFile, withoutComments } from './predicates';
+import { isTestFile, posix, withoutComments } from './predicates';
 
 /**
  * The running version is told to signed-in people only.
@@ -32,8 +32,6 @@ import { isTestFile, withoutComments } from './predicates';
  */
 
 const APP_VERSION = /\bAPP_VERSION\b/;
-
-const posix = (path: string) => path.split('\\').join('/');
 
 /**
  * Where the constant is declared. It has to name itself, and a module in

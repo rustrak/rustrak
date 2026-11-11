@@ -22,9 +22,3 @@ include_user = true
 include_tags = true
 include_extra = false
 distinct_groups = 300
-
-[docker]
-server_cpus = "2"
-server_memory = "256M"
-postgres_cpus = "1"
-postgres_memory = "512M"

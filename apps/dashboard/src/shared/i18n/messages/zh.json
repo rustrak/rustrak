@@ -23,6 +23,7 @@
     "copyAs": "另存为",
     "clipboardUnavailable": "剪贴板不可用",
     "clipboardUnavailableHint": "请手动选择内容进行复制，或通过 HTTPS 访问 Rustrak。",
+    "clipboardLabelHint": "请手动选择{label}进行复制，或通过 HTTPS 访问 Rustrak。",
     "openSidebar": "打开侧边栏",
     "showSidebar": "显示侧边栏",
     "closeSidebar": "关闭侧边栏",
@@ -30,7 +31,20 @@
     "close": "关闭",
     "showPassword": "显示密码",
     "hidePassword": "隐藏密码",
-    "loading": "加载中"
+    "loading": "加载中",
+    "copyLabel": "复制{label}",
+    "unfinished": "未完成",
+    "noSpans": "没有 span",
+    "noSpansHint": "此追踪没有可绘制的时间数据。",
+    "resizeNameColumn": "调整名称列宽度",
+    "mainNavigation": "主导航",
+    "breadcrumb": "面包屑导航",
+    "notifications": "通知",
+    "collapseSidebar": "收起侧边栏",
+    "expandSidebar": "展开侧边栏",
+    "account": "账户：{name}",
+    "openNavigation": "打开导航",
+    "closeNavigation": "关闭导航"
   },
   "theme": {
     "light": "浅色",
@@ -57,7 +71,17 @@
     "footerCount": "{count} 个平台 · 搜索可跨所有分类查找",
     "pickerPlaceholder": "搜索平台...",
     "pickerAria": "平台",
-    "noResults": "未找到平台。"
+    "noResults": "未找到平台。",
+    "categories": {
+      "popular": "热门",
+      "browser": "浏览器",
+      "server": "服务器",
+      "mobile": "移动端",
+      "desktop": "桌面端",
+      "serverless": "无服务器",
+      "gaming": "游戏",
+      "all": "全部"
+    }
   },
   "statTile": {
     "noPriorPeriod": "无前期数据",
@@ -107,46 +131,35 @@
     "suggestions": "建议",
     "filterAndSearch": "使用 键:值 筛选，或搜索…",
     "addFilter": "添加筛选…",
-    "clearAll": "清除筛选和搜索"
+    "clearAll": "清除筛选和搜索",
+    "hintNavigate": "导航",
+    "hintSelect": "选择",
+    "hintClose": "esc 关闭",
+    "typeValueThen": "输入一个值，然后按",
+    "removeFilter": "移除 {name} 筛选",
+    "searchFor": "搜索“{text}”"
   },
   "commands": {
-    "overview": "概览",
     "overviewDescription": "一眼掌握运行状况、事件量与最新问题。",
-    "issues": "问题",
     "issuesDescription": "按指纹分组的错误与异常。",
-    "releases": "发布",
     "releasesDescription": "部署记录及各版本的运行状况。",
-    "performance": "性能",
     "performanceDescription": "事务耗时与 Span 瀑布图。",
-    "agents": "智能体",
     "agentsDescription": "AI 智能体追踪及其内部 Span。",
-    "logs": "日志",
     "logsDescription": "实时原始日志流。",
-    "general": "常规",
     "generalDescription": "名称、slug、平台与危险操作区。",
-    "alerts": "告警",
     "alertsDescription": "出现异常时触发的规则。",
-    "members": "成员",
     "membersDescription": "谁能访问此项目，以及以什么身份访问。",
-    "clientKeys": "客户端密钥",
     "clientKeysDescription": "DSN 与 SDK 接入代码片段。",
     "allProjects": "所有项目",
     "allProjectsDescription": "此实例上您可见的全部项目。",
     "newProject": "新建项目",
     "newProjectDescription": "选择平台并创建一个项目。",
-    "apiTokens": "API 令牌",
     "apiTokensDescription": "用于 API 与 SDK 上报的 Bearer 令牌。",
-    "integrations": "集成",
     "integrationsDescription": "告警的投递目的地。",
-    "team": "团队",
     "teamDescription": "实例成员与待处理的邀请。",
-    "storage": "存储",
     "storageDescription": "保留期与源映射清理。",
-    "account": "账户",
     "accountDescription": "您的个人资料与密码。",
-    "appearance": "外观",
     "appearanceDescription": "浅色、深色或跟随系统。",
-    "about": "关于",
     "aboutDescription": "当前 Rustrak 的版本信息。",
     "noResultsFor": "没有 “{query}” 的相关结果",
     "resultsHeading": "搜索结果",
@@ -165,10 +178,12 @@
     "open": "打开",
     "close": "关闭",
     "hidePages": "隐藏页面",
-    "crons": "Crons",
     "cronsDescription": "定时任务及其运行情况。",
-    "feedback": "用户反馈",
-    "feedbackDescription": "用户在应用中提交的反馈。"
+    "feedbackDescription": "用户在应用中提交的反馈。",
+    "rolesDescription": "定义每个角色可以执行的操作",
+    "mcpDescription": "通过 MCP 连接 AI 助手",
+    "dataDescription": "事件限制以及项目存储的数据",
+    "githubDescription": "关联 GitHub 仓库"
   },
   "charts": {
     "errors": "错误",
@@ -193,6 +208,7 @@
     "alreadyExists": "{subject}已被占用。",
     "tooShort": "{subject}过短。",
     "tooLong": "{subject}过长。",
+    "incorrect": "{subject}不正确。",
     "rejected": "该值被拒绝。",
     "defaultSubject": "该值"
   },
@@ -267,6 +283,7 @@
       "events": "事件数",
       "users": "用户数",
       "lastSeen": "最后出现",
+      "lastSeenShort": "最后出现",
       "level": "级别",
       "assignee": "负责人",
       "firstSeen": "首次出现"
@@ -504,7 +521,8 @@
       "noUsers": "没有可用用户",
       "selectUser": "选择用户",
       "roleAria": "新成员的角色",
-      "submit": "添加"
+      "submit": "添加",
+      "selectRole": "选择角色"
     },
     "pending": {
       "title": "待处理的邀请",
@@ -598,15 +616,12 @@
       "deleteTitle": "删除 “{name}”？",
       "deleteDescription": "这将永久删除此项目及其所有关联的问题和事件。此操作无法撤销。",
       "cancel": "取消",
-      "deleting": "正在删除...",
       "confirm": "删除"
     },
     "deleteDialog": {
       "titleNamed": "删除 “{name}”？",
-      "titleCount": "删除 {count} 个项目？",
       "description": "这将永久删除 {subject} 及其所有关联的问题和事件。此操作无法撤销。",
       "cancel": "取消",
-      "deleting": "正在删除...",
       "confirm": "删除",
       "subject": "{count, plural, other {# 个项目}}"
     },
@@ -665,8 +680,6 @@
       "new": "新建项目",
       "count": "{count} 个项目"
     },
-    "copyUnavailable": "剪贴板不可用",
-    "copyUnavailableHint": "请手动选择{label}进行复制，或通过 HTTPS 访问 Rustrak。",
     "clientKeys": {
       "dsn": "DSN",
       "dsnDescription": "将任意 Sentry SDK 指向此字符串，即可向此项目上报事件。",
@@ -700,7 +713,8 @@
       "saveFailed": "无法保存限制",
       "invalid": "请输入不小于 1 的整数，或留空。",
       "dropped": "因限制被丢弃",
-      "droppedDescription": "已接收但因已达到限制而未存储的事件。"
+      "droppedDescription": "已接收但因已达到限制而未存储的事件。",
+      "tooHigh": "请输入不超过服务器限制（{max, number}）的值。"
     },
     "card": {
       "newIssues": "新问题",
@@ -722,7 +736,6 @@
       "fieldName": "该名称",
       "cancel": "取消",
       "delete": "删除",
-      "deleting": "正在删除…",
       "saveChanges": "保存更改",
       "test": "测试"
     },
@@ -761,7 +774,8 @@
       "optional": "（可选）"
     },
     "channelCard": {
-      "botToken": "bot token"
+      "botToken": "bot token",
+      "disabledHint": "在集成中启用后才能通过它发送通知。"
     },
     "ruleDialog": {
       "titleNew": "新建告警规则",
@@ -1202,7 +1216,6 @@
       "url": "URL",
       "queryString": "查询字符串",
       "headers": "请求头",
-      "modules": "模块",
       "extraData": "附加数据"
     },
     "highlights": {
@@ -1506,7 +1519,8 @@
       "permissionsLabel": "权限",
       "projectsLabel": "项目",
       "allProjects": "所有已授权项目",
-      "allProjectsHint": "你现在或将来有权访问的所有项目。"
+      "allProjectsHint": "你现在或将来有权访问的所有项目。",
+      "expiresInPast": "请选择今天或之后的日期。"
     },
     "copyTokenLabel": "复制令牌 {label}",
     "deleteTokenLabel": "删除令牌 {label}",
@@ -1543,7 +1557,6 @@
       "title": "删除令牌？",
       "description": "这将永久删除此令牌，使用它的服务将立即失去访问权限，且无法撤销。",
       "cancel": "取消",
-      "deleting": "正在删除...",
       "confirm": "删除"
     },
     "scope": {
@@ -1577,13 +1590,7 @@
       "compacting": "正在压缩数据库…"
     },
     "status": {
-      "lastRunRunning": "上次清理自 {when} 起运行中",
-      "lastRunFailed": "上次清理（{when}）失败：{error}",
-      "lastRunNothing": "上次清理（{when}）：没有可删除的内容",
-      "lastRunRemoved": "上次清理（{when}）：已删除 {parts}",
-      "off": "所有数据均永久保留",
-      "nextRun": "下次清理 {when}",
-      "nextRunPending": "正在安排…"
+      "lastRunFailed": "上次清理（{when}）失败：{error}"
     },
     "age": {
       "title": "数据存放时长",
@@ -1597,8 +1604,7 @@
       "bucket5": "180 天 – 1 年",
       "bucket6": "> 1 年",
       "empty": "暂无数据。",
-      "goes": "将在下次清理时删除",
-      "goesInBucket": "{size} 将在下次清理时删除"
+      "goes": "将在下次清理时删除"
     },
     "projects": {
       "title": "项目",
@@ -1985,7 +1991,11 @@
         "errorNotFound": "该错误事件尚未到达，或已被删除。",
         "showOlder": "显示更早的反馈（{count}）",
         "showOlderFailed": "无法加载更早的反馈。"
-      }
+      },
+      "sectionAttachments": "附件",
+      "attachmentDownload": "下载",
+      "attachmentsFailed": "无法加载附件",
+      "userFeedbackFailed": "无法加载用户反馈"
     },
     "feedback": {
       "title": "用户反馈",
@@ -2110,8 +2120,6 @@
       "copy": "复制",
       "copied": "已复制",
       "copyLabel": "复制{label}",
-      "copyUnavailable": "此处无法复制",
-      "copyUnavailableHint": "请选中{label}并手动复制。",
       "server": {
         "title": "MCP 服务器",
         "description": "在下方端点响应 AI 助手。默认关闭；关闭后所有助手会立即断开。",
@@ -2224,7 +2232,8 @@
         "changed": "密码已更改",
         "change": "更改密码",
         "dialogDescription": "输入当前密码，然后输入两次新密码。",
-        "cancel": "取消"
+        "cancel": "取消",
+        "incorrect": "当前密码不正确。"
       }
     },
     "appearance": {
@@ -2507,9 +2516,7 @@
     },
     "setup": {
       "copy": "复制",
-      "copied": "已复制",
-      "copyUnavailable": "此处无法复制",
-      "copyUnavailableHint": "请选中 {label} 代码片段并手动复制。"
+      "copied": "已复制"
     },
     "guides": {
       "curl": "cURL",
@@ -2573,7 +2580,6 @@
       "deleteTitle": "删除 {monitor}？",
       "deleteDescription": "其签到会一并删除；它创建的问题会保留。若任务继续带着计划签到，会重新创建该监控。",
       "cancel": "取消",
-      "deleting": "正在删除…",
       "confirmDelete": "删除监控",
       "deleted": "监控已删除",
       "deleteFailed": "无法删除监控"
@@ -2757,12 +2763,13 @@
       "selfTime": "自身耗时",
       "start": "开始",
       "status": "状态",
-      "spanId": "Span ID"
+      "spanId": "Span ID",
+      "missingInstrumentation": "缺少插桩"
     }
   },
   "access": {
     "meta": {
-      "title": "角色 · 设置"
+      "title": "角色 | Rustrak"
     },
     "title": "角色",
     "subtitle": "可复用的权限集合，用于为多位成员分配一致的访问权限。",
@@ -2861,7 +2868,7 @@
       "deleted": "角色已删除",
       "deleteFailed": "无法删除角色",
       "assignedTo": "{count, plural, =0 {未分配} other {# 项分配}}",
-      "meta": "{name} · 角色",
+      "meta": "{name} | 角色 | Rustrak",
       "descriptionPlaceholder": "此角色的用途及其提供的访问权限。",
       "descriptionHint": "在分配此角色的位置显示。",
       "allProjects": "所有项目",

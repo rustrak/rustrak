@@ -235,17 +235,19 @@ async fn a_dropped_event_is_reported_as_rate_limited_not_as_a_digest() {
     wait_clear_of_minute_rollover().await;
     let counters: &'static rustrak::telemetry::Counters =
         Box::leak(Box::new(rustrak::telemetry::Counters::new()));
-    let processors = rustrak::digest::processors::Processors::new(
-        ingest_dir.path().to_path_buf(),
-        quotas,
-        null_sourcemap_provider(),
-        None,
+    let processors = crate::common::processors_with_config(
+        &db.pool,
+        &rustrak::config::Config {
+            ingest_dir: ingest_dir.path().to_path_buf(),
+            rate_limit: quotas,
+            ..crate::common::config()
+        },
     )
     .with_counters(counters);
 
     for _ in 0..2 {
         let metadata = accept_event(ingest_dir.path(), project.id).await;
-        rustrak::routes::ingest::digest_stored_event(&processors, &db.pool, &metadata).await;
+        rustrak::ingest::pipeline::digest_stored_event(&processors, &db.pool, &metadata).await;
     }
 
     let digest = counters.snapshot().digest;
@@ -378,12 +380,14 @@ async fn a_drop_during_recovery_is_reported_as_rate_limited() {
     wait_clear_of_minute_rollover().await;
     let counters: &'static rustrak::telemetry::Counters =
         Box::leak(Box::new(rustrak::telemetry::Counters::new()));
-    let processors = actix_web::web::Data::new(
-        rustrak::digest::processors::Processors::new(
-            ingest_dir.path().to_path_buf(),
-            quotas,
-            null_sourcemap_provider(),
-            None,
+    let processors = std::sync::Arc::new(
+        crate::common::processors_with_config(
+            &db.pool,
+            &rustrak::config::Config {
+                ingest_dir: ingest_dir.path().to_path_buf(),
+                rate_limit: quotas,
+                ..crate::common::config()
+            },
         )
         .with_counters(counters),
     );
@@ -391,7 +395,7 @@ async fn a_drop_during_recovery_is_reported_as_rate_limited() {
         accept_event(ingest_dir.path(), project.id).await;
     }
 
-    rustrak::routes::ingest::recover_pending_events_once(
+    rustrak::ingest::pipeline::recover_pending_events_once(
         db.pool.clone(),
         processors,
         ingest_dir.path().to_path_buf(),

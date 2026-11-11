@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
+use crate::models::rbac::{Action, Resource};
 use crate::pagination::OffsetPaginatedResponse;
 use crate::routes::period::parse_period_hours;
 use crate::services::scope::Scope;
@@ -15,7 +15,7 @@ use crate::models::session::{ReleaseHealthRow, SessionSummary, SessionTimeseries
 use utoipa::OpenApi;
 
 /// Query params for the stats endpoint.
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 pub struct StatsQuery {
     /// Time window in hours (default: 24).
@@ -24,21 +24,13 @@ pub struct StatsQuery {
     /// release in the project is returned.
     pub release: Option<String>,
     /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
+    #[serde(default = "crate::pagination::default_page")]
     #[cfg_attr(feature = "openapi", param(minimum = 1))]
     pub page: i64,
     /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
+    #[serde(default = "crate::pagination::default_per_page")]
     #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
     pub per_page: i64,
-}
-
-fn default_page() -> i64 {
-    1
-}
-
-fn default_per_page() -> i64 {
-    crate::pagination::PAGE_SIZE
 }
 
 impl StatsQuery {
@@ -47,6 +39,7 @@ impl StatsQuery {
     }
 }
 
+/// Session counts by release, for release health.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/sessions/stats",
@@ -63,7 +56,6 @@ impl StatsQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/sessions/stats
 pub async fn get_stats(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -76,7 +68,7 @@ pub async fn get_stats(
 
     let period_hours = query.period_hours();
     let page = query.page.max(1);
-    let per_page = query.per_page.clamp(1, 100);
+    let per_page = crate::pagination::per_page(query.per_page)?;
 
     let (rows, total) = match query.release.as_deref() {
         Some(release) => {
@@ -116,6 +108,7 @@ impl SummaryQuery {
     }
 }
 
+/// Totals and crash-free rates for a project's sessions.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/sessions/summary",
@@ -134,7 +127,6 @@ impl SummaryQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/sessions/summary
 pub async fn get_summary(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -183,6 +175,7 @@ impl TimeseriesQuery {
     }
 }
 
+/// Session counts over time, bucketed for a chart.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/sessions/timeseries",
@@ -202,7 +195,6 @@ impl TimeseriesQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/sessions/timeseries
 pub async fn get_timeseries(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -236,12 +228,8 @@ pub async fn get_timeseries(
 )]
 pub struct SessionsApi;
 
-/// Configure session routes.
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/projects/{project_id}/sessions")
-            .route("/stats", web::get().to(get_stats))
-            .route("/summary", web::get().to(get_summary))
-            .route("/timeseries", web::get().to(get_timeseries)),
-    );
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/sessions/stats", web::get().to(get_stats))
+        .route("/sessions/summary", web::get().to(get_summary))
+        .route("/sessions/timeseries", web::get().to(get_timeseries));
 }

@@ -1,6 +1,6 @@
 //! The permission catalog and how assignments combine into access.
 
-use rustrak::auth::rbac::{
+use rustrak::models::rbac::{
     Access, Action, Assignment, Grants, ProjectScope, Resource, Scope, TokenScope,
 };
 

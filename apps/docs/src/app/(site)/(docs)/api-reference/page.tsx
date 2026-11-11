@@ -9,12 +9,10 @@ const ApiReferenceReact = dynamic(
 );
 
 export default function ApiReferencePage() {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
-
   return (
     <ApiReferenceReact
       configuration={{
-        url: `${basePath}/openapi.json`,
+        url: '/openapi.json',
         hideDownloadButton: false,
       }}
     />

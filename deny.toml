@@ -3,6 +3,11 @@ version = 2
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 ignore = [
+    # SQLite before 3.54.0 can return stale page-cache bytes when it opens a
+    # database together with a crafted `-wal` of another page size. Rustrak
+    # only opens the database it writes itself; the fix (`libsqlite3-sys`
+    # 0.39) is not reachable until sqlx moves past 0.9.0. Drop then.
+    { id = "RUSTSEC-2026-0459", reason = "only the server's own database and WAL are ever opened" },
     # Marvin Attack in `rsa`, a required dependency of `openidconnect`. It leaks
     # private-key operations through timing; Rustrak only verifies ID token
     # signatures with the provider's public key and never holds an RSA private

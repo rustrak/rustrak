@@ -8,35 +8,12 @@
  * what the server is held to by `openapi_contract_test.rs`, the client's
  * validators must accept.
  */
-import { readFileSync } from 'node:fs';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { type Operation, type Schema, spec } from '../../scripts/spec.ts';
 import { RustrakClient } from '../../src/client.js';
+import { BINARY } from '../../src/generated/binary.gen.js';
 import { server } from '../setup.js';
-
-type Schema = Record<string, unknown>;
-type Operation = {
-  operationId: string;
-  tags: string[];
-  parameters?: {
-    name: string;
-    in: string;
-    required?: boolean;
-    schema: Schema;
-  }[];
-  requestBody?: { content: Record<string, { schema: Schema }> };
-  responses: Record<string, { content?: Record<string, { schema: Schema }> }>;
-};
-
-const spec = JSON.parse(
-  readFileSync(
-    new URL('../../../../apps/server/openapi.json', import.meta.url),
-    'utf8',
-  ),
-) as {
-  paths: Record<string, Record<string, Operation>>;
-  components: { schemas: Record<string, Schema> };
-};
 
 const BASE = 'http://rustrak.test';
 const CHUNK_NAME = 'da39a3ee5e6b4b0d3255bfef95601890afd80709';
@@ -132,6 +109,14 @@ const operations = Object.entries(spec.paths).flatMap(([path, item]) =>
   Object.entries(item).map(([method, op]) => ({ path, method, op })),
 );
 
+/** The documented answer: bytes for a file, else the schema's sample or nothing. */
+function reply(status: number, schema: Schema | undefined, binary: boolean) {
+  if (binary) return new HttpResponse(new Uint8Array([1, 2, 3]), { status });
+  return status === 204 || (status >= 300 && status < 400) || !schema
+    ? new HttpResponse(null, { status })
+    : HttpResponse.json(sample(schema), { status });
+}
+
 describe('every operation in openapi.json', () => {
   const client = new RustrakClient({ baseUrl: BASE, maxRetries: 0 });
 
@@ -150,6 +135,7 @@ describe('every operation in openapi.json', () => {
       Object.entries(op.responses).find(([s]) => s.startsWith('2')) ??
       Object.entries(op.responses)[0]!;
     const responseSchema = response.content?.['application/json']?.schema;
+    const binary = (BINARY as readonly string[]).includes(op.operationId);
 
     let seen: Request | undefined;
     let sent: unknown;
@@ -162,17 +148,14 @@ describe('every operation in openapi.json', () => {
           const part = (await request.formData()).get(CHUNK_NAME);
           sent = part instanceof Blob ? await part.text() : part;
         }
-        return status === '204' || status.startsWith('3') || !responseSchema
-          ? new HttpResponse(null, { status: Number(status) })
-          : HttpResponse.json(sample(responseSchema), {
-              status: Number(status),
-            });
+        return reply(Number(status), responseSchema, binary);
       }),
     );
 
     const result = await call!(options);
 
     expect(result).toMatchObject({ success: status.startsWith('2') });
+    if (binary) expect(result.data).toBeInstanceOf(Blob);
     expect(seen?.method).toBe(method.toUpperCase());
     const sentUrl = new URL(seen!.url);
     expect(decodeURIComponent(sentUrl.pathname)).toBe(url);

@@ -1,0 +1,18 @@
+# Read Scenario
+# Seeds the database, then measures the queries the dashboard issues.
+# Needs --postgres-url and an API token.
+
+name = "read"
+description = "Measure dashboard query latency against a populated database"
+scenario_type = "read"
+
+duration_secs = 60
+target_rps = 0      # Readers run flat out
+concurrency = 20
+warmup_secs = 5
+
+[read]
+seed_events = 30000
+duration_secs = 60
+concurrency = 20
+distinct_groups = 500

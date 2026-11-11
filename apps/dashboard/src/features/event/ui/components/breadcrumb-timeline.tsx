@@ -10,6 +10,7 @@ import {
 } from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
 import type { GroupedBreadcrumb } from '@/features/event/lib/breadcrumbs';
+import { levelText } from '@/shared/config/levels';
 import { cn } from '@/shared/lib/utils';
 
 /** Pick a timeline icon from the crumb category/type. */
@@ -27,18 +28,6 @@ function crumbIcon(crumb: {
   if (crumb.level === 'error' || /error|exception/.test(c)) return InfoIcon;
   if (c.includes('info')) return InfoIcon;
   return DotIcon;
-}
-
-function levelColor(level?: string): string {
-  switch (level) {
-    case 'fatal':
-    case 'error':
-      return 'text-sev-error-fg';
-    case 'warning':
-      return 'text-sev-warning-fg';
-    default:
-      return 'text-fg-subtle';
-  }
 }
 
 /**
@@ -64,7 +53,7 @@ export function BreadcrumbTimeline({
           <>
             <Icon
               aria-hidden="true"
-              className={cn('size-3.5 shrink-0', levelColor(crumb.level))}
+              className={cn('size-3.5 shrink-0', levelText(crumb.level))}
             />
             <span className="w-28 shrink-0 truncate font-mono text-mono-sm text-fg-meta">
               {crumb.category || crumb.type || t('breadcrumbs.defaultCategory')}

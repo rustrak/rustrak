@@ -13,26 +13,16 @@ import {
   TimeIcon,
 } from '@rustrak/ui';
 import { useNow, type useTranslations } from 'use-intl';
+import { PRIORITIES } from '@/features/issue/model/actions';
 import type { Assignable } from '@/features/issue/model/assignable';
 import { SEEN_WINDOWS } from '@/features/issue/model/issue-table';
+import { STATUS_TONE } from '@/features/issue/model/status';
+import { levelMark, levelTone } from '@/shared/config/levels';
 import { Link } from '@/shared/ui/components/link';
 import { RelativeTime } from '@/shared/ui/components/relative-time';
 import type { StableFormatter } from '@/shared/ui/hooks/use-stable-formatter';
 
 export type { Assignable } from '@/features/issue/model/assignable';
-
-const LEVEL_MARK: Record<string, string> = {
-  fatal: 'bg-sev-error',
-  error: 'bg-sev-error',
-  warning: 'bg-sev-warning',
-};
-
-const LEVEL_TONE: Record<string, TagTone> = {
-  fatal: 'error',
-  error: 'error',
-  warning: 'warning',
-  info: 'info',
-};
 
 const PRIORITY_TONE: Record<string, TagTone> = {
   high: 'error',
@@ -102,7 +92,7 @@ export function issueColumns({
       cell: ({ getValue }) => {
         const level = getValue() ?? 'error';
         return (
-          <Tag variant="soft" tone={LEVEL_TONE[level] ?? 'neutral'}>
+          <Tag variant="soft" tone={levelTone(level) ?? 'neutral'}>
             {level}
           </Tag>
         );
@@ -116,7 +106,7 @@ export function issueColumns({
             (value) => ({
               value,
               label: t(`table.levels.${value}`),
-              tone: LEVEL_TONE[value],
+              tone: levelTone(value),
             }),
           ),
         },
@@ -136,7 +126,7 @@ export function issueColumns({
           />
         ) : null;
       },
-      meta: { label: t('columns.trend'), width: 120 },
+      meta: { label: t('columns.trend'), width: 120, drop: 1 },
     }),
     column.accessor('event_count', {
       id: 'events',
@@ -144,7 +134,7 @@ export function issueColumns({
       cell: ({ getValue }) => format.number(getValue(), 'compact'),
       meta: {
         label: t('columns.events'),
-        width: 92,
+        width: 120,
         align: 'end',
         numeric: true,
         sortLabels: { asc: t('table.fewest'), desc: t('table.most') },
@@ -158,7 +148,8 @@ export function issueColumns({
       cell: ({ getValue }) => format.number(getValue() ?? 0, 'compact'),
       meta: {
         label: t('columns.users'),
-        width: 84,
+        width: 120,
+        drop: 4,
         align: 'end',
         numeric: true,
       },
@@ -177,13 +168,14 @@ export function issueColumns({
       meta: {
         label: t('priority'),
         width: 104,
+        drop: 3,
         sortLabels: {
           asc: t('table.lowestPriority'),
           desc: t('table.highestPriority'),
         },
         filter: {
           variant: 'options',
-          options: (['high', 'medium', 'low'] as const).map((value) => ({
+          options: PRIORITIES.map((value) => ({
             value,
             label: t(`issueStatus.${value}`),
             tone: PRIORITY_TONE[value],
@@ -225,16 +217,17 @@ export function issueColumns({
     }),
     column.accessor('last_seen', {
       id: 'lastSeen',
-      header: t('columns.lastSeen'),
+      // The full words do not fit a figure column in every language.
+      header: t('columns.lastSeenShort'),
       cell: ({ getValue }) => (
         <span title={format.dateTime(new Date(getValue()), 'precise')}>
-          <RelativeTime at={getValue()} style="narrow" />
+          <RelativeTime at={getValue()} style="short" />
         </span>
       ),
       meta: {
         label: t('columns.lastSeen'),
         icon: TimeIcon,
-        width: 120,
+        width: 140,
         align: 'end',
         sortLabels: { asc: t('table.oldest'), desc: t('table.newest') },
         filter: { variant: 'options', multiple: false, options: seenOptions },
@@ -245,13 +238,14 @@ export function issueColumns({
       header: t('columns.age'),
       cell: ({ getValue }) => (
         <span title={format.dateTime(new Date(getValue()), 'precise')}>
-          <RelativeTime at={getValue()} style="narrow" />
+          <RelativeTime at={getValue()} style="short" />
         </span>
       ),
       meta: {
         label: t('columns.age'),
         icon: TimeIcon,
-        width: 112,
+        width: 128,
+        drop: 2,
         align: 'end',
         sortLabels: { asc: t('table.oldest'), desc: t('table.newest') },
         filter: { variant: 'options', multiple: false, options: seenOptions },
@@ -269,7 +263,7 @@ function issueBadge(
   now: number,
 ): { key: string; tone: TagTone } | null {
   if (issue.status === 'resolved' || issue.status === 'ignored') {
-    return { key: issue.status, tone: 'neutral' };
+    return { key: issue.status, tone: STATUS_TONE[issue.status] };
   }
   const tone = issue.substatus ? SUBSTATUS_TONE[issue.substatus] : undefined;
   if (issue.substatus && tone) return { key: issue.substatus, tone };
@@ -299,7 +293,7 @@ function IssueCell({
         aria-hidden="true"
         className={cn(
           'h-8 w-0.75 shrink-0 rounded-pill',
-          LEVEL_MARK[issue.level ?? ''] ?? 'bg-sev-info',
+          levelMark(issue.level),
         )}
       />
       <span className="flex min-w-0 flex-col gap-0.5">

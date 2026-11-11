@@ -1,4 +1,5 @@
 import type { AuthorizationRequest } from '@rustrak/client';
+import { Wordmark } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -7,7 +8,6 @@ import { ConsentForm } from '@/features/mcp/ui/components/consent-form';
 import { returnPath } from '@/shared/api/return-path';
 import { session } from '@/shared/api/session';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
-import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { AuthScreenLoading } from '../-components/auth-screen-loading';
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
@@ -82,7 +82,7 @@ function Authorize() {
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center p-8 lg:p-12">
       <div className="w-full max-w-[460px] space-y-10">
-        <RustrakWordmark className="h-[22px] w-auto" />
+        <Wordmark className="h-[22px] w-auto" />
 
         {client.data && answer.state === 'authenticated' ? (
           <ConsentForm

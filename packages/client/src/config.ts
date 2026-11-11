@@ -1,34 +1,21 @@
-/**
- * Configuration options for RustrakClient
- */
 export interface ClientConfig {
-  /**
-   * Base URL of the Rustrak API server
-   * Example: 'http://localhost:8080' or 'https://rustrak.example.com'
-   */
+  /** `http://localhost:8080` or `https://rustrak.example.com`. */
   baseUrl: string;
 
-  /**
-   * Authentication token (Bearer token)
-   * Optional - use this for API token authentication,
-   * or omit to use session-based authentication (cookies)
-   */
+  /** An API token. Omit it to authenticate with the session cookie. */
   token?: string;
 
   /**
-   * Request timeout in milliseconds
-   * @default 30000 (30 seconds)
+   * Per attempt, in milliseconds.
+   * @default 30000
    */
   timeout?: number;
 
   /**
-   * Maximum number of retry attempts for retryable errors
+   * Repeats of a GET, HEAD, PUT or DELETE that failed transiently.
    * @default 2
    */
   maxRetries?: number;
 
-  /**
-   * Custom headers to include in all requests
-   */
   headers?: Record<string, string>;
 }

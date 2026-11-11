@@ -1,7 +1,7 @@
 use actix_web::{http::StatusCode, web, HttpResponse};
 use serde::Serialize;
 
-use crate::auth::ApiAuth;
+use crate::auth::ApiActor;
 use crate::db::{self, DbPool};
 
 #[cfg(feature = "openapi")]
@@ -65,13 +65,19 @@ pub async fn liveness() -> HttpResponse {
 /// probe has to be able to ask without credentials; this one answers "which
 /// build is this", which is the first thing worth knowing about a host you
 /// intend to attack.
-// The gate is the extractor and not the middleware because the whole `/health`
-// prefix is exempt from `RequireAuth` -- see `middleware::auth` -- and the two
-// liveness routes need that exemption to stay.
-pub async fn version(_auth: ApiAuth) -> HttpResponse {
+pub async fn version(_actor: ApiActor) -> HttpResponse {
     HttpResponse::Ok().json(VersionResponse {
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/health")
+            .route("", web::get().to(liveness))
+            .route("/version", web::get().to(version))
+            .route("/ready", web::get().to(readiness)),
+    );
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(

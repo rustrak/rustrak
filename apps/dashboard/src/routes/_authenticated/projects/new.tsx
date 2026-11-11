@@ -31,7 +31,7 @@ export const Route = createFileRoute('/_authenticated/projects/new')({
   component: NewProjectPage,
 });
 
-const existingProjects = projectQueries.list({ page: 1, per_page: 100 });
+const existingProjects = projectQueries.picker();
 
 function NewProjectPage() {
   const t = useTranslations('projectPages');

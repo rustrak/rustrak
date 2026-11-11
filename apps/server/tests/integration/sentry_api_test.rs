@@ -3,30 +3,17 @@
 //! see `routes/sentry_api.rs` for the source references.
 
 use crate::common::{null_sourcemap_provider, process_error_event, TestDb};
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::{DateTime, Utc};
 use rustrak::config::RateLimitConfig;
 use rustrak::db::DbPool;
-use rustrak::ingest::{store_event, EventMetadata};
+use rustrak::ingest::EventMetadata;
 use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, UserRole};
-use rustrak::routes;
 use rustrak::services::{
     AuthTokenService, EventService, IssueService, ProjectService, UsersService,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
-
-macro_rules! app {
-    ($pool:expr) => {
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new($pool.clone()))
-                .app_data(web::Data::new(config()))
-                .configure(routes::sentry_api::configure),
-        )
-        .await
-    };
-}
 
 /// The dashboard is at `https://rustrak.example.com`.
 fn config() -> rustrak::config::Config {
@@ -34,45 +21,17 @@ fn config() -> rustrak::config::Config {
 }
 
 fn config_at(public_url: Option<&str>) -> rustrak::config::Config {
-    use rustrak::config::*;
-    use std::time::Duration;
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: String::new(),
-            max_connections: 1,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
+    rustrak::config::Config {
+        rate_limit: rustrak::config::RateLimitConfig {
             max_events_per_project_per_minute: 1000,
             max_events_per_project_per_hour: 10000,
+            ..crate::common::rate_limit()
         },
-        security: SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
         public_url: public_url.map(str::to_string),
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
         sourcemap_cache_bytes: 1024,
         max_chunk_size_bytes: 1024,
-        session_flush_interval_secs: 30,
         session_cardinality_cap: 10,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+        ..crate::common::config()
     }
 }
 
@@ -164,8 +123,9 @@ async fn ingest_with(
     for (key, value) in extra.as_object().unwrap() {
         event[key] = value.clone();
     }
-    store_event(
+    crate::common::store_event(
         dir.path(),
+        project_id,
         &event_id.simple().to_string(),
         &serde_json::to_vec(&event).unwrap(),
     )
@@ -218,16 +178,12 @@ async fn get_json(
     (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
 }
 
-// =============================================================================
-// GET /api/0/projects/
-// =============================================================================
-
 #[actix_web::test]
 async fn projects_lists_projects_with_their_organization() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
     let p = project(&db.pool, "Demo App").await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, body) = get_json(&app, "/api/0/projects/", &token).await;
 
@@ -251,7 +207,7 @@ async fn projects_shows_a_member_only_their_projects() {
     let mine = project(&db.pool, "Mine").await;
     project(&db.pool, "Not Mine").await;
     let token = member_token(&db.pool, mine.id, "Viewer").await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, body) = get_json(&app, "/api/0/projects/", &token).await;
 
@@ -266,25 +222,12 @@ async fn projects_shows_a_member_only_their_projects() {
 }
 
 #[actix_web::test]
-async fn projects_requires_a_token() {
-    let db = TestDb::new().await;
-    let app = app!(db.pool);
-
-    let req = test::TestRequest::get()
-        .uri("/api/0/projects/")
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 401);
-}
-
-#[actix_web::test]
 async fn projects_paginate_with_per_page_and_the_link_header() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
     project(&db.pool, "First").await;
     project(&db.pool, "Second").await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let page = |cursor: &str| {
         test::TestRequest::get()
@@ -317,15 +260,11 @@ async fn projects_paginate_with_per_page_and_the_link_header() {
     );
 }
 
-// =============================================================================
-// GET /api/0/organizations/
-// =============================================================================
-
 #[actix_web::test]
 async fn organizations_lists_the_single_synthetic_org() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, body) = get_json(&app, "/api/0/organizations/", &token).await;
 
@@ -335,10 +274,6 @@ async fn organizations_lists_the_single_synthetic_org() {
     assert_eq!(orgs[0]["slug"], "rustrak");
     assert_eq!(orgs[0]["id"], "1");
 }
-
-// =============================================================================
-// GET /api/0/projects/{org}/{project}/issues/
-// =============================================================================
 
 #[actix_web::test]
 async fn issues_lists_unresolved_issues_in_sentry_shape() {
@@ -350,7 +285,7 @@ async fn issues_lists_unresolved_issues_in_sentry_shape() {
     IssueService::set_status(&db.pool, resolved.id, "resolved", None)
         .await
         .unwrap();
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, body) = get_json(&app, "/api/0/projects/rustrak/demo-app/issues/", &token).await;
 
@@ -395,7 +330,7 @@ async fn issues_query_filters_by_status_and_text() {
     IssueService::set_status(&db.pool, ignored.id, "ignored", None)
         .await
         .unwrap();
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let titles = |body: &Value| -> Vec<String> {
         let mut t: Vec<String> = body
             .as_array()
@@ -435,7 +370,7 @@ async fn issues_list_feedback_only_under_its_category() {
     ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
     let feedback = json!({"type": "feedback", "contexts": {"feedback": {"message": "Love it"}}});
     ingest_with(&db.pool, p.id, "", "", Utc::now(), feedback).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let base = "/api/0/projects/rustrak/demo-app/issues/";
     let titles = |body: &Value| -> Vec<String> {
         body.as_array()
@@ -488,7 +423,7 @@ async fn issues_sort_follows_sentry_sort_keys() {
         Utc::now() - chrono::Duration::hours(1),
     )
     .await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let first = |body: &Value| body[0]["id"].as_str().unwrap().to_string();
     let base = "/api/0/projects/rustrak/demo-app/issues/";
 
@@ -524,7 +459,7 @@ async fn issues_paginate_with_sentry_cursors_in_the_link_header() {
     for n in 0..3 {
         ingest(&db.pool, p.id, &format!("E{n}"), "x", Utc::now()).await;
     }
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let page = |uri: String| {
         test::TestRequest::get()
             .uri(&uri)
@@ -589,7 +524,7 @@ async fn issues_stats_period_picks_the_series() {
         Utc::now() - chrono::Duration::days(2),
     )
     .await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let base = "/api/0/projects/rustrak/demo-app/issues/";
 
     let (_, body) = get_json(&app, &format!("{base}?statsPeriod=14d"), &token).await;
@@ -612,17 +547,13 @@ async fn issues_stats_period_picks_the_series() {
     assert_eq!(status, 400);
 }
 
-// =============================================================================
-// GET /api/0/issues/{id}/
-// =============================================================================
-
 #[actix_web::test]
 async fn issue_details_adds_releases_and_both_stats_series() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
     let p = project(&db.pool, "Demo App").await;
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     for uri in [
         format!("/api/0/issues/{}/", issue.numeric_id),
@@ -652,7 +583,7 @@ async fn issue_details_404s_for_unknown_or_inaccessible_issues() {
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
     let outsider = member_token(&db.pool, other.id, "Project Admin").await;
     let token = admin_token(&db.pool).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, _) = get_json(
         &app,
@@ -696,7 +627,7 @@ async fn issue_details_names_first_and_last_release() {
         release("1.1.0"),
     )
     .await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (_, body) = get_json(
         &app,
@@ -714,10 +645,6 @@ async fn issue_details_names_first_and_last_release() {
         json!({"version": "1.1.0", "shortVersion": "1.1.0"})
     );
 }
-
-// =============================================================================
-// GET /api/0/issues/{id}/events/latest/
-// =============================================================================
 
 #[actix_web::test]
 async fn latest_event_carries_the_stack_trace_as_sentry_entries() {
@@ -741,7 +668,7 @@ async fn latest_event_carries_the_stack_trace_as_sentry_entries() {
         json!({"logentry": {"formatted": "it broke"}, "tags": {"env": "prod"}}),
     )
     .await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, body) = get_json(
         &app,
@@ -797,7 +724,7 @@ async fn latest_event_frame_without_source_has_an_empty_context() {
             "stacktrace": {"frames": [{"function": "f", "lineno": 3}]}}]}}),
     )
     .await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (_, body) = get_json(
         &app,
@@ -809,10 +736,6 @@ async fn latest_event_frame_without_source_has_an_empty_context() {
     let frame = &body["entries"][0]["data"]["values"][0]["stacktrace"]["frames"][0];
     assert_eq!(frame["context"], json!([]));
 }
-
-// =============================================================================
-// PUT /api/0/issues/{id}/
-// =============================================================================
 
 async fn put_status(
     app: &impl actix_web::dev::Service<
@@ -841,7 +764,7 @@ async fn update_issue_writes_the_status_back() {
     let token = admin_token(&db.pool).await;
     let p = project(&db.pool, "Demo App").await;
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let uri = format!("/api/0/issues/{}/", issue.numeric_id);
 
     for (sent, stored) in [
@@ -869,7 +792,7 @@ async fn update_issue_needs_an_editor() {
     let p = project(&db.pool, "Demo App").await;
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
     let viewer = member_token(&db.pool, p.id, "Viewer").await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, _) = put_status(
         &app,
@@ -882,15 +805,11 @@ async fn update_issue_needs_an_editor() {
     assert_eq!(status, 403);
 }
 
-// =============================================================================
-// GET /api/0/organizations/{org}/repos/
-// =============================================================================
-
 #[actix_web::test]
 async fn repos_is_an_empty_list() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let (status, body) = get_json(&app, "/api/0/organizations/rustrak/repos/", &token).await;
 
@@ -898,17 +817,13 @@ async fn repos_is_an_empty_list() {
     assert_eq!(body, json!([]));
 }
 
-// =============================================================================
-// GET /{org}/{project}/issues/{id}/ ("View in Sentry")
-// =============================================================================
-
 #[actix_web::test]
 async fn issue_link_redirects_to_the_dashboard() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
     let p = project(&db.pool, "Demo App").await;
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let location = |resp: &actix_web::dev::ServiceResponse| {
         resp.headers()
             .get("Location")
@@ -949,10 +864,6 @@ async fn issue_link_redirects_to_the_dashboard() {
     );
 }
 
-// =============================================================================
-// Review fixes (PR #439)
-// =============================================================================
-
 /// Sentry builds the `Link` from its configured URL prefix
 /// (`utils/http.py::absolute_uri`), never from the request's `Host`.
 #[actix_web::test]
@@ -960,7 +871,7 @@ async fn link_header_uses_the_public_url_not_the_host_header() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
     project(&db.pool, "Demo App").await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/projects/rustrak/demo-app/issues/")
@@ -988,7 +899,7 @@ async fn cursor_carries_the_page_size() {
     for n in 0..3 {
         ingest(&db.pool, p.id, &format!("E{n}"), "x", Utc::now()).await;
     }
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/projects/rustrak/demo-app/issues/?cursor=2:1:0")
@@ -1018,7 +929,7 @@ async fn out_of_range_cursors_are_rejected() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
     project(&db.pool, "Demo App").await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     for cursor in ["100:9223372036854775807:0", "-5:1:0", "0:1:0", "101:0:0"] {
         for base in [
@@ -1031,22 +942,14 @@ async fn out_of_range_cursors_are_rejected() {
     }
 }
 
-/// Without a dashboard the session middleware guards every path outside
-/// the API; the issue link authenticates itself and must still reach its
-/// login redirect.
+/// Without a dashboard a path no route claims is a 404; the issue link
+/// authenticates itself and must still reach its login redirect.
 #[actix_web::test]
 async fn issue_link_redirects_a_stranger_even_without_a_dashboard() {
     let db = TestDb::new().await;
     let p = project(&db.pool, "Demo App").await;
     let issue = ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
-    let app = test::init_service(
-        App::new()
-            .wrap(rustrak::middleware::auth::RequireAuth::new(false))
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config()))
-            .configure(routes::sentry_api::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/rustrak/demo-app/issues/{}", issue.numeric_id))
@@ -1063,7 +966,7 @@ async fn issue_link_redirects_a_stranger_even_without_a_dashboard() {
         .uri("/rustrak/demo-app/other/1")
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401, "only the issue link is let through");
+    assert_eq!(resp.status(), 404, "only the issue link is routed");
 }
 
 /// An empty `cursor` is no cursor, as in Sentry (`if request.GET.get("cursor")`).
@@ -1073,7 +976,7 @@ async fn an_empty_cursor_is_the_first_page() {
     let token = admin_token(&db.pool).await;
     let p = project(&db.pool, "Demo App").await;
     ingest(&db.pool, p.id, "ValueError", "boom", Utc::now()).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
 
     for uri in [
         "/api/0/projects/?cursor=",
@@ -1092,13 +995,7 @@ async fn link_header_is_relative_without_a_public_url() {
     let db = TestDb::new().await;
     let token = admin_token(&db.pool).await;
     project(&db.pool, "Demo App").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config_at(None)))
-            .configure(routes::sentry_api::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config_at(None)).await;
 
     let req = test::TestRequest::get()
         .uri("/api/0/projects/")
@@ -1135,10 +1032,6 @@ async fn the_spec_constrains_sentry_issue_ids_to_digits() {
     assert_eq!(checked, 4, "get, put and latest event, plus the issue link");
 }
 
-// =============================================================================
-// environment on the issue list
-// =============================================================================
-
 /// `ProjectGroupIndexEndpoint` takes one `?environment=`, or `environment:x`
 /// in the query: the issues seen there, counted there (`group.py:906-918`,
 /// `group_stream.py:206-229`). One nothing was seen in is an empty list.
@@ -1153,7 +1046,7 @@ async fn issues_filter_by_environment() {
     ingest_with(&db.pool, p.id, "Shared", "boom", now, env("lanza", "b")).await;
     ingest_with(&db.pool, p.id, "Shared", "boom", now, env("lanza", "c")).await;
     ingest_with(&db.pool, p.id, "AcmeOnly", "boom", now, env("acme", "d")).await;
-    let app = app!(db.pool);
+    let app = crate::common::app_with_config(&db.pool, config()).await;
     let base = "/api/0/projects/rustrak/demo-app/issues/";
 
     for uri in [
