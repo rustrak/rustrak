@@ -95,7 +95,9 @@ function ContextItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1">
       <p className="text-column text-fg-subtle">{label}</p>
-      <p className="text-sm font-mono truncate">{value}</p>
+      <p className="text-sm font-mono whitespace-pre-wrap break-words">
+        {value}
+      </p>
     </div>
   );
 }
