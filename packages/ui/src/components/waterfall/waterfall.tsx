@@ -203,6 +203,15 @@ export interface WaterfallSpan {
   operationType?: string;
 }
 
+/**
+ * Where a span ends on the clock. One that never ended has no end to draw --
+ * its `endMs` is whatever the SDK sent -- so it ends where it started: it
+ * cannot stretch the ruler, claim time from a gap, or draw a length.
+ */
+function endOf(span: WaterfallSpan): number {
+  return span.unfinished ? span.startMs : span.endMs;
+}
+
 /** The kinds time divides into, plus the one that broke. */
 type SpanKind =
   | 'db'
@@ -462,7 +471,7 @@ function flatten(nodes: TreeNode[], state: FlattenState): Row[] {
       });
     }
 
-    return advance(frontier, ...spans.map((s) => s.endMs));
+    return advance(frontier, ...spans.map(endOf));
   };
 
   /** Pushes one span and, when it is open, its children. Returns the frontier. */
@@ -490,7 +499,7 @@ function flatten(nodes: TreeNode[], state: FlattenState): Row[] {
       walk(node.children, depth + 1, [...guides, !last]);
     }
 
-    return advance(frontier, node.span.endMs);
+    return advance(frontier, endOf(node.span));
   };
 
   const walk = (list: TreeNode[], depth: number, guides: boolean[]) => {
@@ -544,7 +553,18 @@ const toggleSet =
 
 /* --- The component -------------------------------------------------------- */
 
-export interface WaterfallProps {
+/**
+ * The hatched rows for unclaimed time between siblings, and what they are
+ * called: "missing instrumentation". The name comes with the switch, so a
+ * gap row can never render nameless.
+ */
+type MissingInstrumentationProps =
+  | { showMissingInstrumentation?: false; missingInstrumentationLabel?: string }
+  | { showMissingInstrumentation: true; missingInstrumentationLabel: string };
+
+export type WaterfallProps = WaterfallBaseProps & MissingInstrumentationProps;
+
+interface WaterfallBaseProps {
   spans: WaterfallSpan[];
   /**
    * The selected span, controlled: selection is a place the app may hold
@@ -558,10 +578,6 @@ export interface WaterfallProps {
    * app owns what it says.
    */
   renderDetail?: (span: WaterfallSpan) => ReactNode;
-  /** Surfaces the hatched rows for unclaimed time between siblings. */
-  showMissingInstrumentation?: boolean;
-  /** What those rows are called: "missing instrumentation". */
-  missingInstrumentationLabel?: string;
   /** Names the figure: "Waterfall of POST /checkout/summary". */
   label: string;
   /** Stands for the duration of a span that never ended: "unfinished". */
@@ -577,20 +593,23 @@ export interface WaterfallProps {
 const MIN_SPLIT = 0.15;
 const MAX_SPLIT = 0.85;
 
-export function Waterfall({
-  spans,
-  selectedId,
-  onSelect,
-  renderDetail,
-  showMissingInstrumentation = false,
-  missingInstrumentationLabel,
-  label,
-  unfinishedLabel,
-  noSpansLabel,
-  noSpansHint,
-  resizeLabel,
-  className,
-}: WaterfallProps) {
+export function Waterfall(props: WaterfallProps) {
+  const {
+    spans,
+    selectedId,
+    onSelect,
+    renderDetail,
+    label,
+    unfinishedLabel,
+    noSpansLabel,
+    noSpansHint,
+    resizeLabel,
+    className,
+  } = props;
+  // The gap rows' name, or null when they are off.
+  const gapLabel = props.showMissingInstrumentation
+    ? props.missingInstrumentationLabel
+    : null;
   const rootRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -606,13 +625,13 @@ export function Waterfall({
       flatten(tree, {
         collapsed,
         openGroups,
-        showGaps: showMissingInstrumentation,
+        showGaps: gapLabel !== null,
       }),
-    [tree, collapsed, openGroups, showMissingInstrumentation],
+    [tree, collapsed, openGroups, gapLabel],
   );
 
   const start = Math.min(...spans.map((span) => span.startMs));
-  const end = Math.max(...spans.map((span) => span.endMs));
+  const end = Math.max(...spans.map(endOf));
   const total = Math.max(end - start, 1);
 
   const kinds = useMemo(() => {
@@ -727,13 +746,16 @@ export function Waterfall({
         <div role="tree" aria-label={label}>
           {rows.map((row, rowIndex) =>
             row.kind === 'gap' ? (
-              <GapRow
-                key={row.id}
-                row={row}
-                start={start}
-                total={total}
-                label={missingInstrumentationLabel}
-              />
+              // Gap rows only exist while `gapLabel` is set.
+              gapLabel !== null && (
+                <GapRow
+                  key={row.id}
+                  row={row}
+                  start={start}
+                  total={total}
+                  label={gapLabel}
+                />
+              )
             ) : (
               <SpanRow
                 key={row.id}
@@ -836,7 +858,7 @@ function GapRow({
   row: Extract<Row, { kind: 'gap' }>;
   start: number;
   total: number;
-  label?: string;
+  label: string;
 }) {
   const left = ((row.startMs - start) / total) * 100;
   const width = ((row.endMs - row.startMs) / total) * 100;
@@ -922,7 +944,7 @@ function RowBars({
             aria-hidden="true"
             style={{
               left: `${((span.startMs - start) / total) * 100}%`,
-              width: `${Math.max(((span.endMs - span.startMs) / total) * 100, 0.4)}%`,
+              width: `${Math.max(((endOf(span) - span.startMs) / total) * 100, 0.4)}%`,
             }}
             className={styles.bar({ className: KIND_BAR[kind] })}
           />
@@ -1040,7 +1062,7 @@ function SpanRow({
 }) {
   const spans = row.kind === 'group' ? row.spans : [row.span];
   const rowStart = Math.min(...spans.map((s) => s.startMs));
-  const rowEnd = Math.max(...spans.map((s) => s.endMs));
+  const rowEnd = Math.max(...spans.map(endOf));
   const { failed, kind } = rowAppearance(row);
 
   const left = ((rowStart - start) / total) * 100;
@@ -1137,8 +1159,9 @@ function SpanRow({
         <DurationLabel
           left={left}
           width={width}
-          ms={spans.reduce((acc, s) => acc + (s.endMs - s.startMs), 0)}
-          unfinished={spans.every((s) => s.unfinished)}
+          ms={spans.reduce((acc, s) => acc + (endOf(s) - s.startMs), 0)}
+          // One member that never ended is the one worth looking at.
+          unfinished={spans.some((s) => s.unfinished)}
           unfinishedLabel={unfinishedLabel}
           failed={failed}
         />

@@ -331,6 +331,7 @@ function IssuesTable({
   loading = false,
   data = undefined as Issue[] | undefined,
   onRowClick = (row: { id: string }) => console.info('open', row.id),
+  rowMenu = issueRowMenu,
 }) {
   const [query, setQuery] = useState<DataTableQuery>(() => ({
     ...emptyTableQuery(10),
@@ -350,7 +351,7 @@ function IssuesTable({
     onQueryChange: (updater) => setQuery((previous) => updater(previous)),
     getRowId: (issue) => issue.id,
     enableSelection: true,
-    rowMenu: issueRowMenu,
+    rowMenu,
   });
 
   return (
@@ -538,19 +539,38 @@ export const RowMenu: Story = {
  * component tree: picking an item must not also open the row under it.
  */
 const menuItemLeavesRowSpy = fn();
+const menuItemDeleteSpy = fn();
 
 export const MenuItemLeavesRowClosed: Story = {
-  render: () => <IssuesTable onRowClick={menuItemLeavesRowSpy} />,
+  render: () => (
+    <IssuesTable
+      onRowClick={menuItemLeavesRowSpy}
+      rowMenu={(row) =>
+        issueRowMenu(row).map((action) =>
+          action.id === 'delete'
+            ? { ...action, onSelect: () => menuItemDeleteSpy(row.original) }
+            : action,
+        )
+      }
+    />
+  ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(document.body);
+    const firstRow = canvas.getAllByRole('row')[1] as HTMLElement;
     await userEvent.click(
-      canvas.getAllByRole('button', { name: 'Row actions' })[0] as HTMLElement,
+      within(firstRow).getByRole('button', { name: 'Row actions' }),
     );
     const menu = await body.findByRole('menu');
     await userEvent.click(
       within(menu).getByRole('menuitem', { name: /Delete/ }),
     );
+    // The action ran, once, for the row whose menu was opened...
+    await expect(menuItemDeleteSpy).toHaveBeenCalledTimes(1);
+    const [issue] = menuItemDeleteSpy.mock.calls[0] as [Issue];
+    await expect(firstRow).toHaveTextContent(issue.title);
+    await expect(firstRow).toHaveTextContent(issue.culprit);
+    // ...and the row under it did not open.
     await expect(menuItemLeavesRowSpy).not.toHaveBeenCalled();
   },
 };
@@ -727,6 +747,135 @@ export const SelectionFollowsTheRows: Story = {
     await waitFor(() =>
       expect(canvas.queryAllByText(/selected/)).toHaveLength(0),
     );
+  },
+};
+
+/*
+ * The fit stories: a level, a flexible title and a "Volume" group whose two
+ * leaves are optional -- 88 + 320 + 96 + 88 = 592 px when all are shown.
+ */
+const fitColumns = columnHelper.columns([
+  ...columns.slice(0, 2),
+  columnHelper.group({
+    id: 'volume',
+    header: 'Volume',
+    columns: columnHelper.columns([
+      columnHelper.accessor('events', {
+        id: 'events',
+        header: 'Events',
+        meta: { label: 'Events', width: 96, align: 'end', drop: 1 },
+      }),
+      columnHelper.accessor('users', {
+        id: 'users',
+        header: 'Users',
+        meta: { label: 'Users', width: 88, align: 'end', drop: 2 },
+      }),
+    ]),
+  }),
+]);
+
+function FitTable({ width }: { width: number }) {
+  const [query, setQuery] = useState<DataTableQuery>(() => emptyTableQuery(5));
+  const table = useDataTable({
+    data: ISSUES.slice(0, 5),
+    columns: fitColumns,
+    rowCount: 5,
+    query,
+    onQueryChange: (updater) => setQuery((previous) => updater(previous)),
+    getRowId: (issue) => issue.id,
+  });
+  return (
+    <TooltipProvider>
+      {/* The card's border takes 2 px of this. */}
+      <div style={{ width }}>
+        <DataTable table={table} />
+      </div>
+    </TooltipProvider>
+  );
+}
+
+const headerOf = (canvasElement: HTMLElement, name: string) =>
+  Array.from(canvasElement.querySelectorAll('th')).find(
+    (th) => th.textContent?.trim() === name,
+  );
+
+/** Every header row spans exactly the leaf columns the body draws. */
+const expectHeaderRowsAligned = async (canvasElement: HTMLElement) => {
+  const leaves = canvasElement.querySelectorAll('tbody tr:first-child td');
+  for (const tr of canvasElement.querySelectorAll('thead tr')) {
+    const span = Array.from(tr.querySelectorAll('th')).reduce(
+      (sum, th) => sum + th.colSpan,
+      0,
+    );
+    await expect(span).toBe(leaves.length);
+  }
+};
+
+/** One leaf of a group steps aside: the group narrows to the leaf left. */
+export const GroupNarrowsWithDroppedLeaf: Story = {
+  render: () => <FitTable width={562} />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() =>
+      expect(headerOf(canvasElement, 'Events')).toBeUndefined(),
+    );
+    await expect(headerOf(canvasElement, 'Users')).toBeDefined();
+    await expect(headerOf(canvasElement, 'Volume')?.colSpan).toBe(1);
+    await expectHeaderRowsAligned(canvasElement);
+  },
+};
+
+/** With every leaf gone, the group heading goes with them. */
+export const GroupLeavesWithItsLastLeaf: Story = {
+  render: () => <FitTable width={452} />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() =>
+      expect(headerOf(canvasElement, 'Users')).toBeUndefined(),
+    );
+    await expect(headerOf(canvasElement, 'Events')).toBeUndefined();
+    await expect(headerOf(canvasElement, 'Volume')).toBeUndefined();
+    await expectHeaderRowsAligned(canvasElement);
+  },
+};
+
+/**
+ * Widening an optional column past the fit must not drop that column: its
+ * handle holds the focus, and the next key has to be able to undo the last.
+ * Once the handle lets go, the fit is decided again.
+ */
+export const ResizedColumnStaysWhileResizing: Story = {
+  render: () => <FitTable width={600} />,
+  play: async ({ canvasElement }) => {
+    const events = await waitFor(() => {
+      const th = headerOf(canvasElement, 'Events');
+      if (!th) throw new Error('Events not shown yet');
+      return th;
+    });
+    const handle = within(events).getByRole('separator');
+    const before = Number(handle.getAttribute('aria-valuenow'));
+
+    handle.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    await waitFor(() =>
+      expect(Number(handle.getAttribute('aria-valuenow'))).toBe(before + 16),
+    );
+    // The other optional column made the room instead.
+    await expect(handle.isConnected).toBe(true);
+    await expect(handle).toHaveFocus();
+    await expect(headerOf(canvasElement, 'Users')).toBeUndefined();
+
+    await userEvent.keyboard('{ArrowLeft}');
+    await waitFor(() =>
+      expect(Number(handle.getAttribute('aria-valuenow'))).toBe(before),
+    );
+    await waitFor(() => expect(headerOf(canvasElement, 'Users')).toBeDefined());
+
+    // Widen again and let go: now Events is the first to step aside.
+    await userEvent.keyboard('{ArrowRight}');
+    handle.blur();
+    await waitFor(() =>
+      expect(headerOf(canvasElement, 'Events')).toBeUndefined(),
+    );
+    await expectHeaderRowsAligned(canvasElement);
   },
 };
 

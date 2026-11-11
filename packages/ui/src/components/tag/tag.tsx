@@ -67,7 +67,9 @@ export function Tag({
   return (
     <span className={tag({ tone, variant, className })}>
       {verbatim ? (
-        children
+        // One flex item however many nodes it arrives in, so the tag's gap
+        // never opens inside the value, and drawn as sent.
+        <span className="normal-case">{children}</span>
       ) : (
         // `inline-block`, because `::first-letter` only reaches a block.
         <span className="inline-block lowercase first-letter:uppercase">
