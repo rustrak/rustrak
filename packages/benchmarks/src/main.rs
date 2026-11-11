@@ -16,34 +16,27 @@ use config::ScenarioConfig;
 use runner::BenchmarkRunner;
 use std::path::{Path, PathBuf};
 
-/// Rustrak Server Benchmark Tool
 #[derive(Parser)]
-#[command(name = "rustrak-bench")]
-#[command(author = "Rustrak Team")]
-#[command(version = "0.1.0")]
+#[command(name = "rustrak-bench", version)]
 #[command(about = "Benchmark suite for Rustrak server performance testing")]
-#[command(long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Scenario to run (baseline, burst, sustained, stress)
+    /// Scenario name (see `list`) or path to a scenario TOML
     #[arg(short, long, default_value = "sustained")]
     scenario: String,
-
-    /// Path to custom scenario configuration file (TOML)
-    #[arg(short = 'f', long)]
-    config_file: Option<PathBuf>,
 
     /// Server URL
     #[arg(long, default_value = "http://localhost:8080")]
     server: String,
 
-    /// Project ID
-    #[arg(long, default_value = "1")]
-    project_id: u32,
+    /// Required to run a scenario
+    #[arg(long, env = "PROJECT_ID")]
+    project_id: Option<u32>,
 
-    /// Sentry key for authentication
+    /// The project's DSN key, required to run a scenario: ingest rejects any
+    /// other
     #[arg(long, env = "SENTRY_KEY")]
     sentry_key: Option<String>,
 
@@ -93,7 +86,7 @@ struct Cli {
 enum Commands {
     /// Run a benchmark scenario
     Run {
-        /// Scenario name or path to config file
+        /// Scenario name or path to a scenario TOML
         scenario: Option<String>,
     },
 
@@ -143,79 +136,33 @@ fn print_banner() {
     );
 }
 
-fn list_scenarios() {
+fn list_scenarios() -> anyhow::Result<()> {
     println!("{}", "Available Scenarios".yellow().bold());
     println!();
 
-    let scenarios = [
-        (
-            "baseline",
-            "Measure baseline latency with minimal load (1 req/s)",
-        ),
-        (
-            "burst",
-            "Test handling of traffic spikes (10k events, pause, repeat)",
-        ),
-        (
-            "sustained",
-            "Sustained load for memory stability testing (1k req/s)",
-        ),
-        (
-            "stress",
-            "Find server limits by ramping up load until errors",
-        ),
-        (
-            "drain",
-            "Measure asynchronous digest throughput (needs --postgres-url)",
-        ),
-        (
-            "read",
-            "Measure dashboard query latency on a populated database (needs --postgres-url)",
-        ),
-    ];
-
-    for (name, description) in scenarios {
-        println!("  {} - {}", name.cyan().bold(), description);
+    let mut paths: Vec<_> = std::fs::read_dir(config::scenarios_dir())?
+        .map(|entry| entry.map(|e| e.path()))
+        .collect::<Result<_, _>>()?;
+    paths.retain(|path| path.extension().is_some_and(|e| e == "toml"));
+    paths.sort();
+    for path in paths {
+        let config = ScenarioConfig::load(&path.to_string_lossy())?;
+        println!("  {} - {}", config.name.cyan().bold(), config.description);
     }
-
-    println!();
-    println!(
-        "{}",
-        "Use --config-file to load a custom scenario from TOML".dimmed()
-    );
+    Ok(())
 }
 
 async fn run_benchmark(cli: &Cli) -> anyhow::Result<()> {
-    // Load scenario configuration
-    let mut config = if let Some(ref config_file) = cli.config_file {
-        println!(
-            "{} {}",
-            "Loading config from:".dimmed(),
-            config_file.display()
-        );
-        ScenarioConfig::from_file(config_file)?
-    } else if let Some(preset) = ScenarioConfig::from_name(&cli.scenario) {
-        preset
-    } else {
-        anyhow::bail!(
-            "Unknown scenario '{}'. Use --list to see available scenarios.",
-            cli.scenario
-        );
-    };
+    let mut config = ScenarioConfig::load(&cli.scenario)?;
 
-    // Apply CLI overrides
     if cli.no_warmup {
         config.warmup_secs = 0;
     }
 
-    // Get sentry key
-    let sentry_key = cli.sentry_key.clone().unwrap_or_else(|| {
-        // Generate a placeholder - user should provide real key
-        "00000000-0000-0000-0000-000000000000".to_string()
-    });
-
-    // Create runner
-    let mut runner = BenchmarkRunner::new(config, &cli.server, cli.project_id, &sentry_key)?;
+    let (Some(project_id), Some(sentry_key)) = (cli.project_id, cli.sentry_key.as_deref()) else {
+        anyhow::bail!("--project-id and --sentry-key are required (or run `pnpm bench`)");
+    };
+    let mut runner = BenchmarkRunner::new(config, &cli.server, project_id, sentry_key)?;
 
     if let Some(ref container) = cli.container {
         runner = runner.with_container(container);
@@ -237,25 +184,21 @@ async fn run_benchmark(cli: &Cli) -> anyhow::Result<()> {
         runner = runner.with_label(label, cli.repeat);
     }
 
-    // Wait for server
     if !cli.no_wait {
         runner.wait_for_server(cli.wait_timeout).await?;
     }
 
-    // Run benchmark
     let results = runner.run().await?;
 
-    // Print summary
     results.print_summary();
 
-    // Save results
     let filepath = results.save(&cli.output)?;
     println!("\n{} {}", "Results saved to:".green(), filepath.cyan());
 
     Ok(())
 }
 
-async fn compare_results(old_path: &PathBuf, new_path: &PathBuf) -> anyhow::Result<()> {
+fn compare_results(old_path: &PathBuf, new_path: &PathBuf) -> anyhow::Result<()> {
     let old_json = std::fs::read_to_string(old_path)?;
     let new_json = std::fs::read_to_string(new_path)?;
 
@@ -267,7 +210,7 @@ async fn compare_results(old_path: &PathBuf, new_path: &PathBuf) -> anyhow::Resu
     Ok(())
 }
 
-async fn show_results(path: Option<PathBuf>, output_dir: &Path) -> anyhow::Result<()> {
+fn show_results(path: Option<PathBuf>, output_dir: &Path) -> anyhow::Result<()> {
     let filepath = path.unwrap_or_else(|| output_dir.join("latest.json"));
 
     if !filepath.exists() {
@@ -290,13 +233,13 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command.take() {
         Some(Commands::List) => {
-            list_scenarios();
+            list_scenarios()?;
         }
         Some(Commands::Compare { old, new }) => {
-            compare_results(&old, &new).await?;
+            compare_results(&old, &new)?;
         }
         Some(Commands::Show { path }) => {
-            show_results(path, &cli.output).await?;
+            show_results(path, &cli.output)?;
         }
         Some(Commands::Matrix {
             dir,
@@ -326,14 +269,12 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Some(Commands::Run { scenario }) => {
-            // Override scenario from subcommand if provided
             if let Some(s) = scenario {
                 cli.scenario = s;
             }
             run_benchmark(&cli).await?;
         }
         None => {
-            // Default: run benchmark with CLI args
             run_benchmark(&cli).await?;
         }
     }

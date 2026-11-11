@@ -50,9 +50,9 @@ __pycache__/
 
 # Generated at docs build time by scripts/generate-versions.mjs
 apps/docs/public/versions.json
+# Copied from apps/server at docs build time
+apps/docs/public/openapi.json
 
-# React Doctor JSON report (pnpm doctor:json)
-react-doctor-report.json
 
 # Storybook static builds
 storybook-static/

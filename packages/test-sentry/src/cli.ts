@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-
+import { parseArgs } from 'node:util';
+import * as Sentry from '@sentry/node';
+import { DSN } from './env.js';
 import {
-  flush,
   initSentry,
-  runAllTests,
   testAsyncError,
   testCapturedError,
   testCaptureMessage,
@@ -13,7 +13,6 @@ import {
   testMultipleErrors,
   testNestedError,
   testReferenceError,
-  testSourceMaps,
   testTypeError,
   testWithBreadcrumbs,
   testWithContexts,
@@ -23,408 +22,184 @@ import {
   testWithTransaction,
   testWithUserContext,
 } from './index.js';
+import { testSourceMaps } from './sourcemaps.js';
 
-// ANSI colors
-const colors = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  dim: '\x1b[2m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  cyan: '\x1b[36m',
-};
-
-function log(message: string, color = colors.reset): void {
-  console.log(`${color}${message}${colors.reset}`);
-}
-
-function printBanner(): void {
-  log(
-    '\n╔══════════════════════════════════════════════════════════════╗',
-    colors.cyan,
-  );
-  log(
-    '║           🔬 Rustrak Sentry Test Utility                     ║',
-    colors.cyan,
-  );
-  log(
-    '╚══════════════════════════════════════════════════════════════╝',
-    colors.cyan,
-  );
-}
-
-function printHelp(): void {
-  printBanner();
-  log('\nUsage: test-sentry [options]', colors.bright);
-  log('\nRequired:', colors.yellow);
-  log('  --dsn <dsn>         Sentry/Rustrak DSN (or set SENTRY_DSN env var)');
-  log('\nTest Options:', colors.yellow);
-  log('  --all               Run all tests');
-  log('  --error             Basic captured error');
-  log('  --type-error        TypeError exception');
-  log('  --ref-error         ReferenceError exception');
-  log('  --custom-error      Custom error class');
-  log('  --nested            Nested error with cause');
-  log('  --async             Async stack trace');
-  log('  --message           Capture message (non-error)');
-  log('  --breadcrumbs       Error with breadcrumbs');
-  log('  --user              Error with user context');
-  log('  --tags              Error with custom tags');
-  log('  --context           Error with extra context');
-  log('  --contexts          Error with rich contexts (device, os, app)');
-  log('  --fingerprint       Error with custom fingerprint');
-  log('  --transaction       Error with transaction name');
-  log('  --levels            Test all severity levels');
-  log('  --multiple          Multiple sequential errors');
-  log('  --flood [count]     Send many errors (default: 50)');
-  log('  --source-maps       Upload an artifact bundle and send a test event');
-  log('\nSource Map Options:', colors.yellow);
-  log('  --org <slug>        Organization slug (default: my-org)');
-  log('  --project <slug>    Project slug (default: my-project)');
-  log('  --token <token>     API token (or set RUSTRAK_TOKEN env var)');
-  log('\nConfiguration:', colors.yellow);
-  log('  --debug             Enable Sentry debug mode');
-  log('  --env <env>         Set environment (default: test)');
-  log('  --release <rel>     Set release version');
-  log('  --help              Show this help message');
-  log('\nExamples:', colors.green);
-  log('  # Run all tests with DSN');
-  log('  test-sentry --dsn "http://key@localhost:8080/1" --all');
-  log('\n  # Run specific test');
-  log('  test-sentry --dsn "http://key@localhost:8080/1" --error');
-  log('\n  # Test source maps upload');
-  log(
-    '  test-sentry --dsn "http://key@localhost:8080/1" --source-maps --token <api-token>',
-  );
-  log('\n  # Use environment variable');
-  log('  SENTRY_DSN="http://key@localhost:8080/1" test-sentry --all');
-  log('');
-}
-
-interface CliOptions {
-  dsn?: string;
-  debug: boolean;
-  env: string;
-  release?: string;
-  tests: Set<string>;
-  floodCount: number;
+type Options = {
+  dsn: string;
   org: string;
   project: string;
   token?: string;
-}
+  floodCount: number;
+};
 
-function parseArgs(args: string[]): CliOptions {
-  const options: CliOptions = {
-    debug: false,
-    env: 'test',
-    tests: new Set(),
-    floodCount: 50,
-    org: 'my-org',
-    project: 'my-project',
-  };
+/**
+ * Every scenario, in `--all` order. Help, flag parsing and `--all` come from
+ * here; `inAll: false` keeps one out of `--all`.
+ */
+const SCENARIOS: {
+  flag: string;
+  title: string;
+  run: (options: Options) => unknown;
+  inAll?: false;
+}[] = [
+  { flag: 'error', title: 'Basic captured error', run: testCapturedError },
+  { flag: 'type-error', title: 'TypeError exception', run: testTypeError },
+  {
+    flag: 'ref-error',
+    title: 'ReferenceError exception',
+    run: testReferenceError,
+  },
+  { flag: 'custom-error', title: 'Custom error class', run: testCustomError },
+  { flag: 'nested', title: 'Nested error with cause', run: testNestedError },
+  { flag: 'async', title: 'Async stack trace', run: testAsyncError },
+  {
+    flag: 'message',
+    title: 'Capture message (non-error)',
+    run: testCaptureMessage,
+  },
+  {
+    flag: 'breadcrumbs',
+    title: 'Error with breadcrumbs',
+    run: testWithBreadcrumbs,
+  },
+  { flag: 'user', title: 'Error with user context', run: testWithUserContext },
+  { flag: 'tags', title: 'Error with custom tags', run: testWithTags },
+  {
+    flag: 'context',
+    title: 'Error with extra context',
+    run: testWithExtraContext,
+  },
+  {
+    flag: 'contexts',
+    title: 'Error with rich contexts (device, os, app)',
+    run: testWithContexts,
+  },
+  {
+    flag: 'fingerprint',
+    title: 'Error with custom fingerprint',
+    run: testWithFingerprint,
+  },
+  {
+    flag: 'transaction',
+    title: 'Error with transaction name',
+    run: testWithTransaction,
+  },
+  { flag: 'levels', title: 'Every severity level', run: testErrorLevels },
+  {
+    flag: 'multiple',
+    title: 'Multiple sequential errors',
+    run: testMultipleErrors,
+  },
+  {
+    flag: 'flood',
+    title: 'Many errors: --flood [count], default 50',
+    run: (o) => testErrorFlood(o.floodCount),
+    inAll: false,
+  },
+  {
+    flag: 'source-maps',
+    title: 'Upload an artifact bundle and send a test event (needs --token)',
+    run: (o) => {
+      const dsn = new URL(o.dsn);
+      return testSourceMaps({
+        serverUrl: `${dsn.protocol}//${dsn.host}`,
+        org: o.org,
+        project: o.project,
+        token: o.token!,
+      });
+    },
+    inAll: false,
+  },
+];
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+const HELP = `
+Usage: pnpm start [options]
 
-    switch (arg) {
-      case '--dsn':
-        options.dsn = args[++i];
-        break;
-      case '--debug':
-        options.debug = true;
-        break;
-      case '--env':
-        options.env = args[++i];
-        break;
-      case '--release':
-        options.release = args[++i];
-        break;
-      case '--all':
-        options.tests.add('all');
-        break;
-      case '--error':
-        options.tests.add('error');
-        break;
-      case '--type-error':
-        options.tests.add('type-error');
-        break;
-      case '--ref-error':
-        options.tests.add('ref-error');
-        break;
-      case '--custom-error':
-        options.tests.add('custom-error');
-        break;
-      case '--nested':
-        options.tests.add('nested');
-        break;
-      case '--async':
-        options.tests.add('async');
-        break;
-      case '--message':
-        options.tests.add('message');
-        break;
-      case '--breadcrumbs':
-        options.tests.add('breadcrumbs');
-        break;
-      case '--user':
-        options.tests.add('user');
-        break;
-      case '--tags':
-        options.tests.add('tags');
-        break;
-      case '--context':
-        options.tests.add('context');
-        break;
-      case '--contexts':
-        options.tests.add('contexts');
-        break;
-      case '--fingerprint':
-        options.tests.add('fingerprint');
-        break;
-      case '--transaction':
-        options.tests.add('transaction');
-        break;
-      case '--levels':
-        options.tests.add('levels');
-        break;
-      case '--multiple':
-        options.tests.add('multiple');
-        break;
-      case '--flood':
-        options.tests.add('flood');
-        // Check if next arg is a number
-        const nextArg = args[i + 1];
-        if (nextArg && !nextArg.startsWith('-')) {
-          const count = parseInt(nextArg, 10);
-          if (!isNaN(count)) {
-            options.floodCount = count;
-            i++;
-          }
-        }
-        break;
-      case '--source-maps':
-        options.tests.add('source-maps');
-        break;
-      case '--org':
-        options.org = args[++i]!;
-        break;
-      case '--project':
-        options.project = args[++i]!;
-        break;
-      case '--token':
-        options.token = args[++i];
-        break;
-      case '--help':
-      case '-h':
-        printHelp();
-        process.exit(0);
-    }
-  }
+Scenarios:
+  --all               Every scenario below except flood and source-maps
+${SCENARIOS.map((s) => `  --${s.flag.padEnd(18)}${s.title}`).join('\n')}
 
-  // Check environment variables
-  if (!options.dsn) {
-    options.dsn = process.env.SENTRY_DSN;
-  }
-  if (!options.token) {
-    options.token = process.env.RUSTRAK_TOKEN;
-  }
+Options:
+  --dsn <dsn>         Default: SENTRY_DSN, else ${DSN}
+  --org <slug>        Source maps organization (default: my-org)
+  --project <slug>    Source maps project (default: my-project)
+  --token <token>     API token for source maps (or RUSTRAK_TOKEN)
+  --env <env>         Environment (default: test)
+  --release <rel>     Release
+  --debug             Sentry SDK debug output
+  --help
+`;
 
-  return options;
-}
-
-async function runSelectedTests(options: CliOptions): Promise<void> {
-  const tests = options.tests;
-
-  if (tests.has('all')) {
-    await runAllTests();
-    return;
-  }
-
-  // Run individual tests
-  if (tests.has('error')) {
-    log('\n--- Basic Captured Error ---', colors.yellow);
-    testCapturedError();
-  }
-
-  if (tests.has('type-error')) {
-    log('\n--- TypeError ---', colors.yellow);
-    testTypeError();
-  }
-
-  if (tests.has('ref-error')) {
-    log('\n--- ReferenceError ---', colors.yellow);
-    testReferenceError();
-  }
-
-  if (tests.has('custom-error')) {
-    log('\n--- Custom Error ---', colors.yellow);
-    testCustomError();
-  }
-
-  if (tests.has('nested')) {
-    log('\n--- Nested Error ---', colors.yellow);
-    testNestedError();
-  }
-
-  if (tests.has('async')) {
-    log('\n--- Async Error ---', colors.yellow);
-    await testAsyncError();
-  }
-
-  if (tests.has('message')) {
-    log('\n--- Capture Message ---', colors.yellow);
-    testCaptureMessage();
-  }
-
-  if (tests.has('breadcrumbs')) {
-    log('\n--- Breadcrumbs ---', colors.yellow);
-    testWithBreadcrumbs();
-  }
-
-  if (tests.has('user')) {
-    log('\n--- User Context ---', colors.yellow);
-    testWithUserContext();
-  }
-
-  if (tests.has('tags')) {
-    log('\n--- Tags ---', colors.yellow);
-    testWithTags();
-  }
-
-  if (tests.has('context')) {
-    log('\n--- Extra Context ---', colors.yellow);
-    testWithExtraContext();
-  }
-
-  if (tests.has('contexts')) {
-    log('\n--- Rich Contexts ---', colors.yellow);
-    testWithContexts();
-  }
-
-  if (tests.has('fingerprint')) {
-    log('\n--- Custom Fingerprint ---', colors.yellow);
-    testWithFingerprint();
-  }
-
-  if (tests.has('transaction')) {
-    log('\n--- Transaction ---', colors.yellow);
-    testWithTransaction();
-  }
-
-  if (tests.has('levels')) {
-    log('\n--- Severity Levels ---', colors.yellow);
-    testErrorLevels();
-  }
-
-  if (tests.has('multiple')) {
-    log('\n--- Multiple Errors ---', colors.yellow);
-    testMultipleErrors();
-  }
-
-  if (tests.has('flood')) {
-    log(`\n--- Error Flood (${options.floodCount} events) ---`, colors.yellow);
-    testErrorFlood(options.floodCount);
-  }
-
-  if (tests.has('source-maps')) {
-    log('\n--- Source Maps Upload ---', colors.yellow);
-    const dsnUrl = new URL(options.dsn!);
-    const serverUrl = `${dsnUrl.protocol}//${dsnUrl.host}`;
-    await testSourceMaps({
-      serverUrl,
-      org: options.org,
-      project: options.project,
-      token: options.token!,
-    });
-  }
-
-  // Flush all events (skip for source-maps-only runs — it calls captureEvent directly)
-  if (!tests.has('source-maps') || tests.size > 1) {
-    log('\n--- Flushing Events ---', colors.cyan);
-    const flushed = await flush(10000);
-    log(
-      `Flush ${flushed ? 'completed successfully' : 'timed out'}`,
-      flushed ? colors.green : colors.red,
-    );
-  } else {
-    await flush(10000);
-  }
-}
-
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-
-  // Check for help flag first
-  if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
-    printHelp();
-    process.exit(0);
-  }
-
-  const options = parseArgs(args);
-
-  // Validate DSN
-  if (!options.dsn) {
-    log('\n❌ Error: DSN is required', colors.red);
-    log(
-      '   Use --dsn <dsn> or set SENTRY_DSN environment variable',
-      colors.dim,
-    );
-    log('   Run with --help for usage information\n', colors.dim);
-    process.exit(1);
-  }
-
-  // Validate at least one test is selected
-  if (options.tests.size === 0) {
-    log('\n❌ Error: No test selected', colors.red);
-    log('   Use --all to run all tests, or select specific tests', colors.dim);
-    log('   Run with --help for available tests\n', colors.dim);
-    process.exit(1);
-  }
-
-  // Validate token required for source-maps
-  if (options.tests.has('source-maps') && !options.token) {
-    log('\n❌ Error: --source-maps requires an API token', colors.red);
-    log(
-      '   Use --token <token> or set RUSTRAK_TOKEN environment variable',
-      colors.dim,
-    );
-    process.exit(1);
-  }
-
-  printBanner();
-
-  log(`\n📡 DSN: ${options.dsn}`, colors.dim);
-  log(`🌍 Environment: ${options.env}`, colors.dim);
-  if (options.release) {
-    log(`📦 Release: ${options.release}`, colors.dim);
-  }
-  if (options.debug) {
-    log(`🐛 Debug mode: enabled`, colors.dim);
-  }
-
-  // Initialize Sentry
-  log('\n⚡ Initializing Sentry...', colors.cyan);
-  initSentry({
-    dsn: options.dsn,
-    debug: options.debug,
-    environment: options.env,
-    release: options.release,
+function readOptions(args: string[]) {
+  const { values, positionals } = parseArgs({
+    args,
+    allowPositionals: true,
+    options: {
+      ...Object.fromEntries(
+        SCENARIOS.map((s) => [s.flag, { type: 'boolean' as const }]),
+      ),
+      all: { type: 'boolean' },
+      help: { type: 'boolean', short: 'h' },
+      debug: { type: 'boolean', default: false },
+      dsn: { type: 'string', default: DSN },
+      env: { type: 'string', default: 'test' },
+      release: { type: 'string' },
+      org: { type: 'string', default: 'my-org' },
+      project: { type: 'string', default: 'my-project' },
+      token: { type: 'string', default: process.env.RUSTRAK_TOKEN },
+    },
   });
-
-  // Run tests
-  try {
-    await runSelectedTests(options);
-    log('\n✅ All tests completed!', colors.green);
-  } catch (error) {
-    log(`\n❌ Test failed: ${error}`, colors.red);
-    process.exit(1);
-  }
+  return {
+    ...values,
+    dsn: values.dsn as string,
+    env: values.env as string,
+    org: values.org as string,
+    project: values.project as string,
+    token: values.token as string | undefined,
+    release: values.release as string | undefined,
+    debug: values.debug === true,
+    // `--flood 100`: the count is the one positional.
+    floodCount: Number(positionals[0] ?? 50),
+    // `--all` adds to the flags named explicitly, never replaces them.
+    selected: SCENARIOS.filter(
+      (s) =>
+        (values.all && s.inAll !== false) ||
+        (values as Record<string, unknown>)[s.flag],
+    ),
+  };
 }
 
-main().catch((error) => {
-  console.error('Fatal error:', error);
+const options = readOptions(process.argv.slice(2));
+
+if (options.help || options.selected.length === 0) {
+  console.log(HELP);
+  process.exit(options.help ? 0 : 1);
+}
+if (
+  options.selected.some((s) => s.flag === 'flood') &&
+  !(Number.isSafeInteger(options.floodCount) && options.floodCount > 0)
+) {
+  console.error('--flood takes a positive whole number of events');
   process.exit(1);
+}
+if (options.selected.some((s) => s.flag === 'source-maps') && !options.token) {
+  console.error('--source-maps needs --token <token> or RUSTRAK_TOKEN');
+  process.exit(1);
+}
+
+console.log(`DSN: ${options.dsn}\nEnvironment: ${options.env}`);
+initSentry({
+  dsn: options.dsn,
+  debug: options.debug,
+  environment: options.env,
+  release: options.release,
 });
+
+for (const scenario of options.selected) {
+  console.log(`\n--- ${scenario.title} ---`);
+  await scenario.run(options);
+}
+
+const flushed = await Sentry.flush(10_000);
+console.log(`\nFlush ${flushed ? 'completed' : 'timed out'}`);
+process.exit(flushed ? 0 : 1);

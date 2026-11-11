@@ -111,7 +111,7 @@ const SOURCE_CONTENT = [
   '',
 ].join('\n');
 
-export function generateDebugId(): string {
+function generateDebugId(): string {
   const b = crypto.randomBytes(16);
   b[6] = (b[6]! & 0x0f) | 0x40;
   b[8] = (b[8]! & 0x3f) | 0x80;
@@ -298,7 +298,6 @@ export async function testSourceMaps(
   const POLL_TIMEOUT_MS = 30_000;
   const pollStart = Date.now();
   let result: { state: string; missingChunks: string[] };
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     result = await assembleBundle(
       config.serverUrl,
@@ -354,7 +353,6 @@ export async function testSourceMaps(
     debug_meta: {
       images: [{ type: 'sourcemap', code_file: CODE_FILE, debug_id: debugId }],
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
   console.log(`[testSourceMaps] Event sent: ${eventId}`);
   console.log('[testSourceMaps]');

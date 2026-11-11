@@ -27,99 +27,16 @@ Example: `http://a1b2c3d4-e5f6-7890-abcd-ef1234567890@localhost:8080/1`
 ```bash
 cd packages/test-sentry
 
-# Run all tests
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --all
-
-# Run a specific test
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --error
-
-# Test rate limiting with many events
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --flood 100
-
-# Enable debug mode to see Sentry SDK output
-pnpm dev --dsn "http://<sentry_key>@localhost:8080/1" --all --debug
+pnpm start --all                                   # every scenario but flood and source maps
+pnpm start --error                                 # one scenario
+pnpm start --flood 100                             # rate limiting
+pnpm start --dsn "http://<sentry_key>@host:8080/2" --all --debug
+npx tsx src/cli.ts --help                          # every flag (pnpm keeps --help for itself)
 ```
 
-### Using environment variable
-
-```bash
-export SENTRY_DSN="http://<sentry_key>@localhost:8080/1"
-pnpm dev --all
-```
-
-## Available Tests
-
-| Flag | Description |
-|------|-------------|
-| `--all` | Run all tests |
-| `--error` | Basic captured exception |
-| `--type-error` | TypeError exception |
-| `--ref-error` | ReferenceError exception |
-| `--custom-error` | Custom error class with extra properties |
-| `--nested` | Nested error with cause chain |
-| `--async` | Async error with stack trace |
-| `--message` | Capture message (non-error event) |
-| `--breadcrumbs` | Error with breadcrumb trail |
-| `--user` | Error with user context |
-| `--tags` | Error with custom tags |
-| `--context` | Error with extra context data |
-| `--contexts` | Error with rich contexts (device, os, app) |
-| `--fingerprint` | Error with custom fingerprint for grouping |
-| `--transaction` | Error with transaction name |
-| `--levels` | Test all severity levels (fatal, error, warning, info, debug) |
-| `--multiple` | Multiple sequential errors |
-| `--flood [count]` | Send many errors to test rate limiting (default: 50) |
-
-## Configuration Options
-
-| Flag | Description |
-|------|-------------|
-| `--dsn <dsn>` | Sentry/Rustrak DSN (required) |
-| `--debug` | Enable Sentry SDK debug mode |
-| `--env <env>` | Set environment (default: test) |
-| `--release <rel>` | Set release version |
-
-## NPM Scripts
-
-```bash
-# Run with CLI arguments
-pnpm dev [options]
-
-# Shortcuts for common tests
-pnpm test:all           # Run all tests
-pnpm test:error         # Basic error
-pnpm test:breadcrumbs   # Breadcrumbs test
-pnpm test:flood         # Rate limit test
-# ... etc
-```
-
-Note: You need to set `SENTRY_DSN` env var or modify the scripts to include your DSN.
-
-## Programmatic Usage
-
-You can also use the test functions programmatically:
-
-```typescript
-import {
-  initSentry,
-  testCapturedError,
-  testWithBreadcrumbs,
-  flush,
-} from '@rustrak/test-sentry';
-
-// Initialize
-initSentry({
-  dsn: 'http://key@localhost:8080/1',
-  debug: true,
-});
-
-// Run tests
-testCapturedError();
-testWithBreadcrumbs();
-
-// Wait for events to be sent
-await flush(5000);
-```
+The DSN defaults to `SENTRY_DSN`, else project 1 on a local server
+(`src/env.ts`); the demos under `demo/` and `send-transactions.ts` use the same
+default.
 
 ## What Each Test Validates
 
