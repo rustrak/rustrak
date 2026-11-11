@@ -8,8 +8,8 @@ use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use rustrak::db::DbPool;
 use rustrak::error::{AppError, AppResult};
+use rustrak::models::schedule::Schedule;
 use rustrak::scheduler::engine::{JobContext, JobRunStatus, Misfire, ScheduledJob, Scheduler};
-use rustrak::scheduler::schedule::Schedule;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 

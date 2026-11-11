@@ -2,41 +2,20 @@
 //!
 //! Tests the complete event digest workflow: ingest -> grouping -> issue creation.
 
+use crate::common::create_test_project;
 use crate::common::process_error_event;
 use crate::common::TestDb;
 use chrono::Utc;
 use rustrak::config::RateLimitConfig;
-use rustrak::ingest::{store_event, EventMetadata};
-use rustrak::models::{CleanupFilter, CreateProject, CreateRelease};
+use rustrak::ingest::EventMetadata;
+use rustrak::models::{CleanupFilter, CreateRelease};
 use rustrak::services::scope::Scope;
 use rustrak::services::{
-    EventService, IssueService, ProjectService, ReleaseService, StorageService,
+    EventService, IssueService, IssueSocialService, ProjectService, ReleaseService, StorageService,
 };
 use serde_json::json;
 use tempfile::TempDir;
 use uuid::Uuid;
-
-fn create_rate_limit_config() -> RateLimitConfig {
-    RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    }
-}
-
-async fn create_test_project(pool: &rustrak::db::DbPool, name: &str) -> rustrak::models::Project {
-    ProjectService::create(
-        pool,
-        CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("Failed to create test project")
-}
 
 fn create_event_json(event_id: &str) -> serde_json::Value {
     json!({
@@ -62,24 +41,19 @@ fn create_event_json(event_id: &str) -> serde_json::Value {
     })
 }
 
-// =============================================================================
-// Basic Digest Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_digest_creates_issue_and_event() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Digest Test Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = create_event_json(&event_id);
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    // Store event in temp storage
-    store_event(ingest_dir, &event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
@@ -90,7 +64,6 @@ async fn test_digest_creates_issue_and_event() {
         remote_addr: None,
     };
 
-    // Process the event
     process_error_event(
         &db.pool,
         &metadata,
@@ -101,15 +74,18 @@ async fn test_digest_creates_issue_and_event() {
     .await
     .expect("Failed to process event");
 
-    // Verify issue was created
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -119,7 +95,6 @@ async fn test_digest_creates_issue_and_event() {
     assert!(issues[0].calculated_value.contains("Cannot read property"));
     assert_eq!(issues[0].digested_event_count, 1);
 
-    // Verify event was created
     let event_uuid = Uuid::parse_str(&event_id).expect("Invalid event_id");
     let exists = EventService::exists(&db.pool, project.id, event_uuid)
         .await
@@ -129,20 +104,20 @@ async fn test_digest_creates_issue_and_event() {
 
 #[actix_web::test]
 async fn test_error_processor_impl_creates_issue_and_event() {
-    // Parity proof: ErrorProcessor::process (the trait API) must produce the
-    // exact same outcome as the legacy process_error_event() free function.
-    use rustrak::digest::processors::{ErrorProcessor, Processor, ProcessorCtx};
+    // ErrorProcessor::digest must produce the exact same outcome as the
+    // process_error_event() helper.
+    use rustrak::digest::processors::ErrorProcessor;
 
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "ErrorProcessor Trait Test").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = create_event_json(&event_id);
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
-    store_event(ingest_dir, &event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
@@ -154,32 +129,31 @@ async fn test_error_processor_impl_creates_issue_and_event() {
     };
 
     let processor = ErrorProcessor::new(
-        ingest_dir.to_path_buf(),
-        rate_limit_config,
+        &rustrak::config::Config {
+            ingest_dir: ingest_dir.to_path_buf(),
+            rate_limit: rate_limit_config,
+            ..crate::common::config()
+        },
         crate::common::null_sourcemap_provider(),
     );
-    let ctx = ProcessorCtx {
-        pool: db.pool.clone(),
-        project_id: project.id,
-        event_id: Uuid::parse_str(&event_id).expect("Invalid event_id"),
-        ingested_at: metadata.ingested_at,
-        remote_addr: None,
-        keep_ai_spans: true,
-    };
 
     processor
-        .process(metadata, &ctx)
+        .digest(&db.pool, &metadata)
         .await
         .expect("ErrorProcessor failed to process event");
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -205,9 +179,8 @@ async fn test_digest_groups_similar_events() {
     let project = create_test_project(&db.pool, "Grouping Test Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
-    // Create two events with the same error type and message
     for _i in 0..2 {
         let event_id = Uuid::new_v4().to_string().replace("-", "");
         let event_json = json!({
@@ -225,7 +198,7 @@ async fn test_digest_groups_similar_events() {
         });
         let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -248,14 +221,18 @@ async fn test_digest_groups_similar_events() {
     }
 
     // Should have only 1 issue with 2 events
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -270,9 +247,8 @@ async fn test_digest_creates_separate_issues_for_different_errors() {
     let project = create_test_project(&db.pool, "Different Errors Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
-    // Create events with different error types
     let errors = vec![
         ("TypeError", "Cannot read property"),
         ("ValueError", "Invalid value"),
@@ -295,7 +271,7 @@ async fn test_digest_creates_separate_issues_for_different_errors() {
         });
         let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -318,14 +294,18 @@ async fn test_digest_creates_separate_issues_for_different_errors() {
     }
 
     // Should have 3 separate issues
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -347,7 +327,7 @@ async fn test_digest_handles_custom_fingerprint() {
     let project = create_test_project(&db.pool, "Custom Fingerprint Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     // Create two events with same fingerprint but different errors
     for i in 0..2 {
@@ -367,7 +347,7 @@ async fn test_digest_handles_custom_fingerprint() {
         });
         let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -390,14 +370,18 @@ async fn test_digest_handles_custom_fingerprint() {
     }
 
     // Should have 1 issue because of custom fingerprint
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -414,7 +398,7 @@ async fn test_digest_empty_fingerprint_does_not_collapse_issues() {
     let project = create_test_project(&db.pool, "Empty Fingerprint Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     for exc_type in [
         "Rack::Multipart::BoundaryTooLongError",
@@ -434,7 +418,7 @@ async fn test_digest_empty_fingerprint_does_not_collapse_issues() {
         });
         let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -456,14 +440,18 @@ async fn test_digest_empty_fingerprint_does_not_collapse_issues() {
         .expect("Failed to process event");
     }
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -487,7 +475,7 @@ async fn test_digest_handles_default_fingerprint_placeholder() {
     let project = create_test_project(&db.pool, "Default Fingerprint Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     // Event with {{ default }} fingerprint should use default grouping
     let event_id = Uuid::new_v4().to_string().replace("-", "");
@@ -506,7 +494,7 @@ async fn test_digest_handles_default_fingerprint_placeholder() {
     });
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    store_event(ingest_dir, &event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
@@ -527,15 +515,18 @@ async fn test_digest_handles_default_fingerprint_placeholder() {
     .await
     .expect("Failed to process event");
 
-    // Verify issue was created with expanded fingerprint
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -543,25 +534,20 @@ async fn test_digest_handles_default_fingerprint_placeholder() {
     assert_eq!(issues.len(), 1);
 }
 
-// =============================================================================
-// Duplicate Handling Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_digest_ignores_duplicate_event_id() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Duplicate Event Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = create_event_json(&event_id);
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    // Process same event twice
     for _ in 0..2 {
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -572,26 +558,31 @@ async fn test_digest_ignores_duplicate_event_id() {
             remote_addr: None,
         };
 
-        // Second processing should silently ignore the duplicate
-        let _ = process_error_event(
+        // The second time is a duplicate, which is not an error.
+        process_error_event(
             &db.pool,
             &metadata,
             ingest_dir,
             &rate_limit_config,
             crate::common::null_sourcemap_provider(),
         )
-        .await;
+        .await
+        .expect("a duplicate is ignored, not an error");
     }
 
     // Should only have 1 issue with 1 event
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -599,10 +590,6 @@ async fn test_digest_ignores_duplicate_event_id() {
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].digested_event_count, 1);
 }
-
-// =============================================================================
-// Retention Purge / Event Ordering Regression (events.digest_order removal)
-// =============================================================================
 
 /// Digests one error event grouped onto `create_event_json`'s fixed
 /// exception/transaction, with an explicit `timestamp` (the event's SDK time,
@@ -620,7 +607,7 @@ async fn ingest_error_event_at(
     let mut event_json = create_event_json(event_id);
     event_json["timestamp"] = json!(event_timestamp.timestamp() as f64);
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
-    store_event(ingest_dir, event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project_id, event_id, &event_bytes)
         .await
         .expect("store event");
     let metadata = EventMetadata {
@@ -661,7 +648,7 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
     let project = create_test_project(&db.pool, "Retention Purge Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     // 3 old events (well past the 30-day retention window used below) plus 2
     // recent ones, all grouping onto the same issue (create_event_json's
@@ -697,14 +684,18 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
         .await;
     }
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -751,14 +742,18 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
 
     // Still the same issue -- no spurious extra issue, no silently dropped
     // event.
-    let (issues_after, _) = IssueService::list_paginated(
+    let (issues_after, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -843,10 +838,6 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
     assert!(events_asc_page2[0].timestamp <= events_asc_page2[1].timestamp);
 }
 
-// =============================================================================
-// Issue Fields Follow the Latest Event
-// =============================================================================
-
 /// Digests one event into `project`, returning nothing; the caller reads the
 /// issue back. `event` is merged over the minimum an event needs.
 async fn digest(
@@ -861,9 +852,14 @@ async fn digest(
     obj.insert("event_id".into(), json!(&event_id));
     obj.insert("timestamp".into(), json!(at.timestamp() as f64));
 
-    store_event(ingest_dir, &event_id, &serde_json::to_vec(&event).unwrap())
-        .await
-        .expect("Failed to store event");
+    crate::common::store_event(
+        ingest_dir,
+        project_id,
+        &event_id,
+        &serde_json::to_vec(&event).unwrap(),
+    )
+    .await
+    .expect("Failed to store event");
 
     process_error_event(
         pool,
@@ -874,7 +870,7 @@ async fn digest(
             remote_addr: None,
         },
         ingest_dir,
-        &create_rate_limit_config(),
+        &crate::common::rate_limit(),
         crate::common::null_sourcemap_provider(),
     )
     .await
@@ -882,14 +878,18 @@ async fn digest(
 }
 
 async fn only_issue(pool: &rustrak::db::DbPool, project_id: i32) -> rustrak::models::Issue {
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         pool,
         project_id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -1349,10 +1349,6 @@ async fn test_an_event_without_a_level_does_not_erase_the_issue_level() {
     assert_eq!(issue.level.as_deref(), Some("warning"));
 }
 
-// =============================================================================
-// Upgrade Path: issues created before the grouping changes keep their events
-// =============================================================================
-
 /// Digests one event under the v0.14.10 grouping key, standing in for an issue
 /// that already existed before the upgrade.
 async fn digest_as_pre_upgrade(
@@ -1409,14 +1405,18 @@ async fn test_an_event_finds_its_pre_upgrade_issue() {
 
     digest(&db.pool, dir, project.id, Utc::now(), event).await;
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -1498,23 +1498,23 @@ async fn test_a_genuinely_new_event_still_opens_its_own_issue() {
     )
     .await;
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
     assert_eq!(issues.len(), 2);
 }
-
-// =============================================================================
-// Log Message Grouping Tests
-// =============================================================================
 
 #[actix_web::test]
 async fn test_digest_message_only_events_get_their_own_issue_and_title() {
@@ -1522,7 +1522,7 @@ async fn test_digest_message_only_events_get_their_own_issue_and_title() {
     let project = create_test_project(&db.pool, "Elixir Warnings").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     for warning in ["Disk almost full", "Cache miss storm"] {
         let event_id = Uuid::new_v4().to_string().replace("-", "");
@@ -1538,7 +1538,7 @@ async fn test_digest_message_only_events_get_their_own_issue_and_title() {
         });
         let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -1560,14 +1560,18 @@ async fn test_digest_message_only_events_get_their_own_issue_and_title() {
         .expect("Failed to process event");
     }
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -1591,7 +1595,7 @@ async fn test_digest_groups_log_messages() {
     let project = create_test_project(&db.pool, "Log Message Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     // Create events with same log message (no exception)
     for _ in 0..2 {
@@ -1608,7 +1612,7 @@ async fn test_digest_groups_log_messages() {
         });
         let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -1631,14 +1635,18 @@ async fn test_digest_groups_log_messages() {
     }
 
     // Should have 1 issue grouped by log message
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -1648,19 +1656,14 @@ async fn test_digest_groups_log_messages() {
     assert_eq!(issues[0].digested_event_count, 2);
 }
 
-// =============================================================================
-// Issue Statistics Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_digest_updates_issue_last_seen() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Last Seen Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
-    // Create first event
     let event_id1 = Uuid::new_v4().to_string().replace("-", "");
     let event_json1 = json!({
         "event_id": &event_id1,
@@ -1676,7 +1679,7 @@ async fn test_digest_updates_issue_last_seen() {
     });
     let event_bytes1 = serde_json::to_vec(&event_json1).unwrap();
 
-    store_event(ingest_dir, &event_id1, &event_bytes1)
+    crate::common::store_event(ingest_dir, project.id, &event_id1, &event_bytes1)
         .await
         .expect("Failed to store event");
 
@@ -1697,14 +1700,18 @@ async fn test_digest_updates_issue_last_seen() {
     .await
     .expect("Failed to process event");
 
-    let (issues_before, _) = IssueService::list_paginated(
+    let (issues_before, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -1712,14 +1719,13 @@ async fn test_digest_updates_issue_last_seen() {
     let first_seen = issues_before[0].first_seen;
     let last_seen_before = issues_before[0].last_seen;
 
-    // Small delay
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let later = Utc::now() + chrono::Duration::seconds(60);
 
     // Create second event (same error type)
     let event_id2 = Uuid::new_v4().to_string().replace("-", "");
     let event_json2 = json!({
         "event_id": &event_id2,
-        "timestamp": Utc::now().timestamp() as f64,
+        "timestamp": later.timestamp() as f64,
         "platform": "rust",
         "level": "error",
         "exception": {
@@ -1731,14 +1737,14 @@ async fn test_digest_updates_issue_last_seen() {
     });
     let event_bytes2 = serde_json::to_vec(&event_json2).unwrap();
 
-    store_event(ingest_dir, &event_id2, &event_bytes2)
+    crate::common::store_event(ingest_dir, project.id, &event_id2, &event_bytes2)
         .await
         .expect("Failed to store event");
 
     let metadata2 = EventMetadata {
         event_id: event_id2.clone(),
         project_id: project.id,
-        ingested_at: Utc::now(),
+        ingested_at: later,
         remote_addr: None,
     };
 
@@ -1752,27 +1758,25 @@ async fn test_digest_updates_issue_last_seen() {
     .await
     .expect("Failed to process event");
 
-    let (issues_after, _) = IssueService::list_paginated(
+    let (issues_after, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
 
-    // first_seen should stay the same
     assert_eq!(issues_after[0].first_seen, first_seen);
-    // last_seen should be updated
-    assert!(issues_after[0].last_seen >= last_seen_before);
+    assert!(issues_after[0].last_seen > last_seen_before);
 }
-
-// =============================================================================
-// Project Counter Tests
-// =============================================================================
 
 #[actix_web::test]
 async fn test_digest_updates_project_counters() {
@@ -1780,17 +1784,16 @@ async fn test_digest_updates_project_counters() {
     let project = create_test_project(&db.pool, "Counter Test Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let initial_count = project.stored_event_count;
 
-    // Process some events
     for _ in 0..3 {
         let event_id = Uuid::new_v4().to_string().replace("-", "");
         let event_json = create_event_json(&event_id);
         let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-        store_event(ingest_dir, &event_id, &event_bytes)
+        crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
             .await
             .expect("Failed to store event");
 
@@ -1812,7 +1815,6 @@ async fn test_digest_updates_project_counters() {
         .expect("Failed to process event");
     }
 
-    // Check project counters
     let updated_project = ProjectService::get_by_id(&db.pool, project.id)
         .await
         .expect("Failed to get project");
@@ -1838,14 +1840,14 @@ async fn test_digest_sets_project_platform_from_first_valid_event() {
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let mut event_json = create_event_json(&event_id);
     event_json["platform"] = json!("python");
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    store_event(ingest_dir, &event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
@@ -1879,14 +1881,15 @@ async fn test_digest_does_not_overwrite_existing_project_platform() {
     let project = create_test_project(&db.pool, "Platform No Overwrite Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     // First event sets platform to "python".
     let event_id_1 = Uuid::new_v4().to_string().replace("-", "");
     let mut event_json_1 = create_event_json(&event_id_1);
     event_json_1["platform"] = json!("python");
-    store_event(
+    crate::common::store_event(
         ingest_dir,
+        project.id,
         &event_id_1,
         &serde_json::to_vec(&event_json_1).unwrap(),
     )
@@ -1911,8 +1914,9 @@ async fn test_digest_does_not_overwrite_existing_project_platform() {
     let event_id_2 = Uuid::new_v4().to_string().replace("-", "");
     let mut event_json_2 = create_event_json(&event_id_2);
     event_json_2["platform"] = json!("php");
-    store_event(
+    crate::common::store_event(
         ingest_dir,
+        project.id,
         &event_id_2,
         &serde_json::to_vec(&event_json_2).unwrap(),
     )
@@ -1946,14 +1950,15 @@ async fn test_digest_ignores_invalid_platform_for_project_platform_detection() {
     let project = create_test_project(&db.pool, "Invalid Platform Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     // create_event_json() already uses "platform": "rust", which is NOT in
     // Relay's VALID_PLATFORMS (confirmed against relay-event-schema source).
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = create_event_json(&event_id);
-    store_event(
+    crate::common::store_event(
         ingest_dir,
+        project.id,
         &event_id,
         &serde_json::to_vec(&event_json).unwrap(),
     )
@@ -1994,13 +1999,14 @@ async fn test_digest_ignores_framework_specific_platform_for_detection() {
     let project = create_test_project(&db.pool, "Framework Platform Detect Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let mut event_json = create_event_json(&event_id);
     event_json["platform"] = json!("javascript-nextjs");
-    store_event(
+    crate::common::store_event(
         ingest_dir,
+        project.id,
         &event_id,
         &serde_json::to_vec(&event_json).unwrap(),
     )
@@ -2028,26 +2034,21 @@ async fn test_digest_ignores_framework_specific_platform_for_detection() {
     assert_eq!(updated_project.platform, None);
 }
 
-// =============================================================================
-// Temp File Cleanup Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_process_event_cleans_up_temp_file_on_failure() {
     let db = TestDb::new().await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = create_event_json(&event_id);
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    store_event(ingest_dir, &event_id, &event_bytes)
+    let event_path = crate::common::store_event(ingest_dir, 99999, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
-    let event_path = ingest_dir.join(format!("{}.json", event_id));
     assert!(
         event_path.exists(),
         "file must exist before calling process_event"
@@ -2080,17 +2081,13 @@ async fn test_process_event_cleans_up_temp_file_on_failure() {
     );
 }
 
-// =============================================================================
-// Edge Cases
-// =============================================================================
-
 #[actix_web::test]
 async fn test_digest_handles_missing_exception() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "No Exception Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     // Event without exception or message
     let event_id = Uuid::new_v4().to_string().replace("-", "");
@@ -2102,7 +2099,7 @@ async fn test_digest_handles_missing_exception() {
     });
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    store_event(ingest_dir, &event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
@@ -2124,14 +2121,18 @@ async fn test_digest_handles_missing_exception() {
     .await
     .expect("Failed to process event");
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -2145,7 +2146,7 @@ async fn test_digest_handles_multiline_error_value() {
     let project = create_test_project(&db.pool, "Multiline Error Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = json!({
@@ -2162,7 +2163,7 @@ async fn test_digest_handles_multiline_error_value() {
     });
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    store_event(ingest_dir, &event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
@@ -2183,14 +2184,18 @@ async fn test_digest_handles_multiline_error_value() {
     .await
     .expect("Failed to process event");
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -2206,18 +2211,16 @@ async fn test_digest_cleans_up_temp_file() {
     let project = create_test_project(&db.pool, "Cleanup Test Project").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let ingest_dir = temp_dir.path();
-    let rate_limit_config = create_rate_limit_config();
+    let rate_limit_config = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = create_event_json(&event_id);
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
 
-    store_event(ingest_dir, &event_id, &event_bytes)
+    let file_path = crate::common::store_event(ingest_dir, project.id, &event_id, &event_bytes)
         .await
         .expect("Failed to store event");
 
-    // Verify file exists before processing
-    let file_path = ingest_dir.join(format!("{}.json", event_id));
     assert!(file_path.exists());
 
     let metadata = EventMetadata {
@@ -2237,13 +2240,10 @@ async fn test_digest_cleans_up_temp_file() {
     .await
     .expect("Failed to process event");
 
-    // Verify file is deleted after processing
-    assert!(!file_path.exists());
+    // Deleted after processing; on SQLite once the durability checkpoint that
+    // follows the commit has run.
+    crate::common::eventually(|| async { (!file_path.exists()).then_some(()) }).await;
 }
-
-// =============================================================================
-// Status model: regression detection, culprit & priority (GH #165)
-// =============================================================================
 
 /// Ingests a single error event with the given id through the digest pipeline.
 async fn ingest_error_event(
@@ -2255,7 +2255,7 @@ async fn ingest_error_event(
 ) {
     let event_json = create_event_json(event_id);
     let event_bytes = serde_json::to_vec(&event_json).unwrap();
-    store_event(ingest_dir, event_id, &event_bytes)
+    crate::common::store_event(ingest_dir, project_id, event_id, &event_bytes)
         .await
         .expect("store event");
     let metadata = EventMetadata {
@@ -2280,7 +2280,7 @@ async fn test_new_issue_has_status_priority_and_culprit() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Status Create Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &event_id).await;
@@ -2309,7 +2309,7 @@ async fn test_resolved_issue_regresses_on_new_event() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Regression Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     // First event creates the issue.
     let e1 = Uuid::new_v4().to_string().replace("-", "");
@@ -2341,7 +2341,7 @@ async fn test_unresolved_issue_does_not_regress() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "No Regression Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     let e1 = Uuid::new_v4().to_string().replace("-", "");
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
@@ -2365,7 +2365,7 @@ async fn test_set_status_rejects_substatus_not_valid_for_status() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Invalid Pair Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     let e1 = Uuid::new_v4().to_string().replace("-", "");
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
@@ -2399,10 +2399,6 @@ async fn test_set_status_rejects_substatus_not_valid_for_status() {
     assert_eq!(issue.substatus.as_deref(), Some("archived_forever"));
 }
 
-// =============================================================================
-// Hashes, bulk ops, and tag/user aggregation (GH #165)
-// =============================================================================
-
 /// Ingests an event with explicit tags + user, keeping the grouping stable so
 /// all events land on the same issue.
 async fn ingest_event_with_tags(
@@ -2435,7 +2431,9 @@ async fn ingest_event_with_tags(
         }
     });
     let bytes = serde_json::to_vec(&event_json).unwrap();
-    store_event(ingest_dir, &event_id, &bytes).await.unwrap();
+    crate::common::store_event(ingest_dir, project_id, &event_id, &bytes)
+        .await
+        .unwrap();
     let metadata = EventMetadata {
         event_id: event_id.clone(),
         project_id,
@@ -2466,7 +2464,7 @@ async fn test_list_hashes_returns_grouping() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Hashes Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     let e1 = Uuid::new_v4().to_string().replace("-", "");
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
@@ -2483,7 +2481,7 @@ async fn test_release_populated_on_issue() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Release Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     ingest_event_with_tags(
         &db.pool,
@@ -2498,6 +2496,54 @@ async fn test_release_populated_on_issue() {
     let issue = IssueService::get_by_id(&db.pool, issue_id).await.unwrap();
     assert_eq!(issue.first_release, "v1.0.0");
     assert_eq!(issue.last_release, "v1.0.0");
+}
+
+/// A bulk status change is recorded in each issue's activity, like a single
+/// update; an id of another project is neither changed nor recorded.
+#[actix_web::test]
+async fn test_bulk_status_change_records_activity() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Bulk Activity").await;
+    let other = create_test_project(&db.pool, "Bulk Activity Other").await;
+    use rustrak::services::grouping::get_denormalized_fields;
+    let fields =
+        get_denormalized_fields(&json!({"exception":{"values":[{"type":"A","value":"a"}]}}));
+    let mine = IssueService::create(
+        &db.pool,
+        project.id,
+        Utc::now(),
+        &fields,
+        Some("error"),
+        None,
+    )
+    .await
+    .unwrap();
+    let theirs = IssueService::create(&db.pool, other.id, Utc::now(), &fields, Some("error"), None)
+        .await
+        .unwrap();
+
+    let updated = IssueService::bulk_update(
+        &db.pool,
+        project.id,
+        &[mine.id, theirs.id],
+        Some("resolvedInNextRelease"),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated, 1);
+
+    let activity = IssueSocialService::list_activity(&db.pool, mine.id)
+        .await
+        .unwrap();
+    assert_eq!(activity.len(), 1);
+    assert_eq!(activity[0].activity_type, "set_status");
+    assert!(activity[0].data.contains("resolvedInNextRelease"));
+    assert!(IssueSocialService::list_activity(&db.pool, theirs.id)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[actix_web::test]
@@ -2531,9 +2577,10 @@ async fn test_bulk_set_status_and_delete() {
     .unwrap();
 
     let mut tx = db.pool.begin().await.unwrap();
-    let updated = IssueService::bulk_set_status(&mut tx, project.id, &[i1.id, i2.id], "resolved")
-        .await
-        .unwrap();
+    let updated =
+        IssueService::bulk_set_status(&mut tx, project.id, &[i1.id, i2.id], "resolved", None)
+            .await
+            .unwrap();
     tx.commit().await.unwrap();
     assert_eq!(updated, 2);
     assert_eq!(
@@ -2666,7 +2713,7 @@ async fn test_tag_values_and_aggregates() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Tags Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     ingest_event_with_tags(
         &db.pool,
@@ -2726,7 +2773,7 @@ async fn test_aggregates_count_a_repeated_tag_key_once_per_event() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Repeated Tags Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     // One event sending `browser` twice, in the list form of `tags`.
     ingest_event_with_tags(
@@ -2754,7 +2801,7 @@ async fn test_list_stats_counts_distinct_users_per_issue() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "List Stats Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     ingest_event_with_tags(
         &db.pool,
@@ -2789,7 +2836,7 @@ async fn test_list_stats_trend_has_24_buckets_summing_to_event_count() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Trend Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     let e1 = Uuid::new_v4().to_string().replace("-", "");
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
@@ -2818,7 +2865,7 @@ async fn test_list_stats_counts_by_email_when_id_is_absent() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "List Stats Email Fallback Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     ingest_event_with_tags(
         &db.pool,
@@ -2865,6 +2912,37 @@ async fn test_list_stats_counts_by_email_when_id_is_absent() {
         .unwrap();
     let entry = stats.get(&issue_id).expect("stats for the issue");
     assert_eq!(entry.user_count, 2, "a@example.com and b@example.com");
+}
+
+#[actix_web::test]
+async fn test_list_stats_counts_users_by_the_first_non_empty_string_field() {
+    // Only a non-empty string counts: a numeric id falls back to the email,
+    // an empty one to the username. The same user seen twice counts once.
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "List Stats Identity Project").await;
+    let temp_dir = TempDir::new().unwrap();
+    let cfg = crate::common::rate_limit();
+
+    for user in [
+        json!({"id": 42, "email": "a@example.com"}),
+        json!({"email": "a@example.com"}),
+        json!({"id": "", "username": "bob"}),
+        json!({"ip_address": "10.0.0.1"}),
+        json!("not an object"),
+    ] {
+        ingest_event_with_tags(&db.pool, project.id, temp_dir.path(), &cfg, json!({}), user).await;
+    }
+
+    let issue_id = only_issue_id(&db.pool, project.id).await;
+    let stats = IssueService::list_stats(&db.pool, &[issue_id], Default::default())
+        .await
+        .unwrap();
+    let entry = stats.get(&issue_id).expect("stats for the issue");
+    assert_eq!(
+        entry.user_count, 3,
+        "email:a@, username:bob, ip_address:10.0.0.1"
+    );
+    assert_eq!(entry.trend.iter().sum::<i64>(), 5);
 }
 
 #[actix_web::test]
@@ -3098,10 +3176,6 @@ async fn test_list_offset_rejects_per_page_out_of_range() {
     assert!(matches!(err, rustrak::error::AppError::Validation(_)));
 }
 
-// =============================================================================
-// Activity, comments, bookmarks, subscriptions, seen, user reports (GH #165)
-// =============================================================================
-
 async fn seed_user_for_social(pool: &rustrak::db::DbPool, email: &str) -> i32 {
     use rustrak::models::{CreateUserRequest, UserRole};
     use rustrak::services::users::UsersService;
@@ -3217,7 +3291,7 @@ async fn test_seen_tracking_resets_on_new_event() {
     let project = create_test_project(&db.pool, "Seen Project").await;
     let user_id = seed_user_for_social(&db.pool, "seen@x.com").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     let e1 = Uuid::new_v4().to_string().replace("-", "");
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
@@ -3234,9 +3308,18 @@ async fn test_seen_tracking_resets_on_new_event() {
         .unwrap());
 
     // A new event bumps last_seen → no longer "seen".
-    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     let e2 = Uuid::new_v4().to_string().replace("-", "");
-    ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e2).await;
+    let later = Utc::now() + chrono::Duration::seconds(60);
+    ingest_error_event_at(
+        &db.pool,
+        project.id,
+        temp_dir.path(),
+        &cfg,
+        &e2,
+        later,
+        later,
+    )
+    .await;
     assert!(!IssueSocialService::has_seen(&db.pool, issue_id, user_id)
         .await
         .unwrap());
@@ -3280,16 +3363,12 @@ async fn test_user_reports() {
     );
 }
 
-// =============================================================================
-// Stats timeseries + resolve-in-next-release + deploy finalization (GH #165)
-// =============================================================================
-
 #[actix_web::test]
 async fn test_issue_stats_timeseries() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Stats Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     let e1 = Uuid::new_v4().to_string().replace("-", "");
     ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
@@ -3313,7 +3392,7 @@ async fn test_resolve_in_next_release_suppresses_same_release_regression() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "RINR Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     // First event (release v1.0.0) creates the issue.
     ingest_event_with_tags(
@@ -3357,7 +3436,7 @@ async fn test_finalize_release_clears_marker() {
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Deploy Project").await;
     let temp_dir = TempDir::new().unwrap();
-    let cfg = create_rate_limit_config();
+    let cfg = crate::common::rate_limit();
 
     ingest_event_with_tags(
         &db.pool,

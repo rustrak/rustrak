@@ -3,12 +3,12 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::{done, reply, NoArgs, RustrakMcp};
 use crate::routes::tokens;
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct TokenArgs {
     /// Token ID
     token_id: i32,

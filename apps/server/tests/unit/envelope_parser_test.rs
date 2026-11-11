@@ -54,10 +54,6 @@ fn envelope_with_item(item_type: &str, content_type: &str, body: &[u8]) -> Vec<u
     data
 }
 
-// =============================================================================
-// Log item tests (Sentry "log" item type — OurLog container)
-// =============================================================================
-
 #[test]
 fn test_parse_log_item_maps_to_log_variant() {
     let body = br#"{"items":[{"timestamp":1544719860.0,"trace_id":"5b8efff798038103d269b633813fc60c","level":"info","body":"hello"}]}"#;
@@ -87,10 +83,6 @@ fn test_parse_check_in_item_maps_to_check_in_variant() {
     assert!(!result.items[0].requires_event());
     assert_eq!(raw_payload(&result.items[0]).unwrap(), body);
 }
-
-// =============================================================================
-// Span v2 item tests (Sentry "span" item type + SpanV2Container content-type)
-// =============================================================================
 
 #[test]
 fn test_parse_span_v2_item_maps_to_span_v2_batch_variant() {
@@ -129,10 +121,6 @@ fn test_parse_span_item_without_v2_content_type_stays_legacy() {
         item_type(&result.items[0])
     );
 }
-
-// =============================================================================
-// Basic Parsing Tests (moved from inline tests)
-// =============================================================================
 
 #[test]
 fn test_parse_simple_envelope() {
@@ -179,10 +167,6 @@ fn test_parse_envelope_multiple_items() {
     assert_eq!(item_type(&result.items[0]), "event");
     assert_eq!(item_type(&result.items[1]), "session");
 }
-
-// =============================================================================
-// Envelope Headers Tests
-// =============================================================================
 
 #[test]
 fn test_parse_full_envelope_headers() {
@@ -231,10 +215,6 @@ fn test_parse_invalid_envelope_headers_json() {
     assert!(err.to_string().contains("Invalid envelope headers JSON"));
 }
 
-// =============================================================================
-// Item Headers Tests
-// =============================================================================
-
 #[test]
 fn test_parse_item_with_content_type() {
     // content_type is in ItemHeaders which is consumed — we only check that parsing succeeds
@@ -266,10 +246,6 @@ fn test_parse_item_missing_type() {
     // serde should fail because "type" is required
     assert!(result.is_err());
 }
-
-// =============================================================================
-// Item Types Tests
-// =============================================================================
 
 #[test]
 fn test_parse_event_item() {
@@ -439,10 +415,6 @@ fn item_type_of(kind: &EnvelopeItemKind) -> String {
     }
 }
 
-// =============================================================================
-// Length Field Tests
-// =============================================================================
-
 #[test]
 fn test_parse_explicit_length() {
     let envelope = b"{\"event_id\":\"abc\"}\n{\"type\":\"event\",\"length\":10}\n0123456789\n";
@@ -513,10 +485,6 @@ fn test_parse_without_length_single_item() {
     );
 }
 
-// =============================================================================
-// Payload with Newlines Tests
-// =============================================================================
-
 #[test]
 fn test_parse_payload_with_newlines_using_length() {
     // If we use length, we can have newlines in the payload
@@ -553,10 +521,6 @@ fn test_parse_json_payload_with_escaped_newlines() {
     assert_eq!(raw_payload(&result.items[0]).unwrap(), payload);
 }
 
-// =============================================================================
-// Multiple Items Tests
-// =============================================================================
-
 #[test]
 fn test_parse_three_items() {
     let envelope = b"{\"event_id\":\"abc\"}\n{\"type\":\"event\",\"length\":2}\n{}\n{\"type\":\"session\",\"length\":15}\n{\"status\":\"ok\"}\n{\"type\":\"transaction\",\"length\":2}\n{}\n";
@@ -580,10 +544,6 @@ fn test_parse_mixed_length_items() {
     assert_eq!(raw_payload(&result.items[0]).unwrap(), b"{}");
     assert_eq!(raw_payload(&result.items[1]).unwrap(), b"{\"s\":1}");
 }
-
-// =============================================================================
-// Edge Cases and Error Handling
-// =============================================================================
 
 #[test]
 fn test_parse_no_items() {
@@ -651,10 +611,6 @@ fn test_parse_binary_payload() {
     assert_eq!(raw_payload(&result.items[0]).unwrap(), binary);
 }
 
-// =============================================================================
-// Unicode Tests
-// =============================================================================
-
 #[test]
 fn test_parse_unicode_in_payload() {
     let payload = "{\"message\":\"¡Hola! 你好 🎉\"}";
@@ -683,10 +639,6 @@ fn test_parse_unicode_in_event_id() {
     // Should parse without error
     assert!(result.headers.event_id.is_some());
 }
-
-// =============================================================================
-// Size Limit Tests
-// =============================================================================
 
 #[test]
 fn test_payload_size_exactly_at_limit() {
@@ -728,10 +680,6 @@ fn test_payload_size_over_limit() {
     let err = result.unwrap_err();
     assert!(err.to_string().contains("exceeds"));
 }
-
-// =============================================================================
-// Real-world Envelope Formats
-// =============================================================================
 
 #[test]
 fn test_parse_sentry_python_style_envelope() {

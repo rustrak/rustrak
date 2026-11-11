@@ -4,9 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Headers of the envelope (first JSON line)
-/// Some fields are parsed but not currently used - kept for future logging/debugging
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct EnvelopeHeaders {
     /// Event ID (required for items of type "event")
     pub event_id: Option<String>,
@@ -23,7 +21,6 @@ pub struct EnvelopeHeaders {
 
 /// SDK information from envelope headers
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct SdkInfo {
     pub name: Option<String>,
     pub version: Option<String>,
@@ -31,7 +28,6 @@ pub struct SdkInfo {
 
 /// Headers of an item within the envelope
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct ItemHeaders {
     /// Item type: "event", "session", "transaction", etc.
     #[serde(rename = "type")]

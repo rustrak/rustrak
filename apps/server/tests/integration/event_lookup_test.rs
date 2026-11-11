@@ -1,9 +1,8 @@
 //! The SDK UUID is distinct from the stored row UUID and is scoped to a project.
 use crate::common::TestDb;
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::Utc;
 use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, UserRole};
-use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
 use rustrak::services::{
     AuthTokenService, EventService, IssueService, ProjectService, UsersService,
@@ -85,12 +84,7 @@ async fn sdk_event_lookup_preserves_project_scope_and_viewer_authorization() {
         .unwrap();
         records.push((project.id, issue.id, row_id, name));
     }
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .configure(routes::events::configure),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
     for (project_id, issue_id, row_id, name) in &records {
         for id in [sdk_id.to_string(), sdk_id.simple().to_string()] {
             let req = test::TestRequest::get()

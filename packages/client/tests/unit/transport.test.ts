@@ -1,5 +1,5 @@
 import { HttpResponse, http } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RustrakClient } from '../../src/client.js';
 import { expectErr, expectOk } from '../helpers/result.js';
 import { server } from '../setup.js';
@@ -23,13 +23,42 @@ function failing(method: 'get' | 'post', path: string, status: number) {
   return seen;
 }
 
+/** Runs the backoff sleeps without waiting for them. */
+async function settle<T>(pending: Promise<T>): Promise<T> {
+  let done = false;
+  pending.finally(() => {
+    done = true;
+  });
+  while (!done) await vi.advanceTimersByTimeAsync(1000);
+  return pending;
+}
+
 describe('retries', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('retries an idempotent request up to maxRetries', async () => {
     const seen = failing('get', '/api/projects', 503);
-    expect(expectErr(await client(2).projects.list()).kind).toBe(
+    expect(expectErr(await settle(client(2).projects.list())).kind).toBe(
       'server_error',
     );
     expect(seen.attempts).toBe(3);
+  });
+
+  it.each([401, 404, 429, 501])('does not repeat a %i', async (status) => {
+    const seen = failing('get', '/api/projects', status);
+    expectErr(await settle(client(2).projects.list()));
+    expect(seen.attempts).toBe(1);
+  });
+
+  it('retries a 408', async () => {
+    const seen = failing('get', '/api/projects', 408);
+    expectErr(await settle(client(1).projects.list()));
+    expect(seen.attempts).toBe(2);
   });
 
   // A POST that timed out at a proxy may still have created the row.
@@ -48,7 +77,7 @@ describe('retries', () => {
           : HttpResponse.json({ status: 'ok' }),
       ),
     );
-    expectOk(await client(1).health.liveness());
+    expectOk(await settle(client(1).health.liveness()));
     expect(attempts).toBe(2);
   });
 });

@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use crate::protocol::clamp;
 use crate::services::normalize_message_for_grouping;
 use std::collections::{HashMap, HashSet};
 
@@ -64,7 +65,7 @@ fn grouping_components(event_data: &Value) -> Vec<String> {
                         exc_type
                     };
                     let exc_value = normalize_message_for_grouping(exc_value);
-                    get_title(&truncate(exc_type, 128), &truncate(&exc_value, 1024))
+                    get_title(&clamp(exc_type, 128), &clamp(&exc_value, 1024))
                 })
                 .collect();
         }
@@ -74,8 +75,8 @@ fn grouping_components(event_data: &Value) -> Vec<String> {
         raw_type_and_value(event_data, MessagePreference::Grouping);
     let calculated_value = normalize_message_for_grouping(&calculated_value);
     vec![get_title(
-        &truncate(&calculated_type, 128),
-        &truncate(&calculated_value, 1024),
+        &clamp(&calculated_type, 128),
+        &clamp(&calculated_value, 1024),
     )]
 }
 
@@ -126,10 +127,7 @@ pub fn get_type_and_value(event_data: &Value) -> (String, String) {
 
 fn type_and_value(event_data: &Value, preference: MessagePreference) -> (String, String) {
     let (calculated_type, calculated_value) = raw_type_and_value(event_data, preference);
-    (
-        truncate(&calculated_type, 128),
-        truncate(&calculated_value, 1024),
-    )
+    (clamp(&calculated_type, 128), clamp(&calculated_value, 1024))
 }
 
 /// The type and value as the event carries them.
@@ -550,7 +548,7 @@ fn get_transaction(event_data: &Value) -> String {
     event_data
         .get("transaction")
         .and_then(|t| t.as_str())
-        .map(|s| truncate(s, 200))
+        .map(|s| clamp(s, 200))
         .unwrap_or_else(|| "<no transaction>".to_string())
 }
 
@@ -570,15 +568,6 @@ pub fn get_title(calculated_type: &str, calculated_value: &str) -> String {
     }
 }
 
-/// Truncates a string to max_len
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        s.chars().take(max_len).collect()
-    }
-}
-
 /// Extracts denormalized fields from the event
 pub fn get_denormalized_fields(event_data: &Value) -> DenormalizedFields {
     let (calculated_type, calculated_value) = get_type_and_value(event_data);
@@ -593,12 +582,12 @@ pub fn get_denormalized_fields(event_data: &Value) -> DenormalizedFields {
     let logger = event_data
         .get("logger")
         .and_then(|l| l.as_str())
-        .map(|s| truncate(s, 64))
+        .map(|s| clamp(s, 64))
         .unwrap_or_default();
     let release = event_data
         .get("release")
         .and_then(|r| r.as_str())
-        .map(|s| truncate(s, 200))
+        .map(|s| clamp(s, 200))
         .unwrap_or_default();
 
     DenormalizedFields {
@@ -626,7 +615,7 @@ fn get_culprit(function: &str, filename: &str, transaction: &str) -> String {
     } else {
         ""
     };
-    truncate(chosen, 255)
+    clamp(chosen, 255)
 }
 
 /// Denormalized fields extracted from event data
@@ -672,19 +661,19 @@ fn get_last_frame_info(event_data: &Value) -> (String, String, String) {
             let filename = f
                 .get("filename")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate(s, 255))
+                .map(|s| clamp(s, 255))
                 .unwrap_or_default();
 
             let module = f
                 .get("module")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate(s, 255))
+                .map(|s| clamp(s, 255))
                 .unwrap_or_default();
 
             let function = f
                 .get("function")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate(s, 255))
+                .map(|s| clamp(s, 255))
                 .unwrap_or_default();
 
             (filename, module, function)

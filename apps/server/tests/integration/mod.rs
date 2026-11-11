@@ -3,7 +3,9 @@
 //! Contains tests that require a database and test the full API.
 
 mod agents_api_test;
+mod alert_cooldown_test;
 mod alerts_api_test;
+mod assembly_worker_test;
 mod auth_test;
 mod bootstrap_test;
 mod concurrency_test;
@@ -22,7 +24,7 @@ mod health_test;
 mod ingest_test;
 mod issues_api_test;
 mod logs_api_test;
-pub(crate) mod mcp_test;
+mod mcp_test;
 mod metrics_test;
 mod monitors_api_test;
 mod monitors_service_test;
@@ -48,7 +50,7 @@ mod spans_api_test;
 mod sso_flow_test;
 mod stats_api_test;
 mod storage_api_test;
-pub(crate) mod team_rbac_test;
+mod team_rbac_test;
 mod telemetry_test;
 mod token_scopes_test;
 mod tokens_api_test;

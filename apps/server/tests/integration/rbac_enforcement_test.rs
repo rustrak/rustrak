@@ -1,29 +1,12 @@
 //! Endpoints enforce exactly the permission they need, on the scope it applies to.
 
 use crate::common::TestDb;
-use crate::integration::team_rbac_test::create_test_config;
-use actix_web::{test, web, App};
-use rustrak::auth::rbac::{Action, Resource};
+use actix_web::test;
 use rustrak::db::DbPool;
+use rustrak::models::rbac::{Action, Resource};
 use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, Permission, UserRole};
-use rustrak::routes;
 use rustrak::services::{AuthTokenService, ProjectService, RoleService, UsersService};
 use serde_json::Value;
-
-macro_rules! app {
-    ($pool:expr) => {
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new($pool))
-                .app_data(web::Data::new(create_test_config()))
-                .configure(routes::issues::configure)
-                .configure(routes::logs::configure)
-                .configure(routes::alerts::configure)
-                .configure(routes::projects::configure),
-        )
-        .await
-    };
-}
 
 /// A user holding one custom role made of `perms`, on the instance or one
 /// project, and a bearer token for them.
@@ -109,7 +92,7 @@ async fn integration_credentials_are_masked_without_integrations_update() {
     .await;
     let reader = user_with(&db.pool, &[(Resource::Integrations, Action::Read)], None).await;
     let creator = user_with(&db.pool, &[(Resource::Integrations, Action::Create)], None).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let req = test::TestRequest::post()
         .uri("/api/integrations")
@@ -156,7 +139,7 @@ async fn a_settings_permission_opens_only_that_settings_area() {
     let db = TestDb::new().await;
     let p = project(&db.pool, "p").await;
     let token = user_with(&db.pool, &[(Resource::Integrations, Action::Read)], None).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     assert_eq!(status(&app, "GET", "/api/integrations", &token).await, 200);
     assert_eq!(
@@ -176,7 +159,7 @@ async fn a_project_role_reaches_only_its_project_and_its_resources() {
     let p1 = project(&db.pool, "p1").await;
     let p2 = project(&db.pool, "p2").await;
     let token = user_with(&db.pool, &[(Resource::Logs, Action::Read)], Some(p1)).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     assert_eq!(
         status(&app, "GET", &format!("/api/projects/{p1}/logs"), &token).await,
@@ -212,7 +195,7 @@ async fn an_instance_project_permission_reaches_every_project() {
     let p1 = project(&db.pool, "p1").await;
     let p2 = project(&db.pool, "p2").await;
     let token = user_with(&db.pool, &[(Resource::Issues, Action::Read)], None).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     for p in [p1, p2] {
         assert_eq!(
@@ -236,7 +219,7 @@ async fn creating_a_project_needs_the_permission_and_a_way_to_reach_it() {
         None,
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let create = |token: &str| {
         test::TestRequest::post()

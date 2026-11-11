@@ -7,15 +7,15 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::github::{
     CodeMapping, CreateGitHubIssue, GitHubApp, GitHubAppInfo, GitHubStatus, IssueGitHub,
     IssueTemplate, LinkGitHubIssue, ManifestRequest, ManifestResponse, UpdateProjectRepository,
 };
+use crate::models::rbac::{Action, Resource};
 use crate::models::{Issue, Project};
 use crate::services::github::{
     client, codeowners_for, repo_path, sync, GitHubClient, GitHubService, CODEOWNERS_PATHS,
@@ -25,15 +25,6 @@ use uuid::Uuid;
 
 const WEB_URL: &str = "https://github.com";
 const STATE_KEY: &str = "github_manifest_state";
-
-/// The address GitHub's webhooks reach this server at: `PUBLIC_URL`, else the
-/// bind address. Never the request's `Host`, which the client controls.
-fn public_base(config: &Config) -> String {
-    config
-        .public_url
-        .clone()
-        .unwrap_or_else(|| format!("http://{}:{}", config.host, config.port))
-}
 
 fn redirect(location: &str) -> HttpResponse {
     HttpResponse::Found()
@@ -53,7 +44,6 @@ fn redirect(location: &str) -> HttpResponse {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/github
 pub async fn status(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
@@ -64,7 +54,7 @@ pub async fn status(
     Ok(HttpResponse::Ok().json(GitHubStatus {
         app: app.as_ref().map(GitHubAppInfo::from),
         installations: GitHubService::installations(pool.get_ref()).await?,
-        webhook_url: format!("{}/api/github/webhook", public_base(&config)),
+        webhook_url: format!("{}/api/github/webhook", config.base_url()),
         issue_template: GitHubService::issue_template(pool.get_ref()).await?,
     }))
 }
@@ -114,7 +104,7 @@ fn savable_template(template: IssueTemplate) -> AppResult<IssueTemplate> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/github/issue-template: the labels, title prefix and body footer
+/// The labels, title prefix and body footer
 /// every GitHub issue starts with, before a project's own.
 pub async fn put_issue_template(
     pool: web::Data<DbPool>,
@@ -140,7 +130,6 @@ pub async fn put_issue_template(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/github
 pub async fn disconnect(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     actor.require(Resource::GithubApp, Action::Update, None)?;
     GitHubService::delete_app(pool.get_ref()).await?;
@@ -161,7 +150,7 @@ pub async fn disconnect(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<H
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/github/manifest: what the dashboard posts to GitHub so GitHub
+/// What the dashboard posts to GitHub so GitHub
 /// creates an app already configured for this server.
 pub async fn manifest(
     config: web::Data<Config>,
@@ -170,11 +159,11 @@ pub async fn manifest(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::GithubApp, Action::Update, None)?;
-    let base = public_base(&config);
+    let base = config.base_url();
     // The browser comes back to the dashboard's host, where the session
     // cookie lives; only the webhook goes to PUBLIC_URL.
     let browser = config.dashboard_url();
-    let state = crate::auth::token::generate_token();
+    let state = crate::models::token::generate_token();
     session
         .insert(STATE_KEY, &state)
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -182,7 +171,10 @@ pub async fn manifest(
         Some(org) if org.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') => {
             format!("{WEB_URL}/organizations/{org}/settings/apps/new?state={state}")
         }
-        Some(_) => return Err(AppError::Validation("Invalid organization name".into())),
+        Some(_) => {
+            return Err(AppError::Validation("Invalid organization name".into())
+                .with_field("organization", FieldErrorCode::Invalid));
+        }
         None => format!("{WEB_URL}/settings/apps/new?state={state}"),
     };
     let host = browser.split("://").nth(1).unwrap_or(&browser);
@@ -227,10 +219,11 @@ pub struct CallbackQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/github/callback: GitHub sends the browser here after creating the
+/// GitHub sends the browser here after creating the
 /// app; the code trades for its credentials.
 pub async fn callback(
     pool: web::Data<DbPool>,
+    config: web::Data<Config>,
     session: Session,
     query: web::Query<CallbackQuery>,
     actor: ApiActor,
@@ -242,15 +235,16 @@ pub async fn callback(
             "This GitHub callback does not match a setup started here".into(),
         ));
     }
-    let api_url =
-        std::env::var("GITHUB_API_URL").unwrap_or_else(|_| "https://api.github.com".into());
-    let created = client::convert_manifest(&api_url, &query.code).await?;
+    let created = client::convert_manifest(&config.github_api_url, &query.code).await?;
+    // An app saved without its id or secrets could never authenticate.
+    let missing = |key: &str| AppError::Validation(format!("GitHub's answer has no {key}"));
     let text = |key: &str| {
         created
             .get(key)
             .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| missing(key))
     };
     GitHubService::save_app(
         pool.get_ref(),
@@ -258,20 +252,20 @@ pub async fn callback(
             app_id: created
                 .get("id")
                 .and_then(Value::as_i64)
-                .unwrap_or_default(),
-            slug: text("slug"),
-            client_id: text("client_id"),
-            client_secret: text("client_secret"),
-            webhook_secret: text("webhook_secret"),
-            private_key: text("pem"),
-            html_url: text("html_url"),
+                .ok_or_else(|| missing("id"))?,
+            slug: text("slug")?,
+            client_id: text("client_id")?,
+            client_secret: text("client_secret")?,
+            webhook_secret: text("webhook_secret")?,
+            private_key: text("pem")?,
+            html_url: text("html_url").unwrap_or_default(),
             owner_login: created
                 .pointer("/owner/login")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
             web_url: WEB_URL.into(),
-            api_url,
+            api_url: config.github_api_url.clone(),
             last_webhook_at: None,
             created_at: Utc::now(),
         },
@@ -301,7 +295,7 @@ pub struct InstalledQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/github/installed: GitHub sends the browser here after the app is
+/// GitHub sends the browser here after the app is
 /// installed on an account.
 pub async fn installed(
     pool: web::Data<DbPool>,
@@ -345,7 +339,7 @@ pub struct RepositoriesQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/github/repositories?project_id=: the repositories a project can
+/// The repositories a project can
 /// point at, for whoever may change that project's settings.
 pub async fn repositories(
     pool: web::Data<DbPool>,
@@ -402,7 +396,6 @@ async fn require_project(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/github
 pub async fn get_project_repository(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -439,11 +432,10 @@ pub async fn get_project_repository(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/projects/{project_id}/github
 pub async fn put_project_repository(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
-    body: web::Json<UpdateProjectRepository>,
+    body: AppResult<web::Json<UpdateProjectRepository>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
@@ -455,6 +447,7 @@ pub async fn put_project_repository(
         Action::Update,
     )
     .await?;
+    let body = body?;
     if !crate::services::github::is_repo_full_name(&body.repo_full_name) {
         return Err(AppError::Validation("Invalid repository name".into()));
     }
@@ -508,7 +501,6 @@ pub async fn put_project_repository(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/projects/{project_id}/github
 pub async fn delete_project_repository(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -543,7 +535,7 @@ pub async fn delete_project_repository(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/projects/{project_id}/github/codeowners: copies the repository's
+/// Copies the repository's
 /// CODEOWNERS so ownership can be answered without asking GitHub each time.
 pub async fn sync_codeowners(
     pool: web::Data<DbPool>,
@@ -595,10 +587,7 @@ async fn require_issue(
 ) -> AppResult<(Project, Issue)> {
     actor.require(resource, action, Some(project_id))?;
     let project = ProjectService::get_by_id(pool, project_id).await?;
-    let issue = IssueService::get_by_id(pool, issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {issue_id} not found")));
-    }
+    let issue = IssueService::get_in_project(pool, project_id, issue_id).await?;
     Ok((project, issue))
 }
 
@@ -619,7 +608,7 @@ async fn require_issue(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}/github: the issue's links,
+/// The issue's links,
 /// the commits that may have caused it, and who owns its culprit file.
 pub async fn issue_github(
     pool: web::Data<DbPool>,
@@ -801,7 +790,7 @@ pub async fn link_github_issue(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     path: web::Path<(i32, Uuid)>,
-    body: web::Json<LinkGitHubIssue>,
+    body: AppResult<web::Json<LinkGitHubIssue>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let (project_id, issue_id) = path.into_inner();
@@ -814,6 +803,7 @@ pub async fn link_github_issue(
         Action::Update,
     )
     .await?;
+    let body = body?;
     let link = sync::link_issue(
         pool.get_ref(),
         &project,
@@ -892,7 +882,7 @@ async fn my_login(pool: &DbPool, user_id: i32) -> AppResult<HttpResponse> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/github/me: the GitHub username assignees sync through.
+/// The GitHub username assignees sync through.
 pub async fn get_my_login(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     my_login(pool.get_ref(), actor.require_user()?.id).await
 }
@@ -910,7 +900,6 @@ pub async fn get_my_login(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/github/me
 pub async fn put_my_login(
     pool: web::Data<DbPool>,
     body: web::Json<GitHubLogin>,
@@ -956,7 +945,7 @@ pub async fn put_my_login(
     ),
     security(()),
 ))]
-/// POST /api/github/webhook: public, and trusted only through the signature
+/// Public, and trusted only through the signature
 /// GitHub computes with the app's webhook secret.
 pub async fn webhook(
     pool: web::Data<DbPool>,
@@ -990,16 +979,31 @@ pub async fn webhook(
     Ok(HttpResponse::NoContent().finish())
 }
 
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/issues/{issue_id}/github", web::get().to(issue_github))
+        .route(
+            "/issues/{issue_id}/github/draft",
+            web::get().to(github_issue_draft),
+        )
+        .route(
+            "/issues/{issue_id}/github/issues",
+            web::post().to(create_github_issue),
+        )
+        .route(
+            "/issues/{issue_id}/github/links",
+            web::post().to(link_github_issue),
+        )
+        .route(
+            "/issues/{issue_id}/github/links/{link_id}",
+            web::delete().to(unlink_github_issue),
+        )
+        .route("/github", web::get().to(get_project_repository))
+        .route("/github", web::put().to(put_project_repository))
+        .route("/github", web::delete().to(delete_project_repository))
+        .route("/github/codeowners", web::post().to(sync_codeowners));
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    // Before `issues::configure`: its `/issues` scope would claim these paths.
-    cfg.service(
-        web::scope("/api/projects/{project_id}/issues/{issue_id}/github")
-            .route("", web::get().to(issue_github))
-            .route("/draft", web::get().to(github_issue_draft))
-            .route("/issues", web::post().to(create_github_issue))
-            .route("/links", web::post().to(link_github_issue))
-            .route("/links/{link_id}", web::delete().to(unlink_github_issue)),
-    );
     cfg.service(
         web::scope("/api/github")
             .route("", web::get().to(status))
@@ -1018,12 +1022,5 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             )
             .route("/me", web::get().to(get_my_login))
             .route("/me", web::put().to(put_my_login)),
-    )
-    .service(
-        web::scope("/api/projects/{project_id}/github")
-            .route("", web::get().to(get_project_repository))
-            .route("", web::put().to(put_project_repository))
-            .route("", web::delete().to(delete_project_repository))
-            .route("/codeowners", web::post().to(sync_codeowners)),
     );
 }

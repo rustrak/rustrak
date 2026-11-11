@@ -1,4 +1,4 @@
-//! Unit tests for gen_ai.* span attribute normalization (story-ai-agent-monitoring.md, GH #180).
+//! Unit tests for gen_ai.* span attribute normalization.
 //!
 //! Pure logic, no DB — mirrors Relay's normalize_ai() / infer_ai_operation_type().
 
@@ -6,10 +6,6 @@ use rustrak::services::gen_ai::{
     extract_gen_ai_columns, infer_operation_type, is_ai_span, normalize_gen_ai_attributes,
 };
 use serde_json::json;
-
-// =============================================================================
-// is_ai_span
-// =============================================================================
 
 #[test]
 fn test_is_ai_span_true_when_operation_type_present() {
@@ -47,10 +43,6 @@ fn test_is_ai_span_false_for_op_containing_ai_not_as_prefix() {
     let data = json!({});
     assert!(!is_ai_span(&data, Some("custom.ai.operation")));
 }
-
-// =============================================================================
-// infer_operation_type — full port of Relay's infer_ai_operation_type
-// =============================================================================
 
 #[test]
 fn test_infer_operation_type_full_matches_to_agent() {
@@ -120,10 +112,6 @@ fn test_infer_operation_type_no_match_returns_none() {
     assert_eq!(infer_operation_type("http.client"), None);
     assert_eq!(infer_operation_type("gen_ai.chat.completions"), None);
 }
-
-// =============================================================================
-// normalize_gen_ai_attributes — orchestration
-// =============================================================================
 
 #[test]
 fn test_normalize_defaults_response_model_from_request_model() {

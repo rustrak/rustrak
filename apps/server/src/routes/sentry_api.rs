@@ -17,11 +17,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::auth::rbac::{Action, ProjectScope, Resource};
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, ProjectScope, Resource};
 use crate::models::{Event, Issue, Project, UpdateIssueState};
 use crate::pagination::{IssueCategory, IssueFilter, SortOrder};
 use crate::services::grouping::exception_values;
@@ -125,8 +125,6 @@ pub struct ProjectListQuery {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/projects/
-///
 /// The projects the token can see, newest first (Sentry's
 /// `ProjectIndexEndpoint`, `core/endpoints/project_index.py`).
 pub async fn list_projects(
@@ -136,10 +134,7 @@ pub async fn list_projects(
     query: web::Query<ProjectListQuery>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    let limit = query
-        .per_page
-        .unwrap_or(MAX_PER_PAGE)
-        .clamp(1, MAX_PER_PAGE);
+    let limit = crate::pagination::per_page(query.per_page.unwrap_or(MAX_PER_PAGE))?;
     let page = Page::from_cursor(query.cursor.as_deref(), limit)?;
     let (projects, total) = match actor.visible_projects() {
         ProjectScope::All => {
@@ -312,11 +307,7 @@ impl SentryIssue {
 }
 
 async fn project_by_slug(pool: &DbPool, slug: &str) -> AppResult<Project> {
-    let id: Option<i32> = sqlx::query_scalar("SELECT id FROM projects WHERE slug = $1")
-        .bind(slug)
-        .fetch_optional(pool)
-        .await?;
-    match id {
+    match ProjectService::id_by_slug_or_id(pool, slug).await? {
         Some(id) => ProjectService::get_by_id(pool, id).await,
         None => Err(AppError::NotFound(format!("project not found: {slug}"))),
     }
@@ -590,8 +581,6 @@ fn stats_period(period: Option<&str>) -> AppResult<Option<(&str, i64, i64)>> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/projects/{org_slug}/{project_slug}/issues/
-///
 /// A project's issues, filtered by `query`, sorted by `sort` and paginated
 /// by `cursor` (Sentry's `ProjectGroupIndexEndpoint`,
 /// `issues/endpoints/project_group_index.py`).
@@ -748,8 +737,6 @@ pub struct IssuePath {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/issues/{issue_id}/
-///
 /// One issue with its releases and its 24h and 30d series (Sentry's
 /// `GroupDetailsEndpoint`). Also served under `/groups/` and the
 /// organization-scoped paths, as Sentry does.
@@ -1010,8 +997,6 @@ impl SentryEvent {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/issues/{issue_id}/events/latest/
-///
 /// The issue's most recent event (Sentry's `GroupEventDetailsEndpoint`,
 /// `issues/endpoints/group_event_details.py`).
 pub async fn latest_event(
@@ -1066,8 +1051,6 @@ pub struct IssueUpdate {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/0/issues/{issue_id}/
-///
 /// Sets an issue's status and returns the issue (Sentry's
 /// `GroupDetailsEndpoint.put`). The change goes through Rustrak's own
 /// issue update, so it is recorded and mirrored like any other.
@@ -1128,8 +1111,6 @@ pub async fn update_issue(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/organizations/{org_slug}/repos/
-///
 /// The code repositories connected to the organization (Sentry's
 /// `OrganizationRepositoriesEndpoint`). Rustrak connects none through
 /// Sentry's integrations, so the list is always empty.
@@ -1153,8 +1134,6 @@ pub async fn list_repos(_actor: ApiActor) -> AppResult<HttpResponse> {
     ),
     security((), ("session_cookie" = []), ("bearer_auth" = [])),
 ))]
-/// GET /{org_slug}/{project_slug}/issues/{issue_id}/
-///
 /// The issue page GitLab's "View in Sentry" opens: Sentry redirects this
 /// legacy path to the issue (`static/app/router/routes.tsx`), Rustrak to its
 /// dashboard. A visitor who is not signed in goes to the login page instead,
@@ -1184,21 +1163,6 @@ pub async fn issue_link(
     )))
 }
 
-/// Whether `path` is [`issue_link`]'s: `/{org}/{project}/issues/{digits}`,
-/// with or without a trailing slash. The session middleware lets it through
-/// because the handler authenticates the visitor itself.
-pub fn is_issue_link(path: &str) -> bool {
-    let parts: Vec<&str> = path.strip_suffix('/').unwrap_or(path).split('/').collect();
-    matches!(
-        parts[..],
-        ["", org, project, "issues", id]
-            if !org.is_empty()
-                && !project.is_empty()
-                && !id.is_empty()
-                && id.bytes().all(|b| b.is_ascii_digit())
-    )
-}
-
 fn redirect(location: String) -> HttpResponse {
     HttpResponse::Found()
         .insert_header(("Location", location))
@@ -1216,8 +1180,6 @@ fn redirect(location: String) -> HttpResponse {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/0/organizations/
-///
 /// The organizations the token belongs to (Sentry's
 /// `OrganizationIndexEndpoint`): always the one synthetic org.
 pub async fn list_organizations(_actor: ApiActor) -> AppResult<HttpResponse> {
@@ -1272,8 +1234,6 @@ pub struct SentryUserReportRequest {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/0/projects/{org_slug}/{project_slug}/user-feedback/
-///
 /// Submit a user report about an error event (Sentry's
 /// `ProjectUserReportsEndpoint`, `feedback/endpoints/project_user_reports.py`).
 /// Accepts `Authorization: DSN <dsn>` as well as a token; the report becomes a
@@ -1287,32 +1247,38 @@ pub async fn submit_user_feedback(
 ) -> AppResult<HttpResponse> {
     use actix_web::FromRequest as _;
     let (_org_slug, project_slug) = path.into_inner();
-    let project = project_by_slug(pool.get_ref(), &project_slug).await?;
-
     let dsn = req
         .headers()
         .get(actix_web::http::header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("DSN "));
-    if let Some(dsn) = dsn {
+    // Credentials before the project lookup, so an anonymous caller hears 401
+    // rather than whether the slug exists.
+    let actor = match dsn {
+        Some(_) => None,
+        None => Some(ApiActor::extract(&req).await?),
+    };
+    let project = project_by_slug(pool.get_ref(), &project_slug).await?;
+
+    match (dsn, actor) {
         // Sentry's `DSNAuthentication`: the DSN's public key must be this
         // project's.
-        if dsn_public_key(dsn) != Some(project.sentry_key) {
+        (Some(dsn), _) if dsn_public_key(dsn) != Some(project.sentry_key) => {
             return Err(AppError::Unauthorized("invalid DSN".to_string()));
         }
-    } else {
-        let actor = ApiActor::extract(&req).await?;
-        actor.require(Resource::Issues, Action::Update, Some(project.id))?;
+        (_, Some(actor)) => actor.require(Resource::Issues, Action::Update, Some(project.id))?,
+        _ => {}
     }
 
-    let shim = crate::routes::ingest::user_report_to_feedback(
+    let shim = crate::ingest::pipeline::user_report_to_feedback(
         &body,
         None,
         "user_report_sentry_django_endpoint",
     )?;
-    crate::routes::ingest::enqueue_digest(
+    crate::ingest::pipeline::enqueue_digest(
         &processors,
         pool.get_ref(),
+        shim.feedback_id,
         crate::ingest::EventMetadata {
             event_id: shim.feedback_id.simple().to_string(),
             project_id: project.id,

@@ -8,16 +8,14 @@
 use std::io::Write as _;
 use std::sync::Arc;
 
-use actix_web::{test, web, App};
+use actix_web::test;
 use rustrak::models::CreateProject;
-use rustrak::routes;
 use rustrak::services::{LocalSourceMapStore, ProjectService, SourceMapProvider};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::sourcemaps_api_test::{
-    create_test_config, create_test_token, sha1_hex, sourcemap_app_data,
-};
+use super::sourcemaps_api_test::sha1_hex;
+use crate::common::create_test_token;
 use crate::common::TestDb;
 
 const MAPPING_UUID: &str = "11111111-2222-3333-4444-555555555555";
@@ -59,16 +57,8 @@ async fn store_chunk(db: &TestDb, data: &[u8]) -> String {
 }
 
 async fn assemble(db: &TestDb, token: &str, slug: &str, body: Value) -> (u16, Value) {
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let config = crate::common::config();
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
     let req = test::TestRequest::post()
         .uri(&format!(
             "/api/0/projects/my-org/{slug}/files/difs/assemble/"
@@ -93,13 +83,17 @@ async fn run_worker(db: &TestDb) -> tempfile::TempDir {
 }
 
 async fn file_types(db: &TestDb, project_id: i32) -> Vec<(String, String)> {
-    let mut rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT CAST(debug_id AS TEXT), file_type FROM source_file_metadata WHERE project_id = $1",
+    let rows: Vec<(uuid::Uuid, String)> = sqlx::query_as(
+        "SELECT debug_id, file_type FROM source_file_metadata WHERE project_id = $1",
     )
     .bind(project_id)
     .fetch_all(&db.pool)
     .await
     .expect("metadata lookup must succeed");
+    let mut rows: Vec<(String, String)> = rows
+        .into_iter()
+        .map(|(id, file_type)| (id.to_string(), file_type))
+        .collect();
     rows.sort();
     rows
 }
@@ -108,16 +102,8 @@ async fn file_types(db: &TestDb, project_id: i32) -> Vec<(String, String)> {
 async fn chunk_upload_advertises_debug_files_and_proguard() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let config = create_test_config();
-    let (provider, config_data) = sourcemap_app_data(&db.pool, &config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let config = crate::common::config();
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
     let req = test::TestRequest::get()
         .uri("/api/0/organizations/my-org/chunk-upload/")
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -337,7 +323,7 @@ async fn stored_files_deobfuscate_an_event() {
 /// deobfuscating, so both land in one issue named after the real class.
 #[actix_web::test]
 async fn digest_groups_builds_by_their_deobfuscated_crash() {
-    use rustrak::ingest::{store_event, EventMetadata};
+    use rustrak::ingest::EventMetadata;
 
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
@@ -370,12 +356,7 @@ async fn digest_groups_builds_by_their_deobfuscated_crash() {
     );
 
     let ingest = tempfile::TempDir::new().unwrap();
-    let rate_limit = rustrak::config::RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
+    let rate_limit = crate::common::rate_limit();
     for (uuid, error_class, greeter_class) in builds {
         let (module, ty) = error_class.rsplit_once('.').unwrap();
         let event_id = Uuid::new_v4().simple().to_string();
@@ -389,8 +370,9 @@ async fn digest_groups_builds_by_their_deobfuscated_crash() {
             ]}}]},
             "debug_meta": {"images": [{"type": "proguard", "uuid": uuid}]}
         });
-        store_event(
+        crate::common::store_event(
             ingest.path(),
+            project_id,
             &event_id,
             &serde_json::to_vec(&event).unwrap(),
         )
@@ -446,16 +428,7 @@ async fn legacy_upload(
     .into_bytes();
     body.extend(zip);
     body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
-
-    let (provider, config_data) = sourcemap_app_data(&db.pool, config);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(config_data)
-            .app_data(web::Data::new(Arc::clone(&provider)))
-            .configure(routes::sourcemaps::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
     let req = test::TestRequest::post()
         .uri(&format!("/api/0/projects/my-org/{slug}/files/dsyms/"))
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -478,7 +451,7 @@ async fn legacy_upload_queues_a_proguard_mapping() {
     let project_id = project(&db, "difs-legacy").await;
     let zip = zip_of(&[(format!("proguard/{MAPPING_UUID}.txt"), MAPPING)]);
 
-    let resp = legacy_upload(&db, &token, "difs-legacy", &create_test_config(), &zip).await;
+    let resp = legacy_upload(&db, &token, "difs-legacy", &crate::common::config(), &zip).await;
     assert_eq!(resp.status(), 201);
     let difs: Value = test::read_body_json(resp).await;
     assert_eq!(difs[0]["debugId"], MAPPING_UUID);
@@ -556,8 +529,8 @@ async fn an_executable_does_not_replace_its_dsym_symcache() {
     let token = create_test_token(&db.pool).await;
     let project_id = project(&db, "difs-exe").await;
     let symcache_file = || async {
-        let (id,): (String,) = sqlx::query_as(
-            "SELECT CAST(file_id AS TEXT) FROM source_file_metadata
+        let (id,): (uuid::Uuid,) = sqlx::query_as(
+            "SELECT file_id FROM source_file_metadata
              WHERE project_id = $1 AND file_type = 'symcache'",
         )
         .bind(project_id)
@@ -595,7 +568,7 @@ async fn an_executable_does_not_replace_its_dsym_symcache() {
 /// stored: symbolicated before grouping, so the issue is named after it.
 #[actix_web::test]
 async fn digest_symbolicates_an_ios_crash() {
-    use rustrak::ingest::{store_event, EventMetadata};
+    use rustrak::ingest::EventMetadata;
 
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
@@ -636,8 +609,9 @@ async fn digest_symbolicates_an_ios_crash() {
         }]}
     });
     let ingest = tempfile::TempDir::new().unwrap();
-    store_event(
+    crate::common::store_event(
         ingest.path(),
+        project_id,
         &event_id,
         &serde_json::to_vec(&event).unwrap(),
     )
@@ -649,12 +623,7 @@ async fn digest_symbolicates_an_ios_crash() {
         ingested_at: chrono::Utc::now(),
         remote_addr: None,
     };
-    let rate_limit = rustrak::config::RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
+    let rate_limit = crate::common::rate_limit();
     crate::common::process_error_event(&db.pool, &metadata, ingest.path(), &rate_limit, provider)
         .await
         .expect("digest must succeed");
@@ -763,7 +732,7 @@ async fn a_legacy_reupload_of_a_replaced_mapping_is_queued() {
             &db,
             &token,
             "difs-legacy-replaced",
-            &create_test_config(),
+            &crate::common::config(),
             &zip,
         )
         .await;
@@ -775,7 +744,7 @@ async fn a_legacy_reupload_of_a_replaced_mapping_is_queued() {
         &db,
         &token,
         "difs-legacy-replaced",
-        &create_test_config(),
+        &crate::common::config(),
         &zip,
     )
     .await;
@@ -828,10 +797,10 @@ async fn a_replaced_source_bundle_is_assembled_again() {
 async fn stored_checksum(db: &TestDb, project_id: i32, uuid: &str, file_type: &str) -> String {
     sqlx::query_scalar(
         "SELECT f.checksum FROM source_file_metadata m JOIN source_file f ON f.id = m.file_id
-         WHERE m.project_id = $1 AND CAST(m.debug_id AS TEXT) = $2 AND m.file_type = $3",
+         WHERE m.project_id = $1 AND m.debug_id = $2 AND m.file_type = $3",
     )
     .bind(project_id)
-    .bind(uuid)
+    .bind(uuid::Uuid::parse_str(uuid).unwrap())
     .bind(file_type)
     .fetch_one(&db.pool)
     .await
@@ -876,7 +845,7 @@ async fn legacy_upload_limits_the_whole_expanded_zip() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     project(&db, "difs-legacy-bomb").await;
-    let mut config = create_test_config();
+    let mut config = crate::common::config();
     config.max_chunk_size_bytes = 1024; // 64 KiB for the upload
     let mapping = vec![b' '; 40 * 1024];
     let zip = zip_of(&[

@@ -1,12 +1,17 @@
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-use crate::auth::rbac::{Access, Action, Assignment, Grants, Resource, Scope};
 use crate::db::{Db, DbPool};
-use crate::error::{AppError, AppResult};
-use crate::models::{Permission, PersonalAccess, Role, RoleAssignment};
+use crate::error::{AppError, AppResult, FieldErrorCode};
+use crate::models::rbac::{Access, Action, Assignment, Grants, Resource, Scope};
+use crate::models::{Permission, PersonalAccess, Role, RoleAssignment, UserRole};
 
 pub struct RoleService;
+
+/// The refusal of handing out access the caller does not hold.
+pub fn beyond_your_own() -> AppError {
+    AppError::Forbidden("You cannot grant permissions you do not hold".to_string())
+}
 
 type RoleRow = (i32, String, String, DateTime<Utc>, i64);
 
@@ -106,6 +111,37 @@ impl RoleService {
                 created_at,
             })
             .collect())
+    }
+
+    /// Refuses a change of roles beyond `access`: every role given (one of the
+    /// shared list) and every role taken away (anyone's) must be covered where
+    /// it applies. Pairs are `(role_id, project_id)`; `field` names the input
+    /// an unknown role came from.
+    pub async fn check_grantable(
+        pool: &DbPool,
+        access: &Access,
+        give: &[(i32, Option<i32>)],
+        take: &[(i32, Option<i32>)],
+        field: &'static str,
+    ) -> AppResult<()> {
+        let shared = Self::list(pool).await?;
+        let all = if take.is_empty() {
+            Vec::new()
+        } else {
+            Self::list_all(pool).await?
+        };
+        let given = give.iter().map(|&(id, scope)| (&shared, id, scope));
+        let taken = take.iter().map(|&(id, scope)| (&all, id, scope));
+        for (roles, id, scope) in given.chain(taken) {
+            let role = roles.iter().find(|r| r.id == id).ok_or_else(|| {
+                AppError::Validation(format!("Unknown role {id}"))
+                    .with_field(field, FieldErrorCode::Invalid)
+            })?;
+            if !access.covers(&role.grants(), scope) {
+                return Err(beyond_your_own());
+            }
+        }
+        Ok(())
     }
 
     pub async fn get(pool: &DbPool, id: i32) -> AppResult<Role> {
@@ -371,7 +407,7 @@ impl RoleService {
             .bind(user_id)
             .fetch_optional(pool)
             .await?;
-        if role.is_some_and(|(r,)| r == "admin") {
+        if role.is_some_and(|(r,)| UserRole::from_db(&r) == UserRole::Admin) {
             return Ok(Access::new(vec![Assignment {
                 project_id: None,
                 grants: Grants::all(),

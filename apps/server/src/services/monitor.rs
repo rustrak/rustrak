@@ -11,6 +11,7 @@ use chrono::{DateTime, Duration, DurationRound, Utc};
 use sqlx::types::Json;
 use uuid::Uuid;
 
+use crate::db::dialect::epoch;
 use crate::db::{begin_write, Db, DbPool};
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::monitor::{
@@ -20,8 +21,8 @@ use crate::models::monitor::{
     MonitorStatsBucket, UpdateMonitor, MAX_MAX_RUNTIME,
 };
 use crate::models::Product;
+use crate::protocol::clamp;
 use crate::services::hash_grouping_key;
-use crate::services::scope::epoch;
 
 type Tx<'a> = sqlx::Transaction<'a, Db>;
 
@@ -421,7 +422,6 @@ impl MonitorService {
     ) -> AppResult<(Vec<CheckInResponse>, i64)> {
         let monitor = find_monitor(pool, project_id, slug).await?;
         let page = page.max(1);
-        let per_page = per_page.clamp(1, 100);
 
         let (total,): (i64,) = sqlx::query_as(
             r#"
@@ -612,10 +612,6 @@ async fn crons_off(tx: &mut Tx<'_>, project_id: i32) -> AppResult<bool> {
 
 fn not_found(slug: &str) -> AppError {
     AppError::NotFound(format!("Monitor {slug} not found"))
-}
-
-fn clamp(s: &str, max_chars: usize) -> String {
-    s.chars().take(max_chars).collect()
 }
 
 async fn find_monitor(pool: &DbPool, project_id: i32, slug: &str) -> AppResult<MonitorRow> {

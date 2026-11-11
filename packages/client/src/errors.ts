@@ -94,8 +94,8 @@ export type RustrakError =
    * Any status below 500 that no other member claims. The catch-all that keeps
    * the union closed but total.
    *
-   * Not only 4xx: a 3xx that reached the error path (a redirect ky did not
-   * follow), a 408, an unenumerated 4xx, and an opaque `status: 0` all land
+   * Not only 4xx: a 3xx that reached the error path (a redirect `fetch` did
+   * not follow), a 408, an unenumerated 4xx, and an opaque `status: 0` all land
    * here. `status` is the field to read; `kind` only says "no dedicated
    * handling exists for this one".
    */
@@ -116,8 +116,8 @@ export type RustrakError =
    *
    * `message` is always {@link SERVER_ERROR_MESSAGE}: the server's body is
    * discarded at construction, inside the client, so no consumer can leak a
-   * connection string or a filesystem path into a UI. `incidentId` is the
-   * forward-compatible slot for a correlation id the server does not send yet.
+   * connection string or a filesystem path into a UI. `incidentId` names the
+   * server log line that holds what was discarded, when the body carries one.
    */
   | {
       readonly kind: 'server_error';
@@ -155,7 +155,6 @@ export type RustrakError =
    */
   | { readonly kind: 'invalid_response'; readonly message: string };
 
-/** The `kind` discriminant, useful for exhaustive `switch` in consumers. */
 export type RustrakErrorKind = RustrakError['kind'];
 
 /**
@@ -175,10 +174,10 @@ export const FIELD_ERROR_CODES = [
   'already_exists',
   'too_short',
   'too_long',
+  'incorrect',
   'custom',
 ] as const;
 
-/** The `code` of a {@link FieldError}. */
 export type FieldErrorCode = (typeof FIELD_ERROR_CODES)[number];
 
 /**
@@ -228,16 +227,22 @@ export const NETWORK_ERROR_MESSAGE = 'The request could not reach the server.';
 export const TIMEOUT_ERROR_MESSAGE = 'The request timed out.';
 
 /**
- * Whether retrying the same call could plausibly succeed.
- *
- * `network` and `server_error` are transient by nature; `rate_limited` clears
- * once its window rolls over. Everything else is deterministic: the same
- * request will fail the same way.
+ * Statuses where the same request may well succeed a moment later. The one
+ * rule behind {@link isRetryable} and the transport's automatic retries.
+ */
+export const TRANSIENT_STATUSES: ReadonlySet<number> = new Set([
+  408, 429, 500, 502, 503, 504,
+]);
+
+/**
+ * Whether retrying the same call could plausibly succeed: a request that never
+ * got a response, or a transient status. A `rate_limited` error says how long
+ * to wait in `retryAfter`. Everything else is deterministic: the same request
+ * will fail the same way.
  */
 export function isRetryable(error: RustrakError): boolean {
   return (
     error.kind === 'network' ||
-    error.kind === 'server_error' ||
-    error.kind === 'rate_limited'
+    ('status' in error && TRANSIENT_STATUSES.has(error.status))
   );
 }

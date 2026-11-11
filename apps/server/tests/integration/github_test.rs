@@ -2,14 +2,11 @@
 //! loopback inside the test and records every call Rustrak makes to it.
 
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::cookie::Key;
 use actix_web::{test, web, App, HttpRequest, HttpResponse, HttpServer};
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
+use rustrak::config::{Config, DashboardConfig};
 use rustrak::models::github::{CodeMapping, GitHubApp};
 use rustrak::models::CreateProject;
-use rustrak::routes;
 use rustrak::services::github::GitHubService;
 use rustrak::services::grouping::DenormalizedFields;
 use rustrak::services::{AuthTokenService, IssueService, ProjectService};
@@ -19,10 +16,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const KEY: &str = include_str!("../fixtures/github_app_test_key.txt");
-
-// =============================================================================
-// A fake GitHub
-// =============================================================================
 
 #[derive(Clone, Debug)]
 struct Call {
@@ -61,17 +54,12 @@ impl FakeGitHub {
 
     /// Waits for a call Rustrak makes in the background.
     async fn wait_for(&self, method: &str, path: &str) -> Call {
-        for _ in 0..50 {
-            if let Some(call) = self
-                .calls()
+        crate::common::eventually(|| async {
+            self.calls()
                 .into_iter()
                 .find(|c| c.method == method && c.path == path)
-            {
-                return call;
-            }
-            actix_web::rt::time::sleep(Duration::from_millis(20)).await;
-        }
-        panic!("GitHub never received {method} {path}: {:?}", self.calls());
+        })
+        .await
     }
 }
 
@@ -98,6 +86,9 @@ async fn answer(
             "webhook_secret": "whs", "pem": KEY, "html_url": "https://github.com/apps/rustrak-test",
             "owner": { "login": "acme" },
         })),
+        ("POST", "/app-manifests/incomplete/conversions") => {
+            HttpResponse::Created().json(json!({ "id": 7, "slug": "rustrak-test" }))
+        }
         // An installation removed on GitHub whose `deleted` webhook never came.
         ("POST", "/app/installations/13/access_tokens") => {
             HttpResponse::NotFound().json(json!({ "message": "Not Found" }))
@@ -239,67 +230,11 @@ async fn answer(
     }
 }
 
-// =============================================================================
-// Rustrak under test
-// =============================================================================
-
 fn test_config() -> Config {
     Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
         public_url: Some("https://rustrak.example.com".to_string()),
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+        ..crate::common::config()
     }
-}
-
-macro_rules! app {
-    ($db:expr) => {
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new($db.pool.clone()))
-                .app_data(web::Data::new(test_config()))
-                .wrap(
-                    SessionMiddleware::builder(CookieSessionStore::default(), Key::generate())
-                        .cookie_secure(false)
-                        .build(),
-                )
-                .configure(routes::github::configure)
-                .configure(routes::issues::configure),
-        )
-        .await
-    };
 }
 
 async fn token(db: &TestDb) -> String {
@@ -390,16 +325,12 @@ async fn issue(db: &TestDb, project_id: i32, culprit_file: &str) -> rustrak::mod
     .unwrap()
 }
 
-// =============================================================================
-// Connecting the app
-// =============================================================================
-
 #[actix_web::test]
 async fn status_reports_no_app_until_one_is_connected() {
     let db = TestDb::new().await;
     let github = FakeGitHub::start().await;
     let token = token(&db).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/github")
@@ -432,7 +363,11 @@ async fn manifest_flow_creates_the_app() {
     let db = TestDb::new().await;
     let github = FakeGitHub::start().await;
     let token = token(&db).await;
-    let app = app!(db);
+    let config = Config {
+        github_api_url: github.url.clone(),
+        ..test_config()
+    };
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/api/github/manifest")
@@ -456,7 +391,8 @@ async fn manifest_flow_creates_the_app() {
         "https://rustrak.example.com/api/github/callback"
     );
 
-    // A callback whose state is not the one handed out is refused.
+    // A callback whose state is not the one handed out is refused, and
+    // spends the state: it is one-shot, kept server-side with the session.
     let req = test::TestRequest::get()
         .uri("/api/github/callback?code=abc&state=forged")
         .insert_header(bearer(&token))
@@ -464,10 +400,31 @@ async fn manifest_flow_creates_the_app() {
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 400);
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/github/callback?code=abc&state={state}"))
+        .insert_header(bearer(&token))
+        .cookie(cookie)
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 400);
+
+    let req = test::TestRequest::post()
+        .uri("/api/github/manifest")
+        .insert_header(bearer(&token))
+        .set_json(json!({ "organization": "acme" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let cookie = resp.response().cookies().next().unwrap().into_owned();
+    let body: Value = test::read_body_json(resp).await;
+    let state = body["action_url"]
+        .as_str()
+        .unwrap()
+        .split("state=")
+        .nth(1)
+        .unwrap()
+        .to_string();
 
     // The real one trades the code for the app's credentials, at the API
     // `GITHUB_API_URL` names (api.github.com when unset).
-    std::env::set_var("GITHUB_API_URL", &github.url);
     let req = test::TestRequest::get()
         .uri(&format!("/api/github/callback?code=abc&state={state}"))
         .insert_header(bearer(&token))
@@ -484,6 +441,47 @@ async fn manifest_flow_creates_the_app() {
     assert_eq!(stored.webhook_secret, "whs");
 }
 
+/// GitHub's answer without the app's secrets saves nothing: an app with
+/// empty secrets could never authenticate.
+#[actix_web::test]
+async fn an_incomplete_manifest_answer_saves_no_app() {
+    let db = TestDb::new().await;
+    let github = FakeGitHub::start().await;
+    let token = token(&db).await;
+    let config = Config {
+        github_api_url: github.url.clone(),
+        ..test_config()
+    };
+    let app = crate::common::app_with_config(&db.pool, config).await;
+
+    let req = test::TestRequest::post()
+        .uri("/api/github/manifest")
+        .insert_header(bearer(&token))
+        .set_json(json!({ "organization": "acme" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let cookie = resp.response().cookies().next().unwrap().into_owned();
+    let body: Value = test::read_body_json(resp).await;
+    let state = body["action_url"]
+        .as_str()
+        .unwrap()
+        .split("state=")
+        .nth(1)
+        .unwrap()
+        .to_string();
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/api/github/callback?code=incomplete&state={state}"
+        ))
+        .insert_header(bearer(&token))
+        .cookie(cookie)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+    assert!(GitHubService::app(&db.pool).await.unwrap().is_none());
+}
+
 #[actix_web::test]
 async fn manifest_sends_the_browser_to_the_dashboard_host() {
     let db = TestDb::new().await;
@@ -496,18 +494,7 @@ async fn manifest_sends_the_browser_to_the_dashboard_host() {
         },
         ..base
     };
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::generate())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::github::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/api/github/manifest")
@@ -539,7 +526,7 @@ async fn installing_the_app_records_the_installation() {
     let token = token(&db).await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/github/installed?installation_id=99&setup_action=install")
@@ -558,7 +545,7 @@ async fn disconnecting_forgets_the_app_and_project_repositories() {
     let token = token(&db).await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::delete()
         .uri("/api/github")
@@ -572,10 +559,6 @@ async fn disconnecting_forgets_the_app_and_project_repositories() {
         .is_none());
 }
 
-// =============================================================================
-// A project's repository
-// =============================================================================
-
 #[actix_web::test]
 async fn repositories_lists_what_the_installations_reach() {
     let db = TestDb::new().await;
@@ -583,7 +566,7 @@ async fn repositories_lists_what_the_installations_reach() {
     let token = token(&db).await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -607,7 +590,7 @@ async fn repositories_reads_every_page_of_a_large_installation() {
     GitHubService::upsert_installation(&db.pool, 50, "big", "Organization")
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -639,7 +622,7 @@ async fn repositories_skip_an_installation_github_no_longer_has() {
     GitHubService::upsert_installation(&db.pool, 13, "gone", "User")
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -661,7 +644,7 @@ async fn project_repository_refuses_a_name_that_is_not_owner_slash_repo() {
     let token = token(&db).await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     for name in [
         "../user",
@@ -690,7 +673,7 @@ async fn project_repository_round_trip() {
     GitHubService::delete_project_repository(&db.pool, project.id)
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let uri = format!("/api/projects/{}/github", project.id);
 
     let req = test::TestRequest::get()
@@ -744,7 +727,7 @@ async fn codeowners_sync_counts_the_rules() {
     let token = token(&db).await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::post()
         .uri(&format!("/api/projects/{}/github/codeowners", project.id))
@@ -821,10 +804,6 @@ async fn suspect_commits_look_past_a_busy_window() {
         assert_eq!(found.first().map(|c| c.sha.as_str()), Some(name));
     }
 }
-
-// =============================================================================
-// Issues
-// =============================================================================
 
 async fn link_12(db: &TestDb, issue_id: uuid::Uuid) -> rustrak::models::github::IssueLink {
     GitHubService::add_link(
@@ -1107,7 +1086,7 @@ async fn creating_a_github_issue_links_it() {
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let base = format!("/api/projects/{}/issues/{}/github", project.id, issue.id);
 
     let req = test::TestRequest::post()
@@ -1144,7 +1123,7 @@ async fn creating_a_github_issue_links_it() {
 /// labels add to the instance's, its non-empty texts replace them.
 async fn templates(db: &TestDb, project_id: i32, project_template: Value) {
     let token = token(db).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let req = test::TestRequest::put()
         .uri("/api/github/issue-template")
         .insert_header(bearer(&token))
@@ -1175,7 +1154,7 @@ async fn a_footer_too_long_for_github_is_refused() {
     let token = token(&db).await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let footer = "x".repeat(10_001);
 
     let req = test::TestRequest::put()
@@ -1230,7 +1209,7 @@ async fn the_draft_carries_the_event_and_both_templates() {
     let issue = IssueService::assign(&db.pool, issue_id, Some(alice.id), Some("user"))
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -1274,7 +1253,7 @@ async fn a_github_issue_opens_with_the_templates_unless_the_request_says_otherwi
     )
     .await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let uri = format!(
         "/api/projects/{}/issues/{}/github/issues",
         project.id, issue.id
@@ -1332,7 +1311,7 @@ async fn a_pull_request_cannot_be_linked() {
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::post()
         .uri(&format!(
@@ -1361,7 +1340,7 @@ async fn linking_an_existing_issue_comments_back_and_refuses_duplicates() {
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let uri = format!(
         "/api/projects/{}/issues/{}/github/links",
         project.id, issue.id
@@ -1435,7 +1414,7 @@ async fn comments_reach_github_without_the_authors_email() {
     .await
     .unwrap()
     .token;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let comment = |text: &str| {
         test::TestRequest::post()
             .uri(&format!(
@@ -1449,16 +1428,17 @@ async fn comments_reach_github_without_the_authors_email() {
     let posted = |text: &'static str| {
         let github = &github;
         async move {
-            for _ in 0..50 {
-                if let Some(c) = github.calls().into_iter().find(|c| {
-                    c.path == "/repos/acme/web/issues/12/comments"
-                        && c.body["body"].as_str().unwrap_or("").contains(text)
-                }) {
-                    return c.body["body"].as_str().unwrap().to_string();
-                }
-                actix_web::rt::time::sleep(Duration::from_millis(20)).await;
-            }
-            panic!("comment never mirrored: {:?}", github.calls());
+            crate::common::eventually(|| async {
+                github
+                    .calls()
+                    .into_iter()
+                    .find(|c| {
+                        c.path == "/repos/acme/web/issues/12/comments"
+                            && c.body["body"].as_str().unwrap_or("").contains(text)
+                    })
+                    .map(|c| c.body["body"].as_str().unwrap().to_string())
+            })
+            .await
         }
     };
 
@@ -1526,7 +1506,7 @@ async fn resolving_commenting_and_assigning_mirror_onto_linked_issues() {
     connect(&db, &github, project.id).await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
     link_12(&db, issue.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let uri = format!("/api/projects/{}/issues/{}", project.id, issue.id);
 
     let req = test::TestRequest::patch()
@@ -1571,17 +1551,14 @@ async fn resolving_commenting_and_assigning_mirror_onto_linked_issues() {
         .set_json(json!({ "assigned_to": user.id, "assignee_type": "user" }))
         .to_request();
     assert!(test::call_service(&app, req).await.status().is_success());
-    for _ in 0..50 {
-        if github
+    crate::common::eventually(|| async {
+        github
             .calls()
             .iter()
             .any(|c| c.method == "PATCH" && c.body["assignees"] == json!(["octocat"]))
-        {
-            return;
-        }
-        actix_web::rt::time::sleep(Duration::from_millis(20)).await;
-    }
-    panic!("assignee never mirrored: {:?}", github.calls());
+            .then_some(())
+    })
+    .await;
 }
 
 #[actix_web::test]
@@ -1623,7 +1600,7 @@ async fn issue_code_block_names_suspect_commits_and_owners() {
         .await
         .unwrap();
     }
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -1647,7 +1624,7 @@ async fn bulk_resolving_closes_linked_issues_of_this_project_only() {
     connect(&db, &github, project.id).await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
     link_12(&db, issue.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     // Another project's issue, resolved while its GitHub issue stayed open.
     let other = ProjectService::create(
@@ -1705,10 +1682,6 @@ async fn bulk_resolving_closes_linked_issues_of_this_project_only() {
         .any(|c| c.path == "/repos/acme/api/issues/5"));
 }
 
-// =============================================================================
-// Webhooks
-// =============================================================================
-
 fn webhook(event: &str, payload: &Value, secret: &str) -> test::TestRequest {
     use hmac::{Hmac, KeyInit, Mac};
     let body = payload.to_string();
@@ -1739,7 +1712,7 @@ async fn webhooks_with_a_wrong_signature_are_refused() {
     let github = FakeGitHub::start().await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = webhook("issues", &github_issue_event("closed", "ana"), "wrong").to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 401);
@@ -1753,7 +1726,7 @@ async fn closing_and_reopening_on_github_follows_through() {
     connect(&db, &github, project.id).await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
     link_12(&db, issue.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = webhook("issues", &github_issue_event("closed", "ana"), "whs").to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 204);
@@ -1797,7 +1770,7 @@ async fn closing_one_linked_github_issue_closes_the_others() {
     )
     .await
     .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = webhook("issues", &github_issue_event("closed", "ana"), "whs").to_request();
     test::call_service(&app, req).await;
@@ -1822,7 +1795,7 @@ async fn a_disconnected_project_ignores_its_old_github_issues() {
     GitHubService::delete_project_repository(&db.pool, project.id)
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let req = webhook("issues", &github_issue_event("closed", "ana"), "whs").to_request();
     test::call_service(&app, req).await;
@@ -1904,7 +1877,7 @@ async fn assigning_one_linked_github_issue_assigns_the_others() {
         .execute(&db.pool)
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let mut assigned = github_issue_event("assigned", "ana");
     assigned["issue"]["assignees"] = json!([{ "login": "octocat" }, { "login": "hubot" }]);
@@ -1952,7 +1925,7 @@ async fn an_assignment_leaves_its_own_github_issue_alone_however_the_link_spells
         .execute(&db.pool)
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let mut assigned = github_issue_event("assigned", "ana");
     assigned["issue"]["assignees"] = json!([{ "login": "octocat" }, { "login": "hubot" }]);
@@ -1988,7 +1961,7 @@ async fn github_comments_and_assignees_come_back_into_rustrak() {
         .execute(&db.pool)
         .await
         .unwrap();
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let mut comment = github_issue_event("created", "ana");
     comment["comment"] = json!({ "body": "Looking into it", "user": { "login": "ana" },
@@ -2042,7 +2015,7 @@ async fn webhooks_larger_than_the_default_body_limit_are_read() {
     let github = FakeGitHub::start().await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     // `installation.created` carries every repository; a large account
     // passes actix's 256 KiB default.
@@ -2066,7 +2039,7 @@ async fn a_push_with_fixes_resolves_the_issue_and_keeps_the_commit() {
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
     let issue = issue(&db, project.id, "/app/lib/db.ts").await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     link_12(&db, issue.id).await;
     // GitHub renamed the default branch since the project was connected
@@ -2166,7 +2139,7 @@ async fn uninstalling_the_app_on_github_removes_the_installation() {
     let github = FakeGitHub::start().await;
     let project = project(&db).await;
     connect(&db, &github, project.id).await;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let payload = json!({ "action": "deleted", "installation": { "id": 99, "account": { "login": "acme" } } });
     test::call_service(&app, webhook("installation", &payload, "whs").to_request()).await;
@@ -2175,10 +2148,6 @@ async fn uninstalling_the_app_on_github_removes_the_installation() {
         .unwrap()
         .is_empty());
 }
-
-// =============================================================================
-// New issues
-// =============================================================================
 
 /// Digests one `TypeError` event, always the same group, in `environment`.
 async fn digest(db: &TestDb, project_id: i32, environment: &str) {
@@ -2200,8 +2169,9 @@ async fn digest_id(db: &TestDb, project_id: i32, environment: &str, event_id: &s
         .with_exception("TypeError", "x is undefined")
         .with_environment(environment)
         .build();
-    rustrak::ingest::store_event(
+    crate::common::store_event(
         ingest.path(),
+        project_id,
         &event_id,
         &serde_json::to_vec(&event).unwrap(),
     )
@@ -2299,17 +2269,14 @@ async fn an_automatic_github_issue_github_refused_is_tried_again() {
         .fetch_one(&db.pool)
         .await
         .unwrap();
-    for _ in 0..100 {
-        if !GitHubService::links(&db.pool, issue.0)
+    crate::common::eventually(|| async {
+        (!GitHubService::links(&db.pool, issue.0)
             .await
             .unwrap()
-            .is_empty()
-        {
-            return;
-        }
-        actix_web::rt::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("never linked: {:?}", github.calls());
+            .is_empty())
+        .then_some(())
+    })
+    .await;
 }
 
 #[actix_web::test]
@@ -2330,21 +2297,21 @@ async fn an_automatic_github_issue_whose_answer_was_lost_is_linked_not_opened_ag
         .fetch_one(&db.pool)
         .await
         .unwrap();
-    for _ in 0..100 {
-        let links = GitHubService::links(&db.pool, issue.0).await.unwrap();
-        if let Some(link) = links.first() {
-            assert_eq!(link.number, 9);
-            let opened = github
-                .calls()
-                .iter()
-                .filter(|c| c.method == "POST" && c.path == "/repos/acme/lost/issues")
-                .count();
-            assert_eq!(opened, 1);
-            return;
-        }
-        actix_web::rt::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("never linked: {:?}", github.calls());
+    let link = crate::common::eventually(|| async {
+        GitHubService::links(&db.pool, issue.0)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+    })
+    .await;
+    assert_eq!(link.number, 9);
+    let opened = github
+        .calls()
+        .iter()
+        .filter(|c| c.method == "POST" && c.path == "/repos/acme/lost/issues")
+        .count();
+    assert_eq!(opened, 1);
 }
 
 #[actix_web::test]
@@ -2536,10 +2503,6 @@ async fn a_replayed_first_event_stored_before_counts_were_kept_opens_the_github_
     github.wait_for("POST", "/repos/acme/web/issues").await;
 }
 
-// =============================================================================
-// A person's GitHub login
-// =============================================================================
-
 #[actix_web::test]
 async fn people_set_their_own_github_login() {
     let db = TestDb::new().await;
@@ -2559,7 +2522,7 @@ async fn people_set_their_own_github_login() {
     .await
     .unwrap()
     .token;
-    let app = app!(db);
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
 
     let get = || {
         test::TestRequest::get()
@@ -2618,4 +2581,24 @@ async fn people_set_their_own_github_login() {
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body["login"], Value::Null);
+}
+
+#[actix_web::test]
+async fn manifest_marks_an_invalid_organization_on_its_field() {
+    let db = TestDb::new().await;
+    let token = token(&db).await;
+    let app = crate::common::app_with_config(&db.pool, test_config()).await;
+
+    let req = test::TestRequest::post()
+        .uri("/api/github/manifest")
+        .insert_header(bearer(&token))
+        .set_json(json!({ "organization": "not an org" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(
+        body["error"]["fields"],
+        json!([{ "field": "organization", "code": "invalid" }])
+    );
 }

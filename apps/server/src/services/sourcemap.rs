@@ -9,18 +9,9 @@ use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::source_file::{AssembleResponse, AssemblyJob, SourceMapFile, DIF_JOB_KIND};
 use crate::services::sourcemap_store::SourceMapStore;
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/// Default maximum size of a single chunk in bytes (10 MB).
-pub const DEFAULT_MAX_CHUNK_SIZE_BYTES: usize = 10 * 1024 * 1024;
-
-// ---------------------------------------------------------------------------
-// SourceMapEntry + SourceMapProvider trait
-// ---------------------------------------------------------------------------
+use crate::workers::sourcemap_assembly::AssemblyQueue;
 
 pub struct SourceMapEntry {
     pub data: Bytes,
@@ -68,10 +59,6 @@ fn parse_sourcemap(debug_id: &str, data: &[u8]) -> Option<sourcemap::DecodedMap>
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// ParsedMapCache: parsed source maps shared across events
-// ---------------------------------------------------------------------------
 
 /// Keyed by the store key, which is the SHA-1 of the file's contents, so a
 /// re-upload under the same debug_id can never hit a stale parse. Bounded by
@@ -188,25 +175,18 @@ impl ParsedMapCache {
     }
 }
 
-// ---------------------------------------------------------------------------
-// DbSourceMapProvider (concrete implementation)
-// ---------------------------------------------------------------------------
-
 pub struct DbSourceMapProvider {
     pool: DbPool,
     store: Arc<dyn SourceMapStore>,
     cache: ParsedMapCache,
 }
 
-/// Default budget for parsed source maps kept across events.
-pub const DEFAULT_SOURCEMAP_CACHE_BYTES: usize = 64 * 1024 * 1024;
-
 impl DbSourceMapProvider {
     pub fn new(pool: DbPool, store: Arc<dyn SourceMapStore>) -> Self {
         Self {
             pool,
             store,
-            cache: ParsedMapCache::new(DEFAULT_SOURCEMAP_CACHE_BYTES),
+            cache: ParsedMapCache::new(crate::config::DEFAULT_SOURCEMAP_CACHE_BYTES),
         }
     }
 
@@ -224,19 +204,13 @@ impl DbSourceMapProvider {
         project_id: i32,
         debug_id: &str,
         file_type: &str,
-    ) -> AppResult<Option<(String, String)>> {
-        // 1. Parse debug_id as UUID for typed query
-        let debug_uuid = match Uuid::parse_str(debug_id) {
-            Ok(u) => u,
-            Err(_) => return Ok(None),
+    ) -> AppResult<Option<(Uuid, String)>> {
+        let Ok(debug_uuid) = Uuid::parse_str(debug_id) else {
+            return Ok(None);
         };
-
-        // 2. Query source_file_metadata joined with source_file
-        // Returns (sfm_id_str, storage_path) — backend-agnostic String types
-        #[cfg(feature = "postgres")]
-        let row: Option<(String, String)> = sqlx::query_as(
+        let row: Option<(Uuid, String)> = sqlx::query_as(
             r#"
-            SELECT sfm.id::text, sf.storage_path
+            SELECT sfm.id, sf.storage_path
             FROM source_file_metadata sfm
             JOIN source_file sf ON sf.id = sfm.file_id
             WHERE sfm.project_id = $1 AND sfm.debug_id = $2 AND sfm.file_type = $3
@@ -247,45 +221,19 @@ impl DbSourceMapProvider {
         .bind(file_type)
         .fetch_optional(&self.pool)
         .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let row: Option<(String, String)> = sqlx::query_as(
-            r#"
-            SELECT sfm.id, sf.storage_path
-            FROM source_file_metadata sfm
-            JOIN source_file sf ON sf.id = sfm.file_id
-            WHERE sfm.project_id = $1 AND sfm.debug_id = $2 AND sfm.file_type = $3
-            "#,
-        )
-        .bind(project_id)
-        .bind(debug_uuid.to_string())
-        .bind(file_type)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        let (sfm_id, storage_path) = match row {
-            Some(r) => r,
-            None => return Ok(None),
+        let Some((sfm_id, storage_path)) = row else {
+            return Ok(None);
         };
 
-        // 3. Increment times_used (best-effort, fire-and-forget)
-        // Parse the string sfm_id back to UUID for the UPDATE (works for both backends).
-        if let Ok(sfm_uuid) = Uuid::parse_str(&sfm_id) {
-            #[cfg(feature = "postgres")]
-            let _ = sqlx::query(
-                "UPDATE source_file_metadata SET times_used = times_used + 1 WHERE id = $1",
-            )
-            .bind(sfm_uuid)
-            .execute(&self.pool)
-            .await;
-
-            #[cfg(not(feature = "postgres"))]
-            let _ = sqlx::query(
-                "UPDATE source_file_metadata SET times_used = times_used + 1 WHERE id = $1",
-            )
-            .bind(sfm_uuid.to_string())
-            .execute(&self.pool)
-            .await;
+        // times_used is a best-effort counter: a failed bump never fails the
+        // lookup.
+        if let Err(e) =
+            sqlx::query("UPDATE source_file_metadata SET times_used = times_used + 1 WHERE id = $1")
+                .bind(sfm_id)
+                .execute(&self.pool)
+                .await
+        {
+            log::debug!("Could not count a use of source map {sfm_id}: {e}");
         }
 
         Ok(Some((sfm_id, storage_path)))
@@ -351,10 +299,6 @@ impl SourceMapProvider for DbSourceMapProvider {
     }
 }
 
-// ---------------------------------------------------------------------------
-// normalize_sentry_position
-// ---------------------------------------------------------------------------
-
 /// Convert 1-indexed Sentry (lineno, colno) to 0-indexed sourcemap (line, col).
 ///
 /// Returns `None` when lineno is `None` or `Some(0)` — both mean "unmapped" in
@@ -366,55 +310,25 @@ pub fn normalize_sentry_position(lineno: Option<u32>, colno: Option<u32>) -> Opt
     }
 }
 
-// ---------------------------------------------------------------------------
-// get_missing_chunks
-// ---------------------------------------------------------------------------
-
 /// Returns checksums from `checksums` that are NOT present in the `chunk` table.
 pub async fn get_missing_chunks(pool: &DbPool, checksums: &[String]) -> AppResult<Vec<String>> {
     if checksums.is_empty() {
         return Ok(vec![]);
     }
-
-    #[cfg(feature = "postgres")]
-    {
-        let present: Vec<String> =
-            sqlx::query_scalar("SELECT checksum FROM chunk WHERE checksum = ANY($1)")
-                .bind(checksums)
-                .fetch_all(pool)
-                .await?;
-        let present_set: std::collections::HashSet<&str> =
-            present.iter().map(|s| s.as_str()).collect();
-        Ok(checksums
-            .iter()
-            .filter(|c| !present_set.contains(c.as_str()))
-            .cloned()
-            .collect())
+    let mut qb = sqlx::QueryBuilder::new("SELECT checksum FROM chunk WHERE checksum IN (");
+    let mut sep = qb.separated(", ");
+    for c in checksums {
+        sep.push_bind(c);
     }
-
-    #[cfg(not(feature = "postgres"))]
-    {
-        use sqlx::QueryBuilder;
-        let mut qb = QueryBuilder::new("SELECT checksum FROM chunk WHERE checksum IN (");
-        let mut sep = qb.separated(", ");
-        for c in checksums {
-            sep.push_bind(c);
-        }
-        qb.push(")");
-        let present: Vec<String> = qb.build_query_scalar().fetch_all(pool).await?;
-        let present_set: std::collections::HashSet<&str> =
-            present.iter().map(|s| s.as_str()).collect();
-        Ok(checksums
-            .iter()
-            .filter(|c| !present_set.contains(c.as_str()))
-            .cloned()
-            .collect())
-    }
+    qb.push(")");
+    let present: Vec<String> = qb.build_query_scalar().fetch_all(pool).await?;
+    let present: std::collections::HashSet<&str> = present.iter().map(String::as_str).collect();
+    Ok(checksums
+        .iter()
+        .filter(|c| !present.contains(c.as_str()))
+        .cloned()
+        .collect())
 }
-
-// ---------------------------------------------------------------------------
-// store_chunks
-// ---------------------------------------------------------------------------
 
 /// Upsert chunk rows into the `chunk` table, enforcing the max-chunk-size limit.
 pub async fn store_chunks(
@@ -442,10 +356,6 @@ pub async fn store_chunks(
     }
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// assemble_bundle
-// ---------------------------------------------------------------------------
 
 /// Assembles all chunks into a ZIP bundle, extracts source map files, and stores
 /// metadata in the database.
@@ -511,7 +421,6 @@ async fn assemble_bundle_inner(
     max_bundle_size_bytes: usize,
     job_id: Option<i64>,
 ) -> AppResult<()> {
-    // --- Steps 1+2: fetch + join chunk bytes, verify SHA1 ---
     let joined = join_chunks(
         pool,
         chunk_checksums,
@@ -520,7 +429,6 @@ async fn assemble_bundle_inner(
     )
     .await?;
 
-    // --- Step 3: write to temp file (non-blocking) ---
     let temp_dir = tempfile::tempdir().map_err(|e| AppError::Internal(e.to_string()))?;
     let zip_path = temp_dir.path().join("bundle.zip");
     tokio::fs::write(&zip_path, &joined)
@@ -528,7 +436,6 @@ async fn assemble_bundle_inner(
         .map_err(|e| AppError::Internal(e.to_string()))?;
     drop(joined); // free memory
 
-    // --- Steps 4+5: open ZIP + validate + extract (blocking I/O via spawn_blocking) ---
     let extract_dir = temp_dir.path().join("extracted");
     let zip_path_owned = zip_path.clone();
     let extract_dir_owned = extract_dir.clone();
@@ -577,7 +484,6 @@ async fn assemble_bundle_inner(
                 ));
             }
 
-            // Create parent dirs if needed
             if let Some(parent) = resolved.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| AppError::Internal(e.to_string()))?;
             }
@@ -594,7 +500,6 @@ async fn assemble_bundle_inner(
     .await
     .map_err(|e| AppError::Internal(format!("zip extraction panicked: {}", e)))??;
 
-    // --- Step 6: parse manifest.json ---
     let manifest_path = extract_dir.join("manifest.json");
     let manifest_bytes = tokio::fs::read(&manifest_path).await.map_err(|_| {
         AppError::Validation("manifest.json not found in artifact bundle".to_string())
@@ -604,7 +509,6 @@ async fn assemble_bundle_inner(
 
     let files = manifest_files(&manifest);
 
-    // --- Steps 7+8: process each file entry, then delete chunks ---
     // We run in a transaction for the DB writes; store writes are outside (idempotent CAS).
     // Write-first (INSERT opens the tx): deferred BEGIN deliberate — the first
     // entry's disk read + CAS store run before the first INSERT, without the
@@ -619,7 +523,6 @@ async fn assemble_bundle_inner(
             None => continue,
         };
 
-        // Step 7: skip entries without a debug-id header
         let debug_id_str = match headers
             .get("debug-id")
             .or_else(|| headers.get("debug_id"))
@@ -629,7 +532,6 @@ async fn assemble_bundle_inner(
             None => continue,
         };
 
-        // Validate debug_id is a UUID
         let debug_uuid = match Uuid::parse_str(&debug_id_str) {
             Ok(u) => u,
             Err(_) => {
@@ -638,13 +540,11 @@ async fn assemble_bundle_inner(
             }
         };
 
-        // Read file_type from manifest entry's `type` field verbatim
         let file_type = match file_info.get("type").and_then(|t| t.as_str()) {
             Some(t) => t.to_string(),
             None => continue,
         };
 
-        // Read file bytes from extracted dir
         // file_path in manifest may start with "~/" — strip that prefix
         let relative = file_path.trim_start_matches("~/").trim_start_matches('/');
         // Guard: reject any manifest path with traversal components
@@ -742,14 +642,7 @@ pub(crate) async fn store_file(
         .await
         .map_err(|e| AppError::Internal(format!("failed to store source file: {}", e)))?;
 
-    let new_sf_id = Uuid::new_v4();
-
-    // Two-query upsert for source_file (avoids RETURNING NULL on conflict)
-    // Query A: insert (idempotent)
-    #[cfg(feature = "postgres")]
-    let new_sf_id_bind = new_sf_id;
-    #[cfg(not(feature = "postgres"))]
-    let new_sf_id_bind = new_sf_id.to_string();
+    // Insert, then select: an upsert's RETURNING is empty on conflict.
     sqlx::query(
         r#"
         INSERT INTO source_file(id, checksum, size, storage_path)
@@ -757,38 +650,17 @@ pub(crate) async fn store_file(
         ON CONFLICT(checksum) DO NOTHING
         "#,
     )
-    .bind(new_sf_id_bind)
+    .bind(Uuid::new_v4())
     .bind(&storage_key)
     .bind(file_size)
     .bind(&storage_key)
     .execute(&mut **tx)
     .await?;
-
-    // Query B: always fetch (works whether just inserted or pre-existing)
-    #[cfg(feature = "postgres")]
-    let sf_id: Uuid = sqlx::query_scalar("SELECT id FROM source_file WHERE checksum = $1")
+    let file_id: Uuid = sqlx::query_scalar("SELECT id FROM source_file WHERE checksum = $1")
         .bind(&storage_key)
         .fetch_one(&mut **tx)
         .await?;
 
-    #[cfg(not(feature = "postgres"))]
-    let sf_id: String = sqlx::query_scalar("SELECT id FROM source_file WHERE checksum = $1")
-        .bind(&storage_key)
-        .fetch_one(&mut **tx)
-        .await?;
-
-    #[cfg(not(feature = "postgres"))]
-    let sf_id = Uuid::parse_str(&sf_id).map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let new_sfm_id = Uuid::new_v4();
-    #[cfg(feature = "postgres")]
-    let (sfm_id, debug_id, file_id) = (new_sfm_id, debug_uuid, sf_id);
-    #[cfg(not(feature = "postgres"))]
-    let (sfm_id, debug_id, file_id) = (
-        new_sfm_id.to_string(),
-        debug_uuid.to_string(),
-        sf_id.to_string(),
-    );
     sqlx::query(
         r#"
         INSERT INTO source_file_metadata(id, project_id, debug_id, file_type, file_id)
@@ -796,9 +668,9 @@ pub(crate) async fn store_file(
         ON CONFLICT(project_id, debug_id, file_type) DO UPDATE SET file_id = EXCLUDED.file_id
         "#,
     )
-    .bind(sfm_id)
+    .bind(Uuid::new_v4())
     .bind(project_id)
-    .bind(debug_id)
+    .bind(debug_uuid)
     .bind(file_type)
     .bind(file_id)
     .execute(&mut **tx)
@@ -806,65 +678,67 @@ pub(crate) async fn store_file(
     Ok(())
 }
 
-/// Releases a job's chunk references, deletes the chunks no other pending or
-/// retryable job still owns, and marks a worker-owned job `ok`.
+/// The chunks a queued job assembles, in order.
+pub(crate) async fn job_chunks(pool: &DbPool, job_id: i64) -> AppResult<Vec<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT checksum FROM assembly_job_chunks WHERE job_id = $1 ORDER BY position",
+    )
+    .bind(job_id)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// Marks a worker-owned job `ok` and lets its chunks go; without a job,
+/// deletes `chunk_checksums` that no job holds.
 pub(crate) async fn finish_job(
     tx: &mut sqlx::Transaction<'_, crate::db::Db>,
     job_id: Option<i64>,
     chunk_checksums: &[String],
 ) -> AppResult<()> {
-    if let Some(job_id) = job_id {
-        sqlx::query("DELETE FROM assembly_job_chunks WHERE job_id = $1")
-            .bind(job_id)
-            .execute(&mut **tx)
-            .await?;
-    }
-
-    #[cfg(feature = "postgres")]
-    sqlx::query(
-        "DELETE FROM chunk c WHERE c.checksum = ANY($1) AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = c.checksum)",
+    let Some(job_id) = job_id else {
+        return delete_unheld_chunks(tx, chunk_checksums).await;
+    };
+    release_job_chunks(tx, job_id).await?;
+    let updated = sqlx::query(
+        "UPDATE assembly_jobs SET state = 'ok', detail = NULL, updated_at = CURRENT_TIMESTAMP \
+         WHERE id = $1 AND state = 'assembling'",
     )
-        .bind(chunk_checksums)
-        .execute(&mut **tx)
-        .await?;
-
-    #[cfg(not(feature = "postgres"))]
-    {
-        use sqlx::QueryBuilder;
-        if !chunk_checksums.is_empty() {
-            let mut qb = QueryBuilder::new("DELETE FROM chunk WHERE checksum IN (");
-            let mut sep = qb.separated(", ");
-            for c in chunk_checksums {
-                sep.push_bind(c);
-            }
-            qb.push(") AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks r WHERE r.checksum = chunk.checksum)");
-            qb.build().execute(&mut **tx).await?;
-        }
+    .bind(job_id)
+    .execute(&mut **tx)
+    .await?;
+    if updated.rows_affected() != 1 {
+        return Err(AppError::Internal(format!(
+            "assembly job {job_id} was not assembling"
+        )));
     }
+    Ok(())
+}
 
-    if let Some(job_id) = job_id {
-        #[cfg(feature = "postgres")]
-        let updated = sqlx::query(
-            "UPDATE assembly_jobs SET state = 'ok', detail = NULL, updated_at = NOW() WHERE id = $1 AND state = 'assembling'",
+/// Drops a job's hold on its chunks and deletes those no other job holds.
+pub(crate) async fn release_job_chunks(
+    tx: &mut sqlx::Transaction<'_, crate::db::Db>,
+    job_id: i64,
+) -> AppResult<()> {
+    let checksums: Vec<String> =
+        sqlx::query_scalar("DELETE FROM assembly_job_chunks WHERE job_id = $1 RETURNING checksum")
+            .bind(job_id)
+            .fetch_all(&mut **tx)
+            .await?;
+    delete_unheld_chunks(tx, &checksums).await
+}
+
+async fn delete_unheld_chunks(
+    tx: &mut sqlx::Transaction<'_, crate::db::Db>,
+    checksums: &[String],
+) -> AppResult<()> {
+    for checksum in checksums {
+        sqlx::query(
+            "DELETE FROM chunk WHERE checksum = $1 \
+             AND NOT EXISTS (SELECT 1 FROM assembly_job_chunks WHERE checksum = $1)",
         )
-        .bind(job_id)
+        .bind(checksum)
         .execute(&mut **tx)
         .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let updated = sqlx::query(
-            "UPDATE assembly_jobs SET state = 'ok', detail = NULL, updated_at = datetime('now') WHERE id = $1 AND state = 'assembling'",
-        )
-        .bind(job_id)
-        .execute(&mut **tx)
-        .await?;
-
-        if updated.rows_affected() != 1 {
-            return Err(AppError::Internal(format!(
-                "assembly job {} was not assembling",
-                job_id
-            )));
-        }
     }
     Ok(())
 }
@@ -876,10 +750,6 @@ fn manifest_files(manifest: &serde_json::Value) -> serde_json::Map<String, serde
         .cloned()
         .unwrap_or_default()
 }
-
-// ---------------------------------------------------------------------------
-// rewrite_frames
-// ---------------------------------------------------------------------------
 
 /// Rewrites stack frames in `event_data` using stored source maps.
 ///
@@ -895,7 +765,7 @@ pub async fn rewrite_frames(
     project_id: i32,
     event_data: &mut serde_json::Value,
 ) -> AppResult<()> {
-    // 1. Build code_file → debug_id_str map from debug_meta.images
+    // Build code_file → debug_id_str map from debug_meta.images
     let images_map: HashMap<String, String> = event_data
         .get("debug_meta")
         .and_then(|dm| dm.get("images"))
@@ -1010,7 +880,6 @@ async fn rewrite_frames_under(
             .unwrap_or(0);
 
         for frame_idx in 0..frame_count {
-            // 3a. Extract frame fields as owned values (no live borrow across .await)
             let filename: Option<String> = event_data[root_key]["values"][value_idx]["stacktrace"]
                 ["frames"][frame_idx]
                 .get("filename")
@@ -1036,7 +905,7 @@ async fn rewrite_frames_under(
                 .and_then(|c| c.as_u64())
                 .map(|c| c as u32);
 
-            // 3b. Resolve debug_id from code_file map.
+            // Resolve debug_id from code_file map.
             // Try abs_path first (full URL matching code_file), then filename.
             let debug_id = match abs_path
                 .as_deref()
@@ -1047,13 +916,12 @@ async fn rewrite_frames_under(
                 None => continue,
             };
 
-            // 3c+3d. Fetch and parse the source map, once per debug_id per event.
+            // Fetched and parsed once per debug_id per event.
             let Some(decoded) = load_decoded_map(provider, project_id, &debug_id, parsed).await
             else {
                 continue;
             };
 
-            // 3e. Normalize position — use let-else, NOT '?' (normalize returns Option not Result)
             let Some((norm_lineno, norm_colno)) =
                 normalize_sentry_position(frame_lineno, frame_colno)
             else {
@@ -1073,33 +941,29 @@ async fn rewrite_frames_under(
                 sourcemap::DecodedMap::Index(_) => continue,
             };
 
-            // 3f. Lookup token
             let Some(token) = map.lookup_token(norm_lineno, norm_colno) else {
                 continue;
             };
 
-            // 3g. Skip unmapped tokens
             if token.get_src_line() == u32::MAX {
                 continue;
             }
 
-            // 3h. Original file from token
             let original_file = token.get_source().unwrap_or("").to_string();
             let src_line = token.get_src_line();
             let src_col = token.get_src_col();
             let token_name = token.get_name().map(|n| n.to_string());
 
-            // 3i. Find source index via linear search (NEVER assume sourcesContent[0])
+            // Find source index via linear search (NEVER assume sourcesContent[0])
             let source_idx = (0..sm.get_source_count())
                 .find(|&i| sm.get_source(i) == Some(original_file.as_str()));
 
-            // 3j. Get source lines as owned Strings (sm is dropped after this loop body)
+            // Get source lines as owned Strings (sm is dropped after this loop body)
             let lines: Vec<String> = source_idx
                 .and_then(|i| sm.get_source_contents(i))
                 .map(|s| s.lines().map(|l| l.to_string()).collect())
                 .unwrap_or_default();
 
-            // 3k. Compute context window bounds
             let l = src_line as usize;
             let pre_start = l.saturating_sub(3);
             let post_end = lines.len().min(l + 4);
@@ -1134,7 +998,6 @@ async fn rewrite_frames_under(
                 .map(|s| serde_json::Value::String(s.clone()))
                 .collect();
 
-            // 3l. Write rewritten fields back by index path (fresh borrow, no cross-await alias)
             let frame =
                 &mut event_data[root_key]["values"][value_idx]["stacktrace"]["frames"][frame_idx];
             // Only overwrite filename/abs_path when the token has a non-empty source name.
@@ -1142,7 +1005,6 @@ async fn rewrite_frames_under(
             // Reference: getsentry/symbolicator symbolication.rs L246-273 (e282ec0)
             if !original_file.is_empty() {
                 frame["filename"] = original_file.into();
-                // Clear abs_path — it pointed to the minified JS URL, now irrelevant
                 frame["abs_path"] = serde_json::Value::Null;
             }
             // Record which source map was applied (Sentry UI observability)
@@ -1160,6 +1022,247 @@ async fn rewrite_frames_under(
     }
 
     Ok(())
+}
+
+/// One file to assemble, as an assemble request describes it.
+pub struct NewJob<'a> {
+    pub checksum: &'a str,
+    pub chunks: &'a [String],
+    pub kind: &'a str,
+    pub name: Option<&'a str>,
+    pub debug_id: Option<&'a str>,
+}
+
+/// Answers an assemble request for one file: the state of its job, or the
+/// chunks still missing, queueing the job once they are all there.
+pub async fn enqueue_assembly(
+    pool: &DbPool,
+    queue: &AssemblyQueue,
+    project_id: i32,
+    new: NewJob<'_>,
+) -> AppResult<AssembleResponse> {
+    // A finished (or in-flight) job answers the poll before the chunk check:
+    // the assembly worker deletes the consumed chunk rows on success, so a
+    // sentry-cli `--wait` poll after completion would otherwise see its own
+    // chunks as missing forever. Error jobs fall through so a re-submit with
+    // corrected chunks can re-queue via the ON CONFLICT below.
+    let existing_job: Option<AssemblyJob> = sqlx::query_as(
+        "SELECT * FROM assembly_jobs WHERE bundle_checksum = $1 AND project_id = $2",
+    )
+    .bind(new.checksum)
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await?;
+    let failed = match existing_job {
+        Some(job) if job.state == "ok" && job.kind == DIF_JOB_KIND => {
+            match dif_reupload(pool, project_id, &job, &new).await? {
+                Some(response) => return Ok(response),
+                None => None,
+            }
+        }
+        Some(job) if job.state != "error" => {
+            return Ok(job_response(job.state.as_str(), job.detail))
+        }
+        Some(job) => Some(job),
+        None => None,
+    };
+
+    let missing = get_missing_chunks(pool, new.chunks).await?;
+    if !missing.is_empty() {
+        // A failed job's chunks are gone, so a poll after the failure must
+        // hear the failure, as Sentry answers, not be asked to upload again.
+        // Sentry forgets that state after 10 minutes (`set_assemble_status`,
+        // `ex=600`); then the file is unknown and its chunks are asked for.
+        if let Some(job) = failed {
+            if chrono::Utc::now() - job.updated_at < chrono::Duration::minutes(10) {
+                return Ok(job_response("error", job.detail));
+            }
+        }
+        return Ok(not_found(missing));
+    }
+
+    // INSERT ... ON CONFLICT: re-queue if the existing job errored, otherwise leave it.
+    // Keep ownership rows in the same transaction so a worker cannot complete
+    // between the job update and the reference insert.
+    let mut tx = pool.begin().await?;
+    let mut missing = Vec::new();
+    for checksum in new.chunks {
+        let present: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM chunk WHERE checksum = $1)")
+                .bind(checksum)
+                .fetch_one(&mut *tx)
+                .await?;
+        if !present {
+            missing.push(checksum.clone());
+        }
+    }
+    if !missing.is_empty() {
+        return Ok(not_found(missing));
+    }
+
+    let job: Option<AssemblyJob> = sqlx::query_as(
+        r#"
+        INSERT INTO assembly_jobs(bundle_checksum, project_id, state, kind, name, debug_id)
+        VALUES ($1, $2, 'created', $3, $4, $5)
+        ON CONFLICT(bundle_checksum, project_id) DO UPDATE
+          SET state = 'created', detail = NULL, retry_count = 0,
+              kind = EXCLUDED.kind, name = EXCLUDED.name, debug_id = EXCLUDED.debug_id
+          WHERE assembly_jobs.state = 'error'
+        RETURNING *
+        "#,
+    )
+    .bind(new.checksum)
+    .bind(project_id)
+    .bind(new.kind)
+    .bind(new.name)
+    .bind(new.debug_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let queued = job.is_some();
+    let job = match job {
+        Some(job) => {
+            sqlx::query("DELETE FROM assembly_job_chunks WHERE job_id = $1")
+                .bind(job.id)
+                .execute(&mut *tx)
+                .await?;
+            for (position, checksum) in new.chunks.iter().enumerate() {
+                sqlx::query(
+                    "INSERT INTO assembly_job_chunks(job_id, position, checksum) VALUES ($1, $2, $3)",
+                )
+                .bind(job.id)
+                .bind(position as i32)
+                .bind(checksum)
+                .execute(&mut *tx)
+                .await?;
+            }
+            job
+        }
+        None => {
+            sqlx::query_as(
+                "SELECT * FROM assembly_jobs WHERE bundle_checksum = $1 AND project_id = $2",
+            )
+            .bind(new.checksum)
+            .bind(project_id)
+            .fetch_one(&mut *tx)
+            .await?
+        }
+    };
+    tx.commit().await?;
+    if queued {
+        queue.wake();
+    }
+    Ok(job_response(job.state.as_str(), job.detail))
+}
+
+/// Answers for a DIF already assembled, from the debug files that still hold
+/// it, as Sentry's `batch_assemble` does. The same ProGuard mapping requested
+/// under another UUID is stored for that UUID too
+/// (`_is_proguard_reupload_clone_request`).
+///
+/// `None` when no debug ID holds the file any more: the job is forgotten and
+/// the file is assembled again like a new one.
+async fn dif_reupload(
+    pool: &DbPool,
+    project_id: i32,
+    job: &AssemblyJob,
+    new: &NewJob<'_>,
+) -> AppResult<Option<AssembleResponse>> {
+    use crate::services::debug_file::{
+        alias_proguard_mapping, debug_file_holder, proguard_uuid_from_name, COVERED_BY_DSYM,
+    };
+    let requested = new.name.and_then(proguard_uuid_from_name);
+    if requested.is_some()
+        && job
+            .name
+            .as_deref()
+            .and_then(proguard_uuid_from_name)
+            .is_none()
+    {
+        return Ok(Some(job_response(
+            "error",
+            Some("This file is not a ProGuard mapping.".into()),
+        )));
+    }
+    let file_type = requested.map(|_| crate::services::jvm::PROGUARD_FILE_TYPE);
+    match (
+        debug_file_holder(pool, project_id, &job.bundle_checksum, file_type).await?,
+        requested,
+    ) {
+        (Some(from), Some(to)) if from != to => {
+            alias_proguard_mapping(pool, project_id, from, to).await?
+        }
+        (Some(_), _) => {}
+        // An executable whose dSYMs were already stored is held by them.
+        (None, _) if job.detail.as_deref() == Some(COVERED_BY_DSYM) => {}
+        // Every debug ID it was stored under now holds another file.
+        (None, _) => {
+            sqlx::query("DELETE FROM assembly_jobs WHERE id = $1")
+                .bind(job.id)
+                .execute(pool)
+                .await?;
+            return Ok(None);
+        }
+    }
+    Ok(Some(job_response(job.state.as_str(), job.detail.clone())))
+}
+
+pub fn not_found(missing_chunks: Vec<String>) -> AssembleResponse {
+    AssembleResponse {
+        state: "not_found".to_string(),
+        missing_chunks,
+        detail: None,
+    }
+}
+
+/// Maps an assembly job state to the appropriate HTTP response.
+/// All terminal states return HTTP 200; the state field in the body signals outcome.
+pub(crate) fn job_response(state: &str, detail: Option<String>) -> AssembleResponse {
+    AssembleResponse {
+        state: state.to_string(),
+        missing_chunks: vec![],
+        // Only a failed job says why.
+        detail: detail.filter(|_| state == "error"),
+    }
+}
+
+/// The source maps a project holds, newest first, as sentry-cli lists them.
+pub async fn list_files(pool: &DbPool, project_id: i32) -> AppResult<Vec<SourceMapFile>> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        debug_id: Uuid,
+        file_type: String,
+        size: i32,
+        times_used: i32,
+        date_uploaded: String,
+    }
+    let rows: Vec<Row> = sqlx::query_as(
+        r#"
+        SELECT
+            sfm.debug_id,
+            sfm.file_type,
+            sf.size,
+            sfm.times_used,
+            CAST(sfm.created_at AS TEXT) AS date_uploaded
+        FROM source_file_metadata sfm
+        JOIN source_file sf ON sf.id = sfm.file_id
+        WHERE sfm.project_id = $1
+        ORDER BY sfm.created_at DESC
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| SourceMapFile {
+            debug_id: r.debug_id.to_string(),
+            file_type: r.file_type,
+            size: r.size,
+            times_used: r.times_used,
+            date_uploaded: r.date_uploaded,
+        })
+        .collect())
 }
 
 #[cfg(test)]

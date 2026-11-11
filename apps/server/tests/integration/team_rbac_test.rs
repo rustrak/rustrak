@@ -4,120 +4,27 @@
 //! framework preserves across requests, unlike session cookies). Each bearer
 //! token is attributed to a user, so the API inherits that user's scope.
 
+use crate::common::seed_user;
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::{cookie::Key, test, web, App};
+use crate::common::{create_test_token, token_for};
+use actix_web::test;
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
+use rustrak::config::Config;
 use rustrak::db::DbPool;
-use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, Issue, User, UserRole};
-use rustrak::routes;
+use rustrak::models::{CreateProject, Issue, UserRole};
 use rustrak::services::grouping::DenormalizedFields;
-use rustrak::services::{AuthTokenService, IssueService, ProjectService, UsersService};
+use rustrak::services::{IssueService, ProjectService, UsersService};
 use serde_json::{json, Value};
-use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-pub(crate) fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            // Invitation emails link here; without it they are unavailable.
-            url: Some("http://dashboard.test".to_string()),
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
-fn test_session_key() -> Key {
-    Key::from(&[0u8; 64])
-}
-
-/// Builds the full app under test with all RBAC-relevant routes wired up.
-macro_rules! build_app {
-    ($pool:expr, $config:expr) => {
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new($pool))
-                .app_data(web::Data::new($config))
-                .wrap(
-                    SessionMiddleware::builder(CookieSessionStore::default(), test_session_key())
-                        .cookie_secure(false)
-                        .build(),
-                )
-                .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-                .configure(routes::auth::configure)
-                .configure(routes::events::configure)
-                .configure(routes::issues::configure)
-                .configure(routes::members::configure)
-                .configure(routes::projects::configure)
-                .configure(routes::tokens::configure)
-                .configure(routes::team::configure)
-                .configure(routes::invitations::configure),
-        )
-        .await
-    };
-}
-
-/// Seeds a user with the given global role and returns it.
-async fn seed_user(pool: &DbPool, email: &str, role: UserRole) -> User {
-    let req = CreateUserRequest {
-        email: email.to_string(),
-        password: "password123".to_string(),
-    };
-    UsersService::create_user(pool, &req, role)
-        .await
-        .expect("seed user")
-}
-
-/// Creates a user-scoped bearer token and returns its raw value.
-async fn seed_token_for(pool: &DbPool, user_id: i32) -> String {
-    AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user_id))
-        .await
-        .expect("seed token")
-        .token
-}
-
-/// Creates a legacy (user-less) admin-equivalent token.
-async fn seed_legacy_token(pool: &DbPool) -> String {
-    AuthTokenService::create(pool, CreateAuthToken::default())
-        .await
-        .expect("seed legacy token")
-        .token
+fn create_test_config() -> Config {
+    let mut config = crate::common::config();
+    // Invitation emails link here; without it they are unavailable.
+    config.dashboard.url = Some("http://dashboard.test".to_string());
+    config
 }
 
 async fn seed_project(pool: &DbPool, name: &str) -> rustrak::models::Project {
@@ -177,9 +84,9 @@ async fn admin_invites_member_accepts_and_sees_no_projects() {
     let config = create_test_config();
 
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    let admin_token = token_for(&db.pool, admin.id).await;
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // Admin creates an invitation.
     let req = test::TestRequest::post()
@@ -217,7 +124,7 @@ async fn admin_invites_member_accepts_and_sees_no_projects() {
         .await
         .unwrap()
         .unwrap();
-    let b_token = seed_token_for(&db.pool, b.id).await;
+    let b_token = token_for(&db.pool, b.id).await;
 
     // Seed a project they are NOT a member of.
     seed_project(&db.pool, "Untouchable").await;
@@ -246,14 +153,14 @@ async fn viewer_reads_but_cannot_mutate_and_nonmember_is_404() {
     let config = create_test_config();
 
     let member = seed_user(&db.pool, "v@x.com", UserRole::Member).await;
-    let token = seed_token_for(&db.pool, member.id).await;
+    let token = token_for(&db.pool, member.id).await;
 
     let p1 = seed_project(&db.pool, "P1").await;
     let p2 = seed_project(&db.pool, "P2").await;
     add_member(&db.pool, p1.id, member.id, "Viewer").await;
     let issue = seed_issue(&db.pool, p1.id).await;
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // GET P1 issues → 200 (viewer can read).
     let req = test::TestRequest::get()
@@ -267,7 +174,7 @@ async fn viewer_reads_but_cannot_mutate_and_nonmember_is_404() {
     let req = test::TestRequest::patch()
         .uri(&format!("/api/projects/{}/issues/{}", p1.id, issue.id))
         .insert_header(bearer(&token))
-        .set_json(json!({ "is_resolved": true }))
+        .set_json(json!({ "status": "resolved" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 403, "viewer cannot resolve issues");
@@ -300,15 +207,15 @@ async fn project_admin_adds_editor_who_can_mutate() {
 
     let padmin = seed_user(&db.pool, "padmin@x.com", UserRole::Member).await;
     let editor = seed_user(&db.pool, "editor@x.com", UserRole::Member).await;
-    let padmin_token = seed_token_for(&db.pool, padmin.id).await;
-    let editor_token = seed_token_for(&db.pool, editor.id).await;
+    let padmin_token = token_for(&db.pool, padmin.id).await;
+    let editor_token = token_for(&db.pool, editor.id).await;
 
     let p1 = seed_project(&db.pool, "P1").await;
     add_member(&db.pool, p1.id, padmin.id, "Project Admin").await;
     let issue = seed_issue(&db.pool, p1.id).await;
 
     let editor_role = crate::common::ensure_role(&db.pool, "Editor").await;
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // Project admin adds the editor.
     let req = test::TestRequest::put()
@@ -323,7 +230,7 @@ async fn project_admin_adds_editor_who_can_mutate() {
     let req = test::TestRequest::patch()
         .uri(&format!("/api/projects/{}/issues/{}", p1.id, issue.id))
         .insert_header(bearer(&editor_token))
-        .set_json(json!({ "is_resolved": true }))
+        .set_json(json!({ "status": "resolved" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 200, "editor can mutate issues");
@@ -339,14 +246,14 @@ async fn global_admin_sees_all_projects_and_members() {
     let config = create_test_config();
 
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    let admin_token = token_for(&db.pool, admin.id).await;
     let member = seed_user(&db.pool, "m@x.com", UserRole::Member).await;
 
     let p1 = seed_project(&db.pool, "P1").await;
     let p2 = seed_project(&db.pool, "P2").await;
     add_member(&db.pool, p1.id, member.id, "Viewer").await;
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // Admin sees both projects, despite not being a project member.
     let req = test::TestRequest::get()
@@ -397,13 +304,13 @@ async fn member_token_only_reaches_member_projects() {
     let config = create_test_config();
 
     let member = seed_user(&db.pool, "m@x.com", UserRole::Member).await;
-    let token = seed_token_for(&db.pool, member.id).await;
+    let token = token_for(&db.pool, member.id).await;
 
     let p1 = seed_project(&db.pool, "P1").await;
     let p2 = seed_project(&db.pool, "P2").await;
     add_member(&db.pool, p1.id, member.id, "Viewer").await;
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // List → only P1.
     let req = test::TestRequest::get()
@@ -430,7 +337,7 @@ async fn member_token_only_reaches_member_projects() {
     assert_eq!(resp.status(), 404);
 
     // A legacy (user-less) token is admin-equivalent → sees both.
-    let legacy = seed_legacy_token(&db.pool).await;
+    let legacy = create_test_token(&db.pool).await;
     let req = test::TestRequest::get()
         .uri("/api/projects")
         .insert_header(bearer(&legacy))
@@ -442,7 +349,7 @@ async fn member_token_only_reaches_member_projects() {
 }
 
 // ---------------------------------------------------------------------------
-// (f) POST /auth/register is invite-only (403)
+// (f) There is no POST /auth/register: sign-up is by invitation only
 // ---------------------------------------------------------------------------
 
 #[actix_web::test]
@@ -450,14 +357,14 @@ async fn register_is_invite_only() {
     let db = TestDb::new().await;
     let config = create_test_config();
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/auth/register")
         .set_json(json!({ "email": "new@x.com", "password": "password123" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403, "registration is invite-only");
+    assert_eq!(resp.status(), 404, "there is no registration endpoint");
 
     // No user should have been created.
     assert!(UsersService::get_by_email(&db.pool, "new@x.com")
@@ -480,9 +387,9 @@ async fn invite_with_bad_role_is_400() {
     let config = create_test_config();
 
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    let admin_token = token_for(&db.pool, admin.id).await;
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/api/invitations")
@@ -503,9 +410,9 @@ async fn non_admin_cannot_invite() {
     let config = create_test_config();
 
     let member = seed_user(&db.pool, "m@x.com", UserRole::Member).await;
-    let token = seed_token_for(&db.pool, member.id).await;
+    let token = token_for(&db.pool, member.id).await;
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/api/invitations")
@@ -527,8 +434,8 @@ async fn invitation_with_invalid_email_is_rejected() {
     let config = create_test_config();
 
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), config);
+    let admin_token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/api/invitations")
@@ -547,8 +454,8 @@ async fn accept_invitation_allows_short_password_but_requires_nonempty() {
     let config = create_test_config();
 
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), config);
+    let admin_token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // Create two invitations to test both branches.
     let mut tokens = Vec::new();
@@ -587,9 +494,9 @@ async fn admin_can_delete_a_member() {
     let config = create_test_config();
 
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    let admin_token = token_for(&db.pool, admin.id).await;
     let victim = seed_user(&db.pool, "victim@x.com", UserRole::Member).await;
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::delete()
         .uri(&format!("/api/team/{}", victim.id))
@@ -612,8 +519,8 @@ async fn primary_user_is_protected() {
     // First seeded user is the primary (lowest id).
     let primary = seed_user(&db.pool, "primary@x.com", UserRole::Admin).await;
     let other_admin = seed_user(&db.pool, "admin2@x.com", UserRole::Admin).await;
-    let other_token = seed_token_for(&db.pool, other_admin.id).await;
-    let app = build_app!(db.pool.clone(), config);
+    let other_token = token_for(&db.pool, other_admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // Another admin cannot demote the primary.
     let req = test::TestRequest::patch()
@@ -639,11 +546,10 @@ async fn admin_cannot_delete_self() {
     let db = TestDb::new().await;
     let config = create_test_config();
 
-    let primary = seed_user(&db.pool, "primary@x.com", UserRole::Admin).await;
+    seed_user(&db.pool, "primary@x.com", UserRole::Admin).await;
     let admin = seed_user(&db.pool, "admin2@x.com", UserRole::Admin).await;
-    let token = seed_token_for(&db.pool, admin.id).await;
-    let _ = primary;
-    let app = build_app!(db.pool.clone(), config);
+    let token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::delete()
         .uri(&format!("/api/team/{}", admin.id))
@@ -660,7 +566,7 @@ async fn disabled_user_token_is_rejected() {
     let config = create_test_config();
 
     let member = seed_user(&db.pool, "m@x.com", UserRole::Member).await;
-    let token = seed_token_for(&db.pool, member.id).await;
+    let token = token_for(&db.pool, member.id).await;
 
     // Disable the account directly (no toggle endpoint exists yet).
     sqlx::query("UPDATE users SET is_active = $1 WHERE id = $2")
@@ -670,7 +576,7 @@ async fn disabled_user_token_is_rejected() {
         .await
         .unwrap();
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::get()
         .uri("/api/projects")
@@ -692,16 +598,16 @@ async fn viewer_cannot_mutate_new_issue_endpoints_but_editor_can() {
     let config = create_test_config();
 
     let viewer = seed_user(&db.pool, "viewer@x.com", UserRole::Member).await;
-    let viewer_token = seed_token_for(&db.pool, viewer.id).await;
+    let viewer_token = token_for(&db.pool, viewer.id).await;
     let editor = seed_user(&db.pool, "editor@x.com", UserRole::Member).await;
-    let editor_token = seed_token_for(&db.pool, editor.id).await;
+    let editor_token = token_for(&db.pool, editor.id).await;
 
     let project = seed_project(&db.pool, "Social Project").await;
     add_member(&db.pool, project.id, viewer.id, "Viewer").await;
     add_member(&db.pool, project.id, editor.id, "Editor").await;
     let issue = seed_issue(&db.pool, project.id).await;
 
-    let app = build_app!(db.pool.clone(), config);
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // --- MutateIssue-gated endpoints: viewer 403, editor succeeds ---
 
@@ -885,25 +791,12 @@ async fn viewer_cannot_mutate_new_issue_endpoints_but_editor_can() {
     assert!(IssueService::get_by_id(&db.pool, issue2.id).await.is_ok());
 }
 
-// ===========================================================================
-// Invitation emails
-// ===========================================================================
-
-/// The cases below assume no SMTP server; a machine with SMTP_HOST set
-/// would send real mail, so they skip there.
-fn smtp_configured() -> bool {
-    std::env::var("SMTP_HOST").is_ok_and(|h| !h.trim().is_empty())
-}
-
 #[actix_web::test]
 async fn email_status_is_unavailable_without_smtp() {
-    if smtp_configured() {
-        return;
-    }
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let admin_token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, create_test_config()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/invitations/email-status")
@@ -919,8 +812,8 @@ async fn email_status_is_unavailable_without_smtp() {
 async fn email_status_requires_admin() {
     let db = TestDb::new().await;
     let member = seed_user(&db.pool, "member@x.com", UserRole::Member).await;
-    let member_token = seed_token_for(&db.pool, member.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let member_token = token_for(&db.pool, member.id).await;
+    let app = crate::common::app_with_config(&db.pool, create_test_config()).await;
 
     let req = test::TestRequest::get()
         .uri("/api/invitations/email-status")
@@ -932,13 +825,10 @@ async fn email_status_requires_admin() {
 
 #[actix_web::test]
 async fn send_email_without_smtp_is_400_and_creates_nothing() {
-    if smtp_configured() {
-        return;
-    }
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let admin_token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, create_test_config()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/invitations")
@@ -962,8 +852,8 @@ async fn send_email_without_smtp_is_400_and_creates_nothing() {
 async fn a_manual_invitation_has_no_email_sent_at() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let admin_token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, create_test_config()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/invitations")
@@ -980,8 +870,8 @@ async fn a_manual_invitation_has_no_email_sent_at() {
 async fn resend_of_an_unknown_token_is_404() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let admin_token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, create_test_config()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/invitations/not-a-real-token/resend")
@@ -994,8 +884,8 @@ async fn resend_of_an_unknown_token_is_404() {
 async fn resend_of_an_expired_invitation_is_400() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let admin_token = token_for(&db.pool, admin.id).await;
+    let app = crate::common::app_with_config(&db.pool, create_test_config()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/invitations")
@@ -1025,12 +915,9 @@ async fn resend_of_an_expired_invitation_is_400() {
 /// An email integration configured from the UI is enough: no SMTP_* needed.
 #[actix_web::test]
 async fn an_enabled_email_integration_makes_invitation_emails_available() {
-    if smtp_configured() {
-        return;
-    }
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let admin_token = seed_token_for(&db.pool, admin.id).await;
+    let admin_token = token_for(&db.pool, admin.id).await;
     let insert = |enabled: bool| {
         sqlx::query(
             "INSERT INTO alert_integrations (name, provider_type, credentials, is_enabled, failure_count) VALUES ($1, 'email', $2, $3, 0)",
@@ -1039,7 +926,7 @@ async fn an_enabled_email_integration_makes_invitation_emails_available() {
         .bind(json!({ "smtp_host": "127.0.0.1", "smtp_port": 1 }))
         .bind(enabled)
     };
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = crate::common::app_with_config(&db.pool, create_test_config()).await;
     let status = || {
         test::TestRequest::get()
             .uri("/api/invitations/email-status")

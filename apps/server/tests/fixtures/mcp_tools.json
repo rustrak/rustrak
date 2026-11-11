@@ -1,0 +1,513 @@
+{
+  "assign_issue": {
+    "description": "Assign an issue to a user (or clear the assignment with assigned_to=null).",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "bookmark_issue": {
+    "description": "Set or clear your bookmark on an issue.",
+    "required": [
+      "enabled",
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "bulk_delete_issues": {
+    "description": "Permanently delete issues and all their events. Specify exactly one of ids or filter; filter=all deletes every issue in the project.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "bulk_update_issues": {
+    "description": "Set the status and/or priority of multiple issues at once.",
+    "required": [
+      "ids",
+      "project_id"
+    ]
+  },
+  "comment_on_issue": {
+    "description": "Add a comment (note) to an issue.",
+    "required": [
+      "issue_id",
+      "project_id",
+      "text"
+    ]
+  },
+  "create_alert_channel": {
+    "description": "Create an alert notification channel. provider_type is one of slack, email, webhook, custom_webhook. credentials is provider-specific: a custom_webhook takes { template, url?, secret?, headers? } where template is the JSON body with alert fields written as {{ issue.title }}; values are escaped for wherever they sit. The server validates the credentials and renders the template against a sample alert before saving.",
+    "required": [
+      "credentials",
+      "name",
+      "provider_type"
+    ]
+  },
+  "create_invitation": {
+    "description": "Invite a person by email with a global role. By default returns a single-use, expiring invite token to share as the link `<app-url>/invite/<token>`. With send_email=true the link is also emailed to the recipient, which needs an enabled email integration or SMTP_HOST, and DASHBOARD_URL or PUBLIC_URL. Requires invitations:create.",
+    "required": [
+      "email",
+      "role"
+    ]
+  },
+  "create_monitor": {
+    "description": "Create a cron monitor. Its slug (derived from the name when omitted) is what the job checks in with. Most monitors are instead created by the job itself, by sending a monitor_config with its first check-in.",
+    "required": [
+      "config",
+      "name",
+      "project_id"
+    ]
+  },
+  "create_project": {
+    "description": "Create a new Rustrak project.",
+    "required": [
+      "name"
+    ]
+  },
+  "delete_issue": {
+    "description": "Permanently delete an issue and all its events.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "delete_monitor": {
+    "description": "Permanently delete a cron monitor and its check-ins. The issues it opened stay. A job that keeps checking in with a monitor_config creates it again.",
+    "required": [
+      "project_id",
+      "slug"
+    ]
+  },
+  "execute_storage_cleanup": {
+    "description": "DESTRUCTIVE (needs storage:delete): permanently delete Rustrak data older than `older_than_days` (optionally scoped to one project and to specific data categories) and remove the issues it leaves with zero events. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_cleanup first and show the user the counts before confirming. The cleanup runs in the background: this returns the started job at once, and get_storage_cleanup_status reports its progress and final counts. Only one cleanup runs at a time; starting another while one runs is refused with a conflict.",
+    "required": [
+      "older_than_days"
+    ]
+  },
+  "gc_storage_source_maps": {
+    "description": "DESTRUCTIVE (needs storage:delete): permanently remove orphaned Rustrak source-map files no longer referenced by any upload (e.g. left behind by deleted projects), from the database and disk. This cannot be undone. You MUST set confirm=true to proceed; without it the tool refuses and returns an error. Always run preview_storage_source_maps_gc first and show the user the counts before confirming.",
+    "required": []
+  },
+  "get_agent_duration": {
+    "description": "Get time-bucketed avg/p95 duration for agent runs and LLM calls (gen_ai.operation.type:agent/ai_client spans) for a Rustrak project — the \"Duration\" AI Agent Monitoring widget.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_agent_models_by_calls": {
+    "description": "Get the top LLM models by call count (gen_ai.operation.type:ai_client spans, grouped by response model) for a Rustrak project — the \"LLM Calls by Model\" AI Agent Monitoring widget.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_agent_models_by_tokens": {
+    "description": "Get the top LLM models by total tokens used (gen_ai.operation.type:ai_client spans, grouped by response model) for a Rustrak project — the \"Tokens Used by Model\" AI Agent Monitoring widget.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_agent_runs": {
+    "description": "Get a time-bucketed count of AI agent runs (gen_ai.operation.type:agent spans) for a Rustrak project — the \"Agent Runs\" AI Agent Monitoring widget.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_agent_tools": {
+    "description": "Get the top tools by call count (gen_ai.operation.type:tool spans, grouped by tool name) for a Rustrak project — the \"Tool Calls by Tool\" AI Agent Monitoring widget.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_attachment": {
+    "description": "Get a file sent with an event, such as the screenshot of a user feedback. A PNG, JPEG, GIF or WebP image comes back as an image; any other file is only described.",
+    "required": [
+      "attachment_id",
+      "project_id"
+    ]
+  },
+  "get_error_volume": {
+    "description": "Get error-event volume over time for a Rustrak project, bucketed by severity (fatal, error, warning, info). Use this to see when a project started breaking, spot spikes, and compare severity mix across a window. Unlike get_issue_stats, which covers a single issue, this spans the whole project. Buckets are zero-filled, so a quiet bucket comes back with total 0 rather than being absent.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_event": {
+    "description": "Get full detail for a single event, including the complete Sentry envelope data.",
+    "required": [
+      "event_id",
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "get_issue": {
+    "description": "Get a single issue by ID.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "get_issue_activity": {
+    "description": "List an issue's activity log (status changes, comments/notes, …).",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "get_issue_aggregates": {
+    "description": "Get per-issue aggregates: unique affected user count and top tags.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "get_issue_hashes": {
+    "description": "List the grouping hashes that map to an issue.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "get_issue_stats": {
+    "description": "Get an event-count timeseries for an issue (24h or 30d).",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "get_issue_tag_values": {
+    "description": "List the distinct values (with counts) for a tag key across an issue.",
+    "required": [
+      "issue_id",
+      "key",
+      "project_id"
+    ]
+  },
+  "get_monitor": {
+    "description": "Get one cron monitor by slug: its config, environments, last and next expected check-in, and recent check-ins.",
+    "required": [
+      "project_id",
+      "slug"
+    ]
+  },
+  "get_project": {
+    "description": "Get details for a single Rustrak project.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_project_stats": {
+    "description": "Get headline counters for a Rustrak project over a time window: error events, new issues, and currently open issues. Each windowed counter also carries the same figure for the window immediately before it, so you can state whether things are getting better or worse rather than just quoting a number. `previous` is null for all-time requests, where there is no earlier window to compare against.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_release_health": {
+    "description": "Get per-release health stats for a Rustrak project: crash-free session rate, crash-free user rate, and error/crash/abnormal counts. Paginated, ordered by session volume.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "get_retention": {
+    "description": "Get the storage retention (needs storage:read): how many days each kind of data (error events, transactions with their spans, logs) is kept by default and per project (null keeps it forever), when the cleanup that enforces it runs (daily or weekly at an hour, UTC), when it runs next and how its last run went.",
+    "required": []
+  },
+  "get_server_version": {
+    "description": "Get the Rustrak server version.",
+    "required": []
+  },
+  "get_storage_by_project": {
+    "description": "Get the per-project Rustrak storage breakdown (needs storage:read): event/transaction/span/source-map counts and estimated bytes for every project. Use this to find which project is accumulating the most data.",
+    "required": []
+  },
+  "get_storage_cleanup_status": {
+    "description": "Get the progress of the running Rustrak storage cleanup, or the outcome of the last one (needs storage:read): its state (idle, running, completed, failed), the rows removed so far, and when it started and finished. Use it after execute_storage_cleanup to tell the user when the deletion is done.",
+    "required": []
+  },
+  "get_storage_summary": {
+    "description": "Get the instance-wide Rustrak storage summary (needs storage:read): total database size, row counts for events, transactions, spans and logs, and the exact source-map weight. Use this to see what is consuming storage before cleaning up.",
+    "required": []
+  },
+  "get_token": {
+    "description": "Get a token by ID: its prefix, scope and expiry. The value itself is stored hashed and only ever shown on creation.",
+    "required": [
+      "token_id"
+    ]
+  },
+  "get_transaction": {
+    "description": "Get a single Rustrak transaction by ID with its full Sentry payload: the span list (waterfall), trace context, measurements (web vitals), tags, request and user. Use the transaction id from list_transactions.",
+    "required": [
+      "project_id",
+      "transaction_id"
+    ]
+  },
+  "get_transaction_spans": {
+    "description": "Get the indexed spans extracted from a Rustrak transaction, in waterfall order. Each span carries op, description, status, duration and self (exclusive) time — use it to find the slowest operations within a trace.",
+    "required": [
+      "project_id",
+      "transaction_id"
+    ]
+  },
+  "get_transaction_stats": {
+    "description": "Get aggregate performance stats for a Rustrak project, grouped by transaction name + operation: throughput (count), p50/p95/p99 latency, and failure rate. Offset-paginated, most frequent first. This is the performance overview — use it to find slow or failing transactions, then list_transactions with name+op to inspect samples.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_agent_traces": {
+    "description": "List AI agent traces for a Rustrak project — one row per trace_id with its agents, duration, total tokens, LLM and tool call counts and error count, aggregated across every AI span in that trace (standalone or transaction-embedded). Offset-paginated, newest trace first unless sorted by another total. Narrow to the traces of one agent, model or tool, or to failing ones. This is the AI Agent Monitoring \"Traces\" table — use list_spans with trace_id to drill into one trace's individual spans.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_alert_channels": {
+    "description": "List all configured alert notification channels (Slack, email, webhook, custom webhook, etc.).",
+    "required": []
+  },
+  "list_alert_rules": {
+    "description": "List all alert rules configured for a project.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_events": {
+    "description": "List raw events for a specific issue. Events are individual error occurrences within a grouped issue.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "list_feedback": {
+    "description": "List user feedback for a Rustrak project: each message with the sender's name, email, page, the error event it is about and its attachments (such as a screenshot). Resolve or mute (spam) one with the issue tools, using its id.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_invitations": {
+    "description": "List invitations (pending, accepted, revoked) with their ids, roles and expiry, and the token of each one the caller could have created.",
+    "required": []
+  },
+  "list_issues": {
+    "description": "List issues for a Rustrak project. Returns paginated grouped error occurrences.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_logs": {
+    "description": "List standalone logs for a Rustrak project (newest first by log timestamp), with offset pagination and optional filters. Each log includes its level, body (message), trace_id/span_id for correlation, severity number, and arbitrary attributes. Filter by level (trace/debug/info/warn/error/fatal), by trace_id to see all logs for one trace, by text in the message, or by a window like 24h.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_monitor_checkins": {
+    "description": "List the check-ins of a cron monitor, newest first. status is ok, error, in_progress, missed, timeout or unknown; missed and timeout are set by Rustrak when a run did not report on time.",
+    "required": [
+      "project_id",
+      "slug"
+    ]
+  },
+  "list_monitors": {
+    "description": "List the cron monitors of a project (Sentry Crons): each scheduled job with its schedule, config, and per-environment status (active = waiting for a first ok run, ok, error = incident open) with its recent check-ins.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_project_members": {
+    "description": "List the members of a project with the roles they hold on it. Requires the project-members:read permission on the project.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_projects": {
+    "description": "List all Rustrak projects you have access to.",
+    "required": []
+  },
+  "list_spans": {
+    "description": "List spans for a Rustrak project (newest first), with offset pagination and optional filters. Covers spans regardless of origin — standalone \"span\" envelope items and spans extracted from transactions both share this table. Filter by operation_type (agent/tool/handoff/ai_client) to find AI Agent Monitoring spans specifically.",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_team_members": {
+    "description": "List all users on this Rustrak instance with their global role (admin/member) and status. Requires users:read.",
+    "required": []
+  },
+  "list_tokens": {
+    "description": "List all API tokens. Token values are masked — only the prefix is shown.",
+    "required": []
+  },
+  "list_transactions": {
+    "description": "List performance transactions for a Rustrak project (newest first), with offset pagination and optional filters. Each transaction includes its name, duration in milliseconds, platform, environment, and release. Use name+op to list the samples of a single grouped transaction (see get_transaction_stats).",
+    "required": [
+      "project_id"
+    ]
+  },
+  "list_user_reports": {
+    "description": "List user feedback reports attached to an issue.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "mark_issue_seen": {
+    "description": "Mark an issue as seen by you.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "mute_issue": {
+    "description": "Mute an issue so it no longer triggers alerts.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "preview_alert_template": {
+    "description": "Render a custom_webhook body template against a sample alert and return the exact body that would be sent, or the reason it would be refused (invalid JSON, unknown field, syntax error). Use it before creating or updating a custom_webhook channel.",
+    "required": [
+      "template"
+    ]
+  },
+  "preview_retention": {
+    "description": "Dry-run retention settings (needs storage:read): the rows enforcing them now would permanently delete, each project against its own windows. Saves and deletes nothing. Run it before update_retention and show the user the counts.",
+    "required": [
+      "defaults",
+      "frequency",
+      "hour",
+      "overrides",
+      "weekday"
+    ]
+  },
+  "preview_schedule": {
+    "description": "Validate a schedule (crontab or interval) and list its next five runs, using the parser Rustrak runs it with. Use it before saving a cron monitor or the automatic cleanup schedule.",
+    "required": [
+      "schedule"
+    ]
+  },
+  "preview_storage_cleanup": {
+    "description": "Dry-run a Rustrak retention cleanup (needs storage:read): report how many events, transactions, spans, logs and issues would be removed if data older than `older_than_days` were deleted, optionally scoped to one project and to specific data categories. Mutates nothing — always run this before execute_storage_cleanup.",
+    "required": [
+      "older_than_days"
+    ]
+  },
+  "preview_storage_source_maps_gc": {
+    "description": "Dry-run a Rustrak source-map garbage collection (needs storage:read): report how many orphaned source-map files would be removed and how many bytes reclaimed, without deleting anything. Mutates nothing — always run this before gc_storage_source_maps.",
+    "required": []
+  },
+  "remove_project_member": {
+    "description": "Remove every role a user holds on a project. Requires the project-members:update permission; the caller cannot remove themselves.",
+    "required": [
+      "project_id",
+      "user_id"
+    ]
+  },
+  "remove_team_member": {
+    "description": "Permanently remove a user from the instance, revoking their access and tokens. The primary user, yourself, and the last admin cannot be removed. Requires users:delete.",
+    "required": [
+      "user_id"
+    ]
+  },
+  "resend_invitation": {
+    "description": "Email the invite link of a pending invitation again. Fails when invitation emails are not configured or the send fails. Requires invitations:create.",
+    "required": [
+      "id"
+    ]
+  },
+  "resolve_issue": {
+    "description": "Mark an issue as resolved.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "revoke_invitation": {
+    "description": "Revoke a pending invitation by its id so it can no longer be accepted. Requires invitations:delete.",
+    "required": [
+      "id"
+    ]
+  },
+  "revoke_token": {
+    "description": "Permanently revoke an API token. This action cannot be undone.",
+    "required": [
+      "token_id"
+    ]
+  },
+  "run_retention": {
+    "description": "DESTRUCTIVE (needs storage:delete): enforce the saved retention now instead of waiting for the schedule. Permanently deletes every project's data older than its retention window, and the source maps no upload uses. You MUST set confirm=true to proceed; without it the tool refuses. Run preview_retention with the saved settings first and show the user what goes. It runs in the background: this returns the started job, and get_storage_cleanup_status reports its progress.",
+    "required": []
+  },
+  "set_project_member": {
+    "description": "Set the roles a user holds on a project, by role id (see `GET /api/roles`). Requires the project-members:update permission, only grants roles within the caller's own permissions, and never changes the caller's own membership.",
+    "required": [
+      "project_id",
+      "role_ids",
+      "user_id"
+    ]
+  },
+  "submit_user_report": {
+    "description": "Attach a user feedback report to an issue.",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "subscribe_issue": {
+    "description": "Subscribe to or unsubscribe from an issue.",
+    "required": [
+      "enabled",
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "test_alert_channel": {
+    "description": "Send a test notification to an alert channel to verify it is configured correctly.",
+    "required": [
+      "channel_id"
+    ]
+  },
+  "unresolve_issue": {
+    "description": "Mark an issue as unresolved (re-open it).",
+    "required": [
+      "issue_id",
+      "project_id"
+    ]
+  },
+  "update_alert_channel": {
+    "description": "Update an alert notification channel. credentials, when given, replace the stored ones whole, so send every field the provider needs (for a custom_webhook, at least template).",
+    "required": [
+      "channel_id"
+    ]
+  },
+  "update_issue_status": {
+    "description": "Set an issue status (unresolved, resolved, ignored, or resolvedInNextRelease) and optionally its priority.",
+    "required": [
+      "issue_id",
+      "project_id",
+      "status"
+    ]
+  },
+  "update_member_role": {
+    "description": "Change a user's global role. Admins manage the team and all projects; members only see projects they belong to. The primary user and the last admin cannot be demoted. Requires users:update.",
+    "required": [
+      "role",
+      "user_id"
+    ]
+  },
+  "update_monitor": {
+    "description": "Rename, reconfigure, mute or unmute a cron monitor. Config fields left out keep their value. A muted monitor still records check-ins but opens no issue and sends no alert.",
+    "required": [
+      "project_id",
+      "slug"
+    ]
+  },
+  "update_retention": {
+    "description": "Replace the storage retention settings (needs storage:update). Every field is sent. DESTRUCTIVE whenever any window is set: the cleanup then permanently deletes data older than it on every run. You MUST set confirm=true to save such settings; without it the tool refuses. Keeping everything forever needs no confirmation. Run preview_retention first and show the user what goes.",
+    "required": [
+      "defaults",
+      "frequency",
+      "hour",
+      "overrides",
+      "weekday"
+    ]
+  }
+}

@@ -3,7 +3,8 @@
 //! expects its next check-in at the same instant here as in Sentry.
 
 use chrono::{DateTime, Utc};
-use rustrak::models::monitor::{IntervalUnit, MonitorConfig, MonitorConfigInput, Schedule};
+use rustrak::models::monitor::{MonitorConfig, MonitorConfigInput};
+use rustrak::models::schedule::{IntervalUnit, Schedule};
 
 fn at(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)

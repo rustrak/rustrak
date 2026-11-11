@@ -1,18 +1,34 @@
 use actix_web::{web, HttpResponse};
 use uuid::Uuid;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
 use crate::models::{EventDetailResponse, EventResponse};
-use crate::pagination::{EventCursor, ListEventsQuery, PaginatedResponse, PAGE_SIZE};
+use crate::pagination::{EventCursor, PaginatedResponse, SortOrder, PAGE_SIZE};
 use crate::services::attachment::image_type;
 use crate::services::{AttachmentService, EventService, IssueService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
+
+/// Query parameters for listing events
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct ListEventsQuery {
+    /// Sort order direction (default: desc = newest first)
+    #[serde(default)]
+    pub order: SortOrder,
+
+    /// Pagination cursor
+    pub cursor: Option<String>,
+
+    /// Only events in this environment.
+    #[serde(default)]
+    pub environment: Option<String>,
+}
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -31,7 +47,6 @@ use utoipa::OpenApi;
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}/events
 /// Lists events for an issue with cursor-based pagination
 pub async fn list_events(
     pool: web::Data<DbPool>,
@@ -43,11 +58,7 @@ pub async fn list_events(
 
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
-    // Verify issue exists and belongs to the project
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     // Parse cursor if provided
     let cursor = query
@@ -100,7 +111,6 @@ pub async fn list_events(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}/events/{event_id}
 /// Gets a single event with full data
 pub async fn get_event(
     pool: web::Data<DbPool>,
@@ -111,11 +121,7 @@ pub async fn get_event(
 
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
 
-    // Verify issue exists and belongs to the project
-    let issue = IssueService::get_by_id(pool.get_ref(), issue_id).await?;
-    if issue.project_id != project_id {
-        return Err(AppError::NotFound(format!("Issue {} not found", issue_id)));
-    }
+    IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
     // Get event and verify it belongs to the issue
     let event = EventService::get_by_id(pool.get_ref(), event_id).await?;
@@ -146,10 +152,10 @@ pub async fn get_event(
 /// Resolve the ID returned by a Sentry SDK without already knowing the issue.
 pub async fn get_event_by_sentry_id(
     pool: web::Data<DbPool>,
-    path: web::Path<(i32, Uuid)>,
+    path: AppResult<web::Path<(i32, Uuid)>>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    let (project_id, event_id) = path.into_inner();
+    let (project_id, event_id) = path?.into_inner();
     // Apply the same Viewer boundary as issue-scoped detail before reading data.
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     // The existing unique (project_id, event_id) index also serves this lookup.
@@ -176,13 +182,12 @@ pub struct EventsApi;
         ("event_id" = uuid::Uuid, Path, description = "Event ID"),
     ),
     responses(
-        (status = 200, description = "The files sent with the event, without their bytes", body = Vec<crate::services::attachment::AttachmentInfo>),
+        (status = 200, description = "The files sent with the event, without their bytes", body = Vec<crate::models::AttachmentInfo>),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/issues/{issue_id}/events/{event_id}/attachments
 /// Lists the files sent with an event, such as a feedback's screenshot.
 pub async fn list_event_attachments(
     pool: web::Data<DbPool>,
@@ -223,7 +228,6 @@ pub struct AttachmentBytes(#[allow(dead_code)] Vec<u8>);
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/attachments/{attachment_id}
 /// Downloads an attachment. Only a real image is served inline; anything
 /// else, whatever type it claims, is a download that never runs.
 pub async fn download_attachment(
@@ -272,23 +276,22 @@ pub async fn download_attachment(
         .body(data))
 }
 
-/// Configure event routes
-pub fn configure(cfg: &mut web::ServiceConfig) {
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
     cfg.route(
-        "/api/projects/{project_id}/events/sentry/{event_id}",
+        "/events/sentry/{event_id}",
         web::get().to(get_event_by_sentry_id),
-    );
-    cfg.route(
-        "/api/projects/{project_id}/attachments/{attachment_id}",
+    )
+    .route(
+        "/attachments/{attachment_id}",
         web::get().to(download_attachment),
-    );
-    cfg.service(
-        web::scope("/api/projects/{project_id}/issues/{issue_id}/events")
-            .route("", web::get().to(list_events))
-            .route("/{event_id}", web::get().to(get_event))
-            .route(
-                "/{event_id}/attachments",
-                web::get().to(list_event_attachments),
-            ),
+    )
+    .route("/issues/{issue_id}/events", web::get().to(list_events))
+    .route(
+        "/issues/{issue_id}/events/{event_id}",
+        web::get().to(get_event),
+    )
+    .route(
+        "/issues/{issue_id}/events/{event_id}/attachments",
+        web::get().to(list_event_attachments),
     );
 }

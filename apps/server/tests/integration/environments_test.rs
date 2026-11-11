@@ -3,13 +3,12 @@
 //! with that environment's numbers (`group.py`, `__seen_stats_impl`).
 
 use crate::common::{null_sourcemap_provider, process_error_event, TestDb};
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::{DateTime, Duration, Utc};
 use rustrak::config::RateLimitConfig;
 use rustrak::db::DbPool;
-use rustrak::ingest::{store_event, EventMetadata};
+use rustrak::ingest::EventMetadata;
 use rustrak::models::{CreateAuthToken, CreateProject};
-use rustrak::routes;
 use rustrak::services::{AuthTokenService, EventService, ProjectService};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -53,8 +52,9 @@ async fn ingest_release(
     if let Some(release) = release {
         event["release"] = json!(release);
     }
-    store_event(
+    crate::common::store_event(
         dir.path(),
+        project_id,
         &event_id.simple().to_string(),
         &serde_json::to_vec(&event).unwrap(),
     )
@@ -106,13 +106,7 @@ async fn setup() -> (TestDb, i32, String) {
 }
 
 async fn get(pool: &DbPool, token: &str, uri: &str) -> Value {
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .configure(routes::events::configure)
-            .configure(routes::issues::configure),
-    )
-    .await;
+    let app = crate::common::app(pool).await;
     let req = test::TestRequest::get()
         .uri(uri)
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -222,12 +216,7 @@ async fn a_late_older_event_keeps_the_environments_dates() {
 #[actix_web::test]
 async fn environments_of_a_missing_project_are_not_found() {
     let (db, _, token) = setup().await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .configure(routes::issues::configure),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
     let req = test::TestRequest::get()
         .uri("/api/projects/999999/environments")
         .insert_header(("Authorization", format!("Bearer {token}")))

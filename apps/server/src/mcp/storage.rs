@@ -3,85 +3,30 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use super::{args, refuse, reply, NoArgs, RustrakMcp};
+use super::{refuse, reply, NoArgs, RustrakMcp};
+use crate::models::storage::{CleanupRequest, RetentionSettings};
 use crate::routes::storage;
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct CleanupArgs {
-    /// Delete data older than this many days
-    older_than_days: i64,
-    /// Scope to one project (omit for all projects)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    project_id: Option<i32>,
-    /// Include error events (and the issues they empty). Defaults to true.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    include_events: Option<bool>,
-    /// Include transactions and their cascaded spans. Defaults to true.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    include_transactions: Option<bool>,
-    /// Include logs. Defaults to true.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    include_logs: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ExecuteCleanupArgs {
     #[serde(flatten)]
-    cleanup: CleanupArgs,
+    cleanup: CleanupRequest,
     /// Must be true to run this destructive cleanup
     confirm: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ConfirmArgs {
     /// Must be true to run this destructive cleanup
     confirm: Option<bool>,
 }
 
-/// Days a kind of data is kept; null keeps it forever (1-36500).
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct WindowsArg {
-    /// Error events, and the issues they empty
-    events_days: Option<i64>,
-    /// Transactions with their spans
-    transactions_days: Option<i64>,
-    /// Logs
-    logs_days: Option<i64>,
-}
-
-impl WindowsArg {
-    fn deletes(&self) -> bool {
-        self.events_days.is_some() || self.transactions_days.is_some() || self.logs_days.is_some()
-    }
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct OverrideArg {
-    project_id: i32,
-    #[serde(flatten)]
-    windows: WindowsArg,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct RetentionArgs {
-    /// How long every project keeps each kind; null is forever
-    defaults: WindowsArg,
-    /// Projects kept for other windows; each replaces the defaults whole
-    overrides: Vec<OverrideArg>,
-    /// How often it runs: daily or weekly
-    frequency: String,
-    /// Hour it runs, UTC (0-23)
-    hour: u8,
-    /// Day of a weekly run, 0 = Sunday (0-6)
-    weekday: u8,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct UpdateRetentionArgs {
     #[serde(flatten)]
-    settings: RetentionArgs,
+    settings: RetentionSettings,
     /// Must be true to save settings that delete anything
     confirm: Option<bool>,
 }
@@ -93,7 +38,7 @@ impl RustrakMcp {
         annotations(read_only_hint = true)
     )]
     async fn get_storage_summary(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
-        reply(async { storage::get_summary(self.pool(), self.cleanup_job()?, self.actor()).await })
+        reply(async { storage::get_summary(self.pool(), self.cleanup_job(), self.actor()).await })
             .await
     }
 
@@ -102,7 +47,7 @@ impl RustrakMcp {
         annotations(read_only_hint = true)
     )]
     async fn get_storage_by_project(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
-        reply(async { storage::get_projects(self.pool(), self.cleanup_job()?, self.actor()).await })
+        reply(async { storage::get_projects(self.pool(), self.cleanup_job(), self.actor()).await })
             .await
     }
 
@@ -112,11 +57,13 @@ impl RustrakMcp {
     )]
     async fn preview_storage_cleanup(
         &self,
-        Parameters(a): Parameters<CleanupArgs>,
+        Parameters(a): Parameters<CleanupRequest>,
     ) -> CallToolResult {
-        reply(async {
-            storage::preview_cleanup(self.pool(), self.actor(), web::Json(args(&a)?)).await
-        })
+        reply(storage::preview_cleanup(
+            self.pool(),
+            self.actor(),
+            web::Json(a),
+        ))
         .await
     }
 
@@ -134,9 +81,9 @@ impl RustrakMcp {
         reply(async {
             storage::execute_cleanup(
                 self.pool(),
-                self.cleanup_job()?,
+                self.cleanup_job(),
                 self.actor(),
-                web::Json(args(&a.cleanup)?),
+                web::Json(a.cleanup),
             )
             .await
         })
@@ -151,7 +98,7 @@ impl RustrakMcp {
         &self,
         Parameters(_): Parameters<NoArgs>,
     ) -> CallToolResult {
-        reply(async { storage::get_cleanup_status(self.cleanup_job()?, self.actor()).await }).await
+        reply(async { storage::get_cleanup_status(self.cleanup_job(), self.actor()).await }).await
     }
 
     #[tool(
@@ -179,8 +126,8 @@ impl RustrakMcp {
         reply(async {
             storage::gc_source_maps(
                 self.pool(),
-                self.cleanup_job()?,
-                self.sourcemap_store()?,
+                self.cleanup_job(),
+                self.sourcemap_store(),
                 self.actor(),
             )
             .await
@@ -193,20 +140,23 @@ impl RustrakMcp {
         annotations(read_only_hint = true)
     )]
     async fn get_retention(&self, Parameters(_): Parameters<NoArgs>) -> CallToolResult {
-        reply(async {
-            storage::get_retention(self.pool(), self.cleanup_job()?, self.actor()).await
-        })
-        .await
+        reply(async { storage::get_retention(self.pool(), self.cleanup_job(), self.actor()).await })
+            .await
     }
 
     #[tool(
         description = "Dry-run retention settings (needs storage:read): the rows enforcing them now would permanently delete, each project against its own windows. Saves and deletes nothing. Run it before update_retention and show the user the counts.",
         annotations(read_only_hint = true)
     )]
-    async fn preview_retention(&self, Parameters(a): Parameters<RetentionArgs>) -> CallToolResult {
-        reply(async {
-            storage::preview_retention(self.pool(), self.actor(), web::Json(args(&a)?)).await
-        })
+    async fn preview_retention(
+        &self,
+        Parameters(a): Parameters<RetentionSettings>,
+    ) -> CallToolResult {
+        reply(storage::preview_retention(
+            self.pool(),
+            self.actor(),
+            web::Json(a),
+        ))
         .await
     }
 
@@ -221,8 +171,8 @@ impl RustrakMcp {
         reply(async {
             storage::run_retention(
                 self.pool(),
-                self.cleanup_job()?,
-                self.sourcemap_store()?,
+                self.cleanup_job(),
+                self.sourcemap_store(),
                 self.actor(),
             )
             .await
@@ -238,17 +188,20 @@ impl RustrakMcp {
         &self,
         Parameters(a): Parameters<UpdateRetentionArgs>,
     ) -> CallToolResult {
-        let deletes = a.settings.defaults.deletes()
-            || a.settings.overrides.iter().any(|o| o.windows.deletes());
+        let deletes = a.settings.defaults.deletes_anything()
+            || a.settings
+                .overrides
+                .iter()
+                .any(|o| o.windows().deletes_anything());
         if deletes && a.confirm != Some(true) {
             return refuse("update_retention with a retention window schedules permanent deletion and was not confirmed. Run preview_retention, show the user what goes, then call again with confirm=true to proceed.");
         }
         reply(async {
             storage::update_retention(
                 self.pool(),
-                self.cleanup_job()?,
+                self.cleanup_job(),
                 self.actor(),
-                web::Json(args(&a.settings)?),
+                web::Json(a.settings),
             )
             .await
         })

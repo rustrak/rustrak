@@ -5,9 +5,9 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use serde::Serialize;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::error::AppResult;
+use crate::models::rbac::{Action, Resource};
 use crate::telemetry::{Report, Reporter, TelemetryStatus};
 
 #[derive(Serialize)]
@@ -47,7 +47,6 @@ pub struct PreviewReport {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/telemetry/preview
 pub async fn preview(
     status: web::Data<TelemetryStatus>,
     reporter: web::Data<Arc<Reporter>>,

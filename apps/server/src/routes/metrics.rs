@@ -7,7 +7,6 @@ use std::time::{Duration, Instant, SystemTime};
 use actix_web::{http::header, web, HttpResponse};
 
 use crate::db::DbPool;
-use crate::services::StorageService;
 use crate::telemetry::metrics::Spool;
 use crate::telemetry::Counters;
 
@@ -36,15 +35,6 @@ impl MetricsEndpoint {
     }
 }
 
-/// Off unless explicitly enabled; a typo must not silently change exposure.
-pub fn enabled(value: Option<&str>) -> Result<bool, &'static str> {
-    match value {
-        None | Some("off") => Ok(false),
-        Some("on") => Ok(true),
-        _ => Err("RUSTRAK_METRICS must be 'on' or 'off'"),
-    }
-}
-
 pub async fn scrape(state: web::Data<MetricsEndpoint>, pool: web::Data<DbPool>) -> HttpResponse {
     if !state.enabled {
         return HttpResponse::NotFound().finish();
@@ -67,8 +57,9 @@ pub async fn scrape(state: web::Data<MetricsEndpoint>, pool: web::Data<DbPool>) 
                 Err(_) => None,
             };
             // A failed size query must not be reported as a zero-byte database.
-            let db_bytes = StorageService::db_size_bytes(pool.get_ref())
+            let db_bytes = crate::db::maintenance::size_bytes(pool.get_ref())
                 .await
+                .inspect_err(|e| log::warn!("metrics: could not read the database size: {e}"))
                 .ok()
                 .and_then(|n| u64::try_from(n).ok());
             *gauges = Some((Instant::now(), spool, db_bytes));
@@ -80,7 +71,7 @@ pub async fn scrape(state: web::Data<MetricsEndpoint>, pool: web::Data<DbPool>) 
     HttpResponse::Ok()
         .insert_header((header::CACHE_CONTROL, "no-store"))
         .content_type("text/plain; version=0.0.4; charset=utf-8")
-        .body(state.counters.metrics().render(spool, db_bytes))
+        .body(state.counters.render(spool, db_bytes))
 }
 
 /// Only pending records belong to the digest backlog, not other files in the
@@ -130,10 +121,7 @@ mod tests {
 
     #[test]
     fn metrics_are_opt_in() {
-        assert_eq!(enabled(None), Ok(false));
-        assert_eq!(enabled(Some("off")), Ok(false));
-        assert_eq!(enabled(Some("on")), Ok(true));
-        assert!(enabled(Some("true")).is_err());
+        assert!(!crate::config::Config::default().metrics_enabled);
     }
 
     #[test]

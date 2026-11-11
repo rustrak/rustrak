@@ -228,7 +228,6 @@ pub struct Project {
     #[serde(skip_serializing)]
     pub quota_exceeded_until: Option<DateTime<Utc>>,
     #[serde(skip_serializing)]
-    #[allow(dead_code)] // Useful for debugging rate limit issues
     pub quota_exceeded_reason: Option<String>,
     #[serde(skip_serializing)]
     pub next_quota_check: i64,
@@ -243,11 +242,13 @@ pub struct Project {
 }
 
 /// DTO for creating a new project
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateProject {
+    #[schemars(description = "Project name")]
     pub name: String,
     #[serde(default)]
+    #[schemars(description = "URL-safe slug (auto-generated if omitted)")]
     pub slug: Option<String>,
     /// Platform identifier for the project, such as `python-django` or
     /// `javascript-nextjs`. Rejected with a 400 if it is not one of the

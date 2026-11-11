@@ -781,11 +781,6 @@ export type CreateRelease = {
     version: string;
 };
 
-export type CreateUserRequest = {
-    email: string;
-    password: string;
-};
-
 /**
  * A debug information file as Sentry's `DebugFileSerializer` describes it.
  */
@@ -994,7 +989,7 @@ export type FieldError = {
  * `packages/client/tests/unit/app-error-contract.test.ts` enforces by parsing
  * this enum out of this file.
  */
-export type FieldErrorCode = 'required' | 'invalid' | 'already_exists' | 'too_short' | 'too_long' | 'custom';
+export type FieldErrorCode = 'required' | 'invalid' | 'already_exists' | 'too_short' | 'too_long' | 'incorrect' | 'custom';
 
 /**
  * One row of a "top N by X" breakdown (model or tool name).
@@ -1195,15 +1190,6 @@ export type IssueResponse = {
     has_seen?: boolean | null;
     id: string;
     is_bookmarked?: boolean | null;
-    /**
-     * Deprecated: derived from `status`. See `is_resolved`.
-     */
-    is_muted: boolean;
-    /**
-     * Deprecated: derived from `status`. Kept for the legacy client/UI until
-     * they migrate to `status`. Remove in the client/frontend phases of #165.
-     */
-    is_resolved: boolean;
     is_subscribed?: boolean | null;
     issue_category: string;
     issue_type: string;
@@ -1867,7 +1853,6 @@ export type ProjectStorage = {
 export type ProviderType = 'webhook' | 'email' | 'slack' | 'custom_webhook';
 
 /**
- * Configure project routes
  * The server's per-project event limits (`MAX_EVENTS_PER_PROJECT_*`).
  */
 export type RateLimitsResponse = {
@@ -2725,9 +2710,7 @@ export type UpdateAlertRule = {
 /**
  * Request to update issue state.
  *
- * `status`/`substatus`/`priority`/assignment are the canonical fields.
- * `is_resolved`/`is_muted` are accepted as a deprecated compatibility shim
- * and mapped onto `status`.
+ * `status`/`substatus`/`priority`/assignment, as in Sentry.
  */
 export type UpdateIssueState = {
     /**
@@ -2736,8 +2719,6 @@ export type UpdateIssueState = {
      */
     assigned_to?: number | null;
     assignee_type?: string | null;
-    is_muted?: boolean | null;
-    is_resolved?: boolean | null;
     priority?: IssuePriority | null;
     status?: IssueStatusUpdate | null;
     substatus?: string | null;
@@ -4676,6 +4657,10 @@ export type ProjectsUpdateData = {
 
 export type ProjectsUpdateErrors = {
     /**
+     * Invalid value, such as a limit above the server's
+     */
+    400: ErrorResponse;
+    /**
      * Unauthorized
      */
     401: ErrorResponse;
@@ -6124,15 +6109,6 @@ export type IssuesListResponses = {
             has_seen?: boolean | null;
             id: string;
             is_bookmarked?: boolean | null;
-            /**
-             * Deprecated: derived from `status`. See `is_resolved`.
-             */
-            is_muted: boolean;
-            /**
-             * Deprecated: derived from `status`. Kept for the legacy client/UI until
-             * they migrate to `status`. Remove in the client/frontend phases of #165.
-             */
-            is_resolved: boolean;
             is_subscribed?: boolean | null;
             issue_category: string;
             issue_type: string;
@@ -9539,6 +9515,10 @@ export type TokensCreateData = {
 
 export type TokensCreateErrors = {
     /**
+     * An expiry that is not in the future
+     */
+    400: ErrorResponse;
+    /**
      * Unauthorized
      */
     401: ErrorResponse;
@@ -9897,22 +9877,6 @@ export type AuthChangePasswordResponses = {
 };
 
 export type AuthChangePasswordResponse = AuthChangePasswordResponses[keyof AuthChangePasswordResponses];
-
-export type AuthRegisterData = {
-    body: CreateUserRequest;
-    path?: never;
-    query?: never;
-    url: '/auth/register';
-};
-
-export type AuthRegisterErrors = {
-    /**
-     * Registration is invite-only
-     */
-    403: ErrorResponse;
-};
-
-export type AuthRegisterError = AuthRegisterErrors[keyof AuthRegisterErrors];
 
 export type AuthSsoCallbackData = {
     body?: never;

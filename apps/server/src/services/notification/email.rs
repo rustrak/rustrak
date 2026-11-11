@@ -3,7 +3,7 @@
 //! Sends alerts via SMTP using the lettre crate.
 //! Supports both plain text and HTML email formats.
 //!
-//! Routing override (flat struct, no provider_type discriminator — SCL-1):
+//! Routing override (flat struct, no provider_type discriminator):
 //! `{"recipients": ["a@b.com", "c@d.com"]}`
 
 use async_trait::async_trait;
@@ -11,25 +11,21 @@ use lettre::message::header::ContentType;
 use lettre::{AsyncTransport, Message};
 
 use super::{NotificationDispatcher, NotificationResult};
+use crate::config::{SmtpSettings, DEFAULT_FROM};
 use crate::error::{AppError, AppResult};
 use crate::models::{AlertIntegration, AlertPayload, EmailConfig, EmailRoutingOverride};
-use crate::services::mail::{self, html_escape, SmtpSettings};
+use crate::services::mail::{self, html_escape};
 
-/// Email notification dispatcher
 pub struct EmailNotifier {
-    /// Global SMTP configuration (fallback if integration doesn't specify)
+    /// `Config::smtp`, which an integration's own settings override.
     global: SmtpSettings,
 }
 
 impl EmailNotifier {
-    /// Creates a new email notifier with global SMTP settings from environment
-    pub fn new() -> Self {
-        Self {
-            global: SmtpSettings::from_env(),
-        }
+    pub fn new(global: SmtpSettings) -> Self {
+        Self { global }
     }
 
-    /// Formats an alert as HTML email body
     fn format_html(payload: &AlertPayload) -> String {
         let level_color = match payload.issue.level.as_deref() {
             Some("fatal") => "#dc2626",
@@ -116,7 +112,6 @@ impl EmailNotifier {
         )
     }
 
-    /// Formats an alert as plain text email body
     fn format_text(payload: &AlertPayload) -> String {
         let alert_type_display = payload
             .alert_type
@@ -199,7 +194,7 @@ This alert was sent by Rustrak for project {project_name}."#,
                 .from(
                     smtp.from_address
                         .parse()
-                        .unwrap_or_else(|_| mail::DEFAULT_FROM.parse().unwrap()),
+                        .unwrap_or_else(|_| DEFAULT_FROM.parse().unwrap()),
                 )
                 .to(match recipient.parse() {
                     Ok(addr) => addr,
@@ -264,12 +259,6 @@ This alert was sent by Rustrak for project {project_name}."#,
     }
 }
 
-impl Default for EmailNotifier {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[async_trait]
 impl NotificationDispatcher for EmailNotifier {
     async fn send(
@@ -278,17 +267,6 @@ impl NotificationDispatcher for EmailNotifier {
         routing: &serde_json::Value,
         payload: &AlertPayload,
     ) -> NotificationResult {
-        // is_enabled check FIRST (SCL-1)
-        if !integration.is_enabled {
-            log::debug!(
-                "Skipping dispatch to disabled Email integration {} ({})",
-                integration.id,
-                integration.name
-            );
-            return NotificationResult::success(None);
-        }
-
-        // Parse credentials (SMTP config, no recipients)
         let credentials: EmailConfig = match serde_json::from_value(integration.credentials.clone())
         {
             Ok(c) => c,
@@ -300,7 +278,7 @@ impl NotificationDispatcher for EmailNotifier {
             }
         };
 
-        // Parse flat routing override — recipients come from here (SCL-1, no tag)
+        // Recipients come from the routing override.
         let routing_override: EmailRoutingOverride = match serde_json::from_value(routing.clone()) {
             Ok(r) => r,
             Err(e) => {
@@ -355,47 +333,6 @@ mod tests {
             issue_url: "https://example.com/issues/abc-123".to_string(),
             actor: "Rustrak".to_string(),
         }
-    }
-
-    fn make_email_integration(is_enabled: bool) -> AlertIntegration {
-        AlertIntegration {
-            id: 2,
-            name: "Test Email".to_string(),
-            provider_type: crate::models::ProviderType::Email,
-            credentials: serde_json::json!({
-                "smtp_host": "smtp.example.com",
-                "smtp_port": 587,
-                "smtp_username": "user",
-                "smtp_password": "pass",
-                "from_address": "alerts@example.com"
-            }),
-            is_enabled,
-            failure_count: 0,
-            last_failure_at: None,
-            last_failure_message: None,
-            last_success_at: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Task 4 RED→GREEN: Email dispatcher reads recipients from flat routing
-    // -------------------------------------------------------------------------
-
-    #[tokio::test]
-    async fn test_disabled_email_integration_skipped() {
-        let notifier = EmailNotifier::new();
-        let integration = make_email_integration(false);
-        let routing = serde_json::json!({"recipients": ["a@b.com"]});
-        let payload = create_test_payload();
-
-        let result = notifier.send(&integration, &routing, &payload).await;
-
-        assert!(
-            result.success,
-            "disabled integration must return success (skip)"
-        );
     }
 
     #[test]

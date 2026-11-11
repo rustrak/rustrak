@@ -7,9 +7,7 @@ use chrono::{DateTime, Utc};
 use crate::auth::{self, AuthenticatedUser, OidcService};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
-use crate::models::{
-    AcceptInvitation, ChangePasswordRequest, CreateUserRequest, LoginRequest, User,
-};
+use crate::models::{AcceptInvitation, ChangePasswordRequest, LoginRequest, User};
 use crate::services::OidcOutcome;
 use crate::services::{InvitationService, UsersService};
 
@@ -54,7 +52,7 @@ const OIDC_PKCE_KEY: &str = "oidc_pkce_verifier";
 const OIDC_PENDING_LINK_KEY: &str = "oidc_pending_link";
 
 /// An SSO identity waiting for the password of the account it matched. Kept
-/// in the encrypted session cookie, so the browser can neither read nor forge it.
+/// in the server-side session, so the browser can neither read nor forge it.
 #[derive(Serialize, Deserialize)]
 struct PendingLink {
     issuer: String,
@@ -125,47 +123,6 @@ impl From<User> for UserResponse {
     }
 }
 
-/// Email validation - checks basic format requirements
-pub(crate) fn is_valid_email(email: &str) -> bool {
-    // Must have exactly one @
-    let parts: Vec<&str> = email.split('@').collect();
-    if parts.len() != 2 {
-        return false;
-    }
-    let (local, domain) = (parts[0], parts[1]);
-
-    // Local part: non-empty, reasonable chars
-    if local.is_empty() || local.len() > 64 {
-        return false;
-    }
-
-    // Domain: non-empty, has at least one dot, not starting/ending with dot
-    if domain.is_empty() || domain.len() > 255 {
-        return false;
-    }
-    if !domain.contains('.') {
-        return false;
-    }
-    if domain.starts_with('.') || domain.ends_with('.') {
-        return false;
-    }
-
-    // Domain parts must not be empty (catches "user@.com" and "user@domain.")
-    let domain_parts: Vec<&str> = domain.split('.').collect();
-    if domain_parts.iter().any(|p| p.is_empty()) {
-        return false;
-    }
-
-    // TLD must be at least 2 chars
-    if let Some(tld) = domain_parts.last() {
-        if tld.len() < 2 {
-            return false;
-        }
-    }
-
-    true
-}
-
 /// Public-facing invitation info for the accept page.
 #[derive(serde::Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -175,29 +132,6 @@ struct InvitationInfoResponse {
     role: String,
     status: String,
     expires_at: DateTime<Utc>,
-}
-
-#[cfg_attr(feature = "openapi", utoipa::path(
-    post,
-    path = "/auth/register",
-    operation_id = "auth.register",
-    tag = "Auth",
-    request_body = CreateUserRequest,
-    responses(
-        (status = 403, description = "Registration is invite-only", body = crate::error::ErrorResponse),
-    ),
-    security(()),
-))]
-/// POST /auth/register
-/// Registration is invite-only — always rejected. Use `/auth/accept-invitation`.
-pub async fn register(
-    _pool: web::Data<crate::db::DbPool>,
-    _session: Session,
-    _req: web::Json<CreateUserRequest>,
-) -> AppResult<impl Responder> {
-    Err::<HttpResponse, _>(AppError::Forbidden(
-        "Registration is invite-only".to_string(),
-    ))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -212,7 +146,6 @@ pub async fn register(
     ),
     security(()),
 ))]
-/// POST /auth/accept-invitation
 /// Accept a pending invitation: creates the user (with the invite's email + role) and logs in.
 pub async fn accept_invitation(
     pool: web::Data<crate::db::DbPool>,
@@ -262,7 +195,6 @@ fn password_login_disabled(oidc: &web::Data<Option<OidcService>>) -> bool {
     ),
     security(()),
 ))]
-/// GET /auth/invitation/{token}
 /// Returns the invitation's details if it is still acceptable (for the accept page).
 pub async fn get_invitation(
     pool: web::Data<crate::db::DbPool>,
@@ -299,7 +231,6 @@ pub async fn get_invitation(
     ),
     security(()),
 ))]
-/// POST /auth/login
 /// Authenticate user and create session
 pub async fn login(
     pool: web::Data<crate::db::DbPool>,
@@ -312,12 +243,7 @@ pub async fn login(
         .await?
         .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
 
-    // Check if user is active
-    if !user.is_active {
-        return Err(AppError::Unauthorized("Account is disabled".to_string()));
-    }
-
-    // Verify password
+    user.ensure_active()?;
     if !user.verify_password(&req.password)? {
         return Err(AppError::Unauthorized("Invalid credentials".to_string()));
     }
@@ -352,7 +278,6 @@ pub async fn login(
     responses((status = 200, description = "Public SSO configuration", body = SsoConfigResponse)),
     security(()),
 ))]
-/// GET /auth/sso/config
 /// Public, non-sensitive information used to render the login page.
 pub async fn sso_config(oidc: web::Data<Option<OidcService>>) -> impl Responder {
     let service = oidc.as_ref().as_ref();
@@ -376,9 +301,8 @@ pub async fn sso_config(oidc: web::Data<Option<OidcService>>) -> impl Responder 
     ),
     security(()),
 ))]
-/// POST /auth/sso/start
 /// Create a one-time OIDC authorization request and retain its protections in
-/// the encrypted session cookie.
+/// the session.
 pub async fn sso_start(
     oidc: web::Data<Option<OidcService>>,
     session: Session,
@@ -441,7 +365,7 @@ async fn handle_sso_callback(
         .ok_or_else(|| AppError::Unauthorized("SSO callback is missing a code".to_string()))?;
 
     let identity = service.exchange_code(code, pkce_verifier, nonce).await?;
-    if !is_valid_email(&identity.email) {
+    if !crate::protocol::is_valid_email(&identity.email) {
         return Err(AppError::Forbidden(
             "SSO provider returned an invalid email address".to_string(),
         ));
@@ -481,7 +405,6 @@ async fn handle_sso_callback(
     ),
     security(()),
 ))]
-/// GET /auth/sso/callback
 /// Validate the provider response, resolve or provision the local account, and
 /// establish the normal Rustrak session.
 pub async fn sso_callback(
@@ -519,7 +442,6 @@ pub async fn sso_callback(
             }
         }
         Ok(CallbackResult::SignedIn(user)) => {
-            session.renew();
             auth::set_user_session(&session, user.id)?;
             if wants_html {
                 Ok(HttpResponse::Found()
@@ -544,8 +466,8 @@ pub async fn sso_callback(
 
 fn pending_link(session: &Session) -> AppResult<PendingLink> {
     // A value that no longer deserializes is a link started before an upgrade
-    // changed this struct. The cookie is signed and encrypted, so it is ours,
-    // just stale: the browser has to start the login again, which is the same
+    // changed this struct. The session is server-side, so it is ours, just
+    // stale: the browser has to start the login again, which is the same
     // answer as "nothing pending" and not a server error.
     session
         .get::<PendingLink>(OIDC_PENDING_LINK_KEY)
@@ -565,7 +487,6 @@ fn pending_link(session: &Session) -> AppResult<PendingLink> {
     ),
     security(()),
 ))]
-/// GET /auth/sso/link
 /// The account an SSO login matched, shown while its owner confirms.
 pub async fn sso_link(
     oidc: web::Data<Option<OidcService>>,
@@ -596,7 +517,6 @@ pub async fn sso_link(
     ),
     security(()),
 ))]
-/// POST /auth/sso/link
 /// Link the pending SSO identity to its account once the account's password
 /// is given, and sign in. A wrong password keeps the link pending for a retry.
 pub async fn confirm_sso_link(
@@ -610,7 +530,7 @@ pub async fn confirm_sso_link(
         .as_ref()
         .ok_or_else(|| AppError::NotFound("SSO is not configured".to_string()))?;
     let pending = pending_link(&session)?;
-    let identity = auth::OidcIdentity {
+    let identity = crate::models::user::OidcIdentity {
         issuer: pending.issuer,
         subject: pending.subject,
         email: pending.email,
@@ -632,7 +552,6 @@ pub async fn confirm_sso_link(
     .await?;
 
     session.remove(OIDC_PENDING_LINK_KEY);
-    session.renew();
     auth::set_user_session(&session, user.id)?;
     Ok(HttpResponse::Ok().json(AuthResponse { user: user.into() }))
 }
@@ -658,7 +577,6 @@ fn take_session_value(session: &Session, key: &str) -> AppResult<String> {
     ),
     security(("session_cookie" = [])),
 ))]
-/// POST /auth/logout
 /// Clear session
 pub async fn logout(session: Session) -> impl Responder {
     auth::clear_session(&session);
@@ -676,7 +594,6 @@ pub async fn logout(session: Session) -> impl Responder {
     ),
     security(("session_cookie" = [])),
 ))]
-/// GET /auth/me
 /// Get current authenticated user
 pub async fn get_current_user(user: AuthenticatedUser) -> impl Responder {
     HttpResponse::Ok().json(UserResponse::from(user.0))
@@ -747,7 +664,6 @@ fn is_time_zone_name(value: &str) -> bool {
     ),
     security(("session_cookie" = [])),
 ))]
-/// PATCH /auth/me
 /// Update the current user's presentation preferences
 pub async fn update_current_user(
     user: AuthenticatedUser,
@@ -794,13 +710,15 @@ pub async fn update_current_user(
     ),
     security(("session_cookie" = [])),
 ))]
-/// POST /auth/me/password
-/// Change the current user's password
+/// Change the current user's password. Every other session of the user ends;
+/// this one continues under a new id.
 pub async fn change_password(
     user: AuthenticatedUser,
     pool: web::Data<DbPool>,
+    session: Session,
     body: web::Json<ChangePasswordRequest>,
 ) -> AppResult<HttpResponse> {
+    let user_id = user.0.id;
     UsersService::change_password(
         pool.get_ref(),
         user.0,
@@ -808,6 +726,7 @@ pub async fn change_password(
         &body.new_password,
     )
     .await?;
+    auth::set_user_session(&session, user_id)?;
     Ok(HttpResponse::NoContent().finish())
 }
 
@@ -815,7 +734,6 @@ pub async fn change_password(
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        register,
         accept_invitation,
         get_invitation,
         login,
@@ -830,7 +748,6 @@ pub async fn change_password(
         change_password
     ),
     components(schemas(
-        crate::models::CreateUserRequest,
         crate::models::LoginRequest,
         crate::models::ChangePasswordRequest,
         crate::models::AcceptInvitation,
@@ -846,11 +763,9 @@ pub async fn change_password(
 )]
 pub struct AuthApi;
 
-/// Configure auth routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
-            .route("/register", web::post().to(register))
             .route("/accept-invitation", web::post().to(accept_invitation))
             .route("/invitation/{token}", web::get().to(get_invitation))
             .route("/login", web::post().to(login))

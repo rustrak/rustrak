@@ -1,0 +1,8 @@
+[env]
+# The SQLite that sqlx bundles is compiled with SQLITE_ENABLE_MEMORY_MANAGEMENT,
+# which puts every connection's page cache behind one global mutex, and with
+# memory statistics on, one more global mutex per allocation. Every read in
+# the process then took turns: eight concurrent issue lists ran 9x slower than
+# one. Nothing here calls sqlite3_release_memory or a soft heap limit, the
+# only things those two buy.
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"

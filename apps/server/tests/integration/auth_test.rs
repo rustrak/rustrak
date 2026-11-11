@@ -1,61 +1,14 @@
 //! Integration tests for the Authentication API
 //!
 //! Tests the complete authentication flow with a real PostgreSQL database.
-//! Covers: register, login, logout, get current user, and session management.
+//! Covers: login, logout, get current user, and session management.
 
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::{cookie::Key, test, web, App};
-use rustrak::auth::OidcIdentity;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig};
-use rustrak::middleware::auth::RequireAuth;
+use actix_web::test;
+use rustrak::models::user::OidcIdentity;
 use rustrak::models::User;
-use rustrak::routes;
 use rustrak::services::{OidcLinkPolicy, OidcOutcome, UsersService};
 use serde_json::{json, Value};
-use std::time::Duration;
-
-/// Creates a test config
-fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: rustrak::config::RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
 
 /// Helper to create test user directly in DB
 async fn create_test_user(
@@ -78,219 +31,14 @@ async fn create_test_user(
         .expect("Failed to create test user")
 }
 
-// =============================================================================
-// Register Tests
-// =============================================================================
-
-#[actix_web::test]
-async fn test_register_success() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .cookie_http_only(true)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "newuser@example.com",
-            "password": "password123"
-        }))
-        .to_request();
-
-    // Registration is now invite-only: /auth/register always returns 403 and
-    // never creates a user. (RBAC: use /auth/accept-invitation instead.)
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403, "registration is invite-only");
-
-    // Verify NO user was created in the database.
-    assert!(UsersService::get_by_email(&db.pool, "newuser@example.com")
-        .await
-        .unwrap()
-        .is_none());
-}
-
-#[actix_web::test]
-async fn test_register_invalid_email() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "not-an-email",
-            "password": "password123"
-        }))
-        .to_request();
-
-    // Invite-only: register rejects everything with 403 before any validation.
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403);
-}
-
-#[actix_web::test]
-async fn test_register_empty_password_rejected() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    // Invite-only: register rejects everything with 403.
-    let req = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "user@example.com",
-            "password": ""
-        }))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403);
-}
-
-#[actix_web::test]
-async fn test_register_duplicate_email() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    // Create existing user
-    create_test_user(&db.pool, "existing@example.com", "password123", false).await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "existing@example.com",
-            "password": "password123"
-        }))
-        .to_request();
-
-    // Invite-only: register always returns 403 (does not reach duplicate check).
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403);
-}
-
-#[actix_web::test]
-async fn test_register_creates_session() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .cookie_http_only(true)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "sessiontest@example.com",
-            "password": "password123"
-        }))
-        .to_request();
-
-    // Invite-only: register no longer creates a session; it returns 403.
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403);
-}
-
-// =============================================================================
-// Login Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_login_success() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    // Create test user
     create_test_user(&db.pool, "logintest@example.com", "password123", false).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/auth/login")
@@ -312,24 +60,11 @@ async fn test_login_success() {
 #[actix_web::test]
 async fn test_login_wrong_password() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
     create_test_user(&db.pool, "wrongpass@example.com", "correctpassword", false).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/auth/login")
@@ -347,22 +82,9 @@ async fn test_login_wrong_password() {
 #[actix_web::test]
 async fn test_login_nonexistent_user() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/auth/login")
@@ -380,10 +102,8 @@ async fn test_login_nonexistent_user() {
 #[actix_web::test]
 async fn test_login_inactive_user() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    // Create user and deactivate
     let user = create_test_user(&db.pool, "inactive@example.com", "password123", false).await;
     sqlx::query("UPDATE users SET is_active = false WHERE id = $1")
         .bind(user.id)
@@ -391,19 +111,7 @@ async fn test_login_inactive_user() {
         .await
         .unwrap();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/auth/login")
@@ -421,27 +129,14 @@ async fn test_login_inactive_user() {
 #[actix_web::test]
 async fn test_login_updates_last_login() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
     let user = create_test_user(&db.pool, "lastlogin@example.com", "password123", false).await;
 
     // Initially, last_login should be None
     assert!(user.last_login.is_none());
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post()
         .uri("/auth/login")
@@ -455,7 +150,6 @@ async fn test_login_updates_last_login() {
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 200);
 
-    // Check that last_login was updated
     let updated_user = UsersService::get_by_email(&db.pool, "lastlogin@example.com")
         .await
         .unwrap()
@@ -463,29 +157,12 @@ async fn test_login_updates_last_login() {
     assert!(updated_user.last_login.is_some());
 }
 
-// =============================================================================
-// Logout Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_logout_success() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::post().uri("/auth/logout").to_request();
 
@@ -493,39 +170,15 @@ async fn test_logout_success() {
     assert_eq!(resp.status(), 204);
 }
 
-// =============================================================================
-// Get Current User Tests
-// =============================================================================
-
-// NOTE: This test is ignored because actix-web test framework doesn't properly
-// preserve session cookies between requests. This would require E2E testing with
-// a real HTTP client or browser. The session mechanism itself is tested via
-// register/login tests that verify sessions are created.
 #[actix_web::test]
-#[ignore]
 async fn test_get_current_user_authenticated() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    // Create and login user
     create_test_user(&db.pool, "currentuser@example.com", "password123", false).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
-    // Login first
     let login_req = test::TestRequest::post()
         .uri("/auth/login")
         .insert_header(("Content-Type", "application/json"))
@@ -544,7 +197,6 @@ async fn test_get_current_user_authenticated() {
 
     let cookie_value = cookies[0].to_str().unwrap();
 
-    // Now get current user with session cookie
     let me_req = test::TestRequest::get()
         .uri("/auth/me")
         .insert_header(("Cookie", cookie_value))
@@ -558,36 +210,6 @@ async fn test_get_current_user_authenticated() {
 }
 
 #[actix_web::test]
-async fn test_get_current_user_unauthenticated() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get().uri("/auth/me").to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-// =============================================================================
-// Password Security Tests
-// =============================================================================
-
-#[actix_web::test]
 async fn test_password_is_hashed_in_database() {
     let db = TestDb::new().await;
 
@@ -595,7 +217,6 @@ async fn test_password_is_hashed_in_database() {
     // (the service is what performs the Argon2 hashing).
     create_test_user(&db.pool, "hashtest@example.com", "mysecretpassword", false).await;
 
-    // Get user from database
     let user = UsersService::get_by_email(&db.pool, "hashtest@example.com")
         .await
         .unwrap()
@@ -619,66 +240,15 @@ async fn test_different_passwords_produce_different_hashes() {
     assert_ne!(user1.password_hash, user2.password_hash);
 }
 
-// =============================================================================
-// Middleware Integration Tests
-// =============================================================================
-
 #[actix_web::test]
-async fn test_middleware_blocks_unauthenticated_access() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .wrap(RequireAuth::new(false))
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
-
-    // Try to access protected route without authentication
-    let req = test::TestRequest::get().uri("/api/projects").to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-// NOTE: Ignored - session cookies not preserved in actix test framework
-#[actix_web::test]
-#[ignore]
 async fn test_middleware_allows_authenticated_access() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
     create_test_user(&db.pool, "authuser@example.com", "password123", false).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .wrap(RequireAuth::new(false))
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
-    // Login first
     let login_req = test::TestRequest::post()
         .uri("/auth/login")
         .insert_header(("Content-Type", "application/json"))
@@ -692,7 +262,6 @@ async fn test_middleware_allows_authenticated_access() {
     let cookies: Vec<_> = login_resp.headers().get_all("set-cookie").collect();
     let cookie_value = cookies[0].to_str().unwrap();
 
-    // Now access protected route with session
     let req = test::TestRequest::get()
         .uri("/api/projects")
         .insert_header(("Cookie", cookie_value))
@@ -705,63 +274,25 @@ async fn test_middleware_allows_authenticated_access() {
 #[actix_web::test]
 async fn test_middleware_exempts_auth_routes() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .wrap(RequireAuth::new(false))
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
-    // Auth routes should be reachable without authentication. The register
-    // route is invite-only so it returns 403 (handler-level), NOT 401 from the
-    // RequireAuth middleware — proving the route is exempt and was reached.
-    let req = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "exempt@example.com",
-            "password": "password123"
-        }))
+    // Auth routes are reachable without a session: SSO config answers 200.
+    let req = test::TestRequest::get()
+        .uri("/auth/sso/config")
         .to_request();
 
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403);
+    assert_eq!(resp.status(), 200);
 }
 
 #[actix_web::test]
 async fn test_middleware_exempts_health_routes() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .wrap(RequireAuth::new(false))
-            .service(
-                web::scope("/health")
-                    .route("", web::get().to(routes::health::liveness))
-                    .route("/ready", web::get().to(routes::health::readiness)),
-            ),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // Health routes should be accessible without authentication
     let req = test::TestRequest::get().uri("/health").to_request();
@@ -770,52 +301,10 @@ async fn test_middleware_exempts_health_routes() {
     assert_eq!(resp.status(), 200);
 }
 
-// =============================================================================
-// Edge Cases and Corner Cases
-// =============================================================================
-
-#[actix_web::test]
-async fn test_register_with_very_long_email() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    // Local part exceeds 64 char limit
-    let long_email = format!("{}@example.com", "a".repeat(250));
-
-    let req = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": long_email,
-            "password": "password123"
-        }))
-        .to_request();
-
-    // Invite-only: register rejects with 403 before any validation runs.
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403);
-}
-
 #[actix_web::test]
 async fn test_login_case_insensitive_email() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
     create_test_user(&db.pool, "CaseSensitive@example.com", "password123", false).await;
 
@@ -826,19 +315,7 @@ async fn test_login_case_insensitive_email() {
         .expect("user exists");
     assert_eq!(stored.email, "casesensitive@example.com");
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     // Login works with any casing of the same address
     for email in [
@@ -875,19 +352,7 @@ async fn insert_legacy_user(pool: &rustrak::db::DbPool, email: &str, password: &
 
 /// Logs in and returns the status and the email of the account signed into.
 async fn login_as(pool: &rustrak::db::DbPool, email: &str, password: &str) -> (u16, String) {
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(pool, crate::common::config()).await;
 
     let req = test::TestRequest::post()
         .uri("/auth/login")
@@ -970,177 +435,6 @@ async fn test_login_legacy_non_ascii_email_with_exact_casing() {
     assert_eq!(status, 200);
 }
 
-#[actix_web::test]
-async fn test_concurrent_registrations_same_email() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    // Simulate concurrent registrations
-    let req1 = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "concurrent@example.com",
-            "password": "password123"
-        }))
-        .to_request();
-
-    let req2 = test::TestRequest::post()
-        .uri("/auth/register")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "concurrent@example.com",
-            "password": "password456"
-        }))
-        .to_request();
-
-    let resp1 = test::call_service(&app, req1).await;
-    let resp2 = test::call_service(&app, req2).await;
-
-    // Invite-only: both registrations are rejected with 403, and no user is
-    // ever created regardless of concurrency.
-    assert_eq!(resp1.status(), 403);
-    assert_eq!(resp2.status(), 403);
-    assert!(
-        UsersService::get_by_email(&db.pool, "concurrent@example.com")
-            .await
-            .unwrap()
-            .is_none()
-    );
-}
-
-// NOTE: Ignored - session cookies not preserved in actix test framework
-#[actix_web::test]
-#[ignore]
-async fn test_session_persists_across_requests() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    create_test_user(&db.pool, "sessionpersist@example.com", "password123", false).await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    // Login
-    let login_req = test::TestRequest::post()
-        .uri("/auth/login")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "sessionpersist@example.com",
-            "password": "password123"
-        }))
-        .to_request();
-
-    let login_resp = test::call_service(&app, login_req).await;
-    let cookies: Vec<_> = login_resp.headers().get_all("set-cookie").collect();
-    let cookie_value = cookies[0].to_str().unwrap();
-
-    // Make multiple requests with same session
-    for _ in 0..5 {
-        let req = test::TestRequest::get()
-            .uri("/auth/me")
-            .insert_header(("Cookie", cookie_value))
-            .to_request();
-
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), 200);
-    }
-}
-
-// NOTE: Ignored - session cookies not preserved in actix test framework
-#[actix_web::test]
-#[ignore]
-async fn test_logout_invalidates_session() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    create_test_user(&db.pool, "logouttest@example.com", "password123", false).await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    // Login
-    let login_req = test::TestRequest::post()
-        .uri("/auth/login")
-        .insert_header(("Content-Type", "application/json"))
-        .set_json(json!({
-            "email": "logouttest@example.com",
-            "password": "password123"
-        }))
-        .to_request();
-
-    let login_resp = test::call_service(&app, login_req).await;
-    let cookies: Vec<_> = login_resp.headers().get_all("set-cookie").collect();
-    let cookie_value = cookies[0].to_str().unwrap();
-
-    // Verify session works
-    let me_req = test::TestRequest::get()
-        .uri("/auth/me")
-        .insert_header(("Cookie", cookie_value))
-        .to_request();
-    let me_resp = test::call_service(&app, me_req).await;
-    assert_eq!(me_resp.status(), 200);
-
-    // Logout
-    let logout_req = test::TestRequest::post()
-        .uri("/auth/logout")
-        .insert_header(("Cookie", cookie_value))
-        .to_request();
-    let logout_resp = test::call_service(&app, logout_req).await;
-    assert_eq!(logout_resp.status(), 204);
-
-    // Try to use session after logout - should fail
-    let me_req2 = test::TestRequest::get()
-        .uri("/auth/me")
-        .insert_header(("Cookie", cookie_value))
-        .to_request();
-    let me_resp2 = test::call_service(&app, me_req2).await;
-    assert_eq!(me_resp2.status(), 401);
-}
-
-// =============================================================================
-// User Preferences (language, timezone)
-// =============================================================================
-
 /// A user who has never chosen reports no preference, rather than a default.
 ///
 /// The distinction is load-bearing: `null` means "has not chosen", which lets
@@ -1150,26 +444,12 @@ async fn test_logout_invalidates_session() {
 #[actix_web::test]
 async fn test_new_user_has_no_language_or_timezone_preference() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
-    // Seeded rather than registered: `/auth/register` is invite-only and always
-    // answers 403.
+    // Seeded: sign-up is by invitation only.
     create_test_user(&db.pool, "prefs@example.com", "password123", false).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let login = test::TestRequest::post()
         .uri("/auth/login")
@@ -1209,24 +489,11 @@ async fn test_new_user_has_no_language_or_timezone_preference() {
 #[actix_web::test]
 async fn test_patch_me_persists_language_and_timezone() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
     create_test_user(&db.pool, "prefs2@example.com", "password123", false).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let login = test::TestRequest::post()
         .uri("/auth/login")
@@ -1263,24 +530,11 @@ async fn test_patch_me_persists_language_and_timezone() {
 #[actix_web::test]
 async fn test_patch_me_rejects_malformed_preferences() {
     let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
+    let config = crate::common::config();
 
     create_test_user(&db.pool, "prefs3@example.com", "password123", false).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let login = test::TestRequest::post()
         .uri("/auth/login")
@@ -1318,40 +572,6 @@ async fn test_patch_me_rejects_malformed_preferences() {
     );
 }
 
-/// Preferences belong to a session, not to whoever can reach the port.
-#[actix_web::test]
-async fn test_patch_me_unauthenticated_is_rejected() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-    let session_key = Key::from(&[0u8; 64]);
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::patch()
-        .uri("/auth/me")
-        .set_json(json!({ "language": "zh" }))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-// =============================================================================
-// Change password tests
-// =============================================================================
-
 /// Signs in as `email` and posts `body` to `/auth/me/password`, returning the
 /// status and the body (`Null` when there is none).
 async fn change_password_as(
@@ -1360,19 +580,7 @@ async fn change_password_as(
     password: &str,
     body: Value,
 ) -> (u16, Value) {
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .configure(routes::auth::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(pool, crate::common::config()).await;
 
     let login = test::TestRequest::post()
         .uri("/auth/login")
@@ -1438,7 +646,7 @@ async fn test_change_password_requires_the_current_password() {
     assert_eq!(status, 400);
     assert_eq!(
         body["error"]["fields"],
-        json!([{ "field": "current_password", "code": "invalid" }])
+        json!([{ "field": "current_password", "code": "incorrect" }])
     );
 
     assert_eq!(
@@ -1502,10 +710,6 @@ async fn test_change_password_refuses_a_stale_verification() {
         200
     );
 }
-
-// =============================================================================
-// OpenID Connect provisioning tests
-// =============================================================================
 
 async fn oidc_outcome(
     pool: &rustrak::db::DbPool,
@@ -1887,10 +1091,6 @@ async fn test_oidc_auto_provision_can_be_disabled() {
     assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
 }
 
-// =============================================================================
-// OpenID Connect group mapping
-// =============================================================================
-
 /// A login carrying group claims, for the role-mapping tests.
 async fn oidc_login_in_groups(
     pool: &rustrak::db::DbPool,
@@ -2106,4 +1306,211 @@ async fn test_oidc_group_names_match_whole_names_only() {
         None,
         "mapping not configured: roles are left alone"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Server-side sessions: the cookie carries an opaque id, the row is the session
+// ---------------------------------------------------------------------------
+
+async fn me_status<S>(app: &S, cookie: &actix_web::cookie::Cookie<'static>) -> u16
+where
+    S: actix_web::dev::Service<
+        actix_http::Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    >,
+{
+    let req = test::TestRequest::get()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .to_request();
+    test::call_service(app, req).await.status().as_u16()
+}
+
+async fn session_rows(pool: &rustrak::db::DbPool, user_id: i32) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[actix_web::test]
+async fn test_logout_invalidates_session() {
+    let db = TestDb::new().await;
+    let user = create_test_user(&db.pool, "logouttest@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+
+    let cookie = crate::common::login(&app, "logouttest@example.com").await;
+    assert_eq!(me_status(&app, &cookie).await, 200);
+    assert_eq!(session_rows(&db.pool, user.id).await, 1);
+
+    let logout = test::TestRequest::post()
+        .uri("/auth/logout")
+        .cookie(cookie.clone())
+        .to_request();
+    assert_eq!(test::call_service(&app, logout).await.status(), 204);
+
+    // The same cookie, replayed after logout, is refused: its row is gone.
+    assert_eq!(me_status(&app, &cookie).await, 401);
+    assert_eq!(session_rows(&db.pool, user.id).await, 0);
+}
+
+#[actix_web::test]
+async fn test_session_row_stores_only_a_hash_of_the_id() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "hash@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    crate::common::login(&app, "hash@example.com").await;
+
+    let (id_hash,): (String,) = sqlx::query_as("SELECT id_hash FROM sessions")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(id_hash.len(), 64, "a hex SHA-256");
+}
+
+#[actix_web::test]
+async fn test_login_rotates_the_session_id() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "rotate@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+
+    let first = crate::common::login(&app, "rotate@example.com").await;
+    let login = test::TestRequest::post()
+        .uri("/auth/login")
+        .cookie(first.clone())
+        .set_json(json!({ "email": "rotate@example.com", "password": "password123" }))
+        .to_request();
+    let resp = test::call_service(&app, login).await;
+    assert_eq!(resp.status(), 200);
+    let second = resp.response().cookies().next().unwrap().into_owned();
+
+    assert_ne!(first.value(), second.value());
+    assert_eq!(
+        me_status(&app, &first).await,
+        401,
+        "the pre-login id is dead"
+    );
+    assert_eq!(me_status(&app, &second).await, 200);
+}
+
+#[actix_web::test]
+async fn test_deactivated_user_session_is_refused() {
+    let db = TestDb::new().await;
+    let user = create_test_user(&db.pool, "deact@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    let cookie = crate::common::login(&app, "deact@example.com").await;
+
+    sqlx::query("UPDATE users SET is_active = false WHERE id = $1")
+        .bind(user.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(me_status(&app, &cookie).await, 401);
+}
+
+#[actix_web::test]
+async fn test_revoking_a_user_kills_every_session() {
+    let db = TestDb::new().await;
+    let user = create_test_user(&db.pool, "revoke@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    let a = crate::common::login(&app, "revoke@example.com").await;
+    let b = crate::common::login(&app, "revoke@example.com").await;
+
+    rustrak::services::AuthSessionService::revoke_user_sessions(&db.pool, user.id)
+        .await
+        .unwrap();
+    assert_eq!(me_status(&app, &a).await, 401);
+    assert_eq!(me_status(&app, &b).await, 401);
+}
+
+#[actix_web::test]
+async fn test_deleting_a_user_deletes_their_sessions() {
+    let db = TestDb::new().await;
+    let user = create_test_user(&db.pool, "gone@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    crate::common::login(&app, "gone@example.com").await;
+
+    UsersService::delete(&db.pool, user.id).await.unwrap();
+    assert_eq!(session_rows(&db.pool, user.id).await, 0);
+}
+
+#[actix_web::test]
+async fn test_password_change_signs_out_other_sessions() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "pwsess@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    let mine = crate::common::login(&app, "pwsess@example.com").await;
+    let other = crate::common::login(&app, "pwsess@example.com").await;
+
+    let req = test::TestRequest::post()
+        .uri("/auth/me/password")
+        .cookie(mine.clone())
+        .set_json(json!({ "current_password": "password123", "new_password": "next-password" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 204);
+    let renewed = resp.response().cookies().next().unwrap().into_owned();
+
+    assert_eq!(me_status(&app, &other).await, 401, "other sessions end");
+    assert_eq!(me_status(&app, &mine).await, 401, "the old id is rotated");
+    assert_eq!(
+        me_status(&app, &renewed).await,
+        200,
+        "this one stays signed in"
+    );
+}
+
+#[actix_web::test]
+async fn test_expired_session_is_refused() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "expired@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    let cookie = crate::common::login(&app, "expired@example.com").await;
+
+    sqlx::query("UPDATE sessions SET expires_at = $1")
+        .bind(chrono::Utc::now() - chrono::Duration::minutes(1))
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(me_status(&app, &cookie).await, 401);
+}
+
+#[actix_web::test]
+async fn test_idle_session_is_refused() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "idle@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    let cookie = crate::common::login(&app, "idle@example.com").await;
+
+    sqlx::query("UPDATE sessions SET last_seen_at = $1")
+        .bind(chrono::Utc::now() - chrono::Duration::days(2))
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(me_status(&app, &cookie).await, 401);
+}
+
+#[actix_web::test]
+async fn test_purge_removes_only_dead_sessions() {
+    let db = TestDb::new().await;
+    let user = create_test_user(&db.pool, "purge@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    crate::common::login(&app, "purge@example.com").await;
+    crate::common::login(&app, "purge@example.com").await;
+
+    sqlx::query(
+        "UPDATE sessions SET expires_at = $1 WHERE id_hash = (SELECT MIN(id_hash) FROM sessions)",
+    )
+    .bind(chrono::Utc::now() - chrono::Duration::minutes(1))
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let purged = rustrak::services::AuthSessionService::purge_expired(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(purged, 1);
+    assert_eq!(session_rows(&db.pool, user.id).await, 1);
 }

@@ -3,19 +3,13 @@
 //! These tests verify that Rustrak correctly receives and processes events
 //! sent by a real Sentry SDK, just like in production usage.
 
-use crate::common::process_error_event;
-use actix_web::{middleware, web, App, HttpServer};
+use crate::common::create_test_project;
+use actix_web::HttpServer;
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
+use rustrak::config::Config;
 use rustrak::db::DbPool;
-use rustrak::ingest::EventMetadata;
-use rustrak::models::CreateProject;
-use rustrak::routes;
 use rustrak::services::scope::Scope;
-use rustrak::services::{
-    DbSourceMapProvider, IssueService, LocalSourceMapStore, ProjectService, SourceMapProvider,
-    SourceMapStore,
-};
+use rustrak::services::IssueService;
 use sentry::protocol::{Event, Exception, Frame, Level, Stacktrace};
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -23,60 +17,10 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::sync::Notify;
 
-use crate::common::{null_sourcemap_provider, TestDb};
+use crate::common::TestDb;
 
 fn create_test_config(ingest_dir: &str) -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: Some(ingest_dir.to_string()),
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
-async fn create_test_project(pool: &DbPool, name: &str) -> rustrak::models::Project {
-    ProjectService::create(
-        pool,
-        CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("Failed to create test project")
+    crate::common::config_with_ingest_dir(std::path::Path::new(ingest_dir))
 }
 
 /// Finds an available port for the test server
@@ -101,41 +45,14 @@ impl TestServer {
         let shutdown = Arc::new(Notify::new());
 
         let pool = db.pool.clone();
-        let pool_clone = pool.clone();
+        let state = crate::common::state(&pool, config).await;
         let shutdown_clone = shutdown.clone();
 
-        // Build sourcemap provider for the ingest handler
-        let store: Arc<dyn SourceMapStore> =
-            Arc::new(LocalSourceMapStore::new(&config.sourcemap_storage_path));
-        let provider: Arc<dyn SourceMapProvider> =
-            Arc::new(DbSourceMapProvider::new(pool.clone(), Arc::clone(&store)));
-
-        // Start the server in a background task
         tokio::spawn(async move {
-            let server = HttpServer::new(move || {
-                App::new()
-                    .app_data(web::Data::new(pool_clone.clone()))
-                    .app_data(web::Data::new(config.clone()))
-                    .app_data(web::Data::new(Arc::clone(&provider)))
-                    .wrap(middleware::Logger::default())
-                    .service(
-                        web::scope("/health")
-                            .route("", web::get().to(routes::health::liveness))
-                            .route("/ready", web::get().to(routes::health::readiness)),
-                    )
-                    .app_data(web::Data::new(
-                        rustrak::digest::processors::Processors::new(
-                            rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                            config.rate_limit.clone(),
-                            crate::common::null_sourcemap_provider(),
-                            None,
-                        ),
-                    ))
-                    .configure(routes::ingest::configure)
-            })
-            .bind(("127.0.0.1", port))
-            .expect("Failed to bind server")
-            .run();
+            let server = HttpServer::new(move || rustrak::app::app(&state))
+                .bind(("127.0.0.1", port))
+                .expect("Failed to bind server")
+                .run();
 
             tokio::select! {
                 _ = server => {}
@@ -143,8 +60,12 @@ impl TestServer {
             }
         });
 
-        // Wait for server to be ready
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        crate::common::eventually(|| async {
+            tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .ok()
+        })
+        .await;
 
         TestServer {
             port,
@@ -161,43 +82,23 @@ impl TestServer {
         )
     }
 
-    async fn process_pending_events(&self, project_id: i32, rate_limit_config: &RateLimitConfig) {
-        // Read all events from the ingest directory and process them
-        let ingest_path = self.ingest_dir.path();
-        if let Ok(entries) = std::fs::read_dir(ingest_path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map(|e| e == "json").unwrap_or(false) {
-                    let event_id = path.file_stem().unwrap().to_str().unwrap().to_string();
-
-                    let metadata = EventMetadata {
-                        event_id,
-                        project_id,
-                        ingested_at: chrono::Utc::now(),
-                        remote_addr: None,
-                    };
-
-                    let _ = process_error_event(
-                        &self.pool,
-                        &metadata,
-                        ingest_path,
-                        rate_limit_config,
-                        null_sourcemap_provider(),
-                    )
-                    .await;
-                }
-            }
-        }
+    /// Waits until the server's own digest has stored `events` events in the
+    /// project and consumed everything else it accepted. An SDK's `flush` can
+    /// return before its request is answered, so an empty ingest directory
+    /// alone does not prove the last event has arrived.
+    async fn digested(&self, project_id: i32, events: i64) {
+        crate::common::eventually(|| async {
+            (count_rows(&self.pool, "events", project_id).await >= events
+                && !crate::common::has_files(self.ingest_dir.path()))
+            .then_some(())
+        })
+        .await;
     }
 
     fn shutdown(&self) {
         self.shutdown.notify_one();
     }
 }
-
-// =============================================================================
-// Basic SDK Tests
-// =============================================================================
 
 #[actix_web::test]
 async fn test_sentry_sdk_capture_message() {
@@ -215,37 +116,24 @@ async fn test_sentry_sdk_capture_message() {
             .environment("test"),
     );
 
-    // Capture a message
     sentry::capture_message("Test message from Sentry SDK", Level::Info);
 
-    // Flush to ensure event is sent
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
+    flush().await;
 
-    // Give time for the event to be processed
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    server.digested(project.id, 1).await;
 
-    // Process the events
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
-
-    // Verify issue was created
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -265,7 +153,6 @@ async fn test_sentry_sdk_capture_error() {
 
     let _guard = sentry::init(sentry::ClientOptions::new().dsn(&dsn));
 
-    // Capture an error event manually
     let event = Event {
         level: Level::Error,
         message: Some("Test error from Sentry SDK".to_string()),
@@ -280,37 +167,28 @@ async fn test_sentry_sdk_capture_error() {
     };
 
     sentry::capture_event(event);
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
+    flush().await;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    server.digested(project.id, 1).await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
-
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
 
     assert!(!issues.is_empty());
 
-    // Verify it's an error type issue
     let issue = &issues[0];
     assert!(issue.calculated_type.contains("Error") || issue.calculated_type.contains("Test"));
 
@@ -327,7 +205,6 @@ async fn test_sentry_sdk_with_custom_fingerprint() {
 
     let dsn = server.dsn(&project.sentry_key.to_string(), project.id);
 
-    // Initialize Sentry client
     let _guard = sentry::init(sentry::ClientOptions::new().dsn(&dsn));
 
     // Send two events with different error types but same fingerprint
@@ -347,35 +224,22 @@ async fn test_sentry_sdk_with_custom_fingerprint() {
         sentry::capture_event(event);
     }
 
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
-    // Give more time for events to be written to temp storage
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    flush().await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
+    server.digested(project.id, 2).await;
 
-    // Process events multiple times to ensure all events are digested
-    for _ in 0..3 {
-        server
-            .process_pending_events(project.id, &rate_limit_config)
-            .await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -410,7 +274,6 @@ async fn test_sentry_sdk_with_stacktrace() {
             .attach_stacktrace(true),
     );
 
-    // Create event with stacktrace
     let stacktrace = Stacktrace {
         frames: vec![
             Frame {
@@ -445,30 +308,22 @@ async fn test_sentry_sdk_with_stacktrace() {
     };
 
     sentry::capture_event(event);
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
+    flush().await;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    server.digested(project.id, 1).await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
-
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -502,29 +357,22 @@ async fn test_sentry_sdk_different_levels() {
         sentry::capture_message(msg, level);
     }
 
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    flush().await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
+    server.digested(project.id, 5).await;
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -552,30 +400,22 @@ async fn test_sentry_sdk_with_tags() {
     });
 
     sentry::capture_message("Event with tags", Level::Info);
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
+    flush().await;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    server.digested(project.id, 1).await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
-
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -605,30 +445,22 @@ async fn test_sentry_sdk_with_user_context() {
     });
 
     sentry::capture_message("Event with user context", Level::Error);
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
+    flush().await;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    server.digested(project.id, 1).await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
-
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -666,30 +498,22 @@ async fn test_sentry_sdk_with_breadcrumbs() {
     });
 
     sentry::capture_message("Event with breadcrumbs", Level::Error);
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
+    flush().await;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    server.digested(project.id, 1).await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
-
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -698,10 +522,6 @@ async fn test_sentry_sdk_with_breadcrumbs() {
 
     server.shutdown();
 }
-
-// =============================================================================
-// Multiple Events Grouping Tests
-// =============================================================================
 
 #[actix_web::test]
 async fn test_sentry_sdk_groups_similar_errors() {
@@ -716,7 +536,6 @@ async fn test_sentry_sdk_groups_similar_errors() {
 
     let dsn = server.dsn(&project.sentry_key.to_string(), project.id);
 
-    // Initialize Sentry client
     let _guard = sentry::init(sentry::ClientOptions::new().dsn(&dsn));
 
     // Send multiple events with the same error type and explicit fingerprint
@@ -737,35 +556,22 @@ async fn test_sentry_sdk_groups_similar_errors() {
         sentry::capture_event(event);
     }
 
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
-    // Give more time for events to be written to temp storage
-    tokio::time::sleep(Duration::from_millis(1000)).await;
+    flush().await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
+    server.digested(project.id, 3).await;
 
-    // Process events multiple times to ensure all events are digested
-    for _ in 0..3 {
-        server
-            .process_pending_events(project.id, &rate_limit_config)
-            .await;
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -818,29 +624,22 @@ async fn test_sentry_sdk_separates_different_errors() {
         sentry::capture_event(event);
     }
 
-    if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    flush().await;
 
-    let rate_limit_config = RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    };
-    server
-        .process_pending_events(project.id, &rate_limit_config)
-        .await;
+    server.digested(project.id, 3).await;
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -851,28 +650,19 @@ async fn test_sentry_sdk_separates_different_errors() {
     server.shutdown();
 }
 
-// =============================================================================
-// Issue Fields and Search, End to End
-// =============================================================================
-
-fn e2e_rate_limits() -> RateLimitConfig {
-    RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    }
-}
-
 async fn only_issue(pool: &rustrak::db::DbPool, project_id: i32) -> rustrak::models::Issue {
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         pool,
         project_id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -884,14 +674,20 @@ async fn only_issue(pool: &rustrak::db::DbPool, project_id: i32) -> rustrak::mod
     issues.into_iter().next().unwrap()
 }
 
-async fn flush_and_digest(server: &TestServer, project_id: i32) {
+/// Sends what the SDK holds. Off the test's thread: a blocking flush on it
+/// stalls the server task this runtime also drives, until the flush times out.
+async fn flush() {
     if let Some(client) = sentry::Hub::current().client() {
-        client.flush(Some(Duration::from_secs(5)));
-    };
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    server
-        .process_pending_events(project_id, &e2e_rate_limits())
-        .await;
+        tokio::task::spawn_blocking(move || client.flush(Some(Duration::from_secs(5))))
+            .await
+            .unwrap();
+    }
+}
+
+/// Sends what the SDK holds and waits for the project to have `events` events.
+async fn flush_and_digest(server: &TestServer, project_id: i32, events: i64) {
+    flush().await;
+    server.digested(project_id, events).await;
 }
 
 #[actix_web::test]
@@ -921,9 +717,9 @@ async fn test_sdk_issue_title_and_level_follow_the_latest_event() {
     // wire for each. An event whose level is the SDK default omits the field
     // entirely, which is covered by the digest integration tests.
     sentry::capture_event(event(Level::Warning, "card declined"));
-    flush_and_digest(&server, project.id).await;
+    flush_and_digest(&server, project.id, 1).await;
     sentry::capture_event(event(Level::Fatal, "gateway timeout"));
-    flush_and_digest(&server, project.id).await;
+    flush_and_digest(&server, project.id, 2).await;
 
     let issue = only_issue(&db.pool, project.id).await;
     assert_eq!(issue.digested_event_count, 2);
@@ -944,7 +740,7 @@ async fn test_sdk_automatic_regression_shows_up_in_the_activity_log() {
     );
 
     sentry::capture_message("service unavailable", Level::Error);
-    flush_and_digest(&server, project.id).await;
+    flush_and_digest(&server, project.id, 1).await;
 
     let issue = only_issue(&db.pool, project.id).await;
     IssueService::set_status(&db.pool, issue.id, "resolved", None)
@@ -952,7 +748,7 @@ async fn test_sdk_automatic_regression_shows_up_in_the_activity_log() {
         .expect("resolve");
 
     sentry::capture_message("service unavailable", Level::Error);
-    flush_and_digest(&server, project.id).await;
+    flush_and_digest(&server, project.id, 2).await;
 
     let reopened = only_issue(&db.pool, project.id).await;
     assert_eq!(reopened.status, "unresolved");
@@ -1003,7 +799,7 @@ async fn test_sdk_issue_is_searchable_by_frame_filename_and_module() {
         },
         ..Default::default()
     });
-    flush_and_digest(&server, project.id).await;
+    flush_and_digest(&server, project.id, 1).await;
 
     for term in ["billing/stripe.rs", "billing::stripe", "charge_customer"] {
         let (hits, total) = IssueService::list_offset(
@@ -1027,10 +823,6 @@ async fn test_sdk_issue_is_searchable_by_frame_filename_and_module() {
 
     server.shutdown();
 }
-
-// =============================================================================
-// Exception Groups, End to End
-// =============================================================================
 
 /// Posts a raw envelope to the same ingest route the SDK uses. Exception groups
 /// come from Python 3.11, .NET and JS runtimes; the Rust SDK's `Mechanism` has
@@ -1071,11 +863,7 @@ async fn post_envelope(
         .expect("ingest request failed")
         .status();
     assert!(status.is_success(), "ingest returned {status}");
-
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    server
-        .process_pending_events(project.id, &e2e_rate_limits())
-        .await;
+    server.digested(project.id, 0).await;
 }
 
 /// `exception-groups-one-exception.json`: a .NET `AggregateException` wrapping
@@ -1145,14 +933,18 @@ async fn test_aggregate_exceptions_wrapping_different_errors_get_separate_issues
     )
     .await;
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -1218,7 +1010,7 @@ async fn test_sdk_same_bug_with_different_ids_lands_in_one_issue() {
         sentry::ClientOptions::new().dsn(&server.dsn(&project.sentry_key.to_string(), project.id)),
     );
 
-    for order in [4213, 9981, 1] {
+    for (sent, order) in [4213, 9981, 1].into_iter().enumerate() {
         sentry::capture_event(Event {
             level: Level::Warning,
             exception: sentry::protocol::Values {
@@ -1230,7 +1022,7 @@ async fn test_sdk_same_bug_with_different_ids_lands_in_one_issue() {
             },
             ..Default::default()
         });
-        flush_and_digest(&server, project.id).await;
+        flush_and_digest(&server, project.id, sent as i64 + 1).await;
     }
 
     let issue = only_issue(&db.pool, project.id).await;
@@ -1257,22 +1049,29 @@ async fn test_sdk_messages_differing_beyond_an_id_still_split() {
         sentry::ClientOptions::new().dsn(&server.dsn(&project.sentry_key.to_string(), project.id)),
     );
 
-    for message in [
+    for (sent, message) in [
         "Payment failed for order 4213",
         "Refund failed for order 4213",
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         sentry::capture_message(message, Level::Warning);
-        flush_and_digest(&server, project.id).await;
+        flush_and_digest(&server, project.id, sent as i64 + 1).await;
     }
 
-    let (issues, _) = IssueService::list_paginated(
+    let (issues, _) = IssueService::list_offset(
         &db.pool,
         project.id,
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
-        true,
-        None,
+        rustrak::pagination::IssueFilter::All,
+        rustrak::pagination::IssueCategory::Error,
+        1,
         100,
+        None,
+        rustrak::services::scope::Scope::default(),
+        &rustrak::services::issue::IssueFilters::default(),
     )
     .await
     .expect("Failed to list issues");
@@ -1326,7 +1125,7 @@ async fn test_sdk_an_issue_from_before_the_upgrade_keeps_its_events() {
     .expect("insert grouping");
 
     // Now the SDK sends the same error again, twice, with different order ids.
-    for order in [4213, 9981] {
+    for (sent, order) in [4213, 9981].into_iter().enumerate() {
         sentry::capture_event(Event {
             level: Level::Error,
             exception: sentry::protocol::Values {
@@ -1338,7 +1137,7 @@ async fn test_sdk_an_issue_from_before_the_upgrade_keeps_its_events() {
             },
             ..Default::default()
         });
-        flush_and_digest(&server, project.id).await;
+        flush_and_digest(&server, project.id, sent as i64 + 1).await;
     }
 
     let found = only_issue(&db.pool, project.id).await;
@@ -1348,9 +1147,6 @@ async fn test_sdk_an_issue_from_before_the_upgrade_keeps_its_events() {
     server.shutdown();
 }
 
-// =============================================================================
-// PostgreSQL enforces what SQLite ignores
-// =============================================================================
 //
 // Every column below is VARCHAR(n) in both migrations, but only Postgres
 // enforces the length, and only Postgres rejects a NUL byte in TEXT or JSONB.
@@ -1703,10 +1499,6 @@ async fn test_out_of_range_timestamps_do_not_fail_the_envelope() {
     server.shutdown();
 }
 
-// =============================================================================
-// Where Relay drops a value, Rustrak must not store it
-// =============================================================================
-
 /// Relay parses `level` into a closed enum (`debug`, `info`/`log`, `warning`,
 /// `error`, `fatal`/`critical`); anything else is removed and the default
 /// applies (relay-event-schema `Level::from_str`).
@@ -1839,7 +1631,7 @@ async fn test_pre_1970_timestamps_are_dropped_like_relay() {
         .send()
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    server.digested(project.id, before).await;
     assert_eq!(count_rows(&db.pool, "events", project.id).await, before);
 
     server.shutdown();

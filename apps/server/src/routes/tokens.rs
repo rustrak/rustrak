@@ -1,9 +1,9 @@
 use actix_web::{web, HttpResponse};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, Resource};
 use crate::models::CreateAuthToken;
 #[cfg(feature = "openapi")]
 use crate::models::{AuthTokenCreatedResponse, AuthTokenResponse};
@@ -36,7 +36,7 @@ fn require_scope(actor: &ApiActor, action: Action) -> AppResult<()> {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/tokens - List tokens (masked)
+/// List tokens (masked)
 ///
 /// Everyone sees their own tokens; `api-tokens:read` sees every token. A token
 /// limited to other permissions sees none: it must not reach its owner's others.
@@ -63,12 +63,13 @@ pub async fn list_tokens(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<
     request_body = CreateAuthToken,
     responses(
         (status = 201, description = "Token created (full token shown once)", body = AuthTokenCreatedResponse),
+        (status = 400, description = "An expiry that is not in the future", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 403, description = "Called with a token, missing api-tokens:create, or a permission the caller lacks", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/tokens - Create a new token (from a signed-in session only)
+/// Create a new token (from a signed-in session only)
 ///
 /// A token cannot create tokens: a limited or expiring one could otherwise
 /// mint itself a way out of its limits.
@@ -89,9 +90,13 @@ pub async fn create_token(
         .flatten()
         .any(|p| !actor.access.holds_somewhere(p.resource, p.action));
     if lacking {
-        return Err(AppError::Forbidden(
-            "You cannot grant permissions you do not hold".to_string(),
-        ));
+        return Err(crate::services::role::beyond_your_own());
+    }
+    if body.expires_at.is_some_and(|at| at <= chrono::Utc::now()) {
+        return Err(
+            AppError::Validation("expires_at must be in the future".to_string())
+                .with_field("expires_at", crate::error::FieldErrorCode::Invalid),
+        );
     }
     let token =
         AuthTokenService::create_for_user(pool.get_ref(), body.into_inner(), actor.user_id())
@@ -115,7 +120,7 @@ pub async fn create_token(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// DELETE /api/tokens/{id} - Revoke a token
+/// Revoke a token
 ///
 /// Everyone may revoke their own; `api-tokens:delete` revokes any.
 pub async fn delete_token(
@@ -154,7 +159,7 @@ pub async fn delete_token(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/tokens/{id} - Token details, masked
+/// Token details, masked
 ///
 /// Tokens are stored hashed, so the full value is only ever shown on
 /// creation. Everyone may view their own; `api-tokens:read` views any.
@@ -192,7 +197,6 @@ pub async fn get_token(
 )]
 pub struct TokensApi;
 
-/// Configure token routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/tokens")

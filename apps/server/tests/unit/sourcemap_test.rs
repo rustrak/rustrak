@@ -381,7 +381,7 @@ async fn test_rewrite_no_debug_meta() {
 }
 
 // ---------------------------------------------------------------------------
-// Cycle 2: abs_path cleared after rewrite
+// abs_path cleared after rewrite
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -423,7 +423,7 @@ async fn test_rewrite_clears_abs_path() {
 }
 
 // ---------------------------------------------------------------------------
-// Cycle 3: frame.data.sourcemap set after rewrite
+// frame.data.sourcemap set after rewrite
 // ---------------------------------------------------------------------------
 
 #[tokio::test]

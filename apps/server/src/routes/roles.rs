@@ -1,27 +1,19 @@
 //! Roles, the permission catalog, and who holds which role where.
 //!
-//! - GET    /api/access/catalog              — every resource and its actions
-//! - GET    /api/access/me                   — what the caller may do
-//! - GET    /api/roles                       — list roles
-//! - POST   /api/roles                       — create a role
-//! - PUT    /api/roles/{id}                  — replace a role
-//! - DELETE /api/roles/{id}                  — delete an unused role
-//! - GET    /api/users/{id}/assignments      — a user's roles
-//! - PUT    /api/users/{id}/assignments      — replace a user's roles
-//!
 //! Nobody can write a permission into a role, or hand a role out, beyond what
 //! they hold themselves; and nobody edits their own assignments.
 
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::rbac::{Action, Resource, Scope};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
+use crate::models::rbac::{Action, Resource, Scope};
 #[cfg(feature = "openapi")]
 use crate::models::Role;
 use crate::models::{Permission, PersonalAccess, RoleAssignment};
+use crate::services::role::beyond_your_own;
 use crate::services::{RoleService, UsersService};
 
 #[cfg(feature = "openapi")]
@@ -124,10 +116,6 @@ async fn user_access(pool: &DbPool, user_id: i32) -> AppResult<UserAccess> {
         assignments: RoleService::assignments_for(pool, user_id).await?,
         personal_permissions: RoleService::personal_permissions(pool, user_id).await?,
     })
-}
-
-fn beyond_your_own() -> AppError {
-    AppError::Forbidden("You cannot grant permissions you do not hold".to_string())
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -381,31 +369,17 @@ pub async fn set_assignments(
     UsersService::get_by_id(pool.get_ref(), user_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("User {user_id} not found")))?;
-    // Only roles of the list can be given; what is taken away may be anyone's.
-    let shared = RoleService::list(pool.get_ref()).await?;
-    let unknown = |id: i32| {
-        AppError::Validation(format!("Unknown role {id}"))
-            .with_field("role_id", FieldErrorCode::Invalid)
-    };
-    for a in &body.assignments {
-        let role = shared
-            .iter()
-            .find(|r| r.id == a.role_id)
-            .ok_or_else(|| unknown(a.role_id))?;
-        if !actor.access.covers(&role.grants(), a.project_id) {
-            return Err(beyond_your_own());
-        }
-    }
-    let all = RoleService::list_all(pool.get_ref()).await?;
-    for a in RoleService::assignments_for(pool.get_ref(), user_id).await? {
-        let role = all
-            .iter()
-            .find(|r| r.id == a.role_id)
-            .ok_or_else(|| unknown(a.role_id))?;
-        if !actor.access.covers(&role.grants(), a.project_id) {
-            return Err(beyond_your_own());
-        }
-    }
+    let pairs: Vec<_> = body
+        .assignments
+        .iter()
+        .map(|a| (a.role_id, a.project_id))
+        .collect();
+    let held: Vec<_> = RoleService::assignments_for(pool.get_ref(), user_id)
+        .await?
+        .into_iter()
+        .map(|a| (a.role_id, a.project_id))
+        .collect();
+    RoleService::check_grantable(pool.get_ref(), &actor.access, &pairs, &held, "role_id").await?;
     if let Some(personal) = &body.personal {
         let grants = Permission::grants(&personal.permissions);
         let covered = match &personal.project_ids {
@@ -422,11 +396,6 @@ pub async fn set_assignments(
             return Err(beyond_your_own());
         }
     }
-    let pairs: Vec<_> = body
-        .assignments
-        .iter()
-        .map(|a| (a.role_id, a.project_id))
-        .collect();
     RoleService::set_assignments(pool.get_ref(), user_id, &pairs, body.personal.as_ref()).await?;
     Ok(HttpResponse::Ok().json(user_access(pool.get_ref(), user_id).await?))
 }

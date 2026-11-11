@@ -1,8 +1,8 @@
 use chrono::{DateTime, Duration, Utc};
 
-use crate::auth::generate_token;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
+use crate::models::token::generate_token;
 use crate::models::{CreateInvitation, CreateUserRequest, Invitation, User, UserRole};
 use crate::services::UsersService;
 
@@ -31,7 +31,7 @@ impl InvitationService {
 
         let email = User::normalize_email(&input.email);
 
-        if !crate::routes::auth::is_valid_email(&email) {
+        if !crate::protocol::is_valid_email(&email) {
             return Err(AppError::Validation("Invalid email format".to_string()));
         }
 

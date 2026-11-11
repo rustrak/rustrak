@@ -494,11 +494,6 @@ export const zCreateRelease = z.object({
     version: z.string()
 });
 
-export const zCreateUserRequest = z.object({
-    email: z.string(),
-    password: z.string()
-});
-
 /**
  * A debug information file as Sentry's `DebugFileSerializer` describes it.
  */
@@ -608,6 +603,7 @@ export const zFieldErrorCode = z.enum([
     'already_exists',
     'too_short',
     'too_long',
+    'incorrect',
     'custom'
 ]);
 
@@ -829,8 +825,6 @@ export const zIssueResponse = z.object({
     has_seen: z.boolean().nullish(),
     id: z.uuid(),
     is_bookmarked: z.boolean().nullish(),
-    is_muted: z.boolean(),
-    is_resolved: z.boolean(),
     is_subscribed: z.boolean().nullish(),
     issue_category: z.string(),
     issue_type: z.string(),
@@ -1275,7 +1269,6 @@ export const zCreateAlertIntegration = z.object({
 });
 
 /**
- * Configure project routes
  * The server's per-project event limits (`MAX_EVENTS_PER_PROJECT_*`).
  */
 export const zRateLimitsResponse = z.object({
@@ -2104,15 +2097,11 @@ export const zUpdateAlertRule = z.object({
 /**
  * Request to update issue state.
  *
- * `status`/`substatus`/`priority`/assignment are the canonical fields.
- * `is_resolved`/`is_muted` are accepted as a deprecated compatibility shim
- * and mapped onto `status`.
+ * `status`/`substatus`/`priority`/assignment, as in Sentry.
  */
 export const zUpdateIssueState = z.object({
     assigned_to: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullish(),
     assignee_type: z.string().nullish(),
-    is_muted: z.boolean().nullish(),
-    is_resolved: z.boolean().nullish(),
     priority: zIssuePriority.nullish(),
     status: zIssueStatusUpdate.nullish(),
     substatus: z.string().nullish()
@@ -3203,8 +3192,6 @@ export const zIssuesListResponse = z.object({
         has_seen: z.boolean().nullish(),
         id: z.uuid(),
         is_bookmarked: z.boolean().nullish(),
-        is_muted: z.boolean(),
-        is_resolved: z.boolean(),
         is_subscribed: z.boolean().nullish(),
         issue_category: z.string(),
         issue_type: z.string(),
@@ -4361,8 +4348,6 @@ export const zAuthChangePasswordBody = zChangePasswordRequest;
  * Password changed
  */
 export const zAuthChangePasswordResponse = z.void();
-
-export const zAuthRegisterBody = zCreateUserRequest;
 
 export const zAuthSsoCallbackQuery = z.object({
     code: z.string().nullish(),

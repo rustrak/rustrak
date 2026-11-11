@@ -4,13 +4,14 @@ use chrono::{DateTime, Utc};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::db::dialect::{like_pattern, since};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     SpanResponse, TransactionDetailResponse, TransactionResponse, TransactionStatsResponse,
     TransactionTimeseriesPoint,
 };
-use crate::services::scope::{bucket_hours, like_pattern, since};
+use crate::services::scope::bucket_hours;
 
 pub struct TransactionService;
 
@@ -45,7 +46,6 @@ impl TransactionService {
         per_page: i64,
         filters: &TransactionFilters,
     ) -> AppResult<(Vec<TransactionResponse>, i64)> {
-        let per_page = per_page.clamp(1, 100);
         let offset = crate::pagination::offset(page, per_page);
 
         let window = since("timestamp", filters.period_hours);
@@ -281,7 +281,6 @@ impl TransactionService {
         per_page: i64,
         filter: &StatsFilter,
     ) -> AppResult<(Vec<TransactionStatsResponse>, i64)> {
-        let per_page = per_page.clamp(1, 100);
         let offset = crate::pagination::offset(page, per_page);
         let (groups, time) = Self::totals(pool, project_id, filter).await?;
         let stats = Self::grouped(pool, project_id, filter, None, per_page, offset, time).await?;
@@ -537,7 +536,7 @@ fn is_failure(status: Option<&str>) -> bool {
 const FAILS: &str = "SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END)";
 
 /// How the endpoints are ranked.
-#[derive(Debug, Default, Clone, Copy, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum StatsSort {

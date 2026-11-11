@@ -399,8 +399,9 @@ pub async fn auto_create(
     let Some(repo) = GitHubService::project_repository_row(&pool, project.id).await? else {
         return Ok(());
     };
-    let conditions =
-        serde_json::from_str::<RuleConditions>(&repo.auto_create_conditions).unwrap_or_default();
+    let conditions = RuleConditions::from_stored(
+        &serde_json::from_str(&repo.auto_create_conditions).unwrap_or_default(),
+    );
     if !repo.auto_create_issues
         || !conditions.matches(
             AlertType::NewIssue,

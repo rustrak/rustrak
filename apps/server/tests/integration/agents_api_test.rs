@@ -1,71 +1,15 @@
 //! Integration tests for the AI Agent Monitoring dashboard API
-//! (story-ai-agent-monitoring.md, GH #180).
+//!.
 
+use crate::common::create_test_token;
 use crate::common::TestDb;
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
-use rustrak::digest::processors::{Processor, ProcessorCtx, SpanProcessor};
+use rustrak::digest::processors::{ProcessorCtx, SpanProcessor};
 use rustrak::models::CreateProject;
-use rustrak::routes;
-use rustrak::services::{AuthTokenService, ProjectService};
+use rustrak::services::ProjectService;
 use serde_json::{json, Value};
-use std::time::Duration as StdDuration;
 use uuid::Uuid;
-
-fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: StdDuration::from_secs(5),
-            idle_timeout: StdDuration::from_secs(60),
-            max_lifetime: StdDuration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
-async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
-    AuthTokenService::create(
-        pool,
-        rustrak::models::CreateAuthToken {
-            description: Some("Test token".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("Failed to create test token")
-    .token
-}
 
 async fn store_agent_run_with_llm_call(pool: &rustrak::db::DbPool, project_id: i32) {
     let ctx = ProcessorCtx {
@@ -135,18 +79,12 @@ async fn create_test_project(pool: &rustrak::db::DbPool) -> i32 {
 async fn test_agent_runs_endpoint_returns_timeseries() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
     store_agent_run_with_llm_call(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/runs", project_id))
@@ -165,18 +103,12 @@ async fn test_agent_runs_endpoint_returns_timeseries() {
 async fn test_agent_duration_endpoint_returns_timeseries() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
     store_agent_run_with_llm_call(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/duration", project_id))
@@ -196,18 +128,12 @@ async fn test_agent_duration_endpoint_returns_timeseries() {
 async fn test_agent_models_calls_endpoint_returns_breakdown() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
     store_agent_run_with_llm_call(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/models/calls", project_id))
@@ -227,18 +153,12 @@ async fn test_agent_models_calls_endpoint_returns_breakdown() {
 async fn test_agent_models_tokens_endpoint_returns_breakdown() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
     store_agent_run_with_llm_call(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -261,18 +181,12 @@ async fn test_agent_models_tokens_endpoint_returns_breakdown() {
 async fn test_agent_tools_endpoint_returns_breakdown() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
     store_agent_run_with_llm_call(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/tools", project_id))
@@ -292,18 +206,12 @@ async fn test_agent_tools_endpoint_returns_breakdown() {
 async fn test_agent_traces_endpoint_returns_paginated_traces() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
     store_agent_run_with_llm_call(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/traces", project_id))
@@ -319,28 +227,6 @@ async fn test_agent_traces_endpoint_returns_paginated_traces() {
     assert_eq!(items[0]["trace_id"], "agent-trace");
     assert_eq!(items[0]["agent_names"], serde_json::json!(["planner"]));
     assert_eq!(items[0]["tool_call_count"], 1);
-}
-
-#[actix_web::test]
-async fn test_agents_endpoints_return_401_without_token() {
-    let db = TestDb::new().await;
-    let pool = db.pool.clone();
-    let config = create_test_config();
-    let project_id = create_test_project(&pool).await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/projects/{}/agents/runs", project_id))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
 }
 
 /// A second trace that exercises what the dashboard has to be able to show:
@@ -407,20 +293,14 @@ async fn test_agent_traces_carry_llm_call_and_error_counts() {
     // the failing traces without opening each.
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
 
     store_agent_run_with_llm_call(&pool, project_id).await;
     store_failing_staging_trace(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/traces", project_id))
@@ -457,20 +337,14 @@ async fn test_agent_endpoints_filter_by_environment() {
     // which is exactly what makes an aggregate untrustworthy.
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
 
     store_agent_run_with_llm_call(&pool, project_id).await;
     store_failing_staging_trace(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -494,20 +368,14 @@ async fn test_agent_summary_endpoint_returns_headline_numbers() {
     // break". These are the numbers that answer that.
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
 
     store_agent_run_with_llm_call(&pool, project_id).await;
     store_failing_staging_trace(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/summary", project_id))
@@ -535,20 +403,14 @@ async fn test_agent_models_table_breaks_tokens_down_by_type() {
     // was reasoning.
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
 
     store_agent_run_with_llm_call(&pool, project_id).await;
     store_failing_staging_trace(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/models", project_id))
@@ -587,20 +449,14 @@ async fn test_agent_tools_table_counts_failures_per_tool() {
     // time is the single most actionable thing on the page.
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
 
     store_agent_run_with_llm_call(&pool, project_id).await;
     store_failing_staging_trace(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/tools/stats", project_id))
@@ -633,19 +489,13 @@ async fn test_agent_environments_endpoint_lists_what_can_be_filtered() {
     // production/staging would be wrong for anyone who names them otherwise.
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project_id = create_test_project(&pool).await;
 
     store_failing_staging_trace(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/agents/environments", project_id))
@@ -675,13 +525,7 @@ async fn test_agent_traces_filter_and_sort() {
     store_agent_run_with_llm_call(&pool, project_id).await;
     store_failing_staging_trace(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, crate::common::config()).await;
     let ids = |body: &Value| -> Vec<String> {
         body["items"]
             .as_array()
@@ -741,13 +585,7 @@ async fn test_agent_runs_carry_failed_runs_per_bucket() {
         .await
         .unwrap();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, crate::common::config()).await;
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{project_id}/agents/runs"))
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -814,13 +652,7 @@ async fn test_agent_conversations_list_and_transcript() {
     store_agent_run_with_llm_call(&pool, project_id).await;
     store_conversation(&pool, project_id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, crate::common::config()).await;
     let get = |uri: String| {
         test::TestRequest::get()
             .uri(&uri)
@@ -931,13 +763,7 @@ async fn test_agent_conversations_agree_with_their_filters_and_count() {
     .await
     .unwrap();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::agents::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, crate::common::config()).await;
     let get = |uri: String| {
         test::TestRequest::get()
             .uri(&uri)

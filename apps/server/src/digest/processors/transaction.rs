@@ -1,18 +1,17 @@
-use super::span::{insert_span_rows, SpanRow};
-use super::{clamp, clamp_opt, extract_timestamp, is_stale, relay_level, Processor, ProcessorCtx};
+use super::span::{insert_span_rows, text, SpanRow};
+use super::ProcessorCtx;
 use crate::error::{AppError, AppResult};
+use crate::protocol::{clamp, extract_timestamp, is_stale, relay_level};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
 use bytes::Bytes;
 use uuid::Uuid;
 
 pub struct TransactionProcessor;
 
-impl Processor for TransactionProcessor {
-    type Input = Bytes;
-
+impl TransactionProcessor {
     /// Store a transaction payload into the dedicated `transactions` table.
     /// Does NOT create an issue, grouping, or source-map rewrite.
-    async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
+    pub async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
         // Reject malformed payloads instead of persisting a null-data row.
         // The ingest route propagates this error so the SDK can retry the envelope.
         let mut data: serde_json::Value = serde_json::from_slice(&work)
@@ -249,83 +248,26 @@ fn strip_ai_data(data: &mut serde_json::Value) {
     }
 }
 
-/// The `spans` row for one child of a transaction. Takes the span by value:
-/// gen_ai normalization mutates its `data` attributes bag, which is stored.
+/// A transaction's child span. It carries its own trace_id only rarely and
+/// inherits the transaction's. `spans.platform/release/environment` come from
+/// the transaction: the agents dashboard filters `spans` directly, so leaving
+/// them NULL would drop every transaction-embedded AI span from an
+/// environment-filtered view.
 fn span_row(
-    mut span: serde_json::Value,
+    span: serde_json::Value,
     transaction_id: Uuid,
     txn_trace_id: Option<&str>,
-    // The parent transaction's scope. `spans.platform/release/environment`
-    // were originally documented as "standalone spans only, a child inherits
-    // from its transaction row" — true for a JOIN, but the agents dashboard
-    // filters `spans` directly, so leaving them NULL drops every
-    // transaction-embedded AI span from an environment-filtered view.
     platform: Option<&str>,
     release: Option<&str>,
     environment: Option<&str>,
 ) -> SpanRow {
-    let span_id = trace_str(Some(&span), "span_id", 32);
-    let parent_span_id = trace_str(Some(&span), "parent_span_id", 32);
-    // Relay: span `op` max_chars = 128. `description` is TEXT.
-    let op = trace_str(Some(&span), "op", 128);
-    let description = span
-        .get("description")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    let status = trace_str(Some(&span), "status", 32);
-    let segment_id = trace_str(Some(&span), "segment_id", 32);
-    let is_segment = span
-        .get("is_segment")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    // A span carries its own trace_id only rarely; inherit the transaction's.
-    let trace_id =
-        trace_str(Some(&span), "trace_id", 64).or_else(|| txn_trace_id.map(str::to_string));
-
-    let start_timestamp = extract_timestamp(&span, "start_timestamp");
-    let timestamp = extract_timestamp(&span, "timestamp");
-    let duration_ms = match (start_timestamp, timestamp) {
-        (Some(st), Some(ts)) => (ts - st)
-            .num_microseconds()
-            .map(|us| (us as f64 / 1000.0).max(0.0)),
-        _ => None,
-    };
-    // Relay's exclusive_time is already in milliseconds.
-    let exclusive_time_ms = span.get("exclusive_time").and_then(|v| v.as_f64());
-
-    // The spec promises an object; anything else is dropped.
-    let tags = span.get("tags").filter(|t| t.is_object()).cloned();
-
-    // gen_ai.* normalization, on the span's own `data` attributes bag —
-    // same shared function `SpanProcessor` calls for standalone spans, so
-    // a transaction-embedded LLM-call child span is normalized identically.
-    let gen_ai = match span.get_mut("data") {
-        Some(span_data) => extract_gen_ai_columns(span_data, op.as_deref()),
-        None => GenAiColumns::default(),
-    };
-
-    SpanRow {
-        transaction_id: Some(transaction_id),
-        span_id,
-        trace_id,
-        start_timestamp,
-        timestamp,
-        duration_ms,
-        exclusive_time_ms,
-        op,
-        gen_ai,
-        parent_span_id,
-        description,
-        status,
-        segment_id,
-        is_segment,
-        platform: platform.map(str::to_string),
-        release: release.map(str::to_string),
-        environment: environment.map(str::to_string),
-        tags,
-        data: span,
-    }
+    let mut row = SpanRow::from_span(span);
+    row.transaction_id = Some(transaction_id);
+    row.trace_id = row.trace_id.or_else(|| txn_trace_id.map(str::to_string));
+    row.platform = platform.map(str::to_string);
+    row.release = release.map(str::to_string);
+    row.environment = environment.map(str::to_string);
+    row
 }
 
 /// Extracts a top-level string field from the payload, defaulting to empty.
@@ -349,11 +291,5 @@ fn extract_str(data: &serde_json::Value, key: &str, max_chars: usize) -> String 
 /// Returns `None` for a missing trace, missing key, or non-string value —
 /// so the column stays NULL rather than storing `""`.
 fn trace_str(trace: Option<&serde_json::Value>, key: &str, max_chars: usize) -> Option<String> {
-    clamp_opt(
-        trace
-            .and_then(|t| t.get(key))
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-        max_chars,
-    )
+    trace.and_then(|t| text(t, key, max_chars))
 }

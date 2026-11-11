@@ -90,10 +90,7 @@ fn sourcemap_with_source(source: &str) -> Bytes {
 }
 
 fn push_uuid_bind(qb: &mut sqlx::QueryBuilder<rustrak::db::Db>, value: &str) {
-    #[cfg(feature = "postgres")]
     qb.push_bind(uuid::Uuid::parse_str(value).expect("value must be a valid uuid"));
-    #[cfg(not(feature = "postgres"))]
-    qb.push_bind(value);
 }
 
 /// Registers `data` under `storage_key` for `debug_id` in `project_id`,

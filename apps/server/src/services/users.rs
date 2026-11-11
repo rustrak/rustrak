@@ -1,6 +1,6 @@
-use crate::auth::OidcIdentity;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
+use crate::models::user::OidcIdentity;
 use crate::models::{CreateUserRequest, User, UserRole};
 
 pub struct UsersService;
@@ -172,9 +172,7 @@ impl UsersService {
         let mapped_role = policy.role_for(groups);
 
         if let Some(mut user) = Self::get_by_oidc_identity(pool, issuer, subject).await? {
-            if !user.is_active {
-                return Err(AppError::Unauthorized("Account is disabled".to_string()));
-            }
+            user.ensure_active()?;
             Self::touch_oidc_login(pool, issuer, subject, &mut user, mapped_role).await?;
             return Ok(OidcOutcome::SignedIn(user));
         }
@@ -237,9 +235,7 @@ impl UsersService {
         let user = candidates.into_iter().next();
 
         let mut user = if let Some(existing) = user {
-            if !existing.is_active {
-                return Err(AppError::Unauthorized("Account is disabled".to_string()));
-            }
+            existing.ensure_active()?;
             // Linking on the provider's word alone needs both the operator's
             // consent and a verified email; otherwise the owner confirms.
             if !policy.link_existing_accounts || !email_verified {
@@ -312,9 +308,7 @@ impl UsersService {
     ) -> AppResult<User> {
         let invalid = || AppError::Unauthorized("Invalid credentials".to_string());
         let user = Self::get_by_id(pool, user_id).await?.ok_or_else(invalid)?;
-        if !user.is_active {
-            return Err(AppError::Unauthorized("Account is disabled".to_string()));
-        }
+        user.ensure_active()?;
 
         // Argon2 off the Actix worker, as account provisioning does.
         let (user, password) = (user, password.to_string());
@@ -600,7 +594,7 @@ impl UsersService {
             if !user.verify_password(&current_password)? {
                 return Err(
                     AppError::Validation("Current password is incorrect".to_string())
-                        .with_field("current_password", FieldErrorCode::Invalid),
+                        .with_field("current_password", FieldErrorCode::Incorrect),
                 );
             }
             User::hash_password(&new_password)
@@ -620,9 +614,11 @@ impl UsersService {
         if updated.rows_affected() == 0 {
             return Err(
                 AppError::Validation("Current password is incorrect".to_string())
-                    .with_field("current_password", FieldErrorCode::Invalid),
+                    .with_field("current_password", FieldErrorCode::Incorrect),
             );
         }
+        // Whoever held the old password may hold a session too.
+        crate::services::AuthSessionService::revoke_user_sessions(pool, user_id).await?;
         Ok(())
     }
 

@@ -1,69 +1,10 @@
 use actix_web::web;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
-use serde::{Deserialize, Serialize};
 
-use super::{args, reply, RustrakMcp};
+use super::{reply, InProject, RustrakMcp};
 use crate::routes::agents;
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct TimeseriesArgs {
-    /// Project ID
-    project_id: i32,
-    /// Lookback window in hours (default: all time)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    period_hours: Option<i64>,
-    /// Bucket width in hours (default: 1)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    interval_hours: Option<i64>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct AgentTracesArgs {
-    /// Project ID
-    project_id: i32,
-    /// Page number (1-indexed, default 1)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    /// Items per page (default 20, max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_page: Option<i64>,
-    /// Lookback window in hours (default: all time)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    period_hours: Option<i64>,
-    /// Only spans reporting this environment
-    #[serde(skip_serializing_if = "Option::is_none")]
-    environment: Option<String>,
-    /// Only traces where this agent ran (exact gen_ai.agent.name)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    agent: Option<String>,
-    /// Only traces that called this model (response model, else request model)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    model: Option<String>,
-    /// Only traces that used this tool (exact gen_ai.tool.name)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool: Option<String>,
-    /// Only traces with a failing AI span
-    #[serde(skip_serializing_if = "Option::is_none")]
-    errors: Option<bool>,
-    /// newest (default), duration, tokens, llm_calls, tool_calls or errors; all but newest are largest first
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sort: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct BreakdownArgs {
-    /// Project ID
-    project_id: i32,
-    /// Lookback window in hours (default: all time)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    period_hours: Option<i64>,
-    /// Max rows returned (default: 3, max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    limit: Option<i64>,
-}
 
 #[tool_router(router = agent_tools, vis = "pub(super)")]
 impl RustrakMcp {
@@ -71,12 +12,15 @@ impl RustrakMcp {
         description = "Get a time-bucketed count of AI agent runs (gen_ai.operation.type:agent spans) for a Rustrak project — the \"Agent Runs\" AI Agent Monitoring widget.",
         annotations(read_only_hint = true)
     )]
-    async fn get_agent_runs(&self, Parameters(a): Parameters<TimeseriesArgs>) -> CallToolResult {
+    async fn get_agent_runs(
+        &self,
+        Parameters(a): Parameters<InProject<agents::AgentTimeseriesQuery>>,
+    ) -> CallToolResult {
         reply(async {
             agents::agent_runs(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -90,13 +34,13 @@ impl RustrakMcp {
     )]
     async fn get_agent_duration(
         &self,
-        Parameters(a): Parameters<TimeseriesArgs>,
+        Parameters(a): Parameters<InProject<agents::AgentTimeseriesQuery>>,
     ) -> CallToolResult {
         reply(async {
             agents::agent_duration(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -110,13 +54,13 @@ impl RustrakMcp {
     )]
     async fn get_agent_models_by_calls(
         &self,
-        Parameters(a): Parameters<BreakdownArgs>,
+        Parameters(a): Parameters<InProject<agents::AgentBreakdownQuery>>,
     ) -> CallToolResult {
         reply(async {
             agents::agent_models_calls(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -130,13 +74,13 @@ impl RustrakMcp {
     )]
     async fn get_agent_models_by_tokens(
         &self,
-        Parameters(a): Parameters<BreakdownArgs>,
+        Parameters(a): Parameters<InProject<agents::AgentBreakdownQuery>>,
     ) -> CallToolResult {
         reply(async {
             agents::agent_models_tokens(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -148,12 +92,15 @@ impl RustrakMcp {
         description = "Get the top tools by call count (gen_ai.operation.type:tool spans, grouped by tool name) for a Rustrak project — the \"Tool Calls by Tool\" AI Agent Monitoring widget.",
         annotations(read_only_hint = true)
     )]
-    async fn get_agent_tools(&self, Parameters(a): Parameters<BreakdownArgs>) -> CallToolResult {
+    async fn get_agent_tools(
+        &self,
+        Parameters(a): Parameters<InProject<agents::AgentBreakdownQuery>>,
+    ) -> CallToolResult {
         reply(async {
             agents::agent_tools(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -167,13 +114,13 @@ impl RustrakMcp {
     )]
     async fn list_agent_traces(
         &self,
-        Parameters(a): Parameters<AgentTracesArgs>,
+        Parameters(a): Parameters<InProject<agents::AgentTracesQuery>>,
     ) -> CallToolResult {
         reply(async {
             agents::agent_traces(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await

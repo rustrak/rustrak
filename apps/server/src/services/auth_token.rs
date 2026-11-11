@@ -1,9 +1,9 @@
 use sha2::{Digest, Sha256};
 
-use crate::auth::generate_token;
-use crate::auth::rbac::{Action, Grants, Resource};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, Grants, Resource};
+use crate::models::token::generate_token;
 use crate::models::{AuthToken, CreateAuthToken, Permission};
 
 pub struct AuthTokenService;

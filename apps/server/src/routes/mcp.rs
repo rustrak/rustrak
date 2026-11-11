@@ -11,19 +11,20 @@ use std::sync::Arc;
 
 use actix_web::http::header::{HeaderName, HeaderValue, AUTHORIZATION, HOST, WWW_AUTHENTICATE};
 use actix_web::http::StatusCode;
-use actix_web::{web, FromRequest, HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use futures_util::StreamExt;
 use http_body_util::{BodyStream, Full};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::rbac::{Action, Resource};
-use crate::auth::{ApiActor, BearerAuth};
+use crate::auth::extractors::api_token;
+use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::mcp::RustrakMcp;
+use crate::models::rbac::{Action, Resource};
 use crate::routes::oauth;
 use crate::services::oauth::{OAuthService, ACCESS_PREFIX};
 
@@ -130,32 +131,25 @@ async fn caller(
     else {
         return Ok(None);
     };
-    // An API token is narrowed to the scope it was created with; an OAuth
-    // grant acts as its user.
-    let (user_id, scope) = if token.starts_with(ACCESS_PREFIX) {
+    // An OAuth grant acts as its user; an API token is narrowed to the scope
+    // it was created with.
+    let actor = if token.starts_with(ACCESS_PREFIX) {
         // Without an issuer no OAuth token was ever valid here.
         let Some(resource) = resource else {
             return Ok(None);
         };
         match OAuthService::authenticate(pool, token.trim(), resource).await? {
-            Some(user_id) => (Some(user_id), None),
+            Some(user_id) => ApiActor::for_token(pool, Some(user_id)).await,
             None => return Ok(None),
         }
     } else {
-        match BearerAuth::extract(req).await {
-            Ok(bearer) => (bearer.token.user_id, Some(bearer.token.scope())),
-            Err(e) if matches!(e.kind(), AppError::Unauthorized(_)) => return Ok(None),
-            Err(e) => return Err(e),
+        match api_token(req, pool).await {
+            Ok(token) => ApiActor::for_api_token(pool, &token).await,
+            Err(e) => Err(e),
         }
     };
-    match ApiActor::for_token(pool, user_id).await {
-        Ok(actor) => Ok(Some(match scope {
-            Some(scope) => ApiActor {
-                access: actor.access.capped(scope),
-                ..actor
-            },
-            None => actor,
-        })),
+    match actor {
+        Ok(actor) => Ok(Some(actor)),
         Err(e) if matches!(e.kind(), AppError::Unauthorized(_)) => Ok(None),
         Err(e) => Err(e),
     }
