@@ -533,6 +533,28 @@ export const RowMenu: Story = {
   },
 };
 
+/**
+ * The menu is portalled, and React bubbles a portal's clicks through the
+ * component tree: picking an item must not also open the row under it.
+ */
+const menuItemLeavesRowSpy = fn();
+
+export const MenuItemLeavesRowClosed: Story = {
+  render: () => <IssuesTable onRowClick={menuItemLeavesRowSpy} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(
+      canvas.getAllByRole('button', { name: 'Row actions' })[0] as HTMLElement,
+    );
+    const menu = await body.findByRole('menu');
+    await userEvent.click(
+      within(menu).getByRole('menuitem', { name: /Delete/ }),
+    );
+    await expect(menuItemLeavesRowSpy).not.toHaveBeenCalled();
+  },
+};
+
 /** A row opens with Enter once focus reaches it -- the keyboard path for `onRowClick`. */
 const rowOpensFromKeyboardSpy = fn();
 

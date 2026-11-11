@@ -87,9 +87,7 @@ function ConfirmContent({
       ) : null}
 
       <DialogFooter
-        hint={
-          locked ? `${Math.max(remaining, 0)} characters left` : 'Esc cancels'
-        }
+        hint={locked ? `${Math.max(remaining, 0)} characters left` : undefined}
       >
         {/* The modal's first focusable element, which is where Base UI puts
             the focus on open: in the destructive, the way out comes before
@@ -99,9 +97,9 @@ function ConfirmContent({
         >
           {cancelLabel}
         </DialogClose>
+        {/* No ⏎ hint: focus starts on the way out, so Enter is a no. */}
         <Button
           variant={tone === 'danger' ? 'danger-primary' : 'primary'}
-          shortcut={locked ? undefined : '⏎'}
           disabled={locked}
           onClick={() => close(true)}
         >

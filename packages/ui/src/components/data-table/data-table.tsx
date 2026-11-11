@@ -17,6 +17,7 @@ import { EmptyIcon } from '../icon/icon-catalog';
 import { Text } from '../text/text';
 import { DataTableColumnHeader } from './column-header';
 import type { DataTableFeatures } from './features';
+import { droppedToFit } from './fit';
 import { useDataTableLabels } from './labels';
 import { DataTablePagination } from './pagination';
 import type { DataTableInstance } from './use-data-table';
@@ -173,19 +174,19 @@ export function DataTable<TData extends RowData>({
 }: DataTableProps<TData>) {
   const labels = useDataTableLabels();
   const rows = table.getRowModel().rows;
-  const columns = table.getVisibleLeafColumns();
+  const visible = table.getVisibleLeafColumns();
   const sizing = table.state.columnSizing;
   const sizedWidth = (column: (typeof columns)[number]) =>
     sizing[column.id] ?? column.columnDef.meta?.width;
   // Once the reader has sized every column, the actions column is the one
   // that takes up the slack -- so the menu stays against the right edge.
-  const anyFlexible = columns.some(
+  const anyFlexible = visible.some(
     (column) =>
       column.id !== 'select' &&
       column.id !== 'actions' &&
       sizedWidth(column) === undefined,
   );
-  const widthOf = (column: (typeof columns)[number]) =>
+  const widthOf = (column: (typeof visible)[number]) =>
     column.id === 'select'
       ? 40
       : column.id === 'actions'
@@ -193,14 +194,34 @@ export function DataTable<TData extends RowData>({
           ? 48
           : undefined
         : sizedWidth(column);
+  const drawnWidth = (column: (typeof visible)[number]) =>
+    widthOf(column) ?? (column.id === 'actions' ? 48 : FLEX_MIN_WIDTH);
+  // The card's width, measured: optional columns (`meta.drop`) step aside
+  // when the rest would not fit, before the table scrolls under the pinned
+  // actions column.
+  const scroller = useRef<HTMLDivElement>(null);
+  const [available, setAvailable] = useState<number>();
+  useLayoutEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => setAvailable(node.clientWidth));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const dropped = droppedToFit(
+    visible.map((column) => ({
+      id: column.id,
+      width: drawnWidth(column),
+      drop: column.columnDef.meta?.drop,
+    })),
+    available,
+  );
+  const columns = visible.filter((column) => !dropped.has(column.id));
+  const shown = <T extends { column: { id: string } }>(items: T[]) =>
+    items.filter((item) => !dropped.has(item.column.id));
   // Wide enough for every sized column and a readable flexible one; past
   // that the card scrolls sideways instead of crushing the title.
-  const minWidth = columns.reduce(
-    (sum, column) =>
-      sum +
-      (widthOf(column) ?? (column.id === 'actions' ? 48 : FLEX_MIN_WIDTH)),
-    0,
-  );
+  const minWidth = columns.reduce((sum, column) => sum + drawnWidth(column), 0);
   const filtered =
     table.state.columnFilters.length > 0 || Boolean(table.state.globalFilter);
   const selectedCount = Object.keys(table.state.rowSelection).length;
@@ -217,6 +238,8 @@ export function DataTable<TData extends RowData>({
   ) {
     if (!onRowClick) return;
     const target = event.target as HTMLElement;
+    // A portalled popup (the row's menu) bubbles here too, from outside the row.
+    if (!(event.currentTarget as HTMLElement).contains(target)) return;
     if (target.closest('button, a, input, label, [role="checkbox"]')) return;
     onRowClick(row);
   }
@@ -257,7 +280,7 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div className={styles.card({ className })}>
-      <div className={styles.scroller()} aria-busy={loading}>
+      <div ref={scroller} className={styles.scroller()} aria-busy={loading}>
         <table className={styles.table()} style={{ minWidth }}>
           <colgroup>
             {columns.map((column) => (
@@ -282,7 +305,7 @@ export function DataTable<TData extends RowData>({
                     </th>
                     <th
                       scope="col"
-                      colSpan={headerGroup.headers.length - 1}
+                      colSpan={shown(headerGroup.headers).length - 1}
                       className={styles.th()}
                     >
                       <div
@@ -306,7 +329,7 @@ export function DataTable<TData extends RowData>({
                     </th>
                   </>
                 ) : (
-                  headerGroup.headers.map((header) => (
+                  shown(headerGroup.headers).map((header) => (
                     <HeaderCell
                       key={header.id}
                       header={header}
@@ -335,7 +358,7 @@ export function DataTable<TData extends RowData>({
                 }}
                 className={styles.row()}
               >
-                {row.getVisibleCells().map((cell) => (
+                {shown(row.getVisibleCells()).map((cell) => (
                   <td
                     key={cell.id}
                     {...cellAttributes(cell)}

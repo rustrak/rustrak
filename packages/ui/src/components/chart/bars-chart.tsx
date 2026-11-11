@@ -13,6 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartLegend, ChartTooltip, XTick, YTick } from './chart-parts';
+import { dataMax, integerTicks } from './chart-scale';
 import { type ChartSeries, seriesColor } from './chart-series';
 
 /**
@@ -38,6 +39,8 @@ export interface BarsChartProps<TDatum extends Record<string, unknown>> {
   formatY?: (value: number) => string;
   /** Pin the Y scale: `[0, 100]` for a share. Absent, it follows the data. */
   yDomain?: [number, number];
+  /** The values are counts: no `0.4` tick on an axis of whole things. */
+  integer?: boolean;
   /** Names the figure for screen readers; the drawing stays explorable. */
   label: string;
   className?: string;
@@ -52,9 +55,22 @@ export function BarsChart<TDatum extends Record<string, unknown>>({
   formatX,
   formatY,
   yDomain,
+  integer = false,
   label,
   className,
 }: BarsChartProps<TDatum>) {
+  // Counts get their own evenly spaced whole ticks (see `integerTicks`).
+  const ticks =
+    integer && !yDomain
+      ? integerTicks(
+          dataMax(
+            data,
+            series.map((entry) => entry.key),
+            stacked,
+          ),
+        )
+      : undefined;
+
   return (
     <figure className={className} aria-label={label}>
       <ResponsiveContainer width="100%" height={height}>
@@ -77,7 +93,8 @@ export function BarsChart<TDatum extends Record<string, unknown>>({
             minTickGap={32}
           />
           <YAxis
-            width={40}
+            // Sized to its widest label: a fixed width cut "800 ms" to "00 ms".
+            width="auto"
             axisLine={false}
             tickLine={false}
             tick={
@@ -85,8 +102,9 @@ export function BarsChart<TDatum extends Record<string, unknown>>({
                 format={formatY ? (value) => formatY(Number(value)) : undefined}
               />
             }
-            tickCount={4}
-            domain={yDomain}
+            {...(ticks
+              ? { ticks, interval: 0, domain: [0, Math.max(...ticks)] }
+              : { tickCount: 4, allowDecimals: !integer, domain: yDomain })}
           />
           <Tooltip
             cursor={{ fill: 'var(--surface-hover)' }}

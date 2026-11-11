@@ -2,7 +2,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
   rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap"
+  href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=Geist+Mono:wght@400..600&display=swap"
 />
 
 <style>
@@ -33,7 +33,7 @@
     font-weight: 500;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: #777777;
+    color: var(--rk-meta);
   }
 
   /* The selected story is left to `colorSecondary` from the theme, which is
@@ -56,7 +56,7 @@
    */
   .sidebar-item[data-nodetype='story'] svg,
   .sidebar-item[data-nodetype='document'] svg {
-    color: #777777;
+    color: var(--rk-meta);
   }
 
   /* On the lime bar the icon takes the row's own colour, which is near-black.
@@ -74,7 +74,7 @@
    * machine text and never the thing you are meant to look at.
    */
   [aria-label='Available addons'] [role='tab'] > * > *:last-child {
-    background: #262626;
-    color: #999999;
+    background: var(--rk-chip);
+    color: var(--rk-muted);
   }
 </style>

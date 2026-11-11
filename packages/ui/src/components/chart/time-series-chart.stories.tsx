@@ -74,6 +74,51 @@ export const SingleSeries: Story = {
   },
 };
 
+/**
+ * One bucket of data, padded with empty buckets, draws no area, so it gets a
+ * dot, and counts tick in evenly spaced whole numbers rather than 0.4.
+ */
+export const SinglePoint: Story = {
+  render: () => (
+    <div className="w-160 rounded-xl border border-border-subtle bg-surface p-4">
+      <TimeSeriesChart
+        data={[
+          { hour: 2, events: null },
+          { hour: 3, events: 3 },
+          { hour: 4, events: null },
+        ]}
+        series={[{ key: 'events', label: 'Events' }]}
+        xKey="hour"
+        height={180}
+        formatX={formatHour}
+        integer
+        label="Events in one hour"
+      />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() =>
+      expect(canvasElement.querySelector('.recharts-area-dot')).not.toBeNull(),
+    );
+    const ticks = () =>
+      [
+        ...canvasElement.querySelectorAll('.recharts-yAxis-tick-labels text'),
+      ].map((tick) => tick.textContent ?? '');
+    await waitFor(() => expect(ticks()).toEqual(['0', '1', '2', '3']));
+    // The axis is sized to its labels, so none starts left of the chart.
+    const left = canvasElement
+      .querySelector('.recharts-wrapper')
+      ?.getBoundingClientRect().left;
+    await waitFor(() =>
+      expect(
+        [
+          ...canvasElement.querySelectorAll('.recharts-yAxis-tick-labels text'),
+        ].every((tick) => tick.getBoundingClientRect().left >= (left ?? 0)),
+      ).toBe(true),
+    );
+  },
+};
+
 /** Two series overlay; the legend appears on its own, in fixed order. */
 export const TwoSeries: Story = {
   render: () => (

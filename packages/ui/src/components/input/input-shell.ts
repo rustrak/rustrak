@@ -3,6 +3,17 @@ import { interactiveTransition } from '../../lib/motion';
 import { tv } from '../../lib/tv';
 
 /**
+ * The resting frame of a field, shared by the text field and the select's
+ * trigger so the two read as one family: same border, same canvas, same
+ * hover.
+ */
+export const fieldFrame = [
+  'flex w-full items-center gap-2 rounded-md border',
+  'border-border-field bg-canvas hover:border-border-strong',
+  interactiveTransition,
+];
+
+/**
  * The box every text control shares.
  *
  * It lives apart because more than one component needs it -- the input, the
@@ -27,11 +38,8 @@ import { tv } from '../../lib/tv';
 export const inputShell = tv({
   slots: {
     box: [
-      'flex w-full items-center gap-2 rounded-md border',
+      fieldFrame,
       'ps-2.5 pe-1.5',
-      interactiveTransition,
-      'border-border-field bg-canvas',
-      'hover:border-border-strong',
 
       // Read-only: the field settles into the surface. It still reads, so
       // the text stays; what goes is the promise of a caret.
@@ -89,5 +97,3 @@ export const inputShell = tv({
   },
   defaultVariants: { size: 'md' },
 });
-
-export type InputShellSize = 'sm' | 'md';

@@ -3,7 +3,6 @@ import { cn } from '../../lib/cn';
 import { focusRing } from '../../lib/focus';
 import { interactiveTransition, pressScaleSmall } from '../../lib/motion';
 import { tv } from '../../lib/tv';
-import type { IconComponent } from '../icon/icon';
 import { CloseIcon, MenuIcon } from '../icon/icon-catalog';
 import { useSidebar } from './sidebar-context';
 
@@ -55,71 +54,28 @@ export function Topbar({
 
 Topbar.displayName = 'Topbar';
 
-export interface TopbarActionProps
-  extends Omit<ComponentPropsWithoutRef<'button'>, 'children'> {
-  icon: IconComponent;
-  /** What it does. Required: the action carries no visible text. */
-  'aria-label': string;
-  /** How many are waiting. Zero is not drawn. */
-  count?: number;
-}
-
-/**
- * An icon-only action in the topbar.
- *
- * The counter is a lime dot rather than a number. In 48 px of height there is
- * no room for a legible figure on top of a 15 px icon, and the figure was never
- * the point -- what it has to say is "there is something", and how many is a
- * question the panel answers.
- */
-export function TopbarAction({
-  icon: Icon,
-  count,
-  className,
-  ...props
-}: TopbarActionProps) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'relative flex size-control-sm shrink-0 items-center justify-center',
-        'rounded-lg text-fg-subtle',
-        'hover:bg-surface-hover hover:text-fg',
-        interactiveTransition,
-        pressScaleSmall,
-        focusRing,
-        className,
-      )}
-      {...props}
-    >
-      <Icon size="xl" />
-
-      {count != null && count > 0 ? (
-        <span
-          aria-hidden="true"
-          className="absolute end-1.5 top-1.5 size-dot rounded-pill bg-surface-brand"
-        />
-      ) : null}
-    </button>
-  );
-}
-
-TopbarAction.displayName = 'TopbarAction';
-
 /**
  * The button that opens the navigation on a phone.
  *
  * It only exists below `md`. Above that the sidebar is on screen already, and a
  * button that opens what you can see says nothing.
  */
-export function TopbarMenuButton() {
+export function TopbarMenuButton({
+  openLabel,
+  closeLabel,
+}: {
+  /** "Open navigation", in the reader's language. */
+  openLabel: string;
+  /** "Close navigation", in the reader's language. */
+  closeLabel: string;
+}) {
   const { drawerOpen, toggleDrawer } = useSidebar();
 
   return (
     <button
       type="button"
       onClick={toggleDrawer}
-      aria-label={drawerOpen ? 'Close navigation' : 'Open navigation'}
+      aria-label={drawerOpen ? closeLabel : openLabel}
       aria-expanded={drawerOpen}
       className={cn(
         'flex size-control-sm shrink-0 items-center justify-center md:hidden',

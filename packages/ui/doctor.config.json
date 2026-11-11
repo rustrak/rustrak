@@ -17,6 +17,14 @@
         "rules": [
           "react-doctor/heading-has-content"
         ]
+      },
+      {
+        "files": [
+          ".storybook/main.ts"
+        ],
+        "rules": [
+          "react-doctor/unsafe-json-in-html"
+        ]
       }
     ]
   }

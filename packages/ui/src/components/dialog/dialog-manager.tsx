@@ -7,6 +7,7 @@ import {
 import { Dialog } from './dialog';
 import {
   close,
+  DialogCloseLabel,
   type Entry,
   getServerSnapshot,
   getSnapshot,
@@ -42,6 +43,8 @@ function DialogEntry({ entry }: { entry: Entry }) {
 }
 
 export interface DialogProviderProps {
+  /** The dismiss cross's accessible name, in the reader's language. */
+  closeLabel: string;
   children?: ReactNode;
 }
 
@@ -49,14 +52,14 @@ export interface DialogProviderProps {
  * Goes once, at the application's root. It is what mounts the modals opened
  * with `open()`, inside the tree and below every provider.
  */
-export function DialogProvider({ children }: DialogProviderProps) {
+export function DialogProvider({ closeLabel, children }: DialogProviderProps) {
   const open = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   return (
-    <>
+    <DialogCloseLabel.Provider value={closeLabel}>
       {children}
       <DialogOutlet entries={open} />
-    </>
+    </DialogCloseLabel.Provider>
   );
 }
 

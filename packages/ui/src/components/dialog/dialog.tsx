@@ -1,10 +1,11 @@
 import { AlertDialog as BaseAlertDialog } from '@base-ui/react/alert-dialog';
 import { Dialog as BaseDialog } from '@base-ui/react/dialog';
-import type { ReactNode, RefObject } from 'react';
+import { type ReactNode, type RefObject, useContext } from 'react';
 import { focusRing } from '../../lib/focus';
 import { interactiveTransition, pressScaleSmall } from '../../lib/motion';
 import { tv, type VariantProps } from '../../lib/tv';
 import { CloseIcon } from '../icon/icon-catalog';
+import { DialogCloseLabel } from './dialog-store';
 
 /**
  * The modal.
@@ -170,6 +171,7 @@ export function DialogHeader({
   dismissible = true,
   children,
 }: DialogHeaderProps) {
+  const closeLabel = useContext(DialogCloseLabel);
   return (
     <div className={styles.header()}>
       <div className={styles.heading()}>
@@ -183,7 +185,7 @@ export function DialogHeader({
       </div>
 
       {dismissible ? (
-        <BaseDialog.Close className={styles.close()} aria-label="Close">
+        <BaseDialog.Close className={styles.close()} aria-label={closeLabel}>
           <CloseIcon size="sm" aria-hidden="true" />
         </BaseDialog.Close>
       ) : null}

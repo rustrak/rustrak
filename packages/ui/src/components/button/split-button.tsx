@@ -2,6 +2,7 @@ import { Menu as BaseMenu } from '@base-ui/react/menu';
 import type { ReactNode } from 'react';
 import { focusRingInset } from '../../lib/focus';
 import { chevronFlip, interactiveTransition } from '../../lib/motion';
+import { PANEL_OFFSET } from '../../lib/panel';
 import { tv, type VariantProps } from '../../lib/tv';
 import type { IconComponent } from '../icon/icon';
 import { ChevronDownIcon } from '../icon/icon-catalog';
@@ -158,7 +159,7 @@ export function SplitButton({
           <BaseMenu.Positioner
             side="bottom"
             align="end"
-            sideOffset={6}
+            sideOffset={PANEL_OFFSET}
             className={menuPositionerClass()}
           >
             <BaseMenu.Popup className={menuPopupClass()}>
