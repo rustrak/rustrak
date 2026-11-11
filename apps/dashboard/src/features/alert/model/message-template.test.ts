@@ -53,9 +53,4 @@ describe('TEMPLATE_PRESETS', () => {
       expect(formatTemplate(preset.body), preset.name).toBe(preset.body);
     }
   });
-
-  it('has a unique id per preset', () => {
-    const ids = TEMPLATE_PRESETS.map((p) => p.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
 });

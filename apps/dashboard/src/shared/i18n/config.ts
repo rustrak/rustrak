@@ -1,19 +1,22 @@
-import { DEFAULT_LOCALE, isLocale, LOCALES, type Locale } from './routing';
-
 /**
- * The pure half of the i18n setup: which language, which zone, and how the
- * named formats read once the zone is known.
+ * The pure half of the i18n setup: which languages, which one and which zone
+ * for a reader, and how the named formats read once the zone is known.
  *
- * Pure on purpose. Under Next this logic lived inside `getRequestConfig`,
- * where it could only ever run inside a request; here it is three functions
- * over plain values, so `config.test.ts` covers every branch without a
- * browser, a session or a router.
+ * The locale is not in the URL: a link pasted to a colleague opens in the
+ * reader's language, from `users.language` once they have chosen and the
+ * browser's before that. No cookie: a preference on the account follows the
+ * reader to any browser.
  */
 
-/** The shape `resolveLocale` and `resolveTimeZone` read a session user as. */
-export interface LocalePreferences {
-  language?: string | null;
-  timezone?: string | null;
+export const LOCALES = ['en', 'zh', 'fr', 'es', 'ro'] as const;
+
+export type Locale = (typeof LOCALES)[number];
+
+const DEFAULT_LOCALE: Locale = 'en';
+
+/** Whether `value` is a language this app actually has messages for. */
+export function isLocale(value: string | undefined): value is Locale {
+  return value !== undefined && (LOCALES as readonly string[]).includes(value);
 }
 
 /**
@@ -144,6 +147,8 @@ export function formatsFor(timeZone: string) {
       axisDay: { month: 'short', day: 'numeric' },
       /** A tick for a bucket that is a UTC day, read as that day anywhere. */
       axisDayUtc: { month: 'short', day: 'numeric', timeZone: 'UTC' },
+      /** A chart's hourly bucket: the day and the hour. */
+      axisHour: { month: 'short', day: 'numeric', hour: 'numeric' },
       /** A chart tick where the bucket is narrower than a day. */
       axisTime: {
         month: 'short',

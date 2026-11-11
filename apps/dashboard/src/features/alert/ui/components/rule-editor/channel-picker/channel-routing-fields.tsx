@@ -11,7 +11,7 @@ import {
  * One labelled routing input, so the three below differ only in their control.
  *
  * `children` is a render prop rather than a node because the label has to
- * point at the control by id. These are not `FormField`s — the routing map
+ * point at the control by id. These are not form fields — the routing map
  * lives outside the form schema — so nothing else is generating that pairing,
  * and the three labels here were previously attached to nothing at all.
  */

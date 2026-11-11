@@ -12,15 +12,6 @@ export const LOG_LEVELS = [
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-/** The tag tone a level reads in; the quiet ones have none. */
-export const LEVEL_TONE: Partial<Record<string, 'error' | 'warning' | 'info'>> =
-  {
-    fatal: 'error',
-    error: 'error',
-    warn: 'warning',
-    info: 'info',
-  };
-
 /**
  * The volume as bars of four bands. `fatal` folds into error and `trace`
  * into debug, as the overview's chart folds them: as bands of their own they

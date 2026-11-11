@@ -23,13 +23,10 @@ export function TimeZoneCombobox({
   placeholder,
   noResults,
   disabled,
-  'aria-describedby': describedBy,
-  'aria-invalid': invalid,
+  invalid,
 }: {
   id?: string;
-  /** Set by `FormControl`: the field's message, and whether it failed. */
-  'aria-describedby'?: string;
-  'aria-invalid'?: boolean;
+  invalid?: boolean;
   /** `undefined` shows the placeholder. */
   value: string | undefined;
   onChange: (zone: string | null) => void;
@@ -59,7 +56,6 @@ export function TimeZoneCombobox({
       <div className="relative w-full">
         <Combobox.Input
           id={id}
-          aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           placeholder={placeholder}
           className="flex h-9 w-full items-center rounded-md border border-border-field bg-transparent py-2 pr-8 pl-2.5 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger aria-invalid:ring-3 aria-invalid:ring-danger/20 dark:bg-surface-hover/30 dark:aria-invalid:border-danger/50 dark:aria-invalid:ring-danger/40"

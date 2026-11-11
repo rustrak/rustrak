@@ -48,6 +48,36 @@ export function nextCheckIn(monitor: MonitorResponse): string | null {
   return pick(monitor, 'next_checkin', (a, b) => a < b);
 }
 
+/**
+ * What "next expected" should say. A miss moves `next_checkin` on to the
+ * following slot, so without this a missed run read as "in 2 minutes".
+ */
+export function nextCheckInState(
+  monitor: MonitorResponse,
+  now: number,
+): 'missed' | 'late' | 'due' | 'none' {
+  const missed = monitor.environments.some(
+    (env) =>
+      env.recent_checkins.find((c) => c.status !== 'in_progress')?.status ===
+      'missed',
+  );
+  if (missed) return 'missed';
+  const next = nextCheckIn(monitor);
+  if (next === null) return 'none';
+  return Date.parse(next) < now ? 'late' : 'due';
+}
+
+/** The "next expected" figure's colour: only where something went wrong. */
+export const NEXT_TONE: Record<
+  ReturnType<typeof nextCheckInState>,
+  string | undefined
+> = {
+  missed: 'text-sev-error-fg',
+  late: 'text-sev-warning-fg',
+  due: undefined,
+  none: undefined,
+};
+
 function pick(
   monitor: MonitorResponse,
   field: 'last_checkin' | 'next_checkin',
@@ -64,4 +94,34 @@ function pick(
     }
   }
   return best;
+}
+
+/** What the crons list filters by: a health, or muted. */
+export const MONITOR_STATES = ['failing', 'ok', 'waiting', 'muted'] as const;
+export type MonitorState = (typeof MONITOR_STATES)[number];
+
+/** Failing first, then waiting, then the rest; by name inside each. */
+const RANK: Record<MonitorHealth, number> = { failing: 0, waiting: 1, ok: 2 };
+
+/** The monitors a search and a state show, in the list's order. */
+export function filterMonitors(
+  monitors: MonitorResponse[],
+  q: string,
+  state?: MonitorState,
+): MonitorResponse[] {
+  const text = q.trim().toLowerCase();
+  return monitors
+    .filter(
+      (m) =>
+        (!text ||
+          m.name.toLowerCase().includes(text) ||
+          m.slug.includes(text)) &&
+        (!state ||
+          (state === 'muted' ? m.is_muted : monitorHealth(m) === state)),
+    )
+    .sort(
+      (a, b) =>
+        RANK[monitorHealth(a)] - RANK[monitorHealth(b)] ||
+        a.name.localeCompare(b.name),
+    );
 }

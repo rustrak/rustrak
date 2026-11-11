@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { periodHours, withPreviousPeriod } from './overview-series';
-
-describe('periodHours', () => {
-  it('reads hours and days', () => {
-    expect(periodHours('24h')).toBe(24);
-    expect(periodHours('7d')).toBe(168);
-    expect(periodHours('30d')).toBe(720);
-  });
-});
+import { withPreviousPeriod } from './overview-series';
 
 describe('withPreviousPeriod', () => {
   // A doubled window, zero-filled: 2P/interval + 1 buckets, oldest first.

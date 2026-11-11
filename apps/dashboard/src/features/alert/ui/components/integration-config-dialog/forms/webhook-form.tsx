@@ -1,6 +1,4 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useMemo } from 'react';
-import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { filledCredentials } from '@/features/alert/lib/credentials';
 import {
@@ -11,7 +9,7 @@ import {
   webhookFormSchema,
 } from '@/features/alert/model/integration-forms';
 import { useIntegrationSubmit } from '@/features/alert/ui/hooks/use-integration-submit';
-import { Form } from '@/shared/ui/components/form';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { SettingSection } from '@/shared/ui/components/setting-row';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
@@ -35,9 +33,11 @@ export function WebhookForm({
   // Seeded at mount, never re-seeded: the page keys the form by the
   // integration it edits, so another one is a fresh mount.
   const schema = useMemo(() => webhookFormSchema(t), [t]);
-  const form = useForm<WebhookFormData>({
-    resolver: zodResolver(schema),
+  const form = useAppForm({
     defaultValues: webhookDefaults(existingIntegration),
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: schema },
+    onSubmit: ({ value }) => submit(value),
   });
 
   const { submit, isPending } = useIntegrationSubmit<WebhookFormData>({
@@ -68,37 +68,51 @@ export function WebhookForm({
   const isLoading = isPending || parentPending;
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(submit)}>
+    <form.AppForm>
+      <form.Form>
         <SettingSection title={t('page.general')}>
-          <NameField<WebhookFormData>
-            placeholder={t('webhook.namePlaceholder')}
-            disabled={isLoading}
-          />
-          <EnabledField<WebhookFormData> disabled={isLoading} />
+          <form.AppField name="name">
+            {() => (
+              <NameField
+                placeholder={t('webhook.namePlaceholder')}
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="is_enabled">
+            {() => <EnabledField disabled={isLoading} />}
+          </form.AppField>
         </SettingSection>
 
         <SettingSection
           title={t('page.connection')}
           description={t('webhook.description')}
         >
-          <TextInputField<WebhookFormData>
-            name="url"
-            label={t('webhook.urlLabel')}
-            placeholder={t('webhook.urlPlaceholder')}
-            description={t('webhook.urlDescription')}
-            type="url"
-            disabled={isLoading}
-          />
-          <TextInputField<WebhookFormData>
-            name="secret"
-            label={t('webhook.secretLabel')}
-            placeholder={t('webhook.secretPlaceholder')}
-            description={t('webhook.secretDescription')}
-            type="password"
-            disabled={isLoading}
-          />
-          <HeadersField<WebhookFormData> disabled={isLoading} />
+          <form.AppField name="url">
+            {() => (
+              <TextInputField
+                label={t('webhook.urlLabel')}
+                placeholder={t('webhook.urlPlaceholder')}
+                description={t('webhook.urlDescription')}
+                type="url"
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="secret">
+            {() => (
+              <TextInputField
+                label={t('webhook.secretLabel')}
+                placeholder={t('webhook.secretPlaceholder')}
+                description={t('webhook.secretDescription')}
+                type="password"
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="headers" mode="array">
+            {() => <HeadersField disabled={isLoading} />}
+          </form.AppField>
           {existingIntegration ? (
             <TestRow
               hint={t('page.testDescription')}
@@ -122,8 +136,9 @@ export function WebhookForm({
           }
           isLoading={isLoading}
           onCancel={() => onOpenChange(false)}
+          error={<form.RootError />}
         />
-      </form>
-    </Form>
+      </form.Form>
+    </form.AppForm>
   );
 }

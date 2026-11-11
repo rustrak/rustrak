@@ -30,6 +30,7 @@ export function HistoryChart({ days }: { days: AlertHistoryDay[] }) {
         { key: 'failed', label: t('status.failed'), color: 'var(--sev-error)' },
       ]}
       xKey="t"
+      integer
       height={180}
       formatX={(value) => format.dateTime(new Date(value), 'axisDayUtc')}
       formatY={(value) => format.number(value)}

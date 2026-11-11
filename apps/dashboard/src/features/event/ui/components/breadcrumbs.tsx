@@ -5,24 +5,13 @@ import {
 } from '@/features/event/lib/breadcrumbs';
 import { BreadcrumbsExpand } from './breadcrumbs-expand';
 
-interface BreadcrumbsProps {
-  breadcrumbs?: Breadcrumb[] | { values?: Breadcrumb[] };
-}
-
-function normalizeBreadcrumbs(
-  breadcrumbs?: Breadcrumb[] | { values?: Breadcrumb[] },
-): Breadcrumb[] {
-  if (!breadcrumbs) return [];
-  if (Array.isArray(breadcrumbs)) return breadcrumbs;
-  if ('values' in breadcrumbs && Array.isArray(breadcrumbs.values)) {
-    return breadcrumbs.values;
-  }
-  return [];
-}
-
-export function Breadcrumbs({ breadcrumbs }: BreadcrumbsProps) {
+/** `items` as `normalizeBreadcrumbs` (event-schema) returns them. */
+export function Breadcrumbs({
+  breadcrumbs: items,
+}: {
+  breadcrumbs: Breadcrumb[];
+}) {
   const t = useTranslations('events');
-  const items = normalizeBreadcrumbs(breadcrumbs);
 
   if (items.length === 0) {
     return (

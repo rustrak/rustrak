@@ -7,11 +7,13 @@ import {
   HEALTH_MARK,
   lastCheckIn,
   monitorHealth,
+  NEXT_TONE,
   lastRun as newestRun,
   nextCheckIn,
+  nextCheckInState,
 } from '@/features/monitor/lib/status';
+import { ScheduleText } from '@/features/monitor/ui/components/schedule-text';
 import { Link } from '@/shared/ui/components/link';
-import { ScheduleText } from '@/shared/ui/components/schedule-text';
 import { CheckInStrip, StripAxis } from './check-in-strip';
 
 const COLUMNS =
@@ -126,7 +128,13 @@ function MonitorRow({
   const last = lastCheckIn(monitor);
   const next = nextCheckIn(monitor);
   const lastRun = newestRun(monitor);
-  const late = next !== null && Date.parse(next) < now;
+  const state = nextCheckInState(monitor, now);
+  const nextText = {
+    missed: t('status.missed'),
+    late: t('late'),
+    due: next ? format.relativeTime(new Date(next)) : '—',
+    none: '—',
+  }[state];
 
   return (
     <li>
@@ -222,14 +230,10 @@ function MonitorRow({
         <span
           className={cn(
             'hidden truncate text-right text-meta tabular-nums md:block',
-            late ? 'text-sev-warning-fg' : 'text-fg-secondary',
+            NEXT_TONE[state] ?? 'text-fg-secondary',
           )}
         >
-          {next
-            ? late
-              ? t('late')
-              : format.relativeTime(new Date(next))
-            : '—'}
+          {nextText}
         </span>
       </Link>
     </li>

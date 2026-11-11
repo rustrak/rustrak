@@ -17,6 +17,8 @@ export function RelativeTime({
   /**
    * The length of the words: `long` ("3 minutes ago", the default), `short`
    * or `narrow`. It is `Intl.RelativeTimeFormat`'s `style` option, not CSS.
+   * Prefer `short` for tight space: `narrow` drops the phrasing in some
+   * locales (French "-3 min" for "il y a 3 min").
    */
   style?: Intl.RelativeTimeFormatStyle;
 }) {

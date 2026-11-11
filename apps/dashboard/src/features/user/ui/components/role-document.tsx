@@ -11,6 +11,7 @@ import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /**
  * One role: its name and description, then one tab per module with its
@@ -30,6 +31,7 @@ export function RoleDocument({
   canDelete: boolean;
 }) {
   const t = useTranslations('access');
+  const toastFailure = useToastFailure();
   const router = useRouter();
   const reader = usePermissionsLater();
   // The callbacks live here, not on `mutate`: a saved or deleted role remounts
@@ -38,10 +40,7 @@ export function RoleDocument({
     ...userMutations.updateRole(role.id),
     onSuccess: () => toast.success(t('roles.saved')),
     // "You cannot grant permissions you do not hold" says exactly why.
-    onError: (error) =>
-      toast.error(t('roles.saveFailed'), {
-        description: error.error.message,
-      }),
+    onError: (error) => toastFailure(t('roles.saveFailed'), error),
   });
   const remove = useMutation({
     ...userMutations.deleteRole(),
@@ -50,10 +49,7 @@ export function RoleDocument({
       router.push('/settings/roles');
     },
     // A role still held comes back as a conflict saying how often.
-    onError: (error) =>
-      toast.error(t('roles.deleteFailed'), {
-        description: error.error.message,
-      }),
+    onError: (error) => toastFailure(t('roles.deleteFailed'), error),
   });
   // A draft of the role, seeded once: the page remounts this with a new
   // `key` when the saved role changes, so it never goes stale.

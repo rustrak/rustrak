@@ -4,7 +4,6 @@ import type {
   RustrakError,
 } from '@rustrak/client';
 import { useMutation } from '@tanstack/react-query';
-import type { FieldValues, UseFormReturn } from 'react-hook-form';
 import { toast } from 'sonner';
 import { alertMutations } from '@/features/alert/api/mutations';
 import type { ApiError } from '@/shared/api/query';
@@ -20,7 +19,7 @@ import {
  * Everything else a form holds is provider-specific and reaches the server
  * folded into `credentials`, which is why the constraint stops here.
  */
-export interface IntegrationFormBase extends FieldValues {
+export interface IntegrationFormBase {
   name: string;
   is_enabled: boolean;
 }
@@ -40,7 +39,7 @@ export interface IntegrationSubmitMessages {
 }
 
 export interface UseIntegrationSubmitOptions<T extends IntegrationFormBase> {
-  readonly form: UseFormReturn<T>;
+  readonly form: Parameters<typeof applyServerFieldErrors>[0];
   /** `null` while creating; the record being edited otherwise. */
   readonly existingIntegration: AlertIntegration | null;
   readonly providerType: CreateAlertIntegration['provider_type'];

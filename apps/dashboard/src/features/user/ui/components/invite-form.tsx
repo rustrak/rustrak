@@ -1,4 +1,3 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import type {
   CatalogResource,
   InvitationResponse,
@@ -9,13 +8,13 @@ import {
   DialogBody,
   DialogFooter,
   DialogHeader,
-  Input,
+  FieldLabel,
   Select,
   SelectItem,
   Switch,
 } from '@rustrak/ui';
+import { useSelector } from '@tanstack/react-form';
 import { useMutation } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
@@ -23,32 +22,24 @@ import { userMutations } from '@/features/user/api/mutations';
 import { reachesProjects } from '@/features/user/model/assignments';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormRootError,
-} from '@/shared/ui/components/form';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
-const inviteSchema = z.object({
-  email: z.email('Please enter a valid email address'),
-  /** `owner`, a role's id, or `none` (no access until given some). */
-  access: z.string(),
-  /** Where the role applies: `all`, or a project's id. */
-  where: z.string(),
-  sendEmail: z.boolean(),
-});
+const inviteSchema = (emailInvalid: string) =>
+  z.object({
+    email: z.email(emailInvalid),
+    /** `owner`, a role's id, or `none` (no access until given some). */
+    access: z.string(),
+    /** Where the role applies: `all`, or a project's id. */
+    where: z.string(),
+    sendEmail: z.boolean(),
+  });
 
 const NO_ROLE = 'none';
 const OWNER = 'owner';
 const ALL_PROJECTS = 'all';
 
-type InviteFormData = z.infer<typeof inviteSchema>;
+type InviteFormData = z.infer<ReturnType<typeof inviteSchema>>;
 
 const DEFAULTS: InviteFormData = {
   email: '',
@@ -92,11 +83,15 @@ export function InviteForm({
   const invite = useMutation(userMutations.invite());
   const isPending = invite.isPending;
 
-  const form = useForm<InviteFormData>({
-    resolver: zodResolver(inviteSchema),
+  const form = useAppForm({
     defaultValues: DEFAULTS,
+    validationLogic: revalidateLogic(),
+    validators: {
+      onDynamic: inviteSchema(globalT('auth.form.emailInvalid')),
+    },
+    onSubmit: ({ value }) => onSubmit(value),
   });
-  const access = form.watch('access');
+  const access = useSelector(form.store, (state) => state.values.access);
   const reader = usePermissionsLater();
   // Roles the inviter could not give are not offered: the server would refuse.
   const givable = roles?.filter((r) =>
@@ -118,7 +113,7 @@ export function InviteForm({
       ? t('invite.ownerHint')
       : chosen?.description || t('invite.accessHint');
 
-  const onSubmit = (data: InviteFormData) => {
+  function onSubmit(data: InviteFormData) {
     const deliverByEmail = data.sendEmail && emailAvailable;
     invite.mutate(
       {
@@ -158,7 +153,7 @@ export function InviteForm({
         },
       },
     );
-  };
+  }
 
   /**
    * An emailed invitation needs nothing more from the admin. Otherwise the
@@ -197,111 +192,83 @@ export function InviteForm({
   };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
+    <form.AppForm>
+      <form.Form>
         <DialogHeader
           title={t('invite.title')}
           description={t('invite.description')}
         />
         <DialogBody className="flex flex-col gap-4">
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('invite.emailLabel')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type="email"
-                    placeholder="name@company.com"
-                    autoComplete="off"
-                    autoFocus
-                    disabled={isPending}
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+          <form.AppField name="email">
+            {(field) => (
+              <field.TextField
+                label={t('invite.emailLabel')}
+                type="email"
+                placeholder={globalT('auth.form.emailPlaceholder')}
+                autoComplete="off"
+                autoFocus
+                disabled={isPending}
+              />
             )}
-          />
-          <FormField
-            control={form.control}
-            name="access"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('invite.roleLabel')}</FormLabel>
-                <FormControl>
+          </form.AppField>
+          <form.AppField name="access">
+            {(field) => (
+              <field.Item label={t('invite.roleLabel')} hint={accessHelp}>
+                <Select
+                  value={field.state.value}
+                  onValueChange={(value) => field.handleChange(value)}
+                  disabled={isPending}
+                  aria-label={t('invite.roleAria')}
+                  items={accessItems}
+                >
+                  {Object.entries(accessItems).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </Select>
+              </field.Item>
+            )}
+          </form.AppField>
+          {asksWhere ? (
+            <form.AppField name="where">
+              {(field) => (
+                <field.Item label={t('invite.whereLabel')}>
                   <Select
-                    value={field.value}
-                    onValueChange={field.onChange}
+                    value={field.state.value}
+                    onValueChange={(value) => field.handleChange(value)}
                     disabled={isPending}
-                    aria-label={t('invite.roleAria')}
-                    items={accessItems}
+                    aria-label={t('invite.whereLabel')}
+                    items={whereItems}
                   >
-                    {Object.entries(accessItems).map(([value, label]) => (
+                    {Object.entries(whereItems).map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>
                     ))}
                   </Select>
-                </FormControl>
-                <FormDescription>{accessHelp}</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          {asksWhere ? (
-            <FormField
-              control={form.control}
-              name="where"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('invite.whereLabel')}</FormLabel>
-                  <FormControl>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={isPending}
-                      aria-label={t('invite.whereLabel')}
-                      items={whereItems}
-                    >
-                      {Object.entries(whereItems).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                </field.Item>
               )}
-            />
+            </form.AppField>
           ) : null}
-          <FormField
-            control={form.control}
-            name="sendEmail"
-            render={({ field }) => (
-              <FormItem>
+          <form.AppField name="sendEmail">
+            {(field) => (
+              <field.Item
+                hint={emailAvailable ? null : t('invite.sendEmailUnavailable')}
+              >
                 <div className="flex items-center justify-between gap-4">
-                  <FormLabel>{t('invite.sendEmailLabel')}</FormLabel>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={(checked) => field.onChange(checked)}
-                      disabled={isPending || !emailAvailable}
-                      aria-label={t('invite.sendEmailAria')}
-                    />
-                  </FormControl>
+                  <FieldLabel>{t('invite.sendEmailLabel')}</FieldLabel>
+                  <Switch
+                    checked={field.state.value}
+                    onCheckedChange={(checked) => field.handleChange(checked)}
+                    disabled={isPending || !emailAvailable}
+                    aria-label={t('invite.sendEmailAria')}
+                  />
                 </div>
-                {emailAvailable ? null : (
-                  <FormDescription>
-                    {t('invite.sendEmailUnavailable')}
-                  </FormDescription>
-                )}
-              </FormItem>
+              </field.Item>
             )}
-          />
-          <FormRootError />
+          </form.AppField>
+          <form.RootError />
         </DialogBody>
         <DialogFooter>
           <Button variant="secondary" onClick={onDone} disabled={isPending}>
@@ -311,7 +278,7 @@ export function InviteForm({
             {isPending ? t('invite.inviting') : t('invite.submit')}
           </Button>
         </DialogFooter>
-      </form>
-    </Form>
+      </form.Form>
+    </form.AppForm>
   );
 }

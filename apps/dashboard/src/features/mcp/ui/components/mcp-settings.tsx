@@ -14,9 +14,7 @@ import {
   Tag,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { useTheme } from 'next-themes';
 import { type ReactNode, useState } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { mcpMutations } from '@/features/mcp/api/mutations';
 import {
@@ -34,6 +32,7 @@ import {
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { type CopyFlags, useCopyFlags } from '@/shared/ui/hooks/use-copy-flags';
 import { useSyntaxHighlighter } from '@/shared/ui/hooks/use-syntax-highlighter';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface McpSettingsProps {
   settings: McpStatus;
@@ -62,23 +61,18 @@ export function McpSettings({
   connected,
 }: McpSettingsProps) {
   const t = useTranslations('settings');
+  const toastFailure = useToastFailure();
   const update = useMutation(mcpMutations.updateSettings());
   // The switch moves at once; the server's answer settles it either way.
   const enabled = update.isPending ? update.variables : settings.enabled;
   const [helpOpen, setHelpOpen] = useState(false);
-  const copyFlags = useCopyFlags({
-    unavailable: t('mcp.copyUnavailable'),
-    hint: (label) => t('mcp.copyUnavailableHint', { label }),
-  });
+  const copyFlags = useCopyFlags();
   const signInAvailable = settings.url !== null;
   const url = settings.url ?? `${window.location.origin}/mcp`;
 
   const toggle = (next: boolean) =>
     update.mutate(next, {
-      onError: (error) =>
-        toast.error(t('mcp.server.updateFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('mcp.server.updateFailed'), error),
     });
 
   return (
@@ -248,8 +242,7 @@ function ClientGuide({
   copyFlags: CopyFlags;
 }) {
   const t = useTranslations('settings');
-  const { resolvedTheme } = useTheme();
-  const highlighter = useSyntaxHighlighter(resolvedTheme === 'dark');
+  const highlighter = useSyntaxHighlighter();
   const clients =
     method === 'oauth' ? CLIENTS : CLIENTS.filter((c) => c !== 'web');
   const [client, setClient] = useState<Client>(clients[0] ?? 'claudeCode');

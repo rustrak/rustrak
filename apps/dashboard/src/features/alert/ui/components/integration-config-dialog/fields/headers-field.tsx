@@ -1,39 +1,57 @@
-import { Button, DeleteIcon, Input, NewIcon } from '@rustrak/ui';
 import {
-  type ArrayPath,
-  type FieldValues,
-  type Path,
-  useFieldArray,
-  useFormContext,
-} from 'react-hook-form';
+  Button,
+  DeleteIcon,
+  Field,
+  FieldError,
+  Input,
+  NewIcon,
+} from '@rustrak/ui';
+import { useSelector } from '@tanstack/react-form';
+import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { HeaderRow } from '@/features/alert/model/integration-forms';
 import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/shared/ui/components/form';
+  fieldErrorText,
+  useFieldContext,
+} from '@/shared/ui/components/app-form';
 import { SettingRow } from '@/shared/ui/components/setting-row';
 
 /**
  * The extra HTTP headers a webhook request carries, as name/value rows: an
- * `Authorization` for an API that wants one (#419).
- *
- * Generic over the form shape like `TextInputField`; the form's `headers`
- * field must be an array of `{ name, value }`.
+ * `Authorization` for an API that wants one (#419). Rendered inside
+ * `form.AppField name="headers" mode="array"`.
  */
-export function HeadersField<T extends FieldValues>({
-  disabled,
-}: {
-  disabled: boolean;
-}) {
+export function HeadersField({ disabled }: { disabled: boolean }) {
   const t = useTranslations('alerts');
-  const { control } = useFormContext<T>();
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'headers' as ArrayPath<T>,
-  });
+  const field = useFieldContext<HeaderRow[]>();
+  const rows = field.state.value;
+  // The schema reports a bad row at `headers[i].name`; no field is mounted
+  // there, so the message is read off the form.
+  const nameErrors = useSelector(field.form.store, (state) =>
+    rows
+      .map((_, index) =>
+        fieldErrorText(state.fieldMeta[`headers[${index}].name`]?.errors ?? []),
+      )
+      .join('\u0000'),
+  ).split('\u0000');
+
+  // Rows have no identity of their own; these keys follow a row as others
+  // are removed, so focus stays with it. Rows only change through here.
+  const [keys, setKeys] = useState(() => rows.map((_, index) => index));
+  const [added, setAdded] = useState<number>();
+
+  const setRow = (index: number, row: HeaderRow) =>
+    field.replaceValue(index, row);
+  const addRow = () => {
+    const key = Math.max(-1, ...keys) + 1;
+    setKeys((prev) => [...prev, key]);
+    setAdded(key);
+    field.pushValue({ name: '', value: '' });
+  };
+  const removeRow = (index: number) => {
+    setKeys((prev) => prev.filter((_, at) => at !== index));
+    field.removeValue(index);
+  };
 
   return (
     <SettingRow
@@ -42,61 +60,56 @@ export function HeadersField<T extends FieldValues>({
       wide
     >
       <div className="flex flex-col gap-2">
-        {fields.map((row, index) => (
-          <div key={row.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-            <FormField
-              control={control}
-              name={`headers.${index}.name` as Path<T>}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="sr-only">
-                    {t('headers.nameLabel')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder={t('headers.namePlaceholder')}
-                      disabled={disabled}
-                      autoComplete="off"
-                      className="font-mono"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={control}
-              name={`headers.${index}.value` as Path<T>}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="sr-only">
-                    {t('headers.valueLabel')}
-                  </FormLabel>
-                  <FormControl>
-                    {/* Usually a token, so hidden like the signing secret. */}
-                    <Input
-                      type="password"
-                      placeholder={t('headers.valuePlaceholder')}
-                      disabled={disabled}
-                      autoComplete="new-password"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              icon={DeleteIcon}
-              onClick={() => remove(index)}
-              disabled={disabled}
-              aria-label={t('headers.remove')}
-            />
-          </div>
-        ))}
+        {rows.map((row, index) => {
+          const nameError = nameErrors[index] || undefined;
+          return (
+            <div
+              key={keys[index]}
+              className="grid grid-cols-[1fr_1fr_auto] gap-2"
+            >
+              <Field invalid={!!nameError}>
+                <Input
+                  aria-label={t('headers.nameLabel')}
+                  autoFocus={keys[index] === added}
+                  placeholder={t('headers.namePlaceholder')}
+                  disabled={disabled}
+                  autoComplete="off"
+                  className="font-mono"
+                  invalid={!!nameError}
+                  value={row.name}
+                  onChange={(e) =>
+                    setRow(index, { ...row, name: e.target.value })
+                  }
+                  onBlur={field.handleBlur}
+                />
+                {nameError ? <FieldError match>{nameError}</FieldError> : null}
+              </Field>
+              <Field>
+                {/* Usually a token, so hidden like the signing secret. */}
+                <Input
+                  type="password"
+                  aria-label={t('headers.valueLabel')}
+                  placeholder={t('headers.valuePlaceholder')}
+                  disabled={disabled}
+                  autoComplete="new-password"
+                  value={row.value}
+                  onChange={(e) =>
+                    setRow(index, { ...row, value: e.target.value })
+                  }
+                  onBlur={field.handleBlur}
+                />
+              </Field>
+              <Button
+                type="button"
+                variant="ghost"
+                icon={DeleteIcon}
+                onClick={() => removeRow(index)}
+                disabled={disabled}
+                aria-label={t('headers.remove')}
+              />
+            </div>
+          );
+        })}
 
         <Button
           type="button"
@@ -104,9 +117,7 @@ export function HeadersField<T extends FieldValues>({
           size="sm"
           icon={NewIcon}
           className="self-start"
-          onClick={() =>
-            append({ name: '', value: '' } as Parameters<typeof append>[0])
-          }
+          onClick={addRow}
           disabled={disabled}
         >
           {t('headers.add')}

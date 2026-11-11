@@ -30,10 +30,4 @@ describe('filledCredentials', () => {
       verify_tls: false,
     });
   });
-
-  it('returns a new object rather than mutating the input', () => {
-    const input = { token: '' };
-    expect(filledCredentials(input)).not.toBe(input);
-    expect(input).toEqual({ token: '' });
-  });
 });

@@ -1,4 +1,5 @@
 import type { SpanResponse } from '@rustrak/client';
+import { type WaterfallRow, waterfallRows } from '@/shared/lib/waterfall';
 import { defaultSelectedSpanId } from './filters';
 
 /** The header figures for one agent trace. */
@@ -112,56 +113,26 @@ export function resolveSelectedSpan(
   };
 }
 
-/** A span as the design system's waterfall draws it. */
-export interface WaterfallRow {
-  id: string;
-  parentId: string | null;
-  op?: string;
-  description?: string;
-  startMs: number;
-  endMs: number;
-  status?: string;
-  /** The server's `gen_ai_operation_type`, which names the kind before `op`. */
-  operationType?: string;
-}
-
 /**
- * The trace as waterfall rows: children linked through `parent_span_id` to
- * their parent's row, each named by what it ran -- the agent, the model, the
- * tool -- since the op already says what kind it is. A span missing a
- * timestamp is still a row, with no width, so it can be opened: at the one
- * time it has, else at its parent's start, else at the trace's.
+ * The trace as waterfall rows, children linked through `parent_span_id`, each
+ * named by what it ran -- the agent, the model, the tool -- since the op
+ * already says what kind it is.
  */
 export function waterfallSpans(spans: SpanResponse[]): WaterfallRow[] {
-  const rowOf = new Map(
-    spans.flatMap((s) => (s.span_id ? [[s.span_id, s.id] as const] : [])),
-  );
-  const startOf = new Map(
-    spans.flatMap((s) => {
-      const start = epochMs(s.start_timestamp);
-      return s.span_id && start !== null ? [[s.span_id, start] as const] : [];
-    }),
-  );
-  const traceStart = summarizeTrace(spans).startedAt ?? 0;
-  return spans.map((s) => {
-    const start = epochMs(s.start_timestamp);
-    const end = epochMs(s.timestamp);
-    const at =
-      start ??
-      end ??
-      (s.parent_span_id ? startOf.get(s.parent_span_id) : undefined) ??
-      traceStart;
-    return {
+  return waterfallRows(
+    spans.map((s) => ({
       id: s.id,
-      parentId: (s.parent_span_id && rowOf.get(s.parent_span_id)) || null,
+      spanId: s.span_id,
+      parentSpanId: s.parent_span_id,
+      startMs: epochMs(s.start_timestamp),
+      endMs: epochMs(s.timestamp),
       op: s.op ?? undefined,
       description: spanName(s) ?? s.description ?? undefined,
-      startMs: at,
-      endMs: start !== null && end !== null ? end : at,
       status: s.status ?? undefined,
       operationType: s.gen_ai_operation_type ?? undefined,
-    };
-  });
+    })),
+    { origin: summarizeTrace(spans).startedAt ?? 0, orphanParentId: null },
+  );
 }
 
 /** What a span ran: its agent, its model or its tool. */

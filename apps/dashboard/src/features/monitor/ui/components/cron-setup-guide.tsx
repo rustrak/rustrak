@@ -7,7 +7,6 @@ import {
   TabList,
   Tabs,
 } from '@rustrak/ui';
-import { useTheme } from 'next-themes';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -34,13 +33,9 @@ export function CronSetupGuide({
   schedule?: Schedule;
 }) {
   const t = useTranslations('crons');
-  const { resolvedTheme } = useTheme();
-  const highlighter = useSyntaxHighlighter(resolvedTheme === 'dark');
+  const highlighter = useSyntaxHighlighter();
   const [tab, setTab] = useState<CronGuideId>('curl');
-  const { isCopied, copy } = useCopyFlags({
-    unavailable: t('setup.copyUnavailable'),
-    hint: (label) => t('setup.copyUnavailableHint', { label }),
-  });
+  const { isCopied, copy } = useCopyFlags();
   const { code, language } = cronGuide(tab, { dsn, slug, schedule });
 
   return (

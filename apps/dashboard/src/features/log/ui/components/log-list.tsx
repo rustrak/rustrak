@@ -10,15 +10,8 @@ import {
 } from '@rustrak/ui';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { LEVEL_TONE, matchParts } from '@/features/log/model/log-view';
-
-/** The stripe at the start of a line: colour only where it needs a look. */
-const LEVEL_MARK: Record<string, string> = {
-  fatal: 'bg-sev-error',
-  error: 'bg-sev-error',
-  warn: 'bg-sev-warning',
-  info: 'bg-sev-info',
-};
+import { matchParts } from '@/features/log/model/log-view';
+import { levelMark, levelTone } from '@/shared/config/levels';
 
 /**
  * The log lines, newest first, one line each: a stripe and a word for the
@@ -148,7 +141,7 @@ function LogLine({
           aria-hidden="true"
           className={cn(
             'h-4 w-0.75 shrink-0 rounded-pill',
-            LEVEL_MARK[log.level] ?? 'bg-border-control',
+            levelMark(log.level, 'bg-border-control'),
           )}
         />
         <time
@@ -158,10 +151,7 @@ function LogLine({
         >
           {format.dateTime(at, 'logLine')}
         </time>
-        <Tag
-          tone={LEVEL_TONE[log.level] ?? 'neutral'}
-          className="w-10 shrink-0"
-        >
+        <Tag tone={levelTone(log.level) ?? 'neutral'} className="w-10 shrink-0">
           {log.level}
         </Tag>
         <span className="min-w-0 flex-1 truncate text-fg">

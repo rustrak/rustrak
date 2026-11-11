@@ -10,8 +10,7 @@ import { intl } from '@/shared/i18n/intl';
  * **Why this exists at all.** A language can be inferred from a header;
  * `Accept-Language` is sent on every request. A timezone cannot -- it appears
  * in no header, and only `Intl` in the browser knows it. So a reader who never
- * opens a timezone setting would read every timestamp in UTC forever, which is
- * the behaviour this whole thread set out to remove.
+ * opens a timezone setting would read every timestamp in UTC forever.
  *
  * Sentry has the same problem and solves it in the browser, because their
  * frontend renders there: `timezoneProvider.tsx` falls back to

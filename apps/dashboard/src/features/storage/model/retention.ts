@@ -248,59 +248,6 @@ export function removedParts(removed: CleanupCounts, t: Translate): string[] {
     .map(([count, key]) => t(key, { count }));
 }
 
-/**
- * A sentence to show: its message key, the instant it is about (formatted
- * relative by the component, which owns the formatter) and its other values.
- */
-export interface StatusLine {
-  key: string;
-  at?: string;
-  values?: Record<string, string>;
-}
-
-/** When the cleanup runs next, and how its last run went. */
-export function runStatus(
-  state: RetentionResponse,
-  t: Translate,
-): { next: StatusLine; last: StatusLine | null } {
-  const { settings, next_run_at, last_run } = state;
-  const next: StatusLine = !deletesAnything(settings)
-    ? { key: 'status.off' }
-    : next_run_at
-      ? { key: 'status.nextRun', at: next_run_at }
-      : { key: 'status.nextRunPending' };
-
-  if (!last_run) return { next, last: null };
-  if (last_run.status === 'running') {
-    return {
-      next,
-      last: { key: 'status.lastRunRunning', at: last_run.started_at },
-    };
-  }
-  const at = last_run.finished_at ?? last_run.started_at;
-  if (last_run.status === 'error') {
-    return {
-      next,
-      last: {
-        key: 'status.lastRunFailed',
-        at,
-        values: { error: last_run.error ?? '' },
-      },
-    };
-  }
-  const parts = last_run.removed ? removedParts(last_run.removed, t) : [];
-  return {
-    next,
-    last: parts.length
-      ? {
-          key: 'status.lastRunRemoved',
-          at,
-          values: { parts: parts.join(', ') },
-        }
-      : { key: 'status.lastRunNothing', at },
-  };
-}
-
 /** How often the status is read while it is about to change. */
 const POLL_MS = 15_000;
 /** `setTimeout` overflows past this and fires at once. */
@@ -308,16 +255,15 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**
  * When to read the saved status again, in ms, or `null` for never. It
- * changes on its own: a save leaves the next run for the scheduler's next
- * tick, a running cleanup finishes, and a scheduled one runs at its time.
+ * changes on its own: a running cleanup finishes, and a scheduled one runs at
+ * its time.
  */
 export function nextReadIn(
   state: RetentionResponse,
   now: number,
 ): number | null {
   if (state.last_run?.status === 'running') return POLL_MS;
-  if (!deletesAnything(state.settings)) return null;
-  if (!state.next_run_at) return POLL_MS;
+  if (!deletesAnything(state.settings) || !state.next_run_at) return null;
   const due = Date.parse(state.next_run_at) - now;
   return Math.min(Math.max(due, POLL_MS), MAX_TIMEOUT_MS);
 }

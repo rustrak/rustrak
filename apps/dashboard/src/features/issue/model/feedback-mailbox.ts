@@ -1,3 +1,5 @@
+import type { IssueStatus, UpdateIssueState } from '@rustrak/client';
+
 /**
  * Sentry's three feedback mailboxes, each an issue status: Spam is a muted
  * (`ignored`) feedback, as in Sentry's own UI.
@@ -11,6 +13,16 @@ export const MAILBOX_FILTER = {
   resolved: 'resolved',
   spam: 'muted',
 } as const satisfies Record<Mailbox, string>;
+
+/**
+ * Mark as spam, or move spam back to the inbox. Sentry's feedback actions send
+ * a bare `ignored` with no substatus, and so does the issue page's archive.
+ */
+export function toggleSpam(status: IssueStatus): UpdateIssueState {
+  return status === 'ignored'
+    ? { status: 'unresolved' }
+    : { status: 'ignored' };
+}
 
 /** Who sent it, by the most personal thing they gave; empty if nothing. */
 export function feedbackSender(feedback: {

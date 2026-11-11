@@ -1,4 +1,8 @@
-import type { IssuePriority, IssueResponse } from '@rustrak/client';
+import type {
+  IssuePriority,
+  IssueResponse,
+  IssueStatus,
+} from '@rustrak/client';
 
 /**
  * Presentation metadata for an issue indicator (#165).
@@ -54,6 +58,16 @@ export function statusDisplay(
       };
   }
 }
+
+/**
+ * The tag tone for an issue's status, the same on every screen: open is the
+ * one that asks for attention; resolved and archived are both done with.
+ */
+export const STATUS_TONE = {
+  unresolved: 'warning',
+  resolved: 'neutral',
+  ignored: 'neutral',
+} as const satisfies Record<IssueStatus, string>;
 
 const PRIORITY_META: Record<IssuePriority, IssueIndicator> = {
   high: { labelKey: 'issueStatus.high', dot: 'bg-sev-error' },

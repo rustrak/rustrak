@@ -1,8 +1,6 @@
 import { Button, CopyIcon, SelectedIcon } from '@rustrak/ui';
-import { useState } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
-import { copyToClipboard } from '@/shared/lib/clipboard';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 
 interface RawJsonProps {
   data: Record<string, unknown>;
@@ -10,21 +8,8 @@ interface RawJsonProps {
 
 export function RawJson({ data }: RawJsonProps) {
   const t = useTranslations('events');
-  const common = useTranslations('common');
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy(t('clipboardJsonHint'));
   const jsonString = JSON.stringify(data, null, 2);
-
-  const handleCopy = async () => {
-    if (!(await copyToClipboard(jsonString))) {
-      toast.info(common('clipboardUnavailable'), {
-        description: t('clipboardJsonHint'),
-      });
-      return;
-    }
-
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <div className="space-y-4">
@@ -33,7 +18,7 @@ export function RawJson({ data }: RawJsonProps) {
           variant="secondary"
           size="sm"
           icon={copied ? SelectedIcon : CopyIcon}
-          onClick={handleCopy}
+          onClick={() => copy(jsonString)}
         >
           {copied ? t('rawJson.copied') : t('rawJson.copyJson')}
         </Button>

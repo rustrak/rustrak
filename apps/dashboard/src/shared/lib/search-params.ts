@@ -1,17 +1,7 @@
 /**
- * Reading the query string, once, the way every screen used to read it.
- *
- * Under Next a page took `searchParams` as `Promise<{page?: string}>` and did
- * its own parsing: `parseInt(page ?? '1', 10) || 1`. The router hands the query
- * to `validateSearch` instead, and whatever that returns becomes the typed
- * search *and* the canonical URL — so a validator that invents a value writes
- * it into the address bar, and one that drops a value removes it.
- *
- * These two keep to what the pages already did, so an address that worked
- * before still works and still looks the same:
- *
- * - an absent parameter stays absent, rather than becoming an explicit default
- * - an unparseable one is treated as absent, rather than as an error
+ * Reading the query string. Whatever `validateSearch` returns is the canonical
+ * URL, so an absent parameter stays absent rather than becoming an explicit
+ * default, and an unparseable one is treated as absent rather than as an error.
  */
 
 /** A query parameter as a non-empty string, or absent. */
@@ -51,4 +41,16 @@ export function searchOneOf<T extends string>(
   return raw !== undefined && (allowed as readonly string[]).includes(raw)
     ? (raw as T)
     : undefined;
+}
+
+/**
+ * A record id: a positive safe integer written as one (`3`, never `3abc` or
+ * `3.5`). TanStack hands a numeric query value over as a number on a direct
+ * page load, so both spellings are read.
+ */
+export function searchId(value: unknown): number | undefined {
+  const id = typeof value === 'number' ? String(value) : value;
+  if (typeof id !== 'string' || !/^[1-9]\d*$/.test(id)) return undefined;
+  const parsed = Number(id);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }

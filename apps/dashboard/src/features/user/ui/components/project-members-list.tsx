@@ -29,6 +29,7 @@ import {
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface ProjectMembersListProps {
   projectId: number;
@@ -48,6 +49,7 @@ export function ProjectMembersList({
   currentUserId,
 }: ProjectMembersListProps) {
   const t = useTranslations('user');
+  const toastFailure = useToastFailure();
   const remove = useMutation(userMutations.removeProjectMember(projectId));
   // `undefined`: closed. `null`: adding someone new.
   const [editing, setEditing] = useState<ProjectMember | null | undefined>();
@@ -67,10 +69,7 @@ export function ProjectMembersList({
     remove.mutate(member.user_id, {
       onSuccess: () =>
         toast.success(t('toast.removed'), { description: member.email }),
-      onError: (error) =>
-        toast.error(t('toast.removeFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('toast.removeFailed'), error),
     });
   };
 
@@ -214,6 +213,7 @@ function MemberForm({
   onDone: () => void;
 }) {
   const t = useTranslations('user');
+  const toastFailure = useToastFailure();
   const set = useMutation(userMutations.setProjectMember(projectId));
   const [userId, setUserId] = useState(member ? String(member.user_id) : '');
   const current = member ? ownRoles(member)[0] : undefined;
@@ -237,9 +237,10 @@ function MemberForm({
           onDone();
         },
         onError: (error) =>
-          toast.error(member ? t('toast.updateFailed') : t('toast.addFailed'), {
-            description: error.error.message,
-          }),
+          toastFailure(
+            member ? t('toast.updateFailed') : t('toast.addFailed'),
+            error,
+          ),
       },
     );
   };
@@ -279,6 +280,7 @@ function MemberForm({
             value={roleId}
             onValueChange={(value) => setRoleId(String(value))}
             aria-label={t('addMember.roleAria')}
+            placeholder={t('addMember.selectRole')}
             items={roleItems}
           >
             {Object.entries(roleItems).map(([value, label]) => (

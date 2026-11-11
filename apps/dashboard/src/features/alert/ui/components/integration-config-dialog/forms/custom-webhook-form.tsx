@@ -1,7 +1,6 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Skeleton } from '@rustrak/ui';
-import { lazy, Suspense, useEffect, useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { Field, FieldError, Skeleton } from '@rustrak/ui';
+import { useSelector } from '@tanstack/react-form';
+import { lazy, Suspense, useMemo } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { filledCredentials } from '@/features/alert/lib/credentials';
@@ -23,12 +22,10 @@ import {
 import { useIntegrationSubmit } from '@/features/alert/ui/hooks/use-integration-submit';
 import { useTemplatePreview } from '@/features/alert/ui/hooks/use-template-preview';
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormMessage,
-} from '@/shared/ui/components/form';
+  fieldErrorText,
+  revalidateLogic,
+  useAppForm,
+} from '@/shared/ui/components/app-form';
 import { SettingSection } from '@/shared/ui/components/setting-row';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
@@ -57,6 +54,14 @@ function EditorSkeleton() {
   );
 }
 
+/**
+ * A stored body was saved as one line; nobody writes JSON that way, so it
+ * arrives indented the way they would have written it.
+ */
+function indentedTemplate(data: CustomWebhookFormData): CustomWebhookFormData {
+  return { ...data, template: formatTemplate(data.template) };
+}
+
 export function CustomWebhookForm({
   onOpenChange,
   existingIntegration,
@@ -69,9 +74,11 @@ export function CustomWebhookForm({
   const globalT = useTranslations();
 
   const schema = useMemo(() => customWebhookFormSchema(t), [t]);
-  const form = useForm<CustomWebhookFormData>({
-    resolver: zodResolver(schema),
-    defaultValues: customWebhookDefaults(existingIntegration),
+  const form = useAppForm({
+    defaultValues: indentedTemplate(customWebhookDefaults(existingIntegration)),
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: schema },
+    onSubmit: ({ value }) => submit(value),
   });
 
   const { submit, isPending } = useIntegrationSubmit<CustomWebhookFormData>({
@@ -107,27 +114,17 @@ export function CustomWebhookForm({
   // change; the editor shows the answer underneath and underlines a refusal.
   // An integration being edited already has a body, so the reader sees what
   // it renders to without having to touch it first.
-  const preview = useTemplatePreview(form.watch('template'));
-
-  // A stored body was saved as one line; nobody writes JSON that way, so it
-  // arrives indented the way they would have written it. `form` keeps its
-  // identity, so this runs once.
-  useEffect(() => {
-    const stored = form.getValues('template');
-    const indented = formatTemplate(stored);
-    if (indented !== stored) form.setValue('template', indented);
-  }, [form]);
+  const preview = useTemplatePreview(
+    useSelector(form.store, (state) => state.values.template),
+  );
 
   const setTemplate = (template: string) =>
-    form.setValue('template', template, {
-      shouldValidate: true,
-      shouldDirty: true,
-    });
+    form.setFieldValue('template', template);
 
   // Replacing a body somebody may have been writing deserves a way back that
   // does not depend on knowing the editor has an undo stack.
   const startFrom = (preset: TemplatePreset) => {
-    const previous = form.getValues('template');
+    const previous = form.getFieldValue('template');
     setTemplate(preset.body);
     if (!previous.trim() || previous === preset.body) return;
     toast(t('customWebhook.presetApplied', { name: preset.name }), {
@@ -139,37 +136,51 @@ export function CustomWebhookForm({
   };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(submit)}>
+    <form.AppForm>
+      <form.Form>
         <SettingSection title={t('page.general')}>
-          <NameField<CustomWebhookFormData>
-            placeholder={t('customWebhook.namePlaceholder')}
-            disabled={isLoading}
-          />
-          <EnabledField<CustomWebhookFormData> disabled={isLoading} />
+          <form.AppField name="name">
+            {() => (
+              <NameField
+                placeholder={t('customWebhook.namePlaceholder')}
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="is_enabled">
+            {() => <EnabledField disabled={isLoading} />}
+          </form.AppField>
         </SettingSection>
 
         <SettingSection
           title={t('page.connection')}
           description={t('customWebhook.description')}
         >
-          <TextInputField<CustomWebhookFormData>
-            name="url"
-            label={t('customWebhook.urlLabel')}
-            placeholder={t('customWebhook.urlPlaceholder')}
-            description={t('customWebhook.urlDescription')}
-            type="url"
-            disabled={isLoading}
-          />
-          <TextInputField<CustomWebhookFormData>
-            name="secret"
-            label={t('customWebhook.secretLabel')}
-            placeholder={t('webhook.secretPlaceholder')}
-            description={t('customWebhook.secretDescription')}
-            type="password"
-            disabled={isLoading}
-          />
-          <HeadersField<CustomWebhookFormData> disabled={isLoading} />
+          {(
+            [
+              {
+                name: 'url',
+                type: 'url',
+                label: t('customWebhook.urlLabel'),
+                placeholder: t('customWebhook.urlPlaceholder'),
+                description: t('customWebhook.urlDescription'),
+              },
+              {
+                name: 'secret',
+                type: 'password',
+                label: t('customWebhook.secretLabel'),
+                placeholder: t('webhook.secretPlaceholder'),
+                description: t('customWebhook.secretDescription'),
+              },
+            ] as const
+          ).map(({ name, ...input }) => (
+            <form.AppField key={name} name={name}>
+              {() => <TextInputField {...input} disabled={isLoading} />}
+            </form.AppField>
+          ))}
+          <form.AppField name="headers" mode="array">
+            {() => <HeadersField disabled={isLoading} />}
+          </form.AppField>
           {existingIntegration ? (
             <TestRow
               hint={t('page.testDescription')}
@@ -185,18 +196,19 @@ export function CustomWebhookForm({
           title={t('customWebhook.templateLabel')}
           description={t('customWebhook.templateDescription')}
         >
-          <FormField
-            control={form.control}
-            name="template"
-            render={({ field }) => (
-              <FormItem className="min-w-0 p-5">
-                <FormControl>
+          <form.Field name="template">
+            {(field) => {
+              const error = fieldErrorText(field.state.meta.errors);
+              return (
+                <Field invalid={!!error} className="min-w-0 p-5">
                   <Suspense fallback={<EditorSkeleton />}>
                     <JsonTemplateEditor
-                      value={field.value}
+                      value={field.state.value}
                       onChange={setTemplate}
-                      onBlur={field.onBlur}
-                      onFormat={() => setTemplate(formatTemplate(field.value))}
+                      onBlur={field.handleBlur}
+                      onFormat={() =>
+                        setTemplate(formatTemplate(field.state.value))
+                      }
                       onPreset={startFrom}
                       preview={preview}
                       disabled={isLoading}
@@ -207,11 +219,11 @@ export function CustomWebhookForm({
                       helpHref={TEMPLATE_DOCS_URL}
                     />
                   </Suspense>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                  {error ? <FieldError match>{error}</FieldError> : null}
+                </Field>
+              );
+            }}
+          </form.Field>
         </SettingSection>
 
         {existingIntegration ? (
@@ -230,8 +242,9 @@ export function CustomWebhookForm({
           }
           isLoading={isLoading}
           onCancel={() => onOpenChange(false)}
+          error={<form.RootError />}
         />
-      </form>
-    </Form>
+      </form.Form>
+    </form.AppForm>
   );
 }

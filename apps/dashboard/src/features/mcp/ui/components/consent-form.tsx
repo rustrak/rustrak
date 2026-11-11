@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { mcpMutations } from '@/features/mcp/api/mutations';
 import { navigableRedirect } from '@/features/mcp/lib/navigable-redirect';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface ConsentFormProps {
   request: AuthorizationRequest;
@@ -21,13 +22,13 @@ interface ConsentFormProps {
  */
 export function ConsentForm({ request, client, email }: ConsentFormProps) {
   const t = useTranslations('oauth');
+  const toastFailure = useToastFailure();
   const decision = useMutation(mcpMutations.decideAuthorization(request));
   const isPending = decision.isPending;
 
   const decide = (approve: boolean) =>
     decision.mutate(approve, {
-      onError: (error) =>
-        toast.error(t('decideFailed'), { description: error.error.message }),
+      onError: (error) => toastFailure(t('decideFailed'), error),
       onSuccess: ({ redirect_to }) => {
         if (!navigableRedirect(redirect_to)) {
           toast.error(t('decideFailed'));

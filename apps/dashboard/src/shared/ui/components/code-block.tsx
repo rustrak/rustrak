@@ -1,4 +1,5 @@
 import { SpinnerIcon } from '@rustrak/ui';
+import { codeTheme } from '@/shared/ui/components/code-theme';
 import type { SyntaxHighlighter } from '@/shared/ui/hooks/use-syntax-highlighter';
 
 /**
@@ -10,22 +11,23 @@ import type { SyntaxHighlighter } from '@/shared/ui/hooks/use-syntax-highlighter
 export function CodeBlock({
   code,
   language,
-  highlighter: { Highlighter, style, failed, background },
+  highlighter: { Highlighter, failed },
 }: {
   code: string;
   language: string;
   highlighter: SyntaxHighlighter;
 }) {
-  if (Highlighter && style) {
+  if (Highlighter) {
     return (
       <Highlighter
         language={language}
-        style={style}
+        style={codeTheme}
         customStyle={{
           margin: 0,
           padding: '1rem',
           fontSize: '0.75rem',
-          background,
+          // A token, so the block follows the theme switch with the page.
+          background: 'var(--surface-code)',
         }}
       >
         {code}

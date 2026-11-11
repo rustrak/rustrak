@@ -4,26 +4,19 @@ import { useId } from 'react';
 import { toast } from 'sonner';
 import { useLocale, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
+import { isLocale, LOCALES } from '@/shared/i18n/config';
 import { intl } from '@/shared/i18n/intl';
-import { isLocale, LOCALES } from '@/shared/i18n/routing';
 import { SettingRow } from '@/shared/ui/components/setting-row';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 
 /**
- * The language control.
- *
- * **Changing the language no longer changes the URL.** It used to replace the
- * locale prefix and navigate; now it writes the preference and asks the server
- * to render the page again. The address bar does not move, which is the point:
- * a link to an issue is a link to that issue, not to that issue in Spanish.
+ * The language control. It does not change the URL: a link to an issue is a
+ * link to that issue, not to that issue in Spanish.
  *
  * The choice is written to `users.language`, so it follows the reader to any
- * browser they log in from. `intl.reload()` is what applies it: it resolves
- * the language again from the row `updatePreferences` just published and
- * swaps the catalogue under the provider, so the page re-renders in place
- * with scroll position, open dialogs and client state intact. The route
- * refresh after it is for what is translated outside React, the tab title
- * each route's `head` builds.
+ * browser they log in from. `intl.reload()` applies it: it resolves the
+ * language again from the row `updatePreferences` just published and swaps
+ * the catalogue under the provider, so the page re-renders in place with
+ * scroll position, open dialogs and client state intact.
  *
  * **Each language names itself.** `简体中文`, not "Chinese" -- a reader who
  * needs this control is by definition not reading the current language well,
@@ -33,16 +26,10 @@ import { useRouter } from '@/shared/ui/hooks/use-router';
 export function LanguageSelector() {
   const t = useTranslations('locale');
   const locale = useLocale();
-  const router = useRouter();
   // Pending until the new language is on screen, not only until it is saved.
   const save = useMutation({
     ...userMutations.updatePreferences(),
-    onSuccess: async () => {
-      await intl.reload();
-      // Not to see the write: to rebuild the tab title, which each route's
-      // `head` translates outside React.
-      await router.refresh();
-    },
+    onSuccess: () => intl.reload(),
   });
   const isPending = save.isPending;
   const fieldId = useId();

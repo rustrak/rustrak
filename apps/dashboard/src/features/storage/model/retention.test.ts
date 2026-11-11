@@ -6,7 +6,6 @@ import type {
   StorageAge,
 } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
-import type { Translate } from '@/shared/lib/error-copy';
 import {
   bucketGoes,
   deletesAnything,
@@ -17,13 +16,9 @@ import {
   nextReadIn,
   presetsWith,
   removedParts,
-  runStatus,
   summarize,
   windowsFor,
 } from './retention';
-
-const t: Translate = (key, values) =>
-  values ? `${key}:${JSON.stringify(values)}` : key;
 
 const forever = { events_days: null, transactions_days: null, logs_days: null };
 
@@ -253,31 +248,6 @@ describe('removedParts', () => {
   });
 });
 
-describe('runStatus', () => {
-  const state = (patch: Partial<RetentionResponse>): RetentionResponse => ({
-    settings,
-    next_run_at: '2026-01-02T03:00:00Z',
-    last_run: null,
-    ...patch,
-  });
-
-  it('says nothing is deleted while everything is kept forever', () => {
-    expect(runStatus(state({ settings: keepAll }), t).next.key).toBe(
-      'status.off',
-    );
-  });
-
-  it('gives the next run, or that it is being scheduled', () => {
-    expect(runStatus(state({}), t).next).toEqual({
-      key: 'status.nextRun',
-      at: '2026-01-02T03:00:00Z',
-    });
-    expect(runStatus(state({ next_run_at: null }), t).next.key).toBe(
-      'status.nextRunPending',
-    );
-  });
-});
-
 describe('nextReadIn', () => {
   const now = Date.parse('2026-01-02T02:00:00Z');
   const state = (patch: Partial<RetentionResponse>): RetentionResponse => ({
@@ -287,8 +257,8 @@ describe('nextReadIn', () => {
     ...patch,
   });
 
-  it('polls while the next run is being scheduled', () => {
-    expect(nextReadIn(state({ next_run_at: null }), now)).toBe(15_000);
+  it('waits for nothing when no run is scheduled', () => {
+    expect(nextReadIn(state({ next_run_at: null }), now)).toBeNull();
   });
 
   it('reads again when the next run is due', () => {

@@ -1,4 +1,3 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Button,
   Dialog,
@@ -9,22 +8,12 @@ import {
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { userMutations } from '@/features/user/api/mutations';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormRootError,
-} from '@/shared/ui/components/form';
-import { PasswordInput } from '@/shared/ui/components/password-input';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 
 type ChangePasswordFormData = {
   current_password: string;
@@ -52,9 +41,11 @@ export function ChangePasswordDialog() {
   const change = useMutation(userMutations.changePassword());
   const isPending = change.isPending;
 
-  const form = useForm<ChangePasswordFormData>({
-    resolver: zodResolver(
-      z
+  const form = useAppForm({
+    defaultValues: EMPTY,
+    validationLogic: revalidateLogic(),
+    validators: {
+      onDynamic: z
         .object({
           current_password: z
             .string()
@@ -66,8 +57,8 @@ export function ChangePasswordDialog() {
           path: ['confirm_password'],
           message: t('account.password.mismatch'),
         }),
-    ),
-    defaultValues: EMPTY,
+    },
+    onSubmit: ({ value }) => onSubmit(value),
   });
 
   // Typed passwords must not survive the dialog closing, whichever way it closes.
@@ -83,7 +74,7 @@ export function ChangePasswordDialog() {
     else if (!isPending) close();
   };
 
-  const onSubmit = (data: ChangePasswordFormData) => {
+  function onSubmit(data: ChangePasswordFormData) {
     change.mutate(
       {
         current_password: data.current_password,
@@ -100,11 +91,16 @@ export function ChangePasswordDialog() {
               current_password: t('account.password.current'),
               new_password: t('account.password.new'),
             },
+            messages: {
+              current_password: {
+                incorrect: t('account.password.incorrect'),
+              },
+            },
             t: globalT,
           }),
       },
     );
-  };
+  }
 
   return (
     <>
@@ -117,36 +113,22 @@ export function ChangePasswordDialog() {
           description={t('account.password.dialogDescription')}
         />
 
-        <Form {...form}>
-          <form
-            noValidate
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex min-h-0 flex-col"
-          >
+        <form.AppForm>
+          <form.Form className="flex min-h-0 flex-col">
             <DialogBody className="flex flex-col gap-4">
               {FIELDS.map(([name, label, autoComplete]) => (
-                <FormField
-                  key={name}
-                  control={form.control}
-                  name={name}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t(`account.password.${label}`)}</FormLabel>
-                      <FormControl>
-                        <PasswordInput
-                          autoComplete={autoComplete}
-                          disabled={isPending}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                <form.AppField key={name} name={name}>
+                  {(field) => (
+                    <field.PasswordField
+                      label={t(`account.password.${label}`)}
+                      autoComplete={autoComplete}
+                      disabled={isPending}
+                    />
                   )}
-                />
+                </form.AppField>
               ))}
 
-              {/* Where a failure that named no field of this form lands. */}
-              <FormRootError />
+              <form.RootError />
             </DialogBody>
 
             <DialogFooter>
@@ -164,8 +146,8 @@ export function ChangePasswordDialog() {
                   : t('account.password.submit')}
               </Button>
             </DialogFooter>
-          </form>
-        </Form>
+          </form.Form>
+        </form.AppForm>
       </Dialog>
     </>
   );

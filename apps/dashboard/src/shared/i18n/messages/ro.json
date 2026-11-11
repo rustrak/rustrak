@@ -23,6 +23,7 @@
     "copyAs": "Copiază ca",
     "clipboardUnavailable": "Clipboard indisponibil",
     "clipboardUnavailableHint": "Selectează conținutul și copiază-l manual sau accesează Rustrak prin HTTPS.",
+    "clipboardLabelHint": "Selectează {label} și copiază-l manual sau accesează Rustrak prin HTTPS.",
     "openSidebar": "Deschide bara laterală",
     "showSidebar": "Afișează bara laterală",
     "closeSidebar": "Închide bara laterală",
@@ -30,7 +31,20 @@
     "close": "Închide",
     "showPassword": "Arată parola",
     "hidePassword": "Ascunde parola",
-    "loading": "Se încarcă"
+    "loading": "Se încarcă",
+    "copyLabel": "Copiază {label}",
+    "unfinished": "neterminat",
+    "noSpans": "Niciun span",
+    "noSpansHint": "Această urmă nu conține timpi de desenat.",
+    "resizeNameColumn": "Redimensionează coloana de nume",
+    "mainNavigation": "Navigare principală",
+    "breadcrumb": "Traseu de navigare",
+    "notifications": "Notificări",
+    "collapseSidebar": "Restrânge bara laterală",
+    "expandSidebar": "Extinde bara laterală",
+    "account": "Cont: {name}",
+    "openNavigation": "Deschide navigarea",
+    "closeNavigation": "Închide navigarea"
   },
   "theme": {
     "light": "Luminos",
@@ -57,7 +71,17 @@
     "footerCount": "{count} platforme · caută pentru a răsfoi toate categoriile",
     "pickerPlaceholder": "Caută platforme...",
     "pickerAria": "Platformă",
-    "noResults": "Nu s-a găsit nicio platformă."
+    "noResults": "Nu s-a găsit nicio platformă.",
+    "categories": {
+      "popular": "Populare",
+      "browser": "Browser",
+      "server": "Server",
+      "mobile": "Mobil",
+      "desktop": "Desktop",
+      "serverless": "Serverless",
+      "gaming": "Jocuri",
+      "all": "Toate"
+    }
   },
   "statTile": {
     "noPriorPeriod": "Fără perioadă anterioară",
@@ -107,46 +131,35 @@
     "suggestions": "Sugestii",
     "filterAndSearch": "Filtrează cu cheie:valoare sau caută…",
     "addFilter": "Adaugă un filtru…",
-    "clearAll": "Șterge filtrele și căutarea"
+    "clearAll": "Șterge filtrele și căutarea",
+    "hintNavigate": "navighează",
+    "hintSelect": "selectează",
+    "hintClose": "esc închide",
+    "typeValueThen": "Introdu o valoare, apoi",
+    "removeFilter": "Elimină filtrul {name}",
+    "searchFor": "Caută „{text}”"
   },
   "commands": {
-    "overview": "Prezentare generală",
     "overviewDescription": "Starea de sănătate, volumul și cele mai recente probleme dintr-o privire.",
-    "issues": "Probleme",
     "issuesDescription": "Erori și excepții, grupate după fingerprint.",
-    "releases": "Lansări",
     "releasesDescription": "Implementările și starea fiecărei versiuni.",
-    "performance": "Performanță",
     "performanceDescription": "Duratele tranzacțiilor și cascadele de span-uri.",
-    "agents": "Agenți",
     "agentsDescription": "Trace-urile agenților AI și span-urile din interiorul lor.",
-    "logs": "Jurnale",
     "logsDescription": "Fluxul brut de jurnale, exact cum sosesc.",
-    "general": "General",
     "generalDescription": "Numele, slug-ul, platforma și zona de risc.",
-    "alerts": "Alerte",
     "alertsDescription": "Reguli care se declanșează când ceva se strică.",
-    "members": "Membri",
     "membersDescription": "Cine are acces la acest proiect și cu ce rol.",
-    "clientKeys": "Chei client",
     "clientKeysDescription": "DSN-ul și fragmentul de configurare SDK.",
     "allProjects": "Toate proiectele",
     "allProjectsDescription": "Toate proiectele vizibile pe această instanță.",
     "newProject": "Proiect nou",
     "newProjectDescription": "Alege o platformă și creează unul.",
-    "apiTokens": "Token-uri API",
     "apiTokensDescription": "Token-uri Bearer pentru API și pentru ingestia SDK.",
-    "integrations": "Integrări",
     "integrationsDescription": "Unde sunt livrate alertele.",
-    "team": "Echipă",
     "teamDescription": "Membrii acestei instanțe și invitațiile în așteptare.",
-    "storage": "Stocare",
     "storageDescription": "Intervalele de retenție și curățarea fișierelor source map.",
-    "account": "Cont",
     "accountDescription": "Profilul și parola ta.",
-    "appearance": "Aspect",
     "appearanceDescription": "Luminos, întunecat sau ce spune sistemul.",
-    "about": "Despre",
     "aboutDescription": "Ce versiune de Rustrak este aceasta.",
     "noResultsFor": "Niciun rezultat pentru „{query}”",
     "resultsHeading": "Rezultate",
@@ -165,10 +178,12 @@
     "open": "deschide",
     "close": "închide",
     "hidePages": "ascunde paginile",
-    "crons": "Crons",
     "cronsDescription": "Sarcinile programate și cum au decurs rulările lor.",
-    "feedback": "Feedback utilizatori",
-    "feedbackDescription": "Ce au raportat utilizatorii din aplicație."
+    "feedbackDescription": "Ce au raportat utilizatorii din aplicație.",
+    "rolesDescription": "Definește ce poate face fiecare rol",
+    "mcpDescription": "Conectează asistenți AI prin MCP",
+    "dataDescription": "Limite de evenimente și ce stochează proiectul",
+    "githubDescription": "Leagă un depozit GitHub"
   },
   "charts": {
     "errors": "Erori",
@@ -193,6 +208,7 @@
     "alreadyExists": "{subject} există deja.",
     "tooShort": "{subject} are prea puține caractere.",
     "tooLong": "{subject} are prea multe caractere.",
+    "incorrect": "{subject} nu este corect.",
     "rejected": "Această valoare a fost respinsă.",
     "defaultSubject": "Acest câmp"
   },
@@ -267,6 +283,7 @@
       "events": "Evenimente",
       "users": "Utilizatori",
       "lastSeen": "Ultima apariție",
+      "lastSeenShort": "Ultima dată",
       "level": "Nivel",
       "assignee": "Asignat",
       "firstSeen": "Văzut prima dată"
@@ -504,7 +521,8 @@
       "noUsers": "Niciun utilizator disponibil",
       "selectUser": "Selectează un utilizator",
       "roleAria": "Rolul noului membru",
-      "submit": "Adaugă"
+      "submit": "Adaugă",
+      "selectRole": "Alege un rol"
     },
     "pending": {
       "title": "Invitații în așteptare",
@@ -598,15 +616,12 @@
       "deleteTitle": "Ștergi „{name}”?",
       "deleteDescription": "Aceasta va șterge definitiv acest proiect și toate problemele și evenimentele asociate. Acțiunea nu poate fi anulată.",
       "cancel": "Anulează",
-      "deleting": "Se șterge...",
       "confirm": "Șterge"
     },
     "deleteDialog": {
       "titleNamed": "Ștergi „{name}”?",
-      "titleCount": "{count, plural, =1 {Ștergi # proiect?} few {Ștergi # proiecte?} other {Ștergi # de proiecte?}}",
       "description": "Aceasta va șterge definitiv {subject} și toate problemele și evenimentele asociate. Acțiunea nu poate fi anulată.",
       "cancel": "Anulează",
-      "deleting": "Se șterge...",
       "confirm": "Șterge",
       "subject": "{count, plural, =1 {acest proiect} few {# proiecte} other {# de proiecte}}"
     },
@@ -665,8 +680,6 @@
       "new": "Proiect nou",
       "count": "{count, plural, one {# proiect} few {# proiecte} other {# de proiecte}}"
     },
-    "copyUnavailable": "Clipboard indisponibil",
-    "copyUnavailableHint": "Selectează {label} și copiază-l manual sau accesează Rustrak prin HTTPS.",
     "clientKeys": {
       "dsn": "DSN",
       "dsnDescription": "Indică orice SDK Sentry către acest șir pentru a trimite evenimente în acest proiect.",
@@ -700,7 +713,8 @@
       "saveFailed": "Limita nu a putut fi salvată",
       "invalid": "Introdu un număr întreg de cel puțin 1 sau lasă gol.",
       "dropped": "Eliminate de limită",
-      "droppedDescription": "Evenimente acceptate, dar nestocate, pentru că o limită fusese deja atinsă."
+      "droppedDescription": "Evenimente acceptate, dar nestocate, pentru că o limită fusese deja atinsă.",
+      "tooHigh": "Introdu o limită care nu o depășește pe cea a serverului, {max, number}."
     },
     "card": {
       "newIssues": "Probleme noi",
@@ -722,7 +736,6 @@
       "fieldName": "Acest nume",
       "cancel": "Anulează",
       "delete": "Șterge",
-      "deleting": "Se șterge...",
       "saveChanges": "Salvează modificările",
       "test": "Testează"
     },
@@ -761,7 +774,8 @@
       "optional": "(opțional)"
     },
     "channelCard": {
-      "botToken": "token de bot"
+      "botToken": "token de bot",
+      "disabledHint": "Activeaz-o din Integrări pentru a notifica prin ea."
     },
     "ruleDialog": {
       "titleNew": "Regulă de alertă nouă",
@@ -1202,7 +1216,6 @@
       "url": "URL",
       "queryString": "Șir de interogare",
       "headers": "Antete",
-      "modules": "Module",
       "extraData": "Date suplimentare"
     },
     "highlights": {
@@ -1506,7 +1519,8 @@
       "permissionsLabel": "Permisiuni",
       "projectsLabel": "Proiecte",
       "allProjects": "Toate proiectele autorizate",
-      "allProjectsHint": "Toate proiectele la care ai acces, acum sau în viitor."
+      "allProjectsHint": "Toate proiectele la care ai acces, acum sau în viitor.",
+      "expiresInPast": "Alege ziua de azi sau o dată ulterioară."
     },
     "copyTokenLabel": "Copiază token-ul {label}",
     "deleteTokenLabel": "Șterge token-ul {label}",
@@ -1543,7 +1557,6 @@
       "title": "Ștergi token-ul?",
       "description": "Aceasta va șterge definitiv acest token. Orice serviciu care îl folosește va pierde accesul imediat. Acțiunea nu poate fi anulată.",
       "cancel": "Anulează",
-      "deleting": "Se șterge...",
       "confirm": "Șterge"
     },
     "scope": {
@@ -1577,13 +1590,7 @@
       "compacting": "Se compactează baza de date…"
     },
     "status": {
-      "lastRunRunning": "Ultima curățare rulează din {when}",
-      "lastRunFailed": "Ultima curățare ({when}) a eșuat: {error}",
-      "lastRunNothing": "Ultima curățare {when}: nimic de șters",
-      "lastRunRemoved": "Ultima curățare {when}: s-au șters {parts}",
-      "off": "Totul se păstrează pentru totdeauna",
-      "nextRun": "Următoarea curățare {when}",
-      "nextRunPending": "Se programează…"
+      "lastRunFailed": "Ultima curățare ({when}) a eșuat: {error}"
     },
     "age": {
       "title": "Vechimea datelor",
@@ -1597,8 +1604,7 @@
       "bucket5": "180 zile – 1 an",
       "bucket6": "> 1 an",
       "empty": "Încă nu există date.",
-      "goes": "Se șterge la următoarea curățare",
-      "goesInBucket": "{size} se șterg la următoarea curățare"
+      "goes": "Se șterge la următoarea curățare"
     },
     "projects": {
       "title": "Proiecte",
@@ -1985,7 +1991,9 @@
         "errorNotFound": "Acest eveniment de eroare nu a sosit încă sau a fost șters.",
         "showOlder": "Afișează mai vechi ({count})",
         "showOlderFailed": "Nu s-a putut încărca feedbackul mai vechi."
-      }
+      },
+      "sectionAttachments": "Atașamente",
+      "attachmentDownload": "Descarcă"
     },
     "feedback": {
       "title": "Feedback utilizatori",
@@ -2110,8 +2118,6 @@
       "copy": "Copiază",
       "copied": "Copiat",
       "copyLabel": "Copiază {label}",
-      "copyUnavailable": "Copierea nu este disponibilă aici",
-      "copyUnavailableHint": "Selectează {label} și copiază-l manual.",
       "server": {
         "title": "Server MCP",
         "description": "Răspunde asistenților AI la endpointul de mai jos. Dezactivat implicit; oprirea lui deconectează toți asistenții deodată.",
@@ -2224,7 +2230,8 @@
         "changed": "Parola a fost schimbată",
         "change": "Schimbă parola",
         "dialogDescription": "Introdu parola actuală, apoi pe cea nouă de două ori.",
-        "cancel": "Anulează"
+        "cancel": "Anulează",
+        "incorrect": "Parola actuală este incorectă."
       }
     },
     "appearance": {
@@ -2507,9 +2514,7 @@
     },
     "setup": {
       "copy": "Copiază",
-      "copied": "Copiat",
-      "copyUnavailable": "Copierea nu este disponibilă aici",
-      "copyUnavailableHint": "Selectează fragmentul {label} și copiază-l manual."
+      "copied": "Copiat"
     },
     "guides": {
       "curl": "cURL",
@@ -2573,7 +2578,6 @@
       "deleteTitle": "Ștergi {monitor}?",
       "deleteDescription": "Check-in-urile lui se șterg odată cu el; problemele deschise de el rămân. O sarcină care continuă să facă check-in cu o programare îl creează din nou.",
       "cancel": "Anulează",
-      "deleting": "Se șterge…",
       "confirmDelete": "Șterge monitorul",
       "deleted": "Monitor șters",
       "deleteFailed": "Monitorul nu a putut fi șters"
@@ -2757,12 +2761,13 @@
       "selfTime": "Timp propriu",
       "start": "Început",
       "status": "Stare",
-      "spanId": "Id span"
+      "spanId": "Id span",
+      "missingInstrumentation": "instrumentare lipsă"
     }
   },
   "access": {
     "meta": {
-      "title": "Roluri · Setări"
+      "title": "Roluri | Rustrak"
     },
     "title": "Roluri",
     "subtitle": "Seturi de permisiuni reutilizabile pentru a atribui același acces mai multor membri.",
@@ -2861,7 +2866,7 @@
       "deleted": "Rol șters",
       "deleteFailed": "Rolul nu a putut fi șters",
       "assignedTo": "{count, plural, =0 {Neatribuit} one {# atribuire} few {# atribuiri} other {# de atribuiri}}",
-      "meta": "{name} · Roluri",
+      "meta": "{name} | Roluri | Rustrak",
       "descriptionPlaceholder": "Scopul acestui rol și accesul oferit.",
       "descriptionHint": "Afișat oriunde este atribuit acest rol.",
       "allProjects": "Toate proiectele",

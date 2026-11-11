@@ -5,10 +5,12 @@ import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /** The person's GitHub username, which is how assignees cross over. */
 export function GitHubLoginCard({ login }: { login: string | null }) {
   const t = useTranslations('github');
+  const toastFailure = useToastFailure();
   const [value, setValue] = useState(login ?? '');
   const [saved, setSaved] = useState(login ?? '');
   const { mutate, isPending } = useMutation({
@@ -18,8 +20,7 @@ export function GitHubLoginCard({ login }: { login: string | null }) {
       setSaved(data.login ?? '');
       toast.success(t('account.saved'));
     },
-    onError: (error) =>
-      toast.error(t('account.saveFailed'), { description: error.message }),
+    onError: (error) => toastFailure(t('account.saveFailed'), error),
   });
 
   const save = () => mutate(value.trim() || null);

@@ -1,18 +1,13 @@
 import type { Formats, Messages } from 'use-intl';
 import type { CurrentUser } from '@/shared/api/session';
 import { session } from '@/shared/api/session';
+import type { Locale } from './config';
 import { formatsFor, resolveLocale, resolveTimeZone } from './config';
-import type { Locale } from './routing';
 
 /**
- * The i18n configuration, resolved once for the reader rather than once per
- * request.
- *
- * Under Next this was `getRequestConfig`: the server knew who was asking, read
- * `users.language` and `users.timezone` off the row, and handed the whole
- * thing to `NextIntlClientProvider`. A static bundle has no request to hang
- * that on, so the same three decisions are made once at boot, from the same
- * two columns, and republished when the reader changes either.
+ * The i18n configuration, resolved once for the reader at boot from
+ * `users.language` and `users.timezone`, and republished when the reader
+ * changes either.
  */
 export interface IntlSnapshot {
   locale: Locale;
@@ -23,8 +18,7 @@ export interface IntlSnapshot {
    * One shared "now", moved forward each time a read succeeds.
    *
    * Without it every `format.relativeTime` call reaches for its own
-   * `new Date()`, which next-intl warned about (`ENVIRONMENT_FALLBACK`) for a
-   * reason that still bites: two rows rendered microseconds apart get measured
+   * `new Date()`: two rows rendered microseconds apart get measured
    * against two different clocks, so a list of timestamps can disagree with
    * itself at a boundary.
    *
@@ -150,9 +144,8 @@ async function loadMessages(locale: Locale): Promise<Messages> {
 /**
  * The reader's languages, in preference order.
  *
- * `navigator.languages` is the same list the browser used to send as
- * `Accept-Language`, which is what the Next version read. Guarded because a
- * browser that exposes only `navigator.language` is still a browser.
+ * `navigator.languages` is the browser's `Accept-Language` list. Guarded
+ * because a browser that exposes only `navigator.language` is still a browser.
  */
 function browserLanguages(): readonly string[] {
   if (typeof navigator === 'undefined') return [];
