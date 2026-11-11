@@ -1,6 +1,6 @@
 {
   "name": "@rustrak/server",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "private": true,
   "scripts": {
     "build": "bash ../../scripts/bundle-dashboard.sh && cargo build --release",
