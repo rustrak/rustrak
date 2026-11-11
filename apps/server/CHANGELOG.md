@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.26.0
+
+### Minor Changes
+
+- [#517](https://github.com/rustrak/rustrak/pull/517) [`79b47fe`](https://github.com/rustrak/rustrak/commit/79b47fe8f0ea6de31def764c80150ed296ed566c) Thanks [@AbianS](https://github.com/AbianS)! - Server-side sessions (everyone signs in again once after upgrading), 401 before input validation, `per_page` above 100 answers 400, removed `/auth/register` and the deprecated `is_resolved`/`is_muted` issue fields, legacy `/store/` accepted, unsupported `Content-Encoding` answers 415, event attachments are kept, and much faster issue lists and ingest.
+
 ## 0.25.0
 
 ### Minor Changes
