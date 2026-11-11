@@ -146,6 +146,7 @@ pub async fn get_release(
     Ok(HttpResponse::Ok().json(release))
 }
 
+/// Lists the issues first seen in a release.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/releases/{release}/new-issues",

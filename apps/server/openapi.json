@@ -291,6 +291,7 @@
         "tags": [
           "Source Maps"
         ],
+        "summary": "Assembles uploaded chunks into an artifact bundle (sentry-cli `sourcemaps upload`).",
         "operationId": "sourceMaps.artifactBundleAssemble",
         "parameters": [
           {
@@ -367,6 +368,7 @@
         "tags": [
           "Source Maps"
         ],
+        "summary": "Describes how sentry-cli should upload chunks: size, concurrency and accepted kinds.",
         "operationId": "sourceMaps.chunkUploadCapability",
         "parameters": [
           {
@@ -411,6 +413,7 @@
         "tags": [
           "Source Maps"
         ],
+        "summary": "Receives chunks of a source map or debug file upload from sentry-cli.",
         "operationId": "sourceMaps.chunkUpload",
         "parameters": [
           {
@@ -797,6 +800,7 @@
         "tags": [
           "Source Maps"
         ],
+        "summary": "Lists a project's uploaded source map artifacts (sentry-cli).",
         "operationId": "sourceMaps.list",
         "parameters": [
           {
@@ -1362,6 +1366,7 @@
         "tags": [
           "GitHub"
         ],
+        "summary": "Shows whether a GitHub App is connected, and how.",
         "operationId": "github.status",
         "responses": {
           "200": {
@@ -1405,6 +1410,7 @@
         "tags": [
           "GitHub"
         ],
+        "summary": "Disconnects the GitHub App from this instance.",
         "operationId": "github.disconnect",
         "responses": {
           "204": {
@@ -1739,6 +1745,7 @@
         "tags": [
           "GitHub"
         ],
+        "summary": "Sets or clears the caller's GitHub username, which assignees sync through.",
         "operationId": "github.putMyLogin",
         "requestBody": {
           "content": {
@@ -1981,6 +1988,7 @@
         "tags": [
           "Alert Channels"
         ],
+        "summary": "Creates a notification integration (webhook, Slack, email…).",
         "operationId": "alertChannels.create",
         "requestBody": {
           "content": {
@@ -2072,6 +2080,7 @@
         "tags": [
           "Alert Channels"
         ],
+        "summary": "Gets one notification integration.",
         "operationId": "alertChannels.get",
         "parameters": [
           {
@@ -2127,6 +2136,7 @@
         "tags": [
           "Alert Channels"
         ],
+        "summary": "Deletes a notification integration.",
         "operationId": "alertChannels.delete",
         "parameters": [
           {
@@ -2175,6 +2185,7 @@
         "tags": [
           "Alert Channels"
         ],
+        "summary": "Updates a notification integration.",
         "operationId": "alertChannels.update",
         "parameters": [
           {
@@ -2242,6 +2253,7 @@
         "tags": [
           "Alert Channels"
         ],
+        "summary": "Sends a test notification through an integration.",
         "operationId": "alertChannels.test",
         "parameters": [
           {
@@ -3776,6 +3788,7 @@
         "tags": [
           "Agents"
         ],
+        "summary": "Lists the AI models a project's agents called, with requests, tokens and latency.",
         "operationId": "agents.modelsTable",
         "parameters": [
           {
@@ -4335,6 +4348,7 @@
         "tags": [
           "Agents"
         ],
+        "summary": "Lists the tools a project's agents called, with calls, errors and latency.",
         "operationId": "agents.toolsTable",
         "parameters": [
           {
@@ -4674,6 +4688,7 @@
         "tags": [
           "Alert Rules"
         ],
+        "summary": "Lists the alerts a project sent, newest first.",
         "operationId": "alertRules.listHistory",
         "parameters": [
           {
@@ -4855,6 +4870,7 @@
         "tags": [
           "Alert Rules"
         ],
+        "summary": "Lists a project's alert rules.",
         "operationId": "alertRules.list",
         "parameters": [
           {
@@ -4913,6 +4929,7 @@
         "tags": [
           "Alert Rules"
         ],
+        "summary": "Creates an alert rule in a project.",
         "operationId": "alertRules.create",
         "parameters": [
           {
@@ -4980,6 +4997,7 @@
         "tags": [
           "Alert Rules"
         ],
+        "summary": "Gets one alert rule.",
         "operationId": "alertRules.get",
         "parameters": [
           {
@@ -5045,6 +5063,7 @@
         "tags": [
           "Alert Rules"
         ],
+        "summary": "Deletes an alert rule.",
         "operationId": "alertRules.delete",
         "parameters": [
           {
@@ -5103,6 +5122,7 @@
         "tags": [
           "Alert Rules"
         ],
+        "summary": "Updates an alert rule.",
         "operationId": "alertRules.update",
         "parameters": [
           {
@@ -5376,6 +5396,7 @@
         "tags": [
           "Stats"
         ],
+        "summary": "Counts a project's events over time, bucketed for a chart.",
         "operationId": "stats.getEventTimeseries",
         "parameters": [
           {
@@ -5631,6 +5652,7 @@
         "tags": [
           "GitHub"
         ],
+        "summary": "Gets the GitHub repository a project is linked to.",
         "operationId": "github.getProjectRepository",
         "parameters": [
           {
@@ -5703,6 +5725,7 @@
         "tags": [
           "GitHub"
         ],
+        "summary": "Links a project to a GitHub repository.",
         "operationId": "github.putProjectRepository",
         "parameters": [
           {
@@ -5788,6 +5811,7 @@
         "tags": [
           "GitHub"
         ],
+        "summary": "Unlinks a project from its GitHub repository.",
         "operationId": "github.deleteProjectRepository",
         "parameters": [
           {
@@ -6351,6 +6375,7 @@
         "tags": [
           "Issues"
         ],
+        "summary": "Updates the status of many issues at once, selected by id or by filter.",
         "operationId": "issues.bulkUpdate",
         "parameters": [
           {
@@ -6406,6 +6431,7 @@
         "tags": [
           "Issues"
         ],
+        "summary": "Deletes many issues at once, selected by id or by filter.",
         "operationId": "issues.bulkDelete",
         "parameters": [
           {
@@ -9024,6 +9050,7 @@
         "tags": [
           "Monitors"
         ],
+        "summary": "Lists a project's cron monitors.",
         "operationId": "monitors.list",
         "parameters": [
           {
@@ -9082,6 +9109,7 @@
         "tags": [
           "Monitors"
         ],
+        "summary": "Creates a cron monitor in a project.",
         "operationId": "monitors.create",
         "parameters": [
           {
@@ -9159,6 +9187,7 @@
         "tags": [
           "Monitors"
         ],
+        "summary": "Gets one cron monitor.",
         "operationId": "monitors.get",
         "parameters": [
           {
@@ -9223,6 +9252,7 @@
         "tags": [
           "Monitors"
         ],
+        "summary": "Updates a cron monitor.",
         "operationId": "monitors.update",
         "parameters": [
           {
@@ -9307,6 +9337,7 @@
         "tags": [
           "Monitors"
         ],
+        "summary": "Deletes a cron monitor and its check-ins.",
         "operationId": "monitors.delete",
         "parameters": [
           {
@@ -9366,6 +9397,7 @@
         "tags": [
           "Monitors"
         ],
+        "summary": "Lists a cron monitor's check-ins, newest first.",
         "operationId": "monitors.listCheckins",
         "parameters": [
           {
@@ -9847,6 +9879,7 @@
         "tags": [
           "Releases"
         ],
+        "summary": "Lists the issues first seen in a release.",
         "operationId": "releases.newIssues",
         "parameters": [
           {
@@ -9912,6 +9945,7 @@
         "tags": [
           "Sessions"
         ],
+        "summary": "Session counts by release, for release health.",
         "operationId": "sessions.getStats",
         "parameters": [
           {
@@ -10088,6 +10122,7 @@
         "tags": [
           "Sessions"
         ],
+        "summary": "Totals and crash-free rates for a project's sessions.",
         "operationId": "sessions.getSummary",
         "parameters": [
           {
@@ -10158,6 +10193,7 @@
         "tags": [
           "Sessions"
         ],
+        "summary": "Session counts over time, bucketed for a chart.",
         "operationId": "sessions.getTimeseries",
         "parameters": [
           {
@@ -10665,6 +10701,7 @@
         "tags": [
           "Stats"
         ],
+        "summary": "Headline figures for a project's overview: events, new and open issues.",
         "operationId": "stats.getSummary",
         "parameters": [
           {
@@ -12628,6 +12665,7 @@
         "tags": [
           "Storage"
         ],
+        "summary": "Gets the retention settings and the cleanup schedule.",
         "operationId": "storage.getRetention",
         "responses": {
           "200": {
@@ -12671,6 +12709,7 @@
         "tags": [
           "Storage"
         ],
+        "summary": "Updates the retention settings; the next cleanup is scheduled at once.",
         "operationId": "storage.updateRetention",
         "requestBody": {
           "content": {
@@ -13167,6 +13206,7 @@
         "tags": [
           "Telemetry"
         ],
+        "summary": "Shows the exact anonymous telemetry report this instance would send.",
         "operationId": "telemetry.preview",
         "responses": {
           "200": {
