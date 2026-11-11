@@ -639,3 +639,18 @@ fn test_oidc_reports_when_any_provider_account_can_join() {
     let restricted = OidcConfig::from_env().unwrap().unwrap();
     assert!(!restricted.admits_any_provider_account());
 }
+
+#[test]
+fn alerts_reach_private_networks_only_when_switched_on() {
+    for (value, expected) in [(None, false), (Some("true"), true), (Some("false"), false)] {
+        let mut env = EnvGuard::new();
+        env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+            .set_opt("RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS", value);
+
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert_eq!(
+            config.alerts_allow_private_networks, expected,
+            "RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS={value:?}"
+        );
+    }
+}

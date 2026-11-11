@@ -761,6 +761,8 @@ mod alerts {
     #[actix_web::test]
     async fn a_failed_delivery_is_counted_under_its_provider_kind() {
         let db = TestDb::new().await;
+        // The collector is on loopback, which alerts refuse by default (#504).
+        rustrak::services::notification::allow_private_destinations(true);
         let collector = Collector::start(500).await;
         let project = ProjectService::create(
             &db.pool,

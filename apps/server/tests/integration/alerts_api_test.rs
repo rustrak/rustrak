@@ -1171,16 +1171,22 @@ async fn test_trigger_alert_does_not_block_on_slow_webhook_delivery() {
         .await
         .expect("project lookup must succeed");
 
-    // A webhook endpoint that accepts connections and never responds.
+    // A webhook endpoint that accepts connections and never responds. It is
+    // on loopback, which alerts refuse by default (#504): without the opt-out
+    // the delivery would fail at once and nothing here would be slow.
+    rustrak::services::notification::allow_private_destinations(true);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind hanging webhook listener");
     let addr = listener.local_addr().expect("listener addr");
+    let connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = connected.clone();
     tokio::spawn(async move {
         loop {
             let Ok((socket, _)) = listener.accept().await else {
                 break;
             };
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
             tokio::spawn(async move {
                 let _socket = socket;
                 tokio::time::sleep(Duration::from_secs(3600)).await;
@@ -1269,6 +1275,14 @@ async fn test_trigger_alert_does_not_block_on_slow_webhook_delivery() {
         leased,
         "in-flight delivery must hold a future next_retry_at lease"
     );
+
+    // The delivery really is in flight against the slow endpoint.
+    crate::common::eventually(|| async {
+        connected
+            .load(std::sync::atomic::Ordering::SeqCst)
+            .then_some(())
+    })
+    .await;
 }
 
 #[tokio::test]

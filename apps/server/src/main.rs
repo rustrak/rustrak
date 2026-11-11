@@ -43,6 +43,9 @@ async fn main() -> std::io::Result<()> {
     })?;
 
     log::info!("Starting Rustrak server on {}:{}", config.host, config.port);
+    rustrak::services::notification::allow_private_destinations(
+        config.alerts_allow_private_networks,
+    );
     if !config.security.session_secret_set {
         log::warn!(
             "SESSION_SECRET_KEY not set, using random key (sessions won't persist across restarts)"
