@@ -275,6 +275,20 @@ RUSTRAK_METRICS=on
 curl http://localhost:8080/metrics
 ```
 
+## Alerts
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS` | `off` | `on` lets alerts reach loopback and private addresses |
+
+Webhook and Slack alerts only go to addresses on the public internet. A URL that is, or resolves to, a loopback, private, link-local (cloud metadata) or reserved address fails with "Destination not allowed", and redirects are not followed. Whoever configures an integration picks the URL the server calls, so without this check they could reach services on the server's own network.
+
+If your chat server or automation tool runs on your own network, for example an internal Mattermost or n8n, turn this on:
+
+```bash
+RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS=on
+```
+
 ## Telemetry
 
 | Variable | Default | Description |

@@ -33,6 +33,10 @@ pub struct Config {
     /// The Prometheus scrape at `/metrics`. Off unless switched on: anyone who
     /// can reach the port can read it.
     pub metrics_enabled: bool,
+    /// `RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS`: alerts may reach loopback and
+    /// private addresses. Off, since whoever configures an integration picks
+    /// the URL the server calls (#504).
+    pub alerts_allow_private_networks: bool,
     /// The global SMTP server alert and invitation emails go through.
     pub smtp: SmtpSettings,
     /// `None` when SSO is not configured.
@@ -188,6 +192,7 @@ impl Default for Config {
                 do_not_track: false,
             },
             metrics_enabled: false,
+            alerts_allow_private_networks: false,
             smtp: SmtpSettings::default(),
             oidc: None,
             bootstrap_token: false,
@@ -232,6 +237,10 @@ impl Config {
             dashboard: DashboardConfig::from_env()?,
             telemetry: TelemetryConfig::from_env()?,
             metrics_enabled: env_bool("RUSTRAK_METRICS", false)?,
+            alerts_allow_private_networks: env_bool(
+                "RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS",
+                false,
+            )?,
             smtp: SmtpSettings::from_env(),
             oidc: OidcConfig::from_env()?,
             bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").is_ok(),

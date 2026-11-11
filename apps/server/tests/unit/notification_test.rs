@@ -191,3 +191,116 @@ fn test_email_validate_config_recipients_are_routing_concern() {
     // Extra fields or missing recipients: validate_config still returns Ok
     assert!(dispatcher.validate_config(&config).is_ok());
 }
+
+// =============================================================================
+// Destinations on private networks (SSRF, #504)
+// =============================================================================
+
+/// An HTTP server on loopback that answers every request with a 500 carrying
+/// `internal-secret`, standing in for an internal service. Returns its address
+/// and a flag that turns true when anything connects to it.
+async fn internal_service() -> (
+    std::net::SocketAddr,
+    std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let reached = std::sync::Arc::new(AtomicBool::new(false));
+    let flag = reached.clone();
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            flag.store(true, Ordering::SeqCst);
+            let mut buf = [0u8; 4096];
+            let _ = socket.read(&mut buf).await;
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 15\r\nconnection: close\r\n\r\ninternal-secret",
+                )
+                .await;
+        }
+    });
+    (addr, reached)
+}
+
+fn webhook_integration(credentials: serde_json::Value) -> rustrak::models::AlertIntegration {
+    rustrak::models::AlertIntegration {
+        id: 1,
+        name: "webhook".to_string(),
+        provider_type: ProviderType::Webhook,
+        credentials,
+        is_enabled: true,
+        failure_count: 0,
+        last_failure_at: None,
+        last_failure_message: None,
+        last_success_at: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    }
+}
+
+fn test_payload() -> rustrak::models::AlertPayload {
+    use rustrak::models::{AlertPayload, IssueInfo, ProjectInfo};
+    AlertPayload {
+        alert_id: "test".to_string(),
+        alert_type: "test".to_string(),
+        triggered_at: chrono::Utc::now(),
+        project: ProjectInfo {
+            id: 0,
+            name: "Test Project".to_string(),
+            slug: "test-project".to_string(),
+        },
+        issue: IssueInfo {
+            id: "00000000-0000-0000-0000-000000000000".to_string(),
+            short_id: "TEST-1".to_string(),
+            title: "test".to_string(),
+            level: None,
+            first_seen: chrono::Utc::now(),
+            last_seen: chrono::Utc::now(),
+            event_count: 1,
+        },
+        issue_url: "https://example.com/test".to_string(),
+        actor: "test".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn webhook_to_a_loopback_ip_is_refused_without_connecting() {
+    let (addr, reached) = internal_service().await;
+    let dispatcher = create_dispatcher(ProviderType::Webhook, &Default::default());
+
+    let result = dispatcher
+        .send(
+            &webhook_integration(json!({})),
+            &json!({ "url": format!("http://{addr}/hook") }),
+            &test_payload(),
+        )
+        .await;
+
+    assert!(!result.success);
+    let message = result.error_message.unwrap_or_default();
+    assert!(message.contains("not allowed"), "got: {message}");
+    assert!(!message.contains("internal-secret"));
+    assert!(!reached.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn webhook_to_a_host_resolving_to_loopback_is_refused_without_connecting() {
+    let (addr, reached) = internal_service().await;
+    let dispatcher = create_dispatcher(ProviderType::Webhook, &Default::default());
+
+    let result = dispatcher
+        .send(
+            &webhook_integration(json!({})),
+            &json!({ "url": format!("http://localhost:{}/hook", addr.port()) }),
+            &test_payload(),
+        )
+        .await;
+
+    assert!(!result.success);
+    let message = result.error_message.unwrap_or_default();
+    assert!(message.contains("not allowed"), "got: {message}");
+    assert!(!reached.load(std::sync::atomic::Ordering::SeqCst));
+}

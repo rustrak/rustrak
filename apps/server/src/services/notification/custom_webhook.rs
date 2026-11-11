@@ -950,6 +950,8 @@ mod tests {
     async fn test_delivers_rendered_body_over_http() {
         // Full network path: a listener that reads the request, replies 200,
         // and hands the raw bytes back for assertion.
+        // A local listener stands in for the endpoint.
+        super::super::allow_private_destinations(true);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind delivery listener");
@@ -1037,6 +1039,8 @@ mod tests {
     /// a random localhost port; returns the URL. The responder task owns the
     /// bytes, so callers can build responses at runtime.
     async fn raw_responder(response: Vec<u8>) -> String {
+        // A local listener stands in for the endpoint.
+        super::super::allow_private_destinations(true);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind responder listener");
