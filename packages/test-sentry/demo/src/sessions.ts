@@ -1,15 +1,5 @@
 import * as Sentry from '@sentry/node';
-
-const DSN = process.env.SENTRY_DSN;
-if (!DSN) {
-  console.error('Error: SENTRY_DSN environment variable is required');
-  console.error(
-    'Usage: SENTRY_DSN=http://key@host:port/project pnpm demo:sessions',
-  );
-  process.exit(1);
-}
-const RELEASE = process.env.SENTRY_RELEASE ?? 'demo@1.0.0';
-const ENV = process.env.SENTRY_ENV ?? 'production';
+import { DSN, ENV, RELEASE } from '../../src/env.js';
 
 Sentry.init({
   dsn: DSN,
@@ -26,6 +16,31 @@ Sentry.init({
 
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function bulkSessions() {
+  for (const release of [
+    'frontend@2.0.0',
+    'frontend@2.0.1',
+    'frontend@2.1.0',
+  ]) {
+    for (let i = 0; i < 3; i++) {
+      Sentry.startSession({
+        sid: `sess-bulk-${release}-${i}`,
+        did: `user-bulk-${i}`,
+        status: 'ok',
+        errors: i === 1 ? 2 : 0,
+      });
+      if (i === 0) {
+        try {
+          throw new Error(`Crash on ${release}`);
+        } catch (err) {
+          Sentry.captureException(err);
+        }
+      }
+      Sentry.endSession();
+    }
+  }
 }
 
 async function main() {
@@ -99,28 +114,7 @@ async function main() {
   // -----------------------------------------------------------------------
   console.log('--- Scenario 4: Multiple users, multiple releases ---');
 
-  for (const release of [
-    'frontend@2.0.0',
-    'frontend@2.0.1',
-    'frontend@2.1.0',
-  ]) {
-    for (let i = 0; i < 3; i++) {
-      Sentry.startSession({
-        sid: `sess-bulk-${release}-${i}`,
-        did: `user-bulk-${i}`,
-        status: 'ok',
-        errors: i === 1 ? 2 : 0,
-      });
-      if (i === 0) {
-        try {
-          throw new Error(`Crash on ${release}`);
-        } catch (err) {
-          Sentry.captureException(err);
-        }
-      }
-      Sentry.endSession();
-    }
-  }
+  bulkSessions();
   console.log('  Bulk sessions sent (3 releases × 3 users)\n');
 
   // -----------------------------------------------------------------------
@@ -133,4 +127,7 @@ async function main() {
   console.log('Check the Rustrak dashboard → Project → Release Health');
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

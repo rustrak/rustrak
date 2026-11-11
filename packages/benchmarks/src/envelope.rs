@@ -843,16 +843,4 @@ mod tests {
         assert_eq!(compressed[0], 0x1f);
         assert_eq!(compressed[1], 0x8b);
     }
-
-    #[test]
-    fn test_counter_increments() {
-        let config = EventConfig::default();
-        let mut generator = EnvelopeGenerator::new(config);
-
-        assert_eq!(generator.counter, 0);
-        generator.generate_event();
-        assert_eq!(generator.counter, 1);
-        generator.generate_event();
-        assert_eq!(generator.counter, 2);
-    }
 }

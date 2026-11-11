@@ -183,16 +183,11 @@ breadcrumb_count = 3
 stack_depth = 5
 include_user = true
 include_tags = true
-
-[docker]
-server_cpus = "2"
-server_memory = "256M"
 ```
 
-Run with:
-```bash
-cargo run --release -- --config-file my-scenario.toml
-```
+Save it as `scenarios/custom.toml` and run `--scenario custom`, or keep it
+anywhere and pass its path: `--scenario my-scenario.toml`. Container limits are
+set in `docker-compose.benchmark.yml` (`SERVER_CPUS`, `PG_CPUS`), not here.
 
 ## CLI Usage
 
@@ -207,11 +202,10 @@ Commands:
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-  -s, --scenario <SCENARIO>      Scenario to run [default: sustained]
-  -f, --config-file <PATH>       Path to custom scenario TOML file
+  -s, --scenario <SCENARIO>      Name in scenarios/ or path to a TOML [default: sustained]
       --server <URL>             Server URL [default: http://localhost:8080]
-      --project-id <ID>          Project ID [default: 1]
-      --sentry-key <KEY>         Sentry key for authentication [env: SENTRY_KEY]
+      --project-id <ID>          Project ID, required [env: PROJECT_ID]
+      --sentry-key <KEY>         The project's DSN key, required [env: SENTRY_KEY]
       --container <NAME>         Docker container name for metrics
   -o, --output <PATH>            Output directory [default: results]
       --no-warmup                Skip warmup phase

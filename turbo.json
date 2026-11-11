@@ -1,7 +1,7 @@
 {
   "$schema": "https://v2-9-14.turborepo.dev/schema.json",
   "ui": "tui",
-  "//": "The two Rust crates are turbo packages so that `pnpm build`, `pnpm test` and `pnpm run ci` reach them, but turbo never caches a cargo task: target/ carries per-crate fingerprints turbo cannot see, and a restored `target/` from a different toolchain is worse than none. Cargo tasks also do not run in parallel however the graph looks; they queue on the target directory lock. CI (.github/workflows/ci.yml) calls cargo directly for that reason; `ci:rust` here is the local equivalent.",
+  "//": "The two Rust crates are turbo packages so that `pnpm build`, `pnpm test` and `pnpm run ci` reach them, but turbo never caches a cargo task: target/ carries per-crate fingerprints turbo cannot see, and a restored `target/` from a different toolchain is worse than none. Cargo tasks also do not run in parallel however the graph looks; they queue on the target directory lock. CI (.github/workflows/ci.yml) runs the same package scripts with pnpm, one runner per concern, for that reason; `ci:rust` here is the local equivalent.",
   "globalDependencies": ["biome.json", "scripts/bundle-dashboard.sh"],
   "tasks": {
     "build": {
@@ -13,9 +13,7 @@
       "dependsOn": ["^build:dev"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"]
     },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
+    "lint": {},
     "//#doctor": {
       "inputs": [
         "doctor.config.json",
@@ -93,26 +91,7 @@
     "@rustrak/benchmarks#format:check": {
       "cache": false
     },
-
-    "bench": {
-      "dependsOn": ["build"],
-      "cache": false,
-      "inputs": ["$TURBO_DEFAULT$", "scenarios/**"]
-    },
-    "bench:baseline": {
-      "dependsOn": ["build"],
-      "cache": false
-    },
-    "bench:burst": {
-      "dependsOn": ["build"],
-      "cache": false
-    },
-    "bench:sustained": {
-      "dependsOn": ["build"],
-      "cache": false
-    },
-    "bench:stress": {
-      "dependsOn": ["build"],
+    "@rustrak/benchmarks#test": {
       "cache": false
     }
   }

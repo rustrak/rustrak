@@ -16,12 +16,9 @@
     "format:check": "turbo run format:check",
     "check-types": "turbo run check-types",
     "doctor": "react-doctor",
-    "doctor:json": "react-doctor --json --json-out react-doctor-report.json",
     "clean": "turbo run clean",
     "changeset": "changeset",
-    "version-packages": "changeset version && bash scripts/sync-version.sh",
-    "release": "changeset publish",
-    "update:monorepo": "pnpx npm-check-updates -i --deep --doctorInstall pnpm"
+    "version-packages": "changeset version && bash scripts/sync-version.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

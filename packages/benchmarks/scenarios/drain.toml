@@ -1,0 +1,18 @@
+# Drain Scenario
+# Sends a fixed batch of events, then times the asynchronous digest pipeline
+# until all of them are persisted. Needs --postgres-url.
+
+name = "drain"
+description = "Measure asynchronous digest throughput (the database-bound phase)"
+scenario_type = "drain"
+
+duration_secs = 0   # Bounded by event_count, not by time
+target_rps = 0
+concurrency = 50
+warmup_secs = 5
+
+[drain]
+event_count = 20000
+send_concurrency = 50
+poll_interval_ms = 250
+timeout_secs = 600

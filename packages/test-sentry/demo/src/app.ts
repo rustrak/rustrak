@@ -1,7 +1,8 @@
 import * as Sentry from '@sentry/node';
+import { DSN } from '../../src/env.js';
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN!,
+  dsn: DSN,
   tracesSampleRate: 0,
   defaultIntegrations: false,
   integrations: [Sentry.contextLinesIntegration()],

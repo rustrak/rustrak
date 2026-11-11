@@ -4,31 +4,17 @@
   "private": true,
   "description": "Test utility for sending Sentry events to Rustrak server",
   "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "test-sentry": "dist/cli.js"
-  },
   "scripts": {
-    "build": "tsup",
     "start": "tsx src/cli.ts",
-    "test:all": "tsx src/cli.ts --all",
-    "test:error": "tsx src/cli.ts --error",
-    "test:unhandled": "tsx src/cli.ts --unhandled",
-    "test:promise": "tsx src/cli.ts --promise",
-    "test:message": "tsx src/cli.ts --message",
-    "test:breadcrumbs": "tsx src/cli.ts --breadcrumbs",
-    "test:context": "tsx src/cli.ts --context",
-    "test:user": "tsx src/cli.ts --user",
-    "test:tags": "tsx src/cli.ts --tags",
-    "test:fingerprint": "tsx src/cli.ts --fingerprint",
-    "test:flood": "tsx src/cli.ts --flood",
     "check-types": "tsc --noEmit",
     "demo:build": "node demo/build.mjs",
     "demo:run": "node demo/dist/app.js",
     "demo:sessions": "tsx demo/src/sessions.ts",
     "demo:logs": "tsx demo/src/logs.ts",
     "demo:crons": "tsx demo/src/crons.ts",
-    "demo:ai-agent": "tsx --import demo/src/ai-agent-instrument.ts demo/src/ai-agent.ts"
+    "demo:ai-agent": "tsx --import demo/src/ai-agent-instrument.ts demo/src/ai-agent.ts",
+    "lint": "biome check .",
+    "format:check": "biome format ."
   },
   "dependencies": {
     "@sentry/node": "11.10.0"
@@ -38,7 +24,6 @@
     "@types/node": "26.6.6",
     "ai": "7.0.157",
     "esbuild": "0.28.2",
-    "tsup": "9.0.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "zod": "4.6.7"

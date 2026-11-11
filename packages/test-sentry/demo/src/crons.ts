@@ -14,10 +14,7 @@
  *   SENTRY_DSN=http://<sentry_key>@localhost:8080/<project_id> pnpm demo:crons
  */
 import * as Sentry from '@sentry/node';
-
-const DSN =
-  process.env.SENTRY_DSN ??
-  'http://0cabb1ed295f4cf6b41411220caa8eb6@localhost:8080/1';
+import { DSN } from '../../src/env.js';
 
 Sentry.init({ dsn: DSN, defaultIntegrations: false });
 
