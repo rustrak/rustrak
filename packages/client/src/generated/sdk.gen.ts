@@ -1849,7 +1849,7 @@ export class Issues extends HeyApiClient {
     }
     
     /**
-     * Updates the status of many issues at once, selected by id or by filter.
+     * Sets the status or priority of many issues at once, by id.
      */
     public bulkUpdate<ThrowOnError extends boolean = false>(options: Options<IssuesBulkUpdateData, ThrowOnError>): RequestResult<IssuesBulkUpdateResponses, IssuesBulkUpdateErrors, ThrowOnError> {
         return (options.client ?? this.client).put<IssuesBulkUpdateResponses, IssuesBulkUpdateErrors, ThrowOnError>({

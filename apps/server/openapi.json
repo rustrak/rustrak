@@ -6375,7 +6375,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "Updates the status of many issues at once, selected by id or by filter.",
+        "summary": "Sets the status or priority of many issues at once, by id.",
         "operationId": "issues.bulkUpdate",
         "parameters": [
           {
