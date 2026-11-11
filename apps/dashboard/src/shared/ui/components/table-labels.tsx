@@ -51,6 +51,12 @@ export function TableLabels({ children }: { children: ReactNode }) {
       filterAndSearch: t('filterAndSearch'),
       addFilter: t('addFilter'),
       clearAll: t('clearAll'),
+      hintNavigate: t('hintNavigate'),
+      hintSelect: t('hintSelect'),
+      hintClose: t('hintClose'),
+      typeValueThen: t('typeValueThen'),
+      removeFilter: (name) => t('removeFilter', { name }),
+      searchFor: (text) => t('searchFor', { text }),
     }),
     [t, locale],
   );

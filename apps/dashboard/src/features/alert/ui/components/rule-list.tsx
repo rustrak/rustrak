@@ -30,7 +30,7 @@ export function useFrequency() {
 }
 
 /** The filters of a rule, as short labels: environments, level, events. */
-export function useConditionLabels() {
+function useConditionLabels() {
   const t = useTranslations('alerts');
   return (shape: ReturnType<typeof ruleShape>) => [
     ...(shape.environments.length

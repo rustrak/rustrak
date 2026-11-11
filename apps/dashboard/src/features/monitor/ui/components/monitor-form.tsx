@@ -1,13 +1,11 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import type { MonitorResponse } from '@rustrak/client';
 import { Button, Input, Skeleton } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { type Path, useForm, useFormContext, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { useTimeZone, useTranslations } from 'use-intl';
 import { monitorMutations } from '@/features/monitor/api/mutations';
-import { monitorHref } from '@/features/monitor/lib/href';
+import { monitorHref, monitorsHref } from '@/features/monitor/lib/href';
 import {
   DEFAULT_MONITOR_FORM,
   formFromMonitor,
@@ -15,21 +13,17 @@ import {
   type MonitorFormData,
   monitorFormSchema,
 } from '@/features/monitor/model/monitor-form';
+import { ScheduleField } from '@/features/monitor/ui/components/schedule-field';
+import { SchedulePreview } from '@/features/monitor/ui/components/schedule-preview';
 import type { ApiError } from '@/shared/api/query';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
 import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormRootError,
-} from '@/shared/ui/components/form';
+  fieldErrorText,
+  revalidateLogic,
+  useAppForm,
+  useFieldContext,
+} from '@/shared/ui/components/app-form';
 import { Link } from '@/shared/ui/components/link';
-import { ScheduleField } from '@/shared/ui/components/schedule-field';
-import { SchedulePreview } from '@/shared/ui/components/schedule-preview';
 import { TimeZoneCombobox } from '@/shared/ui/components/time-zone-combobox';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
@@ -55,17 +49,19 @@ export function MonitorForm({
   const isPending = create.isPending || update.isPending;
 
   const schema = useMemo(() => monitorFormSchema(t), [t]);
-  const form = useForm<MonitorFormData>({
-    resolver: zodResolver(schema),
+  const form = useAppForm({
     defaultValues: monitor
       ? formFromMonitor(monitor)
       : { ...DEFAULT_MONITOR_FORM, timezone: readerZone ?? 'UTC' },
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: schema },
+    onSubmit: ({ value }) => onSubmit(value),
   });
 
-  const listHref = `/projects/${projectId}/crons`;
+  const listHref = monitorsHref(projectId);
   const cancelHref = monitor ? monitorHref(projectId, monitor.slug) : listHref;
 
-  const onSubmit = (data: MonitorFormData) => {
+  function onSubmit(data: MonitorFormData) {
     const input = inputFromForm(data);
     const callbacks = {
       onError: (error: ApiError) => {
@@ -100,68 +96,116 @@ export function MonitorForm({
     } else {
       create.mutate(input, callbacks);
     }
-  };
+  }
 
   return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]"
-      >
+    <form.AppForm>
+      <form.Form className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-10">
           <Section title={t('form.sectionMonitor')}>
             <div className="grid items-start gap-5 sm:grid-cols-2">
-              <TextField
-                name="name"
-                label={t('form.name')}
-                placeholder={t('form.namePlaceholder')}
-                disabled={isPending}
-              />
-              <TextField
-                name="slug"
-                label={t('form.slug')}
-                placeholder={t('form.slugPlaceholder')}
-                hint={monitor ? t('form.slugLocked') : t('form.slugHint')}
-                disabled={isPending || monitor !== undefined}
-                mono
-              />
+              <form.AppField name="name">
+                {(field) => (
+                  <field.TextField
+                    label={t('form.name')}
+                    placeholder={t('form.namePlaceholder')}
+                    autoComplete="off"
+                    disabled={isPending}
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name="slug">
+                {(field) => (
+                  <field.Item
+                    label={t('form.slug')}
+                    hint={monitor ? t('form.slugLocked') : t('form.slugHint')}
+                  >
+                    <BoundInput
+                      placeholder={t('form.slugPlaceholder')}
+                      autoComplete="off"
+                      disabled={isPending || monitor !== undefined}
+                      className="font-mono"
+                    />
+                  </field.Item>
+                )}
+              </form.AppField>
             </div>
           </Section>
 
           <Section title={t('form.sectionSchedule')}>
-            <ScheduleFields disabled={isPending} />
+            <div className="space-y-5">
+              <form.Field name="schedule">
+                {(field) => (
+                  <form.Subscribe
+                    selector={(state) =>
+                      fieldErrorText([
+                        ...(state.fieldMeta.schedule?.errors ?? []),
+                        // A nested issue (`schedule.value`) is where zod puts it.
+                        ...(state.fieldMeta['schedule.value' as 'schedule']
+                          ?.errors ?? []),
+                      ])
+                    }
+                  >
+                    {(error) => (
+                      <ScheduleField
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                        disabled={isPending}
+                        error={error}
+                      />
+                    )}
+                  </form.Subscribe>
+                )}
+              </form.Field>
+              <form.AppField name="timezone">
+                {(field) => (
+                  <field.Item className="max-w-xs" label={t('form.timezone')}>
+                    <TimeZoneCombobox
+                      value={field.state.value}
+                      onChange={(zone) => zone && field.handleChange(zone)}
+                      placeholder={t('form.timezonePlaceholder')}
+                      noResults={t('form.timezoneNoResults')}
+                      disabled={isPending}
+                      invalid={
+                        fieldErrorText(field.state.meta.errors) !== undefined
+                      }
+                    />
+                  </field.Item>
+                )}
+              </form.AppField>
+            </div>
           </Section>
 
           <Section title={t('form.sectionTolerance')}>
             <div className="grid items-start gap-5 sm:grid-cols-2">
-              <NumberField
-                name="checkin_margin"
-                label={t('form.margin')}
-                hint={t('form.marginHint')}
-                suffix={t('form.minutesSuffix')}
-                disabled={isPending}
-              />
-              <NumberField
-                name="max_runtime"
-                label={t('form.maxRuntime')}
-                hint={t('form.maxRuntimeHint')}
-                suffix={t('form.minutesSuffix')}
-                disabled={isPending}
-              />
-              <NumberField
-                name="failure_issue_threshold"
-                label={t('form.failureThreshold')}
-                hint={t('form.failureThresholdHint')}
-                suffix={t('form.checkInsSuffix')}
-                disabled={isPending}
-              />
-              <NumberField
-                name="recovery_threshold"
-                label={t('form.recoveryThreshold')}
-                hint={t('form.recoveryThresholdHint')}
-                suffix={t('form.checkInsSuffix')}
-                disabled={isPending}
-              />
+              {(
+                [
+                  ['checkin_margin', 'margin', 'minutesSuffix'],
+                  ['max_runtime', 'maxRuntime', 'minutesSuffix'],
+                  [
+                    'failure_issue_threshold',
+                    'failureThreshold',
+                    'checkInsSuffix',
+                  ],
+                  ['recovery_threshold', 'recoveryThreshold', 'checkInsSuffix'],
+                ] as const
+              ).map(([name, label, suffix]) => (
+                <form.AppField key={name} name={name}>
+                  {(field) => (
+                    <field.Item
+                      label={t(`form.${label}`)}
+                      hint={t(`form.${label}Hint`)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <NumberInput disabled={isPending} />
+                        <span className="text-meta text-fg-subtle">
+                          {t(`form.${suffix}`)}
+                        </span>
+                      </div>
+                    </field.Item>
+                  )}
+                </form.AppField>
+              ))}
             </div>
           </Section>
 
@@ -173,14 +217,30 @@ export function MonitorForm({
               {t(monitor ? 'form.save' : 'form.create')}
             </Button>
           </div>
-          <FormRootError />
+          <form.RootError />
         </div>
 
         <aside className="self-start lg:sticky lg:top-6">
-          <Preview />
+          <form.Subscribe
+            selector={(state) =>
+              [
+                state.values.schedule,
+                state.values.timezone,
+                state.values.checkin_margin,
+              ] as const
+            }
+          >
+            {([schedule, timezone, margin]) => (
+              <Preview
+                schedule={schedule}
+                timezone={timezone}
+                margin={margin}
+              />
+            )}
+          </form.Subscribe>
         </aside>
-      </form>
-    </Form>
+      </form.Form>
+    </form.AppForm>
   );
 }
 
@@ -235,157 +295,51 @@ function Section({
   );
 }
 
-function TextField({
-  name,
-  label,
-  placeholder,
-  hint,
-  disabled,
-  mono,
-}: {
-  name: 'name' | 'slug';
-  label: string;
-  placeholder?: string;
-  hint?: string;
-  disabled: boolean;
-  mono?: boolean;
-}) {
-  const { control } = useFormContext<MonitorFormData>();
+function BoundInput(
+  props: Omit<
+    React.ComponentProps<typeof Input>,
+    'value' | 'onChange' | 'onBlur' | 'name' | 'invalid'
+  >,
+) {
+  const field = useFieldContext<string>();
   return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Input
-              placeholder={placeholder}
-              autoComplete="off"
-              disabled={disabled}
-              className={mono ? 'font-mono' : undefined}
-              {...field}
-            />
-          </FormControl>
-          {hint && <FormDescription>{hint}</FormDescription>}
-          <FormMessage />
-        </FormItem>
-      )}
+    <Input
+      {...props}
+      name={field.name}
+      value={field.state.value}
+      onChange={(event) => field.handleChange(event.target.value)}
+      onBlur={field.handleBlur}
+      invalid={fieldErrorText(field.state.meta.errors) !== undefined}
     />
   );
 }
 
-type NumberName = Extract<
-  Path<MonitorFormData>,
-  | 'checkin_margin'
-  | 'max_runtime'
-  | 'failure_issue_threshold'
-  | 'recovery_threshold'
->;
-
-function NumberField({
-  name,
-  label,
-  hint,
-  suffix,
-  disabled,
-}: {
-  name: NumberName;
-  label: string;
-  hint?: string;
-  suffix?: string;
-  disabled: boolean;
-}) {
-  const { control } = useFormContext<MonitorFormData>();
+function NumberInput({ disabled }: { disabled: boolean }) {
+  const field = useFieldContext<number>();
   return (
-    <FormField
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <div className="flex items-center gap-2">
-            <FormControl>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                disabled={disabled}
-                boxClassName="w-28"
-                className="tabular-nums"
-                name={field.name}
-                ref={field.ref}
-                onBlur={field.onBlur}
-                value={Number.isNaN(field.value) ? '' : field.value}
-                onChange={(event) => field.onChange(event.target.valueAsNumber)}
-              />
-            </FormControl>
-            {suffix && (
-              <span className="text-meta text-fg-subtle">{suffix}</span>
-            )}
-          </div>
-          {hint && <FormDescription>{hint}</FormDescription>}
-          <FormMessage />
-        </FormItem>
-      )}
+    <Input
+      type="number"
+      inputMode="numeric"
+      min={1}
+      disabled={disabled}
+      boxClassName="w-28"
+      className="tabular-nums"
+      name={field.name}
+      onBlur={field.handleBlur}
+      value={Number.isNaN(field.state.value) ? '' : field.state.value}
+      onChange={(event) => field.handleChange(event.target.valueAsNumber)}
+      invalid={fieldErrorText(field.state.meta.errors) !== undefined}
     />
-  );
-}
-
-function ScheduleFields({ disabled }: { disabled: boolean }) {
-  const t = useTranslations('crons');
-  const { control } = useFormContext<MonitorFormData>();
-
-  return (
-    <div className="space-y-5">
-      <FormField
-        control={control}
-        name="schedule"
-        render={({ field, fieldState }) => (
-          <ScheduleField
-            value={field.value}
-            onChange={field.onChange}
-            disabled={disabled}
-            error={
-              fieldState.error?.message ??
-              // A nested issue (`schedule.value`) is where zod puts it.
-              (fieldState.error as { value?: { message?: string } } | undefined)
-                ?.value?.message
-            }
-          />
-        )}
-      />
-      <FormField
-        control={control}
-        name="timezone"
-        render={({ field }) => (
-          <FormItem className="max-w-xs">
-            <FormLabel>{t('form.timezone')}</FormLabel>
-            <FormControl>
-              <TimeZoneCombobox
-                value={field.value}
-                onChange={(zone) => zone && field.onChange(zone)}
-                placeholder={t('form.timezonePlaceholder')}
-                noResults={t('form.timezoneNoResults')}
-                disabled={disabled}
-              />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-    </div>
   );
 }
 
 /** The next runs of the schedule being typed, as the server expects them. */
-function Preview() {
+function Preview({
+  schedule,
+  timezone,
+  margin,
+}: Pick<MonitorFormData, 'schedule' | 'timezone'> & { margin: number }) {
   const t = useTranslations('crons');
-  const { control } = useFormContext<MonitorFormData>();
-  const [schedule, timezone, margin] = useWatch({
-    control,
-    name: ['schedule', 'timezone', 'checkin_margin'],
-  });
   const filled =
     schedule.type === 'crontab'
       ? schedule.value.trim() !== ''

@@ -1,8 +1,18 @@
 import type { AlertIntegration } from '@rustrak/client';
-import { Button, DeleteIcon, Input, TestIcon } from '@rustrak/ui';
-import type { ReactNode } from 'react';
+import {
+  Button,
+  DeleteIcon,
+  Field,
+  FieldError,
+  Input,
+  TestIcon,
+} from '@rustrak/ui';
+import { type ReactNode, useId } from 'react';
 import { useTranslations } from 'use-intl';
-import { useFormField } from '@/shared/ui/components/form';
+import {
+  fieldErrorText,
+  useFieldContext,
+} from '@/shared/ui/components/app-form';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 
 /*
@@ -12,17 +22,30 @@ import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
  */
 
 /**
- * A `SettingRow` for the form field it sits in. Rendered inside a `FormItem`,
- * so its title is the field's label and clicking it focuses the control.
+ * A `SettingRow` for the form field it sits in: its title is the field's
+ * label, and the field's error goes under the control `children` renders
+ * with the id it is given.
  */
-export function FieldRow(props: {
+export function FieldRow({
+  children,
+  ...props
+}: {
   title: string;
   description?: string;
   wide?: boolean;
-  children: ReactNode;
+  children: (id: string) => ReactNode;
 }) {
-  const { formItemId } = useFormField();
-  return <SettingRow htmlFor={formItemId} {...props} />;
+  const id = useId();
+  const field = useFieldContext<unknown>();
+  const error = fieldErrorText(field.state.meta.errors);
+  return (
+    <SettingRow htmlFor={id} {...props}>
+      <Field invalid={!!error}>
+        {children(id)}
+        {error ? <FieldError match>{error}</FieldError> : null}
+      </Field>
+    </SettingRow>
+  );
 }
 
 /**

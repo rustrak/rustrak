@@ -13,22 +13,20 @@ import {
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import {
-  axisDuration,
+  FAILURE_TEXT,
   failureTone,
   perMinute,
 } from '@/features/transaction/model/endpoints';
+import { axisDuration, isDaily } from '@/shared/lib/chart-format';
+import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { Link } from '@/shared/ui/components/link';
+import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 
 /*
  * The pieces of an endpoint's page. The page lays them out the way the
  * release page does: the figures that answer "is it OK" and how it moved in
  * the reading column, the facts that describe it in the rail.
  */
-
-const FAILURE_TEXT = {
-  warning: 'text-sev-warning-fg',
-  bad: 'text-sev-error-fg',
-} as const;
 
 /**
  * Four figures in one strip: how much it runs, how slow it gets, how often it
@@ -81,20 +79,11 @@ export function EndpointFigures({
   ];
 
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border-subtle bg-border-subtle xl:grid-cols-4">
+    <FigureStrip className="grid-cols-2 xl:grid-cols-4">
       {figures.map(([label, value, footnote]) => (
-        <div
-          key={label}
-          className="flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5"
-        >
-          <dt className="truncate text-fg-meta text-meta">{label}</dt>
-          <dd className="text-fg text-title tabular-nums">{value}</dd>
-          <dd className="truncate text-fg-subtle text-hint">
-            {footnote ?? ' '}
-          </dd>
-        </div>
+        <Figure key={label} label={label} value={value} footnote={footnote} />
       ))}
-    </dl>
+    </FigureStrip>
   );
 }
 
@@ -127,36 +116,12 @@ export function EndpointFacts({
   ];
 
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-meta">
-      {facts
-        .filter(([, value]) => value)
-        .map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-fg-subtle">{label}</dt>
-            <dd className="min-w-0 truncate text-right text-fg-secondary tabular-nums">
-              {value}
-            </dd>
-          </div>
-        ))}
-    </dl>
+    <FactList
+      facts={facts.filter(([, value]) => value)}
+      className="gap-y-2.5"
+      valueClassName="truncate text-right text-fg-secondary tabular-nums"
+    />
   );
-}
-
-function useBucketLabel(points: TransactionsGetStatGroupTimeseriesResponse) {
-  const format = useFormatter();
-  const [first, second] = points;
-  const daily =
-    first && second
-      ? new Date(second.bucket).getTime() - new Date(first.bucket).getTime() >=
-        86_400_000
-      : false;
-  return (value: string | number) =>
-    format.dateTime(
-      new Date(value),
-      daily
-        ? { month: 'short', day: 'numeric' }
-        : { month: 'short', day: 'numeric', hour: 'numeric' },
-    );
 }
 
 /** p50 and p95 over the window; an empty bucket is a gap, not a zero. */
@@ -166,7 +131,7 @@ export function LatencyChart({
   points: TransactionsGetStatGroupTimeseriesResponse;
 }) {
   const t = useTranslations('performance.detail');
-  const label = useBucketLabel(points);
+  const label = useBucketLabel(isDaily(points));
   return (
     <TimeSeriesChart
       data={points.map((p) => ({
@@ -195,7 +160,7 @@ export function CallsChart({
 }) {
   const t = useTranslations('performance.detail');
   const format = useFormatter();
-  const label = useBucketLabel(points);
+  const label = useBucketLabel(isDaily(points));
   return (
     <BarsChart
       data={points.map((p) => ({
@@ -208,6 +173,7 @@ export function CallsChart({
         { key: 'failed', label: t('failed'), color: 'var(--sev-error)' },
       ]}
       xKey="t"
+      integer
       height={220}
       formatX={label}
       formatY={(v) => format.number(v, 'compact')}

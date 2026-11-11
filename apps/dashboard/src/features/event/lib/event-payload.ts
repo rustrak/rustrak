@@ -6,12 +6,8 @@ import {
 
 /**
  * An event's payload, parsed once, with the answer to "does this event have
- * anything to show in section X?" already worked out.
- *
- * These flags used to be nine `const has…` lines at the top of the page
- * component, each one an `Object.keys(...).length > 0` or a `Boolean(...)`
- * spelled slightly differently. They are a property of the payload, not of the
- * page: the same event rendered anywhere else has the same sections.
+ * anything to show in section X?" already worked out: a property of the
+ * payload, not of the page.
  */
 export function readEventPayload(eventData: Record<string, unknown>) {
   const parsed = parseEventData(eventData);

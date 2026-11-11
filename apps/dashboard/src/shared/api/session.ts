@@ -25,9 +25,7 @@ export type CurrentUser =
  * and zone are columns on the user row), and the account screens. A type two
  * consumers both need goes *down* into `shared`, never sideways — and
  * `shared/api` already owns client construction, so the read belongs beside
- * it. Under Next the same collision produced the same answer for the same
- * reason, and the layer-direction rule is what caught the import that tried
- * the other way round.
+ * it.
  */
 export async function getCurrentUser(): Promise<CurrentUser> {
   const result = await api().auth.getCurrentUser();

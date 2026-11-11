@@ -1,6 +1,7 @@
 import type { TransactionDetailResponse } from '@rustrak/client';
 import type { Span, TraceContext } from '@/features/transaction/model/span';
 import { parseEpochSeconds } from '@/shared/lib/protocol-timestamp';
+import { type WaterfallRow, waterfallRows } from '@/shared/lib/waterfall';
 
 function asObject(value: unknown): Record<string, unknown> | null {
   // `typeof [] === 'object'`, and a list is never one of the key/value panels
@@ -97,91 +98,45 @@ export function readTransactionPayload(
   };
 }
 
-/** One row of the trace waterfall, in the shape `@rustrak/ui`'s takes. */
-export interface WaterfallRow {
-  id: string;
-  parentId: string | null;
-  op?: string;
-  description?: string;
-  /** Milliseconds from the transaction's start. */
-  startMs: number;
-  endMs: number;
-  status?: string;
-  /**
-   * Time spent in the span itself, not its children: the SDK's
-   * `exclusive_time` when it sent one, else its duration less its direct
-   * children's.
-   */
-  selfMs: number;
-}
-
 /**
  * The transaction as a tree of rows on its own clock: the transaction itself
  * at the root, named after it, and every span under its parent. A span whose
- * parent was never sent hangs off the root rather than off nothing, and one
- * without both timestamps has no place on a clock and is left out.
+ * parent was never sent hangs off the root rather than off nothing.
  */
 export function waterfallSpans(
   payload: TransactionPayload,
   name: string,
 ): WaterfallRow[] {
   const start = payload.transactionStart;
-  const ms = (seconds: number) => (seconds - start) * 1000;
+  const ms = (seconds: number | null | undefined) =>
+    seconds == null ? null : (seconds - start) * 1000;
   const rootId = payload.trace?.span_id ?? 'root';
-  const ids = new Set([
-    rootId,
-    ...payload.spans.flatMap((s) => (s.span_id ? [s.span_id] : [])),
-  ]);
 
-  const spans = payload.spans.flatMap((span, index) => {
-    if (span.start_timestamp == null || span.timestamp == null) return [];
-    return [
+  return waterfallRows(
+    [
       {
+        id: rootId,
+        spanId: rootId,
+        op: payload.op,
+        description: name,
+        startMs: 0,
+        endMs: ms(payload.transactionEnd),
+        status: payload.status,
+      },
+      ...payload.spans.map((span, index) => ({
         id: span.span_id ?? `span-${index}`,
-        parentId:
-          span.parent_span_id && ids.has(span.parent_span_id)
-            ? span.parent_span_id
-            : rootId,
+        spanId: span.span_id,
+        parentSpanId: span.parent_span_id,
         op: span.op,
         description: span.description,
         startMs: ms(span.start_timestamp),
         endMs: ms(span.timestamp),
         status: span.status,
-        exclusive: span.exclusive_time,
-      },
-    ];
-  });
-
-  const rows = [
-    {
-      id: rootId,
-      parentId: null,
-      op: payload.op,
-      description: name,
-      startMs: 0,
-      endMs: ms(payload.transactionEnd),
-      status: payload.status,
-      exclusive: undefined as number | undefined,
-    },
-    ...spans,
-  ];
-  return rows.map(({ exclusive, ...row }): WaterfallRow => {
-    // The time its children cover, inside it, with overlaps counted once:
-    // children running in parallel share their time.
-    let covered = 0;
-    let reached = row.startMs;
-    const children = rows
-      .filter((child) => child.parentId === row.id)
-      .sort((a, b) => a.startMs - b.startMs);
-    for (const child of children) {
-      const start = Math.max(child.startMs, reached);
-      const end = Math.min(child.endMs, row.endMs);
-      if (end > start) covered += end - start;
-      reached = Math.max(reached, end);
-    }
-    const own = row.endMs - row.startMs;
-    return { ...row, selfMs: exclusive ?? Math.max(0, own - covered) };
-  });
+        exclusiveMs: span.exclusive_time,
+      })),
+    ],
+    { origin: 0, orphanParentId: rootId },
+  );
 }
 
 /** Web-vital thresholds (good up to, poor from) from web.dev, in ms but CLS. */

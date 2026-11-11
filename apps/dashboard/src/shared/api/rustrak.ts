@@ -1,41 +1,18 @@
 import { RustrakClient } from '@rustrak/client';
 
 /**
- * The API base URL.
+ * One client for the whole application, built against this page's own
+ * origin. That is the design, not a fallback: the server that hands out the
+ * dashboard answers `/api` too (or Vite and nginx proxy it), so the session
+ * cookie stays first-party and nothing is cross-origin. See the dashboard's
+ * CLAUDE.md.
  *
- * `window.location.origin` is not a fallback, it is the design. The dashboard
- * is served by the same Actix process that answers `/api`, so in production
- * the origin *is* the server. In development Vite proxies the API prefixes to
- * it, so the origin is right there too — and because the request never leaves
- * the origin, the session cookie stays first-party and no CORS preflight is
- * involved in either environment.
- *
- * There is deliberately no override. A bundle hosted away from its server is
- * `apps/dashboard/Dockerfile`: nginx in front of the same files, proxying the
- * API prefixes, so the browser still talks to one origin. Calling the API
- * cross-origin instead would leave the `SameSite=Lax` session cookie behind.
- */
-function baseUrl(): string {
-  return window.location.origin;
-}
-
-/**
- * One client for the whole application.
- *
- * It holds configuration and a `ky` instance, nothing per-request and nothing
- * per-user: the session travels in a cookie the browser attaches itself. A
- * client per component would rebuild the retry and error-mapping layers on
- * every render for no gain.
- *
- * Built on first use rather than at import, and that is not a micro-
- * optimisation: `window` does not exist in the Node process that runs the
- * architecture rules and the portable-core tests, and a module that reads it
- * at import time cannot be loaded there at all.
+ * Built on first use rather than at import: `window` does not exist in the
+ * Node process that runs the tests.
  */
 let client: RustrakClient | undefined;
 
-/** The client. Built on first use, then the same one. */
 export function api(): RustrakClient {
-  client ??= new RustrakClient({ baseUrl: baseUrl() });
+  client ??= new RustrakClient({ baseUrl: window.location.origin });
   return client;
 }

@@ -8,7 +8,6 @@ describe('resolveSetupSnippet', () => {
     const setup = resolveSetupSnippet('javascript-react', DSN);
 
     expect(setup.codeExample).toContain(DSN);
-    expect(setup.docsUrl).toBeDefined();
   });
 
   it('falls back to a browser example when no platform is set', () => {

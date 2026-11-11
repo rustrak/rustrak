@@ -9,7 +9,7 @@ import {
 } from '@rustrak/ui';
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { LEVEL_TONE } from '@/features/log/model/log-view';
+import { levelTone } from '@/shared/config/levels';
 
 /**
  * One log line in full, beside the list: the message unwrapped, when it
@@ -44,7 +44,7 @@ export function LogDetail({
           className="lg:hidden"
           onClick={onClose}
         />
-        <Tag variant="soft" tone={LEVEL_TONE[log.level] ?? 'neutral'}>
+        <Tag variant="soft" tone={levelTone(log.level) ?? 'neutral'}>
           {log.level}
         </Tag>
         <time

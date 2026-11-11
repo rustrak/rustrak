@@ -4,6 +4,7 @@ import { useTranslations } from 'use-intl';
 import { AiSpanDetail } from '@/features/agent-trace/ui/components/ai-span-detail';
 import type { ApiError } from '@/shared/api/query';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
+import { PanelPlaceholder } from '@/shared/ui/components/panel';
 
 interface SpanDetailPaneProps {
   /** The selected span's read, or `null` when no span is selected. */
@@ -51,7 +52,5 @@ export function SpanDetailPane({
     );
   }
 
-  return (
-    <div className="h-64 w-full animate-pulse rounded-lg bg-surface-hover motion-reduce:animate-none" />
-  );
+  return <PanelPlaceholder height={256} />;
 }

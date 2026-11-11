@@ -1,11 +1,9 @@
 import type { EventDetailResponse } from '@rustrak/client';
 import { Button, CopyIcon, SelectedIcon } from '@rustrak/ui';
-import { useState } from 'react';
-import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { isNonEmpty } from '@/features/event/lib/event-payload';
-import { copyToClipboard } from '@/shared/lib/clipboard';
 import { cn } from '@/shared/lib/utils';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 
 interface EventDetailsProps {
   event: EventDetailResponse;
@@ -26,8 +24,7 @@ function DetailRow({
 }: DetailRowProps) {
   const t = useTranslations('events');
   const common = useTranslations('common');
-  const mcp = useTranslations('settings.mcp');
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy(t('clipboardValueHint'));
 
   if (value === null || value === undefined || value === '') return null;
 
@@ -37,18 +34,6 @@ function DetailRow({
         ? t('details.yes')
         : t('details.no')
       : String(value);
-
-  const handleCopy = async () => {
-    if (!(await copyToClipboard(displayValue))) {
-      toast.info(common('clipboardUnavailable'), {
-        description: t('clipboardValueHint'),
-      });
-      return;
-    }
-
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <div className="flex items-start gap-4 border-border-divider border-b py-2 last:border-b-0">
@@ -67,8 +52,8 @@ function DetailRow({
             variant="ghost"
             size="xs"
             icon={copied ? SelectedIcon : CopyIcon}
-            aria-label={mcp('copyLabel', { label })}
-            onClick={handleCopy}
+            aria-label={common('copyLabel', { label })}
+            onClick={() => copy(displayValue)}
           />
         )}
       </div>
@@ -102,7 +87,6 @@ interface EventPayload {
     env?: Record<string, string>;
     query_string?: string;
   };
-  modules?: Record<string, string>;
   extra?: Record<string, unknown>;
   transaction?: string;
   exception?: {
@@ -120,7 +104,6 @@ export function EventDetails({ event }: EventDetailsProps) {
       <Deployment event={event} />
       <Sdk event={event} />
       <RequestInfo request={payload.request} />
-      <Modules modules={payload.modules} />
       <ExtraData extra={payload.extra} />
     </div>
   );
@@ -248,21 +231,6 @@ function KeyValueGroup({
         <DetailRow key={key} label={key} value={value} mono />
       ))}
     </div>
-  );
-}
-
-function Modules({ modules }: { modules: EventPayload['modules'] }) {
-  const t = useTranslations('events');
-  if (!isNonEmpty(modules)) return null;
-
-  return (
-    <Section title={t('details.modules')}>
-      <div className="max-h-64 overflow-auto">
-        {Object.entries(modules).map(([name, version]) => (
-          <DetailRow key={name} label={name} value={version} mono />
-        ))}
-      </div>
-    </Section>
   );
 }
 

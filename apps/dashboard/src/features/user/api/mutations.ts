@@ -17,6 +17,7 @@ import type {
   UserRole,
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
+import { allProjects } from '@/shared/api/keys';
 import { accessQueries } from '@/shared/api/permissions';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
@@ -155,7 +156,7 @@ export const userMutations = {
     mutationOptions({
       mutationFn: (userId: number) =>
         orThrow(api().team.deleteUser({ path: { user_id: userId } })),
-      meta: { invalidates: [userQueries.team().queryKey, ['projects']] },
+      meta: { invalidates: [userQueries.team().queryKey, allProjects()] },
     }),
   /** Create a role; it opens on its own page next. */
   createRole: () =>

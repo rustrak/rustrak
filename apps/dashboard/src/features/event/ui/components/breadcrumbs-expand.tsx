@@ -14,8 +14,7 @@ interface BreadcrumbsExpandProps {
 
 /** Renders the collapsed summary timeline with a "view N more" toggle that
  *  swaps in the full timeline, in place — no drawer/sheet, nothing opens
- *  elsewhere. Owns the expand state, since `Breadcrumbs` (its caller) is a
- *  Server Component and can't hold it. */
+ *  elsewhere. */
 export function BreadcrumbsExpand({
   items,
   summaryItems,

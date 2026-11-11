@@ -4,11 +4,7 @@ import {
   CommitIcon,
   confirm,
   ExternalLinkIcon,
-  Field,
-  FieldHint,
-  FieldLabel,
   type IconComponent,
-  Input,
   IssuesIcon,
   LinkIcon,
   OkIcon,
@@ -17,13 +13,16 @@ import {
   WarningIcon,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { type ReactNode, useState } from 'react';
+import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
+import { z } from 'zod';
 import { githubMutations } from '@/features/github/api/mutations';
 import { unreachableFromGitHub } from '@/features/github/lib/webhook-url';
 import { IssueTemplateFields } from '@/features/github/ui/components/issue-template-fields';
+import { applyServerFieldErrors } from '@/shared/lib/form-errors';
 import { cn } from '@/shared/lib/utils';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
 import {
@@ -31,6 +30,7 @@ import {
   SettingSection,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /**
  * Posts the manifest to GitHub the only way GitHub accepts it: a form the
@@ -67,12 +67,10 @@ export function GitHubIntegration({
   login?: ReactNode;
 }) {
   const t = useTranslations('github');
+  const toastFailure = useToastFailure();
   const { mutate, isPending } = useMutation({
     ...githubMutations.disconnect(),
-    onError: (error) =>
-      toast.error(t('connection.disconnectFailed'), {
-        description: error.message,
-      }),
+    onError: (error) => toastFailure(t('connection.disconnectFailed'), error),
   });
   const { app, installations } = status;
 
@@ -132,18 +130,43 @@ export function GitHubIntegration({
  */
 function Setup({ status }: { status: GitHubStatus }) {
   const t = useTranslations('github');
-  const [organization, setOrganization] = useState('');
+  const globalT = useTranslations();
   const { mutate, isPending } = useMutation({
     ...githubMutations.manifest(),
     onSuccess: (data) => submitManifest(data.action_url, data.manifest),
-    onError: (error) =>
-      toast.error(t('connection.connectFailed'), {
-        description: error.message,
+    // A rejected organization name is marked on its input; anything else
+    // is a toast.
+    onError: (error) => {
+      const applied = applyServerFieldErrors(form, error.error, {
+        labels: { organization: t('setup.organization') },
+        t: globalT,
+      });
+      if (applied.formLevel) {
+        toast.error(t('connection.connectFailed'), {
+          description: applied.formLevel,
+        });
+      }
+    },
+  });
+  const form = useAppForm({
+    defaultValues: { organization: '' },
+    // The server's own rule, so the mistake is caught before the round trip;
+    // a server field error lands on the same key and clears the same way.
+    validationLogic: revalidateLogic(),
+    validators: {
+      onDynamic: z.object({
+        organization: z
+          .string()
+          .trim()
+          .regex(
+            /^[A-Za-z0-9-]*$/,
+            globalT('formErrors.invalid', { subject: t('setup.organization') }),
+          ),
       }),
+    },
+    onSubmit: ({ value }) => mutate(value.organization.trim() || undefined),
   });
   const { app } = status;
-
-  const connect = () => mutate(organization.trim() || undefined);
 
   return (
     <>
@@ -172,28 +195,25 @@ function Setup({ status }: { status: GitHubStatus }) {
               )
             }
           >
-            <form
-              className="flex max-w-md flex-col items-start gap-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                connect();
-              }}
-            >
-              <Field className="w-full">
-                <FieldLabel>{t('setup.organization')}</FieldLabel>
-                <Input
-                  value={organization}
-                  onChange={(e) => setOrganization(e.target.value)}
-                  placeholder={t('connection.organizationPlaceholder')}
-                  disabled={isPending}
-                />
-                <FieldHint>{t('setup.organizationHint')}</FieldHint>
-              </Field>
-              <Button type="submit" variant="primary" loading={isPending}>
-                <GitHubMark className="size-4" />
-                {t('connection.connect')}
-              </Button>
-            </form>
+            <form.AppForm>
+              <form.Form className="flex max-w-md flex-col items-start gap-4">
+                <form.AppField name="organization">
+                  {(field) => (
+                    <field.TextField
+                      className="w-full"
+                      label={t('setup.organization')}
+                      hint={t('setup.organizationHint')}
+                      placeholder={t('connection.organizationPlaceholder')}
+                      disabled={isPending}
+                    />
+                  )}
+                </form.AppField>
+                <Button type="submit" variant="primary" loading={isPending}>
+                  <GitHubMark className="size-4" />
+                  {t('connection.connect')}
+                </Button>
+              </form.Form>
+            </form.AppForm>
           </Step>
           <Step
             number={2}
@@ -426,10 +446,10 @@ function InstanceIssueTemplate({
   saved: GitHubStatus['issue_template'];
 }) {
   const t = useTranslations('github');
+  const toastFailure = useToastFailure();
   const { mutate, isPending } = useMutation({
     ...githubMutations.setIssueTemplate(),
-    onError: (error) =>
-      toast.error(t('template.saveFailed'), { description: error.message }),
+    onError: (error) => toastFailure(t('template.saveFailed'), error),
   });
   return (
     <SettingSection

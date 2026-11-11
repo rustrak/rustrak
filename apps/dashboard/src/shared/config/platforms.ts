@@ -242,8 +242,8 @@ export function platformLabel(id: string): string {
 // ---------------------------------------------------------------------------
 
 export interface PlatformCategory {
+  /** Also its label's key: `platforms.categories.<id>`. */
   id: string;
-  name: string;
   /**
    * Platform ids in this category. Ids not present in PLATFORMS are ignored by
    * `categoryPlatforms`, so this list can never offer something the server
@@ -263,7 +263,6 @@ export interface PlatformCategory {
 export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   {
     id: 'popular',
-    name: 'Popular',
     platforms: [
       'javascript-nextjs',
       'javascript-react',
@@ -297,7 +296,6 @@ export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   },
   {
     id: 'browser',
-    name: 'Browser',
     platforms: [
       'dart',
       'flutter',
@@ -323,7 +321,6 @@ export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   },
   {
     id: 'server',
-    name: 'Server',
     platforms: [
       'bun',
       'dart',
@@ -388,7 +385,6 @@ export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   },
   {
     id: 'mobile',
-    name: 'Mobile',
     platforms: [
       'android',
       'apple-ios',
@@ -406,7 +402,6 @@ export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   },
   {
     id: 'desktop',
-    name: 'Desktop',
     platforms: [
       'apple-macos',
       'dart',
@@ -428,7 +423,6 @@ export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   },
   {
     id: 'serverless',
-    name: 'Serverless',
     platforms: [
       'dotnet-awslambda',
       'dotnet-gcpfunctions',
@@ -444,7 +438,6 @@ export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   },
   {
     id: 'gaming',
-    name: 'Gaming',
     platforms: [
       'godot',
       'native',
@@ -457,7 +450,6 @@ export const PLATFORM_CATEGORIES: readonly PlatformCategory[] = [
   },
   {
     id: 'all',
-    name: 'All',
     // No list: resolved from PLATFORMS so it can never fall behind.
   },
 ];

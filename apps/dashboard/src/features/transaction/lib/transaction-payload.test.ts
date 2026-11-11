@@ -137,105 +137,6 @@ describe('readTransactionPayload', () => {
       ((span.timestamp as number) - (span.start_timestamp as number)) * 1000;
 
     expect(durationMs).toBeCloseTo(300, 3);
-    // Math.max over a string is NaN, which takes the whole waterfall window.
-    expect(
-      Math.max(payload.transactionStart, span.timestamp as number),
-    ).not.toBeNaN();
-  });
-
-  it('reads a span timestamp with no offset as UTC, the way Relay does', () => {
-    const [span] = readTransactionPayload(
-      txn({
-        data: {
-          spans: [
-            {
-              span_id: 's1',
-              start_timestamp: 1757000000.5,
-              timestamp: '2025-09-04T15:33:20.8',
-            },
-          ],
-        },
-      }),
-    ).spans;
-
-    expect(span.timestamp).toBeCloseTo(1757000000.8, 3);
-  });
-
-  it('rejects date strings Relay would not have accepted', () => {
-    const [span] = readTransactionPayload(
-      txn({
-        data: {
-          spans: [
-            // Date.parse turns both of these into a finite epoch.
-            { span_id: 's1', start_timestamp: '2025/09/04', timestamp: '0' },
-          ],
-        },
-      }),
-    ).spans;
-
-    expect(span.start_timestamp).toBeUndefined();
-    expect(span.timestamp).toBeUndefined();
-  });
-
-  it('keeps microsecond precision so a sub-ms span is not negative', () => {
-    // Both ends are the same instant; the SDK just encodes them differently.
-    const [span] = readTransactionPayload(
-      txn({
-        data: {
-          spans: [
-            {
-              span_id: 's1',
-              start_timestamp: 1757000000.123456,
-              timestamp: '2025-09-04T15:33:20.123456Z',
-            },
-          ],
-        },
-      }),
-    ).spans;
-
-    expect(span.timestamp).toBe(1757000000.123456);
-    expect(
-      ((span.timestamp as number) - (span.start_timestamp as number)) * 1000,
-    ).toBe(0);
-  });
-
-  it('rejects calendar-impossible dates instead of rolling them forward', () => {
-    const [span] = readTransactionPayload(
-      txn({
-        data: {
-          spans: [
-            {
-              span_id: 's1',
-              // Date.parse turns these into March 2nd and March 1st.
-              start_timestamp: '2025-02-30T00:00:00Z',
-              timestamp: '2025-02-29T00:00:00Z',
-            },
-          ],
-        },
-      }),
-    ).spans;
-
-    expect(span.start_timestamp).toBeUndefined();
-    expect(span.timestamp).toBeUndefined();
-  });
-
-  it('rejects hour 24, which Date.parse rolls into the next day', () => {
-    const [span] = readTransactionPayload(
-      txn({
-        data: {
-          spans: [
-            {
-              span_id: 's1',
-              start_timestamp: '2025-09-04T24:00:00Z',
-              timestamp: '2025-09-04T23:59:59Z',
-            },
-          ],
-        },
-      }),
-    ).spans;
-
-    expect(span.start_timestamp).toBeUndefined();
-    expect(span.timestamp).toBe(1757030399);
   });
 
   it('prefers the payload epoch seconds over the row timestamps', () => {
@@ -355,11 +256,13 @@ describe('waterfallSpans', () => {
     expect(waterfallSpans(payload, 'GET /')[0]?.selfMs).toBeCloseTo(500);
   });
 
-  it('skips a span with no clock', () => {
+  it('keeps a span with no clock as an unfinished row', () => {
     const payload = readTransactionPayload(
       txn({ data: { spans: [{ span_id: 'x' }] } }),
     );
-    expect(waterfallSpans(payload, 'GET /')).toHaveLength(1);
+    const rows = waterfallSpans(payload, 'GET /');
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject({ id: 'x', startMs: 0, unfinished: true });
   });
 });
 

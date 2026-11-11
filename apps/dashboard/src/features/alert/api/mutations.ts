@@ -5,16 +5,10 @@ import type {
   UpdateAlertRule,
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
+import { allProjects, invitationEmailStatus } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 import { alertQueries } from './queries';
-
-/**
- * An email integration is also what sends invitation emails, so changing
- * one changes the user slice's `emailStatus` answer. Slices cannot import
- * each other, hence the literal key.
- */
-const INVITATION_EMAIL_STATUS = ['invitations', 'email-status'] as const;
 
 export const alertMutations = {
   createIntegration: () =>
@@ -24,7 +18,7 @@ export const alertMutations = {
       meta: {
         invalidates: [
           alertQueries.integrations().queryKey,
-          INVITATION_EMAIL_STATUS,
+          invitationEmailStatus(),
         ],
       },
     }),
@@ -42,7 +36,7 @@ export const alertMutations = {
       meta: {
         invalidates: [
           alertQueries.integrations().queryKey,
-          INVITATION_EMAIL_STATUS,
+          invitationEmailStatus(),
         ],
       },
     }),
@@ -57,8 +51,8 @@ export const alertMutations = {
       meta: {
         invalidates: [
           alertQueries.integrations().queryKey,
-          INVITATION_EMAIL_STATUS,
-          ['projects'],
+          invitationEmailStatus(),
+          allProjects(),
         ],
       },
     }),

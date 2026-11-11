@@ -52,3 +52,10 @@ export const alertHref = (projectId: number, ruleId: number) =>
   `${alertsHref(projectId)}/${ruleId}`;
 export const newAlertHref = (projectId: number, type?: AlertType) =>
   `${alertsHref(projectId)}/new${type ? `?type=${type}` : ''}`;
+
+/**
+ * The integrations catalogue, or one provider's page, keeping the project it
+ * was opened from so the way back to its alerts survives.
+ */
+export const channelsHref = (projectId?: number, provider?: string) =>
+  `/settings/integrations${provider ? `/${provider}` : ''}${projectId ? `?projectId=${projectId}` : ''}`;

@@ -113,10 +113,7 @@ function python({ slug, schedule }: GuideInput): string {
 def tell_the_world(msg):
     print(msg)`;
   }
-  const config =
-    schedule.type === 'crontab'
-      ? `{"type": "crontab", "value": "${schedule.value}"}`
-      : `{"type": "interval", "value": ${schedule.value}, "unit": "${schedule.unit}"}`;
+  const config = jsonSchedule(schedule);
   return `from sentry_sdk.crons import monitor
 
 # All keys except 'schedule' are optional

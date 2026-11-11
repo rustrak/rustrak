@@ -4,7 +4,14 @@ import type {
   MonitorResponse,
 } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
-import { lastCheckIn, lastRun, monitorHealth, nextCheckIn } from './status';
+import {
+  filterMonitors,
+  lastCheckIn,
+  lastRun,
+  monitorHealth,
+  nextCheckIn,
+  nextCheckInState,
+} from './status';
 
 function env(
   overrides: Partial<MonitorEnvironmentResponse>,
@@ -114,5 +121,66 @@ describe('lastRun', () => {
 
   it('is undefined before any run finished', () => {
     expect(lastRun(monitor([]))).toBeUndefined();
+  });
+});
+
+describe('filterMonitors', () => {
+  const named = (name: string, status: 'ok' | 'error', muted = false) => ({
+    ...monitor([env({ status })]),
+    name,
+    slug: name.toLowerCase(),
+    is_muted: muted,
+  });
+  const list = [
+    named('Backup', 'ok'),
+    named('Sync', 'error'),
+    named('Audit', 'ok', true),
+  ];
+
+  it('puts failing first, then by name', () => {
+    expect(filterMonitors(list, '').map((m) => m.name)).toEqual([
+      'Sync',
+      'Audit',
+      'Backup',
+    ]);
+  });
+
+  it('narrows by text and by state', () => {
+    expect(filterMonitors(list, 'back').map((m) => m.name)).toEqual(['Backup']);
+    expect(filterMonitors(list, '', 'muted').map((m) => m.name)).toEqual([
+      'Audit',
+    ]);
+  });
+});
+
+describe('nextCheckInState', () => {
+  const now = Date.parse('2026-01-01T06:00:00Z');
+  const ahead = '2026-01-01T06:02:00Z';
+  const checkIn = (status: CheckInResponse['status']) =>
+    ({ status }) as CheckInResponse;
+
+  it('says the last run was missed, even with the next slot ahead', () => {
+    const m = monitor([
+      env({ next_checkin: ahead, recent_checkins: [checkIn('missed')] }),
+    ]);
+    expect(nextCheckInState(m, now)).toBe('missed');
+  });
+
+  it('is late past the expected time, and due before it', () => {
+    expect(
+      nextCheckInState(
+        monitor([env({ next_checkin: '2026-01-01T05:59:00Z' })]),
+        now,
+      ),
+    ).toBe('late');
+    expect(
+      nextCheckInState(
+        monitor([
+          env({ next_checkin: ahead, recent_checkins: [checkIn('ok')] }),
+        ]),
+        now,
+      ),
+    ).toBe('due');
+    expect(nextCheckInState(monitor([env({})]), now)).toBe('none');
   });
 });

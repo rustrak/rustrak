@@ -6,8 +6,8 @@ import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
 import { parseRateLimit } from '@/features/project/model/rate-limit';
-import { describeError } from '@/shared/lib/error-copy';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 type LimitField = 'rate_limit_per_minute' | 'rate_limit_per_hour';
 
@@ -40,6 +40,7 @@ export function RateLimitSettings({
         readOnly={readOnly}
         field="rate_limit_per_minute"
         title={t('perMinute')}
+        max={serverLimits?.project_per_minute}
         placeholder={serverLimit(serverLimits?.project_per_minute)}
       />
       <LimitRow
@@ -47,6 +48,7 @@ export function RateLimitSettings({
         readOnly={readOnly}
         field="rate_limit_per_hour"
         title={t('perHour')}
+        max={serverLimits?.project_per_hour}
         placeholder={serverLimit(serverLimits?.project_per_hour)}
       />
       <SettingRow title={t('dropped')} description={t('droppedDescription')}>
@@ -64,15 +66,18 @@ function LimitRow({
   title,
   placeholder,
   readOnly,
+  max,
 }: {
   project: ProjectResponse;
   readOnly: boolean;
   field: LimitField;
   title: string;
   placeholder: string;
+  /** The server's limit, which this one can only lower. */
+  max: number | undefined;
 }) {
   const t = useTranslations('projects.rateLimits');
-  const formT = useTranslations();
+  const toastFailure = useToastFailure();
   const id = useId();
   const stored = project[field];
   const [raw, setRaw] = useState(stored === null ? '' : String(stored));
@@ -80,7 +85,7 @@ function LimitRow({
   const update = useMutation(projectMutations.update(project.id));
   const isPending = update.isPending;
 
-  const parsed = parseRateLimit(raw);
+  const parsed = parseRateLimit(raw, max);
   const hasChanges = !parsed.ok || parsed.value !== stored;
 
   const save = () => {
@@ -92,10 +97,7 @@ function LimitRow({
       { [field]: parsed.value },
       {
         onSuccess: () => toast.success(t('saved')),
-        onError: (error) =>
-          toast.error(t('saveFailed'), {
-            description: describeError(error.error, formT),
-          }),
+        onError: (error) => toastFailure(t('saveFailed'), error),
       },
     );
   };
@@ -129,7 +131,11 @@ function LimitRow({
         )}
       </div>
       {invalid && (
-        <p className="mt-2 text-hint text-danger-fg">{t('invalid')}</p>
+        <p className="mt-2 text-hint text-danger-fg">
+          {!parsed.ok && parsed.tooHigh && max !== undefined
+            ? t('tooHigh', { max })
+            : t('invalid')}
+        </p>
       )}
     </SettingRow>
   );

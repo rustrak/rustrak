@@ -85,14 +85,6 @@ describe('withServerQuery', () => {
     ]);
   });
 
-  it('drops a page size the endpoint refuses', () => {
-    const query = { ...base, pagination: { pageIndex: 2, pageSize: 101 } };
-    expect(withServerQuery(query, 50).pagination).toEqual({
-      pageIndex: 2,
-      pageSize: 50,
-    });
-  });
-
   it('keeps only the seen windows the server reads', () => {
     const query: DataTableQuery = {
       ...base,

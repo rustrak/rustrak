@@ -31,7 +31,7 @@ export function ChannelCard({
   return (
     <label
       className={cn(
-        'flex cursor-pointer items-center justify-between gap-3 rounded-lg border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-hover',
+        'flex cursor-pointer items-center has-disabled:cursor-not-allowed justify-between gap-3 rounded-lg border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-hover',
         selected ? 'border-border-brand' : 'border-border',
       )}
     >
@@ -55,6 +55,11 @@ export function ChannelCard({
             {isSlackBot ? ` · ${t('channelCard.botToken')}` : ''}
             {integration.is_enabled ? '' : ` · ${t('integrations.disabled')}`}
           </span>
+          {integration.is_enabled ? null : (
+            <span className="text-fg-subtle text-hint">
+              {t('channelCard.disabledHint')}
+            </span>
+          )}
         </span>
       </span>
       <Switch

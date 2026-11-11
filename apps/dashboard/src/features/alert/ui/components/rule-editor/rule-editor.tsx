@@ -1,13 +1,12 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import type {
   AlertIntegration,
   AlertRuleResponse,
   AlertType,
 } from '@rustrak/client';
 import { Button, cn, Input, Skeleton, TestIcon, Text } from '@rustrak/ui';
+import { useSelector } from '@tanstack/react-form';
 import { useMutation } from '@tanstack/react-query';
 import { type ReactNode, useMemo, useState, useTransition } from 'react';
-import { FormProvider, useForm, useFormContext } from 'react-hook-form';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { alertMutations } from '@/features/alert/api/mutations';
@@ -19,19 +18,29 @@ import {
 import { alertTypes } from '@/features/alert/model/alert-types';
 import {
   COOLDOWN_PRESETS,
+  channelsHref,
   cooldownUnit,
   DEFAULT_COOLDOWN,
 } from '@/features/alert/model/rule-summary';
 import { useChannelRouting } from '@/features/alert/ui/hooks/use-channel-routing';
 import type { ApiError } from '@/shared/api/query';
-import { applyServerFieldErrors } from '@/shared/lib/form-errors';
+import {
+  applyServerFieldErrors,
+  setServerErrors,
+} from '@/shared/lib/form-errors';
 import {
   conditionsFromForm,
   environmentsOf,
   formFromConditions,
   levels,
 } from '@/shared/lib/rule-conditions';
+import {
+  fieldErrorText,
+  revalidateLogic,
+  useAppForm,
+} from '@/shared/ui/components/app-form';
 import { Link } from '@/shared/ui/components/link';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { RuleSentence } from '../rule-sentence';
 import { ChannelPicker } from './channel-picker/channel-picker';
 
@@ -62,6 +71,7 @@ export function RuleEditor({
 }) {
   const t = useTranslations('alerts');
   const globalT = useTranslations();
+  const toastFailure = useToastFailure();
   const create = useMutation(alertMutations.createRule(projectId));
   const update = useMutation(alertMutations.updateRule(projectId));
   const test = useMutation(alertMutations.testIntegration());
@@ -69,9 +79,8 @@ export function RuleEditor({
   const [isTesting, startTest] = useTransition();
   const routing = useChannelRouting(rule, integrations);
   const schema = useMemo(() => alertRuleFormSchema(t), [t]);
-  const form = useForm<AlertRuleFormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
+  const form = useRuleForm(
+    {
       name: rule?.name ?? '',
       alert_type: rule?.alert_type ?? initialType,
       selected_integration_ids: rule?.integration_ids ?? [],
@@ -80,17 +89,19 @@ export function RuleEditor({
       ...formFromConditions(rule?.conditions ?? {}),
       environments: environmentsOf(rule?.conditions ?? {}),
     },
-  });
+    schema,
+    (data) => onSubmit(data),
+  );
 
-  const values = form.watch();
+  const values = useSelector(form.store, (state) => state.values);
   const selected = new Set(values.selected_integration_ids);
   const chosen = integrations.filter((i) => selected.has(i.id));
 
-  const onSubmit = (data: AlertRuleFormData) => {
+  function onSubmit(data: AlertRuleFormData) {
     if (!routing.validate(data.selected_integration_ids)) return;
     if (data.selected_integration_ids.length === 0) {
-      form.setError('selected_integration_ids', {
-        message: t('ruleDialog.selectAtLeastOne'),
+      setServerErrors(form, {
+        fields: { selected_integration_ids: t('ruleDialog.selectAtLeastOne') },
       });
       return;
     }
@@ -124,7 +135,7 @@ export function RuleEditor({
     };
     if (rule) update.mutate({ ruleId: rule.id, body }, callbacks);
     else create.mutate(body, callbacks);
-  };
+  }
 
   // A test sends through every chosen channel, routed as the saved rule
   // would be: the same payload, so an email gets its recipients as a list.
@@ -159,49 +170,65 @@ export function RuleEditor({
                 }
               },
               (error: ApiError) =>
-                toast.error(t('editor.testFailed', { channel }), {
-                  description: error.error.message,
-                }),
+                toastFailure(t('editor.testFailed', { channel }), error),
             );
         }),
       );
     });
 
   return (
-    <FormProvider {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto"
-      >
+    <form.AppForm>
+      <form.Form className="flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto">
         <div className="flex min-w-0 flex-1 flex-col divide-y divide-border-divider lg:overflow-y-auto">
-          <Row label={t('editor.name')}>
-            <Input
-              placeholder={t('editor.namePlaceholder')}
-              invalid={Boolean(form.formState.errors.name)}
-              {...form.register('name')}
-            />
-            {form.formState.errors.name ? (
-              <span className="text-sev-error-fg text-meta">
-                {form.formState.errors.name.message}
-              </span>
-            ) : null}
-          </Row>
+          <form.Field name="name">
+            {(field) => {
+              const error = fieldErrorText(field.state.meta.errors);
+              return (
+                <Row label={t('editor.name')}>
+                  <Input
+                    name={field.name}
+                    placeholder={t('editor.namePlaceholder')}
+                    invalid={Boolean(error)}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                  />
+                  <FieldMessage error={error} />
+                </Row>
+              );
+            }}
+          </form.Field>
 
-          <TriggerRow />
-          <EnvironmentsRow environments={environments} />
-          <LevelRow />
+          <TriggerRow form={form} />
+          <EnvironmentsRow form={form} environments={environments} />
+          <LevelRow form={form} />
 
           {values.alert_type === 'new_issue' ? (
-            <Row label={t('editor.minEvents')} hint={t('editor.minEventsHint')}>
-              <Input
-                type="number"
-                min={1}
-                boxClassName="w-28"
-                invalid={Boolean(form.formState.errors.min_events)}
-                {...form.register('min_events', { valueAsNumber: true })}
-              />
-              <FieldError name="min_events" />
-            </Row>
+            <form.Field name="min_events">
+              {(field) => {
+                const error = fieldErrorText(field.state.meta.errors);
+                return (
+                  <Row
+                    label={t('editor.minEvents')}
+                    hint={t('editor.minEventsHint')}
+                  >
+                    <Input
+                      type="number"
+                      min={1}
+                      boxClassName="w-28"
+                      name={field.name}
+                      invalid={Boolean(error)}
+                      value={numberValue(field.state.value)}
+                      onChange={(e) =>
+                        field.handleChange(e.target.valueAsNumber)
+                      }
+                      onBlur={field.handleBlur}
+                    />
+                    <FieldMessage error={error} />
+                  </Row>
+                );
+              }}
+            </form.Field>
           ) : null}
 
           <Row
@@ -209,7 +236,7 @@ export function RuleEditor({
             hint={t.rich('editor.notifyHint', {
               link: (chunks) => (
                 <Link
-                  href={`/settings/integrations?projectId=${projectId}`}
+                  href={channelsHref(projectId)}
                   className="text-fg-secondary underline hover:text-fg"
                 >
                   {chunks}
@@ -222,15 +249,22 @@ export function RuleEditor({
                 {t('editor.noChannels')}
               </Text>
             ) : (
-              <ChannelPicker
-                integrations={integrations}
-                routing={routing}
-                disabled={isPending}
-              />
+              <form.Field name="selected_integration_ids">
+                {(field) => (
+                  <ChannelPicker
+                    integrations={integrations}
+                    routing={routing}
+                    disabled={isPending}
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    error={fieldErrorText(field.state.meta.errors)}
+                  />
+                )}
+              </form.Field>
             )}
           </Row>
 
-          <FrequencyRow />
+          <FrequencyRow form={form} />
         </div>
 
         {/* The rail: the sentence the form adds up to, and what to do with it. */}
@@ -270,8 +304,8 @@ export function RuleEditor({
             </Button>
           </div>
         </aside>
-      </form>
-    </FormProvider>
+      </form.Form>
+    </form.AppForm>
   );
 }
 
@@ -309,22 +343,35 @@ export function RuleEditorSkeleton() {
   );
 }
 
-const dirty = { shouldDirty: true } as const;
+function useRuleForm(
+  defaultValues: AlertRuleFormData,
+  schema: ReturnType<typeof alertRuleFormSchema>,
+  onSubmit: (data: AlertRuleFormData) => void,
+) {
+  return useAppForm({
+    defaultValues,
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: schema },
+    onSubmit: ({ value }) => onSubmit(value),
+  });
+}
+
+type RuleForm = ReturnType<typeof useRuleForm>;
+
+/** An emptied number input holds NaN; it shows as empty, not as "NaN". */
+const numberValue = (value: number) => (Number.isNaN(value) ? '' : value);
 
 /** A field's validation message, under it. */
-function FieldError({ name }: { name: 'cooldown_minutes' | 'min_events' }) {
-  const { formState } = useFormContext<AlertRuleFormData>();
-  const message = formState.errors[name]?.message;
-  return message ? (
-    <span className="text-sev-error-fg text-meta">{message}</span>
+function FieldMessage({ error }: { error: string | undefined }) {
+  return error ? (
+    <span className="text-sev-error-fg text-meta">{error}</span>
   ) : null;
 }
 
 /** What the alert fires on, one card per trigger. */
-function TriggerRow() {
+function TriggerRow({ form }: { form: RuleForm }) {
   const t = useTranslations('alerts');
-  const form = useFormContext<AlertRuleFormData>();
-  const current = form.watch('alert_type');
+  const current = useSelector(form.store, (state) => state.values.alert_type);
   return (
     <Row label={t('editor.when')}>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -334,16 +381,15 @@ function TriggerRow() {
             type="button"
             aria-pressed={current === type}
             onClick={() => {
-              form.setValue('alert_type', type, dirty);
+              form.setFieldValue('alert_type', type);
               // Only new issues show the event count; one left invalid
               // there would block the save from a field no longer on screen.
-              const minEvents = form.getValues('min_events');
+              const minEvents = form.getFieldValue('min_events');
               if (
                 type !== 'new_issue' &&
                 !(Number.isInteger(minEvents) && minEvents >= 1)
               ) {
-                form.setValue('min_events', 1);
-                form.clearErrors('min_events');
+                form.setFieldValue('min_events', 1);
               }
             }}
             className={cn(
@@ -371,15 +417,22 @@ function TriggerRow() {
  * has seen, or a name typed in, so a rule can wait for an environment that has
  * not sent anything yet.
  */
-function EnvironmentsRow({ environments }: { environments: string[] }) {
+function EnvironmentsRow({
+  form,
+  environments,
+}: {
+  form: RuleForm;
+  environments: string[];
+}) {
   const t = useTranslations('alerts');
-  const form = useFormContext<AlertRuleFormData>();
   const [draft, setDraft] = useState('');
-  const chosenEnvs = form.watch('environments');
+  const chosenEnvs = useSelector(
+    form.store,
+    (state) => state.values.environments,
+  );
   const chosen = new Set(chosenEnvs);
   const envOptions = [...new Set([...environments, ...chosenEnvs])];
-  const setEnvs = (next: string[]) =>
-    form.setValue('environments', next, dirty);
+  const setEnvs = (next: string[]) => form.setFieldValue('environments', next);
   const add = () => {
     const name = draft.trim();
     if (name && !chosen.has(name)) setEnvs([...chosenEnvs, name]);
@@ -434,10 +487,10 @@ function EnvironmentsRow({ environments }: { environments: string[] }) {
 }
 
 /** The lowest level that counts; feedback has none. */
-function LevelRow() {
+function LevelRow({ form }: { form: RuleForm }) {
   const t = useTranslations('alerts');
-  const form = useFormContext<AlertRuleFormData>();
-  const [type, minLevel] = form.watch(['alert_type', 'min_level']);
+  const type = useSelector(form.store, (state) => state.values.alert_type);
+  const minLevel = useSelector(form.store, (state) => state.values.min_level);
   if (type === 'new_feedback') return null;
   return (
     <Row label={t('editor.level')}>
@@ -446,7 +499,7 @@ function LevelRow() {
           <Chip
             key={level}
             selected={minLevel === level}
-            onClick={() => form.setValue('min_level', level, dirty)}
+            onClick={() => form.setFieldValue('min_level', level)}
           >
             {level === 'any'
               ? t('editor.anyLevel')
@@ -459,43 +512,51 @@ function LevelRow() {
 }
 
 /** How often the alert may notify: a preset, or minutes typed in. */
-function FrequencyRow() {
+function FrequencyRow({ form }: { form: RuleForm }) {
   const t = useTranslations('alerts');
-  const form = useFormContext<AlertRuleFormData>();
-  const cooldown = form.watch('cooldown_minutes');
   return (
-    <Row label={t('editor.frequency')} hint={t('editor.frequencyHint')}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {COOLDOWN_PRESETS.map((minutes) => {
-          const unit = cooldownUnit(minutes);
-          return (
-            <Chip
-              key={minutes}
-              selected={cooldown === minutes}
-              onClick={() => form.setValue('cooldown_minutes', minutes, dirty)}
-            >
-              {unit
-                ? t(`editor.every.${unit.unit}`, { count: unit.value })
-                : t('editor.everyTime')}
-            </Chip>
-          );
-        })}
-        <Input
-          type="number"
-          min={0}
-          aria-label={t('editor.customMinutes')}
-          boxClassName="w-28"
-          action={
-            <span className="pe-2 text-fg-subtle text-meta">
-              {t('ruleDialog.minutesUnit')}
-            </span>
-          }
-          invalid={Boolean(form.formState.errors.cooldown_minutes)}
-          {...form.register('cooldown_minutes', { valueAsNumber: true })}
-        />
-      </div>
-      <FieldError name="cooldown_minutes" />
-    </Row>
+    <form.Field name="cooldown_minutes">
+      {(field) => {
+        const error = fieldErrorText(field.state.meta.errors);
+        return (
+          <Row label={t('editor.frequency')} hint={t('editor.frequencyHint')}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {COOLDOWN_PRESETS.map((minutes) => {
+                const unit = cooldownUnit(minutes);
+                return (
+                  <Chip
+                    key={minutes}
+                    selected={field.state.value === minutes}
+                    onClick={() => field.handleChange(minutes)}
+                  >
+                    {unit
+                      ? t(`editor.every.${unit.unit}`, { count: unit.value })
+                      : t('editor.everyTime')}
+                  </Chip>
+                );
+              })}
+              <Input
+                type="number"
+                min={0}
+                aria-label={t('editor.customMinutes')}
+                boxClassName="w-28"
+                action={
+                  <span className="pe-2 text-fg-subtle text-meta">
+                    {t('ruleDialog.minutesUnit')}
+                  </span>
+                }
+                name={field.name}
+                invalid={Boolean(error)}
+                value={numberValue(field.state.value)}
+                onChange={(e) => field.handleChange(e.target.valueAsNumber)}
+                onBlur={field.handleBlur}
+              />
+            </div>
+            <FieldMessage error={error} />
+          </Row>
+        );
+      }}
+    </form.Field>
   );
 }
 

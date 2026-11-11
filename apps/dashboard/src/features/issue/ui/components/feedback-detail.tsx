@@ -10,7 +10,6 @@ import {
   MuteIcon,
   ResolveIcon,
   Tag,
-  type TagTone,
   Text,
   TimeIcon,
   UnresolveIcon,
@@ -21,13 +20,10 @@ import {
   feedbackSender,
   isWebUrl,
 } from '@/features/issue/model/feedback-mailbox';
+import { STATUS_TONE } from '@/features/issue/model/status';
+import { isInlineImage } from '@/shared/lib/utils';
 import { Link } from '@/shared/ui/components/link';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
-
-const STATUS_TONE: Record<string, TagTone> = {
-  resolved: 'brand',
-  ignored: 'neutral',
-};
 
 /**
  * The reading pane: one feedback in full. Who sent it and the two verbs of
@@ -78,7 +74,7 @@ export function FeedbackDetail({
               <h2 className="truncate text-fg text-title">
                 {sender || t('anonymous')}
               </h2>
-              {STATUS_TONE[feedback.status] ? (
+              {feedback.status !== 'unresolved' ? (
                 <Tag variant="soft" tone={STATUS_TONE[feedback.status]}>
                   {t(`mailbox.${resolved ? 'resolved' : 'spam'}`)}
                 </Tag>
@@ -135,7 +131,7 @@ export function FeedbackDetail({
                 >
                   {/* The server serves only real images inline; anything else
                       downloads, so it gets a link rather than a broken image. */}
-                  {isImage(attachment.content_type) ? (
+                  {isInlineImage(attachment.content_type) ? (
                     <img
                       src={attachmentHref(attachment)}
                       alt={attachment.filename}
@@ -213,13 +209,6 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
       <dt className="text-fg-subtle">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </>
-  );
-}
-
-/** The formats the server serves inline. */
-function isImage(contentType: string) {
-  return ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(
-    contentType,
   );
 }
 

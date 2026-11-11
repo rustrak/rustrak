@@ -16,7 +16,6 @@ import {
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { Link } from '@/shared/ui/components/link';
@@ -27,6 +26,7 @@ import {
 } from '@/shared/ui/components/setting-row';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /** The roles there are, each row leading to its page. */
 export function RolesList({
@@ -103,6 +103,7 @@ const FROM_SCRATCH = 'none';
 /** Name a role, optionally copying another's permissions; edit it next. */
 function NewRoleForm({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
   const t = useTranslations('access');
+  const toastFailure = useToastFailure();
   const router = useRouter();
   const create = useMutation(userMutations.createRole());
   const [name, setName] = useState('');
@@ -126,10 +127,7 @@ function NewRoleForm({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
           onDone();
           router.push(`/settings/roles/${role.id}`);
         },
-        onError: (error) =>
-          toast.error(t('roles.createFailed'), {
-            description: error.error.message,
-          }),
+        onError: (error) => toastFailure(t('roles.createFailed'), error),
       },
     );
   };

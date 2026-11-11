@@ -1,22 +1,16 @@
+import { periodHours } from '@/shared/lib/period';
+
 /**
- * The window and environment the agents dashboard is read through.
- *
- * Portable core: no React, no Next. The page parses search params through
- * here so every widget on it agrees on one window, and so an unparseable
- * param degrades to the default rather than reaching a query.
+ * The window and environment the agents dashboard is read through. The page
+ * parses search params through here so every widget on it agrees on one
+ * window, and so an unparseable param degrades to the default rather than
+ * reaching a query.
  */
 
 /** Selectable windows, as the labels a reader sees. */
 export const AGENT_PERIODS = ['1h', '24h', '7d', '30d'] as const;
 
 type AgentPeriod = (typeof AGENT_PERIODS)[number];
-
-const PERIOD_HOURS: Record<AgentPeriod, number> = {
-  '1h': 1,
-  '24h': 24,
-  '7d': 24 * 7,
-  '30d': 24 * 30,
-};
 
 /**
  * Bucket width for a window, chosen so every chart lands between roughly 24
@@ -83,7 +77,7 @@ export function fillBuckets<T extends { bucket: string }>(
 }
 
 /** The window with no `?period=`; all time is `?period=all`. */
-export const DEFAULT_AGENT_PERIOD: AgentPeriod = '24h';
+const DEFAULT_AGENT_PERIOD: AgentPeriod = '24h';
 
 /** What `?period=` may hold: a window, or all time. */
 export const AGENT_PERIOD_PARAMS = [...AGENT_PERIODS, 'all'] as const;
@@ -121,7 +115,7 @@ export function resolveAgentFilters(params: {
 
   return {
     period,
-    periodHours: period ? PERIOD_HOURS[period] : undefined,
+    periodHours: period ? periodHours(period) : undefined,
     // All-time still needs a bucket width, and it is the widest window there
     // is, so it takes the widest interval.
     intervalHours: period ? PERIOD_INTERVAL_HOURS[period] : 24,
@@ -130,13 +124,24 @@ export function resolveAgentFilters(params: {
 }
 
 /**
- * The span whose details open when a trace is loaded with none selected.
- *
- * The first LLM call, falling back to the first AI span, then to the first
- * span at all — Sentry's own default, and for the same reason: an agent root
- * mostly restates the header, while the first generation is where the prompt
- * and the answer are.
+ * Whether the agents page shows its setup screen. Nothing in the window is
+ * not nothing ever: only when no AI span has ever arrived to name an
+ * environment, or all time is what came back empty.
  */
+export function isNothingYet(
+  summary: { agent_runs: number; llm_calls: number; tool_calls: number },
+  filters: AgentDashboardFilters,
+  environments: string[],
+): boolean {
+  const empty =
+    summary.agent_runs + summary.llm_calls + summary.tool_calls === 0;
+  return (
+    empty &&
+    filters.environment === undefined &&
+    (filters.period === undefined || environments.length === 0)
+  );
+}
+
 /**
  * A sortable instant for a span's start.
  *
@@ -150,6 +155,14 @@ function sortableStart(value: string | null | undefined): number {
   return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
 }
 
+/**
+ * The span whose details open when a trace is loaded with none selected.
+ *
+ * The first LLM call, falling back to the first AI span, then to the first
+ * span at all — Sentry's own default, and for the same reason: an agent root
+ * mostly restates the header, while the first generation is where the prompt
+ * and the answer are.
+ */
 export function defaultSelectedSpanId(
   spans: {
     id: string;

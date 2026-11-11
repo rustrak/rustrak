@@ -11,6 +11,7 @@ import {
   SettingsEmpty,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /** The host a client is published from, which is what a reader recognises. */
 function clientHost(clientId: string): string {
@@ -27,16 +28,14 @@ function clientHost(clientId: string): string {
  */
 export function ConnectedApps() {
   const t = useTranslations('settings');
+  const toastFailure = useToastFailure();
   const format = useFormatter();
   const connections = useQuery(mcpQueries.connections());
   const revocation = useMutation(mcpMutations.revokeConnection());
 
   const revoke = (grant: OAuthGrant) =>
     revocation.mutate(grant.id, {
-      onError: (error) =>
-        toast.error(t('mcp.connected.revokeFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('mcp.connected.revokeFailed'), error),
       onSuccess: () =>
         toast.success(t('mcp.connected.revoked', { name: grant.client_name })),
     });

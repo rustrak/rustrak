@@ -8,7 +8,7 @@
  * Who is signed in is not here: the session is a store (`shared/api/session`).
  */
 import { queryOptions } from '@tanstack/react-query';
-import { projectScope } from '@/shared/api/keys';
+import { invitationEmailStatus, projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 
@@ -49,7 +49,7 @@ export const userQueries = {
   /** Whether the server can send invitation emails. */
   emailStatus: () =>
     queryOptions({
-      queryKey: [...userQueries.invitationsRoot(), 'email-status'],
+      queryKey: invitationEmailStatus(),
       queryFn: ({ signal }) =>
         orThrow(api().invitations.emailStatus({ signal })),
     }),
@@ -68,7 +68,7 @@ export const userQueries = {
   /** The roles a user holds, on the instance and on each project. */
   assignments: (userId: number) =>
     queryOptions({
-      queryKey: ['team', userId, 'assignments'],
+      queryKey: [...userQueries.team().queryKey, userId, 'assignments'],
       queryFn: ({ signal }) =>
         orThrow(api().users.assignments({ path: { id: userId }, signal })),
     }),

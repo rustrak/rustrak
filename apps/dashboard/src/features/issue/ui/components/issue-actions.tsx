@@ -16,23 +16,16 @@ import {
   UnresolveIcon,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import {
-  type ReactNode,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
-import { toast } from 'sonner';
+import { type ReactNode, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
+import { toggleSpam } from '@/features/issue/model/feedback-mailbox';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { DeleteIssuesDialog } from './issues-table/delete-issues-dialog';
-
-/** A failed write, spoken. */
-const toastFailure = (message: string) => (error: Error) =>
-  toast.error(message, { description: error.message });
 
 /**
  * The writes against the issue, spoken on failure. Everything that changes
@@ -41,15 +34,16 @@ const toastFailure = (message: string) => (error: Error) =>
  */
 export function useIssueChange(projectId: number, issue: IssueResponse) {
   const t = useTranslations('issues');
+  const toastFailure = useToastFailure();
   const permissions = usePermissionsLater();
   const update = useMutation(issueMutations.update(projectId));
   const bookmark = useMutation({
     ...issueMutations.bookmark(projectId, issue.id),
-    onError: toastFailure(t('toasts.bookmarkFailed')),
+    onError: (error) => toastFailure(t('toasts.bookmarkFailed'), error),
   });
   const subscribe = useMutation({
     ...issueMutations.subscribe(projectId, issue.id),
-    onError: toastFailure(t('toasts.subscriptionFailed')),
+    onError: (error) => toastFailure(t('toasts.subscriptionFailed'), error),
   });
 
   return {
@@ -60,53 +54,11 @@ export function useIssueChange(projectId: number, issue: IssueResponse) {
     update: (body: UpdateIssueState, failed = t('toasts.updateFailed')) =>
       update.mutate(
         { issueId: issue.id, state: body },
-        { onError: toastFailure(failed) },
+        { onError: (error) => toastFailure(failed, error) },
       ),
     bookmark: () => bookmark.mutate(!issue.is_bookmarked),
     subscribe: () => subscribe.mutate(!issue.is_subscribed),
   };
-}
-
-/**
- * True while a key belongs to something else, when single-key shortcuts stand
- * down: a field being typed in, and a dialog or menu with focus -- an `r` in
- * the delete confirmation must not resolve the issue behind it, and a menu's
- * typeahead must not also run the page's action.
- */
-function typing(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null;
-  return Boolean(
-    element?.closest(
-      'input, textarea, select, [contenteditable="true"], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
-    ),
-  );
-}
-
-/**
- * Single-key shortcuts for the page, Linear-style: off while a field has
- * focus, and never with a modifier other than Shift, so the browser's own
- * shortcuts are untouched.
- */
-export function useShortcuts(keys: Record<string, () => void>) {
-  // The listener is added once and reads the latest keys through this ref,
-  // written after each commit -- never during a render React may discard.
-  const latest = useRef(keys);
-  useLayoutEffect(() => {
-    latest.current = keys;
-  });
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (typing(event.target)) return;
-      const action = latest.current[event.key];
-      if (!action) return;
-      event.preventDefault();
-      action();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 }
 
 interface IssueActionBarProps {
@@ -134,7 +86,9 @@ export function IssueActionBar({
   extra,
 }: IssueActionBarProps) {
   const t = useTranslations('issues');
+  const toastFailure = useToastFailure();
   const router = useRouter();
+  const { copy } = useCopy();
   const { isPending, update, bookmark, subscribe, canUpdate, canDelete } =
     useIssueChange(projectId, issue);
   const [deleting, setDeleting] = useState(false);
@@ -150,14 +104,7 @@ export function IssueActionBar({
     update({ status: resolved ? 'unresolved' : 'resolved' });
   // Plain `ignored`: nothing on the server brings an archived issue back when
   // it escalates yet, so the page does not offer to wait for that.
-  const archive = () =>
-    update(archived ? { status: 'unresolved' } : { status: 'ignored' });
-  const copy = (text: string, done: string) => {
-    navigator.clipboard
-      ?.writeText(text)
-      .then(() => toast.success(done))
-      .catch(() => {});
-  };
+  const archive = () => update(toggleSpam(issue.status));
   const copyLink = () => copy(window.location.href, t('detail.linkCopied'));
 
   // A key pressed again before the first request settles would act on the
@@ -327,7 +274,8 @@ export function IssueActionBar({
               setDeleting(false);
               router.push(`/projects/${projectId}/issues`);
             },
-            onError: toastFailure(t('toasts.deleteOneFailed')),
+            onError: (error) =>
+              toastFailure(t('toasts.deleteOneFailed'), error),
           })
         }
       />

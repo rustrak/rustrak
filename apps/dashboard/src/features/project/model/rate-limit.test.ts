@@ -18,4 +18,12 @@ describe('parseRateLimit', () => {
       expect(parseRateLimit(raw).ok).toBe(false);
     }
   });
+
+  it('rejects a limit above the server limit, which it can only lower', () => {
+    expect(parseRateLimit('20000', 20000)).toEqual({ ok: true, value: 20000 });
+    expect(parseRateLimit('999999', 20000)).toEqual({
+      ok: false,
+      tooHigh: true,
+    });
+  });
 });

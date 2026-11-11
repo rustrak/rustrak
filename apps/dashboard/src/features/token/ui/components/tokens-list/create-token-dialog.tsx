@@ -21,15 +21,17 @@ import {
 } from '@rustrak/ui';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { tokenExpiry } from '@/features/token/model/expiry';
 import { grantable } from '@/shared/lib/permission-matrix';
 import { PermissionEditor } from '@/shared/ui/components/permission-editor';
 import {
   type ProjectOption,
   ProjectsPicker,
 } from '@/shared/ui/components/projects-picker';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
-export const TOKEN_DESCRIPTION_MAX_LENGTH = 200;
+const TOKEN_DESCRIPTION_MAX_LENGTH = 200;
 
 const ALL = 'all';
 const CUSTOM = 'custom';
@@ -49,7 +51,6 @@ export function CreateTokenDialog({
   isPending,
   onCreate,
   onDone,
-  onCopyToken,
   catalog,
   projects,
 }: {
@@ -60,14 +61,13 @@ export function CreateTokenDialog({
   isPending: boolean;
   onCreate: (input: CreateAuthToken) => void;
   onDone: () => void;
-  onCopyToken: () => Promise<boolean>;
   catalog: CatalogResource[];
   projects: ProjectOption[];
 }) {
   const t = useTranslations('tokens');
   const reader = usePermissionsLater();
   const [description, setDescription] = useState('');
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy();
   // `null` is "everything its owner may do" / "every project": the default,
   // and what the server stores when the field is left out.
   const [permissions, setPermissions] = useState<Permission[] | null>(null);
@@ -76,10 +76,12 @@ export function CreateTokenDialog({
 
   const trimmed = description.trim();
   const isValid = trimmed.length <= TOKEN_DESCRIPTION_MAX_LENGTH;
+  const expiry = tokenExpiry(expiresOn);
   // Every way to submit goes through this: the button, and Enter.
   const canSubmit =
     !isPending &&
     isValid &&
+    expiry.ok &&
     permissions?.length !== 0 &&
     projectIds?.length !== 0;
 
@@ -89,10 +91,7 @@ export function CreateTokenDialog({
       description: trimmed || undefined,
       permissions,
       project_ids: projectIds,
-      // The end of the chosen day, in the reader's zone.
-      expires_at: expiresOn
-        ? new Date(`${expiresOn}T23:59:59`).toISOString()
-        : null,
+      expires_at: expiry.ok ? expiry.value : null,
     });
   };
 
@@ -115,12 +114,6 @@ export function CreateTokenDialog({
   const permissionChoices = {
     [ALL]: t('create.allPermissions'),
     [CUSTOM]: t('create.customPermissions'),
-  };
-
-  const copy = async () => {
-    if (!(await onCopyToken())) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -152,7 +145,7 @@ export function CreateTokenDialog({
                   variant="ghost"
                   size="sm"
                   icon={copied ? SelectedIcon : CopyIcon}
-                  onClick={copy}
+                  onClick={() => newToken && copy(newToken)}
                   className="shrink-0"
                   aria-label={t('create.copyTokenLabel')}
                 />
@@ -208,8 +201,15 @@ export function CreateTokenDialog({
                     type="date"
                     value={expiresOn}
                     onChange={(e) => setExpiresOn(e.target.value)}
+                    invalid={!expiry.ok}
                   />
-                  <FieldHint>{t('create.expiresHint')}</FieldHint>
+                  {expiry.ok ? (
+                    <FieldHint>{t('create.expiresHint')}</FieldHint>
+                  ) : (
+                    <p className="text-danger-fg text-meta">
+                      {t('create.expiresInPast')}
+                    </p>
+                  )}
                 </Field>
                 <Field>
                   <FieldLabel>{t('create.permissionsLabel')}</FieldLabel>

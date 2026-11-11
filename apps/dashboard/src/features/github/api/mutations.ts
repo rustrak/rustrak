@@ -11,7 +11,7 @@ import type {
   UpdateProjectRepository,
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
-import { projectScope } from '@/shared/api/keys';
+import { allProjects, projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 import { githubQueries } from './queries';
@@ -33,7 +33,7 @@ export const githubMutations = {
   disconnect: () =>
     mutationOptions({
       mutationFn: () => orThrow(api().github.disconnect()),
-      meta: { invalidates: [githubQueries.root(), ['projects']] },
+      meta: { invalidates: [githubQueries.root(), allProjects()] },
     }),
   /** What every GitHub issue starts with, before a project's own. */
   setIssueTemplate: () =>

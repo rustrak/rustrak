@@ -1,6 +1,7 @@
 import type {
   MonitorsListCheckinsData,
   MonitorsStatsData,
+  Schedule,
 } from '@rustrak/client';
 import { queryOptions } from '@tanstack/react-query';
 import { projectScope } from '@/shared/api/keys';
@@ -8,6 +9,17 @@ import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 
 export const monitorQueries = {
+  /**
+   * The next runs of a schedule. A read, though it is a POST: the server only
+   * parses the schedule. Keyed by value, so going back to a schedule already
+   * previewed asks nothing.
+   */
+  schedulePreview: (body: { schedule: Schedule; timezone: string }) =>
+    queryOptions({
+      queryKey: ['schedule-preview', body],
+      queryFn: ({ signal }) =>
+        orThrow(api().schedules.preview({ body, signal })),
+    }),
   all: (projectId: number) => [...projectScope(projectId), 'monitors'] as const,
   list: (projectId: number) =>
     queryOptions({
