@@ -4,7 +4,6 @@ import { useFormatter, useTranslations } from 'use-intl';
 import {
   deletesAnything,
   removedParts,
-  runStatus,
   type Summary,
 } from '@/features/storage/model/retention';
 import { formatBytes } from '@/shared/lib/utils';
@@ -130,8 +129,7 @@ export function CleanupLine({
       </p>
     );
   }
-  const { last } = runStatus(retention, t);
-  const failed = last?.key === 'status.lastRunFailed';
+  const last = retention.last_run;
   return (
     <div className={cn(ROW, 'space-y-0.5 text-value text-fg')}>
       <p>
@@ -142,11 +140,13 @@ export function CleanupLine({
             })
           : t('overview.scheduling')}
       </p>
-      {failed && last && (
+      {last?.status === 'error' && (
         <p className="text-meta text-danger-fg">
-          {t(last.key, {
-            ...last.values,
-            when: format.relativeTime(new Date(last.at ?? Date.now())),
+          {t('status.lastRunFailed', {
+            error: last.error ?? '',
+            when: format.relativeTime(
+              new Date(last.finished_at ?? last.started_at),
+            ),
           })}
         </p>
       )}

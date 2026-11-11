@@ -19,7 +19,6 @@ import {
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
 import {
@@ -29,6 +28,7 @@ import {
   PRODUCTS,
 } from '@/features/project/model/products';
 import { SettingSection } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 const ICONS: Record<Product, IconComponent> = {
   issues: IssuesIcon,
@@ -69,6 +69,7 @@ export function ProductsSettings({
 }) {
   const t = useTranslations('settings');
   const tNav = useTranslations('projects');
+  const toastFailure = useToastFailure();
   const update = useMutation(projectMutations.update(project.id));
   const [state, setState] = useState<ProductsState>({
     // Grouped as the sidebar shows them (a stable sort keeps the saved order
@@ -99,9 +100,7 @@ export function ProductsSettings({
       {
         onError: (error) => {
           setState(previous);
-          toast.error(t('products.saveFailed'), {
-            description: error.error.message,
-          });
+          toastFailure(t('products.saveFailed'), error);
         },
       },
     );

@@ -1,6 +1,6 @@
 import { projectFiles } from 'archunit';
 import { describe, expect, it } from 'vitest';
-import { isTestFile, withoutComments } from './predicates';
+import { isTestFile, posix, withoutComments } from './predicates';
 
 /**
  * A navigation commits at once, and every page shows its own skeleton while
@@ -39,8 +39,6 @@ import { isTestFile, withoutComments } from './predicates';
  *    is not a query; a redirect that depends on data is a component that
  *    suspends and renders `<Navigate replace />`.
  */
-
-const posix = (path: string) => path.split('\\').join('/');
 
 /** A file the route generator reads: under `routes/`, outside `-` folders. */
 const isRouteFile = (path: string) => {

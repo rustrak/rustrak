@@ -1,16 +1,58 @@
 import type { FieldErrorCode, RustrakError } from '@rustrak/client';
-import type { FieldValues, Path, UseFormReturn } from 'react-hook-form';
+import type { ValidationErrorMap } from '@tanstack/react-form';
 import { describeError, type Translate } from '@/shared/lib/error-copy';
 
 /**
- * The one form-level slot every server failure falls back to.
- *
- * `root.*` names are special in react-hook-form: they are not fields, they hold
- * no value, and they are cleared on the next submit. That is exactly what a
- * server-reported failure needs, and it is why an unattributable failure goes
- * here rather than onto a real field.
+ * Server errors are written under the key the schema validates on
+ * (`revalidateLogic` + `validators.onDynamic`), so the next validation run, the
+ * first edit after a submit or the next submit, replaces them exactly as it
+ * replaces a schema error. Under `onServer` nothing would ever clear them, and
+ * a field holding one blocks every later submit.
  */
-export const SERVER_ERROR_PATH = 'root.serverError';
+const SERVER_ERROR_KEY = 'onDynamic';
+
+/** The two parts of a TanStack `FormApi` this module touches. */
+interface ServerErrorTarget {
+  readonly fieldInfo: Readonly<
+    Record<string, { instance: unknown } | undefined>
+  >;
+  setErrorMap(errorMap: {
+    onDynamic: { form?: string; fields: Record<string, string> };
+  }): void;
+}
+
+/**
+ * Write server errors onto the form: `form` for the form-level slot, `fields`
+ * keyed by field name. Writing `{}` clears both.
+ */
+export function setServerErrors(
+  form: ServerErrorTarget,
+  errors: { form?: string; fields?: Record<string, string> },
+): void {
+  form.setErrorMap({
+    [SERVER_ERROR_KEY]: { form: errors.form, fields: errors.fields ?? {} },
+  });
+  if (errors.fields && Object.keys(errors.fields).length > 0) {
+    focusFirstInvalid();
+  }
+}
+
+/** Once the errors have rendered, take the reader to the first one. */
+export function focusFirstInvalid(root?: ParentNode): void {
+  globalThis.requestAnimationFrame?.(() =>
+    (root ?? document)
+      .querySelector<HTMLElement>('form [aria-invalid="true"]')
+      ?.focus(),
+  );
+}
+
+/** The form-level server message, if one stands. */
+export function serverFormError(
+  errorMap: ValidationErrorMap,
+): string | undefined {
+  const value = errorMap[SERVER_ERROR_KEY];
+  return typeof value === 'string' ? value : undefined;
+}
 
 /**
  * Maps a server field path onto the name this form registers.
@@ -32,22 +74,22 @@ export interface ApplyServerFieldErrorsOptions {
    * `slug` -> `'Slug'` turns `already_exists` into "Slug is already taken."
    */
   readonly labels?: Readonly<Record<string, string>>;
-  /**
-   * Resolves the copy sentences.
-   *
-   * Required, like `describeError`'s. It was optional with an English table
-   * standing in below, which is a second dictionary keyed by the same message
-   * keys as `messages/en.json` and reachable from nowhere: every call site
-   * passes a translator.
-   */
+  /** Resolves the copy sentences. */
   readonly t: Translate;
+  /**
+   * Copy for a code that means something narrower on one **form** field:
+   * `incorrect` on a current password is a wrong password.
+   */
+  readonly messages?: Readonly<
+    Record<string, Partial<Record<FieldErrorCode, string>>>
+  >;
 }
 
 export interface AppliedServerFieldErrors {
   /** Form field names that were marked on their own input. */
   readonly marked: readonly string[];
   /**
-   * The message placed on {@link SERVER_ERROR_PATH}, or `null` when every part
+   * The message placed on the form-level slot, or `null` when every part
    * of the failure landed on an input. A caller that wants a toast should raise
    * one only when this is non-null: a toast beside a marked input is noise.
    */
@@ -55,149 +97,51 @@ export interface AppliedServerFieldErrors {
 }
 
 /**
- * Put a `RustrakError` onto a react-hook-form instance, field by field.
+ * Put a `RustrakError` onto a TanStack form, field by field.
  *
- * **The guard is the point of this function.** `setError('slug', ...)` on a
- * form that has no `slug` input registers an error react-hook-form will never
- * clear on its own: it is not attached to a value, so no keystroke and no
- * re-validation touches it, and only a hand-written `clearErrors()` removes it.
- * The form then refuses to submit with nothing on screen explaining why. So a
- * server field path is marked only when the form actually registers that name;
- * everything else falls through to {@link SERVER_ERROR_PATH}, which is visible,
- * self-clearing, and cannot strand the user.
+ * A server field path is marked only when that field is mounted right now:
+ * an error on a name with no input on screen (the Slack dialog's other tab,
+ * a path the form never renders) would block the next submit with nothing
+ * explaining why. Everything else goes to the form-level slot.
  *
  * Copy comes from `(field, code)`, never from `message`, which is what makes it
- * translatable later. The single exception is `code: 'custom'`, where the code
- * set genuinely cannot express the reason and the server's own text is rendered
- * verbatim; the client already strips a `message` arriving on any other code.
+ * translatable. The exception is `code: 'custom'`, where the code set cannot
+ * express the reason and the server's own text is rendered verbatim.
  */
-export function applyServerFieldErrors<TFieldValues extends FieldValues>(
-  form: UseFormReturn<TFieldValues>,
+export function applyServerFieldErrors(
+  form: ServerErrorTarget,
   error: RustrakError,
-  // No default: `t` is required, so an omitted options object would be an
-  // options object missing it.
   options: ApplyServerFieldErrorsOptions,
 ): AppliedServerFieldErrors {
-  const { map = {}, labels = {}, t } = options;
-
-  // A stale form-level message outliving the failure that caused it reads as a
-  // second, phantom rejection. Clear before writing, not after.
-  form.clearErrors(SERVER_ERROR_PATH as Path<TFieldValues>);
-
+  const { map = {}, labels = {}, t, messages = {} } = options;
   const fields = 'fields' in error ? (error.fields ?? []) : [];
 
-  // `marked` is the ordered result the caller gets back; `markedSet` is the
-  // membership test the loop below does per field. Kept in step by only ever
-  // being written together.
-  const marked: string[] = [];
-  const markedSet = new Set<string>();
+  const marked: Record<string, string> = {};
   const unattributed: string[] = [];
 
   for (const fieldError of fields) {
     const name = map[fieldError.field] ?? fieldError.field;
-    const message = copyFor(
-      fieldError.code,
-      labels[name],
-      fieldError.message,
-      t,
-    );
+    const message =
+      messages[name]?.[fieldError.code] ??
+      copyFor(fieldError.code, labels[name], fieldError.message, t);
 
-    // A second entry for a name already marked cannot go on the same input:
-    // `setError` replaces rather than appends, so the first reason would
-    // vanish and the user would fix one problem only to meet the other on the
-    // next submit. The extra reason goes to the form-level slot instead.
-    if (!canMark(form, name) || markedSet.has(name)) {
+    // One message per input: a second reason for the same field would
+    // replace the first, so it goes to the form-level slot instead.
+    if (!form.fieldInfo[name]?.instance || name in marked) {
       unattributed.push(message);
       continue;
     }
-
-    form.setError(name as Path<TFieldValues>, { type: 'server', message });
-    marked.push(name);
-    markedSet.add(name);
+    marked[name] = message;
   }
 
-  // Nothing named, or nothing nameable: the failure still has to be visible,
-  // and it has to say what actually happened. This used to render a caller-
-  // supplied `fallbackMessage`, which every caller set to the same string it
-  // was already using as the toast title -- so an unreachable API produced a
-  // toast reading "Failed to create project / Failed to create project" and
-  // the user was never told the server was down.
   if (fields.length === 0) {
     unattributed.push(describeError(error, t));
   }
 
-  if (unattributed.length === 0) {
-    return { marked, formLevel: null };
-  }
+  const formLevel = unattributed.length > 0 ? unattributed.join(' ') : null;
+  setServerErrors(form, { form: formLevel ?? undefined, fields: marked });
 
-  const formLevel = unattributed.join(' ');
-  form.setError(SERVER_ERROR_PATH as Path<TFieldValues>, {
-    type: 'server',
-    message: formLevel,
-  });
-
-  return { marked, formLevel };
-}
-
-/**
- * Whether an error on `name` would actually be visible to the user.
- *
- * Two questions, because one is not enough.
- *
- * `control._names.mount` answers "has this name ever been registered". It is
- * **cumulative**: react-hook-form's default `shouldUnregister: false` keeps a
- * name in the set after its input unmounts, so on its own it will happily
- * approve a field that is no longer on screen. That matters here because the
- * Slack dialog puts `webhook_url` and `token` in opposite Radix tabs, which
- * unmount, and marking the hidden one produces exactly the silent dead end
- * this guard exists to prevent: no visible message, no toast, and a Save
- * button that appears to do nothing.
- *
- * So the second question is asked of the DOM: if the field registered a real
- * node, that node has to still be connected. A controlled field (a Radix
- * `Select`, our `PlatformPicker`) registers a plain `{ name }` object with no
- * node, and there is nothing to test, so the mount set is trusted.
- *
- * Both reads are of react-hook-form internals and both are defensive: if a
- * future version changes either shape, this returns `false` and the message
- * routes to {@link SERVER_ERROR_PATH}, which is visible, self-clearing and
- * cannot strand anyone. Losing precision is the right direction to fail in.
- */
-function canMark<TFieldValues extends FieldValues>(
-  form: UseFormReturn<TFieldValues>,
-  name: string,
-): boolean {
-  const control = form.control as {
-    _names?: { mount?: unknown };
-    _fields?: unknown;
-  };
-
-  const mount = control._names?.mount;
-  if (!(mount instanceof Set) || !mount.has(name)) return false;
-
-  const ref = fieldRef(control._fields, name);
-  if (ref instanceof Node) return ref.isConnected;
-
-  return true;
-}
-
-/**
- * The DOM node react-hook-form holds for `name`, if it holds one.
- *
- * Walks the dotted path because `_fields` is nested the way the values are.
- */
-function fieldRef(fields: unknown, name: string): unknown {
-  let node = fields;
-
-  for (const segment of name.split('.')) {
-    if (typeof node !== 'object' || node === null) return undefined;
-    node = (node as Record<string, unknown>)[segment];
-  }
-
-  if (typeof node !== 'object' || node === null) return undefined;
-  const leaf = (node as { _f?: { ref?: unknown } })._f;
-
-  return leaf?.ref;
+  return { marked: Object.keys(marked), formLevel };
 }
 
 /**
@@ -231,5 +175,7 @@ function copyFor(
       return t('formErrors.tooShort', { subject });
     case 'too_long':
       return t('formErrors.tooLong', { subject });
+    case 'incorrect':
+      return t('formErrors.incorrect', { subject });
   }
 }

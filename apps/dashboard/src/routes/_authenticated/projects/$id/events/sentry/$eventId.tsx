@@ -17,9 +17,7 @@ export const Route = createFileRoute(
 )({
   loader: ({ context: { queryClient }, params }) => {
     void queryClient
-      .query(
-        eventQueries.bySentryId(Number.parseInt(params.id, 10), params.eventId),
-      )
+      .query(eventQueries.bySentryId(params.id, params.eventId))
       .catch(noop);
   },
   pendingComponent: EventLoading,
@@ -30,7 +28,7 @@ function SentryEventPage() {
   const t = useTranslations('projectPages');
   const { id, eventId } = Route.useParams();
   const { data: event } = useSuspenseQuery(
-    eventQueries.bySentryId(Number.parseInt(id, 10), eventId),
+    eventQueries.bySentryId(id, eventId),
   );
 
   if (event.issue_id) {

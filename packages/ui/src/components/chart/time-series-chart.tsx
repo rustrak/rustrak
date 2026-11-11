@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts';
 import { ChartLegend, ChartTooltip, XTick, YTick } from './chart-parts';
+import { dataMax, integerTicks, isIsolated } from './chart-scale';
 import { type ChartSeries, seriesColor } from './chart-series';
 
 /**
@@ -42,6 +43,8 @@ export interface TimeSeriesChartProps<TDatum extends Record<string, unknown>> {
   formatY?: (value: number) => string;
   /** Pin the Y scale: `[0, 100]` for a share. Absent, it follows the data. */
   yDomain?: [number, number];
+  /** The values are counts: no `0.4` tick on an axis of whole things. */
+  integer?: boolean;
   /** Names the figure for screen readers; the drawing stays explorable. */
   label: string;
   className?: string;
@@ -56,12 +59,25 @@ export function TimeSeriesChart<TDatum extends Record<string, unknown>>({
   formatX,
   formatY,
   yDomain,
+  integer = false,
   label,
   className,
 }: TimeSeriesChartProps<TDatum>) {
   // Gradient ids are document-global: with several charts on one page a
   // shared id would paint every chart with the first one's gradient.
   const id = useId();
+
+  // Counts get their own evenly spaced whole ticks (see `integerTicks`).
+  const ticks =
+    integer && !yDomain
+      ? integerTicks(
+          dataMax(
+            data,
+            series.map((entry) => entry.key),
+            stacked,
+          ),
+        )
+      : undefined;
 
   return (
     <figure className={className} aria-label={label}>
@@ -108,7 +124,8 @@ export function TimeSeriesChart<TDatum extends Record<string, unknown>>({
             minTickGap={32}
           />
           <YAxis
-            width={40}
+            // Sized to its widest label: a fixed width cut "800 ms" to "00 ms".
+            width="auto"
             axisLine={false}
             tickLine={false}
             tick={
@@ -116,8 +133,9 @@ export function TimeSeriesChart<TDatum extends Record<string, unknown>>({
                 format={formatY ? (value) => formatY(Number(value)) : undefined}
               />
             }
-            tickCount={4}
-            domain={yDomain}
+            {...(ticks
+              ? { ticks, interval: 0, domain: [0, Math.max(...ticks)] }
+              : { tickCount: 4, allowDecimals: !integer, domain: yDomain })}
           />
           <Tooltip
             cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '3 3' }}
@@ -144,8 +162,22 @@ export function TimeSeriesChart<TDatum extends Record<string, unknown>>({
               }
               fillOpacity={stacked ? 0.28 : 1}
               // The dot only exists under the pointer: fifty resting dots
-              // are texture, one active dot is an answer.
-              dot={false}
+              // are texture, one active dot is an answer. A point with no
+              // value on either side draws no line at all, so it gets its dot.
+              dot={(dot: { index: number; cx?: number; cy?: number }) =>
+                isIsolated(data, entry.key, dot.index) ? (
+                  <circle
+                    key={dot.index}
+                    className="recharts-area-dot"
+                    cx={dot.cx}
+                    cy={dot.cy}
+                    r={3.5}
+                    fill={seriesColor(entry, index)}
+                  />
+                ) : (
+                  <g key={dot.index} />
+                )
+              }
               activeDot={{
                 r: 3.5,
                 strokeWidth: 2,

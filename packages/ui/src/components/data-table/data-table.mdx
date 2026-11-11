@@ -114,6 +114,7 @@ import * as DataTableStories from './data-table.stories';
 <Guarantees>
   <Guarantee story="BarAndHeaderStayInSync">The query bar and the column panels are two views of one state; changing either updates the other.</Guarantee>
   <Guarantee story="SortFromHeader">Sorting is manual: the table asks the server and never reorders rows behind its back.</Guarantee>
+  <Guarantee story="MenuItemLeavesRowClosed">Picking an item in a row's menu acts on the row and never also opens it.</Guarantee>
   <Guarantee story="Loading">A loading table keeps its header and its width, so the page does not jump when the rows arrive.</Guarantee>
 </Guarantees>
 

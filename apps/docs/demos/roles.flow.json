@@ -4,15 +4,48 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "button", "name": "New role" } },
-    { "action": "click", "target": { "role": "button", "name": "New role" }, "tooltip": "A role is a named set of permissions you can give to anyone" },
-    { "action": "fill", "target": { "role": "textbox", "name": "Name" }, "value": "Support" },
-    { "action": "click", "target": { "role": "combobox", "name": "Copy permissions from" }, "tooltip": "Start from a role that is close to what you want" },
-    { "action": "click", "target": { "role": "option", "name": "Viewer" }, "hotspot": false },
-    { "action": "click", "target": { "role": "button", "name": "Create role" }, "hotspot": false },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "New role" },
+      "tooltip": "A role is a named set of permissions you can give to anyone"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Name" },
+      "value": "Support"
+    },
+    {
+      "action": "click",
+      "target": { "role": "combobox", "name": "Copy permissions from" },
+      "tooltip": "Start from a role that is close to what you want"
+    },
+    {
+      "action": "click",
+      "target": { "role": "option", "name": "Viewer" },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Create role" },
+      "hotspot": false
+    },
     { "action": "wait", "for": { "role": "tab", "name": "Issues" } },
-    { "action": "click", "target": { "role": "tab", "name": "Issues" }, "tooltip": "Each tab groups permissions and counts the ones that are on" },
-    { "action": "click", "target": { "role": "checkbox", "name": "Issues and events: Edit" }, "tooltip": "Support can read everything and also triage issues", "zoom": 1.8 },
-    { "action": "click", "target": { "role": "button", "name": "Save" }, "tooltip": "Saving reaches everyone who holds the role, and their API tokens" },
+    {
+      "action": "click",
+      "target": { "role": "tab", "name": "Issues" },
+      "tooltip": "Each tab groups permissions and counts the ones that are on"
+    },
+    {
+      "action": "click",
+      "target": { "role": "checkbox", "name": "Issues and events: Edit" },
+      "tooltip": "Support can read everything and also triage issues",
+      "zoom": 1.8
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Save" },
+      "tooltip": "Saving reaches everyone who holds the role, and their API tokens"
+    },
     { "action": "wait", "for": { "text": "Role saved" } },
     { "action": "wait", "ms": 800 }
   ]

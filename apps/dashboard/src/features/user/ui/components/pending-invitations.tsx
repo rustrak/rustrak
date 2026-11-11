@@ -20,6 +20,7 @@ import {
   SettingsEmpty,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface PendingInvitationsProps {
   invitations: InvitationResponse[];
@@ -47,6 +48,7 @@ export function PendingInvitations({
   emailAvailable,
 }: PendingInvitationsProps) {
   const t = useTranslations('user');
+  const toastFailure = useToastFailure();
   const format = useFormatter();
   const revoke = useMutation(userMutations.revokeInvitation());
   const resend = useMutation(userMutations.resendInvitation());
@@ -57,10 +59,7 @@ export function PendingInvitations({
       onSuccess: () => toast.success(t('toast.revoked')),
       // No form here, so there is no input to attach a `fields` entry to;
       // the message is what the row can show.
-      onError: (error) =>
-        toast.error(t('toast.revokeFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('toast.revokeFailed'), error),
     });
   };
 
@@ -73,10 +72,7 @@ export function PendingInvitations({
             email: invitation.email,
           }),
         }),
-      onError: (error) =>
-        toast.error(t('toast.resendFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('toast.resendFailed'), error),
     });
   };
 

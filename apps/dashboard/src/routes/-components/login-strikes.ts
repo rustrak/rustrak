@@ -11,7 +11,7 @@ import {
   type Point,
   rectEdge,
   sampleCurve,
-} from '@/shared/lib/strike-path';
+} from './strike-path';
 
 /**
  * The letters' bodies inside the wordmark's box, as shares of its height: the

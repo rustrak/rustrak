@@ -3,16 +3,49 @@
   "url": "http://localhost:8090/projects",
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
-    { "action": "wait", "for": { "role": "link", "name": "Storefront", "exact": true } },
-    { "action": "click", "target": { "role": "link", "name": "Storefront", "exact": true }, "tooltip": "Each app you monitor is a project. Its card shows the last 24 hours" },
+    {
+      "action": "wait",
+      "for": { "role": "link", "name": "Storefront", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Storefront", "exact": true },
+      "tooltip": "Each app you monitor is a project. Its card shows the last 24 hours"
+    },
     { "action": "wait", "for": { "role": "heading", "name": "Open issues" } },
-    { "action": "scroll", "target": { "role": "heading", "name": "Open issues" } },
-    { "action": "click", "target": { "role": "link", "name": "TypeError: Cannot read properties" }, "tooltip": "Errors with the same cause are one issue: 141 events, one row" },
-    { "action": "wait", "for": { "role": "button", "name": "Resolve", "exact": true } },
-    { "action": "click", "target": { "role": "link", "name": "Stack Trace", "exact": true }, "tooltip": "The stack trace points at the line that failed" },
-    { "action": "click", "target": { "role": "link", "name": "Breadcrumbs", "exact": true }, "tooltip": "Breadcrumbs show what the user did just before" },
-    { "action": "click", "target": { "role": "link", "name": "Context", "exact": true }, "tooltip": "Who hit it: user, browser and OS" },
-    { "action": "click", "target": { "role": "button", "name": "Resolve", "exact": true }, "tooltip": "Resolve it when the fix ships. It reopens if the error comes back" },
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "Open issues" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "TypeError: Cannot read properties" },
+      "tooltip": "Errors with the same cause are one issue: 141 events, one row"
+    },
+    {
+      "action": "wait",
+      "for": { "role": "button", "name": "Resolve", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Stack Trace", "exact": true },
+      "tooltip": "The stack trace points at the line that failed"
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Breadcrumbs", "exact": true },
+      "tooltip": "Breadcrumbs show what the user did just before"
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Context", "exact": true },
+      "tooltip": "Who hit it: user, browser and OS"
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Resolve", "exact": true },
+      "tooltip": "Resolve it when the fix ships. It reopens if the error comes back"
+    },
     { "action": "wait", "for": { "role": "button", "name": "Unresolve" } }
   ]
 }

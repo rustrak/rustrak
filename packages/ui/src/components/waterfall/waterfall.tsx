@@ -193,6 +193,8 @@ export interface WaterfallSpan {
   endMs: number;
   /** Anything other than `ok` or absent reads as failed. */
   status?: string;
+  /** Never sent its end: drawn at its start and labelled, not timed. */
+  unfinished?: boolean;
   /**
    * An AI span's kind as the server classified it (`agent`, `ai_client`,
    * `tool`, `handoff`), which knows more `op` spellings than a prefix does:
@@ -558,8 +560,17 @@ export interface WaterfallProps {
   renderDetail?: (span: WaterfallSpan) => ReactNode;
   /** Surfaces the hatched rows for unclaimed time between siblings. */
   showMissingInstrumentation?: boolean;
+  /** What those rows are called: "missing instrumentation". */
+  missingInstrumentationLabel?: string;
   /** Names the figure: "Waterfall of POST /checkout/summary". */
   label: string;
+  /** Stands for the duration of a span that never ended: "unfinished". */
+  unfinishedLabel: string;
+  /** The empty state's title and line: "No spans", "This trace carries no timing to draw." */
+  noSpansLabel: string;
+  noSpansHint: string;
+  /** Names the column splitter: "Resize the name column". */
+  resizeLabel: string;
   className?: string;
 }
 
@@ -572,7 +583,12 @@ export function Waterfall({
   onSelect,
   renderDetail,
   showMissingInstrumentation = false,
+  missingInstrumentationLabel,
   label,
+  unfinishedLabel,
+  noSpansLabel,
+  noSpansHint,
+  resizeLabel,
   className,
 }: WaterfallProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -630,9 +646,9 @@ export function Waterfall({
         <div className={styles.empty()}>
           <EmptyIcon size="2xl" aria-hidden="true" className="text-fg-ghost" />
           <div className="flex flex-col gap-1">
-            <Text variant="card-title">No spans</Text>
+            <Text variant="card-title">{noSpansLabel}</Text>
             <Text variant="meta" tone="subtle">
-              This trace carries no timing to draw.
+              {noSpansHint}
             </Text>
           </div>
         </div>
@@ -711,7 +727,13 @@ export function Waterfall({
         <div role="tree" aria-label={label}>
           {rows.map((row, rowIndex) =>
             row.kind === 'gap' ? (
-              <GapRow key={row.id} row={row} start={start} total={total} />
+              <GapRow
+                key={row.id}
+                row={row}
+                start={start}
+                total={total}
+                label={missingInstrumentationLabel}
+              />
             ) : (
               <SpanRow
                 key={row.id}
@@ -724,6 +746,7 @@ export function Waterfall({
                 renderDetail={renderDetail}
                 onToggle={row.kind === 'group' ? toggleGroup : toggleCollapsed}
                 moveFocus={moveFocus}
+                unfinishedLabel={unfinishedLabel}
               />
             ),
           )}
@@ -734,7 +757,7 @@ export function Waterfall({
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize the name column"
+          aria-label={resizeLabel}
           aria-valuenow={Math.round(split * 100)}
           aria-valuemin={MIN_SPLIT * 100}
           aria-valuemax={MAX_SPLIT * 100}
@@ -808,10 +831,12 @@ function GapRow({
   row,
   start,
   total,
+  label,
 }: {
   row: Extract<Row, { kind: 'gap' }>;
   start: number;
   total: number;
+  label?: string;
 }) {
   const left = ((row.startMs - start) / total) * 100;
   const width = ((row.endMs - row.startMs) / total) * 100;
@@ -827,7 +852,7 @@ function GapRow({
       <div className={styles.gutter()}>
         <RowGuides guides={row.guides} />
         <span className={styles.pillGap()} />
-        <span className={styles.gapLabel()}>missing instrumentation</span>
+        <span className={styles.gapLabel()}>{label}</span>
       </div>
       <div className={styles.track()}>
         <RowGridlines />
@@ -1000,6 +1025,7 @@ function SpanRow({
   renderDetail,
   onToggle,
   moveFocus,
+  unfinishedLabel,
 }: {
   row: SpanRowData;
   start: number;
@@ -1010,6 +1036,7 @@ function SpanRow({
   renderDetail?: (span: WaterfallSpan) => ReactNode;
   onToggle: (id: string) => void;
   moveFocus: (from: HTMLElement, delta: number | 'home' | 'end') => void;
+  unfinishedLabel: string;
 }) {
   const spans = row.kind === 'group' ? row.spans : [row.span];
   const rowStart = Math.min(...spans.map((s) => s.startMs));
@@ -1110,11 +1137,9 @@ function SpanRow({
         <DurationLabel
           left={left}
           width={width}
-          ms={
-            row.kind === 'group'
-              ? spans.reduce((acc, s) => acc + (s.endMs - s.startMs), 0)
-              : rowEnd - rowStart
-          }
+          ms={spans.reduce((acc, s) => acc + (s.endMs - s.startMs), 0)}
+          unfinished={spans.every((s) => s.unfinished)}
+          unfinishedLabel={unfinishedLabel}
           failed={failed}
         />
       </div>
@@ -1139,11 +1164,16 @@ function DurationLabel({
   left,
   width,
   ms,
+  unfinished,
+  unfinishedLabel,
   failed,
 }: {
   left: number;
   width: number;
   ms: number;
+  unfinished?: boolean;
+  /** Required whenever `unfinished` can be true. */
+  unfinishedLabel?: string;
   failed?: boolean;
 }) {
   const inside = left + width > 82;
@@ -1158,7 +1188,7 @@ function DurationLabel({
       }
       className={styles.duration()}
     >
-      {formatSpanDuration(ms)}
+      {unfinished ? unfinishedLabel : formatSpanDuration(ms)}
     </span>
   );
 }

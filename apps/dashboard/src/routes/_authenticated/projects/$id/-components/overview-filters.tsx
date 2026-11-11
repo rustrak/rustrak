@@ -1,15 +1,16 @@
-import { EnvironmentIcon, ReleaseIcon, TimeIcon } from '@rustrak/ui';
+import { ReleaseIcon } from '@rustrak/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
-import {
-  PERIOD_CHOICES,
-  type PeriodChoice,
-} from '@/features/release/model/session-health';
+import type { PeriodChoice } from '@/shared/lib/period';
 import { scopeActions } from '@/shared/lib/scope-actions';
+import {
+  EnvironmentSegment,
+  PeriodSegment,
+} from '@/shared/ui/components/period-filter';
 import { ScopeBar, ScopeSegment } from '@/shared/ui/components/scope-bar';
 
-export interface FilterChange {
+interface FilterChange {
   period?: PeriodChoice;
   environment?: string;
   release?: string;
@@ -20,6 +21,8 @@ interface OverviewFiltersProps {
   period: PeriodChoice;
   environment?: string;
   release?: string;
+  /** In the skeleton: its choices are not asked for, see `heldReads`. */
+  held?: boolean;
   onChange: (change: FilterChange) => void;
 }
 
@@ -39,29 +42,25 @@ export function OverviewFilters({
   period,
   environment,
   release,
+  held = false,
   onChange,
 }: OverviewFiltersProps) {
   const t = useTranslations('projectPages.overview');
   // A filter's choices are empty while they load or when they fail to: the
   // filter still works, it just has nothing to offer yet.
+  const idle = { enabled: !held, subscribed: !held };
   const environments =
-    useQuery(projectQueries.environments(projectId)).data ?? [];
+    useQuery({ ...projectQueries.environments(projectId), ...idle }).data ?? [];
   const releases =
-    useQuery(projectQueries.releaseVersions(projectId)).data ?? [];
+    useQuery({ ...projectQueries.releaseVersions(projectId), ...idle }).data ??
+    [];
 
   return (
     <ScopeBar>
-      <ScopeSegment
-        icon={EnvironmentIcon}
-        label={environment ?? t('environment')}
-        active={environment !== undefined}
-        actions={scopeActions(
-          environments,
-          environment,
-          t('allEnvironments'),
-          t('noEnvironments'),
-          (value) => onChange({ environment: value }),
-        )}
+      <EnvironmentSegment
+        environments={environments}
+        environment={environment}
+        onChange={(value) => onChange({ environment: value })}
       />
       <ScopeSegment
         icon={ReleaseIcon}
@@ -76,18 +75,9 @@ export function OverviewFilters({
           (value) => onChange({ release: value }),
         )}
       />
-      <ScopeSegment
-        icon={TimeIcon}
-        // The short form: the menu spells it out.
-        label={period === 'all' ? t('periods.allShort') : period}
-        actions={PERIOD_CHOICES.map((value) => ({
-          id: value,
-          label: t(`periods.${value}`),
-          selected: value === period,
-          // All time stands apart: it is the one with nothing to compare to.
-          separated: value === 'all',
-          onSelect: () => onChange({ period: value }),
-        }))}
+      <PeriodSegment
+        period={period}
+        onChange={(value) => onChange({ period: value })}
       />
     </ScopeBar>
   );

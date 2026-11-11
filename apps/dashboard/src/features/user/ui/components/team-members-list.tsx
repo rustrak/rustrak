@@ -19,6 +19,7 @@ import {
   SettingsEmpty,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface TeamMembersListProps {
   members: TeamMemberResponse[];
@@ -48,6 +49,7 @@ export function TeamMembersList({
   canDelete,
 }: TeamMembersListProps) {
   const t = useTranslations('user');
+  const toastFailure = useToastFailure();
   const format = useFormatter();
   const updateRole = useMutation(userMutations.updateUserRole());
   const remove = useMutation(userMutations.removeFromTeam());
@@ -65,14 +67,11 @@ export function TeamMembersList({
             }),
           }),
         // `error.message` rather than copy built from `error.fields`: the
-        // server does name `role` here, but there is no react-hook-form on
+        // server does name `role` here, but there is no form on
         // this list to bind that to, and its own sentence ("Cannot demote
         // the last admin") is far more use in a toast than "Role is not
         // valid." would be.
-        onError: (error) =>
-          toast.error(t('toast.roleUpdateFailed'), {
-            description: error.error.message,
-          }),
+        onError: (error) => toastFailure(t('toast.roleUpdateFailed'), error),
       },
     );
   };
@@ -89,10 +88,7 @@ export function TeamMembersList({
     remove.mutate(member.id, {
       onSuccess: () =>
         toast.success(t('toast.removed'), { description: member.email }),
-      onError: (error) =>
-        toast.error(t('toast.removeFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('toast.removeFailed'), error),
     });
   };
 

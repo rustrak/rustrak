@@ -1,6 +1,4 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { filledCredentials } from '@/features/alert/lib/credentials';
 import {
@@ -10,7 +8,7 @@ import {
   emailFormSchema,
 } from '@/features/alert/model/integration-forms';
 import { useIntegrationSubmit } from '@/features/alert/ui/hooks/use-integration-submit';
-import { Form } from '@/shared/ui/components/form';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { SettingSection } from '@/shared/ui/components/setting-row';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
@@ -44,9 +42,11 @@ export function EmailForm({
   );
 
   const schema = useMemo(() => emailFormSchema(t), [t]);
-  const form = useForm<EmailFormData>({
-    resolver: zodResolver(schema),
+  const form = useAppForm({
     defaultValues: emailDefaults(existingIntegration),
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: schema },
+    onSubmit: ({ value }) => submit(value),
   });
 
   const { submit, isPending } = useIntegrationSubmit<EmailFormData>({
@@ -82,42 +82,57 @@ export function EmailForm({
   const isLoading = isPending || parentPending;
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(submit)}>
+    <form.AppForm>
+      <form.Form>
         <SettingSection title={t('page.general')}>
-          <NameField<EmailFormData>
-            placeholder={t('email.namePlaceholder')}
-            disabled={isLoading}
-          />
-          <EnabledField<EmailFormData> disabled={isLoading} />
+          <form.AppField name="name">
+            {() => (
+              <NameField
+                placeholder={t('email.namePlaceholder')}
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="is_enabled">
+            {() => <EnabledField disabled={isLoading} />}
+          </form.AppField>
         </SettingSection>
 
         <SettingSection
           title={t('page.server')}
           description={t('email.description')}
         >
-          <TextInputField<EmailFormData>
-            name="smtp_host"
-            label={t('email.hostLabel')}
-            placeholder={t('email.hostPlaceholder')}
-            disabled={isLoading}
-          />
-          <TextInputField<EmailFormData>
-            name="smtp_port"
-            label={t('email.portLabel')}
-            placeholder={t('email.portPlaceholder')}
-            description={t('page.portDescription')}
-            numeric
-            disabled={isLoading}
-          />
-          <TextInputField<EmailFormData>
-            name="from_address"
-            label={t('email.fromLabel')}
-            placeholder={t('email.fromPlaceholder')}
-            description={t('page.fromDescription')}
-            type="email"
-            disabled={isLoading}
-          />
+          <form.AppField name="smtp_host">
+            {() => (
+              <TextInputField
+                label={t('email.hostLabel')}
+                placeholder={t('email.hostPlaceholder')}
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="smtp_port">
+            {() => (
+              <TextInputField
+                label={t('email.portLabel')}
+                placeholder={t('email.portPlaceholder')}
+                description={t('page.portDescription')}
+                numeric
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="from_address">
+            {() => (
+              <TextInputField
+                label={t('email.fromLabel')}
+                placeholder={t('email.fromPlaceholder')}
+                description={t('page.fromDescription')}
+                type="email"
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
           {existingIntegration ? (
             <TestRow
               hint={t('email.testHintExisting')}
@@ -136,19 +151,25 @@ export function EmailForm({
           title={t('page.authentication')}
           description={t('page.authenticationDescription')}
         >
-          <TextInputField<EmailFormData>
-            name="smtp_username"
-            label={t('email.usernameLabel')}
-            placeholder={t('email.usernamePlaceholder')}
-            disabled={isLoading}
-          />
-          <TextInputField<EmailFormData>
-            name="smtp_password"
-            label={t('email.passwordLabel')}
-            placeholder={t('email.passwordPlaceholder')}
-            type="password"
-            disabled={isLoading}
-          />
+          <form.AppField name="smtp_username">
+            {() => (
+              <TextInputField
+                label={t('email.usernameLabel')}
+                placeholder={t('email.usernamePlaceholder')}
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="smtp_password">
+            {() => (
+              <TextInputField
+                label={t('email.passwordLabel')}
+                placeholder={t('email.passwordPlaceholder')}
+                type="password"
+                disabled={isLoading}
+              />
+            )}
+          </form.AppField>
         </SettingSection>
 
         {existingIntegration ? (
@@ -165,8 +186,9 @@ export function EmailForm({
           }
           isLoading={isLoading}
           onCancel={() => onOpenChange(false)}
+          error={<form.RootError />}
         />
-      </form>
-    </Form>
+      </form.Form>
+    </form.AppForm>
   );
 }

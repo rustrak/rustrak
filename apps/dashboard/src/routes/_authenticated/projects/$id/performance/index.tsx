@@ -3,33 +3,32 @@ import type {
   TransactionsGetStatsData,
   TransactionsGetStatsResponse,
 } from '@rustrak/client';
-import {
-  type DataTableQuery,
-  EmptyIcon,
-  type FilterVariants,
-  Page,
-  PageHeader,
-  parseTableQuery,
-  Skeleton,
-  serializeTableQuery,
-  Text,
-} from '@rustrak/ui';
+import { type FilterVariants, Page, PageHeader, Skeleton } from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
-import {
-  DEFAULT_PERIOD,
-  PERIOD_CHOICES,
-  type PeriodChoice,
-} from '@/features/release/model/session-health';
-import { PeriodFilter } from '@/features/release/ui/components/period-filter';
 import { transactionQueries } from '@/features/transaction/api/queries';
 import { endpointHref } from '@/features/transaction/model/endpoints';
 import { EndpointsTable } from '@/features/transaction/ui/components/endpoints-table';
-import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import {
+  apiPeriod,
+  DEFAULT_PERIOD,
+  PERIOD_CHOICES,
+  type PeriodChoice,
+  periodParam,
+} from '@/shared/lib/period';
+import { searchOneOf } from '@/shared/lib/search-params';
+import {
+  filterValue,
+  pageBeyondEnd,
+  type TableSearch,
+  tableSearch,
+} from '@/shared/lib/table-search';
+import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { PeriodFilter } from '@/shared/ui/components/period-filter';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 const PAGE_SIZE = 25;
@@ -42,72 +41,43 @@ type StatsSort = NonNullable<
 >;
 const SORTS: StatsSort[] = ['time_spent', 'count', 'avg', 'failure_rate'];
 
-/** The search as the table's codecs write it, and the window. */
-interface PerformanceSearch {
-  q?: string;
-  sort?: string;
-  page?: string;
-  per?: string;
+interface PerformanceSearch extends TableSearch {
   period?: PeriodChoice;
 }
 
-function tableQuery(search: PerformanceSearch): DataTableQuery {
-  const params = new URLSearchParams();
-  for (const key of ['q', 'sort', 'page', 'per'] as const) {
-    const value = search[key];
-    if (value) params.set(key, value);
-  }
-  const query = parseTableQuery(params, VARIANTS, PAGE_SIZE);
-  // The API reads one environment: a typed `environment:a,b` keeps its first,
-  // so the bar never names one the table is not showing.
-  for (const filter of query.filters) {
-    if (filter.id === 'environment' && Array.isArray(filter.value)) {
-      filter.value = filter.value.slice(0, 1);
-    }
-  }
+const table = tableSearch({
+  variants: VARIANTS,
+  pageSize: PAGE_SIZE,
+  // The API ranks by one known column, always from the most down, and reads
+  // one environment: a typed `environment:a,b` keeps its first, so the bar
+  // never names one the table is not showing.
+  normalise: (query) => ({
+    ...query,
+    sorting: query.sorting
+      .filter((s) => SORTS.includes(s.id as StatsSort))
+      .slice(0, 1)
+      .map((s) => ({ ...s, desc: true })),
+    filters: query.filters.map((filter) =>
+      filter.id === 'environment' && Array.isArray(filter.value)
+        ? { ...filter, value: filter.value.slice(0, 1) }
+        : filter,
+    ),
+  }),
   // The ranking the page is about, shown as the sort it is.
-  if (query.sorting.length === 0) {
-    query.sorting = [{ id: 'time_spent', desc: true }];
-  }
-  return query;
-}
+  defaultSort: { id: 'time_spent', desc: true },
+});
 
 function statsParams(
   search: PerformanceSearch,
 ): NonNullable<TransactionsGetStatsData['query']> {
-  const query = tableQuery(search);
-  const period = search.period ?? DEFAULT_PERIOD;
-  const environment = query.filters.find((f) => f.id === 'environment')?.value;
-  const sort = query.sorting[0]?.id as StatsSort | undefined;
+  const query = table.read(search);
   return {
-    environment: Array.isArray(environment)
-      ? (environment[0] ?? undefined)
-      : undefined,
+    environment: filterValue(query, 'environment'),
     query: query.search || undefined,
-    period: period === 'all' ? undefined : period,
-    sort: sort && SORTS.includes(sort) ? sort : undefined,
+    period: apiPeriod(search.period ?? DEFAULT_PERIOD),
+    sort: query.sorting[0]?.id as StatsSort,
     page: query.pagination.pageIndex + 1,
     per_page: query.pagination.pageSize,
-  };
-}
-
-/** The address of a table query: every ranking from the most down, and the
- * default one left out. */
-function searchFor(
-  updated: DataTableQuery,
-): Pick<PerformanceSearch, 'q' | 'sort' | 'page' | 'per'> {
-  const next = {
-    ...updated,
-    sorting: updated.sorting.map((s) => ({ ...s, desc: true })),
-  };
-  const params = serializeTableQuery(next, VARIANTS, PAGE_SIZE);
-  const ranking = next.sorting[0]?.id;
-  return {
-    q: params.get('q') ?? undefined,
-    sort:
-      ranking === 'time_spent' ? undefined : (params.get('sort') ?? undefined),
-    page: params.get('page') ?? undefined,
-    per: params.get('per') ?? undefined,
   };
 }
 
@@ -115,16 +85,12 @@ export const Route = createFileRoute(
   '/_authenticated/projects/$id/performance/',
 )({
   validateSearch: (search: Record<string, unknown>): PerformanceSearch => ({
-    q: searchString(search.q),
-    sort: searchString(search.sort),
-    page: searchString(String(search.page ?? '')) || undefined,
-    per: searchString(String(search.per ?? '')) || undefined,
+    ...table.validate(search),
     period: searchOneOf(search.period, PERIOD_CHOICES),
   }),
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    const projectId = params.id;
     void queryClient
       .query(transactionQueries.stats(projectId, statsParams(deps)))
       .catch(noop);
@@ -140,14 +106,27 @@ export const Route = createFileRoute(
  * the rows on screen, dimmed, until the next page is in.
  */
 function PerformancePage() {
-  const { id } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId } = Route.useParams();
   const live = Route.useSearch();
   const search = useDeferredValue(live);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: page } = useSuspenseQuery(
     transactionQueries.stats(projectId, statsParams(search)),
   );
+  const last = pageBeyondEnd(
+    table.read(search).pagination.pageIndex + 1,
+    page.total_pages,
+  );
+  if (search === live && last !== false) {
+    return (
+      <Navigate
+        to="/projects/$id/performance"
+        params={{ id: projectId }}
+        search={{ ...search, page: last }}
+        replace
+      />
+    );
+  }
   return (
     <PerformanceScreen
       project={project}
@@ -157,7 +136,6 @@ function PerformancePage() {
   );
 }
 
-/** The same screen, with the project's facts and the rows still to come. */
 function PerformanceLoading() {
   return (
     <PageLoading>
@@ -177,21 +155,22 @@ function PerformanceScreen({
 }) {
   const t = useTranslations('performance');
   const tPages = useTranslations('projectPages');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(id, 10);
-  const query = tableQuery(search);
+  const query = table.read(search);
   const period = search.period ?? DEFAULT_PERIOD;
-  const { environment } = statsParams(search);
-  const scope = {
-    period: period === 'all' ? undefined : period,
-    environment: environment ?? undefined,
-  };
+  const environment = filterValue(query, 'environment');
 
   // What the bar can suggest: none while they load or when they fail.
+  // The skeleton reads nothing: an observer that unmounts mid-flight cancels
+  // the loader's request, and the page would ask again.
   const environments =
-    useQuery(projectQueries.environments(projectId)).data ?? [];
+    useQuery({
+      ...projectQueries.environments(projectId),
+      enabled: !!project,
+      subscribed: !!project,
+    }).data ?? [];
 
   const router = useRouter();
 
@@ -231,7 +210,7 @@ function PerformanceScreen({
                   // reads a missing one as the default, not as all time.
                   {
                     period: search.period,
-                    environment: scope.environment,
+                    environment,
                   },
                 ),
               )
@@ -240,7 +219,7 @@ function PerformanceScreen({
               navigate({
                 search: (prev) => ({
                   ...prev,
-                  ...searchFor(updater(query)),
+                  ...table.write(updater(query)),
                 }),
               })
             }
@@ -251,7 +230,7 @@ function PerformanceScreen({
                   navigate({
                     search: (prev) => ({
                       ...prev,
-                      period: next === DEFAULT_PERIOD ? undefined : next,
+                      period: periodParam(next),
                       page: undefined,
                     }),
                   })
@@ -269,14 +248,11 @@ function PerformanceScreen({
 function NoTransactions() {
   const t = useTranslations('performance');
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 px-page-gutter py-16 text-center">
-      <EmptyIcon size="xl" className="mb-2 text-fg-ghost" />
-      <Text variant="body">{t('empty.title')}</Text>
-      <Text variant="meta" tone="subtle" className="max-w-md">
-        {t.rich('empty.description', {
-          code: (chunks) => <code className="font-mono">{chunks}</code>,
-        })}
-      </Text>
-    </div>
+    <EmptyState
+      title={t('empty.title')}
+      description={t.rich('empty.description', {
+        code: (chunks) => <code className="font-mono">{chunks}</code>,
+      })}
+    />
   );
 }

@@ -1,8 +1,7 @@
 /**
  * Reading the `gen_ai.*` attribute bag a span carries.
  *
- * Portable core: no React, no Next. Every function here takes the flat
- * attribute object `spans.get()` returns and answers one question about it.
+ * Every function here takes the flat attribute object `spans.get()` returns and answers one question about it.
  *
  * Two conventions coexist in the wild and both are read wherever they differ.
  * Relay dropped the `.cached` / `.reasoning` attribute spellings (only

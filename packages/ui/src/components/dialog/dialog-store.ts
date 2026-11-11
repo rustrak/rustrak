@@ -1,5 +1,11 @@
-import type { ComponentType } from 'react';
+import { type ComponentType, createContext } from 'react';
 import type { DialogSize } from './dialog';
+
+/**
+ * The dismiss cross's accessible name, in the reader's language. The app
+ * hands it to `DialogProvider`; English only stands in without one.
+ */
+export const DialogCloseLabel = createContext('Close');
 
 /**
  * How modals open.
@@ -205,11 +211,4 @@ export function createDialog<Props = Record<string, never>, Result = void>(
       }
     },
   };
-}
-
-/** Closes every open modal. On navigation, for example. */
-export function closeAllDialogs() {
-  for (const entry of entries) {
-    close(entry.id, undefined);
-  }
 }

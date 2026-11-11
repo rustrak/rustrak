@@ -20,12 +20,8 @@ import {
  * failure sends a signed-in user to a login form that cannot help: logging in
  * issues the same request, which fails the same way, and they bounce again.
  *
- * Every line comes from `kind`. It used to assert an outage unconditionally --
- * heading "Rustrak is not responding", footer "reload once the API is back" --
- * which is right for `network` and `server_error` and wrong for the eleven
- * other kinds that reach it. A `forbidden` was told to wait for a server that
- * was already answering, and an `invalid_response` from a dashboard deployed
- * ahead of its API was told to reload, which can never fix a schema mismatch.
+ * Every line comes from `kind`: only `network` and `server_error` are an
+ * outage, and telling a `forbidden` to wait for the server would be wrong.
  */
 export function ServiceUnavailable({
   error,

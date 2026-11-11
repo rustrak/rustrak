@@ -2,7 +2,7 @@ import {
   PLATFORM_DOCS,
   PLATFORM_SNIPPETS,
   renderSnippet,
-} from '@/shared/config/platform-snippets';
+} from './platform-snippets';
 
 /** The generic example for a project that has never named a platform. */
 const browserExample = (

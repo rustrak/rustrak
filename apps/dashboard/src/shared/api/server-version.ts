@@ -1,6 +1,3 @@
-/**
- * The instance version, read by the About page and by the update check.
- */
 import { queryOptions } from '@tanstack/react-query';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';

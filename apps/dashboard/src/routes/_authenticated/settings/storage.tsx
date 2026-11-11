@@ -39,13 +39,8 @@ export const Route = createFileRoute('/_authenticated/settings/storage')({
 
 function StoragePage() {
   const t = useTranslations('settings');
-  // Resolved by the gate above. The "we could not ask" branch that used to sit
-  // between these two is `_authenticated`'s now: telling a visitor "Not
-  // authorized" when the truth is "we could not reach the API to find out" is
-  // a lie about their permissions, and it is told in one place or none.
   const permissions = usePermissions();
 
-  // Guard: storage usage and cleanup need `storage:read`.
   if (!permissions.can('storage', 'read')) {
     return (
       <>

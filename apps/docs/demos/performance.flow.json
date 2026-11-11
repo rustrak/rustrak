@@ -4,11 +4,26 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "text": "POST /api/orders" } },
-    { "action": "click", "target": { "text": "POST /api/orders" }, "tooltip": "Endpoints are sorted by time spent: the costliest is on top" },
-    { "action": "wait", "for": { "role": "heading", "name": "Slowest samples" } },
-    { "action": "click", "target": { "css": "main table tbody a", "nth": 0 }, "tooltip": "p50, p95 and failures over time. Open one of the slowest calls" },
+    {
+      "action": "click",
+      "target": { "text": "POST /api/orders" },
+      "tooltip": "Endpoints are sorted by time spent: the costliest is on top"
+    },
+    {
+      "action": "wait",
+      "for": { "role": "heading", "name": "Slowest samples" }
+    },
+    {
+      "action": "click",
+      "target": { "css": "main table tbody a", "nth": 0 },
+      "tooltip": "p50, p95 and failures over time. Open one of the slowest calls"
+    },
     { "action": "wait", "for": { "role": "tree" } },
-    { "action": "click", "target": { "text": "UPDATE stock_item SET reserved", "exact": true }, "tooltip": "The waterfall shows where the time went. This query is the slowest part" },
+    {
+      "action": "click",
+      "target": { "text": "UPDATE stock_item SET reserved", "exact": true },
+      "tooltip": "The waterfall shows where the time went. This query is the slowest part"
+    },
     { "action": "wait", "ms": 1000 }
   ]
 }

@@ -204,6 +204,8 @@ describe('waterfallSpans', () => {
         status: undefined,
         // What the server classified it as, which the colour follows.
         operationType: 'agent',
+        unfinished: false,
+        selfMs: 1000,
       },
       {
         id: 'row-llm',
@@ -214,9 +216,11 @@ describe('waterfallSpans', () => {
         endMs: Date.parse('2026-01-01T00:00:01.500Z'),
         status: 'internal_error',
         operationType: 'ai_client',
+        unfinished: false,
+        selfMs: 1000,
       },
-      // No time at all: kept, with no width, at the trace's start, so it
-      // can still be opened.
+      // No time at all: kept, unfinished, at the trace's start, so it can
+      // still be opened.
       {
         id: 'row-untimed',
         parentId: null,
@@ -226,6 +230,8 @@ describe('waterfallSpans', () => {
         endMs: Date.parse('2026-01-01T00:00:00.000Z'),
         status: undefined,
         operationType: undefined,
+        unfinished: true,
+        selfMs: 0,
       },
     ]);
   });
@@ -249,6 +255,7 @@ describe('waterfallSpans', () => {
       parentId: 'row-agent',
       startMs: Date.parse('2026-01-01T00:00:01.000Z'),
       endMs: Date.parse('2026-01-01T00:00:01.000Z'),
+      unfinished: true,
     });
   });
 });

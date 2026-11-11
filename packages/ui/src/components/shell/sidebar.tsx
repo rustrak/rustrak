@@ -90,6 +90,8 @@ export interface SidebarProps extends ComponentPropsWithoutRef<'nav'> {
   header?: ReactNode;
   /** Pinned to the bottom: settings, docs and the account. */
   footer?: ReactNode;
+  /** Names the landmark, in the reader's language: "Main navigation". */
+  'aria-label': string;
 }
 
 export function Sidebar({
@@ -103,7 +105,6 @@ export function Sidebar({
 
   return (
     <nav
-      aria-label="Main navigation"
       data-collapsed={collapsed || undefined}
       data-drawer-open={drawerOpen || undefined}
       data-switching={switching || undefined}
@@ -140,6 +141,10 @@ export interface SidebarBrandProps
    * first row says where you are rather than what the product is called.
    */
   switcher?: ReactNode;
+  /** The toggle's name while the sidebar is open: "Collapse sidebar". */
+  collapseLabel: string;
+  /** The toggle's name on the rail: "Expand sidebar". */
+  expandLabel: string;
 }
 
 /**
@@ -154,10 +159,12 @@ export function SidebarBrand({
   className,
   render,
   switcher,
+  collapseLabel,
+  expandLabel,
   ...props
 }: SidebarBrandProps) {
   const { collapsed, toggle } = useSidebar();
-  const toggleLabel = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  const toggleLabel = collapsed ? expandLabel : collapseLabel;
 
   const mark = useRender({
     defaultTagName: 'a',
@@ -763,6 +770,8 @@ export interface SidebarUserProps {
   actions: MenuAction[];
   /** The build. Not an action: it is what you read out over the phone. */
   version?: string;
+  /** The trigger's accessible name, in the reader's language: "Account: ana@…". */
+  label: string;
 }
 
 /**
@@ -779,6 +788,7 @@ export function SidebarUser({
   src,
   actions,
   version,
+  label: triggerLabel,
 }: SidebarUserProps) {
   const { collapsed } = useSidebar();
 
@@ -791,7 +801,7 @@ export function SidebarUser({
         trigger={
           <button
             type="button"
-            aria-label={`Account: ${name}`}
+            aria-label={triggerLabel}
             className={userStyles.trigger()}
           >
             <Avatar name={name} src={src} />

@@ -91,10 +91,15 @@ function Harness({
   return (
     <div className="w-full max-w-260 rounded-xl border border-border-subtle bg-surface pb-3">
       <Waterfall
+        unfinishedLabel="unfinished"
+        noSpansLabel="No spans"
+        noSpansHint="This trace carries no timing to draw."
+        resizeLabel="Resize the name column"
         spans={spans}
         selectedId={selected?.id ?? null}
         onSelect={setSelected}
         showMissingInstrumentation={showMissingInstrumentation}
+        missingInstrumentationLabel="missing instrumentation"
         label="Waterfall of POST /checkout/summary"
         renderDetail={(span) => (
           <dl
@@ -375,8 +380,13 @@ const OVERLAPPING: WaterfallSpan[] = [
 export const OverlappingSiblings: Story = {
   render: () => (
     <Waterfall
+      unfinishedLabel="unfinished"
+      noSpansLabel="No spans"
+      noSpansHint="This trace carries no timing to draw."
+      resizeLabel="Resize the name column"
       spans={OVERLAPPING}
       showMissingInstrumentation
+      missingInstrumentationLabel="missing instrumentation"
       label="Waterfall of GET /report"
     />
   ),
@@ -399,7 +409,16 @@ export const OverlappingSiblings: Story = {
  * ruler out of the infinities an empty min and max produce.
  */
 export const EmptyTrace: Story = {
-  render: () => <Waterfall spans={[]} label="Waterfall of GET /health" />,
+  render: () => (
+    <Waterfall
+      spans={[]}
+      label="Waterfall of GET /health"
+      unfinishedLabel="unfinished"
+      noSpansLabel="No spans"
+      noSpansHint="This trace carries no timing to draw."
+      resizeLabel="Resize the name column"
+    />
+  ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 

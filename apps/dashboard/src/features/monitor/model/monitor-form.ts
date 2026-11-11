@@ -8,9 +8,9 @@ import { z } from 'zod';
 import type { Translate } from '@/shared/lib/error-copy';
 
 /** Server limits (apps/server/src/models/monitor.rs). */
-export const MAX_MARGIN = 40_320;
-export const MAX_RUNTIME = 10_080;
-export const MAX_THRESHOLD = 720;
+const MAX_MARGIN = 40_320;
+const MAX_RUNTIME = 10_080;
+const MAX_THRESHOLD = 720;
 
 /** What the monitor form collects. */
 export function monitorFormSchema(t: Translate) {

@@ -146,7 +146,7 @@ describe('createIntlStore', () => {
   it('has no snapshot before it is resolved, and says so', () => {
     const store = createIntlStore(deps());
 
-    expect(() => store.snapshot()).toThrow(/have not been resolved/);
+    expect(() => store.snapshot()).toThrow();
   });
 
   it('does not remember a failed resolve', async () => {

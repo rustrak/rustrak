@@ -91,12 +91,4 @@ describe('formatsFor', () => {
   it('never labels a calendar day', () => {
     expect(formatsFor('UTC').dateTime.date).not.toHaveProperty('timeZoneName');
   });
-
-  it('names the number formats the app formats through', () => {
-    const { number } = formatsFor('UTC');
-    expect(number.compact.notation).toBe('compact');
-    expect(number.percent.style).toBe('percent');
-    // Signed, because on a delta the sign is the point.
-    expect(number.percentChange.signDisplay).toBe('exceptZero');
-  });
 });

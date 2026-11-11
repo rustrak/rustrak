@@ -1,3 +1,4 @@
+import { ChartLegend, type ChartSeries, ChartTooltip } from '@rustrak/ui';
 import { useMemo } from 'react';
 // react-doctor-disable-next-line react-doctor/prefer-dynamic-import
 import {
@@ -16,12 +17,6 @@ import {
   type Kind,
 } from '@/features/storage/model/retention';
 import { formatBytes } from '@/shared/lib/utils';
-import {
-  ChartLegend,
-  ChartTooltipCaption,
-  ChartTooltipRow,
-  ChartTooltipSurface,
-} from '@/shared/ui/components/chart-tooltip';
 
 /** Fixed categorical slots, in order: the colour follows the kind. */
 const COLOR: Record<Kind, string> = {
@@ -65,14 +60,14 @@ function AxisTick({
  * deletes is the hatched part of each bar, so the chart answers "what is
  * big, how old is it, and what goes" at once.
  */
-export function AgeChart({
-  buckets,
-  kinds,
-}: {
-  buckets: readonly AgeBucket[];
-  kinds: readonly Kind[];
-}) {
+export function AgeChart({ buckets }: { buckets: readonly AgeBucket[] }) {
   const t = useTranslations('storage');
+  const kinds = KINDS;
+  const series: ChartSeries[] = kinds.map((k) => ({
+    key: k,
+    label: t(`kind.${k}`),
+    color: COLOR[k],
+  }));
   const labels = buckets.map((_, i) => t(`age.bucket${i}`));
   const data = useMemo(
     () =>
@@ -89,8 +84,8 @@ export function AgeChart({
   const anyGoes = buckets.some((b) => kinds.some((k) => b.goes[k] > 0));
   const empty = !buckets.some((b) => kinds.some((k) => b[k] > 0));
   const Tip = useMemo(
-    () => makeTooltip(buckets, kinds, labels, t),
-    [buckets, kinds, labels, t],
+    () => makeTooltip(buckets, labels, series, t('age.goes')),
+    [buckets, labels, series, t],
   );
 
   if (empty) {
@@ -182,9 +177,7 @@ export function AgeChart({
         </BarChart>
       </ResponsiveContainer>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <ChartLegend
-          items={kinds.map((k) => ({ label: t(`kind.${k}`), color: COLOR[k] }))}
-        />
+        <ChartLegend series={series} />
         {anyGoes && (
           <span className="flex items-center gap-1.5 text-hint text-fg-subtle">
             {/* Neutral: the hatch means "goes" whatever the kind. */}
@@ -249,39 +242,41 @@ export function AgeChart({
   );
 }
 
+/**
+ * Per kind, the bucket's whole size rather than its kept and going halves as
+ * two rows each; what goes is one line under them.
+ */
 function makeTooltip(
   buckets: readonly AgeBucket[],
-  kinds: readonly Kind[],
   labels: readonly string[],
-  t: (key: string, values?: Record<string, string | number>) => string,
+  series: ChartSeries[],
+  goesLabel: string,
 ) {
   return function AgeTooltip(props: {
     active?: boolean;
     payload?: Array<{ payload: { label: string } }>;
   }) {
     const { active, payload } = props;
-    if (!active || !payload?.length) return null;
-    const label = payload[0]?.payload.label ?? '';
+    const label = payload?.[0]?.payload.label ?? '';
     const bucket = buckets[labels.indexOf(label)];
-    if (!bucket) return null;
-    const goes = kinds.reduce((s, k) => s + bucket.goes[k], 0);
+    if (!active || !bucket) return null;
+    const goes = KINDS.reduce((s, k) => s + bucket.goes[k], 0);
+    const rows = [
+      ...(goes > 0
+        ? [{ dataKey: 'goes', value: goes, color: 'var(--fg-meta)' }]
+        : []),
+      ...[...KINDS]
+        .reverse()
+        .map((k) => ({ dataKey: k, value: bucket[k], color: COLOR[k] })),
+    ];
     return (
-      <ChartTooltipSurface>
-        <p className="mb-1 font-medium text-fg">{label}</p>
-        {kinds.map((k) => (
-          <ChartTooltipRow
-            key={k}
-            color={COLOR[k]}
-            label={t(`kind.${k}`)}
-            value={formatBytes(bucket[k])}
-          />
-        ))}
-        {goes > 0 && (
-          <ChartTooltipCaption>
-            {t('age.goesInBucket', { size: formatBytes(goes) })}
-          </ChartTooltipCaption>
-        )}
-      </ChartTooltipSurface>
+      <ChartTooltip
+        active
+        label={label}
+        payload={rows}
+        series={[...series, { key: 'goes', label: goesLabel }]}
+        formatValue={formatBytes}
+      />
     );
   };
 }

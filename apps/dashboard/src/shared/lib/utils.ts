@@ -23,3 +23,10 @@ export function formatBytes(bytes: number): string {
   const formatted = exponent === 0 ? String(value) : value.toFixed(1);
   return `${formatted} ${units[exponent]}`;
 }
+
+/** The attachment formats the server serves inline, so an `<img>` can show. */
+export function isInlineImage(contentType: string): boolean {
+  return ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(
+    contentType,
+  );
+}

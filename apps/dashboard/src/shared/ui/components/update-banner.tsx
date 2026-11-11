@@ -1,8 +1,7 @@
-import { ArrowRightIcon, CloseIcon, TrendUpIcon } from '@rustrak/ui';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowRightIcon, CloseIcon, TrendUpIcon, Wordmark } from '@rustrak/ui';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { UpdateInfo } from '@/shared/lib/version';
-import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 
 const DISMISSED_KEY = 'rustrak:update-dismissed';
 
@@ -41,14 +40,22 @@ const KEYFRAMES = `
 }
 `;
 
+function readDismissed(): string | null {
+  try {
+    return localStorage.getItem(DISMISSED_KEY);
+  } catch {
+    // Storage can be unavailable in private mode; treat as not dismissed.
+    return null;
+  }
+}
+
 interface UpdateBannerProps {
   info: UpdateInfo;
 }
 
 export function UpdateBanner({ info }: UpdateBannerProps) {
   const t = useTranslations('update');
-  const [dismissed, setDismissed] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [dismissed, setDismissed] = useState(readDismissed);
   const [open, setOpen] = useState(false);
   const [pillWidth, setPillWidth] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
@@ -58,19 +65,9 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
   const headerRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    try {
-      setDismissed(localStorage.getItem(DISMISSED_KEY));
-    } catch {
-      // Storage can be unavailable in private mode; treat as not dismissed.
-    }
-    setMounted(true);
-  }, []);
+  const visible = dismissed !== info.latest;
 
-  const visible = mounted && dismissed !== info.latest;
-
-  // Depends on `visible`: the first render returns null, so the refs are only
-  // attached on the render where this becomes true.
+  // Depends on `visible`: the refs are only attached while it is true.
   useLayoutEffect(() => {
     if (!visible) return;
     const header = headerRef.current;
@@ -251,7 +248,7 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
               in the app that reaches it: any taller and the word crowds out the
               version it is announcing. `still` because the pill is already lime:
               a mark that tints to lime on hover would tint to invisible. */}
-          <RustrakWordmark className="h-3.5 w-auto shrink-0" still />
+          <Wordmark className="h-3.5 w-auto shrink-0" still />
           <span className="text-xs whitespace-nowrap">
             <span className="font-semibold">{info.latest}</span>{' '}
             {t('available')}

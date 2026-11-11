@@ -8,11 +8,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { storageQueries } from '@/features/storage/api/queries';
-import {
-  KINDS,
-  nextReadIn,
-  summarize,
-} from '@/features/storage/model/retention';
+import { nextReadIn, summarize } from '@/features/storage/model/retention';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { SettingSection } from '@/shared/ui/components/setting-row';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
@@ -57,8 +53,7 @@ export function StorageView({
   const t = useTranslations('storage');
   const ts = useTranslations('settings');
   const queryClient = useQueryClient();
-  // Read again when the saved status says to: a save leaves the next run for
-  // the scheduler's next tick, and a scheduled cleanup runs at its time.
+  // Read again when the saved status says to: a cleanup finishes or runs.
   const { data: retention } = useSuspenseQuery({
     ...storageQueries.retention(),
     refetchInterval: (query) =>
@@ -180,11 +175,7 @@ export function StorageView({
 
       <SettingSection title={t('age.title')} description={t('age.description')}>
         <div className="px-5 py-4">
-          {summary ? (
-            <AgeChart buckets={summary.buckets} kinds={KINDS} />
-          ) : (
-            <ChartSkeleton />
-          )}
+          {summary ? <AgeChart buckets={summary.buckets} /> : <ChartSkeleton />}
         </div>
       </SettingSection>
 

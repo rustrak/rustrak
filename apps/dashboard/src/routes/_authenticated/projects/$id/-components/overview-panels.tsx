@@ -1,4 +1,3 @@
-import type { IssueResponse, MetricDelta } from '@rustrak/client';
 import {
   BarsChart,
   Button,
@@ -12,18 +11,21 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
+import { IssueRow } from '@/features/issue/ui/components/issue-row';
 import { withPreviousPeriod } from '@/features/project/lib/overview-series';
-import { overviewInterval } from '@/features/release/model/session-health';
+import { overviewInterval } from '@/shared/lib/period';
 import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { MetricDeltaText } from '@/shared/ui/components/metric-delta';
+import { Panel, PanelPlaceholder } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
-import { TransactionP95Bars } from '@/shared/ui/components/transaction-p95-bars';
+import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 import type {
   IssueView,
   OverviewFilters,
   OverviewReads,
 } from './overview-reads';
+import { TransactionP95Bars } from './transaction-p95-bars';
 
 /*
  * The overview's panels. Each one subscribes to its own reads and renders its
@@ -36,69 +38,6 @@ import type {
  * at zero reads as "nothing is breaking", the most dangerous thing this page
  * could say while wrong.
  */
-
-// ── chrome ───────────────────────────────────────────────────────────────────
-
-/** A panel of the overview: a heading, what it covers, and its content. */
-function Panel({
-  title,
-  description,
-  actions,
-  footer,
-  children,
-}: {
-  title: string;
-  description?: ReactNode;
-  actions?: ReactNode;
-  footer?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex h-full min-w-0 flex-col rounded-2xl border border-border-subtle bg-surface">
-      <header className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4">
-        <div className="min-w-0">
-          <h2 className="text-card-title text-fg">{title}</h2>
-          {description ? (
-            <p className="mt-0.5 text-meta text-fg-subtle">{description}</p>
-          ) : null}
-        </div>
-        {actions}
-      </header>
-      <div className="min-w-0 flex-1 px-5 pt-4 pb-5">{children}</div>
-      {footer ? (
-        <footer className="border-t border-border-divider px-5 py-3">
-          {footer}
-        </footer>
-      ) : null}
-    </section>
-  );
-}
-
-function Placeholder({ height }: { height: number }) {
-  return (
-    <div
-      className="w-full animate-pulse rounded-lg bg-surface-hover motion-reduce:animate-none"
-      style={{ height }}
-    />
-  );
-}
-
-/** Bucket labels that say as much as the bucket width can tell. */
-function useBucketLabel(intervalHours: number) {
-  const format = useFormatter();
-  return (value: string | number) =>
-    format.dateTime(
-      new Date(value),
-      intervalHours >= 24
-        ? { month: 'short', day: 'numeric' }
-        : intervalHours > 1
-          ? { month: 'short', day: 'numeric', hour: 'numeric' }
-          : { hour: 'numeric', minute: '2-digit' },
-    );
-}
-
-// ── KPIs ─────────────────────────────────────────────────────────────────────
-
 /** One headline figure, how it moved, and its shape over the window. */
 function Kpi({
   label,
@@ -127,12 +66,6 @@ function Kpi({
       <p className="truncate text-hint text-fg-subtle">{footnote ?? ' '}</p>
     </div>
   );
-}
-
-/** The change against the previous window; nothing over all time. */
-function Delta({ metric }: { metric: MetricDelta }) {
-  if (metric.previous === null) return null;
-  return <MetricDeltaText metric={metric} polarity="up-is-bad" />;
 }
 
 function KpiPlaceholder() {
@@ -199,7 +132,7 @@ export function KpiRow({
           <Kpi
             label={t('errors')}
             value={format.number(summary.data.events.current, 'compact')}
-            delta={<Delta metric={summary.data.events} />}
+            delta={<MetricDeltaText metric={summary.data.events} />}
             footnote={
               [filters.environment, filters.release]
                 .filter(Boolean)
@@ -219,7 +152,7 @@ export function KpiRow({
           <Kpi
             label={t('newIssues')}
             value={format.number(summary.data.new_issues.current)}
-            delta={<Delta metric={summary.data.new_issues} />}
+            delta={<MetricDeltaText metric={summary.data.new_issues} />}
             footnote={t('openIssues', {
               count: format.number(summary.data.open_issues),
             })}
@@ -269,8 +202,6 @@ export function KpiRow({
   );
 }
 
-// ── error volume ─────────────────────────────────────────────────────────────
-
 export function ErrorVolumePanel({
   reads,
   filters,
@@ -285,7 +216,7 @@ export function ErrorVolumePanel({
   const t = useTranslations('projectPages.overview');
   const format = useFormatter();
   const interval = overviewInterval(filters.period);
-  const label = useBucketLabel(interval);
+  const label = useBucketLabel(interval >= 24);
   const events = useQuery(reads.events);
   // Not asked for unless comparing: without the window before, the
   // observer stands on the current series and stays disabled.
@@ -300,7 +231,7 @@ export function ErrorVolumePanel({
   return (
     <Panel
       title={t('errorVolume')}
-      description={
+      hint={
         total === null
           ? ' '
           : t('eventsInWindow', { count: format.number(total) })
@@ -323,7 +254,7 @@ export function ErrorVolumePanel({
     >
       <QueryState
         query={events}
-        placeholder={<Placeholder height={280} />}
+        placeholder={<PanelPlaceholder height={280} />}
         title={t('errorVolume')}
       >
         {(points) =>
@@ -356,6 +287,7 @@ export function ErrorVolumePanel({
                   : []),
               ]}
               xKey="t"
+              integer
               height={280}
               formatX={label}
               formatY={(v) => format.number(v, 'compact')}
@@ -388,6 +320,7 @@ export function ErrorVolumePanel({
                 },
               ]}
               xKey="t"
+              integer
               height={280}
               formatX={label}
               formatY={(v) => format.number(v, 'compact')}
@@ -399,14 +332,6 @@ export function ErrorVolumePanel({
     </Panel>
   );
 }
-
-// ── issues ───────────────────────────────────────────────────────────────────
-
-const LEVEL_MARK: Record<string, string> = {
-  fatal: 'bg-sev-error',
-  error: 'bg-sev-error',
-  warning: 'bg-sev-warning',
-};
 
 /**
  * The open issues to look at: the ones firing now, the newest, or the
@@ -426,7 +351,7 @@ export function IssuesPanel({
   return (
     <Panel
       title={t('issues')}
-      description={t('issuesDescription')}
+      hint={t('issuesDescription')}
       actions={
         <SegmentedControl
           aria-label={t('issues')}
@@ -449,7 +374,7 @@ export function IssuesPanel({
     >
       <QueryState
         query={issues}
-        placeholder={<Placeholder height={288} />}
+        placeholder={<PanelPlaceholder height={288} />}
         title={t('issues')}
       >
         {(page) =>
@@ -470,59 +395,6 @@ export function IssuesPanel({
   );
 }
 
-function IssueRow({
-  projectId,
-  issue,
-}: {
-  projectId: number;
-  issue: IssueResponse;
-}) {
-  const t = useTranslations('projectPages.overview');
-  const format = useFormatter();
-  return (
-    <li>
-      <Link
-        href={`/projects/${projectId}/issues/${issue.id}`}
-        className="flex items-center gap-3 px-5 py-2.5 hover:bg-surface-hover"
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            'h-8 w-0.75 shrink-0 rounded-pill',
-            LEVEL_MARK[issue.level ?? ''] ?? 'bg-sev-info',
-          )}
-        />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-value font-medium text-fg">
-            {issue.title}
-          </span>
-          <span className="truncate text-hint text-fg-subtle">
-            <span className="font-mono">{issue.short_id}</span>
-            {issue.culprit ? ` · ${issue.culprit}` : null}
-          </span>
-        </span>
-        {issue.trend ? (
-          <Sparkline
-            values={issue.trend}
-            label={t('issueTrend')}
-            className="hidden h-6 w-20 shrink-0 sm:block"
-          />
-        ) : null}
-        <span className="flex w-24 shrink-0 flex-col items-end">
-          <span className="text-value font-medium text-fg tabular-nums">
-            {format.number(issue.event_count, 'compact')}
-          </span>
-          <span className="truncate text-hint text-fg-meta">
-            {format.relativeTime(new Date(issue.last_seen))}
-          </span>
-        </span>
-      </Link>
-    </li>
-  );
-}
-
-// ── sessions ─────────────────────────────────────────────────────────────────
-
 export function SessionsPanel({
   reads,
   filters,
@@ -532,13 +404,13 @@ export function SessionsPanel({
 }) {
   const t = useTranslations('projectPages.overview');
   const format = useFormatter();
-  const label = useBucketLabel(overviewInterval(filters.period));
+  const label = useBucketLabel(overviewInterval(filters.period) >= 24);
   const health = useQuery(reads.sessionSummary);
   const trend = useQuery(reads.sessionTrend);
-  const placeholder = <Placeholder height={288} />;
+  const placeholder = <PanelPlaceholder height={288} />;
 
   return (
-    <Panel title={t('sessionHealth')} description={t('sessionHealthSubtitle')}>
+    <Panel title={t('sessionHealth')} hint={t('sessionHealthSubtitle')}>
       <QueryState
         query={health}
         placeholder={placeholder}
@@ -631,8 +503,6 @@ function Figure({
   );
 }
 
-// ── latency ──────────────────────────────────────────────────────────────────
-
 export function LatencyPanel({
   reads,
   projectId,
@@ -644,10 +514,10 @@ export function LatencyPanel({
   const stats = useQuery(reads.latency);
 
   return (
-    <Panel title={t('latency')} description={t('latencySubtitle')}>
+    <Panel title={t('latency')} hint={t('latencySubtitle')}>
       <QueryState
         query={stats}
-        placeholder={<Placeholder height={250} />}
+        placeholder={<PanelPlaceholder height={250} />}
         title={t('latency')}
       >
         {(stats) => (

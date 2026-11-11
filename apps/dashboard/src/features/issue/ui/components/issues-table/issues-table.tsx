@@ -27,17 +27,18 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import type { Row } from '@tanstack/react-table';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
+import { PRIORITIES } from '@/features/issue/model/actions';
 import type { IssueView } from '@/features/issue/model/issue-table';
+import type { ApiError } from '@/shared/api/query';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useStableFormatter } from '@/shared/ui/hooks/use-stable-formatter';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { DeleteIssuesDialog } from './delete-issues-dialog';
 import { type Assignable, issueColumns } from './issue-columns';
-
-const PRIORITIES: IssuePriority[] = ['high', 'medium', 'low'];
 
 /** One empty list, so the table's data is stable while the first page loads. */
 const NO_ISSUES: IssueResponse[] = [];
@@ -87,6 +88,7 @@ export function IssuesTable({
   releases,
 }: IssuesTableProps) {
   const t = useTranslations('issues');
+  const toastFailure = useToastFailure();
   const format = useStableFormatter();
   const router = useRouter();
   const [deleting, setDeleting] = useState<IssueResponse[] | null>(null);
@@ -124,8 +126,7 @@ export function IssuesTable({
 
   const updated = {
     onSuccess: () => table.resetRowSelection(),
-    onError: (error: Error) =>
-      toast.error(t('toasts.updateFailed'), { description: error.message }),
+    onError: (error: ApiError) => toastFailure(t('toasts.updateFailed'), error),
   };
   const bulkUpdate = useMutation({
     ...issueMutations.bulkUpdate(projectId),
@@ -140,12 +141,12 @@ export function IssuesTable({
       table.resetRowSelection();
       setDeleting(null);
     },
-    onError: (error: Error) =>
-      toast.error(
+    onError: (error: ApiError) =>
+      toastFailure(
         deleting?.length === 1
           ? t('toasts.deleteOneFailed')
           : t('toasts.deleteManyFailed'),
-        { description: error.message },
+        error,
       ),
   };
   // On `mutate`, not here: spread here they would replace the factory's
@@ -250,6 +251,7 @@ export function IssuesTable({
             assignItems={assignItems}
             canUpdate={canUpdate}
             canDelete={canDelete}
+            view={view}
           />
         }
       />
@@ -291,9 +293,10 @@ function useIssueMenus({
   canDelete: boolean;
 }) {
   const t = useTranslations('issues');
-  const handlers = useRef({ apply, setDeleting });
+  const { copy } = useCopy();
+  const handlers = useRef({ apply, setDeleting, copy });
   useLayoutEffect(() => {
-    handlers.current = { apply, setDeleting };
+    handlers.current = { apply, setDeleting, copy };
   });
 
   const priorityItems = useCallback(
@@ -380,12 +383,8 @@ function useIssueMenus({
           label: t('table.copyId'),
           icon: CopyIcon,
           separated: canUpdate,
-          onSelect: () => {
-            navigator.clipboard
-              ?.writeText(issue.short_id)
-              .then(() => toast.success(t('table.copied')))
-              .catch(() => {});
-          },
+          onSelect: () =>
+            handlers.current.copy(issue.short_id, t('table.copied')),
         },
         ...(canDelete
           ? [
@@ -416,9 +415,12 @@ function BulkActions({
   assignItems,
   canUpdate,
   canDelete,
+  view,
 }: {
   canUpdate: boolean;
   canDelete: boolean;
+  /** In the Resolved and Muted tabs the batch is undone, not done again. */
+  view: IssueView;
   selected: Pick;
   disabled: boolean;
   apply: (issues: IssueResponse[], change: Change) => void;
@@ -431,24 +433,48 @@ function BulkActions({
     <>
       {canUpdate ? (
         <>
-          <Button
-            size="xs"
-            variant="primary"
-            icon={ResolveIcon}
-            disabled={disabled}
-            onClick={() => apply(selected(), { status: 'resolved' })}
-          >
-            {t('actions.resolve')}
-          </Button>
-          <Button
-            size="xs"
-            variant="secondary"
-            icon={MuteIcon}
-            disabled={disabled}
-            onClick={() => apply(selected(), { status: 'ignored' })}
-          >
-            {t('actions.mute')}
-          </Button>
+          {view === 'resolved' ? (
+            <Button
+              size="xs"
+              variant="primary"
+              icon={UnresolveIcon}
+              disabled={disabled}
+              onClick={() => apply(selected(), { status: 'unresolved' })}
+            >
+              {t('actions.unresolve')}
+            </Button>
+          ) : (
+            <Button
+              size="xs"
+              variant="primary"
+              icon={ResolveIcon}
+              disabled={disabled}
+              onClick={() => apply(selected(), { status: 'resolved' })}
+            >
+              {t('actions.resolve')}
+            </Button>
+          )}
+          {view === 'muted' ? (
+            <Button
+              size="xs"
+              variant="secondary"
+              icon={MuteIcon}
+              disabled={disabled}
+              onClick={() => apply(selected(), { status: 'unresolved' })}
+            >
+              {t('actions.unmute')}
+            </Button>
+          ) : (
+            <Button
+              size="xs"
+              variant="secondary"
+              icon={MuteIcon}
+              disabled={disabled}
+              onClick={() => apply(selected(), { status: 'ignored' })}
+            >
+              {t('actions.mute')}
+            </Button>
+          )}
           <Menu
             actions={priorityItems(selected)}
             trigger={

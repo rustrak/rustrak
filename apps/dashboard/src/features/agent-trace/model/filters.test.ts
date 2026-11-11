@@ -3,8 +3,28 @@ import {
   agentPeriodParam,
   defaultSelectedSpanId,
   fillBuckets,
+  isNothingYet,
   resolveAgentFilters,
 } from './filters';
+
+describe('isNothingYet', () => {
+  const none = { agent_runs: 0, llm_calls: 0, tool_calls: 0 };
+  const day = resolveAgentFilters({});
+  const allTime = resolveAgentFilters({ period: 'all' });
+
+  it('is the setup screen only when nothing has ever arrived', () => {
+    expect(isNothingYet(none, day, [])).toBe(true);
+    expect(isNothingYet(none, allTime, ['production'])).toBe(true);
+  });
+
+  it('is an empty window, not setup, once a span has named an environment', () => {
+    expect(isNothingYet(none, day, ['production'])).toBe(false);
+    expect(
+      isNothingYet(none, resolveAgentFilters({ environment: 'prod' }), []),
+    ).toBe(false);
+    expect(isNothingYet({ ...none, tool_calls: 1 }, allTime, [])).toBe(false);
+  });
+});
 
 describe('fillBuckets', () => {
   const hour = (h: number) => new Date(Date.UTC(2026, 0, 1, h)).toISOString();

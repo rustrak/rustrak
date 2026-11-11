@@ -186,10 +186,7 @@ export function matchExceptionForThread(
 
 /**
  * Plain-text rendering of the full exception chain, frame order matching
- * what the UI shows for this platform. Kept out of stack-trace.tsx (a
- * `'use client'` module) so Server Components can call it directly —
- * everything exported from a `'use client'` file is treated as
- * client-only, even plain helpers.
+ * what the UI shows for this platform.
  */
 export function formatStackTraceAsText(
   exception?: ExceptionChain,

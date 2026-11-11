@@ -33,7 +33,6 @@ export const projectMutations = {
   /**
    * The id is the mutation's variable: the projects grid deletes whichever
    * card was confirmed, and its pending `variables` is the card to hide.
-   * `['projects']` covers every list and the deleted project's scope.
    */
   delete: () =>
     mutationOptions({

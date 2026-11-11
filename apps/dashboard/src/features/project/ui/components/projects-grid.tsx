@@ -1,16 +1,15 @@
 import type { ProjectResponse, ProjectsListResponse } from '@rustrak/client';
-import { Button, EmptyIcon, NewIcon, Text } from '@rustrak/ui';
+import { Button, confirm, EmptyIcon, NewIcon, Text } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
 import { Link } from '@/shared/ui/components/link';
-import { TablePagination } from '@/shared/ui/components/table-pagination';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
-import { DeleteProjectsDialog } from './delete-projects-dialog';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { ProjectCard } from './project-card';
+import { TablePagination } from './table-pagination';
 
 interface ProjectsGridProps {
   page: ProjectsListResponse;
@@ -26,6 +25,7 @@ export function ProjectsGrid({
   loading = false,
 }: ProjectsGridProps) {
   const t = useTranslations('projects');
+  const toastFailure = useToastFailure();
   const permissions = usePermissionsLater();
   const canCreate = permissions.can('projects', 'create');
   const router = useRouter();
@@ -38,23 +38,20 @@ export function ProjectsGrid({
     ? items.filter((p) => p.id !== remove.variables)
     : items;
   const isPending = remove.isPending;
-  const [pendingDelete, setPendingDelete] = useState<ProjectResponse | null>(
-    null,
-  );
-
-  const confirmDelete = () => {
-    const target = pendingDelete;
-    if (!target) return;
-    // Closed first: the card is about to vanish, and a confirmation still
-    // sitting over it reads as a click that did nothing.
-    setPendingDelete(null);
-
+  const confirmDelete = async (target: ProjectResponse) => {
+    const ok = await confirm({
+      title: t('deleteDialog.titleNamed', { name: target.name }),
+      description: t('deleteDialog.description', {
+        subject: t('deleteDialog.subject', { count: 1 }),
+      }),
+      tone: 'danger',
+      confirmLabel: t('deleteDialog.confirm'),
+      cancelLabel: t('deleteDialog.cancel'),
+    });
+    if (!ok) return;
     remove.mutate(target.id, {
       onSuccess: () => toast.success(t('toasts.deleted', { count: 1 })),
-      onError: (error) =>
-        toast.error(t('toasts.deleteFailed'), {
-          description: error.error.message,
-        }),
+      onError: (error) => toastFailure(t('toasts.deleteFailed'), error),
     });
   };
 
@@ -89,7 +86,7 @@ export function ProjectsGrid({
             project={project}
             onDelete={
               permissions.can('project', 'delete', project.id)
-                ? setPendingDelete
+                ? confirmDelete
                 : undefined
             }
           />
@@ -106,17 +103,6 @@ export function ProjectsGrid({
           onPageChange={(page) => router.push(`/projects?page=${page}`)}
         />
       ) : null}
-
-      <DeleteProjectsDialog
-        open={pendingDelete != null}
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
-        }}
-        count={1}
-        targetName={pendingDelete?.name}
-        isPending={isPending}
-        onConfirm={confirmDelete}
-      />
     </>
   );
 }

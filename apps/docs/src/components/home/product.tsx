@@ -207,9 +207,12 @@ export function AppFrame({
       collapseShortcut={false}
       sidebar={
         <Sidebar
+          aria-label="Main navigation"
           header={
             <>
               <SidebarBrand
+                collapseLabel="Collapse sidebar"
+                expandLabel="Expand sidebar"
                 render={<span />}
                 switcher={
                   <SidebarProject
@@ -230,7 +233,12 @@ export function AppFrame({
                 render={<span />}
               />
               <SidebarItem icon={DocsIcon} label="Docs" render={<span />} />
-              <SidebarUser name="ada@acme.dev" detail="Admin" actions={[]} />
+              <SidebarUser
+                label="Account: ada@acme.dev"
+                name="ada@acme.dev"
+                detail="Admin"
+                actions={[]}
+              />
             </>
           }
         >
@@ -897,11 +905,15 @@ export function IssueScreen({
                   <Text variant="meta" tone="subtle">
                     2 minutes ago
                   </Text>
-                  <Tag variant="soft">production</Tag>
-                  <Tag variant="soft" className="font-mono">
+                  <Tag variant="soft" verbatim>
+                    production
+                  </Tag>
+                  <Tag variant="soft" verbatim className="font-mono">
                     checkout-api@2.4.0
                   </Tag>
-                  <Tag variant="soft">node</Tag>
+                  <Tag variant="soft" verbatim>
+                    node
+                  </Tag>
                 </div>
               </div>
               <nav className="-mb-px mt-1 flex gap-5">

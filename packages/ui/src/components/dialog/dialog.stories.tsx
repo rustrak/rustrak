@@ -20,7 +20,7 @@ const meta = {
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
-      <DialogProvider>
+      <DialogProvider closeLabel="Close">
         <Story />
       </DialogProvider>
     ),
@@ -125,12 +125,24 @@ export const Confirm: Story = {
       expect(canvas.getByTestId('answer')).toHaveTextContent('kept'),
     );
 
+    // Enter is a no too: focus starts on the way out, and the action
+    // promises no ⏎ it would not keep.
+    await userEvent.click(canvas.getByRole('button', { name: 'Delete issue' }));
+    let dialog = await body.findByRole('alertdialog');
+    await expect(
+      within(dialog).getByRole('button', { name: 'Delete' }),
+    ).toBeInTheDocument();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(body.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    );
+    await expect(canvas.getByTestId('answer')).toHaveTextContent('kept');
+
     // Accepting: the action, and only the action, answers yes.
     await userEvent.click(canvas.getByRole('button', { name: 'Delete issue' }));
-    const dialog = await body.findByRole('alertdialog');
-    // The shortcut rides in the accessible name: "Delete ⏎".
+    dialog = await body.findByRole('alertdialog');
     await userEvent.click(
-      within(dialog).getByRole('button', { name: /^Delete/ }),
+      within(dialog).getByRole('button', { name: 'Delete' }),
     );
     await waitFor(() =>
       expect(canvas.getByTestId('answer')).toHaveTextContent('deleted'),

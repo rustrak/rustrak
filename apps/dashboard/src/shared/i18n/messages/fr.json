@@ -23,6 +23,7 @@
     "copyAs": "Copier en tant que",
     "clipboardUnavailable": "Presse-papiers indisponible",
     "clipboardUnavailableHint": "Sélectionnez le contenu et copiez-le manuellement, ou accédez à Rustrak en HTTPS.",
+    "clipboardLabelHint": "Sélectionnez le contenu ({label}) et copiez-le manuellement, ou accédez à Rustrak en HTTPS.",
     "openSidebar": "Ouvrir le panneau latéral",
     "showSidebar": "Afficher le panneau latéral",
     "closeSidebar": "Fermer le panneau latéral",
@@ -30,7 +31,20 @@
     "close": "Fermer",
     "showPassword": "Afficher le mot de passe",
     "hidePassword": "Masquer le mot de passe",
-    "loading": "Chargement"
+    "loading": "Chargement",
+    "copyLabel": "Copier {label}",
+    "unfinished": "inachevé",
+    "noSpans": "Aucun span",
+    "noSpansHint": "Cette trace ne contient aucun temps à afficher.",
+    "resizeNameColumn": "Redimensionner la colonne des noms",
+    "mainNavigation": "Navigation principale",
+    "breadcrumb": "Fil d'Ariane",
+    "notifications": "Notifications",
+    "collapseSidebar": "Réduire la barre latérale",
+    "expandSidebar": "Développer la barre latérale",
+    "account": "Compte : {name}",
+    "openNavigation": "Ouvrir la navigation",
+    "closeNavigation": "Fermer la navigation"
   },
   "theme": {
     "light": "Clair",
@@ -57,7 +71,17 @@
     "footerCount": "{count} plateformes · lancez une recherche pour parcourir chaque catégorie",
     "pickerPlaceholder": "Rechercher des plateformes...",
     "pickerAria": "Plateforme",
-    "noResults": "Aucune plateforme trouvée."
+    "noResults": "Aucune plateforme trouvée.",
+    "categories": {
+      "popular": "Populaires",
+      "browser": "Navigateur",
+      "server": "Serveur",
+      "mobile": "Mobile",
+      "desktop": "Bureau",
+      "serverless": "Serverless",
+      "gaming": "Jeux",
+      "all": "Toutes"
+    }
   },
   "statTile": {
     "noPriorPeriod": "Aucune période antérieure",
@@ -107,46 +131,35 @@
     "suggestions": "Suggestions",
     "filterAndSearch": "Filtrez avec clé:valeur, ou recherchez…",
     "addFilter": "Ajouter un filtre…",
-    "clearAll": "Effacer filtres et recherche"
+    "clearAll": "Effacer filtres et recherche",
+    "hintNavigate": "naviguer",
+    "hintSelect": "sélectionner",
+    "hintClose": "échap ferme",
+    "typeValueThen": "Saisissez une valeur, puis",
+    "removeFilter": "Retirer le filtre {name}",
+    "searchFor": "Rechercher « {text} »"
   },
   "commands": {
-    "overview": "Vue d’ensemble",
     "overviewDescription": "Santé, volume et derniers problèmes en un coup d’œil.",
-    "issues": "Problèmes",
     "issuesDescription": "Erreurs et exceptions, regroupées par fingerprint.",
-    "releases": "Versions",
     "releasesDescription": "Déploiements et santé de chaque version.",
-    "performance": "Performance",
     "performanceDescription": "Durées des transactions et cascades de spans.",
-    "agents": "Agents",
     "agentsDescription": "Traces d’agents IA et spans qu’elles contiennent.",
-    "logs": "Logs",
     "logsDescription": "Le flux brut des journaux au fil de leur arrivée.",
-    "general": "Général",
     "generalDescription": "Nom, slug, plateforme et zone de danger.",
-    "alerts": "Alertes",
     "alertsDescription": "Règles qui se déclenchent quand quelque chose casse.",
-    "members": "Membres",
     "membersDescription": "Qui a accès à ce projet, et avec quel rôle.",
-    "clientKeys": "Clés client",
     "clientKeysDescription": "Le DSN et l’extrait de configuration du SDK.",
     "allProjects": "Tous les projets",
     "allProjectsDescription": "Chaque projet de cette instance que vous pouvez voir.",
     "newProject": "Nouveau projet",
     "newProjectDescription": "Choisissez une plateforme et créez-en un.",
-    "apiTokens": "Jetons API",
     "apiTokensDescription": "Jetons bearer pour l’API et pour l’ingestion par les SDK.",
-    "integrations": "Intégrations",
     "integrationsDescription": "Où les alertes sont envoyées.",
-    "team": "Équipe",
     "teamDescription": "Membres de cette instance et invitations en attente.",
-    "storage": "Stockage",
     "storageDescription": "Fenêtres de rétention et nettoyage des source maps.",
-    "account": "Compte",
     "accountDescription": "Votre profil et votre mot de passe.",
-    "appearance": "Apparence",
     "appearanceDescription": "Clair, sombre ou ce que le système indique.",
-    "about": "À propos",
     "aboutDescription": "La version de Rustrak en cours d’exécution.",
     "noResultsFor": "Aucun résultat pour « {query} »",
     "resultsHeading": "Résultats",
@@ -165,10 +178,12 @@
     "open": "ouvrir",
     "close": "fermer",
     "hidePages": "masquer les pages",
-    "crons": "Crons",
     "cronsDescription": "Les tâches planifiées et le déroulement de leurs exécutions.",
-    "feedback": "Retours utilisateurs",
-    "feedbackDescription": "Ce que vos utilisateurs ont signalé depuis l’app."
+    "feedbackDescription": "Ce que vos utilisateurs ont signalé depuis l’app.",
+    "rolesDescription": "Définir ce que chaque rôle peut faire",
+    "mcpDescription": "Connecter des assistants IA via MCP",
+    "dataDescription": "Limites d’événements et données conservées par le projet",
+    "githubDescription": "Lier un dépôt GitHub"
   },
   "charts": {
     "errors": "Erreurs",
@@ -193,6 +208,7 @@
     "alreadyExists": "{subject} existe déjà.",
     "tooShort": "{subject} n’atteint pas la longueur minimale.",
     "tooLong": "{subject} dépasse la longueur maximale.",
+    "incorrect": "{subject} est incorrect.",
     "rejected": "Cette valeur a été refusée.",
     "defaultSubject": "Cette valeur"
   },
@@ -267,6 +283,7 @@
       "events": "Événements",
       "users": "Utilisateurs",
       "lastSeen": "Dernière apparition",
+      "lastSeenShort": "Dernière fois",
       "level": "Niveau",
       "assignee": "Assigné",
       "firstSeen": "Vu pour la première fois"
@@ -504,7 +521,8 @@
       "noUsers": "Aucun utilisateur disponible",
       "selectUser": "Sélectionner un utilisateur",
       "roleAria": "Rôle du nouveau membre",
-      "submit": "Ajouter"
+      "submit": "Ajouter",
+      "selectRole": "Choisir un rôle"
     },
     "pending": {
       "title": "Invitations en attente",
@@ -598,15 +616,12 @@
       "deleteTitle": "Supprimer « {name} » ?",
       "deleteDescription": "Cette action supprimera définitivement ce projet et tous les problèmes et événements associés. Elle est irréversible.",
       "cancel": "Annuler",
-      "deleting": "Suppression...",
       "confirm": "Supprimer"
     },
     "deleteDialog": {
       "titleNamed": "Supprimer « {name} » ?",
-      "titleCount": "{count, plural, =1 {Supprimer # projet ?} other {Supprimer # projets ?}}",
       "description": "Cette action supprimera définitivement {subject} ainsi que tous les problèmes et événements associés. Elle est irréversible.",
       "cancel": "Annuler",
-      "deleting": "Suppression...",
       "confirm": "Supprimer",
       "subject": "{count, plural, =1 {ce projet} other {# projets}}"
     },
@@ -665,8 +680,6 @@
       "new": "Nouveau projet",
       "count": "{count, plural, one {# projet} other {# projets}}"
     },
-    "copyUnavailable": "Presse-papiers indisponible",
-    "copyUnavailableHint": "Sélectionnez le contenu ({label}) et copiez-le manuellement, ou accédez à Rustrak en HTTPS.",
     "clientKeys": {
       "dsn": "DSN",
       "dsnDescription": "Pointez n’importe quel SDK Sentry vers cette chaîne pour envoyer des événements à ce projet.",
@@ -700,7 +713,8 @@
       "saveFailed": "Impossible d’enregistrer la limite",
       "invalid": "Saisissez un nombre entier supérieur ou égal à 1, ou laissez vide.",
       "dropped": "Écartés par la limite",
-      "droppedDescription": "Événements acceptés mais non enregistrés, car une limite était déjà atteinte."
+      "droppedDescription": "Événements acceptés mais non enregistrés, car une limite était déjà atteinte.",
+      "tooHigh": "Saisissez une limite ne dépassant pas celle du serveur, {max, number}."
     },
     "card": {
       "newIssues": "Nouveaux problèmes",
@@ -722,7 +736,6 @@
       "fieldName": "Ce nom",
       "cancel": "Annuler",
       "delete": "Supprimer",
-      "deleting": "Suppression...",
       "saveChanges": "Enregistrer les modifications",
       "test": "Tester"
     },
@@ -761,7 +774,8 @@
       "optional": "(facultatif)"
     },
     "channelCard": {
-      "botToken": "token de bot"
+      "botToken": "token de bot",
+      "disabledHint": "Activez-la dans Intégrations pour notifier par ce canal."
     },
     "ruleDialog": {
       "titleNew": "Nouvelle règle d’alerte",
@@ -1202,7 +1216,6 @@
       "url": "URL",
       "queryString": "Chaîne de requête",
       "headers": "En-têtes",
-      "modules": "Modules",
       "extraData": "Données supplémentaires"
     },
     "highlights": {
@@ -1506,7 +1519,8 @@
       "permissionsLabel": "Permissions",
       "projectsLabel": "Projets",
       "allProjects": "Tous les projets autorisés",
-      "allProjectsHint": "Tous les projets auxquels vous avez accès, maintenant ou à l’avenir."
+      "allProjectsHint": "Tous les projets auxquels vous avez accès, maintenant ou à l’avenir.",
+      "expiresInPast": "Choisissez aujourd’hui ou une date ultérieure."
     },
     "copyTokenLabel": "Copier le jeton {label}",
     "deleteTokenLabel": "Supprimer le jeton {label}",
@@ -1543,7 +1557,6 @@
       "title": "Supprimer le jeton ?",
       "description": "Cette action supprimera définitivement ce jeton. Les services qui l’utilisent perdront immédiatement l’accès. Elle est irréversible.",
       "cancel": "Annuler",
-      "deleting": "Suppression...",
       "confirm": "Supprimer"
     },
     "scope": {
@@ -1577,13 +1590,7 @@
       "compacting": "Compactage de la base de données…"
     },
     "status": {
-      "lastRunRunning": "Dernier nettoyage en cours depuis {when}",
-      "lastRunFailed": "Le dernier nettoyage ({when}) a échoué : {error}",
-      "lastRunNothing": "Dernier nettoyage {when} : rien à supprimer",
-      "lastRunRemoved": "Dernier nettoyage {when} : {parts} supprimés",
-      "off": "Tout est conservé toujours",
-      "nextRun": "Prochain nettoyage {when}",
-      "nextRunPending": "Planification…"
+      "lastRunFailed": "Le dernier nettoyage ({when}) a échoué : {error}"
     },
     "age": {
       "title": "Ancienneté des données",
@@ -1597,8 +1604,7 @@
       "bucket5": "180 jours – 1 an",
       "bucket6": "> 1 an",
       "empty": "Pas encore de données.",
-      "goes": "Supprimé au prochain nettoyage",
-      "goesInBucket": "{size} supprimés au prochain nettoyage"
+      "goes": "Supprimé au prochain nettoyage"
     },
     "projects": {
       "title": "Projets",
@@ -1985,7 +1991,9 @@
         "errorNotFound": "Cet événement d'erreur n'est pas encore arrivé ou a été supprimé.",
         "showOlder": "Afficher les plus anciens ({count})",
         "showOlderFailed": "Impossible de charger les retours plus anciens."
-      }
+      },
+      "sectionAttachments": "Pièces jointes",
+      "attachmentDownload": "Télécharger"
     },
     "feedback": {
       "title": "Retours utilisateurs",
@@ -2110,8 +2118,6 @@
       "copy": "Copier",
       "copied": "Copié",
       "copyLabel": "Copier {label}",
-      "copyUnavailable": "La copie n'est pas disponible ici",
-      "copyUnavailableHint": "Sélectionnez {label} et copiez-le à la main.",
       "server": {
         "title": "Serveur MCP",
         "description": "Répond aux assistants IA sur le point de terminaison ci-dessous. Désactivé par défaut ; le désactiver coupe tous les assistants d'un coup.",
@@ -2224,7 +2230,8 @@
         "changed": "Mot de passe modifié",
         "change": "Modifier le mot de passe",
         "dialogDescription": "Saisissez votre mot de passe actuel, puis le nouveau deux fois.",
-        "cancel": "Annuler"
+        "cancel": "Annuler",
+        "incorrect": "Le mot de passe actuel est incorrect."
       }
     },
     "appearance": {
@@ -2507,9 +2514,7 @@
     },
     "setup": {
       "copy": "Copier",
-      "copied": "Copié",
-      "copyUnavailable": "La copie n’est pas disponible ici",
-      "copyUnavailableHint": "Sélectionnez l’extrait {label} et copiez-le à la main."
+      "copied": "Copié"
     },
     "guides": {
       "curl": "cURL",
@@ -2573,7 +2578,6 @@
       "deleteTitle": "Supprimer {monitor} ?",
       "deleteDescription": "Ses check-ins sont supprimés avec lui ; les tickets qu’il a ouverts restent. Une tâche qui continue à faire des check-ins avec une planification le recrée.",
       "cancel": "Annuler",
-      "deleting": "Suppression…",
       "confirmDelete": "Supprimer le moniteur",
       "deleted": "Moniteur supprimé",
       "deleteFailed": "Impossible de supprimer le moniteur"
@@ -2757,12 +2761,13 @@
       "selfTime": "Temps propre",
       "start": "Début",
       "status": "Statut",
-      "spanId": "Id du span"
+      "spanId": "Id du span",
+      "missingInstrumentation": "instrumentation manquante"
     }
   },
   "access": {
     "meta": {
-      "title": "Rôles · Paramètres"
+      "title": "Rôles | Rustrak"
     },
     "title": "Rôles",
     "subtitle": "Ensembles de permissions réutilisables pour attribuer le même accès à plusieurs membres.",
@@ -2861,7 +2866,7 @@
       "deleted": "Rôle supprimé",
       "deleteFailed": "Impossible de supprimer le rôle",
       "assignedTo": "{count, plural, =0 {Non attribué} one {# attribution} other {# attributions}}",
-      "meta": "{name} · Rôles",
+      "meta": "{name} | Rôles | Rustrak",
       "descriptionPlaceholder": "Objet de ce rôle et accès qu’il confère.",
       "descriptionHint": "Affiché partout où ce rôle est attribué.",
       "allProjects": "Tous les projets",

@@ -5,10 +5,7 @@ import { useRouteContext } from '@tanstack/react-router';
  * The signed-in reader, for any screen under `_authenticated`.
  *
  * The gate resolved this before the route loaded and put it in the router
- * context, so there is nothing to fetch here and nothing to wait for. Screens
- * that used to `await getCurrentUser()` for the second time in one render tree
- * read it from here instead — under Next each of those was a fresh `/auth/me`,
- * deduplicated only by the request cache.
+ * context, so there is nothing to fetch here and nothing to wait for.
  *
  * It throws rather than returning a nullable user, because the layout above
  * renders the outage screen instead of `<Outlet />` when there is no session:

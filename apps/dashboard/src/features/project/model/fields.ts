@@ -6,13 +6,8 @@ export const PROJECT_NAME_MAX_LENGTH = 100;
 
 /**
  * The rules for a project name, shared by the create form and the general
- * settings form.
- *
- * They lived only in the create form, so renaming a project in settings had no
- * client-side rules at all: a one-character name was accepted by the field,
- * sent, and rejected by the server. Two forms editing the same column must
- * agree about what that column accepts, which is what makes this shared rather
- * than copied.
+ * settings form: two forms editing the same column must agree about what it
+ * accepts.
  */
 export function projectNameField(t: Translate) {
   return z
@@ -36,6 +31,18 @@ export function projectSlugField(t: Translate) {
     .min(1, t('fields.slugEmpty'))
     .regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, t('fields.slugChars'));
 }
+
+export function buildCreateProjectFormSchema(t: Translate) {
+  return z.object({
+    platform: z.string().min(1, t('platformRequired')),
+    name: projectNameField(t),
+    slug: projectSlugField(t),
+  });
+}
+
+export type CreateProjectFormData = z.infer<
+  ReturnType<typeof buildCreateProjectFormSchema>
+>;
 
 /**
  * Live preview slugifier, ported from Sentry's `utils/slugify`.

@@ -17,12 +17,13 @@ import {
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
 import { githubQueries } from '@/features/github/api/queries';
 import { savableMappings } from '@/features/github/lib/code-mappings';
 import { IssueTemplateFields } from '@/features/github/ui/components/issue-template-fields';
+import type { ApiError } from '@/shared/api/query';
+import { describeError } from '@/shared/lib/error-copy';
 import {
   conditionsFromForm,
   formFromConditions,
@@ -35,6 +36,7 @@ import {
   SettingSection,
   SettingsListItem,
 } from '@/shared/ui/components/setting-row';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface RepositorySettingsProps {
   projectId: number;
@@ -98,13 +100,15 @@ export function RepositorySettings({
   readOnly = false,
 }: RepositorySettingsProps) {
   const t = useTranslations('github');
+  const tAll = useTranslations();
+  const toastFailure = useToastFailure();
   // Choosing one takes `project-github:update`, and so does listing them.
   const repositories = useQuery({
     ...githubQueries.repositories(projectId),
     enabled: !readOnly,
   });
-  const failed = (failure: string) => (error: Error) =>
-    toast.error(failure, { description: error.message });
+  const failed = (failure: string) => (error: ApiError) =>
+    toastFailure(failure, error);
   const setRepository = useMutation({
     ...githubMutations.setRepository(projectId),
     onError: failed(t('repository.saveFailed')),
@@ -137,7 +141,9 @@ export function RepositorySettings({
       <p className="text-value font-medium text-fg">
         {t('repository.unavailable')}
       </p>
-      <p className="text-meta text-fg-subtle">{repositories.error.message}</p>
+      <p className="text-meta text-fg-subtle">
+        {describeError(repositories.error.error, tAll)}
+      </p>
       <Link
         href="/settings/integrations"
         className="inline-flex items-center gap-1 text-meta text-fg-brand hover:underline"

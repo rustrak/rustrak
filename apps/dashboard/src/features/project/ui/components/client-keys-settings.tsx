@@ -1,6 +1,5 @@
 import type { ProjectResponse } from '@rustrak/client';
 import { Button, CopyIcon, SelectedIcon } from '@rustrak/ui';
-import { useTheme } from 'next-themes';
 import { useTranslations } from 'use-intl';
 import { resolveSetupSnippet } from '@/features/project/lib/setup-snippet';
 import { platformLabel } from '@/shared/config/platforms';
@@ -19,14 +18,9 @@ interface ClientKeysSettingsProps {
 
 export function ClientKeysSettings({ project, dsn }: ClientKeysSettingsProps) {
   const t = useTranslations('projects');
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
 
-  const highlighter = useSyntaxHighlighter(isDark);
-  const { isCopied, copy } = useCopyFlags({
-    unavailable: t('copyUnavailable'),
-    hint: (label) => t('copyUnavailableHint', { label }),
-  });
+  const highlighter = useSyntaxHighlighter();
+  const { isCopied, copy } = useCopyFlags();
 
   const { snippet, docsUrl, codeExample, codeLanguage } = resolveSetupSnippet(
     project.platform,

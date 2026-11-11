@@ -1,5 +1,5 @@
 import type { ReleaseSummary } from '@rustrak/client';
-import { cn, formatFilterQuery, Skeleton } from '@rustrak/ui';
+import { formatFilterQuery, Skeleton } from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
@@ -8,18 +8,25 @@ import { ISSUE_FILTER_VARIANTS } from '@/features/issue/model/issue-table';
 import { projectQueries } from '@/features/project/api/queries';
 import { releaseQueries } from '@/features/release/api/queries';
 import {
+  apiPeriod,
   DEFAULT_PERIOD,
   overviewInterval,
   PERIOD_CHOICES,
   type PeriodChoice,
-} from '@/features/release/model/session-health';
+  periodParam,
+} from '@/shared/lib/period';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import {
+  DetailBody,
+  DetailMain,
+  DetailRail,
+} from '@/shared/ui/components/detail-layout';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { RailBlock } from '@/shared/ui/components/panel';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { ReleaseFilters } from './-components/release-filters';
 import {
   NewIssuesPanel,
-  RailBlock,
   ReleaseDetails,
   ReleaseEnvironments,
   ReleaseHeader,
@@ -45,7 +52,7 @@ function releaseReads(
   search: ReleaseSearch,
 ) {
   const choice = search.period ?? DEFAULT_PERIOD;
-  const period = choice === 'all' ? undefined : choice;
+  const period = apiPeriod(choice);
   const { environment } = search;
   const interval = overviewInterval(period);
   return {
@@ -78,15 +85,13 @@ export const Route = createFileRoute(
   loaderDeps: ({ search }) => search,
   // The page waits for the release; the panels around it land on their own.
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     const reads = releaseReads(projectId, params.release, deps);
     void queryClient.query(reads.release).catch(noop);
     void queryClient.query(reads.project).catch(noop);
     void queryClient.query(reads.series).catch(noop);
     void queryClient.query(reads.newIssues).catch(noop);
     void queryClient.query(reads.environments).catch(noop);
-    // The title's project name.
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
     // The environment filter's choices.
     void queryClient.query(projectQueries.environments(projectId)).catch(noop);
   },
@@ -104,7 +109,7 @@ function ReleaseDetailPage() {
   const params = Route.useParams();
   const live = Route.useSearch();
   const search = useDeferredValue(live);
-  const projectId = Number.parseInt(params.id, 10);
+  const projectId = params.id;
   const { data: release } = useSuspenseQuery(
     releaseReads(projectId, params.release, search).release,
   );
@@ -130,7 +135,7 @@ function ReleaseDetailPage() {
   );
 }
 
-/** The same page while the release loads; its panels fill in on their own. */
+/** The same page while the release loads, its panels skeleton. */
 function ReleaseLoading() {
   return (
     <PageLoading>
@@ -153,13 +158,16 @@ function ReleaseScreen({
   const params = Route.useParams();
   const live = Route.useSearch();
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(params.id, 10);
+  const projectId = params.id;
   const reads = releaseReads(projectId, params.release, search);
   const { interval } = reads;
-  const project = useQuery(reads.project);
-  const series = useQuery(reads.series);
-  const newIssues = useQuery(reads.newIssues);
-  const environments = useQuery(reads.environments);
+  // The skeleton reads nothing: an observer that unmounts mid-flight cancels
+  // the loader's request, and the page would ask again.
+  const idle = { enabled: !!release, subscribed: !!release };
+  const project = useQuery({ ...reads.project, ...idle });
+  const series = useQuery({ ...reads.series, ...idle });
+  const newIssues = useQuery({ ...reads.newIssues, ...idle });
+  const environments = useQuery({ ...reads.environments, ...idle });
 
   const issuesHref = `/projects/${projectId}/issues?${new URLSearchParams({
     view: 'all',
@@ -177,6 +185,7 @@ function ReleaseScreen({
         scope={
           <ReleaseFilters
             projectId={projectId}
+            held={!release}
             scope={{
               environment: live.environment,
               period: live.period ?? DEFAULT_PERIOD,
@@ -189,12 +198,7 @@ function ReleaseScreen({
                     ? { environment: change.environment }
                     : {}),
                   ...(change.period
-                    ? {
-                        period:
-                          change.period === DEFAULT_PERIOD
-                            ? undefined
-                            : change.period,
-                      }
+                    ? { period: periodParam(change.period) }
                     : {}),
                 }),
                 replace: true,
@@ -206,29 +210,21 @@ function ReleaseScreen({
 
       {/* The issue page's shape: the release's figures and what it broke
           in the reading column, its facts in the rail beside it. */}
-      <div
-        aria-busy={loading}
-        className={cn(
-          'flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto',
-          loading && 'opacity-60',
-        )}
-      >
-        <main className="min-w-0 flex-1 lg:overflow-y-auto">
-          <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
-            {release ? (
-              <ReleaseKpis release={release} project={project} />
-            ) : (
-              <Skeleton className="h-[7.25rem] rounded-2xl" />
-            )}
-            <SessionsPanel read={series} intervalHours={interval} />
-            <NewIssuesPanel
-              projectId={projectId}
-              read={newIssues}
-              issuesHref={issuesHref}
-            />
-          </div>
-        </main>
-        <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
+      <DetailBody busy={loading}>
+        <DetailMain>
+          {release ? (
+            <ReleaseKpis release={release} project={project} />
+          ) : (
+            <Skeleton className="h-[7.25rem] rounded-2xl" />
+          )}
+          <SessionsPanel read={series} intervalHours={interval} />
+          <NewIssuesPanel
+            projectId={projectId}
+            read={newIssues}
+            issuesHref={issuesHref}
+          />
+        </DetailMain>
+        <DetailRail>
           <RailBlock title={t('details')}>
             {release ? (
               <ReleaseDetails release={release} />
@@ -243,8 +239,8 @@ function ReleaseScreen({
           <RailBlock title={t('environments')}>
             <ReleaseEnvironments read={environments} />
           </RailBlock>
-        </aside>
-      </div>
+        </DetailRail>
+      </DetailBody>
     </div>
   );
 }

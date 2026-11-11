@@ -2,6 +2,8 @@ import type { LogsVolumeResponse } from '@rustrak/client';
 import { BarsChart } from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
 import { volumeBars } from '@/features/log/model/log-view';
+import { isDaily } from '@/shared/lib/chart-format';
+import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 
 /**
  * How many lines the search matches over the window, stacked by level: where
@@ -10,11 +12,7 @@ import { volumeBars } from '@/features/log/model/log-view';
 export function LogVolume({ points }: { points: LogsVolumeResponse }) {
   const t = useTranslations('logs');
   const format = useFormatter();
-  const [first, second] = points;
-  const daily =
-    first && second
-      ? Date.parse(second.bucket) - Date.parse(first.bucket) >= 86_400_000
-      : false;
+  const bucketLabel = useBucketLabel(isDaily(points));
 
   return (
     <BarsChart
@@ -26,15 +24,9 @@ export function LogVolume({ points }: { points: LogsVolumeResponse }) {
         { key: 'debug', label: t('levels.debug'), color: 'var(--chart-muted)' },
       ]}
       xKey="t"
+      integer
       height={120}
-      formatX={(value) =>
-        format.dateTime(
-          new Date(value),
-          daily
-            ? { month: 'short', day: 'numeric' }
-            : { month: 'short', day: 'numeric', hour: 'numeric' },
-        )
-      }
+      formatX={bucketLabel}
       formatY={(value) => format.number(value, 'compact')}
       label={t('volume')}
     />

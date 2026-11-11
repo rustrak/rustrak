@@ -22,13 +22,15 @@ import {
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
 import { githubQueries } from '@/features/github/api/queries';
 import { parseLabels } from '@/features/github/lib/labels';
+import type { ApiError } from '@/shared/api/query';
+import { describeError } from '@/shared/lib/error-copy';
 import { cn } from '@/shared/lib/utils';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface IssueGitHubButtonProps {
   projectId: number;
@@ -49,11 +51,12 @@ export function IssueGitHubButton({
   canLink = true,
 }: IssueGitHubButtonProps) {
   const t = useTranslations('github');
+  const toastFailure = useToastFailure();
   const [linking, setLinking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reference, setReference] = useState('');
-  const failed = (failure: string) => (error: Error) =>
-    toast.error(failure, { description: error.message });
+  const failed = (failure: string) => (error: ApiError) =>
+    toastFailure(failure, error);
   const create = useMutation({
     ...githubMutations.createIssue(projectId, issueId),
     onError: failed(t('issue.createFailed')),
@@ -210,11 +213,14 @@ function CreateIssueDraft({
   isPending: boolean;
   onSubmit: (input: CreateGitHubIssue) => void;
 }) {
+  const tAll = useTranslations();
   const draft = useQuery(githubQueries.draft(projectId, issueId));
   if (draft.isError) {
     return (
       <DialogBody>
-        <p className="text-danger-fg text-meta">{draft.error.message}</p>
+        <p className="text-danger-fg text-meta">
+          {describeError(draft.error.error, tAll)}
+        </p>
       </DialogBody>
     );
   }

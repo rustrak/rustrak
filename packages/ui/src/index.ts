@@ -9,50 +9,9 @@
 /* --- Foundations --------------------------------------------------------- */
 
 export { cn } from './lib/cn';
-export {
-  focusRing,
-  focusRingInset,
-  focusRingWithin,
-} from './lib/focus';
-export {
-  chevronFlip,
-  collapseFade,
-  dropIn,
-  interactiveTransition,
-  popTransition,
-  pressNudge,
-  pressScale,
-  pressScaleSmall,
-  pressScaleTrigger,
-  scopeEnter,
-  scopeGroup,
-  slideTransition,
-  swapAnimation,
-  wipeReveal,
-} from './lib/motion';
-export type {
-  ColorToken,
-  DurationToken,
-  EaseToken,
-  FontToken,
-  RadiusToken,
-  ShadowToken,
-  SpacingToken,
-  TextToken,
-} from './lib/tokens';
-export {
-  colorTokens,
-  durationTokens,
-  easeTokens,
-  fontTokens,
-  radiusTokens,
-  shadowTokens,
-  spacingTokens,
-  textTokens,
-} from './lib/tokens';
-export type { VariantProps } from './lib/tv';
-export { tv } from './lib/tv';
-export type { WithClassName } from './lib/types';
+export { focusRing, focusRingInset } from './lib/focus';
+export { interactiveTransition, pressScale } from './lib/motion';
+export { textTokens } from './lib/tokens';
 export { useMobileBreakpoint } from './lib/use-mobile';
 
 /* --- Brand --------------------------------------------------------------- */
@@ -61,13 +20,11 @@ export { Wordmark } from './components/brand/wordmark';
 
 /* --- Icons --------------------------------------------------------------- */
 
-export { fromHugeicons } from './components/icon/adapters/hugeicons';
 export type {
   IconComponent,
   IconProps,
   IconSize,
 } from './components/icon/icon';
-export { iconVariants } from './components/icon/icon';
 export * from './components/icon/icon-catalog';
 
 /* --- Presentation -------------------------------------------------------- */
@@ -115,7 +72,6 @@ export {
   MenuGroupLabel,
 } from './components/menu/menu';
 export type { MenuAction } from './components/menu/menu-parts';
-export { explainAction } from './components/menu/menu-parts';
 export type {
   SegmentedControlProps,
   SegmentedItemProps,
@@ -157,8 +113,6 @@ export type {
   TextareaProps,
 } from './components/input/input';
 export { Input, InputAction, Textarea } from './components/input/input';
-export type { InputShellSize } from './components/input/input-shell';
-export { inputShell } from './components/input/input-shell';
 export type { PopoverProps } from './components/popover/popover';
 export { Popover } from './components/popover/popover';
 export type { SelectItemProps, SelectProps } from './components/select/select';
@@ -182,15 +136,9 @@ export type {
   DataTableFeatures,
   FilterOption,
 } from './components/data-table/features';
-export {
-  createDataTableColumnHelper,
-  dataTableFeatures,
-} from './components/data-table/features';
+export { createDataTableColumnHelper } from './components/data-table/features';
 export type { DataTableLabels } from './components/data-table/labels';
-export {
-  DataTableLabelsProvider,
-  useDataTableLabels,
-} from './components/data-table/labels';
+export { DataTableLabelsProvider } from './components/data-table/labels';
 export type { DataTablePaginationProps } from './components/data-table/pagination';
 export { DataTablePagination } from './components/data-table/pagination';
 export type {
@@ -198,10 +146,7 @@ export type {
   FilterVariants,
 } from './components/data-table/query';
 export {
-  DEFAULT_PAGE_SIZE,
-  emptyTableQuery,
   formatFilterQuery,
-  parseFilterQuery,
   parseTableQuery,
   serializeTableQuery,
 } from './components/data-table/query';
@@ -218,7 +163,6 @@ export { BarsChart } from './components/chart/bars-chart';
 export type { ChartTooltipProps } from './components/chart/chart-parts';
 export { ChartLegend, ChartTooltip } from './components/chart/chart-parts';
 export type { ChartSeries } from './components/chart/chart-series';
-export { seriesColor } from './components/chart/chart-series';
 export type {
   SparklineProps,
   SparklineTone,
@@ -266,29 +210,14 @@ export type {
   DialogDefinitionOptions,
   DialogHostProps,
 } from './components/dialog/dialog-store';
-export {
-  closeAllDialogs,
-  createDialog,
-} from './components/dialog/dialog-store';
-export type {
-  ToastActionSpec,
-  ToastOptions,
-  ToastPromiseState,
-  ToastProviderProps,
-  ToastTone,
-  UseToastReturn,
-} from './components/toast/toast';
-export { ToastProvider, useToast } from './components/toast/toast';
+export { createDialog } from './components/dialog/dialog-store';
 
 /* --- Query bar ----------------------------------------------------------- */
 
 export type { QueryBarProps } from './components/query-bar/query-bar';
 export { QueryBar } from './components/query-bar/query-bar';
 export type { QueryField } from './components/query-bar/query-bar-parts';
-export {
-  queryFieldsFromColumns,
-  variantsFromFields,
-} from './components/query-bar/query-bar-parts';
+export { queryFieldsFromColumns } from './components/query-bar/query-bar-parts';
 
 /* --- Shell --------------------------------------------------------------- */
 
@@ -324,17 +253,5 @@ export {
   SidebarSubmenu,
   SidebarUser,
 } from './components/shell/sidebar';
-export type { SidebarProviderProps } from './components/shell/sidebar-context';
-export {
-  SidebarProvider,
-  useSidebar,
-} from './components/shell/sidebar-context';
-export type {
-  TopbarActionProps,
-  TopbarProps,
-} from './components/shell/topbar';
-export {
-  Topbar,
-  TopbarAction,
-  TopbarMenuButton,
-} from './components/shell/topbar';
+export type { TopbarProps } from './components/shell/topbar';
+export { Topbar, TopbarMenuButton } from './components/shell/topbar';

@@ -33,9 +33,7 @@ export const Route = createFileRoute(
 function DataSettingsPage() {
   const t = useTranslations('settings');
   const { id } = Route.useParams();
-  const { data: project } = useSuspenseQuery(
-    projectQueries.detail(Number.parseInt(id, 10)),
-  );
+  const { data: project } = useSuspenseQuery(projectQueries.detail(id));
   const rateLimits = useQuery(projectQueries.rateLimits());
   const readOnly = !usePermissions().can('project', 'update', project.id);
 

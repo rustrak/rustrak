@@ -1,9 +1,3 @@
-/** A window's length in hours: `24h` is 24, `7d` is 168. */
-export function periodHours(period: `${number}${'h' | 'd'}`): number {
-  const value = Number.parseInt(period, 10);
-  return period.endsWith('d') ? value * 24 : value;
-}
-
 /**
  * The current window's series, each bucket paired with the total of the
  * bucket exactly one window before it, read from a series fetched over twice

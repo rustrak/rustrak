@@ -1,7 +1,7 @@
 # @rustrak/ui
 
-The design system. Nothing imports it yet: it is developed and reviewed in
-Storybook. Root context: `/CLAUDE.md`. The full
+The design system. `apps/dashboard` and `apps/docs` import it; it is developed
+and reviewed in Storybook. Root context: `/CLAUDE.md`. The full
 rationale — palette provenance, motion scale, the icon adapter, what is below AA
 and why — is in [`README.md`](README.md). **Read that before changing a token.**
 
@@ -15,8 +15,8 @@ pnpm check-types -w @rustrak/ui
 
 ```
 src/
-├── styles/      tokens.css, base.css, and the contrast test that pins the palette
-├── lib/         cn, tv, tw-merge, tokens.ts, motion, focus, types
+├── styles/      tokens.css, base.css, token-values.ts, and the contrast test that pins the palette
+├── lib/         cn, tv, tw-merge, tokens.ts, motion, focus, panel, types
 ├── docs/        the blocks the documentation pages are written with
 └── components/
     └── <name>/  <name>.tsx, <name>.stories.tsx, <name>.mdx
@@ -117,6 +117,8 @@ The blocks are in `src/docs/blocks`. Three rules about them:
   at the root so the pattern cannot match some other package's `src/docs`. It
   also silences `heading-has-content` on `page.tsx`: the rule reads the element
   given to Base UI's `render` prop literally and sees `<h2 />` with no children.
+  And `unsafe-json-in-html` on `.storybook/main.ts`: the JSON it inlines into
+  the manager's head is our own token values, resolved at build time.
 
 `src/docs/overview.mdx` is the front page and `src/styles/*.mdx` are the
 Foundations. There are no token *stories*: those pages are the specimens now.
@@ -148,6 +150,7 @@ right and the new number gets written down, or it is not.
 - give the `backgrounds` addon a hex. It writes its value onto the preview body,
   so a literal pins the page to one theme while the components inside it follow
   the other. Hand it `var(--surface-canvas)`.
-- change a colour in `styles/tokens.css` without checking `.storybook/theme.ts`.
-  The manager is a separate bundle and cannot read a CSS variable, so that file
-  is a hand-kept copy. Every line in it names the token it copies.
+- write a colour into `.storybook/theme.ts` or `manager-head.html`. The
+  manager is a separate bundle that cannot read a CSS variable, so `main.ts`
+  resolves the tokens from `styles/tokens.css` (`styles/token-values.ts`) and
+  hands them over in the manager's head.

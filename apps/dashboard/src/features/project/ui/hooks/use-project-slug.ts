@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import type { UseFormReturn } from 'react-hook-form';
 import { slugifyPreview } from '@/features/project/model/fields';
-import type { CreateProjectFormData } from '@/features/project/ui/components/create-project-form/create-project-form';
 
 export interface ProjectSlug {
   /** Whether the slug still follows the name, or the user took it over. */
@@ -14,6 +12,12 @@ export interface ProjectSlug {
   takeOver: () => void;
 }
 
+/** The two calls this hook makes on the create-project form. */
+interface SlugForm {
+  getFieldValue(name: 'name'): string;
+  setFieldValue(name: 'slug', value: string): void;
+}
+
 /**
  * The slug, and whether it is still following the name.
  *
@@ -24,22 +28,15 @@ export interface ProjectSlug {
  * and a server rejection has to hand the field over or the user is left with
  * a red input they cannot edit.
  */
-export function useProjectSlug(
-  form: UseFormReturn<CreateProjectFormData>,
-): ProjectSlug {
+export function useProjectSlug(form: SlugForm): ProjectSlug {
   const [isManual, setIsManual] = useState(false);
-
-  const deriveFromName = () =>
-    form.setValue('slug', slugifyPreview(form.getValues('name')), {
-      shouldValidate: true,
-    });
 
   return {
     isManual,
 
     syncFromName: (name) => {
       if (isManual) return;
-      form.setValue('slug', slugifyPreview(name), { shouldValidate: true });
+      form.setFieldValue('slug', slugifyPreview(name));
     },
 
     toggle: () => {
@@ -50,7 +47,7 @@ export function useProjectSlug(
       // Back to auto: re-derive immediately, otherwise the field would keep a
       // stale hand-typed value until the next keystroke in the name.
       setIsManual(false);
-      deriveFromName();
+      form.setFieldValue('slug', slugifyPreview(form.getFieldValue('name')));
     },
 
     takeOver: () => setIsManual(true),

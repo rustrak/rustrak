@@ -49,15 +49,31 @@ export type TagTone = NonNullable<VariantProps<typeof tag>['tone']>;
 export interface TagProps extends VariantProps<typeof tag> {
   children: ReactNode;
   className?: string;
+  /**
+   * A value as it was sent -- a release, an environment, a platform -- not
+   * a word: drawn as is, never sentence-cased. `web@2.0.0` is not
+   * `Web@2.0.0`.
+   */
+  verbatim?: boolean;
 }
 
-export function Tag({ tone, variant, className, children }: TagProps) {
+export function Tag({
+  tone,
+  variant,
+  className,
+  verbatim = false,
+  children,
+}: TagProps) {
   return (
     <span className={tag({ tone, variant, className })}>
-      {/* `inline-block`, because `::first-letter` only reaches a block. */}
-      <span className="inline-block lowercase first-letter:uppercase">
-        {children}
-      </span>
+      {verbatim ? (
+        children
+      ) : (
+        // `inline-block`, because `::first-letter` only reaches a block.
+        <span className="inline-block lowercase first-letter:uppercase">
+          {children}
+        </span>
+      )}
     </span>
   );
 }

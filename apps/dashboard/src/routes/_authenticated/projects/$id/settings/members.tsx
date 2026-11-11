@@ -19,7 +19,7 @@ export const Route = createFileRoute(
   '/_authenticated/projects/$id/settings/members',
 )({
   loader: ({ context: { queryClient }, params }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     startIfAllowed(
       queryClient,
       (p) => p.can('project-members', 'read', projectId),
@@ -41,7 +41,7 @@ export const Route = createFileRoute(
 function MembersPage() {
   const t = useTranslations('settings');
   const tUser = useTranslations('user');
-  const projectId = Number.parseInt(Route.useParams().id, 10);
+  const projectId = Route.useParams().id;
   const canRead = usePermissions().can('project-members', 'read', projectId);
   if (canRead) {
     return <Members projectId={projectId} />;

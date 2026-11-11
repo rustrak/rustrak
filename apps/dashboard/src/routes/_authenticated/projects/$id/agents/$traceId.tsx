@@ -35,7 +35,7 @@ export const Route = createFileRoute(
   // it; the default one is chosen from the spans, so it is started as soon
   // as they land rather than once the page has rendered them.
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     const span = (spanId: string) =>
       queryClient.query(agentQueries.span(projectId, spanId));
     const trace = queryClient.query(
@@ -59,10 +59,10 @@ export const Route = createFileRoute(
 
 function AgentTraceDetailPage() {
   const t = useTranslations('projectPages');
-  const { id, traceId } = Route.useParams();
+  const { id: projectId, traceId } = Route.useParams();
   const view = Route.useSearch({ select: (search) => search.view });
-  const projectId = Number.parseInt(id, 10);
   const tAgents = useTranslations('agents');
+  const tCommon = useTranslations('common');
   const format = useFormatter();
   const navigate = Route.useNavigate();
   const spanParam = Route.useSearch({ select: (search) => search.span });
@@ -208,6 +208,10 @@ function AgentTraceDetailPage() {
                 <AgentGraphView spans={spans} />
               ) : (
                 <Waterfall
+                  unfinishedLabel={tCommon('unfinished')}
+                  noSpansLabel={tCommon('noSpans')}
+                  noSpansHint={tCommon('noSpansHint')}
+                  resizeLabel={tCommon('resizeNameColumn')}
                   spans={waterfallSpans(spans)}
                   selectedId={selectedSpanId ?? null}
                   onSelect={(span) =>

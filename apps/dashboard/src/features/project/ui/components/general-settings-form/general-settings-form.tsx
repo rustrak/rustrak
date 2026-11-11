@@ -1,8 +1,7 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import type { ProjectResponse } from '@rustrak/client';
+import { useSelector } from '@tanstack/react-form';
 import { useMutation } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { useForm } from 'react-hook-form';
+import { useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
@@ -11,37 +10,23 @@ import {
   projectNameField,
   projectSlugField,
 } from '@/features/project/model/fields';
-import { ApiError } from '@/shared/api/query';
 import type { Translate } from '@/shared/lib/error-copy';
-import { describeError } from '@/shared/lib/error-copy';
-import {
-  applyServerFieldErrors,
-  SERVER_ERROR_PATH,
-} from '@/shared/lib/form-errors';
-import { Form, FormRootError } from '@/shared/ui/components/form';
+import { applyServerFieldErrors } from '@/shared/lib/form-errors';
+import { useAppForm } from '@/shared/ui/components/app-form';
 import { PlatformPicker } from '@/shared/ui/components/platform-picker';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { DangerZone } from './danger-zone';
 import { SavableRow } from './savable-row';
 
-/**
- * The same rules the create form uses, imported rather than restated.
- *
- * This form had none at all before: it was raw `useState`, so a one-character
- * name reached the server and came back as a toast, and a server-named field
- * had no input to attach itself to.
- */
+/** The same rules the create form uses, imported rather than restated. */
 function buildGeneralSettingsSchema(t: Translate) {
   return z.object({
     name: projectNameField(t),
     slug: projectSlugField(t),
   });
 }
-
-export type GeneralSettingsFormData = z.infer<
-  ReturnType<typeof buildGeneralSettingsSchema>
->;
 
 interface GeneralSettingsFormProps {
   project: ProjectResponse;
@@ -58,6 +43,7 @@ export function GeneralSettingsForm({
 }: GeneralSettingsFormProps) {
   const t = useTranslations('projects');
   const formT = useTranslations();
+  const toastFailure = useToastFailure();
   const router = useRouter();
   const update = useMutation(projectMutations.update(project.id));
   const remove = useMutation(projectMutations.delete());
@@ -68,61 +54,66 @@ export function GeneralSettingsForm({
     [t],
   );
 
-  const form = useForm<GeneralSettingsFormData>({
-    resolver: zodResolver(generalSettingsSchema),
+  // Each row saves on its own, so each field carries its own rule: a
+  // form-level schema would mark the slug red when only the name was saved.
+  const form = useAppForm({
     defaultValues: { name: project.name, slug: project.slug },
   });
+  // Fields whose current error came from the server, not the schema.
+  const serverMarked = useRef(new Set<string>());
 
-  const name = form.watch('name');
-  const slug = form.watch('slug');
+  const name = useSelector(form.store, (state) => state.values.name);
+  const slug = useSelector(form.store, (state) => state.values.slug);
   const hasNameChanges = name !== project.name;
   const hasSlugChanges = slug !== project.slug;
 
   const handleSaveName = () => {
-    // Each row saves one field, so validate that field alone. Submitting the
-    // whole form would mark the slug red for a name the user never touched.
-    void form.trigger('name').then((valid) => {
-      if (!valid || !hasNameChanges) return;
+    void Promise.resolve(form.validateField('name', 'submit')).then(
+      (errors) => {
+        if (errors.length > 0 || !hasNameChanges) return;
 
-      const trimmed = form.getValues('name').trim();
-      update.mutate(
-        { name: trimmed },
-        {
-          onSuccess: () => {
-            // Keep the field on the value that was actually persisted,
-            // otherwise stray whitespace leaves the Save button looking
-            // permanently dirty.
-            form.setValue('name', trimmed);
-            clearFailure();
-            toast.success(t('toasts.nameUpdated'));
+        const trimmed = form.getFieldValue('name').trim();
+        update.mutate(
+          { name: trimmed },
+          {
+            onSuccess: () => {
+              // Keep the field on the value that was actually persisted,
+              // otherwise stray whitespace leaves the Save button looking
+              // permanently dirty.
+              form.setFieldValue('name', trimmed);
+              clearFailure();
+              toast.success(t('toasts.nameUpdated'));
+            },
+            onError: (error) =>
+              reportFailure(error.error, t('toasts.updateNameFailed')),
           },
-          onError: (error) =>
-            reportFailure(error.error, t('toasts.updateNameFailed')),
-        },
-      );
-    });
+        );
+      },
+    );
   };
 
   const handleSaveSlug = () => {
-    void form.trigger('slug').then((valid) => {
-      if (!valid || !hasSlugChanges) return;
+    void Promise.resolve(form.validateField('slug', 'submit')).then(
+      (errors) => {
+        if (errors.length > 0 || !hasSlugChanges) return;
 
-      update.mutate(
-        { slug: form.getValues('slug').trim() },
-        {
-          onSuccess: (updated) => {
-            // The server slugifies the input, so echo back what it actually
-            // stored rather than the raw text: typing "My API" must leave the
-            // field showing "my-api", not a value that was never persisted.
-            form.setValue('slug', updated.slug);
-            clearFailure();
-            toast.success(t('toasts.slugUpdated'));
+        update.mutate(
+          { slug: form.getFieldValue('slug').trim() },
+          {
+            onSuccess: (updated) => {
+              // The server slugifies the input, so echo back what it actually
+              // stored rather than the raw text: typing "My API" must leave the
+              // field showing "my-api", not a value that was never persisted.
+              form.setFieldValue('slug', updated.slug);
+              clearFailure();
+              toast.success(t('toasts.slugUpdated'));
+            },
+            onError: (error) =>
+              reportFailure(error.error, t('toasts.updateSlugFailed')),
           },
-          onError: (error) =>
-            reportFailure(error.error, t('toasts.updateSlugFailed')),
-        },
-      );
-    });
+        );
+      },
+    );
   };
 
   const handlePlatformChange = (platform: string) => {
@@ -135,31 +126,25 @@ export function GeneralSettingsForm({
           clearFailure();
           toast.success(t('toasts.platformUpdated'));
         },
-        // The picker is not a registered field, so this one has nowhere to go
-        // but the form-level slot; `reportFailure` puts it there.
+        // The picker is not a form field, so this one has nowhere to go but
+        // the form-level slot; `reportFailure` puts it there.
         onError: (error) =>
           reportFailure(error.error, t('toasts.updatePlatformFailed')),
       },
     );
   };
 
-  const handleRemoveProject = async () => {
-    try {
-      await remove.mutateAsync(project.id);
-    } catch (error) {
-      if (!(error instanceof ApiError)) throw error;
-      // Toast only, deliberately. The Danger Zone sits outside the `<Form>`
-      // wrapper, so a form-level message raised here renders up in Project
+  const handleRemoveProject = () =>
+    remove.mutate(project.id, {
+      // Toast only, deliberately. The Danger Zone sits outside the form's
+      // section, so a form-level message raised here renders up in Project
       // Details, nowhere near the button that was pressed.
-      toast.error(t('toasts.deleteProjectFailed'), {
-        description: describeError(error.error, formT),
-      });
-      return;
-    }
-
-    toast.success(t('toasts.deleted'));
-    router.push('/projects');
-  };
+      onError: (error) => toastFailure(t('toasts.deleteProjectFailed'), error),
+      onSuccess: () => {
+        toast.success(t('toasts.deleted', { count: 1 }));
+        router.push('/projects');
+      },
+    });
 
   /**
    * Put a failure where the user can act on it: on the input the server named,
@@ -173,6 +158,7 @@ export function GeneralSettingsForm({
       labels: { name: t('fields.name'), slug: t('fields.slug') },
       t: formT,
     });
+    serverMarked.current = new Set(applied.marked);
 
     if (applied.formLevel) {
       toast.error(title, { description: applied.formLevel });
@@ -180,64 +166,69 @@ export function GeneralSettingsForm({
   }
 
   /**
-   * Drop the form-level message once something has succeeded.
-   *
-   * `applyServerFieldErrors` clears this slot on its way in, so a *second*
-   * failure replaces the first. A success calls nothing, and react-hook-form
-   * only clears `root` inside `handleSubmit`, which this form never uses. So
-   * without this the red "Failed to update platform" from an outage sits under
-   * the section forever, next to a toast saying the platform was updated.
+   * Drop the form-level message once something has succeeded. A success
+   * calls nothing else, so without this the red "Failed to update platform"
+   * from an outage sits under the section next to a toast saying the platform
+   * was updated.
    */
   function clearFailure() {
-    form.clearErrors(SERVER_ERROR_PATH);
+    form.setErrorMap({ onDynamic: undefined });
   }
 
   /**
    * Drop a server-supplied error the moment the user edits the value it was
-   * about.
-   *
-   * Each row saves on its own button rather than through `handleSubmit`, so
-   * `formState.isSubmitted` never turns true and react-hook-form's
-   * `reValidateMode: 'onChange'` never engages. Without this, "Project name is
-   * already taken." stays under an input the user has already corrected, and
-   * the only way to find out it is stale is to press Save again.
+   * about. Each row saves on its own rather than through a submit, so the
+   * schema never re-runs on change; without this, "Project name is already
+   * taken." stays under an input the user has already corrected.
    */
   function clearServerError(field: 'name' | 'slug') {
-    if (form.getFieldState(field).error?.type === 'server') {
-      form.clearErrors(field);
-    }
+    if (!serverMarked.current.delete(field)) return;
+    form.setFieldMeta(field, (meta) => ({
+      ...meta,
+      errorMap: { ...meta.errorMap, onDynamic: undefined },
+    }));
   }
 
   return (
     <div>
-      <Form {...form}>
+      <form.AppForm>
         <SettingSection title={t('projectDetails')}>
-          <SavableRow
-            form={form}
+          <form.AppField
             name="name"
-            title={t('nameTitle')}
-            description={t('nameDescription')}
-            placeholder={t('namePlaceholder')}
-            isPending={isPending}
-            readOnly={!canUpdate}
-            hasChanges={hasNameChanges}
-            onSave={handleSaveName}
-            onEdit={() => clearServerError('name')}
-          />
+            validators={{ onSubmit: generalSettingsSchema.shape.name }}
+          >
+            {() => (
+              <SavableRow
+                title={t('nameTitle')}
+                description={t('nameDescription')}
+                placeholder={t('namePlaceholder')}
+                isPending={isPending}
+                readOnly={!canUpdate}
+                hasChanges={hasNameChanges}
+                onSave={handleSaveName}
+                onEdit={() => clearServerError('name')}
+              />
+            )}
+          </form.AppField>
 
-          <SavableRow
-            form={form}
+          <form.AppField
             name="slug"
-            title={t('fields.slug')}
-            description={t('slugDescription')}
-            placeholder="project-slug"
-            className="font-mono"
-            isPending={isPending}
-            readOnly={!canUpdate}
-            hasChanges={hasSlugChanges}
-            onSave={handleSaveSlug}
-            onEdit={() => clearServerError('slug')}
-          />
+            validators={{ onSubmit: generalSettingsSchema.shape.slug }}
+          >
+            {() => (
+              <SavableRow
+                title={t('fields.slug')}
+                description={t('slugDescription')}
+                placeholder="project-slug"
+                className="font-mono"
+                isPending={isPending}
+                readOnly={!canUpdate}
+                hasChanges={hasSlugChanges}
+                onSave={handleSaveSlug}
+                onEdit={() => clearServerError('slug')}
+              />
+            )}
+          </form.AppField>
 
           <SettingRow
             title={t('fields.platform')}
@@ -250,13 +241,16 @@ export function GeneralSettingsForm({
             />
           </SettingRow>
 
-          {/* Where a failure that named no field of this form lands. */}
-          <FormRootError />
+          <form.RootError />
         </SettingSection>
-      </Form>
+      </form.AppForm>
 
       {canDelete ? (
-        <DangerZone project={project} onRemove={handleRemoveProject} />
+        <DangerZone
+          project={project}
+          onRemove={handleRemoveProject}
+          isPending={remove.isPending}
+        />
       ) : null}
     </div>
   );

@@ -1,9 +1,10 @@
 import type { AttachmentInfo, EventDetailResponse } from '@rustrak/client';
-import { useSuspenseInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslations } from 'use-intl';
 import type { readEventPayload } from '@/features/event/lib/event-payload';
 import { readFeedback } from '@/features/event/lib/feedback';
 import { formatStackTraceAsText } from '@/features/event/lib/format-stack-trace';
+import { AttachmentsSection } from '@/features/event/ui/components/attachments-section';
 import { Breadcrumbs } from '@/features/event/ui/components/breadcrumbs';
 import { EventContext } from '@/features/event/ui/components/event-context';
 import { EventDetails } from '@/features/event/ui/components/event-details';
@@ -16,8 +17,8 @@ import { StackTrace } from '@/features/event/ui/components/stack-trace';
 import { ThreadsSection } from '@/features/event/ui/components/threads-section';
 import { issueQueries } from '@/features/issue/api/queries';
 import { UserFeedback } from '@/features/issue/ui/components/user-feedback';
-import { Section } from '@/shared/ui/components/collapsible-section';
 import { CopyAsDropdown } from '@/shared/ui/components/copy-as-dropdown';
+import { Section } from './collapsible-section';
 
 type EventPayload = ReturnType<typeof readEventPayload>;
 
@@ -40,7 +41,7 @@ export function EventSections({
 }: {
   projectId: number;
   issueId: string;
-  /** Files sent with the event, shown with a feedback. */
+  /** Files sent with the event: inside a feedback, or a section of their own. */
   attachments: AttachmentInfo[];
   event: EventDetailResponse;
   payload: EventPayload;
@@ -59,8 +60,10 @@ export function EventSections({
     has,
   } = payload;
   const feedback = readFeedback(eventData);
+  const attachmentHref = (attachment: AttachmentInfo) =>
+    `/api/projects/${projectId}/attachments/${attachment.id}`;
   // The feedback users sent about the issue, which the loader started.
-  const { data: userReports } = useSuspenseInfiniteQuery(
+  const { data: userReports } = useInfiniteQuery(
     issueQueries.userReports(projectId, issueId),
   );
 
@@ -76,14 +79,12 @@ export function EventSections({
                 : null
             }
             attachments={attachments}
-            attachmentHref={(attachment) =>
-              `/api/projects/${projectId}/attachments/${attachment.id}`
-            }
+            attachmentHref={attachmentHref}
           />
         </Section>
       )}
 
-      {(userReports.pages[0]?.items.length ?? 0) > 0 && (
+      {(userReports?.pages[0]?.items.length ?? 0) > 0 && (
         <Section id="user-feedback" title={t('event.sectionUserFeedback')}>
           <UserFeedback projectId={projectId} issueId={issueId} />
         </Section>
@@ -103,9 +104,8 @@ export function EventSections({
           id="stacktrace"
           title={t('event.sectionStackTrace')}
           actions={
-            // ThreadsSection owns its own copy control — the active
-            // thread/exception pairing is client state the section
-            // header (a Server Component) can't see.
+            // ThreadsSection owns its own copy control: the active
+            // thread/exception pairing is its state.
             has.threads ? undefined : (
               <CopyAsDropdown
                 formats={[
@@ -167,6 +167,15 @@ export function EventSections({
       {(has.contexts || has.modules || has.user) && (
         <Section id="context" title={t('event.sectionContext')}>
           <EventContext contexts={contexts} modules={modules} user={user} />
+        </Section>
+      )}
+
+      {!feedback && attachments.length > 0 && (
+        <Section id="attachments" title={t('event.sectionAttachments')}>
+          <AttachmentsSection
+            attachments={attachments}
+            attachmentHref={attachmentHref}
+          />
         </Section>
       )}
 

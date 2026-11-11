@@ -2,11 +2,11 @@ import type { ActivityEntry } from '@rustrak/client';
 import { Button, CommentIcon, cn, Textarea } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface IssueActivityProps {
   projectId: number;
@@ -102,6 +102,7 @@ export function IssueActivity({
 }: IssueActivityProps) {
   const format = useFormatter();
   const t = useTranslations('issues');
+  const toastFailure = useToastFailure();
   // Commenting is `issues:update` on the server.
   const canComment = usePermissionsLater().can('issues', 'update', projectId);
   const [text, setText] = useState('');
@@ -110,10 +111,7 @@ export function IssueActivity({
     onSuccess: () => setText(''),
     // Keep the text in the box: clearing it on a failure destroys what the
     // user wrote and leaves no trace that anything went wrong.
-    onError: (error) =>
-      toast.error(t('activity.commentFailed'), {
-        description: error.message,
-      }),
+    onError: (error) => toastFailure(t('activity.commentFailed'), error),
   });
 
   const entries = [...activity].sort(

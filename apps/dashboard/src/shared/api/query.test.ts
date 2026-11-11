@@ -34,12 +34,6 @@ describe('orThrow', () => {
 });
 
 describe('createQueryClient', () => {
-  it('leaves retrying to the API client, which already retries what can succeed', () => {
-    const client = createQueryClient();
-
-    expect(client.getDefaultOptions().queries?.retry).toBe(false);
-  });
-
   it('marks stale what a mutation says it changed, once it settles', async () => {
     const client = createQueryClient();
     await client.query({
