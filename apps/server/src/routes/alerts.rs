@@ -207,6 +207,7 @@ pub async fn list_channels(pool: web::Data<DbPool>, actor: ApiActor) -> AppResul
     Ok(HttpResponse::Ok().json(safe))
 }
 
+/// Creates a notification integration (webhook, Slack, email…).
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/integrations",
@@ -231,6 +232,7 @@ pub async fn create_channel(
     Ok(HttpResponse::Created().json(channel_for(&actor, &channel)))
 }
 
+/// Gets one notification integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/integrations/{id}",
@@ -254,6 +256,7 @@ pub async fn get_channel(
     Ok(HttpResponse::Ok().json(channel_for(&actor, &channel)))
 }
 
+/// Updates a notification integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
     path = "/api/integrations/{id}",
@@ -286,6 +289,7 @@ pub async fn update_channel(
     Ok(HttpResponse::Ok().json(channel_to_safe_json(&channel)))
 }
 
+/// Deletes a notification integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/integrations/{id}",
@@ -377,6 +381,7 @@ pub struct TestChannelResponse {
     pub response_body: Option<String>,
 }
 
+/// Sends a test notification through an integration.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/integrations/{id}/test",
@@ -450,6 +455,7 @@ pub async fn test_channel(
     }))
 }
 
+/// Lists a project's alert rules.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/alert-rules",
@@ -484,6 +490,7 @@ pub async fn list_rules(
     Ok(HttpResponse::Ok().json(responses))
 }
 
+/// Creates an alert rule in a project.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/projects/{project_id}/alert-rules",
@@ -533,6 +540,7 @@ pub struct RulePath {
     pub rule_id: i32,
 }
 
+/// Gets one alert rule.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/alert-rules/{rule_id}",
@@ -566,6 +574,7 @@ pub async fn get_rule(
     Ok(HttpResponse::Ok().json(AlertService::rule_response(pool.get_ref(), rule).await?))
 }
 
+/// Updates an alert rule.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
     path = "/api/projects/{project_id}/alert-rules/{rule_id}",
@@ -620,6 +629,7 @@ pub async fn update_rule(
     Ok(HttpResponse::Ok().json(AlertService::rule_response(pool.get_ref(), rule).await?))
 }
 
+/// Deletes an alert rule.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/projects/{project_id}/alert-rules/{rule_id}",
@@ -670,6 +680,7 @@ fn default_limit() -> i64 {
     50
 }
 
+/// Lists the alerts a project sent, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/alert-history",

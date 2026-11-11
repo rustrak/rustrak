@@ -32,6 +32,7 @@ fn redirect(location: &str) -> HttpResponse {
         .finish()
 }
 
+/// Shows whether a GitHub App is connected, and how.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/github",
@@ -118,6 +119,7 @@ pub async fn put_issue_template(
     Ok(HttpResponse::Ok().json(template))
 }
 
+/// Disconnects the GitHub App from this instance.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/github",
@@ -380,6 +382,7 @@ async fn require_project(
     Ok(())
 }
 
+/// Gets the GitHub repository a project is linked to.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/github",
@@ -414,6 +417,7 @@ pub async fn get_project_repository(
         .json(GitHubService::project_repository(pool.get_ref(), project_id).await?))
 }
 
+/// Links a project to a GitHub repository.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/projects/{project_id}/github",
@@ -485,6 +489,7 @@ pub async fn put_project_repository(
         .json(GitHubService::project_repository(pool.get_ref(), project_id).await?))
 }
 
+/// Unlinks a project from its GitHub repository.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/projects/{project_id}/github",
@@ -887,6 +892,7 @@ pub async fn get_my_login(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult
     my_login(pool.get_ref(), actor.require_user()?.id).await
 }
 
+/// Sets or clears the caller's GitHub username, which assignees sync through.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/github/me",

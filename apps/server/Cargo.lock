@@ -4583,6 +4583,7 @@ dependencies = [
  "http-body-util",
  "jsonschema",
  "lettre",
+ "libc",
  "log",
  "mimalloc",
  "minijinja",

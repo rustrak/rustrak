@@ -821,6 +821,18 @@ mod alerts {
         .await
         .expect("issue");
 
+        // The counters are process-wide and other tests read them, so they
+        // are compared with a baseline and never reset here.
+        let failed = || {
+            Counters::global()
+                .snapshot()
+                .alerts_failed_by_provider
+                .get("webhook")
+                .copied()
+                .unwrap_or(0)
+        };
+        let before = failed();
+
         AlertService::trigger_event_alert(
             &db.pool,
             &project,
@@ -834,20 +846,8 @@ mod alerts {
         .await
         .expect("trigger");
 
-        // The counters are process-wide: a webhook failing in another test
-        // counts too, so wait for this delivery before trusting the count.
-        let failed = std::cell::Cell::new(0);
         crate::common::eventually(|| async {
-            failed.set(
-                failed.get()
-                    + Counters::global()
-                        .snapshot_and_reset()
-                        .alerts_failed_by_provider
-                        .get("webhook")
-                        .copied()
-                        .unwrap_or(0),
-            );
-            (failed.get() >= 1 && !collector.received().is_empty()).then_some(())
+            (failed() > before && !collector.received().is_empty()).then_some(())
         })
         .await;
         assert_eq!(

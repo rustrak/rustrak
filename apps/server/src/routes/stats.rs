@@ -36,6 +36,7 @@ impl EventTimeseriesQuery {
     }
 }
 
+/// Counts a project's events over time, bucketed for a chart.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/events/stats",
@@ -97,6 +98,7 @@ impl StatsSummaryQuery {
     }
 }
 
+/// Headline figures for a project's overview: events, new and open issues.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/stats/summary",
