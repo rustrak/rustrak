@@ -39,6 +39,7 @@ impl StatsQuery {
     }
 }
 
+/// Session counts by release, for release health.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/sessions/stats",
@@ -107,6 +108,7 @@ impl SummaryQuery {
     }
 }
 
+/// Totals and crash-free rates for a project's sessions.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/sessions/summary",
@@ -173,6 +175,7 @@ impl TimeseriesQuery {
     }
 }
 
+/// Session counts over time, bucketed for a chart.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/sessions/timeseries",

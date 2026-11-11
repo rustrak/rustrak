@@ -35,6 +35,7 @@ pub struct PreviewReport {
     pub report: Report,
 }
 
+/// Shows the exact anonymous telemetry report this instance would send.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/telemetry/preview",

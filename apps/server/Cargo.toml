@@ -186,6 +186,8 @@ rstest = "0.28.0"
 # conflicts with bollard 0.20's. Bump once testcontainers-modules supports 0.28.
 testcontainers = "0.27.3"
 testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
+# atexit: the one Postgres container a test binary shares is removed when it exits.
+libc = "0.2.189"
 
 # Sentry SDK for E2E tests
 sentry = { version = "0.49.5", features = ["test"] }
