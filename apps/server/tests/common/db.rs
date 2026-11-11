@@ -73,6 +73,18 @@ impl TestDb {
 }
 
 #[cfg(feature = "postgres")]
+static PG_CONTAINER_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+#[cfg(feature = "postgres")]
+extern "C" fn remove_pg_container() {
+    if let Some(id) = PG_CONTAINER_ID.get() {
+        let _ = std::process::Command::new("docker")
+            .args(["rm", "--force", "--volumes", id])
+            .output();
+    }
+}
+
+#[cfg(feature = "postgres")]
 async fn start_pg_server() -> PgServer {
     use sqlx::Connection;
 
@@ -87,7 +99,13 @@ async fn start_pg_server() -> PgServer {
         .get_host_port_ipv4(5432)
         .await
         .expect("Failed to get port");
-    // Lives as long as the test binary; the testcontainers reaper removes it.
+    // Shared by every test of this binary, so it is never dropped; it is
+    // removed when the binary exits (testcontainers 0.27 has no reaper).
+    if std::env::var("TESTCONTAINERS_COMMAND").as_deref() != Ok("keep") {
+        let _ = PG_CONTAINER_ID.set(container.id().to_string());
+        // SAFETY: registers a plain `extern "C"` function with no arguments.
+        unsafe { libc::atexit(remove_pg_container) };
+    }
     std::mem::forget(container);
 
     let base_url = format!("postgres://postgres:postgres@{host}:{port}");

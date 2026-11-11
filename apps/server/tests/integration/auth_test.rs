@@ -1358,16 +1358,25 @@ async fn test_logout_invalidates_session() {
 
 #[actix_web::test]
 async fn test_session_row_stores_only_a_hash_of_the_id() {
-    let db = TestDb::new().await;
-    create_test_user(&db.pool, "hash@example.com", "password123", false).await;
-    let app = crate::common::app(&db.pool).await;
-    crate::common::login(&app, "hash@example.com").await;
+    use actix_session::storage::SessionStore;
+    use sha2::Digest;
 
-    let (id_hash,): (String,) = sqlx::query_as("SELECT id_hash FROM sessions")
+    let db = TestDb::new().await;
+    let store = rustrak::services::DbSessionStore::new(db.pool.clone());
+    let key = store
+        .save(
+            std::collections::HashMap::new(),
+            &actix_web::cookie::time::Duration::days(1),
+        )
+        .await
+        .unwrap();
+
+    let id_hash: String = sqlx::query_scalar("SELECT id_hash FROM sessions")
         .fetch_one(&db.pool)
         .await
         .unwrap();
-    assert_eq!(id_hash.len(), 64, "a hex SHA-256");
+    assert_ne!(id_hash, key.as_ref(), "the raw id is never stored");
+    assert_eq!(id_hash, hex::encode(sha2::Sha256::digest(key.as_ref())));
 }
 
 #[actix_web::test]

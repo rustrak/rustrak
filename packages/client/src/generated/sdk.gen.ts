@@ -249,6 +249,9 @@ export class SourceMaps extends HeyApiClient {
         });
     }
     
+    /**
+     * Assembles uploaded chunks into an artifact bundle (sentry-cli `sourcemaps upload`).
+     */
     public artifactBundleAssemble<ThrowOnError extends boolean = false>(options: Options<SourceMapsArtifactBundleAssembleData, ThrowOnError>): RequestResult<SourceMapsArtifactBundleAssembleResponses, SourceMapsArtifactBundleAssembleErrors, ThrowOnError> {
         return (options.client ?? this.client).post<SourceMapsArtifactBundleAssembleResponses, SourceMapsArtifactBundleAssembleErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -267,6 +270,9 @@ export class SourceMaps extends HeyApiClient {
         });
     }
     
+    /**
+     * Describes how sentry-cli should upload chunks: size, concurrency and accepted kinds.
+     */
     public chunkUploadCapability<ThrowOnError extends boolean = false>(options: Options<SourceMapsChunkUploadCapabilityData, ThrowOnError>): RequestResult<SourceMapsChunkUploadCapabilityResponses, SourceMapsChunkUploadCapabilityErrors, ThrowOnError> {
         return (options.client ?? this.client).get<SourceMapsChunkUploadCapabilityResponses, SourceMapsChunkUploadCapabilityErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -281,6 +287,9 @@ export class SourceMaps extends HeyApiClient {
         });
     }
     
+    /**
+     * Receives chunks of a source map or debug file upload from sentry-cli.
+     */
     public chunkUpload<ThrowOnError extends boolean = false>(options: Options<SourceMapsChunkUploadData, ThrowOnError>): RequestResult<SourceMapsChunkUploadResponses, SourceMapsChunkUploadErrors, ThrowOnError> {
         return (options.client ?? this.client).post<SourceMapsChunkUploadResponses, SourceMapsChunkUploadErrors, ThrowOnError>({
             ...formDataBodySerializer,
@@ -299,6 +308,9 @@ export class SourceMaps extends HeyApiClient {
         });
     }
     
+    /**
+     * Lists a project's uploaded source map artifacts (sentry-cli).
+     */
     public list<ThrowOnError extends boolean = false>(options: Options<SourceMapsListData, ThrowOnError>): RequestResult<SourceMapsListResponses, SourceMapsListErrors, ThrowOnError> {
         return (options.client ?? this.client).get<SourceMapsListResponses, SourceMapsListErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -455,6 +467,9 @@ export class Releases extends HeyApiClient {
         });
     }
     
+    /**
+     * Lists the issues first seen in a release.
+     */
     public newIssues<ThrowOnError extends boolean = false>(options: Options<ReleasesNewIssuesData, ThrowOnError>): RequestResult<ReleasesNewIssuesResponses, ReleasesNewIssuesErrors, ThrowOnError> {
         return (options.client ?? this.client).get<ReleasesNewIssuesResponses, ReleasesNewIssuesErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -507,6 +522,9 @@ export class Access extends HeyApiClient {
 }
 
 export class Github extends HeyApiClient {
+    /**
+     * Disconnects the GitHub App from this instance.
+     */
     public disconnect<ThrowOnError extends boolean = false>(options?: Options<GithubDisconnectData, ThrowOnError>): RequestResult<GithubDisconnectResponses, GithubDisconnectErrors, ThrowOnError> {
         return (options?.client ?? this.client).delete<GithubDisconnectResponses, GithubDisconnectErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -521,6 +539,9 @@ export class Github extends HeyApiClient {
         });
     }
     
+    /**
+     * Shows whether a GitHub App is connected, and how.
+     */
     public status<ThrowOnError extends boolean = false>(options?: Options<GithubStatusData, ThrowOnError>): RequestResult<GithubStatusResponses, GithubStatusErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<GithubStatusResponses, GithubStatusErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -630,6 +651,9 @@ export class Github extends HeyApiClient {
         });
     }
     
+    /**
+     * Sets or clears the caller's GitHub username, which assignees sync through.
+     */
     public putMyLogin<ThrowOnError extends boolean = false>(options: Options<GithubPutMyLoginData, ThrowOnError>): RequestResult<GithubPutMyLoginResponses, GithubPutMyLoginErrors, ThrowOnError> {
         return (options.client ?? this.client).put<GithubPutMyLoginResponses, GithubPutMyLoginErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -687,6 +711,9 @@ export class Github extends HeyApiClient {
         });
     }
     
+    /**
+     * Unlinks a project from its GitHub repository.
+     */
     public deleteProjectRepository<ThrowOnError extends boolean = false>(options: Options<GithubDeleteProjectRepositoryData, ThrowOnError>): RequestResult<GithubDeleteProjectRepositoryResponses, GithubDeleteProjectRepositoryErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<GithubDeleteProjectRepositoryResponses, GithubDeleteProjectRepositoryErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -701,6 +728,9 @@ export class Github extends HeyApiClient {
         });
     }
     
+    /**
+     * Gets the GitHub repository a project is linked to.
+     */
     public getProjectRepository<ThrowOnError extends boolean = false>(options: Options<GithubGetProjectRepositoryData, ThrowOnError>): RequestResult<GithubGetProjectRepositoryResponses, GithubGetProjectRepositoryErrors, ThrowOnError> {
         return (options.client ?? this.client).get<GithubGetProjectRepositoryResponses, GithubGetProjectRepositoryErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -715,6 +745,9 @@ export class Github extends HeyApiClient {
         });
     }
     
+    /**
+     * Links a project to a GitHub repository.
+     */
     public putProjectRepository<ThrowOnError extends boolean = false>(options: Options<GithubPutProjectRepositoryData, ThrowOnError>): RequestResult<GithubPutProjectRepositoryResponses, GithubPutProjectRepositoryErrors, ThrowOnError> {
         return (options.client ?? this.client).put<GithubPutProjectRepositoryResponses, GithubPutProjectRepositoryErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -870,6 +903,9 @@ export class AlertChannels extends HeyApiClient {
         });
     }
     
+    /**
+     * Creates a notification integration (webhook, Slack, email…).
+     */
     public create<ThrowOnError extends boolean = false>(options: Options<AlertChannelsCreateData, ThrowOnError>): RequestResult<AlertChannelsCreateResponses, AlertChannelsCreateErrors, ThrowOnError> {
         return (options.client ?? this.client).post<AlertChannelsCreateResponses, AlertChannelsCreateErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -912,6 +948,9 @@ export class AlertChannels extends HeyApiClient {
         });
     }
     
+    /**
+     * Deletes a notification integration.
+     */
     public delete<ThrowOnError extends boolean = false>(options: Options<AlertChannelsDeleteData, ThrowOnError>): RequestResult<AlertChannelsDeleteResponses, AlertChannelsDeleteErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<AlertChannelsDeleteResponses, AlertChannelsDeleteErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -926,6 +965,9 @@ export class AlertChannels extends HeyApiClient {
         });
     }
     
+    /**
+     * Gets one notification integration.
+     */
     public get<ThrowOnError extends boolean = false>(options: Options<AlertChannelsGetData, ThrowOnError>): RequestResult<AlertChannelsGetResponses, AlertChannelsGetErrors, ThrowOnError> {
         return (options.client ?? this.client).get<AlertChannelsGetResponses, AlertChannelsGetErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -940,6 +982,9 @@ export class AlertChannels extends HeyApiClient {
         });
     }
     
+    /**
+     * Updates a notification integration.
+     */
     public update<ThrowOnError extends boolean = false>(options: Options<AlertChannelsUpdateData, ThrowOnError>): RequestResult<AlertChannelsUpdateResponses, AlertChannelsUpdateErrors, ThrowOnError> {
         return (options.client ?? this.client).patch<AlertChannelsUpdateResponses, AlertChannelsUpdateErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -958,6 +1003,9 @@ export class AlertChannels extends HeyApiClient {
         });
     }
     
+    /**
+     * Sends a test notification through an integration.
+     */
     public test<ThrowOnError extends boolean = false>(options: Options<AlertChannelsTestData, ThrowOnError>): RequestResult<AlertChannelsTestResponses, AlertChannelsTestErrors, ThrowOnError> {
         return (options.client ?? this.client).post<AlertChannelsTestResponses, AlertChannelsTestErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1330,6 +1378,9 @@ export class Agents extends HeyApiClient {
         });
     }
     
+    /**
+     * Lists the AI models a project's agents called, with requests, tokens and latency.
+     */
     public modelsTable<ThrowOnError extends boolean = false>(options: Options<AgentsModelsTableData, ThrowOnError>): RequestResult<AgentsModelsTableResponses, AgentsModelsTableErrors, ThrowOnError> {
         return (options.client ?? this.client).get<AgentsModelsTableResponses, AgentsModelsTableErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1430,6 +1481,9 @@ export class Agents extends HeyApiClient {
         });
     }
     
+    /**
+     * Lists the tools a project's agents called, with calls, errors and latency.
+     */
     public toolsTable<ThrowOnError extends boolean = false>(options: Options<AgentsToolsTableData, ThrowOnError>): RequestResult<AgentsToolsTableResponses, AgentsToolsTableErrors, ThrowOnError> {
         return (options.client ?? this.client).get<AgentsToolsTableResponses, AgentsToolsTableErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1464,6 +1518,9 @@ export class Agents extends HeyApiClient {
 }
 
 export class AlertRules extends HeyApiClient {
+    /**
+     * Lists the alerts a project sent, newest first.
+     */
     public listHistory<ThrowOnError extends boolean = false>(options: Options<AlertRulesListHistoryData, ThrowOnError>): RequestResult<AlertRulesListHistoryResponses, AlertRulesListHistoryErrors, ThrowOnError> {
         return (options.client ?? this.client).get<AlertRulesListHistoryResponses, AlertRulesListHistoryErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1495,6 +1552,9 @@ export class AlertRules extends HeyApiClient {
         });
     }
     
+    /**
+     * Lists a project's alert rules.
+     */
     public list<ThrowOnError extends boolean = false>(options: Options<AlertRulesListData, ThrowOnError>): RequestResult<AlertRulesListResponses, AlertRulesListErrors, ThrowOnError> {
         return (options.client ?? this.client).get<AlertRulesListResponses, AlertRulesListErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1509,6 +1569,9 @@ export class AlertRules extends HeyApiClient {
         });
     }
     
+    /**
+     * Creates an alert rule in a project.
+     */
     public create<ThrowOnError extends boolean = false>(options: Options<AlertRulesCreateData, ThrowOnError>): RequestResult<AlertRulesCreateResponses, AlertRulesCreateErrors, ThrowOnError> {
         return (options.client ?? this.client).post<AlertRulesCreateResponses, AlertRulesCreateErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1527,6 +1590,9 @@ export class AlertRules extends HeyApiClient {
         });
     }
     
+    /**
+     * Deletes an alert rule.
+     */
     public delete<ThrowOnError extends boolean = false>(options: Options<AlertRulesDeleteData, ThrowOnError>): RequestResult<AlertRulesDeleteResponses, AlertRulesDeleteErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<AlertRulesDeleteResponses, AlertRulesDeleteErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1541,6 +1607,9 @@ export class AlertRules extends HeyApiClient {
         });
     }
     
+    /**
+     * Gets one alert rule.
+     */
     public get<ThrowOnError extends boolean = false>(options: Options<AlertRulesGetData, ThrowOnError>): RequestResult<AlertRulesGetResponses, AlertRulesGetErrors, ThrowOnError> {
         return (options.client ?? this.client).get<AlertRulesGetResponses, AlertRulesGetErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1555,6 +1624,9 @@ export class AlertRules extends HeyApiClient {
         });
     }
     
+    /**
+     * Updates an alert rule.
+     */
     public update<ThrowOnError extends boolean = false>(options: Options<AlertRulesUpdateData, ThrowOnError>): RequestResult<AlertRulesUpdateResponses, AlertRulesUpdateErrors, ThrowOnError> {
         return (options.client ?? this.client).patch<AlertRulesUpdateResponses, AlertRulesUpdateErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1682,6 +1754,9 @@ export class Environments extends HeyApiClient {
 }
 
 export class Stats extends HeyApiClient {
+    /**
+     * Counts a project's events over time, bucketed for a chart.
+     */
     public getEventTimeseries<ThrowOnError extends boolean = false>(options: Options<StatsGetEventTimeseriesData, ThrowOnError>): RequestResult<StatsGetEventTimeseriesResponses, StatsGetEventTimeseriesErrors, ThrowOnError> {
         return (options.client ?? this.client).get<StatsGetEventTimeseriesResponses, StatsGetEventTimeseriesErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1696,6 +1771,9 @@ export class Stats extends HeyApiClient {
         });
     }
     
+    /**
+     * Headline figures for a project's overview: events, new and open issues.
+     */
     public getSummary<ThrowOnError extends boolean = false>(options: Options<StatsGetSummaryData, ThrowOnError>): RequestResult<StatsGetSummaryResponses, StatsGetSummaryErrors, ThrowOnError> {
         return (options.client ?? this.client).get<StatsGetSummaryResponses, StatsGetSummaryErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1732,6 +1810,9 @@ export class Feedback extends HeyApiClient {
 }
 
 export class Issues extends HeyApiClient {
+    /**
+     * Deletes many issues at once, selected by id or by filter.
+     */
     public bulkDelete<ThrowOnError extends boolean = false>(options: Options<IssuesBulkDeleteData, ThrowOnError>): RequestResult<IssuesBulkDeleteResponses, IssuesBulkDeleteErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<IssuesBulkDeleteResponses, IssuesBulkDeleteErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -1767,6 +1848,9 @@ export class Issues extends HeyApiClient {
         });
     }
     
+    /**
+     * Updates the status of many issues at once, selected by id or by filter.
+     */
     public bulkUpdate<ThrowOnError extends boolean = false>(options: Options<IssuesBulkUpdateData, ThrowOnError>): RequestResult<IssuesBulkUpdateResponses, IssuesBulkUpdateErrors, ThrowOnError> {
         return (options.client ?? this.client).put<IssuesBulkUpdateResponses, IssuesBulkUpdateErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2190,6 +2274,9 @@ export class Monitors extends HeyApiClient {
         });
     }
     
+    /**
+     * Lists a project's cron monitors.
+     */
     public list<ThrowOnError extends boolean = false>(options: Options<MonitorsListData, ThrowOnError>): RequestResult<MonitorsListResponses, MonitorsListErrors, ThrowOnError> {
         return (options.client ?? this.client).get<MonitorsListResponses, MonitorsListErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2204,6 +2291,9 @@ export class Monitors extends HeyApiClient {
         });
     }
     
+    /**
+     * Creates a cron monitor in a project.
+     */
     public create<ThrowOnError extends boolean = false>(options: Options<MonitorsCreateData, ThrowOnError>): RequestResult<MonitorsCreateResponses, MonitorsCreateErrors, ThrowOnError> {
         return (options.client ?? this.client).post<MonitorsCreateResponses, MonitorsCreateErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2222,6 +2312,9 @@ export class Monitors extends HeyApiClient {
         });
     }
     
+    /**
+     * Deletes a cron monitor and its check-ins.
+     */
     public delete<ThrowOnError extends boolean = false>(options: Options<MonitorsDeleteData, ThrowOnError>): RequestResult<MonitorsDeleteResponses, MonitorsDeleteErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<MonitorsDeleteResponses, MonitorsDeleteErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2236,6 +2329,9 @@ export class Monitors extends HeyApiClient {
         });
     }
     
+    /**
+     * Gets one cron monitor.
+     */
     public get<ThrowOnError extends boolean = false>(options: Options<MonitorsGetData, ThrowOnError>): RequestResult<MonitorsGetResponses, MonitorsGetErrors, ThrowOnError> {
         return (options.client ?? this.client).get<MonitorsGetResponses, MonitorsGetErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2250,6 +2346,9 @@ export class Monitors extends HeyApiClient {
         });
     }
     
+    /**
+     * Updates a cron monitor.
+     */
     public update<ThrowOnError extends boolean = false>(options: Options<MonitorsUpdateData, ThrowOnError>): RequestResult<MonitorsUpdateResponses, MonitorsUpdateErrors, ThrowOnError> {
         return (options.client ?? this.client).put<MonitorsUpdateResponses, MonitorsUpdateErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2268,6 +2367,9 @@ export class Monitors extends HeyApiClient {
         });
     }
     
+    /**
+     * Lists a cron monitor's check-ins, newest first.
+     */
     public listCheckins<ThrowOnError extends boolean = false>(options: Options<MonitorsListCheckinsData, ThrowOnError>): RequestResult<MonitorsListCheckinsResponses, MonitorsListCheckinsErrors, ThrowOnError> {
         return (options.client ?? this.client).get<MonitorsListCheckinsResponses, MonitorsListCheckinsErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2284,6 +2386,9 @@ export class Monitors extends HeyApiClient {
 }
 
 export class Sessions extends HeyApiClient {
+    /**
+     * Session counts by release, for release health.
+     */
     public getStats<ThrowOnError extends boolean = false>(options: Options<SessionsGetStatsData, ThrowOnError>): RequestResult<SessionsGetStatsResponses, SessionsGetStatsErrors, ThrowOnError> {
         return (options.client ?? this.client).get<SessionsGetStatsResponses, SessionsGetStatsErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2298,6 +2403,9 @@ export class Sessions extends HeyApiClient {
         });
     }
     
+    /**
+     * Totals and crash-free rates for a project's sessions.
+     */
     public getSummary<ThrowOnError extends boolean = false>(options: Options<SessionsGetSummaryData, ThrowOnError>): RequestResult<SessionsGetSummaryResponses, SessionsGetSummaryErrors, ThrowOnError> {
         return (options.client ?? this.client).get<SessionsGetSummaryResponses, SessionsGetSummaryErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2312,6 +2420,9 @@ export class Sessions extends HeyApiClient {
         });
     }
     
+    /**
+     * Session counts over time, bucketed for a chart.
+     */
     public getTimeseries<ThrowOnError extends boolean = false>(options: Options<SessionsGetTimeseriesData, ThrowOnError>): RequestResult<SessionsGetTimeseriesResponses, SessionsGetTimeseriesErrors, ThrowOnError> {
         return (options.client ?? this.client).get<SessionsGetTimeseriesResponses, SessionsGetTimeseriesErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2761,6 +2872,9 @@ export class Storage extends HeyApiClient {
         });
     }
     
+    /**
+     * Gets the retention settings and the cleanup schedule.
+     */
     public getRetention<ThrowOnError extends boolean = false>(options?: Options<StorageGetRetentionData, ThrowOnError>): RequestResult<StorageGetRetentionResponses, StorageGetRetentionErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<StorageGetRetentionResponses, StorageGetRetentionErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2775,6 +2889,9 @@ export class Storage extends HeyApiClient {
         });
     }
     
+    /**
+     * Updates the retention settings; the next cleanup is scheduled at once.
+     */
     public updateRetention<ThrowOnError extends boolean = false>(options: Options<StorageUpdateRetentionData, ThrowOnError>): RequestResult<StorageUpdateRetentionResponses, StorageUpdateRetentionErrors, ThrowOnError> {
         return (options.client ?? this.client).put<StorageUpdateRetentionResponses, StorageUpdateRetentionErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({
@@ -2943,6 +3060,9 @@ export class Team extends HeyApiClient {
 }
 
 export class Telemetry extends HeyApiClient {
+    /**
+     * Shows the exact anonymous telemetry report this instance would send.
+     */
     public preview<ThrowOnError extends boolean = false>(options?: Options<TelemetryPreviewData, ThrowOnError>): RequestResult<TelemetryPreviewResponses, TelemetryPreviewErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<TelemetryPreviewResponses, TelemetryPreviewErrors, ThrowOnError>({
             requestValidator: async (data) => await z.object({

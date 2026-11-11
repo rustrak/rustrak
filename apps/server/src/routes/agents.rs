@@ -430,6 +430,7 @@ pub async fn agent_summary(
     Ok(HttpResponse::Ok().json(summary))
 }
 
+/// Lists the AI models a project's agents called, with requests, tokens and latency.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/agents/models",
@@ -461,6 +462,7 @@ pub async fn agent_models_table(
     Ok(HttpResponse::Ok().json(rows))
 }
 
+/// Lists the tools a project's agents called, with calls, errors and latency.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/agents/tools/stats",
