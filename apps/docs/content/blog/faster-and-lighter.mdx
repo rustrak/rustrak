@@ -1,0 +1,81 @@
+---
+title: "Four bottlenecks behind v0.26.0"
+description: "v0.26.0 accepts 20× more events per second and loads the issue list 118× faster than v0.25.0. Four causes, what each one was and how I fixed it."
+date: "2026-11-11"
+author: "Abian Suarez"
+tags: ["engineering", "rust", "performance", "sqlite"]
+---
+
+v0.26.0 accepts about 20 times more events per second than v0.25.0, answers them in 9 ms instead of 208 ms, and loads the issue list in 14.5 ms instead of 1.7 s. It also uses less memory. None of it came from clever code: four defaults and shortcuts were costing far more than they looked. This post goes through each one.
+
+## The numbers
+
+v0.25.0 against v0.26.0 on the same Mac, with SQLite, both built in release with the same profile, and the same load generator.
+
+| | v0.25.0 | v0.26.0 |
+|---|---|---|
+| Events accepted per second | 234 | 4,720 (~20×) |
+| Ingest latency p50 / p99 | 208 / 350 ms | 9 / 18 ms |
+| Mixed load p99 | 985 ms | 24 ms |
+| Issue list p50 | 1,710 ms | 14.5 ms (~118×) |
+| Transaction list | 4,166 req/s | 10,624 req/s |
+| Memory at rest | 86 MB | 78 MB (−10%) |
+| Memory after dashboard reads | 369 MB | 210 MB (−43%) |
+| Database size, same events | 180 MB | 164 MB (−9%) |
+
+At the same load for both, 220 events a second, p99 went from 217 to 23 ms, peak memory from 164 to 147 MB and CPU from 104% to 90%. The issue detail page and the stats summary did not change: they were never slow.
+
+## 1. The issue list read every event's payload
+
+**The problem.** Each issue in the list shows how many users hit it in the last 24 hours. To count them, the server read the `user` object out of every event's JSON payload from that window.
+
+That is expensive because of where the payload lives. SQLite stores rows in 4 KB pages. An event's payload is around 6 KB, so it does not fit: SQLite keeps the start in the row and spills the rest into *overflow pages*, a chain of extra pages read one after another. Reading `user` meant walking that chain for every event. PostgreSQL has the same cost under another name: large values are compressed into a side table (TOAST) and have to be fetched and decompressed to be read.
+
+On a project with 300 issues and 27,000 events, one load of the list reassembled thousands of payloads to read a few bytes from each.
+
+**The fix.** The user is now worked out once, when the event is processed, and stored in its own column, `user_identity`. It follows Sentry's order: the first non-empty of id, username, email and IP. On SQLite, the index the list uses now contains every column the list needs, so the query is answered from the index and never opens a row. The counts are two aggregate queries in the database instead of rows bucketed in Rust.
+
+The migration fills the new column for the last two days of events only, since the list never looks further back.
+
+**The result.** 1,710 ms → 14.5 ms. It also explains most of the memory drop after dashboard reads: eight of those slow queries running at once pushed the server past 500 MB, and at 14 ms they no longer pile up.
+
+## 2. SQLite's reads were waiting on each other
+
+**The problem.** Eight issue lists loaded at the same time were about nine times slower than one. A profile showed the server's threads asleep in `__psynch_mutexwait`, waiting for a *mutex*: a lock only one thread can hold at a time.
+
+The locks were inside SQLite. Rustrak uses the SQLite bundled with `sqlx`, and that build is compiled with two features that each put a global lock on a hot path: `SQLITE_ENABLE_MEMORY_MANAGEMENT`, which puts every connection's page cache behind one lock, and memory statistics, which takes another lock on every allocation. Both exist so an application can ask SQLite to free memory across connections. Rustrak never does.
+
+**The fix.** Compile the bundled SQLite without them, in `apps/server/.cargo/config.toml`:
+
+```toml
+[env]
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"
+```
+
+The Dockerfile copies `.cargo` into the build, so the published images get the same SQLite.
+
+## 3. Every event waited for the disk's own cache
+
+**The problem.** Ingest writes each envelope to a file, answers the SDK, and processes the file later. That file has to be on disk before the answer goes out, so an acknowledged event survives a crash. `fsync` is the call that waits for that.
+
+Rust's `File::sync_all` does it, but on macOS it calls `F_FULLFSYNC`, which also makes the drive flush its internal cache to permanent storage. That took about 4 ms, twice per event (the file and its directory), and every request queued behind it. The server topped out around 240 events a second: the 234 in the table is that ceiling.
+
+**The fix.** Call plain `fsync` through the `nix` crate. It is the same durability SQLite itself uses for the events once they reach the database.
+
+**Scope.** On Linux, `sync_all` already was plain `fsync`, so this only changes macOS. A Linux server never had this ceiling.
+
+## 4. Writes lost the race for SQLite's lock
+
+**The problem.** SQLite allows one writer at a time. Event processing already took turns on an in-process queue. But transactions, logs and spans are written while the SDK waits, and those went straight to SQLite instead. Finding the lock taken, SQLite retries until a 5-second timeout. The queued writers passed the lock to each other with no gap, so an inline write could miss it for the full 5 seconds and fail with `database is locked`. The SDK got a 500.
+
+**The fix.** Every write on the ingest path now waits in the same queue (`write_turn`). Under mixed load v0.25.0 returned a few 500s; v0.26.0 returned none. The queue exists only on SQLite; PostgreSQL handles concurrent writers itself.
+
+## How far to trust these numbers
+
+- Each comparison is one run. Small differences may be noise; the large ones are not.
+- Both builds used thin LTO. The released images use fat LTO, so they should be at least as fast.
+- The load generator ran on the same Mac as the server and competed with it for CPU.
+- Only SQLite was measured. PostgreSQL gets fix 1 too, but I have no numbers for it yet.
+- Fix 3 only affects macOS.
+
+The rest of v0.26.0, including the sign-in everyone does once after upgrading, is in the [changelog](/changelog).
