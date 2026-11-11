@@ -6,10 +6,11 @@ import { PlatformIcon } from 'platformicons';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import {
+  apiPeriod,
   DEFAULT_PERIOD,
   PERIOD_CHOICES,
   type PeriodChoice,
-} from '@/features/release/model/session-health';
+} from '@/shared/lib/period';
 import { searchOneOf, searchString } from '@/shared/lib/search-params';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { OverviewFilters } from './-components/overview-filters';
@@ -22,6 +23,7 @@ import {
 } from './-components/overview-panels';
 import {
   type OverviewFilters as Filters,
+  heldReads,
   overviewReads,
 } from './-components/overview-reads';
 
@@ -35,7 +37,7 @@ interface OverviewSearch {
 /** The URL's filters, as the panels read them. */
 function overviewFilters(projectId: number, search: OverviewSearch) {
   const choice = search.period ?? DEFAULT_PERIOD;
-  const period = choice === 'all' ? undefined : choice;
+  const period = apiPeriod(choice);
   const filters: Filters = {
     projectId,
     period,
@@ -61,10 +63,9 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
   // Every read is started here. The page waits only for the project; each
   // panel fills in when its own read lands, failing on its own.
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     const { filters, compare } = overviewFilters(projectId, deps);
     const reads = overviewReads(filters, compare);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
     void queryClient.query(reads.summary).catch(noop);
     void queryClient.query(reads.events).catch(noop);
     void queryClient.query(reads.sessionSummary).catch(noop);
@@ -81,16 +82,13 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
 });
 
 function ProjectPage() {
-  const { id } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId } = Route.useParams();
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   return <ProjectScreen project={project} />;
 }
 
 /**
- * The same screen while the project loads. The filters and the panels are
- * real: neither waits for the project, so each panel shows its own
- * placeholder and fills in as its read lands, even before the header does.
+ * The same screen while the project loads, each panel its own placeholder.
  */
 function ProjectLoading() {
   return (
@@ -107,12 +105,12 @@ function ProjectLoading() {
 function ProjectScreen({ project }: { project?: ProjectResponse }) {
   const t = useTranslations('projectPages');
   const format = useFormatter();
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(id, 10);
   const { choice, filters, compare } = overviewFilters(projectId, search);
-  const reads = overviewReads(filters, compare);
+  const live = overviewReads(filters, compare);
+  const reads = project ? live : heldReads(live);
 
   return (
     // On a phone the header scrolls away with the page: held in place, the
@@ -160,6 +158,7 @@ function ProjectScreen({ project }: { project?: ProjectResponse }) {
             period={choice}
             environment={search.environment}
             release={search.release}
+            held={!project}
             onChange={(change) =>
               navigate({ search: (prev) => ({ ...prev, ...change }) })
             }

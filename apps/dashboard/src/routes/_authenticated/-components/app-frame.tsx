@@ -1,31 +1,14 @@
-import type { Product, Resource, UserResponse } from '@rustrak/client';
+import type { ProjectResponse, UserResponse } from '@rustrak/client';
 import {
-  AgentsIcon,
-  AppearanceIcon,
   BackIcon,
   Breadcrumbs,
-  CronsIcon,
   type Crumb,
   cn,
   DocsIcon,
-  FacetsIcon,
-  FeedbackIcon,
-  type IconComponent,
-  InfoIcon,
-  IntegrationsIcon,
-  IssuesIcon,
-  LinkIcon,
-  LogsIcon,
-  MemberIcon,
   Menu,
   type MenuAction,
   NewIcon,
-  NotificationIcon,
-  OverviewIcon,
-  PerformanceIcon,
   ProjectsIcon,
-  ReleasesIcon,
-  SecurityIcon,
   SettingsIcon,
   Sidebar,
   SidebarBrand,
@@ -37,33 +20,38 @@ import {
   SidebarSubmenu,
   SidebarUser,
   SignOutIcon,
-  StorageIcon,
   TeamIcon,
-  TokensIcon,
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMatch } from '@tanstack/react-router';
+import { useLocation, useMatch } from '@tanstack/react-router';
 import { PlatformIcon } from 'platformicons';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
-import { toCommandProjects } from '@/features/project/lib/command-items';
-import {
-  keepsProduct,
-  orderedProducts,
-} from '@/features/project/model/products';
+import { keepsProduct } from '@/features/project/model/products';
 import { userMutations } from '@/features/user/api/mutations';
-import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
 import type { Permissions } from '@/shared/lib/permissions';
-import { isSettingsPath } from '@/shared/lib/settings-path';
-import { CommandBar } from '@/shared/ui/components/command-bar/command-bar';
 import { Link } from '@/shared/ui/components/link';
 import {
   type TrailCrumb,
   usePageTrailCrumbs,
 } from '@/shared/ui/hooks/use-page-trail';
-import { usePathname } from '@/shared/ui/hooks/use-pathname';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { CommandBar } from './command-bar/command-bar';
+import {
+  ACCOUNT_SETTINGS,
+  allowed,
+  canSeeTeam,
+  inProductOrder,
+  isSettingsPath,
+  isUnder,
+  type NavPage,
+  OVERVIEW,
+  PROJECT_GROUPS,
+  PROJECT_PAGES,
+  PROJECT_SETTINGS,
+  WORKSPACE_SETTINGS,
+} from './nav';
 
 /**
  * The frame every authenticated screen sits in: the sidebar, and the trail at
@@ -84,153 +72,23 @@ const DOCS_URL = 'https://rustrak.dev';
 /** How many projects the workspace sidebar lists under its heading. */
 const SIDEBAR_PROJECTS = 5;
 
-interface FrameProject {
-  id: number;
-  name: string;
-  slug: string;
-  platform: string | null;
-  disabled_products: Product[];
-  product_order: Product[];
-}
+type FrameProject = Pick<
+  ProjectResponse,
+  'id' | 'name' | 'slug' | 'platform' | 'disabled_products' | 'product_order'
+>;
 
-/** The product a route shows, when it is one a project can turn off. */
-const PRODUCT_OF: Partial<Record<NavKey, Product>> = {
-  issues: 'issues',
-  feedback: 'feedback',
-  releases: 'releases',
-  performance: 'performance',
-  logs: 'logs',
-  crons: 'crons',
-  agents: 'agents',
-};
+type ProjectOption = Pick<ProjectResponse, 'id' | 'name' | 'platform'>;
 
-interface SettingsEntry {
-  key: string;
-  icon: IconComponent;
-  href: string;
-  /** Shown only to who may open it; absent means everyone. */
-  visible?: (p: Permissions) => boolean;
-  /** A project page: shown only to who may read this on that project. */
-  reads?: Resource;
-}
+/** The path without the query, so `?page=2` does not re-render the frame. */
+const usePathname = () =>
+  useLocation({ select: (location) => location.pathname });
 
-const ACCOUNT_SETTINGS: SettingsEntry[] = [
-  { key: 'profile', icon: MemberIcon, href: '/settings/profile' },
-  { key: 'preferences', icon: AppearanceIcon, href: '/settings/preferences' },
-];
-
-const WORKSPACE_SETTINGS: SettingsEntry[] = [
-  {
-    key: 'team',
-    icon: TeamIcon,
-    href: '/settings/team',
-    visible: (p) => p.can('users', 'read') || p.can('invitations', 'read'),
-  },
-  {
-    key: 'roles',
-    icon: SecurityIcon,
-    href: '/settings/roles',
-    visible: (p) => p.can('roles', 'read'),
-  },
-  {
-    key: 'integrations',
-    icon: IntegrationsIcon,
-    href: '/settings/integrations',
-    visible: (p) => p.can('integrations', 'read'),
-  },
-  { key: 'apiTokens', icon: TokensIcon, href: '/settings/tokens' },
-  { key: 'mcp', icon: AgentsIcon, href: '/settings/mcp' },
-  {
-    key: 'storage',
-    icon: StorageIcon,
-    href: '/settings/storage',
-    visible: (p) => p.can('storage', 'read'),
-  },
-  { key: 'instance', icon: InfoIcon, href: '/settings/instance' },
-];
-
-/** A project's settings pages, appended to `/projects/$id/settings`. */
-const PROJECT_SETTINGS: SettingsEntry[] = [
-  { key: 'general', icon: SettingsIcon, href: '/general', reads: 'project' },
-  { key: 'data', icon: FacetsIcon, href: '/data', reads: 'project' },
-  {
-    key: 'clientKeys',
-    icon: TokensIcon,
-    href: '/client-keys',
-    reads: 'client-keys',
-  },
-  { key: 'github', icon: LinkIcon, href: '/github', reads: 'project-github' },
-  {
-    key: 'members',
-    icon: TeamIcon,
-    href: '/members',
-    reads: 'project-members',
-  },
-];
-
-type NavKey =
-  | 'overview'
-  | 'issues'
-  | 'feedback'
-  | 'releases'
-  | 'performance'
-  | 'logs'
-  | 'crons'
-  | 'alerts'
-  | 'agents';
-
-interface NavRoute {
-  key: NavKey;
-  icon: IconComponent;
-  /** Appended to `/projects/$id`. */
-  path: string;
-}
-
-/** What a project page shows, so who cannot read it does not see it. */
-const NAV_READS: Record<NavKey, Resource> = {
-  overview: 'project',
-  issues: 'issues',
-  feedback: 'issues',
-  releases: 'releases',
-  performance: 'performance',
-  logs: 'logs',
-  crons: 'monitors',
-  alerts: 'alert-rules',
-  agents: 'performance',
-};
-
-const OVERVIEW: NavRoute = { key: 'overview', icon: OverviewIcon, path: '' };
-
-const GROUPS: { label: 'groupTriage' | 'groupMonitor'; routes: NavRoute[] }[] =
-  [
-    {
-      label: 'groupTriage',
-      routes: [
-        { key: 'issues', icon: IssuesIcon, path: '/issues' },
-        { key: 'feedback', icon: FeedbackIcon, path: '/feedback' },
-        { key: 'releases', icon: ReleasesIcon, path: '/releases' },
-      ],
-    },
-    {
-      label: 'groupMonitor',
-      routes: [
-        { key: 'performance', icon: PerformanceIcon, path: '/performance' },
-        { key: 'logs', icon: LogsIcon, path: '/logs' },
-        { key: 'crons', icon: CronsIcon, path: '/crons' },
-        { key: 'alerts', icon: NotificationIcon, path: '/alerts' },
-        { key: 'agents', icon: AgentsIcon, path: '/agents' },
-      ],
-    },
-  ];
-
-const ROUTES = [OVERVIEW, ...GROUPS.flatMap((group) => group.routes)];
-
-/** The route the URL is in. Overview only on its exact path. */
-function activeRoute(pathname: string, base: string): NavRoute | undefined {
-  return ROUTES.find((route) =>
-    route.path === ''
+/** The page the URL is in. Overview only on its exact path. */
+function activePage(pathname: string, base: string): NavPage | undefined {
+  return PROJECT_PAGES.find((page) =>
+    page.href === ''
       ? pathname === base || pathname === `${base}/`
-      : pathname.startsWith(`${base}${route.path}`),
+      : isUnder(pathname, `${base}${page.href}`),
   );
 }
 
@@ -241,7 +99,7 @@ function useCurrentProject(): FrameProject | null {
     from: '/_authenticated/projects/$id',
     shouldThrow: false,
   });
-  const id = match ? Number.parseInt(match.params.id, 10) : null;
+  const id = match ? match.params.id : null;
   const read = useQuery({
     ...projectQueries.detail(id ?? 0),
     enabled: id !== null,
@@ -301,6 +159,7 @@ export function AppSidebar({ user }: { user: UserResponse }) {
   const t = useTranslations('projects');
   const tUser = useTranslations('user');
   const tCommands = useTranslations('commands');
+  const tCommon = useTranslations('common');
   const pathname = usePathname();
   const router = useRouter();
   const project = useCurrentProject();
@@ -311,9 +170,7 @@ export function AppSidebar({ user }: { user: UserResponse }) {
   // project invalidates it. A failed read still renders both: the static
   // commands are the bulk of the bar, and an empty switcher still leads to
   // "All projects".
-  const read = useQuery(
-    projectQueries.list({ per_page: COMMAND_BAR_PROJECT_LIMIT }),
-  );
+  const read = useQuery(projectQueries.picker());
   const projects = read.data?.items ?? [];
 
   const base = project ? `/projects/${project.id}` : '';
@@ -352,11 +209,14 @@ export function AppSidebar({ user }: { user: UserResponse }) {
 
   return (
     <Sidebar
+      aria-label={tCommon('mainNavigation')}
       header={
         <>
           {/* Inside a project the top row is its switcher; above them all
               there is nothing to switch, and the row is the mark. */}
           <SidebarBrand
+            collapseLabel={tCommon('collapseSidebar')}
+            expandLabel={tCommon('expandSidebar')}
             render={<Link href="/projects" />}
             switcher={
               project && !settingsMode ? (
@@ -375,7 +235,7 @@ export function AppSidebar({ user }: { user: UserResponse }) {
             }
           />
           <CommandBar
-            projects={toCommandProjects(projects)}
+            projects={projects}
             trigger={(open, shortcut) => (
               <SidebarSearch
                 label={tCommands('triggerSearch')}
@@ -398,6 +258,7 @@ export function AppSidebar({ user }: { user: UserResponse }) {
             />
           )}
           <SidebarUser
+            label={tCommon('account', { name: user.email })}
             name={user.email}
             detail={tUser(`roles.${user.role}`)}
             actions={[
@@ -434,18 +295,14 @@ export function AppSidebar({ user }: { user: UserResponse }) {
             permissions={permissions}
           />
         ) : project ? (
-          <ProjectNav project={project} />
+          <ProjectNav project={project} permissions={permissions} />
         ) : (
-          <WorkspaceNav projects={projects} />
+          <WorkspaceNav projects={projects} permissions={permissions} />
         )}
       </SidebarScope>
     </Sidebar>
   );
 }
-
-type ProjectOption =
-  | FrameProject
-  | { id: number; name: string; platform: string | null };
 
 /** Every settings page: the account, the workspace, and each project's. */
 function SettingsNav({
@@ -480,7 +337,7 @@ function SettingsNav({
         ))}
       </SidebarGroup>
       <SidebarGroup label={tSettings('nav.groupWorkspace')}>
-        {WORKSPACE_SETTINGS.filter((e) => e.visible?.(permissions) ?? true).map(
+        {WORKSPACE_SETTINGS.filter((e) => allowed(e, permissions)).map(
           (entry) => (
             <SettingsLink key={entry.key} entry={entry} pathname={pathname} />
           ),
@@ -489,7 +346,7 @@ function SettingsNav({
       {listed.length > 0 ? (
         <SidebarGroup label={t('switcher.projects')}>
           {listed.map((option) => {
-            const optionBase = `/projects/${option.id}/settings`;
+            const optionBase = `/projects/${option.id}`;
             return (
               <SidebarSubmenu
                 key={option.id}
@@ -497,9 +354,8 @@ function SettingsNav({
                 leading={<ProjectLogo project={option} size={18} />}
                 defaultOpen={option.id === project?.id}
               >
-                {PROJECT_SETTINGS.filter(
-                  (e) =>
-                    !e.reads || permissions.can(e.reads, 'read', option.id),
+                {PROJECT_SETTINGS.filter((e) =>
+                  allowed(e, permissions, option.id),
                 ).map((entry) => (
                   <SettingsLink
                     key={entry.key}
@@ -519,26 +375,21 @@ function SettingsNav({
   );
 }
 
-/** A project's routes, in its own order, without the products it turned off. */
-function ProjectNav({ project }: { project: FrameProject }) {
+/** A project's pages, in its own order, without the products it turned off. */
+function ProjectNav({
+  project,
+  permissions,
+}: {
+  project: FrameProject;
+  permissions: Permissions;
+}) {
   const t = useTranslations('projects');
   const pathname = usePathname();
-  const permissions = usePermissionsLater();
   const base = `/projects/${project.id}`;
-  const active = activeRoute(pathname, base);
-  const productRank = orderedProducts(project.product_order);
-  // Alerts belongs to no product and is always there.
-  const shown = (route: NavRoute) => {
-    const product = PRODUCT_OF[route.key];
-    return (
-      permissions.can(NAV_READS[route.key], 'read', project.id) &&
-      (!product || keepsProduct(project.disabled_products, product))
-    );
-  };
-  const rank = (route: NavRoute) => {
-    const product = PRODUCT_OF[route.key];
-    return product ? productRank.indexOf(product) : productRank.length;
-  };
+  const active = activePage(pathname, base);
+  const shown = (page: NavPage) =>
+    allowed(page, permissions, project.id) &&
+    (!page.product || keepsProduct(project.disabled_products, page.product));
   return (
     <>
       <SidebarItem
@@ -547,34 +398,39 @@ function ProjectNav({ project }: { project: FrameProject }) {
         active={active === OVERVIEW}
         render={<Link href={base} />}
       />
-      {GROUPS.filter((group) => group.routes.some(shown)).map((group) => (
-        <SidebarGroup key={group.label} label={t(`nav.${group.label}`)}>
-          {group.routes
-            .filter(shown)
-            .sort((a, b) => rank(a) - rank(b))
-            .map((route) => (
+      {PROJECT_GROUPS.filter((group) => group.pages.some(shown)).map(
+        (group) => (
+          <SidebarGroup key={group.label} label={t(`nav.${group.label}`)}>
+            {inProductOrder(
+              group.pages.filter(shown),
+              project.product_order,
+            ).map((page) => (
               <SidebarItem
-                key={route.key}
-                icon={route.icon}
-                label={t(`nav.${route.key}`)}
-                active={active === route}
-                render={<Link href={`${base}${route.path}`} />}
+                key={page.key}
+                icon={page.icon}
+                label={t(`nav.${page.key}` as 'nav.issues')}
+                active={active === page}
+                render={<Link href={`${base}${page.href}`} />}
               />
             ))}
-        </SidebarGroup>
-      ))}
+          </SidebarGroup>
+        ),
+      )}
     </>
   );
 }
 
 /** Above any one project: the list of them, the team, and the projects. */
-function WorkspaceNav({ projects }: { projects: ProjectOption[] }) {
+function WorkspaceNav({
+  projects,
+  permissions,
+}: {
+  projects: ProjectOption[];
+  permissions: Permissions;
+}) {
   const t = useTranslations('projects');
   const tSettings = useTranslations('settings');
   const pathname = usePathname();
-  const permissions = usePermissionsLater();
-  const canSeeMembers =
-    permissions.can('users', 'read') || permissions.can('invitations', 'read');
   return (
     <>
       <SidebarItem
@@ -583,11 +439,11 @@ function WorkspaceNav({ projects }: { projects: ProjectOption[] }) {
         active={pathname === '/projects'}
         render={<Link href="/projects" />}
       />
-      {canSeeMembers ? (
+      {canSeeTeam(permissions) ? (
         <SidebarItem
           icon={TeamIcon}
           label={tSettings('nav.team')}
-          active={pathname.startsWith('/settings/team')}
+          active={isUnder(pathname, '/settings/team')}
           render={<Link href="/settings/team" />}
         />
       ) : null}
@@ -635,7 +491,7 @@ function SettingsLink({
   entry,
   pathname,
 }: {
-  entry: SettingsEntry;
+  entry: NavPage;
   pathname: string;
 }) {
   const tSettings = useTranslations('settings');
@@ -644,7 +500,7 @@ function SettingsLink({
       icon={entry.icon}
       label={tSettings(`nav.${entry.key}` as 'nav.account')}
       // A page with pages under it -- an integration's own -- stays marked.
-      active={pathname === entry.href || pathname.startsWith(`${entry.href}/`)}
+      active={isUnder(pathname, entry.href)}
       render={<Link href={entry.href} />}
     />
   );
@@ -658,11 +514,11 @@ function SettingsLink({
 function sectionCrumbs(
   pathname: string,
   base: string,
-  route: NavRoute | undefined,
+  page: NavPage | undefined,
   label: string,
   trail: TrailCrumb[],
 ): Crumb[] {
-  const section = route?.path ? `${base}${route.path}` : null;
+  const section = page?.href ? `${base}${page.href}` : null;
   const below = section ? pathname.length > section.length + 1 : false;
   if (!section || !below) return [{ label }];
   return [{ label, render: <Link href={section} /> }, ...trailCrumbs(trail)];
@@ -681,6 +537,7 @@ function trailCrumbs(trail: TrailCrumb[]): Crumb[] {
 export function AppBreadcrumbs() {
   const t = useTranslations('projects');
   const tSettings = useTranslations('settings');
+  const tCommon = useTranslations('common');
   const pathname = usePathname();
   const project = useCurrentProject();
   const trail = usePageTrailCrumbs();
@@ -692,11 +549,8 @@ export function AppBreadcrumbs() {
   const settingsPage = [
     ...ACCOUNT_SETTINGS,
     ...WORKSPACE_SETTINGS,
-    ...PROJECT_SETTINGS.map((e) => ({
-      ...e,
-      href: `${base}/settings${e.href}`,
-    })),
-  ].find((e) => pathname.startsWith(e.href));
+    ...PROJECT_SETTINGS.map((e) => ({ ...e, href: `${base}${e.href}` })),
+  ].find((e) => isUnder(pathname, e.href));
   const projectCrumb: Crumb[] = project
     ? [
         {
@@ -725,14 +579,16 @@ export function AppBreadcrumbs() {
       ...trailCrumbs(trail),
     ];
   } else if (project) {
-    const route = activeRoute(pathname, base);
+    const page = activePage(pathname, base);
     items = [
       ...projectCrumb,
       ...sectionCrumbs(
         pathname,
         base,
-        route,
-        route ? t(`nav.${route.key}`) : tSettings('nav.projectSettingsTitle'),
+        page,
+        page
+          ? t(`nav.${page.key}` as 'nav.issues')
+          : tSettings('nav.projectSettingsTitle'),
         trail,
       ),
     ];
@@ -752,5 +608,5 @@ export function AppBreadcrumbs() {
     items = [{ label: t('switcher.projects') }];
   }
 
-  return <Breadcrumbs items={items} />;
+  return <Breadcrumbs items={items} label={tCommon('breadcrumb')} />;
 }

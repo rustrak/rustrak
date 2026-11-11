@@ -48,6 +48,7 @@ export function EventTrends({ stats }: { stats: IssueStatsResponse | null }) {
               },
             ]}
             xKey="t"
+            integer
             height={140}
             formatX={(value) =>
               format.dateTime(new Date(value), {

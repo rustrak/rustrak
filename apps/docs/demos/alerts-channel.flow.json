@@ -3,15 +3,52 @@
   "url": "http://localhost:8090/settings/integrations",
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
-    { "action": "wait", "for": { "role": "link", "name": "Webhook POST JSON payloads to any HTTP endpoint." } },
-    { "action": "click", "target": { "role": "link", "name": "Webhook POST JSON payloads to any HTTP endpoint." }, "tooltip": "Channels say where alerts go. Every project shares them" },
+    {
+      "action": "wait",
+      "for": {
+        "role": "link",
+        "name": "Webhook POST JSON payloads to any HTTP endpoint."
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "Webhook POST JSON payloads to any HTTP endpoint."
+      },
+      "tooltip": "Channels say where alerts go. Every project shares them"
+    },
     { "action": "wait", "for": { "role": "textbox", "name": "Name" } },
-    { "action": "fill", "target": { "role": "textbox", "name": "Name" }, "value": "Ops webhook" },
-    { "action": "fill", "target": { "role": "textbox", "name": "Default URL (optional)" }, "value": "http://localhost:8099/alerts" },
-    { "action": "fill", "target": { "role": "textbox", "name": "Secret (optional)" }, "value": "linden-signing-key" },
-    { "action": "click", "target": { "role": "button", "name": "Create Webhook" }, "tooltip": "With a secret, every request is signed. Create the channel" },
-    { "action": "click", "target": { "role": "button", "name": "More actions for Ops webhook" }, "hotspot": false },
-    { "action": "click", "target": { "role": "menuitem", "name": "Test" }, "tooltip": "Send a sample alert to check it works before any alert uses it" },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Name" },
+      "value": "Ops webhook"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Default URL (optional)" },
+      "value": "http://localhost:8099/alerts"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Secret (optional)" },
+      "value": "linden-signing-key"
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Create Webhook" },
+      "tooltip": "With a secret, every request is signed. Create the channel"
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "More actions for Ops webhook" },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitem", "name": "Test" },
+      "tooltip": "Send a sample alert to check it works before any alert uses it"
+    },
     { "action": "wait", "for": { "text": "Test notification sent" } }
   ]
 }

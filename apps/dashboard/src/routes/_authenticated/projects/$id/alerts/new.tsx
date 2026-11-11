@@ -28,7 +28,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/alerts/new')(
       type: searchOneOf(search.type, TYPES),
     }),
     loader: ({ context: { queryClient }, params }) => {
-      const projectId = Number.parseInt(params.id, 10);
+      const projectId = params.id;
       startIfAllowed(
         queryClient,
         (p) => p.can('alert-rules', 'create', projectId),
@@ -49,7 +49,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/alerts/new')(
 );
 
 function NewAlertPage() {
-  const projectId = Number.parseInt(Route.useParams().id, 10);
+  const projectId = Route.useParams().id;
   return usePermissions().can('alert-rules', 'create', projectId) ? (
     <NewAlert projectId={projectId} />
   ) : (

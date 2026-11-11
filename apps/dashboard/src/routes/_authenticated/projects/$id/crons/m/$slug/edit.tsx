@@ -18,7 +18,7 @@ export const Route = createFileRoute(
 )({
   loader: ({ context: { queryClient }, params }) => {
     void queryClient
-      .query(monitorQueries.detail(Number.parseInt(params.id, 10), params.slug))
+      .query(monitorQueries.detail(params.id, params.slug))
       .catch(noop);
   },
   pendingComponent: EditMonitorLoading,
@@ -27,8 +27,7 @@ export const Route = createFileRoute(
 
 function EditMonitorPage() {
   const t = useTranslations('crons');
-  const { id, slug } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, slug } = Route.useParams();
   const canUpdate = usePermissions().can('monitors', 'update', projectId);
   const { data: monitor } = useSuspenseQuery(
     monitorQueries.detail(projectId, slug),

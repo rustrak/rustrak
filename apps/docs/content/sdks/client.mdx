@@ -129,8 +129,8 @@ if (!result.success) {
 | `gone` | 410 | ❌ | The resource was retired |
 | `payload_too_large` | 413 | ❌ | Envelope ingestion only |
 | `rate_limited` | 429 | ✅ | Rate limit exceeded; carries `retryAfter?: number` |
-| `client_error` | other &lt; 500 | ❌ | Any sub-500 status no other member claims |
-| `server_error` | 500+ | ✅ | Any 5xx; the server's own message is discarded |
+| `client_error` | other &lt; 500 | 408 only | Any sub-500 status no other member claims |
+| `server_error` | 500+ | 500, 502, 503, 504 | Any 5xx; the server's own message is discarded |
 | `invalid_request` | n/a | ❌ | Your input failed a pre-flight check; never sent |
 | `network` | n/a | ✅ | DNS, connection refused, TLS, timeout, abort |
 | `invalid_response` | n/a | ❌ | A 2xx arrived with a body the schema rejects |
@@ -338,17 +338,16 @@ Every method, grouped as it hangs off the client.
 | Method | Endpoint | Description |
 |---|---|---|
 | `auth.acceptInvitation({ body })` | `POST /auth/accept-invitation` | Accept a pending invitation: creates the user (with the invite's email + role) and logs in. |
-| `auth.changePassword({ body })` | `POST /auth/me/password` | Change the current user's password |
+| `auth.changePassword({ body })` | `POST /auth/me/password` | Change the current user's password. |
 | `auth.confirmSsoLink({ body })` | `POST /auth/sso/link` | Link the pending SSO identity to its account once the account's password is given, and sign in. |
 | `auth.getCurrentUser()` | `GET /auth/me` | Get current authenticated user |
 | `auth.getInvitation({ path })` | `GET /auth/invitation/{token}` | Returns the invitation's details if it is still acceptable (for the accept page). |
 | `auth.login({ body })` | `POST /auth/login` | Authenticate user and create session |
 | `auth.logout()` | `POST /auth/logout` | Clear session |
-| `auth.register({ body })` | `POST /auth/register` | Registration is invite-only — always rejected. |
 | `auth.ssoCallback({ query? })` | `GET /auth/sso/callback` | Validate the provider response, resolve or provision the local account, and establish the normal Rustrak session. |
 | `auth.ssoConfig()` | `GET /auth/sso/config` | Public, non-sensitive information used to render the login page. |
 | `auth.ssoLink()` | `GET /auth/sso/link` | The account an SSO login matched, shown while its owner confirms. |
-| `auth.ssoStart()` | `POST /auth/sso/start` | Create a one-time OIDC authorization request and retain its protections in the encrypted session cookie. |
+| `auth.ssoStart()` | `POST /auth/sso/start` | Create a one-time OIDC authorization request and retain its protections in the session. |
 | `auth.updateCurrentUser({ body })` | `PATCH /auth/me` | Update the current user's presentation preferences |
 
 ### Events
@@ -409,8 +408,8 @@ Every method, grouped as it hangs off the client.
 |---|---|---|
 | `environments.list({ path })` | `GET /api/projects/{project_id}/environments` | Lists the environments a project's issues have been seen in, by name. |
 | `feedback.list({ path, query? })` | `GET /api/projects/{project_id}/feedback` | Lists user feedback with what each user submitted. |
-| `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` | Bulk delete by ids or filter |
-| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` | Bulk mutate |
+| `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` |  |
+| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` |  |
 | `issues.createComment({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/comments` | Add a note. |
 | `issues.createUserReport({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/user-reports` | Attach user feedback to an issue. |
 | `issues.delete({ path })` | `DELETE /api/projects/{project_id}/issues/{issue_id}` | Hard-deletes an issue and all associated events |
@@ -473,7 +472,7 @@ Every method, grouped as it hangs off the client.
 | `projects.delete({ path })` | `DELETE /api/projects/{id}` | Delete a project |
 | `projects.get({ path })` | `GET /api/projects/{id}` | Get a project by ID |
 | `projects.getRateLimits()` | `GET /api/rate-limits` | What a project without limits of its own follows |
-| `projects.list({ query? })` | `GET /api/projects` | List projects with pagination |
+| `projects.list({ query? })` | `GET /api/projects` | List projects with pagination. |
 | `projects.update({ path, body })` | `PATCH /api/projects/{id}` | Update a project |
 
 ### Releases
@@ -498,7 +497,7 @@ Every method, grouped as it hangs off the client.
 |---|---|---|
 | `sentry.getIssue({ path })` | `GET /api/0/issues/{issue_id}/` | One issue with its releases and its 24h and 30d series (Sentry's `GroupDetailsEndpoint`). |
 | `sentry.getLatestEvent({ path })` | `GET /api/0/issues/{issue_id}/events/latest/` | The issue's most recent event (Sentry's `GroupEventDetailsEndpoint`, `issues/endpoints/group_event_details.py`). |
-| `sentry.listIssues({ path, query? })` | `GET /api/0/projects/{org_slug}/{project_slug}/issues/` | A project's issues, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `ProjectGroupIndexEndpoint`, `issues/endpoints/project_group_index.py`). |
+| `sentry.listIssues({ path, query? })` | `GET /api/0/projects/{org_slug}/{project_slug}/issues/` | Issues, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `ProjectGroupIndexEndpoint`, `issues/endpoints/project_group_index.py`). |
 | `sentry.listOrganizations()` | `GET /api/0/organizations/` | The organizations the token belongs to (Sentry's `OrganizationIndexEndpoint`): always the one synthetic org. |
 | `sentry.listProjects({ query? })` | `GET /api/0/projects/` | The projects the token can see, newest first (Sentry's `ProjectIndexEndpoint`, `core/endpoints/project_index.py`). |
 | `sentry.listRepos({ path })` | `GET /api/0/organizations/{org_slug}/repos/` | The code repositories connected to the organization (Sentry's `OrganizationRepositoriesEndpoint`). |

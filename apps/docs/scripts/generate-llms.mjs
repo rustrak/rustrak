@@ -9,9 +9,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getPost, getPosts } from '../src/lib/blog.ts';
-import { DEFINITION } from '../src/lib/seo.ts';
+import { DEFINITION, SITE } from '../src/lib/seo.ts';
 
-const SITE = 'https://rustrak.dev';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONTENT = join(ROOT, 'content');
 const PUBLIC = join(ROOT, 'public');

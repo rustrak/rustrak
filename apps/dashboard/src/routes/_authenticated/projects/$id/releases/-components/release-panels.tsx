@@ -10,33 +10,29 @@ import {
   BarsChart,
   Button,
   CopyIcon,
-  cn,
   ExternalLinkIcon,
   Skeleton,
   Tag,
 } from '@rustrak/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
+import { IssueRow } from '@/features/issue/ui/components/issue-row';
 import { splitVersion } from '@/features/release/model/session-health';
 import {
   AdoptionBar,
   HealthRate,
 } from '@/features/release/ui/components/release-figures';
 import type { ApiError } from '@/shared/api/query';
+import { DetailHeader } from '@/shared/ui/components/detail-layout';
+import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { Link } from '@/shared/ui/components/link';
+import { Panel, PanelPlaceholder } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
+import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 
 type Read<T> = UseQueryResult<T, ApiError>;
-
-const LEVEL_MARK: Record<string, string> = {
-  fatal: 'bg-sev-error',
-  error: 'bg-sev-error',
-  warning: 'bg-sev-warning',
-};
-
-// ── header ───────────────────────────────────────────────────────────────────
 
 /**
  * Which release this is and where it came from: the version, big and
@@ -53,36 +49,30 @@ export function ReleaseHeader({
   scope: ReactNode;
 }) {
   return (
-    <header className="@container shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
-      <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:justify-between @4xl:gap-8">
-        {release ? (
-          <ReleaseTitle release={release} />
-        ) : (
-          <div className="flex min-w-0 flex-col gap-1">
-            <Skeleton className="my-0.5 h-5 w-20" />
-            <Skeleton className="my-1 h-7 w-56" />
-            <Skeleton className="my-0.5 h-4 w-40" />
-          </div>
-        )}
-        {scope}
-      </div>
-    </header>
+    <DetailHeader>
+      {release ? (
+        <ReleaseTitle release={release} />
+      ) : (
+        <div className="flex min-w-0 flex-col gap-1">
+          <Skeleton className="my-0.5 h-5 w-20" />
+          <Skeleton className="my-1 h-7 w-56" />
+          <Skeleton className="my-0.5 h-4 w-40" />
+        </div>
+      )}
+      {scope}
+    </DetailHeader>
   );
 }
 
 function ReleaseTitle({ release }: { release: ReleaseSummary }) {
   const t = useTranslations('releases.detail');
+  const { copy } = useCopy();
   const tReleases = useTranslations('releases');
   const format = useFormatter();
   const parts = splitVersion(release.version);
   const created = new Date(release.date_created);
 
-  const copy = () => {
-    navigator.clipboard
-      ?.writeText(release.version)
-      .then(() => toast.success(t('copied')))
-      .catch(() => {});
-  };
+  const copyVersion = () => copy(release.version, t('copied'));
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
@@ -107,7 +97,7 @@ function ReleaseTitle({ release }: { release: ReleaseSummary }) {
           size="sm"
           icon={CopyIcon}
           aria-label={t('copy')}
-          onClick={copy}
+          onClick={copyVersion}
         />
       </div>
       <p className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-0.5 text-fg-subtle text-meta">
@@ -149,51 +139,6 @@ function Commit({ release }: { release: ReleaseSummary }) {
   );
 }
 
-// ── chrome ───────────────────────────────────────────────────────────────────
-
-function Panel({
-  title,
-  description,
-  footer,
-  children,
-  flush,
-}: {
-  title: string;
-  description?: ReactNode;
-  footer?: ReactNode;
-  children: ReactNode;
-  /** Rows that run to the panel's edges. */
-  flush?: boolean;
-}) {
-  return (
-    <section className="flex min-w-0 flex-col rounded-2xl border border-border-subtle bg-surface">
-      <header className="px-5 pt-4">
-        <h2 className="text-card-title text-fg">{title}</h2>
-        {description ? (
-          <p className="mt-0.5 text-fg-subtle text-meta">{description}</p>
-        ) : null}
-      </header>
-      <div className={cn('min-w-0 flex-1 pt-3 pb-4', flush ? null : 'px-5')}>
-        {children}
-      </div>
-      {footer ? (
-        <footer className="border-border-divider border-t px-5 py-3">
-          {footer}
-        </footer>
-      ) : null}
-    </section>
-  );
-}
-
-function Placeholder({ height }: { height: number }) {
-  return (
-    <div
-      className="animate-pulse rounded-lg bg-surface-hover motion-reduce:animate-none"
-      style={{ height }}
-    />
-  );
-}
-
 /** The read's data, its placeholder or its failure -- never a fake zero. */
 function Loaded<T>({
   read,
@@ -212,7 +157,7 @@ function Loaded<T>({
   const state = (
     <QueryState
       query={read}
-      placeholder={<Placeholder height={height} />}
+      placeholder={<PanelPlaceholder height={height} />}
       title={title}
     >
       {children}
@@ -222,28 +167,6 @@ function Loaded<T>({
     <div className="px-5">{state}</div>
   ) : (
     state
-  );
-}
-
-// ── KPIs ─────────────────────────────────────────────────────────────────────
-
-function Kpi({
-  label,
-  value,
-  footnote,
-}: {
-  label: string;
-  value: ReactNode;
-  footnote?: ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5">
-      <span className="truncate text-fg-meta text-meta">{label}</span>
-      <span className="text-fg text-title tabular-nums">{value}</span>
-      <span className="truncate text-fg-subtle text-hint">
-        {footnote ?? ' '}
-      </span>
-    </div>
   );
 }
 
@@ -277,20 +200,18 @@ export function ReleaseKpis({
   const none = release.sessions === 0;
 
   return (
-    // One strip, the cells split by hairlines: six cards at two heights
-    // would leave a ragged edge for no reason.
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border-subtle bg-border-subtle md:grid-cols-3 2xl:grid-cols-6">
-      <Kpi
+    <FigureStrip className="grid-cols-2 md:grid-cols-3 2xl:grid-cols-6">
+      <Figure
         label={t('crashFreeSessions')}
         value={<HealthRate rate={release.crash_free_sessions} />}
         footnote={none ? t('noSessions') : average('crash_free_sessions_rate')}
       />
-      <Kpi
+      <Figure
         label={t('crashFreeUsers')}
         value={<HealthRate rate={release.crash_free_users} />}
         footnote={none ? t('noSessions') : average('crash_free_users_rate')}
       />
-      <Kpi
+      <Figure
         label={t('adoption')}
         value={
           release.adoption == null ? (
@@ -304,7 +225,7 @@ export function ReleaseKpis({
         }
         footnote={release.adoption == null ? null : t('adoptionHint')}
       />
-      <Kpi
+      <Figure
         label={t('sessions')}
         value={format.number(release.sessions, 'compact')}
         footnote={
@@ -315,12 +236,12 @@ export function ReleaseKpis({
             : null
         }
       />
-      <Kpi
+      <Figure
         label={t('newIssues')}
         value={format.number(release.new_issues)}
         footnote={t('newIssuesHint')}
       />
-      <Kpi
+      <Figure
         label={t('events')}
         value={format.number(release.event_count, 'compact')}
         footnote={
@@ -331,11 +252,9 @@ export function ReleaseKpis({
             : null
         }
       />
-    </div>
+    </FigureStrip>
   );
 }
-
-// ── sessions ─────────────────────────────────────────────────────────────────
 
 /** Its sessions over the window, healthy under crashed. */
 export function SessionsPanel({
@@ -347,16 +266,10 @@ export function SessionsPanel({
 }) {
   const t = useTranslations('releases.detail');
   const format = useFormatter();
-  const label = (value: string | number) =>
-    format.dateTime(
-      new Date(value),
-      intervalHours >= 24
-        ? { month: 'short', day: 'numeric' }
-        : { month: 'short', day: 'numeric', hour: 'numeric' },
-    );
+  const label = useBucketLabel(intervalHours >= 24);
 
   return (
-    <Panel title={t('sessionsPanel')} description={t('sessionsPanelHint')}>
+    <Panel title={t('sessionsPanel')} hint={t('sessionsPanelHint')}>
       <Loaded read={read} height={240} title={t('sessionsPanel')}>
         {(points) =>
           points.every((p) => p.total === 0) ? (
@@ -388,6 +301,7 @@ export function SessionsPanel({
                 },
               ]}
               xKey="t"
+              integer
               height={240}
               formatX={label}
               formatY={(v) => format.number(v, 'compact')}
@@ -400,8 +314,6 @@ export function SessionsPanel({
   );
 }
 
-// ── new issues ───────────────────────────────────────────────────────────────
-
 export function NewIssuesPanel({
   projectId,
   read,
@@ -412,13 +324,13 @@ export function NewIssuesPanel({
   issuesHref: string;
 }) {
   const t = useTranslations('releases.detail');
-  const format = useFormatter();
+  const _format = useFormatter();
 
   return (
     <Panel
       flush
       title={t('newIssues')}
-      description={t('newIssuesHint')}
+      hint={t('newIssuesHint')}
       footer={
         <Link
           href={issuesHref}
@@ -438,61 +350,13 @@ export function NewIssuesPanel({
           ) : (
             <ul>
               {issues.map((issue) => (
-                <li key={issue.id}>
-                  <Link
-                    href={`/projects/${projectId}/issues/${issue.id}`}
-                    className="flex items-center gap-3 px-5 py-2.5 hover:bg-surface-hover"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        'h-8 w-0.75 shrink-0 rounded-pill',
-                        LEVEL_MARK[issue.level ?? ''] ?? 'bg-sev-info',
-                      )}
-                    />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-medium text-fg text-value">
-                        {issue.title}
-                      </span>
-                      <span className="truncate text-fg-subtle text-hint">
-                        <span className="font-mono">{issue.short_id}</span>
-                        {issue.culprit ? ` · ${issue.culprit}` : null}
-                      </span>
-                    </span>
-                    <span className="flex w-24 shrink-0 flex-col items-end">
-                      <span className="font-medium text-fg text-value tabular-nums">
-                        {format.number(issue.event_count, 'compact')}
-                      </span>
-                      <span className="truncate text-fg-meta text-hint">
-                        {format.relativeTime(new Date(issue.last_seen))}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
+                <IssueRow key={issue.id} projectId={projectId} issue={issue} />
               ))}
             </ul>
           )
         }
       </Loaded>
     </Panel>
-  );
-}
-
-// ── rail ─────────────────────────────────────────────────────────────────────
-
-/** A block of the rail, as on the issue page: a quiet heading, then facts. */
-export function RailBlock({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="border-border-divider border-b px-5 py-4 last:border-b-0">
-      <h2 className="mb-3 text-column text-fg-meta">{title}</h2>
-      {children}
-    </section>
   );
 }
 
@@ -558,17 +422,10 @@ export function ReleaseDetails({ release }: { release: ReleaseSummary }) {
   ];
 
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-meta">
-      {facts
-        .filter(([, value]) => value)
-        .map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-fg-subtle">{label}</dt>
-            <dd className="min-w-0 truncate text-right text-fg-secondary">
-              {value}
-            </dd>
-          </div>
-        ))}
-    </dl>
+    <FactList
+      facts={facts.filter(([, value]) => value)}
+      className="gap-y-2.5"
+      valueClassName="truncate text-right text-fg-secondary"
+    />
   );
 }

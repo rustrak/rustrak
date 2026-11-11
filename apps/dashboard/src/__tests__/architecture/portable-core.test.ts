@@ -1,6 +1,6 @@
 import { projectFiles } from 'archunit';
 import { describe, expect, it } from 'vitest';
-import { isTestFile, withoutComments } from './predicates';
+import { isTestFile, posix, withoutComments } from './predicates';
 
 /**
  * The rule this whole phase exists to buy: **the domain does not know the
@@ -42,7 +42,6 @@ const CORE = [
   /(^|\/)shared\/lib\//,
 ];
 
-const posix = (path: string) => path.split('\\').join('/');
 const isCore = (path: string) => CORE.some((p) => p.test(posix(path)));
 
 describe('the portable core does not import a framework', () => {

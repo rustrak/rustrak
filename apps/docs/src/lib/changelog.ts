@@ -3,7 +3,6 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import { Marked } from 'marked';
 import {
-  formatReleaseDate,
   parseVersion,
   type Release,
   type ReleaseChannel,
@@ -12,7 +11,7 @@ import {
   type ReleaseSection,
   type SectionKind,
   safeDate,
-} from './release';
+} from './release.ts';
 
 /**
  * The changelog, read off `content/changelog/*.mdx` and turned into data.
@@ -31,20 +30,10 @@ import {
  *
  * Rendering to an HTML string instead makes a release *transferable*: the same
  * shape can be inlined into the page or fetched later from a static file (see
- * `app/(docs)/changelog/releases/[chunk]/route.ts`). The content affords it —
+ * `app/(site)/changelog/releases/[chunk]/route.ts`). The content affords it —
  * every entry is plain Markdown, with no JSX, no imports and no code fences —
  * so nothing is lost by leaving the MDX pipeline out of it.
  */
-
-export type {
-  Release,
-  ReleaseChannel,
-  ReleaseChunk,
-  ReleasePulse,
-  ReleaseSection,
-  SectionKind,
-};
-export { formatReleaseDate };
 
 /**
  * How many releases the page ships with, and how many each later fetch brings.
@@ -69,8 +58,8 @@ function toDateString(value: unknown): string {
 }
 
 /**
- * Newest first, by version rather than by date — the same order the version
- * switcher uses (`scripts/generate-versions.mjs`). A patch backported after a
+ * Newest first, by version rather than by date; `versions.json`
+ * (`scripts/generate-versions.mjs`) is built from this same list. A patch backported after a
  * later minor carries the later date, and the numeric filename prefixes stop
  * sorting lexicographically at three digits, so neither is safe on its own.
  * Date and slug only break ties between equal versions.
@@ -171,16 +160,14 @@ function readRelease(filename: string): Release {
 
 /**
  * Parsed once per process. The page and every chunk of the static route read
- * the same list during a single build, and re-reading forty-one files and
+ * the same list during a single build, and re-reading every file and
  * re-rendering their Markdown for each of them is pure waste.
  */
 let cache: Release[] | null = null;
 
 export function getReleases(): Release[] {
   if (cache) return cache;
-  if (!fs.existsSync(CHANGELOG_DIR)) return [];
 
-  // Build-time, over the changelog directory. Same reasoning as blog.ts.
   // react-doctor-disable-next-line react-doctor/js-combine-iterations
   cache = fs
     .readdirSync(CHANGELOG_DIR)

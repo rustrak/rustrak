@@ -1,5 +1,5 @@
 import { noop, useQuery } from '@tanstack/react-query';
-import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { createFileRoute, notFound, Outlet } from '@tanstack/react-router';
 import { projectQueries } from '@/features/project/api/queries';
 
 /**
@@ -9,10 +9,18 @@ import { projectQueries } from '@/features/project/api/queries';
  * (`-components/app-frame.tsx`) and every page below subscribe to.
  */
 export const Route = createFileRoute('/_authenticated/projects/$id')({
+  // Parsed once here, so every page below reads `params.id` as a number and a
+  // non-numeric id is a 404 rather than a request for project `NaN`.
+  params: {
+    parse: ({ id }) => {
+      const parsed = Number(id);
+      if (!Number.isSafeInteger(parsed) || parsed <= 0) throw notFound();
+      return { id: parsed };
+    },
+    stringify: ({ id }) => ({ id: String(id) }),
+  },
   loader: ({ context: { queryClient }, params }) => {
-    void queryClient
-      .query(projectQueries.detail(Number.parseInt(params.id, 10)))
-      .catch(noop);
+    void queryClient.query(projectQueries.detail(params.id)).catch(noop);
   },
   component: ProjectLayout,
 });
@@ -30,7 +38,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id')({
 function ProjectLayout() {
   const { id } = Route.useParams();
   useQuery({
-    ...projectQueries.detail(Number.parseInt(id, 10)),
+    ...projectQueries.detail(id),
     throwOnError: (_error, query) => query.state.data === undefined,
   });
   return <Outlet />;

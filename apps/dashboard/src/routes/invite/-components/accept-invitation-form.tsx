@@ -1,19 +1,11 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import { Button, Field, FieldLabel, Input, Text } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { userMutations } from '@/features/user/api/mutations';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/shared/ui/components/form';
+import { setServerErrors } from '@/shared/lib/form-errors';
+import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 
 type AcceptFormData = {
@@ -46,34 +38,28 @@ export function AcceptInvitationForm({
       path: ['confirmPassword'],
     });
 
-  const form = useForm<AcceptFormData>({
-    resolver: zodResolver(acceptSchema),
-    defaultValues: {
-      password: '',
-      confirmPassword: '',
+  const form = useAppForm({
+    defaultValues: { password: '', confirmPassword: '' } as AcceptFormData,
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: acceptSchema },
+    onSubmit: ({ value }) => {
+      accept.mutate(
+        { token, password: value.password },
+        {
+          // With password login disabled the account exists but no session was
+          // opened: the way in is the provider, from the login page.
+          onSuccess: (accepted) => {
+            if (accepted.signed_in) router.push('/projects');
+            else setAwaitingSso(true);
+          },
+          onError: ({ error }) =>
+            setServerErrors(form, {
+              fields: { confirmPassword: error.message },
+            }),
+        },
+      );
     },
   });
-
-  const onSubmit = (data: AcceptFormData) => {
-    form.clearErrors();
-
-    accept.mutate(
-      { token, password: data.password },
-      {
-        // With password login disabled the account exists but no session was
-        // opened: the way in is the provider, from the login page.
-        onSuccess: (accepted) => {
-          if (accepted.signed_in) router.push('/projects');
-          else setAwaitingSso(true);
-        },
-        onError: ({ error }) =>
-          form.setError('confirmPassword', {
-            type: 'server',
-            message: error.message,
-          }),
-      },
-    );
-  };
 
   if (awaitingSso) {
     return (
@@ -110,50 +96,31 @@ export function AcceptInvitationForm({
         <Input value={email} readOnly disabled />
       </Field>
 
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="flex flex-col gap-4"
-        >
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('form.passwordLabel')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type="password"
-                    placeholder={t('form.passwordPlaceholder')}
-                    autoComplete="new-password"
-                    disabled={isPending}
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+      <form.AppForm>
+        <form.Form className="flex flex-col gap-4">
+          <form.AppField name="password">
+            {(field) => (
+              <field.TextField
+                label={t('form.passwordLabel')}
+                type="password"
+                placeholder={t('form.passwordPlaceholder')}
+                autoComplete="new-password"
+                disabled={isPending}
+              />
             )}
-          />
+          </form.AppField>
 
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('form.confirmLabel')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type="password"
-                    placeholder={t('form.confirmPlaceholder')}
-                    autoComplete="new-password"
-                    disabled={isPending}
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+          <form.AppField name="confirmPassword">
+            {(field) => (
+              <field.TextField
+                label={t('form.confirmLabel')}
+                type="password"
+                placeholder={t('form.confirmPlaceholder')}
+                autoComplete="new-password"
+                disabled={isPending}
+              />
             )}
-          />
+          </form.AppField>
 
           <Button
             type="submit"
@@ -164,8 +131,8 @@ export function AcceptInvitationForm({
           >
             {isPending ? t('form.creating') : t('form.accept')}
           </Button>
-        </form>
-      </Form>
+        </form.Form>
+      </form.AppForm>
     </div>
   );
 }

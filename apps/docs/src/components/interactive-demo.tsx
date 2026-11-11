@@ -4,15 +4,13 @@ import { InteractiveDemo as OpenShowcaseDemo } from '@rustrak/openshowcase-playe
 
 /**
  * An OpenShowcase demo exported to `public/demos/`. The player fetches the
- * file, so `src` is a path under `public/`, prefixed with the base path the
- * site is served from. The site is dark only, so the player is too.
+ * file, so `src` is a path under `public/`. The site is dark only, so the
+ * player is too.
  */
 export function InteractiveDemo({ src }: { src: string }) {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
-
   return (
     <OpenShowcaseDemo
-      src={src.startsWith('/') ? `${basePath}${src}` : src}
+      src={src}
       hotspotStyle={{
         bgColor: 'var(--surface-brand)',
       }}

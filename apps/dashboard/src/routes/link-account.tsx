@@ -1,11 +1,10 @@
-import { Button, Text } from '@rustrak/ui';
+import { Button, Text, Wordmark } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
 import { Link } from '@/shared/ui/components/link';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
-import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { AuthScreenLoading } from './-components/auth-screen-loading';
 import { LinkAccountForm } from './-components/link-account-form';
 
@@ -46,7 +45,7 @@ function LinkAccount() {
     <main className="flex min-h-screen items-center justify-center bg-canvas p-8 lg:p-12">
       <div className="flex w-full max-w-[25rem] flex-col gap-10">
         <div className="flex items-center">
-          <RustrakWordmark className="h-[22px] w-auto text-fg" />
+          <Wordmark className="h-[22px] w-auto text-fg" />
         </div>
 
         {link.data ? (

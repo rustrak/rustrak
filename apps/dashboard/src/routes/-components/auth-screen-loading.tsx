@@ -1,6 +1,5 @@
-import { Skeleton } from '@rustrak/ui';
+import { Skeleton, Wordmark } from '@rustrak/ui';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 
 /**
  * The card the public token screens (account linking, an invitation, an
@@ -16,7 +15,7 @@ export function AuthScreenLoading({ wide = false }: { wide?: boolean }) {
           className={`w-full ${wide ? 'max-w-[460px]' : 'max-w-[420px]'} space-y-10`}
         >
           <div className="flex items-center">
-            <RustrakWordmark className="h-[22px] w-auto" />
+            <Wordmark className="h-[22px] w-auto" />
           </div>
           <div className="space-y-6">
             <div className="space-y-2">

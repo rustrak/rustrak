@@ -5,21 +5,19 @@ import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { alertQueries } from '@/features/alert/api/queries';
 import { alertProviders } from '@/features/alert/model/providers';
+import { alertsHref, channelsHref } from '@/features/alert/model/rule-summary';
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
 import { githubQueries } from '@/features/github/api/queries';
+import { searchId } from '@/shared/lib/search-params';
 import { cn } from '@/shared/lib/utils';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
-import {
-  integrationProjectId,
-  integrationsBackHref,
-} from '../-components/integrations-back-link';
 
 export const Route = createFileRoute('/_authenticated/settings/integrations/')({
   validateSearch: (search: Record<string, unknown>) => ({
-    projectId: integrationProjectId(search.projectId),
+    projectId: searchId(search.projectId),
   }),
   // The catalogue stands without either read, and a card's status fills in
   // when its read lands or says which one failed.
@@ -59,7 +57,7 @@ function IntegrationsPage() {
           projectId ? (
             <Button
               variant="secondary"
-              render={<Link href={integrationsBackHref(projectId)} />}
+              render={<Link href={alertsHref(projectId)} />}
             >
               {t('integrations.backToAlerts')}
             </Button>
@@ -85,7 +83,7 @@ function IntegrationsPage() {
 
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2 2xl:grid-cols-3">
         <IntegrationCard
-          href="/settings/integrations/github"
+          href={channelsHref(projectId, 'github')}
           icon={<GitHubMark className="size-5" />}
           name="GitHub"
           description={tGitHub('connection.description')}
@@ -103,7 +101,7 @@ function IntegrationsPage() {
           return (
             <IntegrationCard
               key={provider.type}
-              href={`/settings/integrations/${provider.type}`}
+              href={channelsHref(projectId, provider.type)}
               icon={<ProviderIcon type={provider.type} className="size-5" />}
               name={provider.name}
               description={tAlerts(

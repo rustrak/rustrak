@@ -3,19 +3,16 @@ import {
   type DataTableQuery,
   Page,
   PageHeader,
-  parseTableQuery,
   Skeleton,
-  serializeTableQuery,
   Tab,
   TabList,
   Tabs,
 } from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { issueQueries } from '@/features/issue/api/queries';
-import { assignable } from '@/features/issue/model/assignable';
 import {
   ISSUE_FILTER_VARIANTS,
   ISSUE_VIEWS,
@@ -24,9 +21,16 @@ import {
   withServerQuery,
 } from '@/features/issue/model/issue-table';
 import { IssuesTable } from '@/features/issue/ui/components/issues-table/issues-table';
+import { useAssignable } from '@/features/issue/ui/hooks/use-assignable';
 import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
-import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { startIfAllowed } from '@/shared/api/permissions';
+import { searchOneOf } from '@/shared/lib/search-params';
+import {
+  pageBeyondEnd,
+  type TableSearch,
+  tableSearch,
+} from '@/shared/lib/table-search';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 
 const PAGE_SIZE = 50;
@@ -35,47 +39,29 @@ const PAGE_SIZE = 50;
  * The search, exactly as the table's codecs write it: `q` holds the filters
  * and the free text in the query bar's own syntax, so the address is the bar.
  */
-interface IssuesSearch {
+interface IssuesSearch extends TableSearch {
   view?: IssueView;
-  q?: string;
-  sort?: string;
-  page?: string;
-  per?: string;
 }
 
-function tableQuery(search: IssuesSearch): DataTableQuery {
-  const params = new URLSearchParams();
-  for (const key of ['q', 'sort', 'page', 'per'] as const) {
-    const value = search[key];
-    if (value) params.set(key, value);
-  }
-  return parseTableQuery(params, ISSUE_FILTER_VARIANTS, PAGE_SIZE);
-}
+const table = tableSearch({
+  variants: ISSUE_FILTER_VARIANTS,
+  pageSize: PAGE_SIZE,
+  normalise: withServerQuery,
+});
 
 /** The page of issues a URL shows, for the loader and the component alike. */
 function issuesList(projectId: number, search: IssuesSearch) {
   return issueQueries.list(
     projectId,
-    issueListParams(tableQuery(search), search.view ?? 'open'),
+    issueListParams(table.read(search), search.view ?? 'open'),
   );
 }
 
-/** A query and a view, written the way the address holds them. */
 function toSearch(query: DataTableQuery, view: IssueView): IssuesSearch {
-  const params = serializeTableQuery(query, ISSUE_FILTER_VARIANTS, PAGE_SIZE);
-  return {
-    view: view === 'open' ? undefined : view,
-    q: params.get('q') ?? undefined,
-    sort: params.get('sort') ?? undefined,
-    page: params.get('page') ?? undefined,
-    per: params.get('per') ?? undefined,
-  };
+  return { view: view === 'open' ? undefined : view, ...table.write(query) };
 }
 
 export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
-  // Read and written back, so the address keeps only what the table reads:
-  // an unknown sort, or a page that is not a number, is dropped rather than
-  // left in a URL that no control shows.
   validateSearch: (search: Record<string, unknown>): IssuesSearch => {
     const view =
       searchOneOf(search.view, ISSUE_VIEWS) ??
@@ -83,22 +69,20 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
       // then still open the view they name.
       searchOneOf(search.filter, ISSUE_VIEWS) ??
       'open';
-    const raw = (value: unknown) =>
-      searchString(value == null ? undefined : String(value));
-    const query = tableQuery({
-      q: raw(search.q),
-      sort: raw(search.sort),
-      page: raw(search.page),
-      per: raw(search.per),
-    });
-    return toSearch(withServerQuery(query, PAGE_SIZE), view);
+    return {
+      view: view === 'open' ? undefined : view,
+      ...table.validate(search),
+    };
   },
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    const projectId = params.id;
     void queryClient.query(issuesList(projectId, deps)).catch(noop);
-    void queryClient.query(userQueries.members(projectId)).catch(noop);
+    startIfAllowed(
+      queryClient,
+      (p) => p.can('project-members', 'read', projectId),
+      () => void queryClient.query(userQueries.members(projectId)).catch(noop),
+    );
     void queryClient.query(projectQueries.environments(projectId)).catch(noop);
     void queryClient
       .query(projectQueries.releaseVersions(projectId))
@@ -115,19 +99,34 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
  * swapping the whole list for a skeleton on every keystroke.
  */
 function IssuesPage() {
-  const { id } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId } = Route.useParams();
   const live = Route.useSearch();
   const search = useDeferredValue(live);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: page } = useSuspenseQuery(issuesList(projectId, search));
+
+  // A stale or shared `?page=` past the end lands on the last page. Only once
+  // the rows on screen are the address's.
+  const last = pageBeyondEnd(
+    table.read(search).pagination.pageIndex + 1,
+    page.total_pages,
+  );
+  if (search === live && last !== false) {
+    return (
+      <Navigate
+        to="/projects/$id/issues"
+        params={{ id: projectId }}
+        search={{ ...search, page: last }}
+        replace
+      />
+    );
+  }
 
   return (
     <IssuesScreen project={project} page={page} loading={search !== live} />
   );
 }
 
-/** The same screen, with the project's facts and the rows still to come. */
 function IssuesLoading() {
   return (
     <PageLoading>
@@ -148,20 +147,25 @@ function IssuesScreen({
   const t = useTranslations('projectPages');
   const tIssues = useTranslations('issues');
   const format = useFormatter();
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const context = Route.useRouteContext();
-  const projectId = Number.parseInt(id, 10);
-  const me = context.state === 'authenticated' ? context.user.id : 0;
+  // The skeleton reads none of the loader's side reads: an observer that
+  // unmounts mid-flight cancels the request, and the page would ask again.
+  // A disabled observer still counts, so the skeleton does not subscribe.
+  const idle = { enabled: !loading, subscribed: !loading };
+  const { me, members } = useAssignable(projectId, {
+    ...userQueries.members(projectId),
+    ...idle,
+  });
   const view = search.view ?? 'open';
-  const query = tableQuery(search);
+  const query = table.read(search);
   // Suggestions only: without them the list still works.
-  const members = useQuery(userQueries.members(projectId)).data ?? [];
   const environments =
-    useQuery(projectQueries.environments(projectId)).data ?? [];
+    useQuery({ ...projectQueries.environments(projectId), ...idle }).data ?? [];
   const releases =
-    useQuery(projectQueries.releaseVersions(projectId)).data ?? [];
+    useQuery({ ...projectQueries.releaseVersions(projectId), ...idle }).data ??
+    [];
 
   // Each change applies to the address as it is when it lands, not as it was
   // when this render read it: two changes in one gesture (clearing the
@@ -173,7 +177,7 @@ function IssuesScreen({
     navigate({
       search: (previous) =>
         toSearch(
-          update(tableQuery(previous)),
+          update(table.read(previous)),
           nextView ?? previous.view ?? 'open',
         ),
     });
@@ -230,10 +234,7 @@ function IssuesScreen({
           onQueryChange={setQuery}
           loading={loading}
           me={me}
-          members={assignable(
-            members,
-            context.state === 'authenticated' ? context.user : null,
-          )}
+          members={members}
           environments={environments}
           releases={releases}
         />

@@ -112,24 +112,6 @@ export function getPost(slug: string): { post: Post; content: string } | null {
 }
 
 /**
- * Every tag in use, most-used first, with how many posts carry it.
- *
- * The index header used to be a title in the left half of a 72rem frame and
- * nothing in the right, which is the same "width taken and not used" failure
- * the changelog had. This fills it with the one piece of navigation a blog
- * this size can honestly offer.
- */
-export function getTagCounts(): { tag: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const post of getPosts()) {
-    for (const tag of post.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([tag, count]) => ({ tag, count }))
-    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-}
-
-/**
  * The two posts either side of this one, named by time rather than by
  * position. `getPosts()` is newest first, so "previous" and "next" mean
  * opposite things depending on whether you are thinking about the array or
@@ -155,17 +137,6 @@ export function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
-}
-
-/** `May 22` — for the list, where the year is carried by its own marker. */
-export function formatDateShort(dateStr: string): string {
-  const d = safeDate(dateStr);
-  if (!d) return dateStr;
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
     day: 'numeric',
     timeZone: 'UTC',
   });

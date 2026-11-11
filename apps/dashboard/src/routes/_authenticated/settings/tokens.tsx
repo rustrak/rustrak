@@ -6,7 +6,6 @@ import { projectQueries } from '@/features/project/api/queries';
 import { tokenQueries } from '@/features/token/api/queries';
 import { TokensList } from '@/features/token/ui/components/tokens-list/tokens-list';
 import { accessQueries } from '@/shared/api/permissions';
-import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import {
   SettingSection,
@@ -15,9 +14,7 @@ import {
 import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
-const projectsToPick = projectQueries.list({
-  per_page: COMMAND_BAR_PROJECT_LIMIT,
-});
+const projectsToPick = projectQueries.picker();
 
 export const Route = createFileRoute('/_authenticated/settings/tokens')({
   loader: ({ context: { queryClient } }) => {

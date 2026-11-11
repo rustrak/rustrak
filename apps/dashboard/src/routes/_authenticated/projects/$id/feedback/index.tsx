@@ -1,19 +1,16 @@
 import type { UpdateIssueState } from '@rustrak/client';
 import {
   cn,
-  EmptyIcon,
   Page,
   PageHeader,
   Skeleton,
   Tab,
   TabList,
   Tabs,
-  Text,
 } from '@rustrak/ui';
 import { noop, useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { type ReactNode, useDeferredValue } from 'react';
-import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
 import { issueQueries } from '@/features/issue/api/queries';
@@ -21,18 +18,21 @@ import {
   landingAfter,
   MAILBOX_FILTER,
   MAILBOXES,
+  toggleSpam,
 } from '@/features/issue/model/feedback-mailbox';
 import { FeedbackDetail } from '@/features/issue/ui/components/feedback-detail';
 import { FeedbackList } from '@/features/issue/ui/components/feedback-list';
-import { useShortcuts } from '@/features/issue/ui/components/issue-actions';
 import { projectQueries } from '@/features/project/api/queries';
 import {
   searchOneOf,
   searchPage,
   searchString,
 } from '@/shared/lib/search-params';
+import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
+import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';
+import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /** The page of a mailbox the URL shows, for the loader and the component. */
 function feedbackList(
@@ -66,8 +66,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/feedback/')({
     page: search.page ?? 1,
   }),
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    const projectId = params.id;
     void queryClient.query(feedbackList(projectId, deps)).catch(noop);
   },
   pendingComponent: FeedbackLoading,
@@ -82,7 +81,8 @@ export const Route = createFileRoute('/_authenticated/projects/$id/feedback/')({
 function FeedbackPage() {
   const t = useTranslations('projectPages');
   const tIssues = useTranslations('issues');
-  const { id } = Route.useParams();
+  const toastFailure = useToastFailure();
+  const { id: projectId } = Route.useParams();
   const search = Route.useSearch();
   const liveMailbox = search.mailbox ?? 'inbox';
   const livePage = search.page ?? 1;
@@ -90,7 +90,6 @@ function FeedbackPage() {
   const page = useDeferredValue(livePage);
   const navigate = Route.useNavigate();
   const isLoading = mailbox !== liveMailbox || page !== livePage;
-  const projectId = Number.parseInt(id, 10);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: feedback } = useSuspenseQuery(
     feedbackList(projectId, { mailbox, page }),
@@ -128,10 +127,7 @@ function FeedbackPage() {
               },
         replace: true,
       }),
-    onError: (error) =>
-      toast.error(tIssues('toasts.updateFailed'), {
-        description: error.message,
-      }),
+    onError: (error) => toastFailure(tIssues('toasts.updateFailed'), error),
   });
   const isPending = isLoading || update.isPending;
   const canTriage = usePermissionsLater().can('issues', 'update', projectId);
@@ -155,12 +151,7 @@ function FeedbackPage() {
     change({
       status: current?.status === 'resolved' ? 'unresolved' : 'resolved',
     });
-  const spam = () =>
-    change(
-      current?.status === 'ignored'
-        ? { status: 'unresolved' }
-        : { status: 'ignored', substatus: 'archived_until_escalating' },
-    );
+  const spam = () => current && change(toggleSpam(current.status));
 
   useShortcuts({ j: () => step(1), k: () => step(-1), r: resolve, e: spam });
 
@@ -217,13 +208,10 @@ function FeedbackPage() {
           </div>
         </Page>
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-page-gutter py-16 text-center">
-          <EmptyIcon size="xl" className="mb-2 text-fg-ghost" />
-          <Text variant="body">{t('feedback.empty.title')}</Text>
-          <Text variant="meta" tone="subtle" className="max-w-sm">
-            {t('feedback.empty.description')}
-          </Text>
-        </div>
+        <EmptyState
+          title={t('feedback.empty.title')}
+          description={t('feedback.empty.description')}
+        />
       )}
     </FeedbackScreen>
   );

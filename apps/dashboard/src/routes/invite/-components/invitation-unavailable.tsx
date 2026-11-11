@@ -9,9 +9,7 @@ import { Link } from '@/shared/ui/components/link';
  *
  * Built on `ErrorScreen`, like the 404 and the two error boundaries, because
  * this is the same kind of moment: a reader with no header, no navigation and
- * no session, meeting a dead end. It used to be a small card inside the invite
- * page's own chrome, which made the one screen a signed-out person is most
- * likely to hit the only failure in the app that looked improvised.
+ * no session, meeting a dead end.
  *
  * The brand half says links expire rather than reassuring anyone their data is
  * safe. That default belongs to an outage; here nothing broke and the reader

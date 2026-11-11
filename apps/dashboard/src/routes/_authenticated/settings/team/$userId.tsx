@@ -6,7 +6,6 @@ import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
 import { UserAssignments } from '@/features/user/ui/components/user-assignments';
 import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
-import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import {
   SettingSection,
@@ -17,9 +16,7 @@ import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
 
 // ponytail: the first 100 projects; add a search when someone has more.
-const projectsToPick = projectQueries.list({
-  per_page: COMMAND_BAR_PROJECT_LIMIT,
-});
+const projectsToPick = projectQueries.picker();
 
 export const Route = createFileRoute('/_authenticated/settings/team/$userId')({
   loader: ({ context: { queryClient }, params }) => {

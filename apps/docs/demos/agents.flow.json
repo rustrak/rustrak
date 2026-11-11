@@ -4,12 +4,28 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "cell", "name": "care_guide" } },
-    { "action": "click", "target": { "role": "cell", "name": "care_guide" }, "tooltip": "Calls, errors and latency per model and tool. A row opens the runs that used it" },
+    {
+      "action": "click",
+      "target": { "role": "cell", "name": "care_guide" },
+      "tooltip": "Calls, errors and latency per model and tool. A row opens the runs that used it"
+    },
     { "action": "wait", "for": { "text": "plant-care-assistant", "nth": 0 } },
-    { "action": "click", "target": { "text": "plant-care-assistant", "nth": 0 }, "tooltip": "One row per run: LLM calls, tool calls, tokens. Open one" },
+    {
+      "action": "click",
+      "target": { "text": "plant-care-assistant", "nth": 0 },
+      "tooltip": "One row per run: LLM calls, tool calls, tokens. Open one"
+    },
     { "action": "wait", "for": { "role": "radio", "name": "Waterfall" } },
-    { "action": "click", "target": { "text": "gen_ai.chat", "nth": 1 }, "tooltip": "Each model and tool call in order. A model call shows its tokens, prompt and reply" },
-    { "action": "click", "target": { "role": "radio", "name": "Agents" }, "tooltip": "Agents shows which agents ran and what they called" },
+    {
+      "action": "click",
+      "target": { "text": "gen_ai.chat", "nth": 1 },
+      "tooltip": "Each model and tool call in order. A model call shows its tokens, prompt and reply"
+    },
+    {
+      "action": "click",
+      "target": { "role": "radio", "name": "Agents" },
+      "tooltip": "Agents shows which agents ran and what they called"
+    },
     { "action": "wait", "ms": 1000 }
   ]
 }
