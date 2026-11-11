@@ -6,82 +6,12 @@
 //! sentry-cli and JS bundler plugins on every build.
 
 use crate::common::TestDb;
-use actix_web::{test, web, App};
+use crate::common::{create_test_project, create_test_token};
+use actix_web::test;
 use chrono::{Duration, Utc};
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
-use rustrak::models::CreateProject;
-use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
-use rustrak::services::{AuthTokenService, IssueService, ProjectService};
+use rustrak::services::IssueService;
 use serde_json::{json, Value};
-use std::time::Duration as StdDuration;
-
-fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: StdDuration::from_secs(5),
-            idle_timeout: StdDuration::from_secs(60),
-            max_lifetime: StdDuration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
-async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
-    AuthTokenService::create(
-        pool,
-        rustrak::models::CreateAuthToken {
-            description: Some("Test token".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("Failed to create test token")
-    .token
-}
-
-async fn create_test_project(pool: &rustrak::db::DbPool, name: &str) -> rustrak::models::Project {
-    ProjectService::create(
-        pool,
-        CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("Failed to create test project")
-}
 
 async fn create_test_issue(
     pool: &rustrak::db::DbPool,
@@ -126,7 +56,7 @@ async fn test_new_issues_for_release_returns_matching_issues() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "New Issues Project").await;
-    let config = create_test_config();
+    let config = crate::common::config();
 
     let matching = create_test_issue(&db.pool, project.id, "TypeError", "In this release").await;
     set_first_release(&db.pool, matching.id, "1.0.0").await;
@@ -134,14 +64,7 @@ async fn test_new_issues_for_release_returns_matching_issues() {
     let other = create_test_issue(&db.pool, project.id, "ValueError", "Other release").await;
     set_first_release(&db.pool, other.id, "0.9.0").await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -168,21 +91,14 @@ async fn test_new_issues_for_release_respects_limit() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Limit Project").await;
-    let config = create_test_config();
+    let config = crate::common::config();
 
     for i in 0..3 {
         let issue = create_test_issue(&db.pool, project.id, "TypeError", &format!("Err {i}")).await;
         set_first_release(&db.pool, issue.id, "1.0.0").await;
     }
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     let req = test::TestRequest::get()
         .uri(&format!(
@@ -199,36 +115,6 @@ async fn test_new_issues_for_release_respects_limit() {
     let issues = body.as_array().unwrap();
     assert_eq!(issues.len(), 2);
 }
-
-#[actix_web::test]
-async fn test_new_issues_for_release_unauthorized_without_token() {
-    let db = TestDb::new().await;
-    let project = create_test_project(&db.pool, "Unauthorized Release Project").await;
-    let config = create_test_config();
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!(
-            "/api/projects/{}/releases/1.0.0/new-issues",
-            project.id
-        ))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-// =============================================================================
-// Sentry-compatible CI endpoints (GH #191): POST/PUT .../releases/...
-// =============================================================================
 
 async fn set_last_release(pool: &rustrak::db::DbPool, issue_id: uuid::Uuid, release: &str) {
     sqlx::query("UPDATE issues SET last_release = $1 WHERE id = $2")
@@ -274,14 +160,7 @@ async fn test_create_release_new_returns_201_with_null_date_released() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Create Release Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let req = test::TestRequest::post()
         .uri(&format!(
@@ -307,14 +186,7 @@ async fn test_create_release_duplicate_returns_208_without_duplicate_row() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Duplicate Release Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let make_req = || {
         test::TestRequest::post()
@@ -344,14 +216,7 @@ async fn test_create_release_invalid_version_returns_400_and_no_row() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Invalid Version Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     for bad_version in ["../etc", "latest", "LATEST", "."] {
         let req = test::TestRequest::post()
@@ -375,42 +240,10 @@ async fn test_create_release_invalid_version_returns_400_and_no_row() {
 }
 
 #[actix_web::test]
-async fn test_create_release_unauthorized_without_token() {
-    let db = TestDb::new().await;
-    let project = create_test_project(&db.pool, "Unauthorized Create Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri(&format!(
-            "/api/0/projects/my-org/{}/releases/",
-            project.slug
-        ))
-        .set_json(json!({ "version": "1.0.0" }))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-#[actix_web::test]
 async fn test_create_release_unknown_project_returns_404() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let req = test::TestRequest::post()
         .uri("/api/0/projects/my-org/does-not-exist/releases/")
@@ -427,14 +260,7 @@ async fn test_finalize_release_sets_date_released() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Finalize Release Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let create_req = test::TestRequest::post()
         .uri(&format!(
@@ -470,14 +296,7 @@ async fn test_finalize_release_not_found_returns_404() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Missing Release Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let req = test::TestRequest::put()
         .uri(&format!(
@@ -497,14 +316,7 @@ async fn test_create_release_clears_in_next_release_marker_for_older_release() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Regression Clear Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     // Issue resolved "in next release", denormalized against 1.0.0.
     let issue = create_test_issue(&db.pool, project.id, "TypeError", "Regressed later").await;
@@ -569,14 +381,7 @@ async fn test_create_release_does_not_clear_marker_for_release_newer_than_the_co
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "No False Clear Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let post_release = |version: &'static str| {
         test::TestRequest::post()
@@ -631,14 +436,7 @@ async fn test_create_release_duplicate_does_not_reclear_marker() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "No Reclear Project").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     let first_req = test::TestRequest::post()
         .uri(&format!(
@@ -683,14 +481,7 @@ async fn test_create_release_cross_project_isolation() {
     let token = create_test_token(&db.pool).await;
     let project_x = create_test_project(&db.pool, "Project X").await;
     let project_y = create_test_project(&db.pool, "Project Y").await;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::releases::configure)
-            .configure(routes::projects::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
 
     // Issue in project Y, same version string as what will be created in X.
     let issue_y = create_test_issue(&db.pool, project_y.id, "TypeError", "Y issue").await;

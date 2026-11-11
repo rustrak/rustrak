@@ -8,68 +8,24 @@
 
 use crate::common::{process_error_event, TestDb};
 use actix_web::dev::{Service, ServiceResponse};
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
+use rustrak::config::Config;
 use rustrak::db::DbPool;
-use rustrak::digest::processors::Processors;
-use rustrak::ingest::{store_event, EventMetadata};
+use rustrak::ingest::EventMetadata;
 use rustrak::models::{
-    AlertRuleChannelInput, AlertType, ChannelType, CreateAlertRule, CreateNotificationChannel,
-    CreateProject,
+    AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, CreateProject,
+    ProviderType,
 };
 use rustrak::pagination::{IssueCategory, IssueFilter, IssueSort, SortOrder};
-use rustrak::routes;
 use rustrak::services::scope::Scope;
 use rustrak::services::{AlertService, IssueService, IssueSocialService, ProjectService};
 use serde_json::{json, Value};
 use std::path::Path;
-use std::time::Duration;
 use uuid::Uuid;
 
-fn rate_limit() -> RateLimitConfig {
-    RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    }
-}
-
 fn config(ingest_dir: &Path) -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: rate_limit(),
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: Some(ingest_dir.to_string_lossy().to_string()),
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
+    crate::common::config_with_ingest_dir(ingest_dir)
 }
 
 struct Setup {
@@ -95,33 +51,6 @@ async fn setup() -> Setup {
         project,
         ingest: tempfile::tempdir().unwrap(),
     }
-}
-
-async fn app(
-    s: &Setup,
-) -> impl Service<actix_http::Request, Response = ServiceResponse, Error = actix_web::Error> {
-    let config = config(s.ingest.path());
-    test::init_service(
-        App::new()
-            .app_data(web::Data::new(s.db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(Processors::new(
-                s.ingest.path().to_path_buf(),
-                config.rate_limit.clone(),
-                crate::common::null_sourcemap_provider(),
-                None,
-            )))
-            // Before ingest, as in `main.rs`: its `/api/{project_id}` scope
-            // would otherwise claim `/api/settings/mcp` and `/api/0/...`.
-            .configure(routes::mcp::configure)
-            .configure(routes::sentry_api::configure)
-            // Events before issues, as in `main.rs`: the issues scope would
-            // claim `/issues/{id}/events/...`.
-            .configure(routes::events::configure)
-            .configure(routes::issues::configure)
-            .configure(routes::ingest::configure),
-    )
-    .await
 }
 
 fn post_envelope(s: &Setup, body: Vec<u8>) -> actix_http::Request {
@@ -177,9 +106,14 @@ fn error_event(event_id: &str) -> Value {
 /// Digests `event` the way the ingest path does, synchronously.
 async fn digest(s: &Setup, event: &Value) -> rustrak::error::AppResult<()> {
     let event_id = event["event_id"].as_str().unwrap();
-    store_event(s.ingest.path(), event_id, event.to_string().as_bytes())
-        .await
-        .unwrap();
+    crate::common::store_event(
+        s.ingest.path(),
+        s.project.id,
+        event_id,
+        event.to_string().as_bytes(),
+    )
+    .await
+    .unwrap();
     let metadata = EventMetadata {
         event_id: event_id.to_string(),
         project_id: s.project.id,
@@ -190,7 +124,7 @@ async fn digest(s: &Setup, event: &Value) -> rustrak::error::AppResult<()> {
         &s.db.pool,
         &metadata,
         s.ingest.path(),
-        &rate_limit(),
+        &crate::common::rate_limit(),
         crate::common::null_sourcemap_provider(),
     )
     .await
@@ -217,22 +151,19 @@ async fn issues(pool: &DbPool, project_id: i32) -> Vec<IssueRow> {
     .unwrap()
 }
 
-/// The digest runs in a spawned task; poll (bounded) for `count` issues.
+/// The project's issues once the spawned digest has stored `count`.
 async fn wait_for_issues(pool: &DbPool, project_id: i32, count: usize) -> Vec<IssueRow> {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
-    loop {
+    crate::common::eventually(|| async {
         let rows = issues(pool, project_id).await;
-        if rows.len() >= count || tokio::time::Instant::now() >= deadline {
-            return rows;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+        (rows.len() >= count).then_some(rows)
+    })
+    .await
 }
 
 #[actix_web::test]
 async fn feedback_envelope_creates_a_feedback_issue() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let id = new_id();
     let event = feedback_event(
         &id,
@@ -357,7 +288,7 @@ async fn feedback_before_its_event_is_linked_when_the_event_arrives() {
 #[actix_web::test]
 async fn legacy_user_report_becomes_a_feedback_issue() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let error_id = new_id();
     digest(&s, &error_event(&error_id)).await.unwrap();
 
@@ -394,7 +325,7 @@ async fn legacy_user_report_becomes_a_feedback_issue() {
 #[actix_web::test]
 async fn a_retried_user_report_is_one_feedback() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let error_id = new_id();
     let report = json!({ "event_id": error_id, "comments": "Twice" });
     for _ in 0..2 {
@@ -405,14 +336,18 @@ async fn a_retried_user_report_is_one_feedback() {
         .await;
         assert_eq!(resp.status(), 200);
     }
-    wait_for_issues(&s.db.pool, s.project.id, 2).await;
+    wait_for_issues(&s.db.pool, s.project.id, 1).await;
+    crate::common::eventually(|| async {
+        (!crate::common::has_files(s.ingest.path())).then_some(())
+    })
+    .await;
     assert_eq!(issues(&s.db.pool, s.project.id).await.len(), 1);
 }
 
 #[actix_web::test]
 async fn two_reports_about_one_event_are_two_feedbacks() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let error_id = new_id();
     for comments in ["First", "Second"] {
         let report = json!({ "event_id": error_id, "comments": comments });
@@ -462,9 +397,10 @@ async fn the_issue_list_shows_one_category_at_a_time() {
 async fn rule(s: &Setup, alert_type: AlertType, conditions: Value) {
     let channel = AlertService::create_channel(
         &s.db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: format!("sink {alert_type}"),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "http://127.0.0.1:9/unused" }),
             is_enabled: true,
         },
@@ -605,7 +541,7 @@ fn dsn(s: &Setup, key: &str) -> String {
 #[actix_web::test]
 async fn the_user_feedback_endpoint_takes_a_report_with_dsn_auth() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let error_id = new_id();
     digest(&s, &error_event(&error_id)).await.unwrap();
 
@@ -626,7 +562,7 @@ async fn the_user_feedback_endpoint_takes_a_report_with_dsn_auth() {
 #[actix_web::test]
 async fn the_user_feedback_endpoint_rejects_another_projects_dsn() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let report = json!({ "event_id": new_id(), "comments": "x" });
     let wrong = Uuid::new_v4().simple().to_string();
     let resp = test::call_service(&app, post_user_feedback(&s, dsn(&s, &wrong), &report)).await;
@@ -636,7 +572,7 @@ async fn the_user_feedback_endpoint_rejects_another_projects_dsn() {
 #[actix_web::test]
 async fn the_user_feedback_endpoint_takes_a_token_and_returns_the_report() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = rustrak::services::AuthTokenService::create(
         &s.db.pool,
         rustrak::models::CreateAuthToken::default(),
@@ -698,7 +634,7 @@ async fn get_feedback(
 #[actix_web::test]
 async fn the_feedback_list_carries_what_the_user_submitted() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     let error_id = new_id();
     digest(&s, &error_event(&error_id)).await.unwrap();
@@ -784,7 +720,7 @@ async fn attachment_count(pool: &DbPool, project_id: i32) -> i64 {
 #[actix_web::test]
 async fn the_reports_of_an_issue_come_a_page_at_a_time() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     digest(&s, &error_event(&new_id())).await.unwrap();
     let issue = issues(&s.db.pool, s.project.id).await.remove(0);
@@ -869,7 +805,7 @@ async fn feedback_with_attachment(
 async fn the_storage_page_counts_attachment_bytes() {
     use rustrak::services::StorageService;
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let screenshot = vec![0u8; 100_000];
     feedback_with_attachment(&s, &app, "screenshot.png", "image/png", &screenshot).await;
 
@@ -888,7 +824,7 @@ async fn the_storage_page_counts_attachment_bytes() {
 #[actix_web::test]
 async fn a_feedback_screenshot_is_kept_and_served_byte_for_byte() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     feedback_with_attachment(&s, &app, "screenshot.png", "image/png", SCREENSHOT).await;
 
@@ -924,7 +860,7 @@ async fn a_feedback_screenshot_is_kept_and_served_byte_for_byte() {
 #[actix_web::test]
 async fn an_event_lists_its_attachments() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     feedback_with_attachment(&s, &app, "screenshot.png", "image/png", SCREENSHOT).await;
     let issue = issues(&s.db.pool, s.project.id).await.remove(0);
@@ -951,7 +887,7 @@ async fn an_event_lists_its_attachments() {
 #[actix_web::test]
 async fn an_attachment_that_is_not_an_image_is_only_ever_downloaded() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     // Claims to be an image; an SVG served inline would run its script.
     let svg = br#"<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"#;
@@ -985,7 +921,7 @@ async fn an_attachment_that_is_not_an_image_is_only_ever_downloaded() {
 #[actix_web::test]
 async fn an_attachment_keeps_its_unicode_filename() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     feedback_with_attachment(&s, &app, "café.png", "image/png", SCREENSHOT).await;
 
@@ -1009,7 +945,7 @@ async fn an_attachment_keeps_its_unicode_filename() {
 #[actix_web::test]
 async fn an_attachment_is_private_to_its_project() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     feedback_with_attachment(&s, &app, "screenshot.png", "image/png", SCREENSHOT).await;
     let body = get_feedback(&app, &s, &token, "").await;
@@ -1037,35 +973,92 @@ async fn an_attachment_is_private_to_its_project() {
     assert_eq!(resp.status(), 404);
 }
 
+/// Sentry keeps every attachment an error event is sent with, whatever its
+/// `attachment_type` (a plain file, a minidump, a view hierarchy...).
 #[actix_web::test]
-async fn attachments_of_an_error_event_are_not_kept() {
+async fn attachments_of_an_error_event_are_kept_listed_and_downloadable() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
+    let token = admin_token(&s.db.pool).await;
     let id = new_id();
-    let resp = test::call_service(
+    let mut body = envelope_with_attachment(
+        &id,
+        "event",
+        &error_event(&id),
+        "log.txt",
+        "text/plain",
+        b"log",
+    );
+    let hierarchy = br#"{"rendering_system":"UIKIT","windows":[]}"#;
+    body.extend_from_slice(
+        format!(
+            "\n{{\"type\":\"attachment\",\"length\":{},\"filename\":\"view-hierarchy.json\",\"content_type\":\"application/json\",\"attachment_type\":\"event.view_hierarchy\"}}\n",
+            hierarchy.len()
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(hierarchy);
+    let resp = test::call_service(&app, post_envelope(&s, body)).await;
+    assert_eq!(resp.status(), 200);
+    wait_for_issues(&s.db.pool, s.project.id, 1).await;
+
+    let issue = issues(&s.db.pool, s.project.id).await.remove(0);
+    let event_id: Uuid = sqlx::query_scalar("SELECT id FROM events WHERE issue_id = $1")
+        .bind(issue.id)
+        .fetch_one(&s.db.pool)
+        .await
+        .unwrap();
+    let resp = get_raw(
         &app,
-        post_envelope(
-            &s,
-            envelope_with_attachment(
-                &id,
-                "event",
-                &error_event(&id),
-                "log.txt",
-                "text/plain",
-                b"log",
-            ),
+        &format!(
+            "/api/projects/{}/issues/{}/events/{event_id}/attachments",
+            s.project.id, issue.id
         ),
+        &token,
     )
     .await;
     assert_eq!(resp.status(), 200);
-    wait_for_issues(&s.db.pool, s.project.id, 1).await;
-    assert_eq!(attachment_count(&s.db.pool, s.project.id).await, 0);
+    let listed: Value = test::read_body_json(resp).await;
+    let mut names: Vec<&str> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["filename"].as_str().unwrap())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["log.txt", "view-hierarchy.json"]);
+
+    let log = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["filename"] == "log.txt")
+        .unwrap();
+    let resp = get_raw(
+        &app,
+        &format!(
+            "/api/projects/{}/attachments/{}",
+            s.project.id,
+            log["id"].as_str().unwrap()
+        ),
+        &token,
+    )
+    .await;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(test::read_body(resp).await.as_ref(), b"log");
+    // Never in the event's own data.
+    let data: String = sqlx::query_scalar("SELECT CAST(data AS TEXT) FROM events WHERE id = $1")
+        .bind(event_id)
+        .fetch_one(&s.db.pool)
+        .await
+        .unwrap();
+    assert!(!data.contains("_rustrak_attachments"));
 }
 
 #[actix_web::test]
 async fn deleting_a_feedback_deletes_its_screenshot() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     feedback_with_attachment(&s, &app, "screenshot.png", "image/png", SCREENSHOT).await;
     assert_eq!(attachment_count(&s.db.pool, s.project.id).await, 1);
 
@@ -1077,7 +1070,7 @@ async fn deleting_a_feedback_deletes_its_screenshot() {
 #[actix_web::test]
 async fn an_oversized_attachment_is_dropped_and_the_feedback_kept() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let huge = vec![0u8; rustrak::ingest::MAX_ATTACHMENT_SIZE + 1];
     feedback_with_attachment(&s, &app, "huge.png", "image/png", &huge).await;
     assert_eq!(issues(&s.db.pool, s.project.id).await.len(), 1);
@@ -1089,7 +1082,7 @@ async fn the_storage_cleanup_removes_old_feedback_and_its_screenshot() {
     use rustrak::models::CleanupFilter;
     use rustrak::services::StorageService;
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     feedback_with_attachment(&s, &app, "screenshot.png", "image/png", SCREENSHOT).await;
     sqlx::query("UPDATE events SET ingested_at = $1 WHERE project_id = $2")
         .bind(Utc::now() - chrono::Duration::days(40))
@@ -1168,7 +1161,7 @@ async fn get_attachment_over_mcp(
     app: &impl Service<actix_http::Request, Response = ServiceResponse, Error = actix_web::Error>,
     token: &str,
 ) -> Value {
-    use crate::integration::mcp_test::{call_tool, set_mcp};
+    use crate::common::{call_tool, set_mcp};
     test::call_service(app, set_mcp(token, true).to_request()).await;
     let body = get_feedback(app, s, token, "").await;
     let id = body["items"][0]["attachments"][0]["id"].clone();
@@ -1188,7 +1181,7 @@ async fn get_attachment_over_mcp(
 async fn an_image_attachment_is_an_image_over_mcp() {
     use base64::Engine as _;
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     let png = b"\x89PNG\r\n\x1a\nnot really the rest of a png";
     feedback_with_attachment(&s, &app, "screenshot.png", "image/png", png).await;
@@ -1206,7 +1199,7 @@ async fn an_image_attachment_is_an_image_over_mcp() {
 #[actix_web::test]
 async fn an_attachment_that_is_not_an_image_is_described_over_mcp() {
     let s = setup().await;
-    let app = app(&s).await;
+    let app = crate::common::app_with_config(&s.db.pool, config(s.ingest.path())).await;
     let token = admin_token(&s.db.pool).await;
     // Claims to be an image; its bytes are not one.
     feedback_with_attachment(&s, &app, "shot.svg", "image/svg+xml", b"<svg/>").await;

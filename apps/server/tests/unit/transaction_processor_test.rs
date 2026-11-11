@@ -1,14 +1,10 @@
-//! TDD tests for the typed envelope dispatch pipeline (spec: spec-transaction-processing.md)
+//! The typed envelope dispatch pipeline.
 //!
 //! Level 1 — pure unit tests, no DB, no async.
 //! Level 2 — processor DB behavior tests, #[tokio::test] + TestDb.
 
 use rustrak::ingest::envelope::{EnvelopeItemKind, ItemHeaders};
 use rustrak::ingest::parser::EnvelopeParser;
-
-// =============================================================================
-// Level 1 — Pure enum dispatch tests (no DB, no async)
-// =============================================================================
 
 #[test]
 fn test_enum_dispatch_transaction_maps_to_transaction_kind() {
@@ -69,53 +65,11 @@ fn test_requires_event_false_for_session() {
     assert!(!kind.requires_event());
 }
 
-// =============================================================================
-// Level 1 — Processor routing (pure: item -> which processor handles it)
-// =============================================================================
-
-#[test]
-fn test_event_item_routes_to_error_processor() {
-    use rustrak::digest::processors::{route, Route};
-    assert_eq!(route(&EnvelopeItemKind::Event(vec![].into())), Route::Error);
-}
-
-#[test]
-fn test_transaction_item_routes_to_transaction_processor() {
-    use rustrak::digest::processors::{route, Route};
-    assert_eq!(
-        route(&EnvelopeItemKind::Transaction(vec![].into())),
-        Route::Transaction
-    );
-}
-
-#[test]
-fn test_session_item_routes_to_session_processor() {
-    use rustrak::digest::processors::{route, Route};
-    use rustrak::models::session::SessionUpdate;
-    assert_eq!(
-        route(&EnvelopeItemKind::Session(SessionUpdate::default())),
-        Route::Session
-    );
-}
-
-#[test]
-fn test_unknown_item_routes_to_ignored() {
-    use rustrak::digest::processors::{route, Route};
-    assert_eq!(
-        route(&EnvelopeItemKind::Other("span".into(), vec![].into())),
-        Route::Ignored
-    );
-}
-
-// =============================================================================
-// Level 2 — Processor DB behavior tests (#[tokio::test] + TestDb)
-// =============================================================================
-
 #[cfg(test)]
 mod level2 {
     use crate::common::TestDb;
     use chrono::{DateTime, Utc};
-    use rustrak::digest::processors::{Processor, ProcessorCtx, TransactionProcessor};
+    use rustrak::digest::processors::{ProcessorCtx, TransactionProcessor};
     use rustrak::models::CreateProject;
     use rustrak::services::ProjectService;
     use serde_json::json;
@@ -166,12 +120,8 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str =
             "SELECT transaction_name, duration_ms FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str =
-            "SELECT transaction_name, duration_ms FROM transactions WHERE project_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -243,10 +193,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT op, status, span_id, parent_span_id, trace_id FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT op, status, span_id, parent_span_id, trace_id FROM transactions WHERE project_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -307,10 +254,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT source FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT source FROM transactions WHERE project_id = ?";
 
         let source: String = sqlx::query_scalar(QUERY)
             .bind(project.id)
@@ -355,10 +299,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT source FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT source FROM transactions WHERE project_id = ?";
 
         let source: String = sqlx::query_scalar(QUERY)
             .bind(project.id)
@@ -417,10 +358,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const COUNT_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const COUNT_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
 
         let count: i64 = sqlx::query_scalar(COUNT_QUERY)
             .bind(project.id)
@@ -432,10 +370,7 @@ mod level2 {
             "both spans must be extracted into the spans table"
         );
 
-        #[cfg(feature = "postgres")]
         const SPAN_QUERY: &str = "SELECT op, description, status, duration_ms, trace_id, parent_span_id FROM spans WHERE span_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const SPAN_QUERY: &str = "SELECT op, description, status, duration_ms, trace_id, parent_span_id FROM spans WHERE span_id = ?";
 
         let row = sqlx::query(SPAN_QUERY)
             .bind("cccccccccccccccc")
@@ -491,10 +426,7 @@ mod level2 {
             .await;
 
         assert!(res.is_err(), "malformed transaction JSON must be rejected");
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT COUNT(*) FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT COUNT(*) FROM transactions WHERE project_id = ?";
 
         let count: i64 = sqlx::query_scalar(QUERY)
             .bind(project.id)
@@ -596,12 +528,8 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str =
             "SELECT transaction_name, start_timestamp FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str =
-            "SELECT transaction_name, start_timestamp FROM transactions WHERE project_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -624,8 +552,6 @@ mod level2 {
 
     #[tokio::test]
     async fn test_transaction_processor_impl_stores_via_trait() {
-        use rustrak::digest::processors::Processor;
-
         let db = TestDb::new().await;
         let project = ProjectService::create(
             &db.pool,
@@ -662,10 +588,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT transaction_name FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT transaction_name FROM transactions WHERE project_id = ?";
 
         let name: String = sqlx::query_scalar(QUERY)
             .bind(project.id)
@@ -676,10 +599,9 @@ mod level2 {
     }
 
     #[tokio::test]
-    async fn test_session_processor_forwards_update_to_aggregator() {
-        use rustrak::digest::processors::{Processor, SessionItem, SessionProcessor};
+    async fn test_session_update_is_aggregated_then_flushed() {
+        use rustrak::digest::session_aggregator::SessionAggregator;
         use rustrak::models::session::{SessionAttributes, SessionStatus, SessionUpdate};
-        use rustrak::workers::session_aggregator::SessionAggregator;
 
         let db = TestDb::new().await;
         let project = ProjectService::create(
@@ -694,7 +616,6 @@ mod level2 {
         .unwrap();
 
         let handle = SessionAggregator::new(db.pool.clone(), 3600, 1000);
-        let processor = SessionProcessor::new(Some(handle.clone()));
 
         let update = SessionUpdate {
             sid: Some("sid-1".to_string()),
@@ -712,19 +633,7 @@ mod level2 {
             }),
         };
 
-        let ctx = ProcessorCtx {
-            pool: db.pool.clone(),
-            project_id: project.id,
-            event_id: Uuid::new_v4(),
-            ingested_at: Utc::now(),
-            remote_addr: None,
-            keep_ai_spans: true,
-        };
-
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT COUNT(*) FROM session_counts WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT COUNT(*) FROM session_counts WHERE project_id = ?";
         let count = || async {
             sqlx::query_scalar::<_, i64>(QUERY)
                 .bind(project.id)
@@ -733,10 +642,7 @@ mod level2 {
                 .unwrap()
         };
 
-        processor
-            .process(SessionItem::Update(update), &ctx)
-            .await
-            .unwrap();
+        handle.ingest_session(project.id, &update).await;
         // Like Relay, which turns sessions into metric buckets and flushes them
         // on its own cycle, ingest only aggregates in memory: the database
         // write belongs to the aggregator's single flusher (#390).
@@ -755,8 +661,8 @@ mod level2 {
     /// and drops counters the SDK was already told were accepted.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_session_aggregator_flush_waits_for_in_flight_flush() {
+        use rustrak::digest::session_aggregator::SessionAggregator;
         use rustrak::models::session::SessionAggregates;
-        use rustrak::workers::session_aggregator::SessionAggregator;
 
         let db = TestDb::new().await;
         let project = ProjectService::create(
@@ -927,67 +833,6 @@ mod level2 {
 
         assert_eq!(total, 2, "only the two /api/users samples match");
         assert!(list.iter().all(|t| t.transaction_name == "/api/users"));
-    }
-
-    #[tokio::test]
-    async fn test_list_spans_returns_extracted_spans_ordered() {
-        use rustrak::services::TransactionService;
-
-        let db = TestDb::new().await;
-        let project = ProjectService::create(
-            &db.pool,
-            CreateProject {
-                name: "txn-list-spans".to_string(),
-                slug: None,
-                platform: None,
-            },
-        )
-        .await
-        .unwrap();
-
-        let ctx = ProcessorCtx {
-            pool: db.pool.clone(),
-            project_id: project.id,
-            event_id: Uuid::new_v4(),
-            ingested_at: Utc::now(),
-            remote_addr: None,
-            keep_ai_spans: true,
-        };
-        let payload = serde_json::to_vec(&json!({
-            "type": "transaction", "transaction": "/api/x",
-            "start_timestamp": 1.0, "timestamp": 2.0,
-            "contexts": { "trace": { "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "span_id": "bbbbbbbbbbbbbbbb" } },
-            "spans": [
-                { "span_id": "dddddddddddddddd", "op": "http.client", "start_timestamp": 1.5, "timestamp": 1.8 },
-                { "span_id": "cccccccccccccccc", "op": "db.query", "start_timestamp": 1.0, "timestamp": 1.5 }
-            ]
-        }))
-        .unwrap();
-        TransactionProcessor
-            .process(bytes::Bytes::from(payload), &ctx)
-            .await
-            .unwrap();
-
-        #[cfg(feature = "postgres")]
-        const QUERY: &str = "SELECT id FROM transactions WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT id FROM transactions WHERE project_id = ?";
-
-        let txn_id: Uuid = sqlx::query_scalar(QUERY)
-            .bind(project.id)
-            .fetch_one(&db.pool)
-            .await
-            .unwrap();
-
-        let spans = TransactionService::list_spans(&db.pool, project.id, txn_id)
-            .await
-            .unwrap();
-
-        assert_eq!(spans.len(), 2);
-        // Ordered by start_timestamp ASC → db.query (1.0) before http.client (1.5).
-        assert_eq!(spans[0].op.as_deref(), Some("db.query"));
-        assert_eq!(spans[1].op.as_deref(), Some("http.client"));
-        assert_eq!(spans[0].duration_ms, Some(500.0));
     }
 
     #[tokio::test]
@@ -1349,10 +1194,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_response_model, gen_ai_usage_total_tokens FROM spans WHERE project_id = $1 AND span_id = $2";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_response_model, gen_ai_usage_total_tokens FROM spans WHERE project_id = ? AND span_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -1430,10 +1272,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT span_id, trace_id, op, description, status, is_segment, segment_id, transaction_id, start_timestamp, timestamp, gen_ai_operation_type, gen_ai_agent_name, gen_ai_usage_total_tokens FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT span_id, trace_id, op, description, status, is_segment, segment_id, transaction_id, start_timestamp, timestamp, gen_ai_operation_type, gen_ai_agent_name, gen_ai_usage_total_tokens FROM spans WHERE project_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -1529,10 +1368,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
         let count: i64 = sqlx::query_scalar(COUNT)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -1714,12 +1550,8 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str =
             "SELECT gen_ai_operation_type FROM spans WHERE project_id = $1 AND span_id = $2";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str =
-            "SELECT gen_ai_operation_type FROM spans WHERE project_id = ? AND span_id = ?";
 
         let operation_type: Option<String> = sqlx::query_scalar(QUERY)
             .bind(project.id)

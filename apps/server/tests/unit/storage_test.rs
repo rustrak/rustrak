@@ -1,4 +1,4 @@
-//! TDD tests for the Storage feature — StorageService stats (Fase 1).
+//! StorageService: stats, retention and cleanup.
 //!
 //! Level 2 — service DB behavior tests, #[tokio::test] + TestDb.
 //! Default test backend is SQLite (see Cargo.toml `default = ["sqlite"]`).
@@ -7,7 +7,7 @@ use crate::common::TestDb;
 use bytes::Bytes;
 use chrono::Utc;
 use rustrak::error::AppError;
-use rustrak::ingest::{delete_event, read_event_for_project as read_scoped, store_event};
+use rustrak::ingest::{delete_event, read_event};
 use rustrak::models::{CleanupCounts, CleanupFilter, CleanupState, CleanupStatus, CreateProject};
 use rustrak::services::sourcemap_store::{LocalSourceMapStore, SourceMapStore};
 use rustrak::services::{CleanupJob, ProjectService, StorageService};
@@ -20,15 +20,20 @@ use uuid::Uuid;
 static DIGEST_ORDER: AtomicI32 = AtomicI32::new(1);
 
 #[tokio::test]
-async fn ingest_legacy_event_cleanup_removes_the_payload() {
+async fn ingest_event_cleanup_removes_the_payload() {
     let dir = tempdir().unwrap();
     let event_id = Uuid::new_v4().to_string();
-    let payload = br#"{"legacy":true}"#;
-    store_event(dir.path(), &event_id, payload).await.unwrap();
-    let got = read_scoped(dir.path(), 99999, &event_id).await.unwrap();
-    assert_eq!(got, payload);
-    delete_event(dir.path(), &event_id).await.unwrap();
-    assert!(read_scoped(dir.path(), 99999, &event_id).await.is_err());
+    let payload = br#"{"stored":true}"#;
+    crate::common::store_event(dir.path(), 99999, &event_id, payload)
+        .await
+        .unwrap();
+    let got = read_event(dir.path(), 99999, &event_id).await.unwrap();
+    assert_eq!(got.as_deref(), Some(&payload[..]));
+    delete_event(dir.path(), 99999, &event_id).await.unwrap();
+    assert!(read_event(dir.path(), 99999, &event_id)
+        .await
+        .unwrap()
+        .is_none());
 }
 
 /// Inserts a chunk row directly (CAS table: checksum PK, size, data BYTEA).
@@ -1558,16 +1563,13 @@ async fn test_cleanup_lookups_are_index_range_scans() {
     }
 }
 
-/// Polls a cleanup job until it leaves `Running`, failing after 10 seconds.
+/// A cleanup job's status once it leaves `Running`.
 async fn wait_for_job(job: &CleanupJob) -> CleanupStatus {
-    for _ in 0..200 {
+    crate::common::eventually(|| async {
         let status = job.status();
-        if status.state != CleanupState::Running {
-            return status;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    panic!("cleanup job did not finish");
+        (status.state != CleanupState::Running).then_some(status)
+    })
+    .await
 }
 
 #[tokio::test]

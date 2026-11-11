@@ -6,12 +6,9 @@
  * @packageDocumentation
  */
 
-// Main client
 export { RustrakClient } from './client.js';
 
-// Configuration
 export type { ClientConfig } from './config.js';
-// Errors: one closed union, keyed on `kind`, replacing the nine classes.
 export {
   FIELD_ERROR_CODES,
   type FieldError,
@@ -26,7 +23,6 @@ export {
 // Every request and response type in openapi.json, named as the spec names
 // them: `IssueResponse`, `ProjectResponse`, `IssuesListData`.
 export type * from './generated/types.gen.js';
-// Result: every method returns one of these.
 export {
   Err,
   mapResult,

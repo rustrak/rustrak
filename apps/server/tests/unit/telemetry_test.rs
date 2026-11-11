@@ -11,10 +11,6 @@ fn config(enabled: bool, do_not_track: bool) -> TelemetryConfig {
     }
 }
 
-// =============================================================================
-// The on/off decision
-// =============================================================================
-
 #[test]
 fn telemetry_runs_when_switched_on_and_a_key_was_compiled_in() {
     assert_eq!(decide(&config(true, false), Some("phc_key")), Ok(()));
@@ -63,10 +59,6 @@ fn each_reason_names_itself_for_the_startup_log() {
     assert!(Disabled::NoKeyCompiledIn.to_string().contains("key"));
 }
 
-// =============================================================================
-// Counts are blurred to two significant digits
-// =============================================================================
-
 /// Qdrant's rule: big numbers lose their trailing digits so an exact count
 /// cannot fingerprint an instance. Small numbers are left alone because
 /// there is nothing to hide in "3 projects".
@@ -87,10 +79,6 @@ fn counts_keep_two_significant_digits_and_lose_the_rest() {
         assert_eq!(blur_count(input), expected, "blur_count({input})");
     }
 }
-
-// =============================================================================
-// Health counters
-// =============================================================================
 
 mod counters {
     use rustrak::telemetry::{Counters, Rejection};
@@ -211,10 +199,6 @@ mod counters {
     }
 }
 
-// =============================================================================
-// Panic hook
-// =============================================================================
-
 mod panics {
     use rustrak::telemetry::{install_panic_hook, own_location, Counters};
 
@@ -249,10 +233,6 @@ mod panics {
         );
     }
 }
-
-// =============================================================================
-// Resource sampler
-// =============================================================================
 
 mod resources {
     use rustrak::telemetry::{probe, Sampler};
@@ -315,10 +295,6 @@ mod resources {
     }
 }
 
-// =============================================================================
-// The report and the PostHog adapter
-// =============================================================================
-
 mod posthog {
     use crate::common::telemetry::sample_report;
     use rustrak::telemetry::posthog::PostHogSink;
@@ -374,24 +350,16 @@ mod posthog {
     }
 }
 
-// =============================================================================
-// Engine version
-// =============================================================================
-
 /// Only the first two components travel: enough to spot an engine that
 /// misbehaves, not enough to fingerprint a build.
 #[test]
 fn the_engine_version_is_cut_to_major_and_minor() {
-    use rustrak::telemetry::major_minor;
+    use rustrak::db::major_minor;
     assert_eq!(major_minor("3.46.1"), "3.46");
     assert_eq!(major_minor("16.4 (Debian 16.4-1.pgdg120+1)"), "16.4");
     assert_eq!(major_minor("17"), "17");
     assert_eq!(major_minor(""), "");
 }
-
-// =============================================================================
-// The SQLite file behind DATABASE_URL
-// =============================================================================
 
 #[test]
 fn the_sqlite_file_is_read_from_the_database_url() {

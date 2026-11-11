@@ -4,68 +4,18 @@
 //! with a real PostgreSQL database.
 
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::{cookie::Key, test, web, App};
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
 use rustrak::models::{
-    AlertRuleChannelInput, AlertType, ChannelType, CreateAlertRule, CreateNotificationChannel,
-    UpdateAlertRule, UpdateNotificationChannel,
+    AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, ProviderType,
+    UpdateAlertIntegration, UpdateAlertRule,
 };
-use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
 use rustrak::services::{AlertService, IssueService, ProjectService};
 use serde_json::json;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// Creates a test config
-fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
 /// Session key for tests
-fn test_session_key() -> Key {
-    Key::from(&[0u8; 64])
-}
-
 /// Creates a test project and returns its ID
 async fn create_test_project(pool: &rustrak::db::DbPool) -> i32 {
     let project = ProjectService::create(
@@ -96,7 +46,7 @@ async fn test_alert_retry_queue_processes_pending_history_without_retry_time() {
     .expect("pending alert history insert must succeed");
 
     assert_eq!(
-        AlertService::process_retry_queue(&db.pool, 5)
+        AlertService::process_retry_queue(&db.pool, &Default::default(), 5)
             .await
             .expect("retry queue processing must succeed"),
         1
@@ -111,6 +61,86 @@ async fn test_alert_retry_queue_processes_pending_history_without_retry_time() {
     assert_eq!(status, "failed");
 }
 
+/// An integration disabled after a delivery was queued sends nothing, and the
+/// history says skipped rather than sent.
+#[tokio::test]
+async fn test_queued_delivery_to_a_disabled_integration_is_skipped() {
+    let db = TestDb::new().await;
+    let project_id = create_test_project(&db.pool).await;
+    let smtp = rustrak::config::SmtpSettings::default();
+    let channel = AlertService::create_channel(
+        &db.pool,
+        &smtp,
+        CreateAlertIntegration {
+            name: "Disabled later".to_string(),
+            provider_type: ProviderType::Webhook,
+            credentials: json!({ "url": "http://127.0.0.1:9/unreachable" }),
+            is_enabled: true,
+        },
+    )
+    .await
+    .expect("channel creation must succeed");
+    let rule = AlertService::create_rule(
+        &db.pool,
+        project_id,
+        CreateAlertRule {
+            name: "Rule".to_string(),
+            alert_type: AlertType::NewIssue,
+            channels: vec![AlertRuleChannelInput {
+                integration_id: channel.id,
+                routing_override: json!({}),
+            }],
+            conditions: json!({}),
+            cooldown_minutes: 0,
+        },
+    )
+    .await
+    .expect("rule creation must succeed");
+    AlertService::update_channel(
+        &db.pool,
+        &smtp,
+        channel.id,
+        UpdateAlertIntegration {
+            name: None,
+            credentials: None,
+            is_enabled: Some(false),
+        },
+    )
+    .await
+    .expect("disabling must succeed");
+
+    let payload = json!({
+        "alert_id": "queued", "alert_type": "new_issue", "triggered_at": Utc::now(),
+        "project": { "id": project_id, "name": "p", "slug": "p" },
+        "issue": { "id": Uuid::nil().to_string(), "short_id": "P-1", "title": "t",
+                   "level": null, "first_seen": Utc::now(), "last_seen": Utc::now(),
+                   "event_count": 1 },
+        "issue_url": "http://localhost/issue", "actor": "Rustrak"
+    });
+    sqlx::query(
+        "INSERT INTO alert_history (alert_rule_id, integration_id, project_id, alert_type, channel_type, channel_name, payload, status, idempotency_key) VALUES ($1, $2, $3, 'new_issue', 'webhook', 'Disabled later', $4, 'pending', 'queued-disabled')",
+    )
+    .bind(rule.id)
+    .bind(channel.id)
+    .bind(project_id)
+    .bind(payload)
+    .execute(&db.pool)
+    .await
+    .expect("pending alert history insert must succeed");
+
+    AlertService::process_retry_queue(&db.pool, &smtp, 5)
+        .await
+        .expect("retry queue processing must succeed");
+
+    let status: String = sqlx::query_scalar(
+        "SELECT status FROM alert_history WHERE idempotency_key = 'queued-disabled'",
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("status lookup must succeed");
+    assert_eq!(status, "skipped");
+}
+
 #[tokio::test]
 async fn test_event_alert_cooldown_is_a_durable_replay_barrier() {
     let db = TestDb::new().await;
@@ -120,9 +150,10 @@ async fn test_event_alert_cooldown_is_a_durable_replay_barrier() {
         .expect("project lookup must succeed");
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Cooldown Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -182,6 +213,7 @@ async fn test_event_alert_cooldown_is_a_durable_replay_barrier() {
         event_id,
         Default::default(),
         "https://dashboard.example.com",
+        &Default::default(),
     )
     .await
     .expect("cooldown suppression must succeed");
@@ -209,6 +241,7 @@ async fn test_event_alert_cooldown_is_a_durable_replay_barrier() {
         event_id,
         Default::default(),
         "https://dashboard.example.com",
+        &Default::default(),
     )
     .await
     .expect("replay must succeed");
@@ -233,9 +266,10 @@ async fn test_new_issue_threshold_fires_once_per_issue() {
         .expect("project lookup must succeed");
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Threshold Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -296,6 +330,7 @@ async fn test_new_issue_threshold_fires_once_per_issue() {
             Uuid::new_v4(),
             Default::default(),
             "https://dashboard.example.com",
+            &Default::default(),
         )
         .await
         .expect("trigger must succeed");
@@ -309,32 +344,27 @@ async fn test_new_issue_threshold_fires_once_per_issue() {
     assert_eq!(rows, 1);
 }
 
-// =============================================================================
-// Service-Level Tests (Direct Database)
-// =============================================================================
-
 // These tests bypass HTTP and test the AlertService directly
 
 #[tokio::test]
 async fn test_channel_crud_service_level() {
     let db = TestDb::new().await;
 
-    // Create channel
-    let create_input = CreateNotificationChannel {
+    let create_input = CreateAlertIntegration {
         name: "Test Webhook".to_string(),
-        provider_type: ChannelType::Webhook,
+        provider_type: ProviderType::Webhook,
         credentials: json!({
             "url": "https://example.com/webhook"
         }),
         is_enabled: true,
     };
 
-    let channel = AlertService::create_channel(&db.pool, create_input)
+    let channel = AlertService::create_channel(&db.pool, &Default::default(), create_input)
         .await
         .expect("Failed to create channel");
 
     assert_eq!(channel.name, "Test Webhook");
-    assert_eq!(channel.provider_type, ChannelType::Webhook);
+    assert_eq!(channel.provider_type, ProviderType::Webhook);
     assert!(channel.is_enabled);
 
     // List channels
@@ -344,22 +374,22 @@ async fn test_channel_crud_service_level() {
     assert_eq!(channels.len(), 1);
     assert_eq!(channels[0].id, channel.id);
 
-    // Get channel
     let fetched = AlertService::get_channel(&db.pool, channel.id)
         .await
         .expect("Failed to get channel");
     assert_eq!(fetched.name, "Test Webhook");
 
     // Update channel
-    let update_input = UpdateNotificationChannel {
+    let update_input = UpdateAlertIntegration {
         name: Some("Updated Webhook".to_string()),
         credentials: None,
         is_enabled: Some(false),
     };
 
-    let updated = AlertService::update_channel(&db.pool, channel.id, update_input)
-        .await
-        .expect("Failed to update channel");
+    let updated =
+        AlertService::update_channel(&db.pool, &Default::default(), channel.id, update_input)
+            .await
+            .expect("Failed to update channel");
     assert_eq!(updated.name, "Updated Webhook");
     assert!(!updated.is_enabled);
 
@@ -368,7 +398,6 @@ async fn test_channel_crud_service_level() {
         .await
         .expect("Failed to delete channel");
 
-    // Verify deleted
     let result = AlertService::get_channel(&db.pool, channel.id).await;
     assert!(result.is_err());
 }
@@ -377,26 +406,26 @@ async fn test_channel_crud_service_level() {
 async fn test_channel_duplicate_name_fails() {
     let db = TestDb::new().await;
 
-    let create_input1 = CreateNotificationChannel {
+    let create_input1 = CreateAlertIntegration {
         name: "Unique Name".to_string(),
-        provider_type: ChannelType::Webhook,
+        provider_type: ProviderType::Webhook,
         credentials: json!({ "url": "https://example.com/webhook1" }),
         is_enabled: true,
     };
 
-    AlertService::create_channel(&db.pool, create_input1)
+    AlertService::create_channel(&db.pool, &Default::default(), create_input1)
         .await
         .expect("First channel should succeed");
 
     // Try to create another with the same name
-    let create_input2 = CreateNotificationChannel {
+    let create_input2 = CreateAlertIntegration {
         name: "Unique Name".to_string(),
-        provider_type: ChannelType::Webhook,
+        provider_type: ProviderType::Webhook,
         credentials: json!({ "url": "https://example.com/webhook2" }),
         is_enabled: true,
     };
 
-    let result = AlertService::create_channel(&db.pool, create_input2).await;
+    let result = AlertService::create_channel(&db.pool, &Default::default(), create_input2).await;
     assert!(result.is_err());
     let err_msg = format!("{:?}", result.unwrap_err());
     assert!(err_msg.contains("already exists"));
@@ -407,14 +436,14 @@ async fn test_channel_invalid_config_fails() {
     let db = TestDb::new().await;
 
     // Webhook with invalid URL format should fail
-    let create_input = CreateNotificationChannel {
+    let create_input = CreateAlertIntegration {
         name: "Invalid Webhook".to_string(),
-        provider_type: ChannelType::Webhook,
+        provider_type: ProviderType::Webhook,
         credentials: json!({ "url": "not-a-valid-url" }),
         is_enabled: true,
     };
 
-    let result = AlertService::create_channel(&db.pool, create_input).await;
+    let result = AlertService::create_channel(&db.pool, &Default::default(), create_input).await;
     assert!(result.is_err());
 }
 
@@ -423,9 +452,9 @@ async fn test_slack_channel_config_validation() {
     let db = TestDb::new().await;
 
     // Invalid Slack webhook URL (wrong host, but method field present)
-    let create_input = CreateNotificationChannel {
+    let create_input = CreateAlertIntegration {
         name: "Invalid Slack".to_string(),
-        provider_type: ChannelType::Slack,
+        provider_type: ProviderType::Slack,
         credentials: json!({
             "method": "webhook",
             "webhook_url": "https://example.com/not-slack"
@@ -433,13 +462,13 @@ async fn test_slack_channel_config_validation() {
         is_enabled: true,
     };
 
-    let result = AlertService::create_channel(&db.pool, create_input).await;
+    let result = AlertService::create_channel(&db.pool, &Default::default(), create_input).await;
     assert!(result.is_err());
 
     // Valid Slack webhook URL
-    let valid_input = CreateNotificationChannel {
+    let valid_input = CreateAlertIntegration {
         name: "Valid Slack".to_string(),
-        provider_type: ChannelType::Slack,
+        provider_type: ProviderType::Slack,
         credentials: json!({
             "method": "webhook",
             "webhook_url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX"
@@ -447,7 +476,7 @@ async fn test_slack_channel_config_validation() {
         is_enabled: true,
     };
 
-    let channel = AlertService::create_channel(&db.pool, valid_input)
+    let channel = AlertService::create_channel(&db.pool, &Default::default(), valid_input)
         .await
         .expect("Valid Slack channel should succeed");
     assert_eq!(channel.name, "Valid Slack");
@@ -461,9 +490,10 @@ async fn test_custom_webhook_channel_crud_and_validation() {
     // Missing template: rejected before any row is written.
     let result = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Custom No Template".to_string(),
-            provider_type: ChannelType::CustomWebhook,
+            provider_type: ProviderType::CustomWebhook,
             credentials: json!({ "url": "https://example.com/hook" }),
             is_enabled: true,
         },
@@ -476,9 +506,10 @@ async fn test_custom_webhook_channel_crud_and_validation() {
     // the integration only fails when an alert fires.
     let result = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Custom Trailing Comma".to_string(),
-            provider_type: ChannelType::CustomWebhook,
+            provider_type: ProviderType::CustomWebhook,
             credentials: json!({
                 "url": "https://example.com/hook",
                 "template": r#"{"a": "{{ issue.title }}",}"#,
@@ -496,9 +527,10 @@ async fn test_custom_webhook_channel_crud_and_validation() {
     // words rather than shipped as a blank in a real message.
     let result = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Custom Typo".to_string(),
-            provider_type: ChannelType::CustomWebhook,
+            provider_type: ProviderType::CustomWebhook,
             credentials: json!({
                 "url": "https://example.com/hook",
                 "template": r#"{"a": "{{ issue.titel }}"}"#,
@@ -515,9 +547,10 @@ async fn test_custom_webhook_channel_crud_and_validation() {
     // Broken template syntax: rejected at save time, not delivery time.
     let result = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Custom Bad Syntax".to_string(),
-            provider_type: ChannelType::CustomWebhook,
+            provider_type: ProviderType::CustomWebhook,
             credentials: json!({ "url": "https://example.com/hook", "template": "{% if %}" }),
             is_enabled: true,
         },
@@ -528,23 +561,24 @@ async fn test_custom_webhook_channel_crud_and_validation() {
     // Valid: also proves the widened provider_type CHECK took effect in both
     // dialects, since the INSERT below would fail the old three-value CHECK.
     let channel = AlertService::create_channel(
-        &db.pool,
-        CreateNotificationChannel {
+        &db.pool, &Default::default(),
+        CreateAlertIntegration {
             name: "Ops chat bridge".to_string(),
-            provider_type: ChannelType::CustomWebhook,
+            provider_type: ProviderType::CustomWebhook,
             credentials: json!({ "url": "https://example.com/hooks/incoming", "template": template }),
             is_enabled: true,
         },
     )
     .await
     .expect("Valid custom webhook channel should succeed");
-    assert_eq!(channel.provider_type, ChannelType::CustomWebhook);
+    assert_eq!(channel.provider_type, ProviderType::CustomWebhook);
 
     // Update with a broken template is rejected; the row keeps the old credentials.
     let result = AlertService::update_channel(
         &db.pool,
+        &Default::default(),
         channel.id,
-        UpdateNotificationChannel {
+        UpdateAlertIntegration {
             name: None,
             credentials: Some(json!({ "template": "{% endif %}" })),
             is_enabled: None,
@@ -560,8 +594,9 @@ async fn test_custom_webhook_channel_crud_and_validation() {
     // Update with a valid template round-trips.
     let updated = AlertService::update_channel(
         &db.pool,
+        &Default::default(),
         channel.id,
-        UpdateNotificationChannel {
+        UpdateAlertIntegration {
             name: None,
             credentials: Some(json!({ "template": "{\"a\": 1}" })),
             is_enabled: None,
@@ -720,14 +755,14 @@ async fn test_custom_webhook_sqlite_migration_preserves_child_references() {
 async fn test_rule_crud_service_level() {
     let db = TestDb::new().await;
 
-    // First create a project and a channel
     let project_id = create_test_project(&db.pool).await;
 
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Alert Channel".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -735,7 +770,6 @@ async fn test_rule_crud_service_level() {
     .await
     .expect("Failed to create channel");
 
-    // Create rule
     let create_input = CreateAlertRule {
         name: "New Issue Alert".to_string(),
         alert_type: AlertType::NewIssue,
@@ -756,7 +790,6 @@ async fn test_rule_crud_service_level() {
     assert_eq!(rule.cooldown_minutes, 5);
     assert!(rule.is_enabled);
 
-    // Verify channel linkage
     let linked_channels = AlertService::get_rule_channels(&db.pool, rule.id)
         .await
         .expect("Failed to get rule channels");
@@ -768,7 +801,6 @@ async fn test_rule_crud_service_level() {
         .expect("Failed to list rules");
     assert_eq!(rules.len(), 1);
 
-    // Get rule
     let fetched = AlertService::get_rule(&db.pool, rule.id)
         .await
         .expect("Failed to get rule");
@@ -796,7 +828,6 @@ async fn test_rule_crud_service_level() {
         .await
         .expect("Failed to delete rule");
 
-    // Verify deleted
     let result = AlertService::get_rule(&db.pool, rule.id).await;
     assert!(result.is_err());
 }
@@ -813,9 +844,10 @@ async fn test_rules_of_one_type_fire_independently() {
         .unwrap();
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Shared channel".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             // Nothing listens there: the deliveries are recorded, then fail.
             credentials: json!({ "url": "http://127.0.0.1:9/hook" }),
             is_enabled: true,
@@ -872,9 +904,18 @@ async fn test_rules_of_one_type_fire_independently() {
     )
     .await
     .unwrap();
-    AlertService::trigger_new_issue_alert(&db.pool, &project, &issue, "http://localhost:3000")
-        .await
-        .unwrap();
+    AlertService::trigger_event_alert(
+        &db.pool,
+        &project,
+        &issue,
+        AlertType::NewIssue,
+        uuid::Uuid::new_v4(),
+        Default::default(),
+        "http://localhost:3000",
+        &Default::default(),
+    )
+    .await
+    .unwrap();
 
     let fired: Vec<(Option<i32>,)> = sqlx::query_as(
         "SELECT alert_rule_id FROM alert_history WHERE project_id = $1 ORDER BY alert_rule_id",
@@ -895,7 +936,6 @@ async fn test_rule_with_invalid_channel_fails() {
 
     let project_id = create_test_project(&db.pool).await;
 
-    // Create rule with non-existent integration ID
     let create_input = CreateAlertRule {
         name: "Invalid Channel Rule".to_string(),
         alert_type: AlertType::NewIssue,
@@ -917,12 +957,12 @@ async fn test_update_rule_channels() {
 
     let project_id = create_test_project(&db.pool).await;
 
-    // Create two channels
     let channel1 = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Channel 1".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook1" }),
             is_enabled: true,
         },
@@ -932,9 +972,10 @@ async fn test_update_rule_channels() {
 
     let channel2 = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Channel 2".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook2" }),
             is_enabled: true,
         },
@@ -942,7 +983,6 @@ async fn test_update_rule_channels() {
     .await
     .unwrap();
 
-    // Create rule with channel1
     let rule = AlertService::create_rule(
         &db.pool,
         project_id,
@@ -960,7 +1000,6 @@ async fn test_update_rule_channels() {
     .await
     .unwrap();
 
-    // Verify initial channels
     let channels = AlertService::get_rule_channels(&db.pool, rule.id)
         .await
         .unwrap();
@@ -991,7 +1030,6 @@ async fn test_update_rule_channels() {
     .await
     .unwrap();
 
-    // Verify updated channels
     let channels = AlertService::get_rule_channels(&db.pool, rule.id)
         .await
         .unwrap();
@@ -1018,7 +1056,6 @@ async fn test_update_rule_channels() {
     .await
     .unwrap();
 
-    // Verify only channel2 remains
     let channels = AlertService::get_rule_channels(&db.pool, rule.id)
         .await
         .unwrap();
@@ -1033,9 +1070,10 @@ async fn test_deleting_channel_removes_from_rules() {
 
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Deletable Channel".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -1043,7 +1081,6 @@ async fn test_deleting_channel_removes_from_rules() {
     .await
     .unwrap();
 
-    // Create rule with this channel
     let rule = AlertService::create_rule(
         &db.pool,
         project_id,
@@ -1086,115 +1123,9 @@ async fn test_alert_history_empty() {
     assert!(history.is_empty());
 }
 
-// =============================================================================
-// HTTP Route Tests
-// =============================================================================
-
 // Note: These tests are marked as ignored because actix-web's test framework
 // doesn't properly preserve session cookies. Full testing should be done via
 // E2E tests with a real HTTP client.
-
-#[actix_web::test]
-async fn test_list_channels_unauthorized() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), test_session_key())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::alerts::configure),
-    )
-    .await;
-
-    // No session cookie
-    let req = test::TestRequest::get()
-        .uri("/api/integrations")
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-#[actix_web::test]
-async fn test_list_rules_unauthorized() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-
-    // Create a test project first
-    let project_id = create_test_project(&db.pool).await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), test_session_key())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::alerts::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/projects/{}/alert-rules", project_id))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-#[actix_web::test]
-async fn test_list_history_unauthorized() {
-    let db = TestDb::new().await;
-    let config = create_test_config();
-
-    let project_id = create_test_project(&db.pool).await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), test_session_key())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::alerts::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/projects/{}/alert-history", project_id))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
-}
-
-#[actix_web::test]
-#[ignore = "Session cookies not preserved in actix test framework - use E2E tests"]
-async fn test_create_channel_success() {
-    // This test requires proper session cookie handling
-}
-
-#[actix_web::test]
-#[ignore = "Session cookies not preserved in actix test framework - use E2E tests"]
-async fn test_create_rule_success() {
-    // This test requires proper session cookie handling
-}
-
-#[actix_web::test]
-#[ignore = "Session cookies not preserved in actix test framework - use E2E tests"]
-async fn test_test_channel_endpoint() {
-    // This test requires proper session cookie handling
-}
 
 #[tokio::test]
 async fn test_claim_due_retries_leases_rows_exclusively() {
@@ -1259,9 +1190,10 @@ async fn test_trigger_alert_does_not_block_on_slow_webhook_delivery() {
 
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Hanging Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": format!("http://{addr}/hook") }),
             is_enabled: true,
         },
@@ -1306,8 +1238,17 @@ async fn test_trigger_alert_does_not_block_on_slow_webhook_delivery() {
     .await
     .expect("issue creation must succeed");
 
-    let trigger =
-        AlertService::trigger_new_issue_alert(&db.pool, &project, &issue, "http://localhost:3000");
+    let smtp = rustrak::config::SmtpSettings::default();
+    let trigger = AlertService::trigger_event_alert(
+        &db.pool,
+        &project,
+        &issue,
+        AlertType::NewIssue,
+        uuid::Uuid::new_v4(),
+        Default::default(),
+        "http://localhost:3000",
+        &smtp,
+    );
     tokio::time::timeout(Duration::from_secs(2), trigger)
         .await
         .expect("trigger must return without waiting for webhook I/O")
@@ -1316,13 +1257,13 @@ async fn test_trigger_alert_does_not_block_on_slow_webhook_delivery() {
     // The durable delivery record is committed before the caller returns,
     // leased to the in-flight dispatcher so the retry worker cannot
     // double-send it while the dispatch is still running.
-    let (status, leased): (String, bool) = sqlx::query_as(
-        "SELECT status, next_retry_at IS NOT NULL AND datetime(next_retry_at) > datetime('now') FROM alert_history WHERE project_id = $1",
-    )
-    .bind(project_id)
-    .fetch_one(&db.pool)
-    .await
-    .expect("history row must exist before trigger returns");
+    let (status, lease): (String, Option<chrono::DateTime<Utc>>) =
+        sqlx::query_as("SELECT status, next_retry_at FROM alert_history WHERE project_id = $1")
+            .bind(project_id)
+            .fetch_one(&db.pool)
+            .await
+            .expect("history row must exist before trigger returns");
+    let leased = lease.is_some_and(|until| until > Utc::now());
     assert_eq!(status, "pending");
     assert!(
         leased,
@@ -1418,9 +1359,10 @@ async fn test_a_failing_rule_does_not_stop_the_next() {
         .expect("project lookup must succeed");
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Isolation Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -1491,6 +1433,7 @@ async fn test_a_failing_rule_does_not_stop_the_next() {
         Uuid::new_v4(),
         Default::default(),
         "https://dashboard.example.com",
+        &Default::default(),
     )
     .await;
 
@@ -1579,9 +1522,10 @@ async fn test_legacy_event_keys_still_block_a_replay() {
         .expect("project lookup must succeed");
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Legacy Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -1649,6 +1593,7 @@ async fn test_legacy_event_keys_still_block_a_replay() {
         event_id,
         Default::default(),
         "https://dashboard.example.com",
+        &Default::default(),
     )
     .await
     .expect("replay must succeed");

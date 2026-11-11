@@ -10,9 +10,9 @@
 //! 404s) or the shell swallowing an API path (a typo'd endpoint answers `200
 //! text/html` and every client parses it as a bug in itself).
 
+use actix_web::http::Method;
 use actix_web::{test, App};
 use rustrak::config::DashboardConfig;
-use rustrak::middleware::auth::RequireAuth;
 use rustrak::routes::dashboard::Dashboard;
 use serde_json::Value;
 use std::fs;
@@ -38,10 +38,6 @@ fn build_output() -> TempDir {
 fn dashboard(root: &Path) -> Dashboard {
     Dashboard::detect(root).expect("a directory with an index.html is a dashboard")
 }
-
-// =============================================================================
-// The shell
-// =============================================================================
 
 #[actix_web::test]
 async fn serves_the_shell_at_the_root() {
@@ -109,40 +105,15 @@ async fn the_shell_is_never_cached() {
         .unwrap()
         .to_string();
     // The shell names the hashed bundles. Cached, a deploy keeps pointing the
-    // browser at chunks that no longer exist.
+    // browser at chunks that no longer exist. And `no-store`, not `no-cache`:
+    // a page that may be stored is kept whole in the back/forward cache, so
+    // Back after a logout showed the signed-in page with its data in memory.
     assert!(
-        cache_control.contains("no-cache"),
-        "expected no-cache, got {cache_control}"
+        cache_control.contains("no-store"),
+        "expected no-store, got {cache_control}"
     );
-}
-
-/// A no-cache shell would be a full transfer on every navigation without an
-/// identity to revalidate against.
-#[actix_web::test]
-async fn an_unchanged_shell_revalidates_to_304() {
-    let dir = build_output();
-    let app = test::init_service(App::new().configure(dashboard(dir.path()).configure())).await;
-
-    let first = test::call_service(&app, test::TestRequest::get().uri("/").to_request()).await;
-    let etag = first
-        .headers()
-        .get("etag")
-        .expect("ETag header missing")
-        .to_str()
-        .unwrap()
-        .to_string();
-
-    let again = test::call_service(
-        &app,
-        test::TestRequest::get()
-            .uri("/projects")
-            .insert_header(("If-None-Match", etag.clone()))
-            .to_request(),
-    )
-    .await;
-
-    assert_eq!(again.status(), 304);
-    assert!(test::read_body(again).await.is_empty());
+    // Nothing is stored, so there is nothing to revalidate.
+    assert!(resp.headers().get("etag").is_none());
 }
 
 /// The whole point of the fallback: a route only the router knows about,
@@ -160,10 +131,6 @@ async fn an_unknown_client_route_gets_the_shell() {
         assert_eq!(body, SHELL, "{path} should render the shell");
     }
 }
-
-// =============================================================================
-// Assets
-// =============================================================================
 
 #[actix_web::test]
 async fn a_hashed_asset_is_immutable() {
@@ -261,10 +228,6 @@ async fn refuses_to_climb_out_of_the_build_directory() {
     let _ = fs::remove_file(&secret);
 }
 
-// =============================================================================
-// The API keeps its own paths
-// =============================================================================
-
 /// An unknown endpoint under an API prefix must stay an API answer. This is
 /// the failure that costs an afternoon: `@rustrak/client` asks for
 /// `/api/prjects`, gets `200 text/html`, and reports a schema error.
@@ -273,14 +236,21 @@ async fn an_unknown_api_path_is_a_json_404() {
     let dir = build_output();
     let app = test::init_service(App::new().configure(dashboard(dir.path()).configure())).await;
 
-    for path in [
-        "/api/does-not-exist",
-        "/auth/does-not-exist",
-        "/health/does-not-exist",
+    for (method, path) in [
+        (Method::GET, "/api/does-not-exist"),
+        (Method::GET, "/auth/does-not-exist"),
+        (Method::GET, "/health/does-not-exist"),
+        (Method::POST, "/api/does-not-exist"),
+        (Method::PUT, "/api/does-not-exist"),
+        (Method::DELETE, "/auth/does-not-exist"),
     ] {
-        let resp = test::call_service(&app, test::TestRequest::get().uri(path).to_request()).await;
+        let req = test::TestRequest::default()
+            .method(method.clone())
+            .uri(path)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
 
-        assert_eq!(resp.status(), 404, "{path} should be a 404");
+        assert_eq!(resp.status(), 404, "{method} {path} should be a 404");
         let content_type = resp
             .headers()
             .get("content-type")
@@ -319,10 +289,6 @@ async fn a_real_route_still_wins_over_the_fallback() {
     assert_ne!(body, SHELL);
 }
 
-// =============================================================================
-// Detection
-// =============================================================================
-
 #[actix_web::test]
 async fn there_is_no_dashboard_without_an_index() {
     let empty = tempfile::tempdir().expect("temp dir");
@@ -354,43 +320,52 @@ async fn the_switch_keeps_a_present_build_unmounted() {
     assert!(Dashboard::from_config(&on).is_some());
 }
 
-// =============================================================================
-// Authentication
-// =============================================================================
-
 /// The bundle is public. It has to be: it is the code that draws the login
 /// form, and there is nothing in it a stranger could not fetch from the
 /// release anyway. Every API route behind it still authenticates for itself.
 #[actix_web::test]
 async fn the_dashboard_is_reachable_without_a_session() {
+    let db = crate::common::TestDb::new().await;
     let dir = build_output();
-    let app = test::init_service(
-        App::new()
-            .wrap(RequireAuth::new(true))
-            .configure(dashboard(dir.path()).configure()),
-    )
-    .await;
+    let mut config = crate::common::config();
+    config.dashboard = DashboardConfig {
+        dir: dir.path().to_str().expect("utf-8 temp path").to_string(),
+        enabled: true,
+        url: None,
+    };
+    let app = crate::common::app_with_config(&db.pool, config).await;
 
     for path in ["/", "/projects", "/assets/main-a1b2c3d4.js"] {
         let resp = test::call_service(&app, test::TestRequest::get().uri(path).to_request()).await;
         assert_eq!(resp.status(), 200, "{path} should not need a session");
     }
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get().uri("/api/projects").to_request(),
+    )
+    .await;
+    assert_eq!(
+        resp.status(),
+        401,
+        "the API behind it still needs a session"
+    );
 }
 
-/// Without a dashboard the middleware keeps behaving exactly as it did: a
-/// path outside the API prefixes is not public, it is unauthenticated.
+/// Without a dashboard an unclaimed path is a 404, and an endpoint still
+/// refuses a caller without a session or token.
 #[actix_web::test]
-async fn without_a_dashboard_unknown_paths_still_need_a_session() {
-    // One route, purely so the app has a body type. `/anything` is still a
-    // path no service claims, which is the case under test.
-    let app = test::init_service(App::new().wrap(RequireAuth::new(false)).route(
-        "/health",
-        actix_web::web::get().to(|| async { actix_web::HttpResponse::Ok().finish() }),
-    ))
-    .await;
+async fn without_a_dashboard_unknown_paths_are_not_found_and_endpoints_need_a_session() {
+    let db = crate::common::TestDb::new().await;
+    let app = crate::common::app(&db.pool).await;
 
     let resp =
         test::call_service(&app, test::TestRequest::get().uri("/anything").to_request()).await;
+    assert_eq!(resp.status(), 404);
 
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get().uri("/api/projects").to_request(),
+    )
+    .await;
     assert_eq!(resp.status(), 401);
 }

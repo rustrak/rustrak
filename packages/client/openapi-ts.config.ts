@@ -5,18 +5,13 @@
  * names its method in Rust, `operation_id = "issues.list"`, and hey-api splits
  * that id on the dot: `client.issues.list()`. Nothing here derives a name.
  */
-import { readFileSync } from 'node:fs';
 import { defineConfig } from '@hey-api/openapi-ts';
-
-const spec = readFileSync(
-  new URL('../../apps/server/openapi.json', import.meta.url),
-  'utf8',
-);
+import { specText } from './scripts/spec.ts';
 
 export default defineConfig({
   // `int64` would become `bigint` in zod; every id and count here fits a JS
   // number, and the server sends them as JSON numbers.
-  input: JSON.parse(spec.replaceAll(/,\s*"format": "int64"/g, '')),
+  input: JSON.parse(specText.replaceAll(/,\s*"format": "int64"/g, '')),
   // `generate:check` writes elsewhere and diffs, so it never rewrites the
   // files a parallel build or test is reading.
   output: {

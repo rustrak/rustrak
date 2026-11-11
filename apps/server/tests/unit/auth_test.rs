@@ -4,10 +4,6 @@
 
 use rustrak::auth::sentry_auth::parse_sentry_auth_header;
 
-// =============================================================================
-// Basic Parsing Tests (moved from inline tests)
-// =============================================================================
-
 #[test]
 fn test_parse_sentry_auth_header() {
     let header = "Sentry sentry_key=abc123, sentry_version=7, sentry_client=test/1.0";
@@ -29,10 +25,6 @@ fn test_empty_header() {
     let result = parse_sentry_auth_header("");
     assert!(result.is_empty());
 }
-
-// =============================================================================
-// Additional Auth Header Tests
-// =============================================================================
 
 #[test]
 fn test_parse_sentry_auth_header_with_spaces() {

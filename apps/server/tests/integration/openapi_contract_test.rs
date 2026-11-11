@@ -14,24 +14,17 @@
 #![cfg(feature = "openapi")]
 
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::cookie::Key;
-use actix_web::{test, web, App};
+use actix_web::{test, web};
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
+use rustrak::config::Config;
 use rustrak::models::{CreateAuthToken, CreateProject, CreateRelease, CreateUserRequest, UserRole};
-use rustrak::routes;
 use rustrak::services::grouping::DenormalizedFields;
 use rustrak::services::{
-    AuthTokenService, CleanupJob, EventService, IssueService, ProjectService, ReleaseService,
-    UsersService,
+    AuthTokenService, EventService, IssueService, ProjectService, ReleaseService, UsersService,
 };
-use rustrak::telemetry::{
-    ConfigFacts, Context, Counters, Report, Reporter, Sink, SinkError, TelemetryStatus,
-};
+use rustrak::telemetry::{ConfigFacts, Context, Counters, Report, Reporter, Sink, SinkError};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use std::time::Duration;
 use utoipa::OpenApi;
 use uuid::Uuid;
 
@@ -88,42 +81,8 @@ struct Seed {
 
 fn test_config() -> Config {
     Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
         public_url: Some("https://rustrak.example.com".to_string()),
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+        ..crate::common::config()
     }
 }
 
@@ -422,58 +381,10 @@ async fn every_get_matches_the_published_spec() {
         },
     ));
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(test_config()))
-            .app_data(web::Data::new(CleanupJob::default()))
-            .app_data(web::Data::new(reporter))
-            .app_data(web::Data::new(TelemetryStatus::Disabled(
-                rustrak::telemetry::Disabled::SwitchedOff,
-            )))
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .app_data(web::Data::new(contract_client()))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::generate())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .service(
-                web::scope("/health")
-                    .route("", web::get().to(routes::health::liveness))
-                    .route("/version", web::get().to(routes::health::version))
-                    .route("/ready", web::get().to(routes::health::readiness)),
-            )
-            .configure(routes::auth::configure)
-            .configure(routes::events::configure)
-            .configure(routes::github::configure)
-            .configure(routes::issues::configure)
-            .configure(routes::alerts::configure_rules)
-            .configure(routes::alerts::configure_history)
-            .configure(routes::members::configure)
-            .configure(routes::roles::configure)
-            .configure(routes::sessions::configure)
-            .configure(routes::stats::configure)
-            .configure(routes::releases::configure)
-            .configure(routes::transactions::configure)
-            .configure(routes::logs::configure)
-            .configure(routes::monitors::configure)
-            .configure(routes::schedules::configure)
-            .configure(routes::spans::configure)
-            .configure(routes::agents::configure)
-            .configure(routes::projects::configure)
-            .configure(routes::tokens::configure)
-            .configure(routes::team::configure)
-            .configure(routes::invitations::configure)
-            .configure(routes::alerts::configure_channels)
-            .configure(routes::sourcemaps::configure)
-            .configure(routes::sentry_api::configure)
-            .configure(routes::storage::configure)
-            .configure(routes::telemetry::configure)
-            .configure(routes::mcp::configure)
-            .configure(routes::oauth::configure),
-    )
-    .await;
+    let mut state = crate::common::state(&db.pool, test_config()).await;
+    state.telemetry_reporter = web::Data::new(reporter);
+    state.client_metadata = web::Data::new(contract_client());
+    let app = crate::common::app_with(&state).await;
 
     // A session as well as the token, for the routes that only take a cookie.
     let login = test::call_service(
@@ -533,6 +444,7 @@ async fn every_get_matches_the_published_spec() {
 
     let mut failures = Vec::new();
     let mut checked = 0;
+    let mut per_page_checked = 0;
     for (path, item) in spec["paths"].as_object().unwrap() {
         let Some(op) = item.get("get") else { continue };
         if REDIRECTS.contains(&path.as_str()) {
@@ -554,6 +466,28 @@ async fn every_get_matches_the_published_spec() {
         }
         if !query.is_empty() {
             uri = format!("{uri}?{}", query.join("&"));
+        }
+
+        // Sentry refuses a page size over 100 instead of serving a smaller
+        // page (`clamp_pagination_per_page`).
+        if params.iter().any(|p| p["name"] == "per_page") {
+            let sep = if uri.contains('?') { '&' } else { '?' };
+            let response = test::call_service(
+                &app,
+                test::TestRequest::get()
+                    .uri(&format!("{uri}{sep}per_page=101"))
+                    .insert_header(("Authorization", format!("Bearer {token}")))
+                    .cookie(cookie.clone())
+                    .to_request(),
+            )
+            .await;
+            per_page_checked += 1;
+            if response.status() != 400 {
+                failures.push(format!(
+                    "{id} GET {uri} per_page=101: {}, expected 400",
+                    response.status()
+                ));
+            }
         }
 
         let response = test::call_service(
@@ -600,9 +534,88 @@ async fn every_get_matches_the_published_spec() {
 
     assert!(checked > 60, "walked only {checked} operations");
     assert!(
+        per_page_checked > 10,
+        "only {per_page_checked} lists take per_page"
+    );
+    assert!(
         failures.is_empty(),
         "{} response(s) disagree with openapi.json:\n{}",
         failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// Every operation the spec says needs a token or a session answers 401 to a
+/// caller with neither, whatever the method, path or body. One walk of the
+/// spec instead of a 401 test per endpoint, and a new endpoint is covered the
+/// day it is documented.
+#[actix_web::test]
+async fn every_operation_refuses_an_anonymous_caller() {
+    let db = TestDb::new().await;
+    let spec = serde_json::to_value(rustrak::openapi::ApiDoc::openapi()).unwrap();
+    let app = crate::common::app(&db.pool).await;
+
+    let mut failures = Vec::new();
+    let mut checked = 0;
+    for (path, item) in spec["paths"].as_object().unwrap() {
+        for (method, op) in item.as_object().unwrap() {
+            let security = op["security"].as_array();
+            // `{}` among the requirements means credentials are optional.
+            let required = match security {
+                Some(reqs) => {
+                    !reqs.is_empty()
+                        && reqs
+                            .iter()
+                            .all(|r| r.as_object().is_some_and(|o| !o.is_empty()))
+                }
+                None => op["responses"].get("401").is_some(),
+            };
+            // Logging out is idempotent: no session is already logged out.
+            if !required || path == "/auth/logout" {
+                continue;
+            }
+
+            let mut uri = path.clone();
+            let mut query = Vec::new();
+            for p in op["parameters"].as_array().into_iter().flatten() {
+                let name = p["name"].as_str().unwrap();
+                let value = match (p["schema"]["type"].as_str(), p["schema"]["format"].as_str()) {
+                    (_, Some("uuid")) => Uuid::nil().to_string(),
+                    (Some("integer"), _) => "1".into(),
+                    _ => "x".into(),
+                };
+                match p["in"].as_str() {
+                    Some("path") => uri = uri.replace(&format!("{{{name}}}"), &value),
+                    Some("query") if p["required"] == true => query.push(format!("{name}={value}")),
+                    _ => {}
+                }
+            }
+            if !query.is_empty() {
+                uri = format!("{uri}?{}", query.join("&"));
+            }
+
+            let req = match method.as_str() {
+                "get" => test::TestRequest::get(),
+                "post" => test::TestRequest::post(),
+                "put" => test::TestRequest::put(),
+                "patch" => test::TestRequest::patch(),
+                "delete" => test::TestRequest::delete(),
+                _ => continue,
+            };
+            let status = test::call_service(&app, req.uri(&uri).set_json(json!({})).to_request())
+                .await
+                .status();
+            checked += 1;
+            if status != 401 {
+                failures.push(format!("{method} {uri}: {status}"));
+            }
+        }
+    }
+
+    assert!(checked > 150, "walked only {checked} operations");
+    assert!(
+        failures.is_empty(),
+        "answered an anonymous caller with something other than 401:\n{}",
         failures.join("\n")
     );
 }

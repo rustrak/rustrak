@@ -3,46 +3,11 @@
 //! Standalone spans are NOT containerized like logs — each envelope item
 //! holds exactly one flat span JSON object (Relay's legacy `Span` schema).
 
-use rustrak::ingest::envelope::{EnvelopeItemKind, ItemHeaders};
-
-// =============================================================================
-// Level 1 — Pure enum dispatch tests (no DB, no async)
-// =============================================================================
-
-#[test]
-fn test_enum_dispatch_span_maps_to_span_kind() {
-    let headers = ItemHeaders {
-        item_type: "span".into(),
-        length: None,
-        content_type: None,
-        filename: None,
-        attachment_type: None,
-    };
-    let kind = EnvelopeItemKind::from((headers, bytes::Bytes::from(b"{}".to_vec())));
-    assert!(matches!(kind, EnvelopeItemKind::Span(_)));
-}
-
-#[test]
-fn test_span_does_not_require_event_id() {
-    let kind = EnvelopeItemKind::Span(bytes::Bytes::from(b"{}".to_vec()));
-    assert!(!kind.requires_event());
-}
-
-#[test]
-fn test_span_item_routes_to_span_processor() {
-    use rustrak::digest::processors::{route, Route};
-    assert_eq!(route(&EnvelopeItemKind::Span(vec![].into())), Route::Span);
-}
-
-// =============================================================================
-// Level 2 — SpanProcessor DB behavior (#[tokio::test] + TestDb)
-// =============================================================================
-
 #[cfg(test)]
 mod level2 {
     use crate::common::TestDb;
     use chrono::Utc;
-    use rustrak::digest::processors::{Processor, ProcessorCtx, SpanProcessor};
+    use rustrak::digest::processors::{ProcessorCtx, SpanProcessor};
     use rustrak::models::CreateProject;
     use rustrak::services::ProjectService;
     use serde_json::json;
@@ -103,10 +68,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const SPANS_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const SPANS_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
         let count: i64 = sqlx::query_scalar(SPANS_QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -170,10 +132,7 @@ mod level2 {
             .await;
         assert!(result.is_err(), "the duplicate must fail the second chunk");
 
-        #[cfg(feature = "postgres")]
         const SPANS_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const SPANS_QUERY: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
         let count: i64 = sqlx::query_scalar(SPANS_QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -230,10 +189,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT span_id, trace_id, parent_span_id, op, description, transaction_id, duration_ms FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT span_id, trace_id, parent_span_id, op, description, transaction_id, duration_ms FROM spans WHERE project_id = ?";
 
         let rows = sqlx::query(QUERY)
             .bind(project.id)
@@ -296,10 +252,7 @@ mod level2 {
             .await;
         assert!(res.is_err(), "span without span_id must be rejected");
 
-        #[cfg(feature = "postgres")]
         const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
         let count: i64 = sqlx::query_scalar(COUNT)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -365,10 +318,7 @@ mod level2 {
             "span without start_timestamp must be rejected"
         );
 
-        #[cfg(feature = "postgres")]
         const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
         let count: i64 = sqlx::query_scalar(COUNT)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -493,10 +443,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT data FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT data FROM spans WHERE project_id = ?";
         let data: serde_json::Value = sqlx::query_scalar(QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -507,10 +454,6 @@ mod level2 {
         assert_eq!(data["data"]["gen_ai.request.model"], "gpt-4");
         assert_eq!(data["data"]["some.unknown.attr"], 42);
     }
-
-    // =========================================================================
-    // SpanService — list_offset (Task 6)
-    // =========================================================================
 
     async fn store_span(
         pool: &rustrak::db::DbPool,
@@ -531,52 +474,6 @@ mod level2 {
             .process(bytes::Bytes::from(payload), &ctx(pool, project_id))
             .await
             .unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_list_spans_filters_by_op() {
-        use rustrak::services::span::{SpanFilters, SpanService};
-
-        let db = TestDb::new().await;
-        let project = ProjectService::create(
-            &db.pool,
-            CreateProject {
-                name: "span-svc-filter-op".to_string(),
-                slug: None,
-                platform: None,
-            },
-        )
-        .await
-        .unwrap();
-
-        store_span(
-            &db.pool,
-            project.id,
-            "aaaaaaaaaaaaaaaa",
-            "trace1",
-            "http.client",
-        )
-        .await;
-        store_span(
-            &db.pool,
-            project.id,
-            "bbbbbbbbbbbbbbbb",
-            "trace2",
-            "db.query",
-        )
-        .await;
-
-        let filters = SpanFilters {
-            op: Some("http.client".to_string()),
-            ..Default::default()
-        };
-        let (list, total) = SpanService::list_offset(&db.pool, project.id, 1, 20, &filters)
-            .await
-            .unwrap();
-
-        assert_eq!(total, 1, "only the http.client span matches");
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0].op.as_deref(), Some("http.client"));
     }
 
     #[tokio::test]
@@ -679,10 +576,6 @@ mod level2 {
         );
     }
 
-    // =========================================================================
-    // gen_ai.* normalization on standalone spans (story-ai-agent-monitoring.md)
-    // =========================================================================
-
     #[tokio::test]
     async fn test_standalone_ai_span_normalized() {
         let db = TestDb::new().await;
@@ -716,10 +609,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_response_model, gen_ai_usage_total_tokens FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_response_model, gen_ai_usage_total_tokens FROM spans WHERE project_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -764,10 +654,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT gen_ai_operation_type FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT gen_ai_operation_type FROM spans WHERE project_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)

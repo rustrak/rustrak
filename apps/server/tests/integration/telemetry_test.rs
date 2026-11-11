@@ -130,10 +130,6 @@ async fn a_redirect_is_not_followed() {
     );
 }
 
-// =============================================================================
-// The instance id
-// =============================================================================
-
 mod instance_id {
     use crate::common::TestDb;
     use rustrak::telemetry::instance_id;
@@ -159,10 +155,6 @@ mod instance_id {
         );
     }
 }
-
-// =============================================================================
-// Volume: what the installation holds, blurred
-// =============================================================================
 
 mod volume {
     use crate::common::TestDb;
@@ -279,7 +271,7 @@ mod volume {
     /// The kinds of alert channel in use, as kinds: never a name, never a URL.
     #[tokio::test]
     async fn alert_providers_are_the_enabled_kinds_deduplicated() {
-        use rustrak::models::{ChannelType, CreateNotificationChannel};
+        use rustrak::models::{CreateAlertIntegration, ProviderType};
         use rustrak::services::AlertService;
         use rustrak::telemetry::alert_providers;
         use serde_json::json;
@@ -292,19 +284,20 @@ mod volume {
             "webhook_url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX"
         });
         for (name, kind, credentials, enabled) in [
-            ("a", ChannelType::Webhook, webhook.clone(), true),
-            ("b", ChannelType::Webhook, webhook, true),
-            ("c", ChannelType::Slack, slack, true),
+            ("a", ProviderType::Webhook, webhook.clone(), true),
+            ("b", ProviderType::Webhook, webhook, true),
+            ("c", ProviderType::Slack, slack, true),
             (
                 "d",
-                ChannelType::Email,
+                ProviderType::Email,
                 json!({ "smtp_host": "smtp.example.com", "from_address": "a@example.com" }),
                 false,
             ),
         ] {
             AlertService::create_channel(
                 &db.pool,
-                CreateNotificationChannel {
+                &Default::default(),
+                CreateAlertIntegration {
                     name: name.to_string(),
                     provider_type: kind,
                     credentials,
@@ -320,10 +313,6 @@ mod volume {
         );
     }
 }
-
-// =============================================================================
-// The reporter
-// =============================================================================
 
 mod reporter {
     use std::sync::{Arc, Mutex};
@@ -388,9 +377,10 @@ mod reporter {
         counters.digest_ok();
         rustrak::services::AlertService::create_channel(
             &db.pool,
-            rustrak::models::CreateNotificationChannel {
+            &Default::default(),
+            rustrak::models::CreateAlertIntegration {
                 name: "hook".to_string(),
-                provider_type: rustrak::models::ChannelType::Webhook,
+                provider_type: rustrak::models::ProviderType::Webhook,
                 credentials: serde_json::json!({ "url": "http://127.0.0.1:9/hook" }),
                 is_enabled: true,
             },
@@ -447,9 +437,11 @@ mod reporter {
             "nothing before the delay"
         );
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        let reports = sink.reports.lock().unwrap().clone();
-        assert!(reports.len() >= 2, "got {}", reports.len());
+        let reports = crate::common::eventually(|| async {
+            let reports = sink.reports.lock().unwrap().clone();
+            (reports.len() >= 2).then_some(reports)
+        })
+        .await;
         assert!(reports[0].first_since_boot);
         assert!(!reports[1].first_since_boot);
         assert!(reports[1].uptime_secs >= reports[0].uptime_secs);
@@ -471,19 +463,17 @@ mod reporter {
             });
         tokio::spawn(Arc::new(reporter).run());
 
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        let reports = sink.reports.lock().unwrap().clone();
-        assert!(!reports.is_empty(), "the second attempt got through");
+        let reports = crate::common::eventually(|| async {
+            let reports = sink.reports.lock().unwrap().clone();
+            (!reports.is_empty()).then_some(reports)
+        })
+        .await;
         assert!(
             !reports[0].first_since_boot,
             "the lost first report is not replayed"
         );
     }
 }
-
-// =============================================================================
-// The HTTP middleware: outcomes by status, never by path
-// =============================================================================
 
 mod middleware {
     use actix_web::{http::StatusCode, test, web, App, HttpResponse};
@@ -659,10 +649,6 @@ mod middleware {
     }
 }
 
-// =============================================================================
-// Digest outcomes
-// =============================================================================
-
 mod digest {
     use chrono::Utc;
     use serde_json::json;
@@ -670,11 +656,11 @@ mod digest {
     use uuid::Uuid;
 
     use crate::common::TestDb;
-    use rustrak::config::RateLimitConfig;
+
     use rustrak::digest::processors::Processors;
-    use rustrak::ingest::{store_event, EventMetadata};
+    use rustrak::ingest::pipeline::digest_stored_event;
+    use rustrak::ingest::EventMetadata;
     use rustrak::models::CreateProject;
-    use rustrak::routes::ingest::digest_stored_event;
     use rustrak::services::ProjectService;
     use rustrak::telemetry::Counters;
 
@@ -696,16 +682,13 @@ mod digest {
         )
         .await
         .expect("project");
-        let processors = Processors::new(
-            ingest_dir.to_path_buf(),
-            RateLimitConfig {
-                max_events_per_minute: 1000,
-                max_events_per_hour: 10000,
-                max_events_per_project_per_minute: 500,
-                max_events_per_project_per_hour: 5000,
+        let processors = crate::common::processors_with_config(
+            pool,
+            &rustrak::config::Config {
+                ingest_dir: ingest_dir.to_path_buf(),
+                rate_limit: crate::common::rate_limit(),
+                ..crate::common::config()
             },
-            crate::common::null_sourcemap_provider(),
-            None,
         )
         .with_counters(leaked_counters());
         let event_id = Uuid::new_v4().to_string().replace('-', "");
@@ -729,8 +712,9 @@ mod digest {
             "platform": "rust",
             "exception": { "values": [{ "type": "TypeError", "value": "boom" }] }
         });
-        store_event(
+        crate::common::store_event(
             dir.path(),
+            metadata.project_id,
             &metadata.event_id,
             &serde_json::to_vec(&event).unwrap(),
         )
@@ -757,12 +741,7 @@ mod digest {
     }
 }
 
-// =============================================================================
-// Alert deliveries that fail
-// =============================================================================
-
 mod alerts {
-    use std::time::Duration;
 
     use chrono::Utc;
     use serde_json::json;
@@ -770,8 +749,8 @@ mod alerts {
     use super::Collector;
     use crate::common::TestDb;
     use rustrak::models::{
-        AlertRuleChannelInput, AlertType, ChannelType, CreateAlertRule, CreateNotificationChannel,
-        CreateProject,
+        AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, CreateProject,
+        ProviderType,
     };
     use rustrak::services::grouping::DenormalizedFields;
     use rustrak::services::{AlertService, IssueService, ProjectService};
@@ -795,9 +774,10 @@ mod alerts {
         .expect("project");
         let channel = AlertService::create_channel(
             &db.pool,
-            CreateNotificationChannel {
+            &Default::default(),
+            CreateAlertIntegration {
                 name: "Broken webhook".to_string(),
-                provider_type: ChannelType::Webhook,
+                provider_type: ProviderType::Webhook,
                 credentials: json!({ "url": collector.url }),
                 is_enabled: true,
             },
@@ -841,30 +821,35 @@ mod alerts {
         .await
         .expect("issue");
 
-        AlertService::trigger_new_issue_alert(&db.pool, &project, &issue, "http://localhost:3000")
-            .await
-            .expect("trigger");
+        AlertService::trigger_event_alert(
+            &db.pool,
+            &project,
+            &issue,
+            AlertType::NewIssue,
+            uuid::Uuid::new_v4(),
+            Default::default(),
+            "http://localhost:3000",
+            &Default::default(),
+        )
+        .await
+        .expect("trigger");
 
         // The counters are process-wide: a webhook failing in another test
         // counts too, so wait for this delivery before trusting the count.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-        let mut failed = 0;
-        loop {
-            failed += Counters::global()
-                .snapshot_and_reset()
-                .alerts_failed_by_provider
-                .get("webhook")
-                .copied()
-                .unwrap_or(0);
-            if failed >= 1 && !collector.received().is_empty() {
-                break;
-            }
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "no failure counted: {failed}"
+        let failed = std::cell::Cell::new(0);
+        crate::common::eventually(|| async {
+            failed.set(
+                failed.get()
+                    + Counters::global()
+                        .snapshot_and_reset()
+                        .alerts_failed_by_provider
+                        .get("webhook")
+                        .copied()
+                        .unwrap_or(0),
             );
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+            (failed.get() >= 1 && !collector.received().is_empty()).then_some(())
+        })
+        .await;
         assert_eq!(
             collector.received().len(),
             1,
@@ -873,20 +858,15 @@ mod alerts {
     }
 }
 
-// =============================================================================
-// GET /api/telemetry/preview
-// =============================================================================
-
 mod preview {
     use std::sync::Arc;
 
-    use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-    use actix_web::{cookie::Key, test, web, App};
+    use actix_web::{test, web};
 
     use crate::common::TestDb;
     use rustrak::db::DbPool;
     use rustrak::models::{CreateAuthToken, CreateUserRequest, UserRole};
-    use rustrak::routes;
+
     use rustrak::services::{AuthTokenService, UsersService};
     use rustrak::telemetry::{
         ConfigFacts, Context, Counters, Disabled, Reporter, Sink, SinkError, TelemetryStatus,
@@ -935,25 +915,19 @@ mod preview {
             .token
     }
 
-    macro_rules! app {
-        ($pool:expr, $status:expr, $reporter:expr) => {
-            test::init_service(
-                App::new()
-                    .app_data(web::Data::new($pool))
-                    .app_data(web::Data::new($status))
-                    .app_data(web::Data::new($reporter))
-                    .wrap(
-                        SessionMiddleware::builder(
-                            CookieSessionStore::default(),
-                            Key::from(&[0u8; 64]),
-                        )
-                        .cookie_secure(false)
-                        .build(),
-                    )
-                    .configure(routes::telemetry::configure),
-            )
-            .await
-        };
+    async fn preview_app(
+        pool: &DbPool,
+        status: TelemetryStatus,
+        reporter: std::sync::Arc<rustrak::telemetry::Reporter>,
+    ) -> impl actix_web::dev::Service<
+        actix_http::Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    > {
+        let mut state = crate::common::state(pool, crate::common::config()).await;
+        state.telemetry_status = web::Data::new(status);
+        state.telemetry_reporter = web::Data::new(reporter);
+        crate::common::app_with(&state).await
     }
 
     #[actix_web::test]
@@ -962,11 +936,12 @@ mod preview {
         let counters: &'static Counters = Box::leak(Box::new(Counters::new()));
         counters.digest_ok();
         let reporter = reporter(&db.pool, counters);
-        let app = app!(
-            db.pool.clone(),
+        let app = preview_app(
+            &db.pool,
             TelemetryStatus::Enabled { sink: "somewhere" },
-            reporter.clone()
-        );
+            reporter.clone(),
+        )
+        .await;
         let token = token_for(&db.pool, UserRole::Admin, "admin@x.com").await;
 
         let req = test::TestRequest::get()
@@ -999,11 +974,12 @@ mod preview {
     async fn the_preview_says_why_nothing_is_sent() {
         let db = TestDb::new().await;
         let counters: &'static Counters = Box::leak(Box::new(Counters::new()));
-        let app = app!(
-            db.pool.clone(),
+        let app = preview_app(
+            &db.pool,
             TelemetryStatus::Disabled(Disabled::DoNotTrack),
-            reporter(&db.pool, counters)
-        );
+            reporter(&db.pool, counters),
+        )
+        .await;
         let token = token_for(&db.pool, UserRole::Admin, "admin@x.com").await;
 
         let req = test::TestRequest::get()
@@ -1024,11 +1000,12 @@ mod preview {
     async fn the_preview_is_for_admins_only() {
         let db = TestDb::new().await;
         let counters: &'static Counters = Box::leak(Box::new(Counters::new()));
-        let app = app!(
-            db.pool.clone(),
+        let app = preview_app(
+            &db.pool,
             TelemetryStatus::Enabled { sink: "somewhere" },
-            reporter(&db.pool, counters)
-        );
+            reporter(&db.pool, counters),
+        )
+        .await;
         let token = token_for(&db.pool, UserRole::Member, "member@x.com").await;
 
         let req = test::TestRequest::get()

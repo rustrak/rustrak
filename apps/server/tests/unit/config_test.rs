@@ -1,25 +1,19 @@
-//! Unit tests for configuration parsing
+//! Configuration read from the environment: parsing and defaults.
 //!
-//! Tests environment variable parsing and default values.
-//!
-//! Note: These tests modify global environment variables and must run serially.
+//! Every test that touches the environment holds an [`EnvGuard`], which
+//! serializes them and restores what they changed.
 
+use crate::common::EnvGuard;
 use actix_web::cookie::Key;
 use rustrak::config::{Config, OidcConfig, RateLimitConfig, SecurityConfig};
-use serial_test::serial;
-
-// =============================================================================
-// Rate Limit Config Tests
-// =============================================================================
 
 #[test]
-#[serial]
 fn test_rate_limit_config_defaults() {
-    // Clear any env vars that might affect this test
-    std::env::remove_var("MAX_EVENTS_PER_MINUTE");
-    std::env::remove_var("MAX_EVENTS_PER_HOUR");
-    std::env::remove_var("MAX_EVENTS_PER_PROJECT_PER_MINUTE");
-    std::env::remove_var("MAX_EVENTS_PER_PROJECT_PER_HOUR");
+    let mut env = EnvGuard::new();
+    env.remove("MAX_EVENTS_PER_MINUTE");
+    env.remove("MAX_EVENTS_PER_HOUR");
+    env.remove("MAX_EVENTS_PER_PROJECT_PER_MINUTE");
+    env.remove("MAX_EVENTS_PER_PROJECT_PER_HOUR");
 
     let config = RateLimitConfig::from_env();
 
@@ -45,13 +39,12 @@ fn rate_limit_config_knows_whether_it_was_customized() {
 }
 
 #[test]
-#[serial]
 fn test_rate_limit_config_custom_values() {
-    // Set custom values
-    std::env::set_var("MAX_EVENTS_PER_MINUTE", "100");
-    std::env::set_var("MAX_EVENTS_PER_HOUR", "1000");
-    std::env::set_var("MAX_EVENTS_PER_PROJECT_PER_MINUTE", "50");
-    std::env::set_var("MAX_EVENTS_PER_PROJECT_PER_HOUR", "500");
+    let mut env = EnvGuard::new();
+    env.set("MAX_EVENTS_PER_MINUTE", "100");
+    env.set("MAX_EVENTS_PER_HOUR", "1000");
+    env.set("MAX_EVENTS_PER_PROJECT_PER_MINUTE", "50");
+    env.set("MAX_EVENTS_PER_PROJECT_PER_HOUR", "500");
 
     let config = RateLimitConfig::from_env();
 
@@ -59,201 +52,83 @@ fn test_rate_limit_config_custom_values() {
     assert_eq!(config.max_events_per_hour, 1000);
     assert_eq!(config.max_events_per_project_per_minute, 50);
     assert_eq!(config.max_events_per_project_per_hour, 500);
-
-    // Clean up
-    std::env::remove_var("MAX_EVENTS_PER_MINUTE");
-    std::env::remove_var("MAX_EVENTS_PER_HOUR");
-    std::env::remove_var("MAX_EVENTS_PER_PROJECT_PER_MINUTE");
-    std::env::remove_var("MAX_EVENTS_PER_PROJECT_PER_HOUR");
 }
 
 #[test]
-#[serial]
 fn test_rate_limit_config_invalid_values_use_defaults() {
-    // Set invalid (non-numeric) values
-    std::env::set_var("MAX_EVENTS_PER_MINUTE", "not-a-number");
-    std::env::set_var("MAX_EVENTS_PER_HOUR", "abc");
+    let mut env = EnvGuard::new();
+    env.set("MAX_EVENTS_PER_MINUTE", "not-a-number");
+    env.set("MAX_EVENTS_PER_HOUR", "abc");
 
     let config = RateLimitConfig::from_env();
 
-    // Should fall back to defaults
     let defaults = RateLimitConfig::default();
     assert_eq!(config.max_events_per_minute, defaults.max_events_per_minute);
     assert_eq!(config.max_events_per_hour, defaults.max_events_per_hour);
-
-    // Clean up
-    std::env::remove_var("MAX_EVENTS_PER_MINUTE");
-    std::env::remove_var("MAX_EVENTS_PER_HOUR");
 }
 
 #[test]
-#[serial]
 fn test_rate_limit_config_zero_values() {
-    std::env::set_var("MAX_EVENTS_PER_MINUTE", "0");
-    std::env::set_var("MAX_EVENTS_PER_HOUR", "0");
+    let mut env = EnvGuard::new();
+    env.set("MAX_EVENTS_PER_MINUTE", "0");
+    env.set("MAX_EVENTS_PER_HOUR", "0");
 
     let config = RateLimitConfig::from_env();
 
     // Zero is a valid value (effectively disables rate limiting)
     assert_eq!(config.max_events_per_minute, 0);
     assert_eq!(config.max_events_per_hour, 0);
-
-    // Clean up
-    std::env::remove_var("MAX_EVENTS_PER_MINUTE");
-    std::env::remove_var("MAX_EVENTS_PER_HOUR");
 }
 
 #[test]
-#[serial]
 fn test_rate_limit_config_negative_values() {
-    std::env::set_var("MAX_EVENTS_PER_MINUTE", "-100");
+    let mut env = EnvGuard::new();
+    env.set("MAX_EVENTS_PER_MINUTE", "-100");
 
     let config = RateLimitConfig::from_env();
 
     // Negative values are technically valid i64
     assert_eq!(config.max_events_per_minute, -100);
-
-    // Clean up
-    std::env::remove_var("MAX_EVENTS_PER_MINUTE");
-}
-
-// =============================================================================
-// PUBLIC_URL Config Tests
-// =============================================================================
-
-#[test]
-#[serial]
-fn test_config_public_url_none_when_not_set() {
-    let saved_db = std::env::var("DATABASE_URL").ok();
-    let saved_pub = std::env::var("PUBLIC_URL").ok();
-    std::env::remove_var("PUBLIC_URL");
-    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
-
-    let config = Config::from_env().expect("Config::from_env() should succeed");
-    assert!(config.public_url.is_none());
-
-    std::env::remove_var("DATABASE_URL");
-    if let Some(v) = saved_db {
-        std::env::set_var("DATABASE_URL", v);
-    }
-    match saved_pub {
-        Some(v) => std::env::set_var("PUBLIC_URL", v),
-        None => std::env::remove_var("PUBLIC_URL"),
-    }
 }
 
 #[test]
-#[serial]
-fn test_config_public_url_loaded_from_env() {
-    let saved_db = std::env::var("DATABASE_URL").ok();
-    let saved_pub = std::env::var("PUBLIC_URL").ok();
-    std::env::set_var("PUBLIC_URL", "https://api.example.com");
-    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
+fn test_config_public_url() {
+    for (value, expected) in [
+        (None, None),
+        (
+            Some("https://api.example.com"),
+            Some("https://api.example.com"),
+        ),
+        (
+            Some("https://api.example.com/"),
+            Some("https://api.example.com"),
+        ),
+        (Some(""), None),
+    ] {
+        let mut env = EnvGuard::new();
+        env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+            .set_opt("PUBLIC_URL", value);
 
-    let config = Config::from_env().expect("Config::from_env() should succeed");
-    assert_eq!(
-        config.public_url,
-        Some("https://api.example.com".to_string())
-    );
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+        assert_eq!(
+            config.public_url.as_deref(),
+            expected,
+            "PUBLIC_URL={value:?}"
+        );
+    }
+}
 
-    std::env::remove_var("DATABASE_URL");
-    if let Some(v) = saved_db {
-        std::env::set_var("DATABASE_URL", v);
-    }
-    match saved_pub {
-        Some(v) => std::env::set_var("PUBLIC_URL", v),
-        None => std::env::remove_var("PUBLIC_URL"),
-    }
+/// `SESSION_SECRET_KEY` as given and `SSL_PROXY` unset, until dropped.
+fn session_env(secret: Option<&str>) -> EnvGuard {
+    let mut env = EnvGuard::new();
+    env.remove("SSL_PROXY")
+        .set_opt("SESSION_SECRET_KEY", secret);
+    env
 }
 
 #[test]
-#[serial]
-fn test_config_public_url_strips_trailing_slash() {
-    let saved_db = std::env::var("DATABASE_URL").ok();
-    let saved_pub = std::env::var("PUBLIC_URL").ok();
-    std::env::set_var("PUBLIC_URL", "https://api.example.com/");
-    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
-
-    let config = Config::from_env().expect("Config::from_env() should succeed");
-    assert_eq!(
-        config.public_url,
-        Some("https://api.example.com".to_string())
-    );
-
-    std::env::remove_var("DATABASE_URL");
-    if let Some(v) = saved_db {
-        std::env::set_var("DATABASE_URL", v);
-    }
-    match saved_pub {
-        Some(v) => std::env::set_var("PUBLIC_URL", v),
-        None => std::env::remove_var("PUBLIC_URL"),
-    }
-}
-
-#[test]
-#[serial]
-fn test_config_public_url_empty_string_treated_as_none() {
-    let saved_db = std::env::var("DATABASE_URL").ok();
-    let saved_pub = std::env::var("PUBLIC_URL").ok();
-    std::env::set_var("PUBLIC_URL", "");
-    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
-
-    let config = Config::from_env().expect("Config::from_env() should succeed");
-    assert!(config.public_url.is_none());
-
-    std::env::remove_var("DATABASE_URL");
-    if let Some(v) = saved_db {
-        std::env::set_var("DATABASE_URL", v);
-    }
-    match saved_pub {
-        Some(v) => std::env::set_var("PUBLIC_URL", v),
-        None => std::env::remove_var("PUBLIC_URL"),
-    }
-}
-
-// =============================================================================
-// SESSION_SECRET_KEY Tests
-// =============================================================================
-
-/// Restores SESSION_SECRET_KEY and SSL_PROXY to their pre-test values on drop,
-/// so a failing assertion cannot leak state into the next serial test.
-struct SessionEnv {
-    secret: Option<String>,
-    ssl_proxy: Option<String>,
-}
-
-impl SessionEnv {
-    fn set(secret: Option<&str>) -> Self {
-        let guard = Self {
-            secret: std::env::var("SESSION_SECRET_KEY").ok(),
-            ssl_proxy: std::env::var("SSL_PROXY").ok(),
-        };
-        std::env::remove_var("SSL_PROXY");
-        match secret {
-            Some(value) => std::env::set_var("SESSION_SECRET_KEY", value),
-            None => std::env::remove_var("SESSION_SECRET_KEY"),
-        }
-        guard
-    }
-}
-
-impl Drop for SessionEnv {
-    fn drop(&mut self) {
-        match &self.secret {
-            Some(value) => std::env::set_var("SESSION_SECRET_KEY", value),
-            None => std::env::remove_var("SESSION_SECRET_KEY"),
-        }
-        match &self.ssl_proxy {
-            Some(value) => std::env::set_var("SSL_PROXY", value),
-            None => std::env::remove_var("SSL_PROXY"),
-        }
-    }
-}
-
-#[test]
-#[serial]
 fn test_session_secret_shorter_than_64_bytes_is_rejected_at_load() {
-    let _env = SessionEnv::set(Some("too-short-secret-key"));
+    let _env = session_env(Some("too-short-secret-key"));
 
     let result = SecurityConfig::from_env();
 
@@ -264,9 +139,8 @@ fn test_session_secret_shorter_than_64_bytes_is_rejected_at_load() {
 }
 
 #[test]
-#[serial]
 fn test_session_secret_too_short_error_names_the_variable_and_the_fix() {
-    let _env = SessionEnv::set(Some("too-short-secret-key"));
+    let _env = session_env(Some("too-short-secret-key"));
 
     let message = SecurityConfig::from_env()
         .expect_err("a 20-byte secret must be rejected")
@@ -291,17 +165,15 @@ fn test_session_secret_too_short_error_names_the_variable_and_the_fix() {
 }
 
 #[test]
-#[serial]
 fn test_secret_of_64_bytes_keeps_the_key_existing_sessions_were_signed_with() {
     // What `openssl rand -hex 32` produces, and what every current deployment runs.
     let secret = "0123456789abcdef".repeat(4);
     assert_eq!(secret.len(), 64);
-    let _env = SessionEnv::set(Some(&secret));
+    let _env = session_env(Some(&secret));
 
     let key = SecurityConfig::from_env()
         .expect("a 64-byte secret must load")
-        .session_key()
-        .expect("a 64-byte secret must build a key");
+        .session_key;
 
     // `Key` has no Debug impl, so compare with assert! rather than assert_eq!.
     assert!(
@@ -315,11 +187,10 @@ fn test_secret_of_64_bytes_keeps_the_key_existing_sessions_were_signed_with() {
 /// on `TooShort(44)` from the cookie crate after migrations had already run.
 /// The key is still refused, but now it is refused in a way the operator can act on.
 #[test]
-#[serial]
 fn test_secret_of_44_bytes_from_base64_is_refused_with_a_usable_message() {
     let secret = "sB5nQm0dK9xTfR2wV7yZaL4pC8jH1gE6uN3oI0kM5tQ=";
     assert_eq!(secret.len(), 44);
-    let _env = SessionEnv::set(Some(secret));
+    let _env = session_env(Some(secret));
 
     let message = SecurityConfig::from_env()
         .expect_err("a 44-byte secret must be refused, not panic in the cookie crate")
@@ -332,24 +203,22 @@ fn test_secret_of_44_bytes_from_base64_is_refused_with_a_usable_message() {
 }
 
 #[test]
-#[serial]
 fn test_same_secret_builds_the_same_key_so_sessions_survive_a_restart() {
     let secret = "0123456789abcdef".repeat(4);
-    let _env = SessionEnv::set(Some(&secret));
+    let _env = session_env(Some(&secret));
 
-    let first = SecurityConfig::from_env().unwrap().session_key().unwrap();
-    let second = SecurityConfig::from_env().unwrap().session_key().unwrap();
+    let first = SecurityConfig::from_env().unwrap().session_key;
+    let second = SecurityConfig::from_env().unwrap().session_key;
 
     assert!(first == second, "a fixed secret must be deterministic");
 }
 
 #[test]
-#[serial]
 fn test_no_secret_builds_a_random_key_per_start() {
-    let _env = SessionEnv::set(None);
+    let _env = session_env(None);
 
-    let first = SecurityConfig::from_env().unwrap().session_key().unwrap();
-    let second = SecurityConfig::from_env().unwrap().session_key().unwrap();
+    let first = SecurityConfig::from_env().unwrap().session_key;
+    let second = SecurityConfig::from_env().unwrap().session_key;
 
     assert!(
         first != second,
@@ -358,10 +227,9 @@ fn test_no_secret_builds_a_random_key_per_start() {
 }
 
 #[test]
-#[serial]
 fn test_debug_output_does_not_leak_the_session_secret() {
     let secret = "0123456789abcdef".repeat(4);
-    let _env = SessionEnv::set(Some(&secret));
+    let _env = session_env(Some(&secret));
 
     let rendered = format!("{:?}", SecurityConfig::from_env().unwrap());
 
@@ -376,10 +244,9 @@ fn test_debug_output_does_not_leak_the_session_secret() {
 }
 
 #[test]
-#[serial]
 fn test_ssl_proxy_still_requires_a_session_secret() {
-    let _env = SessionEnv::set(None);
-    std::env::set_var("SSL_PROXY", "true");
+    let mut env = session_env(None);
+    env.set("SSL_PROXY", "true");
 
     let result = SecurityConfig::from_env();
 
@@ -389,37 +256,15 @@ fn test_ssl_proxy_still_requires_a_session_secret() {
     );
 }
 
-// =============================================================================
-// RUSTRAK_DASHBOARD switch
-// =============================================================================
-
-/// Runs `body` with `DATABASE_URL` set and `RUSTRAK_DASHBOARD` as given,
-/// restoring both afterwards so the serial tests around it see the same
-/// environment they started with.
+/// Runs `body` with `DATABASE_URL` set and `RUSTRAK_DASHBOARD` as given.
 fn with_dashboard_env<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
-    let saved_db = std::env::var("DATABASE_URL").ok();
-    let saved_switch = std::env::var("RUSTRAK_DASHBOARD").ok();
-    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
-    match value {
-        Some(v) => std::env::set_var("RUSTRAK_DASHBOARD", v),
-        None => std::env::remove_var("RUSTRAK_DASHBOARD"),
-    }
-
-    let out = body();
-
-    match saved_db {
-        Some(v) => std::env::set_var("DATABASE_URL", v),
-        None => std::env::remove_var("DATABASE_URL"),
-    }
-    match saved_switch {
-        Some(v) => std::env::set_var("RUSTRAK_DASHBOARD", v),
-        None => std::env::remove_var("RUSTRAK_DASHBOARD"),
-    }
-    out
+    let mut env = EnvGuard::new();
+    env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+        .set_opt("RUSTRAK_DASHBOARD", value);
+    body()
 }
 
 #[test]
-#[serial]
 fn the_dashboard_is_enabled_unless_switched_off() {
     with_dashboard_env(None, || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
@@ -428,7 +273,6 @@ fn the_dashboard_is_enabled_unless_switched_off() {
 }
 
 #[test]
-#[serial]
 fn the_dashboard_switch_reads_the_usual_spellings() {
     for (value, expected) in [
         ("off", false),
@@ -454,56 +298,31 @@ fn the_dashboard_switch_reads_the_usual_spellings() {
 /// either side. The asymmetry is the point: an operator who typed `of` meant
 /// to keep the dashboard off the box, and a default of "on" would expose it.
 #[test]
-#[serial]
 fn the_dashboard_switch_refuses_what_it_does_not_recognise() {
     with_dashboard_env(Some("of"), || {
         let error = Config::from_env().expect_err("a typo must not be read as on or off");
         assert!(
-            matches!(error, rustrak::config::ConfigError::InvalidDashboardSwitch { ref value } if value == "of"),
+            matches!(error, rustrak::config::ConfigError::InvalidBoolean { ref name, ref value } if name == "RUSTRAK_DASHBOARD" && value == "of"),
             "got {error:?}"
         );
         assert!(error.to_string().contains("RUSTRAK_DASHBOARD"), "{error}");
     });
 }
 
-// =============================================================================
-// RUSTRAK_TELEMETRY switch
-// =============================================================================
-
-/// Runs `body` with `DATABASE_URL` set and the telemetry variables as given,
-/// restoring everything afterwards.
+/// Runs `body` with `DATABASE_URL` set and the telemetry variables as given.
 fn with_telemetry_env<T>(
     switch: Option<&str>,
     do_not_track: Option<&str>,
     body: impl FnOnce() -> T,
 ) -> T {
-    const VARS: [&str; 3] = ["DATABASE_URL", "RUSTRAK_TELEMETRY", "DO_NOT_TRACK"];
-    let saved: Vec<Option<String>> = VARS.iter().map(|v| std::env::var(v).ok()).collect();
-
-    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
-    for (name, value) in [
-        ("RUSTRAK_TELEMETRY", switch),
-        ("DO_NOT_TRACK", do_not_track),
-    ] {
-        match value {
-            Some(v) => std::env::set_var(name, v),
-            None => std::env::remove_var(name),
-        }
-    }
-
-    let out = body();
-
-    for (name, value) in VARS.iter().zip(saved) {
-        match value {
-            Some(v) => std::env::set_var(name, v),
-            None => std::env::remove_var(name),
-        }
-    }
-    out
+    let mut env = EnvGuard::new();
+    env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+        .set_opt("RUSTRAK_TELEMETRY", switch)
+        .set_opt("DO_NOT_TRACK", do_not_track);
+    body()
 }
 
 #[test]
-#[serial]
 fn telemetry_is_enabled_unless_switched_off() {
     with_telemetry_env(None, None, || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
@@ -513,7 +332,6 @@ fn telemetry_is_enabled_unless_switched_off() {
 }
 
 #[test]
-#[serial]
 fn the_telemetry_switch_reads_the_usual_spellings() {
     for (value, expected) in [
         ("off", false),
@@ -538,12 +356,11 @@ fn the_telemetry_switch_reads_the_usual_spellings() {
 /// Same asymmetry as the dashboard switch: a typo must not be read as "on"
 /// when the operator meant to keep data from leaving the box.
 #[test]
-#[serial]
 fn the_telemetry_switch_refuses_what_it_does_not_recognise() {
     with_telemetry_env(Some("of"), None, || {
         let error = Config::from_env().expect_err("a typo must not be read as on or off");
         assert!(
-            matches!(error, rustrak::config::ConfigError::InvalidTelemetrySwitch { ref value } if value == "of"),
+            matches!(error, rustrak::config::ConfigError::InvalidBoolean { ref name, ref value } if name == "RUSTRAK_TELEMETRY" && value == "of"),
             "got {error:?}"
         );
         assert!(error.to_string().contains("RUSTRAK_TELEMETRY"), "{error}");
@@ -551,9 +368,7 @@ fn the_telemetry_switch_refuses_what_it_does_not_recognise() {
 }
 
 /// `DO_NOT_TRACK=1` is the cross-tool convention from consoledonottrack.com.
-/// Only `1` and `true` count; anything else leaves it unset.
 #[test]
-#[serial]
 fn do_not_track_is_read_from_the_conventional_variable() {
     for (value, expected) in [("1", true), ("true", true), ("0", false), ("", false)] {
         with_telemetry_env(None, Some(value), || {
@@ -566,50 +381,25 @@ fn do_not_track_is_read_from_the_conventional_variable() {
     }
 }
 
-// =============================================================================
-// Where alert notifications link to
-// =============================================================================
-
-/// Runs `body` with `DASHBOARD_URL`, `PUBLIC_URL`, `HOST` and `PORT` as given,
-/// restoring all of them and `DATABASE_URL` afterwards.
+/// Runs `body` with `DASHBOARD_URL` and `PUBLIC_URL` as given, bound to
+/// `0.0.0.0:8080`.
 fn with_link_env<T>(
     dashboard_url: Option<&str>,
     public_url: Option<&str>,
     body: impl FnOnce() -> T,
 ) -> T {
-    const VARS: [&str; 5] = [
-        "DATABASE_URL",
-        "DASHBOARD_URL",
-        "PUBLIC_URL",
-        "HOST",
-        "PORT",
-    ];
-    let saved: Vec<_> = VARS.iter().map(|v| std::env::var(v).ok()).collect();
-    std::env::set_var("DATABASE_URL", "postgres://test:test@localhost/test");
-    std::env::set_var("HOST", "0.0.0.0");
-    std::env::set_var("PORT", "8080");
-    for (var, value) in [("DASHBOARD_URL", dashboard_url), ("PUBLIC_URL", public_url)] {
-        match value {
-            Some(v) => std::env::set_var(var, v),
-            None => std::env::remove_var(var),
-        }
-    }
-
-    let out = body();
-
-    for (var, value) in VARS.iter().zip(saved) {
-        match value {
-            Some(v) => std::env::set_var(var, v),
-            None => std::env::remove_var(var),
-        }
-    }
-    out
+    let mut env = EnvGuard::new();
+    env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+        .set("HOST", "0.0.0.0")
+        .set("PORT", "8080")
+        .set_opt("DASHBOARD_URL", dashboard_url)
+        .set_opt("PUBLIC_URL", public_url);
+    body()
 }
 
 /// The server serves the dashboard, so the address SDKs reach is also the one
 /// people open: without `DASHBOARD_URL`, alert links follow `PUBLIC_URL`.
 #[test]
-#[serial]
 fn alert_links_follow_public_url_when_dashboard_url_is_unset() {
     with_link_env(None, Some("https://rustrak.example.com/"), || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
@@ -618,7 +408,6 @@ fn alert_links_follow_public_url_when_dashboard_url_is_unset() {
 }
 
 #[test]
-#[serial]
 fn dashboard_url_wins_for_a_dashboard_on_its_own_host() {
     with_link_env(
         Some("https://ui.example.com/"),
@@ -631,7 +420,6 @@ fn dashboard_url_wins_for_a_dashboard_on_its_own_host() {
 }
 
 #[test]
-#[serial]
 fn alert_links_fall_back_to_the_bind_address() {
     with_link_env(Some("  "), None, || {
         let config = Config::from_env().expect("Config::from_env() should succeed");
@@ -639,11 +427,9 @@ fn alert_links_fall_back_to_the_bind_address() {
     });
 }
 
-// =============================================================================
-// OpenID Connect Config Tests
-// =============================================================================
-
-fn clear_oidc_env() {
+/// Every `OIDC_*` variable unset, until dropped.
+fn oidc_env() -> EnvGuard {
+    let mut env = EnvGuard::new();
     for name in [
         "OIDC_ISSUER_URL",
         "OIDC_CLIENT_ID",
@@ -659,29 +445,28 @@ fn clear_oidc_env() {
         "OIDC_ADMIN_GROUPS",
         "OIDC_DISABLE_PASSWORD_LOGIN",
     ] {
-        std::env::remove_var(name);
+        env.remove(name);
     }
+    env
 }
 
 #[test]
-#[serial]
 fn test_oidc_is_disabled_without_issuer() {
-    clear_oidc_env();
+    let _env = oidc_env();
     assert!(OidcConfig::from_env().unwrap().is_none());
 }
 
 #[test]
-#[serial]
 fn test_oidc_config_defaults_and_domain_allowlist() {
-    clear_oidc_env();
-    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
-    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
-    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
-    std::env::set_var(
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
         "OIDC_REDIRECT_URL",
         "https://rustrak.example.com/auth/sso/callback",
     );
-    std::env::set_var("OIDC_ALLOWED_DOMAINS", "Example.com, staff.example.org ");
+    env.set("OIDC_ALLOWED_DOMAINS", "Example.com, staff.example.org ");
 
     let config = OidcConfig::from_env().unwrap().unwrap();
     assert_eq!(config.provider_name, "SSO");
@@ -696,41 +481,37 @@ fn test_oidc_config_defaults_and_domain_allowlist() {
         "an existing account must not be taken over on the provider's email claim alone"
     );
     assert!(config.require_email_verified);
-    clear_oidc_env();
 }
 
 #[test]
-#[serial]
 fn test_oidc_account_linking_and_provisioning_can_be_enabled() {
-    clear_oidc_env();
-    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
-    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
-    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
-    std::env::set_var(
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
         "OIDC_REDIRECT_URL",
         "https://rustrak.example.com/auth/sso/callback",
     );
-    std::env::set_var("OIDC_AUTO_PROVISION", "true");
-    std::env::set_var("OIDC_LINK_EXISTING_ACCOUNTS", "true");
+    env.set("OIDC_AUTO_PROVISION", "true");
+    env.set("OIDC_LINK_EXISTING_ACCOUNTS", "true");
 
     let config = OidcConfig::from_env().unwrap().unwrap();
     assert!(config.auto_provision);
     assert!(config.link_existing_accounts);
 
-    std::env::set_var("OIDC_LINK_EXISTING_ACCOUNTS", "maybe");
+    env.set("OIDC_LINK_EXISTING_ACCOUNTS", "maybe");
     let message = OidcConfig::from_env().unwrap_err().to_string();
     assert!(message.contains("OIDC_LINK_EXISTING_ACCOUNTS"));
-    clear_oidc_env();
 }
 
 #[test]
-#[serial]
 fn test_oidc_group_mapping_defaults_to_the_groups_claim() {
-    clear_oidc_env();
-    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
-    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
-    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
-    std::env::set_var(
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
         "OIDC_REDIRECT_URL",
         "https://rustrak.example.com/auth/sso/callback",
     );
@@ -743,67 +524,60 @@ fn test_oidc_group_mapping_defaults_to_the_groups_claim() {
     );
     assert!(!config.disable_password_login);
 
-    std::env::set_var("OIDC_GROUPS_CLAIM", " memberOf ");
-    std::env::set_var("OIDC_ADMIN_GROUPS", "rustrak-admins, ops ,,");
+    env.set("OIDC_GROUPS_CLAIM", " memberOf ");
+    env.set("OIDC_ADMIN_GROUPS", "rustrak-admins, ops ,,");
 
     let config = OidcConfig::from_env().unwrap().unwrap();
     assert_eq!(config.groups_claim, "memberOf");
     assert_eq!(config.admin_groups, ["rustrak-admins", "ops"]);
-    clear_oidc_env();
 }
 
 #[test]
-#[serial]
 fn test_oidc_password_login_can_only_be_disabled_with_sso() {
-    clear_oidc_env();
-    std::env::set_var("OIDC_DISABLE_PASSWORD_LOGIN", "true");
+    let mut env = oidc_env();
+    env.set("OIDC_DISABLE_PASSWORD_LOGIN", "true");
 
     let error = OidcConfig::from_env().unwrap_err().to_string();
     assert!(
         error.contains("OIDC_DISABLE_PASSWORD_LOGIN"),
         "a switch that would lock everyone out must be named: {error}"
     );
-    clear_oidc_env();
 
-    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
-    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
-    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
-    std::env::set_var(
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
         "OIDC_REDIRECT_URL",
         "https://rustrak.example.com/auth/sso/callback",
     );
-    std::env::set_var("OIDC_DISABLE_PASSWORD_LOGIN", "true");
+    env.set("OIDC_DISABLE_PASSWORD_LOGIN", "true");
 
     let config = OidcConfig::from_env().unwrap().unwrap();
     assert!(config.disable_password_login);
-    clear_oidc_env();
 }
 
 #[test]
-#[serial]
 fn test_oidc_rejects_partial_configuration() {
-    clear_oidc_env();
-    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
     let error = OidcConfig::from_env().unwrap_err().to_string();
     assert!(error.contains("OIDC_CLIENT_ID"));
-    clear_oidc_env();
 }
 
 #[test]
-#[serial]
 fn test_oidc_rejects_an_unrecognized_boolean_instead_of_using_the_default() {
-    clear_oidc_env();
-    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
-    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
-    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
-    std::env::set_var(
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
         "OIDC_REDIRECT_URL",
         "https://rustrak.example.com/auth/sso/callback",
     );
 
     // Falling back to the default on a typo would silently pick a value the
     // operator did not write. The typo has to stop startup.
-    std::env::set_var("OIDC_AUTO_PROVISION", "ture");
+    env.set("OIDC_AUTO_PROVISION", "ture");
     let message = OidcConfig::from_env()
         .expect_err("an unrecognized boolean must be refused")
         .to_string();
@@ -812,8 +586,8 @@ fn test_oidc_rejects_an_unrecognized_boolean_instead_of_using_the_default() {
         "the operator must be told which variable is wrong and what it held, got: {message}"
     );
 
-    std::env::set_var("OIDC_AUTO_PROVISION", "false");
-    std::env::set_var("OIDC_REQUIRE_EMAIL_VERIFIED", "typo");
+    env.set("OIDC_AUTO_PROVISION", "false");
+    env.set("OIDC_REQUIRE_EMAIL_VERIFIED", "typo");
     let message = OidcConfig::from_env()
         .expect_err("an unrecognized boolean must be refused on either switch")
         .to_string();
@@ -824,8 +598,8 @@ fn test_oidc_rejects_an_unrecognized_boolean_instead_of_using_the_default() {
 
     // An empty value means "unset", like OIDC_ISSUER_URL, and unset keeps the
     // documented defaults.
-    std::env::set_var("OIDC_AUTO_PROVISION", "");
-    std::env::remove_var("OIDC_REQUIRE_EMAIL_VERIFIED");
+    env.set("OIDC_AUTO_PROVISION", "");
+    env.remove("OIDC_REQUIRE_EMAIL_VERIFIED");
     let config = OidcConfig::from_env().unwrap().unwrap();
     assert!(
         !config.auto_provision,
@@ -833,22 +607,20 @@ fn test_oidc_rejects_an_unrecognized_boolean_instead_of_using_the_default() {
     );
     assert!(config.require_email_verified);
 
-    std::env::set_var("OIDC_AUTO_PROVISION", "on");
-    std::env::set_var("OIDC_REQUIRE_EMAIL_VERIFIED", "no");
+    env.set("OIDC_AUTO_PROVISION", "on");
+    env.set("OIDC_REQUIRE_EMAIL_VERIFIED", "no");
     let config = OidcConfig::from_env().unwrap().unwrap();
     assert!(config.auto_provision);
     assert!(!config.require_email_verified);
-    clear_oidc_env();
 }
 
 #[test]
-#[serial]
 fn test_oidc_reports_when_any_provider_account_can_join() {
-    clear_oidc_env();
-    std::env::set_var("OIDC_ISSUER_URL", "https://id.example.com");
-    std::env::set_var("OIDC_CLIENT_ID", "rustrak");
-    std::env::set_var("OIDC_CLIENT_SECRET", "secret");
-    std::env::set_var(
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
         "OIDC_REDIRECT_URL",
         "https://rustrak.example.com/auth/sso/callback",
     );
@@ -856,15 +628,14 @@ fn test_oidc_reports_when_any_provider_account_can_join() {
     let closed = OidcConfig::from_env().unwrap().unwrap();
     assert!(!closed.admits_any_provider_account());
 
-    std::env::set_var("OIDC_AUTO_PROVISION", "true");
+    env.set("OIDC_AUTO_PROVISION", "true");
     let open = OidcConfig::from_env().unwrap().unwrap();
     assert!(
         open.admits_any_provider_account(),
         "provisioning without a domain allowlist lets every account at the provider in"
     );
 
-    std::env::set_var("OIDC_ALLOWED_DOMAINS", "example.com");
+    env.set("OIDC_ALLOWED_DOMAINS", "example.com");
     let restricted = OidcConfig::from_env().unwrap().unwrap();
     assert!(!restricted.admits_any_provider_account());
-    clear_oidc_env();
 }

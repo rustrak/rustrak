@@ -87,7 +87,7 @@ const resolved = await client.issues.update({
 - **Validated both ways**: requests and responses are checked against Zod schemas generated from the same spec; a mismatch is a typed error, not a crash
 - **No exceptions**: every method returns `Result<T, RustrakError>`, so failure is in the type, and the value survives the React server/client boundary
 - **Tree-shakeable**: ESM is published one module per file with `sideEffects: false`
-- **Retries**: exponential backoff on 408 and 5xx for idempotent methods (`GET`, `PUT`, `DELETE`)
+- **Retries**: exponential backoff on an unreachable server and on 408, 500, 502, 503 and 504, for idempotent methods (`GET`, `PUT`, `DELETE`). Not on a timeout or a 429: `isRetryable` says yes to both, but when to retry is the caller's call
 - **Redacted 5xx**: a server error never carries a server-supplied message, so internal detail cannot reach a UI
 
 ## Configuration
@@ -157,8 +157,8 @@ console.log(result.data);
 | `gone` | 410 | ✅ | ❌ | |
 | `payload_too_large` | 413 | ✅ | ❌ | Envelope ingestion only |
 | `rate_limited` | 429 | ✅ | ✅ | Optional `retryAfter` in seconds |
-| `client_error` | other 4xx | ✅ | ❌ | Catch-all, so no status is unrepresentable |
-| `server_error` | 5xx | ✅ | ✅ | **Message is always a fixed generic string** |
+| `client_error` | other 4xx | ✅ | 408 only | Catch-all, so no status is unrepresentable |
+| `server_error` | 5xx | ✅ | 500, 502, 503, 504 | **Message is always a fixed generic string** |
 | `network` | n/a | no | ✅ | DNS, refused connection, TLS, timeout |
 | `invalid_response` | n/a | no | ❌ | 2xx whose body failed its schema |
 | `invalid_request` | n/a | no | ❌ | Your input failed its schema; nothing was sent |
@@ -285,17 +285,16 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | Method | Endpoint | Description |
 |---|---|---|
 | `auth.acceptInvitation({ body })` | `POST /auth/accept-invitation` | Accept a pending invitation: creates the user (with the invite's email + role) and logs in. |
-| `auth.changePassword({ body })` | `POST /auth/me/password` | Change the current user's password |
+| `auth.changePassword({ body })` | `POST /auth/me/password` | Change the current user's password. |
 | `auth.confirmSsoLink({ body })` | `POST /auth/sso/link` | Link the pending SSO identity to its account once the account's password is given, and sign in. |
 | `auth.getCurrentUser()` | `GET /auth/me` | Get current authenticated user |
 | `auth.getInvitation({ path })` | `GET /auth/invitation/{token}` | Returns the invitation's details if it is still acceptable (for the accept page). |
 | `auth.login({ body })` | `POST /auth/login` | Authenticate user and create session |
 | `auth.logout()` | `POST /auth/logout` | Clear session |
-| `auth.register({ body })` | `POST /auth/register` | Registration is invite-only — always rejected. |
 | `auth.ssoCallback({ query? })` | `GET /auth/sso/callback` | Validate the provider response, resolve or provision the local account, and establish the normal Rustrak session. |
 | `auth.ssoConfig()` | `GET /auth/sso/config` | Public, non-sensitive information used to render the login page. |
 | `auth.ssoLink()` | `GET /auth/sso/link` | The account an SSO login matched, shown while its owner confirms. |
-| `auth.ssoStart()` | `POST /auth/sso/start` | Create a one-time OIDC authorization request and retain its protections in the encrypted session cookie. |
+| `auth.ssoStart()` | `POST /auth/sso/start` | Create a one-time OIDC authorization request and retain its protections in the session. |
 | `auth.updateCurrentUser({ body })` | `PATCH /auth/me` | Update the current user's presentation preferences |
 
 ### Events
@@ -356,8 +355,8 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 |---|---|---|
 | `environments.list({ path })` | `GET /api/projects/{project_id}/environments` | Lists the environments a project's issues have been seen in, by name. |
 | `feedback.list({ path, query? })` | `GET /api/projects/{project_id}/feedback` | Lists user feedback with what each user submitted. |
-| `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` | Bulk delete by ids or filter |
-| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` | Bulk mutate |
+| `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` |  |
+| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` |  |
 | `issues.createComment({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/comments` | Add a note. |
 | `issues.createUserReport({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/user-reports` | Attach user feedback to an issue. |
 | `issues.delete({ path })` | `DELETE /api/projects/{project_id}/issues/{issue_id}` | Hard-deletes an issue and all associated events |
@@ -420,7 +419,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | `projects.delete({ path })` | `DELETE /api/projects/{id}` | Delete a project |
 | `projects.get({ path })` | `GET /api/projects/{id}` | Get a project by ID |
 | `projects.getRateLimits()` | `GET /api/rate-limits` | What a project without limits of its own follows |
-| `projects.list({ query? })` | `GET /api/projects` | List projects with pagination |
+| `projects.list({ query? })` | `GET /api/projects` | List projects with pagination. |
 | `projects.update({ path, body })` | `PATCH /api/projects/{id}` | Update a project |
 
 ### Releases
@@ -445,7 +444,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 |---|---|---|
 | `sentry.getIssue({ path })` | `GET /api/0/issues/{issue_id}/` | One issue with its releases and its 24h and 30d series (Sentry's `GroupDetailsEndpoint`). |
 | `sentry.getLatestEvent({ path })` | `GET /api/0/issues/{issue_id}/events/latest/` | The issue's most recent event (Sentry's `GroupEventDetailsEndpoint`, `issues/endpoints/group_event_details.py`). |
-| `sentry.listIssues({ path, query? })` | `GET /api/0/projects/{org_slug}/{project_slug}/issues/` | A project's issues, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `ProjectGroupIndexEndpoint`, `issues/endpoints/project_group_index.py`). |
+| `sentry.listIssues({ path, query? })` | `GET /api/0/projects/{org_slug}/{project_slug}/issues/` | Issues, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `ProjectGroupIndexEndpoint`, `issues/endpoints/project_group_index.py`). |
 | `sentry.listOrganizations()` | `GET /api/0/organizations/` | The organizations the token belongs to (Sentry's `OrganizationIndexEndpoint`): always the one synthetic org. |
 | `sentry.listProjects({ query? })` | `GET /api/0/projects/` | The projects the token can see, newest first (Sentry's `ProjectIndexEndpoint`, `core/endpoints/project_index.py`). |
 | `sentry.listRepos({ path })` | `GET /api/0/organizations/{org_slug}/repos/` | The code repositories connected to the organization (Sentry's `OrganizationRepositoriesEndpoint`). |
