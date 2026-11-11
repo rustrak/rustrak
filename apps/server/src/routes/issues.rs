@@ -604,6 +604,7 @@ pub async fn get_issue_aggregates(
     Ok(HttpResponse::Ok().json(aggregates))
 }
 
+/// Sets the status or priority of many issues at once, by id.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/projects/{project_id}/issues",
@@ -641,6 +642,7 @@ pub async fn bulk_update_issues(
     Ok(HttpResponse::Ok().json(json!({ "updated": updated })))
 }
 
+/// Deletes many issues at once, selected by id or by filter.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/projects/{project_id}/issues",

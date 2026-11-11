@@ -6,8 +6,9 @@ use crate::common::TestDb;
 use chrono::{DateTime, Duration, Utc};
 use rustrak::db::DbPool;
 use rustrak::models::monitor::{
-    CheckIn, CheckInStatus, FailureReason, MonitorConfigInput, MonitorEnvironmentStatus, Schedule,
+    CheckIn, CheckInStatus, FailureReason, MonitorConfigInput, MonitorEnvironmentStatus,
 };
+use rustrak::models::schedule::Schedule;
 use rustrak::models::{CreateProject, Product, UpdateProject};
 use rustrak::services::monitor::MonitorService;
 use rustrak::services::ProjectService;

@@ -287,6 +287,7 @@ pub async fn compact(
 )]
 pub struct StorageApi;
 
+/// Gets the retention settings and the cleanup schedule.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/storage/retention",
@@ -309,6 +310,7 @@ pub async fn get_retention(
     Ok(HttpResponse::Ok().json(retention))
 }
 
+/// Updates the retention settings; the next cleanup is scheduled at once.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/storage/retention",

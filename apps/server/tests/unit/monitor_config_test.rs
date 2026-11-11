@@ -2,7 +2,8 @@
 //! `monitor_config` or from the dashboard. Limits mirror Sentry's
 //! `monitors/constants.py` and `ConfigValidator`.
 
-use rustrak::models::monitor::{IntervalUnit, MonitorConfigInput, Schedule};
+use rustrak::models::monitor::MonitorConfigInput;
+use rustrak::models::schedule::{IntervalUnit, Schedule};
 
 fn input(schedule: Schedule) -> MonitorConfigInput {
     MonitorConfigInput {

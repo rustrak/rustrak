@@ -91,6 +91,7 @@ pub async fn org_details(path: web::Path<String>) -> AppResult<HttpResponse> {
     }))
 }
 
+/// Describes how sentry-cli should upload chunks: size, concurrency and accepted kinds.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/0/organizations/{org_slug}/chunk-upload/",
@@ -137,6 +138,7 @@ pub async fn chunk_upload_capability(
     }))
 }
 
+/// Receives chunks of a source map or debug file upload from sentry-cli.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/0/organizations/{org_slug}/chunk-upload/",
@@ -242,6 +244,7 @@ pub async fn chunk_upload(
     Ok(HttpResponse::Ok().finish())
 }
 
+/// Assembles uploaded chunks into an artifact bundle (sentry-cli `sourcemaps upload`).
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/0/organizations/{org_slug}/artifactbundle/assemble/",
@@ -575,6 +578,7 @@ fn sha1_hex(data: &[u8]) -> String {
     hex::encode(sha1::Sha1::digest(data))
 }
 
+/// Lists a project's uploaded source map artifacts (sentry-cli).
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/0/projects/{org_slug}/{project_slug}/files/source-maps/",

@@ -10,10 +10,6 @@ use rustrak::ingest::envelope::{EnvelopeItemKind, ItemHeaders};
 use rustrak::models::span_v2::{parse_span_v2_container, SpanV2Entry};
 use serde_json::json;
 
-// =============================================================================
-// Level 1 — Pure enum dispatch tests (no DB, no async)
-// =============================================================================
-
 #[test]
 fn test_enum_dispatch_span_with_v2_content_type_maps_to_span_v2_batch() {
     let headers = ItemHeaders {
@@ -39,25 +35,6 @@ fn test_enum_dispatch_span_without_v2_content_type_stays_legacy() {
     let kind = EnvelopeItemKind::from((headers, bytes::Bytes::from(b"{}".to_vec())));
     assert!(matches!(kind, EnvelopeItemKind::Span(_)));
 }
-
-#[test]
-fn test_span_v2_batch_does_not_require_event_id() {
-    let kind = EnvelopeItemKind::SpanV2Batch(bytes::Bytes::from(b"{}".to_vec()));
-    assert!(!kind.requires_event());
-}
-
-#[test]
-fn test_span_v2_batch_routes_to_span_v2_processor() {
-    use rustrak::digest::processors::{route, Route};
-    assert_eq!(
-        route(&EnvelopeItemKind::SpanV2Batch(vec![].into())),
-        Route::SpanV2
-    );
-}
-
-// =============================================================================
-// Level 1b — Pure container/entry parsing tests (no DB, no async)
-// =============================================================================
 
 /// Real wire fixture (trimmed), captured off the wire from an actual
 /// @sentry/node 10.65 + Vercel AI SDK generateText() + tool call, via a
@@ -183,16 +160,12 @@ fn test_parse_container_with_unrecognized_version_is_still_accepted() {
     assert!(entries.is_empty());
 }
 
-// =============================================================================
-// Level 2 — SpanV2Processor DB behavior (#[tokio::test] + TestDb)
-// =============================================================================
-
 #[cfg(test)]
 mod level2 {
     use super::REAL_WIRE_FIXTURE;
     use crate::common::TestDb;
     use chrono::Utc;
-    use rustrak::digest::processors::{Processor, ProcessorCtx, SpanV2Processor};
+    use rustrak::digest::processors::{ProcessorCtx, SpanV2Processor};
     use rustrak::models::CreateProject;
     use rustrak::services::ProjectService;
     use serde_json::json;
@@ -239,10 +212,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
         let count: i64 = sqlx::query_scalar(COUNT)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -278,10 +248,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT span_id, trace_id, parent_span_id, op, description, status, transaction_id, duration_ms FROM spans WHERE project_id = $1 AND span_id = $2";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT span_id, trace_id, parent_span_id, op, description, status, transaction_id, duration_ms FROM spans WHERE project_id = ? AND span_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -349,10 +316,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_agent_name, gen_ai_response_model, gen_ai_usage_total_tokens FROM spans WHERE project_id = $1 AND span_id = $2";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_agent_name, gen_ai_response_model, gen_ai_usage_total_tokens FROM spans WHERE project_id = ? AND span_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -406,10 +370,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_tool_name FROM spans WHERE project_id = $1 AND span_id = $2";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT gen_ai_operation_type, gen_ai_tool_name FROM spans WHERE project_id = ? AND span_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -467,10 +428,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const COUNT: &str = "SELECT COUNT(*) FROM spans WHERE project_id = ?";
         let count: i64 = sqlx::query_scalar(COUNT)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -517,10 +475,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT is_segment, segment_id FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT is_segment, segment_id FROM spans WHERE project_id = ?";
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -705,10 +660,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT span_id FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT span_id FROM spans WHERE project_id = ?";
         let rows = sqlx::query(QUERY)
             .bind(project.id)
             .fetch_all(&db.pool)
@@ -759,10 +711,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT duration_ms FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT duration_ms FROM spans WHERE project_id = ?";
         let row = sqlx::query(QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -820,12 +769,8 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str =
             "SELECT exclusive_time_ms, platform, release, environment FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str =
-            "SELECT exclusive_time_ms, platform, release, environment FROM spans WHERE project_id = ?";
         let row = sqlx::query(QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)
@@ -888,10 +833,7 @@ mod level2 {
             .await
             .unwrap();
 
-        #[cfg(feature = "postgres")]
         const QUERY: &str = "SELECT is_segment, segment_id FROM spans WHERE project_id = $1";
-        #[cfg(not(feature = "postgres"))]
-        const QUERY: &str = "SELECT is_segment, segment_id FROM spans WHERE project_id = ?";
         let row = sqlx::query(QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)

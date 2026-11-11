@@ -3,11 +3,10 @@
 //! session health, merged from every place a release shows up.
 
 use crate::common::TestDb;
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::{Duration, NaiveDate, Utc};
 use rustrak::db::DbPool;
 use rustrak::models::{CreateAuthToken, CreateProject, CreateRelease};
-use rustrak::routes;
 use rustrak::services::release::SummaryFilter;
 use rustrak::services::{AuthTokenService, ProjectService, ReleaseService};
 use serde_json::Value;
@@ -262,12 +261,7 @@ async fn the_api_pages_the_list_and_answers_one_release() {
         .await
         .unwrap()
         .token;
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .configure(routes::releases::configure),
-    )
-    .await;
+    let app = crate::common::app(&db.pool).await;
     let get = |uri: String| {
         test::TestRequest::get()
             .uri(&uri)

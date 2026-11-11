@@ -1,11 +1,10 @@
 //! Disabled cooldown must not suppress distinct events or weaken replay deduplication.
-mod common;
 
+use crate::common::TestDb;
 use chrono::{DateTime, Duration, Utc};
-use common::TestDb;
 use rustrak::models::{
-    AlertRule, AlertRuleChannelInput, AlertType, ChannelType, CreateAlertRule,
-    CreateNotificationChannel, CreateProject,
+    AlertRule, AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule,
+    CreateProject, ProviderType,
 };
 use rustrak::services::grouping::DenormalizedFields;
 use rustrak::services::{AlertService, IssueService, ProjectService};
@@ -30,9 +29,10 @@ async fn exercise_cooldown(
     .unwrap();
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Local-only test sink".into(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({"url": "http://127.0.0.1:9/unused"}),
             is_enabled: true,
         },
@@ -93,6 +93,7 @@ async fn exercise_cooldown(
                 event,
                 Default::default(),
                 "https://dashboard.example.invalid",
+                &Default::default(),
             )
             .await
             .unwrap();

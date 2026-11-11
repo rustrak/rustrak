@@ -5,55 +5,19 @@
 //! SDK does not retry them, and their siblings in the same envelope are kept.
 
 use crate::common::TestDb;
-use actix_web::{test, web, App};
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
+use actix_web::test;
+use rustrak::config::Config;
 use rustrak::error::AppError;
 use rustrak::models::{CreateProject, Product, UpdateProject};
-use rustrak::routes;
 use rustrak::services::ProjectService;
 use serde_json::json;
-use std::time::Duration;
 use tempfile::TempDir;
 use uuid::Uuid;
 
 fn test_config(ingest_dir: &TempDir) -> Config {
     Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: Some(ingest_dir.path().to_string_lossy().into_owned()),
-        public_url: None,
         sourcemap_storage_path: "/tmp/test_sourcemaps_products".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+        ..crate::common::config_with_ingest_dir(ingest_dir.path())
     }
 }
 
@@ -94,22 +58,7 @@ async fn send(
 ) -> TempDir {
     let dir = TempDir::new().unwrap();
     let config = test_config(&dir);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(crate::common::null_sourcemap_provider()))
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().simple().to_string();
     let mut envelope = format!("{}\n", json!({ "event_id": event_id }));
@@ -142,14 +91,10 @@ async fn count(db: &TestDb, table: &str, project_id: i32) -> i64 {
 
 /// Waits for the digest to store `n` error events.
 async fn wait_for_events(db: &TestDb, project_id: i32, n: i64) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    while count(db, "events", project_id).await < n {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the sibling error event must still be stored"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    crate::common::eventually(|| async {
+        (count(db, "events", project_id).await >= n).then_some(())
+    })
+    .await;
 }
 
 fn error_item() -> (serde_json::Value, String) {
@@ -423,28 +368,9 @@ async fn feedback_off_drops_a_feedback_sent_as_an_event() {
     // The digest removes the event's file whether it stores or drops it, so
     // an empty ingest directory means it has run: only then is "no issue" an
     // answer rather than a digest that has not happened yet.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    while has_files(dir.path()) {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the digest must consume the event"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    crate::common::eventually(|| async { (!crate::common::has_files(dir.path())).then_some(()) })
+        .await;
     assert_eq!(count(&db, "issues", project_id).await, 0);
-}
-
-fn has_files(dir: &std::path::Path) -> bool {
-    std::fs::read_dir(dir).is_ok_and(|entries| {
-        entries.flatten().any(|entry| {
-            let path = entry.path();
-            if path.is_dir() {
-                has_files(&path)
-            } else {
-                true
-            }
-        })
-    })
 }
 
 #[actix_web::test]
@@ -470,7 +396,7 @@ async fn feedback_off_drops_the_feedback() {
         "contexts": { "feedback": { "message": "the button does nothing" } }
     });
 
-    let _dir = send(
+    let dir = send(
         &db,
         project_id,
         &key,
@@ -478,9 +404,11 @@ async fn feedback_off_drops_the_feedback() {
     )
     .await;
 
-    // Nothing is queued for the digest, so there is nothing to wait for: give
-    // a stray digest the time it would need, then check it never ran.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Nothing is queued for the digest, so it can never store an issue.
+    assert!(
+        !crate::common::has_files(dir.path()),
+        "nothing queued for the digest"
+    );
     assert_eq!(count(&db, "issues", project_id).await, 0);
 }
 
@@ -490,22 +418,7 @@ async fn crons_off_accepts_the_http_check_in_without_storing_it() {
     let (project_id, key) = project_without(&db, "No crons", vec![Product::Crons]).await;
     let dir = TempDir::new().unwrap();
     let config = test_config(&dir);
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(crate::common::null_sourcemap_provider()))
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let body = r#"{"status":"in_progress","monitor_config":{"schedule":{"type":"interval","value":2,"unit":"hour"}}}"#;
     let req = test::TestRequest::post()

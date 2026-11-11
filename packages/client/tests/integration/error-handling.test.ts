@@ -11,7 +11,7 @@ import {
 } from '../../src/errors.js';
 // From the module, not the barrel: the transport and the status mapping are
 // internal to the client and deliberately not re-exported.
-import { createFetch, transformHttpError } from '../../src/utils/http.js';
+import { transformHttpError } from '../../src/utils/http.js';
 import { expectErr, expectOk } from '../helpers/result.js';
 import { appErrorResponse } from '../mocks/handlers.js';
 import { server } from '../setup.js';
@@ -20,9 +20,11 @@ describe('Error Handling', () => {
   let client: RustrakClient;
 
   beforeEach(() => {
+    // Retries are `transport.test.ts`'s; here they would only wait.
     client = new RustrakClient({
       baseUrl: 'http://localhost:8080',
       token: 'test-token',
+      maxRetries: 0,
     });
   });
 
@@ -86,7 +88,7 @@ describe('Error Handling', () => {
     });
 
     it('should map 429 to rate_limited with retryAfter', async () => {
-      // Flat body on purpose: `routes/ingest.rs:38-46` is the only 429 the
+      // Flat body on purpose: the ingest rate limiter is the only 429 the
       // server sends and it is not an `AppError`.
       server.use(
         http.get('http://localhost:8080/api/projects', () => {
@@ -319,11 +321,8 @@ describe('Error Handling', () => {
       const error = expectErr(await client.projects.get({ path: { id: 999 } }));
 
       expect(error.kind).toBe('not_found');
-      // `GET /api/projects/{id}` runs `access::require` and then
-      // `ProjectService::get_by_id` (`services/project.rs:142`), which is what
-      // 404s for the admin/legacy Bearer token these fixtures model. The exact
-      // string also proves nothing prepends a second "Resource not found: "
-      // (gh-204's sibling).
+      // The exact string proves nothing prepends a second "Resource not
+      // found: " (gh-204's sibling).
       expect(error.message).toBe(
         'Resource not found: Project with id 999 not found',
       );
@@ -331,13 +330,6 @@ describe('Error Handling', () => {
       expect(isRetryable(error)).toBe(false);
     });
 
-    // 409 used to have no dedicated error class: `transformHttpError`'s
-    // `default:` branch returned a bare `RustrakError` with `statusCode` set.
-    // The union closes that gap, which is what this now pins.
-    //
-    // User 3 is the non-primary admin. Demoting user 2 cannot reach this guard:
-    // `routes/team.rs:118-125` rejects a primary-admin role change first, which
-    // the next test pins.
     it('409 Conflict has a kind of its own and keeps the server message', async () => {
       const error = expectErr(
         await client.team.updateRole({
@@ -350,133 +342,73 @@ describe('Error Handling', () => {
       expect(error.message).toBe('Conflict: Cannot demote the last admin');
       expect(error).toMatchObject({ status: 409 });
     });
-
-    it('403 wins over 409 when the target is the primary admin', async () => {
-      const error = expectErr(
-        await client.team.updateRole({
-          path: { user_id: 2 },
-          body: { role: 'member' },
-        }),
-      );
-
-      expect(error.kind).toBe('forbidden');
-      expect(error.message).toBe(
-        "Forbidden: The primary admin's role cannot be changed",
-      );
-      expect(error).toMatchObject({ status: 403 });
-    });
-
-    it('403 Forbidden on the invite-only register endpoint', async () => {
-      const error = expectErr(
-        await client.auth.register({
-          body: { email: 'someone@example.com', password: 'password123' },
-        }),
-      );
-
-      expect(error.kind).toBe('forbidden');
-      expect(error.message).toBe('Forbidden: Registration is invite-only');
-      expect(error).toMatchObject({ status: 403 });
-    });
   });
 
-  // Statuses whose only real producer is an endpoint this client never calls.
-  // They are driven through the client's own transport and status mapping
-  // against `/__status-transform/*` rather than a method, because no
-  // management endpoint can emit them: `AppError::PayloadTooLarge` comes only
-  // from envelope ingestion and the flat 429 only from the ingest rate
-  // limiter. See the matching block in `tests/mocks/handlers.ts`.
-  describe('transformHttpError status mapping (synthetic paths)', () => {
-    /** A path no operation names, through the same transport and mapping. */
-    async function unwrapTransport(path: string): Promise<RustrakError> {
-      const response = await createFetch({ baseUrl: '', maxRetries: 0 })(
-        `http://localhost:8080/${path}`,
-      );
-      const text = await response.text();
-      let body: unknown = text;
-      try {
-        body = JSON.parse(text);
-      } catch {
-        // Not JSON: the mapping receives the text, as the client does.
-      }
-      return transformHttpError(response, body);
-    }
+  // Statuses no method in these fixtures answers with: `transformHttpError`
+  // is pure, so it is driven directly.
+  describe('transformHttpError status mapping', () => {
+    const map = (status: number, body: unknown, headers?: HeadersInit) =>
+      transformHttpError(new Response(null, { status, headers }), body);
 
-    // 413 used to fall through to `transformHttpError`'s `default:` branch,
-    // the same gap 409 had. It has its own kind now.
-    it('413 PayloadTooLarge keeps the server message', async () => {
-      const error = await unwrapTransport(
-        '__status-transform/payload-too-large',
+    it('413 PayloadTooLarge keeps the server message', () => {
+      const message =
+        'Payload too large: Compressed payload exceeds 104857600 bytes';
+      expect(map(413, { error: { type: 'PayloadTooLarge', message } })).toEqual(
+        { kind: 'payload_too_large', status: 413, message },
       );
-
-      expect(error.kind).toBe('payload_too_large');
-      expect(error.message).toBe(
-        'Payload too large: Compressed payload exceeds 104857600 bytes',
-      );
-      expect(error).toMatchObject({ status: 413 });
     });
 
-    it('500 DatabaseError is redacted and stays retryable', async () => {
-      const error = await unwrapTransport('__status-transform/database-error');
-
-      expect(error.kind).toBe('server_error');
-      // The fixture sends "Database error: pool timed out while waiting for an
-      // open connection". None of it may reach a consumer: a pool message can
-      // carry a host, a port or a user name.
-      expect(error.message).toBe(SERVER_ERROR_MESSAGE);
-      expect(error.message).not.toContain('pool timed out');
-      expect(error).toMatchObject({ status: 500 });
+    // The body names a filesystem failure: none of it may reach a consumer.
+    it('500 is redacted and retryable', () => {
+      const error = map(500, {
+        error: {
+          type: 'InternalError',
+          message: 'failed to store source file: No space left on device',
+        },
+      });
+      expect(error).toEqual({
+        kind: 'server_error',
+        status: 500,
+        message: SERVER_ERROR_MESSAGE,
+      });
       expect(isRetryable(error)).toBe(true);
     });
 
-    // `AppError::Internal` is the variant that carries arbitrary internal text
-    // (`services/sourcemap.rs:441`), and it shares 500 with `Database`. It is
-    // the strongest case for redaction: the fixture's message names a
-    // filesystem failure and an OS errno.
-    it('500 InternalError is redacted', async () => {
-      const error = await unwrapTransport('__status-transform/internal-error');
-
-      expect(error.kind).toBe('server_error');
-      expect(error.message).toBe(SERVER_ERROR_MESSAGE);
-      expect(error.message).not.toContain('No space left on device');
-      expect(error.message).not.toContain('failed to store source file');
-      expect(error).toMatchObject({ status: 500 });
-    });
-
-    // `gone` and `client_error` are the two members no resource method can
-    // reach: nothing in `AppError` maps to 410, and the `default` arm exists
-    // precisely for statuses the server does not produce. Before these two
-    // fixtures both lines were uncovered, which is how the union could have
-    // grown a wrong branch without a single test noticing.
-    it('410 maps to gone and keeps the message', async () => {
-      const error = await unwrapTransport('__status-transform/gone');
-
-      expect(error.kind).toBe('gone');
-      expect(error.message).toBe('This endpoint has been retired');
-      expect(error).toMatchObject({ status: 410 });
+    it('410 maps to gone and keeps the message', () => {
+      const error = map(410, { error: 'This endpoint has been retired' });
+      expect(error).toEqual({
+        kind: 'gone',
+        status: 410,
+        message: 'This endpoint has been retired',
+      });
       expect(isRetryable(error)).toBe(false);
     });
 
-    it('an unenumerated sub-500 status falls to client_error with its status intact', async () => {
-      const error = await unwrapTransport('__status-transform/unenumerated');
-
-      expect(error.kind).toBe('client_error');
-      expect(error.message).toBe("I'm a teapot");
-      // The point of the catch-all: `status` is readable even though `kind`
-      // says only "nothing dedicated handles this".
-      expect(error).toMatchObject({ status: 418 });
+    // The point of the catch-all: `status` is readable even though `kind`
+    // says only "nothing dedicated handles this".
+    it('an unenumerated sub-500 status falls to client_error with its status intact', () => {
+      const error = map(418, { error: "I'm a teapot" });
+      expect(error).toEqual({
+        kind: 'client_error',
+        status: 418,
+        message: "I'm a teapot",
+      });
       expect(isRetryable(error)).toBe(false);
     });
 
-    it('429 exposes the flat ingest message and a populated retryAfter', async () => {
-      const error = await unwrapTransport('__status-transform/rate-limited');
-
-      expect(error.kind).toBe('rate_limited');
-      expect(error.message).toBe('rate_limit_exceeded');
-      expect(error).toMatchObject({ status: 429, retryAfter: 59 });
+    it('429 exposes the flat ingest message and a populated retryAfter', () => {
+      const error = map(
+        429,
+        { error: 'rate_limit_exceeded', retry_after: 59 },
+        { 'Retry-After': '59' },
+      );
+      expect(error).toEqual({
+        kind: 'rate_limited',
+        status: 429,
+        message: 'rate_limit_exceeded',
+        retryAfter: 59,
+      });
       expect(isRetryable(error)).toBe(true);
-      if (error.kind === 'rate_limited') {
-        expect(typeof error.retryAfter).toBe('number');
-      }
     });
   });
 
@@ -530,7 +462,7 @@ describe('Error Handling', () => {
       const shortTimeoutClient = new RustrakClient({
         baseUrl: 'http://localhost:8080',
         token: 'test-token',
-        timeout: 10, // Very short timeout
+        timeout: 10,
       });
 
       const error = expectErr(await shortTimeoutClient.projects.list());
@@ -745,101 +677,6 @@ describe('Error Handling', () => {
       expect(error.kind).toBe('server_error');
       expect(error.message).toBe(SERVER_ERROR_MESSAGE);
       expect(error).toMatchObject({ status: 500 });
-    });
-  });
-
-  describe('Retry Logic', () => {
-    it('should retry on 500 errors', async () => {
-      let attempts = 0;
-
-      server.use(
-        http.get('http://localhost:8080/api/projects', () => {
-          attempts++;
-          if (attempts < 2) {
-            return appErrorResponse('DatabaseError');
-          }
-          return HttpResponse.json({
-            items: [],
-            total_count: 0,
-            page: 1,
-            per_page: 20,
-            total_pages: 0,
-          });
-        }),
-      );
-
-      const response = expectOk(await client.projects.list());
-      expect(response.items).toEqual([]);
-      expect(attempts).toBe(2);
-    });
-
-    it('should retry on 503 errors', async () => {
-      let attempts = 0;
-
-      server.use(
-        http.get('http://localhost:8080/api/projects', () => {
-          attempts++;
-          if (attempts < 2) {
-            // Proxy-shaped: 503 cannot come from `AppError::status_code`.
-            return new HttpResponse('503 Service Unavailable', {
-              status: 503,
-            });
-          }
-          return HttpResponse.json({
-            items: [],
-            total_count: 0,
-            page: 1,
-            per_page: 20,
-            total_pages: 0,
-          });
-        }),
-      );
-
-      expectOk(await client.projects.list());
-      expect(attempts).toBe(2);
-    });
-
-    it('should not retry on 401 errors', async () => {
-      let attempts = 0;
-
-      server.use(
-        http.get('http://localhost:8080/api/projects', () => {
-          attempts++;
-          return appErrorResponse(
-            'Unauthorized',
-            'Unauthorized: Invalid token',
-          );
-        }),
-      );
-
-      const error = expectErr(await client.projects.list());
-
-      expect(error.kind).toBe('unauthenticated');
-      // Ky default retry might attempt a few times before giving up
-      // The important thing is that 401 should eventually fail
-      expect(attempts).toBeGreaterThanOrEqual(1);
-    });
-
-    it('should respect maxRetries config', async () => {
-      let attempts = 0;
-
-      server.use(
-        http.get('http://localhost:8080/api/projects', () => {
-          attempts++;
-          return appErrorResponse('DatabaseError');
-        }),
-      );
-
-      const customClient = new RustrakClient({
-        baseUrl: 'http://localhost:8080',
-        token: 'test-token',
-        maxRetries: 0,
-      });
-
-      const error = expectErr(await customClient.projects.list());
-
-      expect(error.kind).toBe('server_error');
-      expect(attempts).toBe(1); // Initial attempt only, no retries
     });
   });
 

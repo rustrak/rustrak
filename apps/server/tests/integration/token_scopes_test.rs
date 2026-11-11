@@ -2,44 +2,12 @@
 //! never beyond their owner, and optionally expiring.
 
 use crate::common::TestDb;
-use crate::integration::team_rbac_test::create_test_config;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::{
-    cookie::{Cookie, Key},
-    test, web, App,
-};
-use rustrak::auth::rbac::{Action, Resource};
+use actix_web::{cookie::Cookie, test};
 use rustrak::db::DbPool;
+use rustrak::models::rbac::{Action, Resource};
 use rustrak::models::{CreateProject, CreateUserRequest, UserRole};
-use rustrak::routes;
 use rustrak::services::{AuthTokenService, ProjectService, UsersService};
 use serde_json::{json, Value};
-
-macro_rules! app {
-    ($pool:expr) => {
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new($pool))
-                .app_data(web::Data::new(create_test_config()))
-                .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-                .wrap(
-                    SessionMiddleware::builder(
-                        CookieSessionStore::default(),
-                        Key::from(&[0u8; 64]),
-                    )
-                    .cookie_secure(false)
-                    .build(),
-                )
-                .configure(routes::auth::configure)
-                .configure(routes::tokens::configure)
-                .configure(routes::issues::configure)
-                .configure(routes::logs::configure)
-                .configure(routes::alerts::configure)
-                .configure(routes::projects::configure),
-        )
-        .await
-    };
-}
 
 async fn status<S>(app: &S, uri: &str, token: &str) -> u16
 where
@@ -134,7 +102,7 @@ async fn a_token_is_limited_to_its_permissions_and_projects() {
     owner_token(&db.pool).await;
     let p1 = project(&db.pool, "p1").await;
     let p2 = project(&db.pool, "p2").await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let session = login(&app, "o@x.com").await;
 
     let (code, body) = create(
@@ -194,7 +162,7 @@ async fn a_token_never_exceeds_its_owner() {
     )
     .await
     .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     assert_eq!(
         status(&app, &format!("/api/projects/{p}/issues"), &t.token).await,
@@ -218,7 +186,7 @@ async fn creating_a_token_needs_the_permission() {
     )
     .await
     .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let session = login(&app, "noperm@example.com").await;
 
     let (status, _) = create(&app, &session, json!({"description": "t"})).await;
@@ -264,7 +232,7 @@ async fn a_token_cannot_create_tokens() {
         .await
         .unwrap()
         .token;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     for token in [&unrestricted, &limited, &legacy] {
         let req = test::TestRequest::post()
@@ -299,7 +267,7 @@ async fn a_token_cannot_be_given_what_its_owner_does_not_hold() {
     crate::common::grant_project_role(&db.pool, p, member.id, "Viewer")
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let session = login(&app, "m@x.com").await;
 
     let (code, _) = create(
@@ -322,24 +290,25 @@ async fn a_token_cannot_be_given_what_its_owner_does_not_hold() {
 async fn an_expired_token_is_refused() {
     let db = TestDb::new().await;
     owner_token(&db.pool).await;
-    let app = app!(db.pool.clone());
-    let session = login(&app, "o@x.com").await;
-    let (code, body) = create(
-        &app,
-        &session,
-        json!({ "description": "old", "expires_at": "2000-01-01T00:00:00Z" }),
+    let app = crate::common::app(&db.pool).await;
+    // The API refuses a past expiry, so the token expires after it is made.
+    let expired = AuthTokenService::create(
+        &db.pool,
+        rustrak::models::CreateAuthToken {
+            expires_at: Some(chrono::Utc::now() - chrono::Duration::days(1)),
+            ..Default::default()
+        },
     )
-    .await;
-    assert_eq!(code, 201, "{body}");
-    let expired = body["token"].as_str().unwrap();
-    assert_eq!(status(&app, "/api/tokens", expired).await, 401);
+    .await
+    .unwrap();
+    assert_eq!(status(&app, "/api/tokens", &expired.token).await, 401);
 }
 
 #[actix_web::test]
 async fn tokens_are_stored_hashed_and_shown_only_once() {
     let db = TestDb::new().await;
     let (_, owner) = owner_token(&db.pool).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let session = login(&app, "o@x.com").await;
     let (_, body) = create(&app, &session, json!({ "description": "x" })).await;
     let raw = body["token"].as_str().unwrap();
@@ -377,7 +346,7 @@ async fn tokens_written_before_hashing_keep_working_once_hashed() {
         .await
         .unwrap()
         .is_some());
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     assert_eq!(status(&app, "/api/tokens", raw).await, 200);
 }
 
@@ -388,7 +357,7 @@ async fn an_empty_scope_field_reaches_nothing() {
     let db = TestDb::new().await;
     owner_token(&db.pool).await;
     let p = project(&db.pool, "p").await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let session = login(&app, "o@x.com").await;
     let logs = json!([{ "resource": "logs", "action": "read" }]);
 

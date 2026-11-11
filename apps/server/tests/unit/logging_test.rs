@@ -3,28 +3,26 @@
 //! Scope: log formatting only. Does not touch event/issue timestamps (those stay
 //! UTC in storage and the API regardless of this setting).
 
+use crate::common::EnvGuard;
 use chrono::{TimeZone, Utc};
 use chrono_tz::Tz;
-use rustrak::logging::{format_log_timestamp, resolve_log_timezone};
-use serial_test::serial;
+use rustrak::config::log_timezone;
+use rustrak::logging::format_log_timestamp;
 
 #[test]
-#[serial]
 fn test_resolve_log_timezone_unset_returns_none() {
-    std::env::remove_var("RUSTRAK_LOG_TIMEZONE");
+    let mut env = EnvGuard::new();
+    env.remove("RUSTRAK_LOG_TIMEZONE");
 
-    assert_eq!(resolve_log_timezone(), None);
+    assert_eq!(log_timezone(), Ok(None));
 }
 
 #[test]
-#[serial]
 fn test_resolve_log_timezone_valid_iana_name_returns_tz() {
-    std::env::set_var("RUSTRAK_LOG_TIMEZONE", "Asia/Shanghai");
+    let mut env = EnvGuard::new();
+    env.set("RUSTRAK_LOG_TIMEZONE", "Asia/Shanghai");
 
-    let result = resolve_log_timezone();
-    std::env::remove_var("RUSTRAK_LOG_TIMEZONE");
-
-    assert_eq!(result, Some(Tz::Asia__Shanghai));
+    assert_eq!(log_timezone(), Ok(Some(Tz::Asia__Shanghai)));
 }
 
 #[test]
@@ -62,12 +60,9 @@ fn test_format_log_timestamp_applies_dst_zone_offset() {
 }
 
 #[test]
-#[serial]
-fn test_resolve_log_timezone_invalid_name_returns_none() {
-    std::env::set_var("RUSTRAK_LOG_TIMEZONE", "Not/AZone");
+fn test_resolve_log_timezone_invalid_name_is_reported_for_the_utc_fallback() {
+    let mut env = EnvGuard::new();
+    env.set("RUSTRAK_LOG_TIMEZONE", "Not/AZone");
 
-    let result = resolve_log_timezone();
-    std::env::remove_var("RUSTRAK_LOG_TIMEZONE");
-
-    assert_eq!(result, None);
+    assert_eq!(log_timezone(), Err("Not/AZone".to_string()));
 }

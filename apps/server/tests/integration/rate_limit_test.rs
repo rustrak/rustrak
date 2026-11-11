@@ -2,80 +2,20 @@
 //!
 //! Tests that rate limiting is enforced during event ingestion.
 
+use crate::common::create_ingest_project;
 use crate::common::TestDb;
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::{Duration, SubsecRound, Utc};
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
-use rustrak::routes;
-use rustrak::services::{
-    DbSourceMapProvider, LocalSourceMapStore, ProjectService, RateLimitService, SourceMapProvider,
-    SourceMapStore,
-};
+use rustrak::config::{Config, RateLimitConfig};
+use rustrak::services::{ProjectService, RateLimitService};
 use serde_json::json;
-use std::sync::Arc;
-use std::time::Duration as StdDuration;
 use uuid::Uuid;
 
-/// Creates a test config with given rate limits
 fn create_test_config(rate_limit: RateLimitConfig) -> Config {
     Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: StdDuration::from_secs(5),
-            idle_timeout: StdDuration::from_secs(60),
-            max_lifetime: StdDuration::from_secs(300),
-        },
         rate_limit,
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: Some("/tmp/rustrak_test_ratelimit".to_string()),
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+        ..crate::common::config_with_ingest_dir(std::path::Path::new("/tmp/rustrak_test_ratelimit"))
     }
-}
-
-/// Default rate limit config (high limits for normal tests)
-fn default_rate_limit_config() -> RateLimitConfig {
-    RateLimitConfig {
-        max_events_per_minute: 1000,
-        max_events_per_hour: 10000,
-        max_events_per_project_per_minute: 500,
-        max_events_per_project_per_hour: 5000,
-    }
-}
-
-/// Creates a test project and returns its sentry_key
-async fn create_test_project(pool: &rustrak::db::DbPool, name: &str) -> (i32, String) {
-    let project = ProjectService::create(
-        pool,
-        rustrak::models::CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("Failed to create test project");
-    (project.id, project.sentry_key.to_string())
 }
 
 /// Fills the minute window that `until` falls in: the current one when
@@ -120,8 +60,8 @@ async fn set_installation_quota_exceeded(pool: &rustrak::db::DbPool, until: chro
 #[actix_web::test]
 async fn stale_quota_cache_is_refreshed_before_the_next_ingest() {
     let db = TestDb::new().await;
-    let (project_id, _) = create_test_project(&db.pool, "Stale Quota Cache").await;
-    let config = default_rate_limit_config();
+    let (project_id, _) = create_ingest_project(&db.pool, "Stale Quota Cache").await;
+    let config = crate::common::rate_limit();
     // A closed-until left behind by an older server: the counters have room,
     // so it must not turn events away.
     let stale_until = (Utc::now() + Duration::minutes(10)).trunc_subsecs(0);
@@ -158,42 +98,17 @@ fn create_envelope(event_id: &str, event_json: &str) -> Vec<u8> {
     envelope.into_bytes()
 }
 
-// =============================================================================
-// Project Rate Limit Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_rate_limit_project_exceeded_returns_429() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Rate Limited Project").await;
-    let config = create_test_config(default_rate_limit_config());
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Rate Limited Project").await;
+    let config = create_test_config(crate::common::rate_limit());
 
     // Set project quota exceeded for 60 seconds from now
     let exceeded_until = Utc::now() + Duration::seconds(60);
     set_project_quota_exceeded(&db.pool, project_id, exceeded_until).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data({
-                let store: Arc<dyn SourceMapStore> =
-                    Arc::new(LocalSourceMapStore::new("/tmp/test_sourcemaps"));
-                let provider: Arc<dyn SourceMapProvider> =
-                    Arc::new(DbSourceMapProvider::new(db.pool.clone(), store));
-                web::Data::new(provider)
-            })
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = json!({"event_id": event_id}).to_string();
@@ -211,7 +126,6 @@ async fn test_rate_limit_project_exceeded_returns_429() {
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 429);
 
-    // Check Retry-After header
     let retry_after = resp.headers().get("retry-after");
     assert!(retry_after.is_some());
     let retry_after_value: u64 = retry_after
@@ -235,35 +149,14 @@ async fn test_rate_limit_project_exceeded_returns_429() {
 #[actix_web::test]
 async fn test_rate_limit_project_expired_allows_request() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Rate Limit Expired").await;
-    let config = create_test_config(default_rate_limit_config());
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Rate Limit Expired").await;
+    let config = create_test_config(crate::common::rate_limit());
 
     // Set quota exceeded to past (already expired)
     let exceeded_until = Utc::now() - Duration::seconds(10);
     set_project_quota_exceeded(&db.pool, project_id, exceeded_until).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data({
-                let store: Arc<dyn SourceMapStore> =
-                    Arc::new(LocalSourceMapStore::new("/tmp/test_sourcemaps"));
-                let provider: Arc<dyn SourceMapProvider> =
-                    Arc::new(DbSourceMapProvider::new(db.pool.clone(), store));
-                web::Data::new(provider)
-            })
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = json!({"event_id": event_id}).to_string();
@@ -283,42 +176,18 @@ async fn test_rate_limit_project_expired_allows_request() {
     assert!(resp.status().is_success());
 }
 
-// =============================================================================
-// Installation Rate Limit Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_rate_limit_installation_exceeded_returns_429() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Installation Rate Limited").await;
-    let config = create_test_config(default_rate_limit_config());
+    let (project_id, sentry_key) =
+        create_ingest_project(&db.pool, "Installation Rate Limited").await;
+    let config = create_test_config(crate::common::rate_limit());
 
     // Set installation (global) quota exceeded
     let exceeded_until = Utc::now() + Duration::seconds(30);
     set_installation_quota_exceeded(&db.pool, exceeded_until).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data({
-                let store: Arc<dyn SourceMapStore> =
-                    Arc::new(LocalSourceMapStore::new("/tmp/test_sourcemaps"));
-                let provider: Arc<dyn SourceMapProvider> =
-                    Arc::new(DbSourceMapProvider::new(db.pool.clone(), store));
-                web::Data::new(provider)
-            })
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = json!({"event_id": event_id}).to_string();
@@ -348,35 +217,15 @@ async fn test_rate_limit_installation_exceeded_returns_429() {
 #[actix_web::test]
 async fn test_rate_limit_response_body() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Rate Limit Response Body").await;
-    let config = create_test_config(default_rate_limit_config());
+    let (project_id, sentry_key) =
+        create_ingest_project(&db.pool, "Rate Limit Response Body").await;
+    let config = create_test_config(crate::common::rate_limit());
 
     // Set quota exceeded
     let exceeded_until = Utc::now() + Duration::seconds(45);
     set_project_quota_exceeded(&db.pool, project_id, exceeded_until).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data({
-                let store: Arc<dyn SourceMapStore> =
-                    Arc::new(LocalSourceMapStore::new("/tmp/test_sourcemaps"));
-                let provider: Arc<dyn SourceMapProvider> =
-                    Arc::new(DbSourceMapProvider::new(db.pool.clone(), store));
-                web::Data::new(provider)
-            })
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = json!({"event_id": event_id}).to_string();
@@ -394,52 +243,24 @@ async fn test_rate_limit_response_body() {
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 429);
 
-    // Check response body
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["error"], "rate_limit_exceeded");
     assert!(body["retry_after"].as_u64().is_some());
 }
 
-// =============================================================================
-// CORS with Rate Limiting Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_rate_limit_429_has_cors_headers() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Rate Limit CORS").await;
-    let config = create_test_config(default_rate_limit_config());
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Rate Limit CORS").await;
+    let config = create_test_config(crate::common::rate_limit());
 
     // Set quota exceeded
     let exceeded_until = Utc::now() + Duration::seconds(60);
     set_project_quota_exceeded(&db.pool, project_id, exceeded_until).await;
 
     // The server's own CORS policy, not a copy of it.
-    let cors = rustrak::middleware::cors::cors();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data({
-                let store: Arc<dyn SourceMapStore> =
-                    Arc::new(LocalSourceMapStore::new("/tmp/test_sourcemaps"));
-                let provider: Arc<dyn SourceMapProvider> =
-                    Arc::new(DbSourceMapProvider::new(db.pool.clone(), store));
-                web::Data::new(provider)
-            })
-            .wrap(cors)
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = json!({"event_id": event_id}).to_string();
@@ -482,40 +303,15 @@ async fn test_rate_limit_429_has_cors_headers() {
     }
 }
 
-// =============================================================================
-// No Rate Limit (Normal Operation) Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_no_rate_limit_allows_request() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "No Rate Limit").await;
-    let config = create_test_config(default_rate_limit_config());
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "No Rate Limit").await;
+    let config = create_test_config(crate::common::rate_limit());
 
     // Don't set any quota limits
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data({
-                let store: Arc<dyn SourceMapStore> =
-                    Arc::new(LocalSourceMapStore::new("/tmp/test_sourcemaps"));
-                let provider: Arc<dyn SourceMapProvider> =
-                    Arc::new(DbSourceMapProvider::new(db.pool.clone(), store));
-                web::Data::new(provider)
-            })
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let event_json = json!({"event_id": event_id}).to_string();
@@ -534,44 +330,20 @@ async fn test_no_rate_limit_allows_request() {
     assert!(resp.status().is_success());
 }
 
-// =============================================================================
-// Multiple Projects Rate Limit Tests
-// =============================================================================
-
 #[actix_web::test]
 async fn test_rate_limit_affects_only_specific_project() {
     let db = TestDb::new().await;
     let (project_a_id, sentry_key_a) =
-        create_test_project(&db.pool, "Project A Rate Limited").await;
-    let (project_b_id, sentry_key_b) = create_test_project(&db.pool, "Project B Not Limited").await;
-    let config = create_test_config(default_rate_limit_config());
+        create_ingest_project(&db.pool, "Project A Rate Limited").await;
+    let (project_b_id, sentry_key_b) =
+        create_ingest_project(&db.pool, "Project B Not Limited").await;
+    let config = create_test_config(crate::common::rate_limit());
 
     // Only rate limit Project A
     let exceeded_until = Utc::now() + Duration::seconds(60);
     set_project_quota_exceeded(&db.pool, project_a_id, exceeded_until).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data({
-                let store: Arc<dyn SourceMapStore> =
-                    Arc::new(LocalSourceMapStore::new("/tmp/test_sourcemaps"));
-                let provider: Arc<dyn SourceMapProvider> =
-                    Arc::new(DbSourceMapProvider::new(db.pool.clone(), store));
-                web::Data::new(provider)
-            })
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // Project A should be rate limited
     let event_id_a = Uuid::new_v4().to_string().replace("-", "");

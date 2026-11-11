@@ -2,71 +2,20 @@
 //!
 //! Full HTTP → dispatch → DB path. Tests the transaction spawn path in routes/ingest.rs.
 
+use crate::common::create_ingest_project;
 use crate::common::TestDb;
-use actix_web::{test, web, App};
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
+use actix_web::test;
+use rustrak::config::Config;
 use rustrak::ingest::{store_event_with_metadata, EventMetadata};
-use rustrak::routes;
-use rustrak::services::{DbSourceMapProvider, LocalSourceMapStore, ProjectService};
 use serde_json::json;
-use std::sync::Arc;
-use std::time::Duration;
 use tempfile::TempDir;
 use uuid::Uuid;
 
 fn create_test_config() -> Config {
     Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: Some("/tmp/rustrak_test_ingest_v2".to_string()),
-        public_url: None,
         sourcemap_storage_path: "/tmp/test_sourcemaps_v2".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+        ..crate::common::config_with_ingest_dir(std::path::Path::new("/tmp/rustrak_test_ingest_v2"))
     }
-}
-
-async fn create_test_project(pool: &rustrak::db::DbPool, name: &str) -> (i32, String) {
-    let project = ProjectService::create(
-        pool,
-        rustrak::models::CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .expect("Failed to create test project");
-    (project.id, project.sentry_key.to_string())
 }
 
 fn transaction_envelope(event_id: &str, project_id: i32, sentry_key: &str) -> Vec<u8> {
@@ -116,30 +65,10 @@ fn error_envelope(event_id: &str) -> Vec<u8> {
 #[actix_web::test]
 async fn test_error_envelope_still_works_after_refactor() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Error Regression Test").await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Error Regression Test").await;
     let config = create_test_config();
 
-    let sourcemap_store = Arc::new(LocalSourceMapStore::new(&config.sourcemap_storage_path))
-        as Arc<dyn rustrak::services::SourceMapStore>;
-    let sourcemap_provider = Arc::new(DbSourceMapProvider::new(db.pool.clone(), sourcemap_store))
-        as Arc<dyn rustrak::services::SourceMapProvider>;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(sourcemap_provider))
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let body = error_envelope(&event_id);
@@ -168,30 +97,10 @@ async fn test_error_envelope_still_works_after_refactor() {
 #[actix_web::test]
 async fn test_transaction_envelope_returns_200_with_id() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Transaction Ingest Test").await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Transaction Ingest Test").await;
     let config = create_test_config();
 
-    let sourcemap_store = Arc::new(LocalSourceMapStore::new(&config.sourcemap_storage_path))
-        as Arc<dyn rustrak::services::SourceMapStore>;
-    let sourcemap_provider = Arc::new(DbSourceMapProvider::new(db.pool.clone(), sourcemap_store))
-        as Arc<dyn rustrak::services::SourceMapProvider>;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(sourcemap_provider))
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().to_string().replace("-", "");
     let body = transaction_envelope(&event_id, project_id, &sentry_key);
@@ -213,25 +122,16 @@ async fn test_transaction_envelope_returns_200_with_id() {
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert!(body.get("id").is_some(), "response must include event id");
 
-    // The processor runs in a spawned task; poll (bounded) instead of a fixed
-    // sleep so the assertion isn't flaky on slower CI runners.
-    #[cfg(feature = "postgres")]
-    const COUNT_QUERY: &str = "SELECT COUNT(*) FROM transactions WHERE project_id = $1";
-    #[cfg(not(feature = "postgres"))]
-    const COUNT_QUERY: &str = "SELECT COUNT(*) FROM transactions WHERE project_id = ?";
-
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-    let stored: i64 = loop {
-        let count: i64 = sqlx::query_scalar(COUNT_QUERY)
-            .bind(project_id)
-            .fetch_one(&db.pool)
-            .await
-            .unwrap();
-        if count > 0 || tokio::time::Instant::now() >= deadline {
-            break count;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    };
+    let stored: i64 = crate::common::eventually(|| async {
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM transactions WHERE project_id = $1")
+                .bind(project_id)
+                .fetch_one(&db.pool)
+                .await
+                .unwrap();
+        (count > 0).then_some(count)
+    })
+    .await;
 
     assert_eq!(
         stored, 1,
@@ -242,28 +142,13 @@ async fn test_transaction_envelope_returns_200_with_id() {
 #[actix_web::test]
 async fn same_event_id_isolated_between_projects_over_http() {
     let db = TestDb::new().await;
-    let (first_project, first_key) = create_test_project(&db.pool, "Scoped Event One").await;
-    let (second_project, second_key) = create_test_project(&db.pool, "Scoped Event Two").await;
+    let (first_project, first_key) = create_ingest_project(&db.pool, "Scoped Event One").await;
+    let (second_project, second_key) = create_ingest_project(&db.pool, "Scoped Event Two").await;
     let temp_dir = TempDir::new().unwrap();
     let mut config = create_test_config();
-    config.ingest_dir = Some(temp_dir.path().to_string_lossy().into_owned());
+    config.ingest_dir = temp_dir.path().to_path_buf();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(crate::common::null_sourcemap_provider()))
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().simple().to_string();
     for (project_id, sentry_key) in [(first_project, first_key), (second_project, second_key)] {
@@ -276,35 +161,26 @@ async fn same_event_id_isolated_between_projects_over_http() {
         assert_eq!(test::call_service(&app, req).await.status(), 200);
     }
 
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    loop {
-        let first_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE project_id = $1")
-                .bind(first_project)
-                .fetch_one(&db.pool)
-                .await
-                .unwrap();
-        let second_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE project_id = $1")
-                .bind(second_project)
-                .fetch_one(&db.pool)
-                .await
-                .unwrap();
-        if first_count == 1 && second_count == 1 {
-            break;
+    crate::common::eventually(|| async {
+        let mut both = true;
+        for project in [first_project, second_project] {
+            let count: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE project_id = $1")
+                    .bind(project)
+                    .fetch_one(&db.pool)
+                    .await
+                    .unwrap();
+            both &= count == 1;
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "both project events must be stored"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+        both.then_some(())
+    })
+    .await;
 }
 
 #[actix_web::test]
 async fn pending_event_recovery_replays_a_scoped_event() {
     let db = TestDb::new().await;
-    let (project, _) = create_test_project(&db.pool, "Recovery Replay Test").await;
+    let (project, _) = create_ingest_project(&db.pool, "Recovery Replay Test").await;
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config();
     let event_id = Uuid::new_v4().simple().to_string();
@@ -330,13 +206,15 @@ async fn pending_event_recovery_replays_a_scoped_event() {
     .await
     .unwrap();
 
-    let processors = web::Data::new(rustrak::digest::processors::Processors::new(
-        temp_dir.path().to_path_buf(),
-        config.rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
+    let processors = std::sync::Arc::new(crate::common::processors_with_config(
+        &db.pool,
+        &rustrak::config::Config {
+            ingest_dir: temp_dir.path().to_path_buf(),
+            rate_limit: config.rate_limit,
+            ..crate::common::config()
+        },
     ));
-    routes::ingest::recover_pending_events_once(
+    rustrak::ingest::pipeline::recover_pending_events_once(
         db.pool.clone(),
         processors,
         temp_dir.path().to_path_buf(),
@@ -398,23 +276,25 @@ fn pending_files(dir: &std::path::Path) -> usize {
 #[actix_web::test]
 async fn pending_event_recovery_skips_events_owned_by_this_process() {
     let db = TestDb::new().await;
-    let (project, _) = create_test_project(&db.pool, "Recovery Skips Owned").await;
+    let (project, _) = create_ingest_project(&db.pool, "Recovery Skips Owned").await;
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config();
     let metadata = store_scoped_event(temp_dir.path(), project).await;
 
-    let processors = web::Data::new(rustrak::digest::processors::Processors::new(
-        temp_dir.path().to_path_buf(),
-        config.rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
+    let processors = std::sync::Arc::new(crate::common::processors_with_config(
+        &db.pool,
+        &rustrak::config::Config {
+            ingest_dir: temp_dir.path().to_path_buf(),
+            rate_limit: config.rate_limit,
+            ..crate::common::config()
+        },
     ));
     let owner = processors
         .errors
         .in_flight()
         .register(project, Uuid::parse_str(&metadata.event_id).unwrap());
 
-    routes::ingest::recover_pending_events_once(
+    rustrak::ingest::pipeline::recover_pending_events_once(
         db.pool.clone(),
         processors.clone(),
         temp_dir.path().to_path_buf(),
@@ -431,7 +311,7 @@ async fn pending_event_recovery_skips_events_owned_by_this_process() {
 
     // Once the owner is gone the file is a genuine leftover again.
     drop(owner);
-    routes::ingest::recover_pending_events_once(
+    rustrak::ingest::pipeline::recover_pending_events_once(
         db.pool.clone(),
         processors,
         temp_dir.path().to_path_buf(),
@@ -452,33 +332,25 @@ async fn pending_event_recovery_skips_events_owned_by_this_process() {
 #[cfg(feature = "sqlite")]
 #[actix_web::test]
 async fn scoped_event_file_is_deleted_after_the_durability_checkpoint() {
-    use rustrak::digest::processors::{Processor, ProcessorCtx};
-
     let db = TestDb::new().await;
-    let (project, _) = create_test_project(&db.pool, "Durability Queue").await;
+    let (project, _) = create_ingest_project(&db.pool, "Durability Queue").await;
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config();
-    let processors = rustrak::digest::processors::Processors::new(
-        temp_dir.path().to_path_buf(),
-        config.rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
+    let processors = crate::common::processors_with_config(
+        &db.pool,
+        &rustrak::config::Config {
+            ingest_dir: temp_dir.path().to_path_buf(),
+            rate_limit: config.rate_limit,
+            ..crate::common::config()
+        },
     );
 
     let first = store_scoped_event(temp_dir.path(), project).await;
     let second = store_scoped_event(temp_dir.path(), project).await;
     for metadata in [&first, &second] {
-        let ctx = ProcessorCtx {
-            pool: db.pool.clone(),
-            project_id: project,
-            event_id: Uuid::parse_str(&metadata.event_id).unwrap(),
-            ingested_at: metadata.ingested_at,
-            remote_addr: None,
-            keep_ai_spans: true,
-        };
         processors
             .errors
-            .process(metadata.clone(), &ctx)
+            .digest(&db.pool, metadata)
             .await
             .expect("digest must succeed");
     }
@@ -492,14 +364,11 @@ async fn scoped_event_file_is_deleted_after_the_durability_checkpoint() {
 
     // The worker deletes the files and then drops the batch's guards; this
     // task can be polled between the two, so wait for both together.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    while pending_files(temp_dir.path()) > 0 || !processors.errors.in_flight().is_empty() {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the durability queue must delete both files after its checkpoint and release their in-flight entries"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    crate::common::eventually(|| async {
+        (pending_files(temp_dir.path()) == 0 && processors.errors.in_flight().is_empty())
+            .then_some(())
+    })
+    .await;
 }
 
 /// Relay parity: a malformed item payload never fails the envelope — the
@@ -511,27 +380,12 @@ async fn scoped_event_file_is_deleted_after_the_durability_checkpoint() {
 #[actix_web::test]
 async fn malformed_log_item_is_dropped_and_sibling_event_still_ingests() {
     let db = TestDb::new().await;
-    let (project_id, sentry_key) = create_test_project(&db.pool, "Malformed Log Sibling").await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Malformed Log Sibling").await;
     let temp_dir = TempDir::new().unwrap();
     let mut config = create_test_config();
-    config.ingest_dir = Some(temp_dir.path().to_string_lossy().into_owned());
+    config.ingest_dir = temp_dir.path().to_path_buf();
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .app_data(web::Data::new(crate::common::null_sourcemap_provider()))
-            .app_data(web::Data::new(
-                rustrak::digest::processors::Processors::new(
-                    rustrak::ingest::get_ingest_dir(config.ingest_dir.as_deref()),
-                    config.rate_limit.clone(),
-                    crate::common::null_sourcemap_provider(),
-                    None,
-                ),
-            ))
-            .configure(routes::ingest::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     let event_id = Uuid::new_v4().simple().to_string();
     let event = json!({
@@ -566,22 +420,15 @@ async fn malformed_log_item_is_dropped_and_sibling_event_still_ingests() {
         "a malformed log item must be dropped, not fail the envelope"
     );
 
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    loop {
+    crate::common::eventually(|| async {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE project_id = $1")
             .bind(project_id)
             .fetch_one(&db.pool)
             .await
             .unwrap();
-        if count == 1 {
-            break;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the sibling event must still be ingested"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+        (count == 1).then_some(())
+    })
+    .await;
 }
 
 /// A new issue's alert links into the dashboard at the address the processors
@@ -591,19 +438,19 @@ async fn malformed_log_item_is_dropped_and_sibling_event_still_ingests() {
 /// exists.
 #[actix_web::test]
 async fn new_issue_alert_links_to_the_dashboard_the_processors_were_given() {
-    use rustrak::digest::processors::{Processor, ProcessorCtx};
     use rustrak::models::{
-        AlertRuleChannelInput, AlertType, ChannelType, CreateAlertRule, CreateNotificationChannel,
+        AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, ProviderType,
     };
     use rustrak::services::AlertService;
 
     let db = TestDb::new().await;
-    let (project, _) = create_test_project(&db.pool, "Alert Links").await;
+    let (project, _) = create_ingest_project(&db.pool, "Alert Links").await;
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Links Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -638,26 +485,23 @@ async fn new_issue_alert_links_to_the_dashboard_the_processors_were_given() {
 
     let temp_dir = TempDir::new().unwrap();
     let config = create_test_config();
-    let processors = rustrak::digest::processors::Processors::new(
-        temp_dir.path().to_path_buf(),
-        config.rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
-    )
-    .with_dashboard_url("https://rustrak.example.com");
+    let processors = crate::common::processors_with_config(
+        &db.pool,
+        &rustrak::config::Config {
+            ingest_dir: temp_dir.path().to_path_buf(),
+            rate_limit: config.rate_limit,
+            dashboard: rustrak::config::DashboardConfig {
+                url: Some("https://rustrak.example.com".to_string()),
+                ..crate::common::config().dashboard
+            },
+            ..crate::common::config()
+        },
+    );
 
     let metadata = store_scoped_event(temp_dir.path(), project).await;
-    let ctx = ProcessorCtx {
-        pool: db.pool.clone(),
-        project_id: project,
-        event_id: Uuid::parse_str(&metadata.event_id).unwrap(),
-        ingested_at: metadata.ingested_at,
-        remote_addr: None,
-        keep_ai_spans: true,
-    };
     processors
         .errors
-        .process(metadata, &ctx)
+        .digest(&db.pool, &metadata)
         .await
         .expect("digest must succeed");
 
@@ -682,19 +526,19 @@ async fn new_issue_alert_links_to_the_dashboard_the_processors_were_given() {
 /// whole trigger's.
 #[actix_web::test]
 async fn replayed_event_fires_the_rules_that_had_not_recorded_it() {
-    use rustrak::digest::processors::{Processor, ProcessorCtx};
     use rustrak::models::{
-        AlertRuleChannelInput, AlertType, ChannelType, CreateAlertRule, CreateNotificationChannel,
+        AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, ProviderType,
     };
     use rustrak::services::AlertService;
 
     let db = TestDb::new().await;
-    let (project, _) = create_test_project(&db.pool, "Alert Replay").await;
+    let (project, _) = create_ingest_project(&db.pool, "Alert Replay").await;
     let channel = AlertService::create_channel(
         &db.pool,
-        CreateNotificationChannel {
+        &Default::default(),
+        CreateAlertIntegration {
             name: "Replay Webhook".to_string(),
-            provider_type: ChannelType::Webhook,
+            provider_type: ProviderType::Webhook,
             credentials: json!({ "url": "https://example.com/webhook" }),
             is_enabled: true,
         },
@@ -724,26 +568,16 @@ async fn replayed_event_fires_the_rules_that_had_not_recorded_it() {
     cool(first.id).await.unwrap();
 
     let temp_dir = TempDir::new().unwrap();
-    let processors = rustrak::digest::processors::Processors::new(
-        temp_dir.path().to_path_buf(),
-        create_test_config().rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
+    let processors = crate::common::processors_with_config(
+        &db.pool,
+        &rustrak::config::Config {
+            ingest_dir: temp_dir.path().to_path_buf(),
+            rate_limit: create_test_config().rate_limit,
+            ..crate::common::config()
+        },
     );
     let metadata = store_scoped_event(temp_dir.path(), project).await;
-    let ctx = ProcessorCtx {
-        pool: db.pool.clone(),
-        project_id: project,
-        event_id: Uuid::parse_str(&metadata.event_id).unwrap(),
-        ingested_at: metadata.ingested_at,
-        remote_addr: None,
-        keep_ai_spans: true,
-    };
-    processors
-        .errors
-        .process(metadata.clone(), &ctx)
-        .await
-        .unwrap();
+    processors.errors.digest(&db.pool, &metadata).await.unwrap();
 
     // The second rule is the one the crash cut off.
     let second = AlertService::create_rule(&db.pool, project, rule_in_cooldown("Second"))
@@ -760,11 +594,13 @@ async fn replayed_event_fires_the_rules_that_had_not_recorded_it() {
     // The replay reads its own copy: the first run's file is deleted from a
     // queue, which could take a copy written to the same place with it.
     let replay_dir = TempDir::new().unwrap();
-    let replay = rustrak::digest::processors::Processors::new(
-        replay_dir.path().to_path_buf(),
-        create_test_config().rate_limit,
-        crate::common::null_sourcemap_provider(),
-        None,
+    let replay = crate::common::processors_with_config(
+        &db.pool,
+        &rustrak::config::Config {
+            ingest_dir: replay_dir.path().to_path_buf(),
+            rate_limit: create_test_config().rate_limit,
+            ..crate::common::config()
+        },
     );
     store_event_with_metadata(
         replay_dir.path(),
@@ -774,7 +610,7 @@ async fn replayed_event_fires_the_rules_that_had_not_recorded_it() {
     )
     .await
     .unwrap();
-    replay.errors.process(metadata, &ctx).await.unwrap();
+    replay.errors.digest(&db.pool, &metadata).await.unwrap();
 
     let rows: Vec<i32> = sqlx::query_scalar(
         "SELECT alert_rule_id FROM alert_history WHERE project_id = $1 ORDER BY alert_rule_id",

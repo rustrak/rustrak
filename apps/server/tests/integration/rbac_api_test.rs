@@ -1,36 +1,12 @@
 //! The roles, assignments and project-members API.
 
 use crate::common::TestDb;
-use crate::integration::team_rbac_test::create_test_config;
-use actix_web::{test, web, App};
-use rustrak::auth::rbac::{Action, Resource};
+use actix_web::test;
 use rustrak::db::DbPool;
+use rustrak::models::rbac::{Action, Resource};
 use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, Permission, UserRole};
-use rustrak::routes;
 use rustrak::services::{AuthTokenService, ProjectService, RoleService, UsersService};
 use serde_json::{json, Value};
-
-macro_rules! app {
-    ($pool:expr) => {
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new($pool))
-                .app_data(web::Data::new(create_test_config()))
-                .configure(routes::roles::configure)
-                .configure(routes::members::configure)
-                .configure(routes::invitations::configure)
-                .configure(routes::team::configure)
-                .configure(routes::issues::configure)
-                .configure(routes::releases::configure)
-                .configure(routes::projects::configure)
-                .configure(routes::sourcemaps::configure)
-                .configure(routes::github::configure)
-                .configure(routes::tokens::configure)
-                .configure(routes::alerts::configure),
-        )
-        .await
-    };
-}
 
 macro_rules! call {
     ($app:expr, $method:ident, $uri:expr, $token:expr) => {
@@ -115,7 +91,7 @@ async fn project(pool: &DbPool) -> i32 {
 async fn the_catalog_lists_every_resource_with_its_module_scope_and_actions() {
     let db = TestDb::new().await;
     let u = who(&db.pool, "u@x.com", false).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(app, get, "/api/access/catalog", u.token);
     assert_eq!(status, 200);
     let storage = body["resources"]
@@ -138,7 +114,7 @@ async fn my_access_reports_what_i_can_do_where() {
     RoleService::assign(&db.pool, u.id, r, Some(p))
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(app, get, "/api/access/me", u.token);
     assert_eq!(status, 200);
@@ -177,7 +153,7 @@ async fn roles_are_managed_with_the_roles_permission_and_never_beyond_your_own()
             .unwrap();
     }
     let nobody = who(&db.pool, "n@x.com", false).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, _) = call!(app, get, "/api/roles", nobody.token);
     assert_eq!(status, 403);
@@ -224,7 +200,7 @@ async fn a_role_on_all_projects_makes_you_a_member_of_each() {
     RoleService::assign(&db.pool, u.id, viewer, None)
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(app, get, format!("/api/projects/{p}/members"), owner.token);
     assert_eq!(status, 200);
@@ -242,7 +218,7 @@ async fn a_role_in_use_cannot_be_deleted() {
     let u = who(&db.pool, "u@x.com", false).await;
     let r = role(&db.pool, "readers", &[(Resource::Issues, Action::Read)]).await;
     RoleService::assign(&db.pool, u.id, r, None).await.unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, _) = call!(app, delete, format!("/api/roles/{r}"), owner.token);
     assert_eq!(status, 409);
 }
@@ -253,7 +229,7 @@ async fn a_mixed_role_on_a_project_holds_its_workspace_part_everywhere() {
     let owner = who(&db.pool, "o@x.com", true).await;
     let u = who(&db.pool, "u@x.com", false).await;
     let p = project(&db.pool).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let new = json!({
         "name": "Support",
 
@@ -290,7 +266,7 @@ async fn a_workspace_only_role_does_not_make_you_a_project_member() {
     RoleService::assign(&db.pool, u.id, admin, None)
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(app, get, format!("/api/projects/{p}/members"), owner.token);
     assert_eq!(status, 200);
     assert_eq!(body, json!([]));
@@ -303,7 +279,7 @@ async fn personal_permissions_belong_to_one_person_and_stay_out_of_the_roles_lis
     let u = who(&db.pool, "u@x.com", false).await;
     let other = who(&db.pool, "t@x.com", false).await;
     let p = project(&db.pool).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let uri = format!("/api/users/{}/assignments", u.id);
 
     let (status, body) = call!(
@@ -377,7 +353,7 @@ async fn personal_permissions_cannot_exceed_your_own() {
     RoleService::assign(&db.pool, manager.id, users, None)
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let uri = format!("/api/users/{}/assignments", u.id);
 
     let (status, _) = call!(
@@ -409,7 +385,7 @@ async fn deleting_a_user_deletes_their_personal_role() {
     let db = TestDb::new().await;
     let owner = who(&db.pool, "o@x.com", true).await;
     let u = who(&db.pool, "u@x.com", false).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(
         app,
         put,
@@ -447,7 +423,7 @@ async fn whoever_creates_a_project_holds_their_own_roles_on_it() {
     RoleService::assign(&db.pool, u.id, creator, Some(p))
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(
         app,
@@ -472,7 +448,7 @@ async fn a_user_can_hold_a_workspace_role_all_projects_and_exceptions() {
     let admin = seeded(&db.pool, "Workspace Admin").await;
     let viewer = seeded(&db.pool, "Viewer").await;
     let editor = seeded(&db.pool, "Editor").await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(
         app,
@@ -500,7 +476,7 @@ async fn an_owner_sets_a_users_assignments_on_the_instance_and_on_projects() {
     let p = project(&db.pool).await;
     let viewer = seeded(&db.pool, "Viewer").await;
     let editor = seeded(&db.pool, "Editor").await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let body = json!({ "assignments": [{ "role_id": viewer, "project_id": null }, { "role_id": editor, "project_id": p }] });
     let (status, _) = call!(
@@ -544,7 +520,7 @@ async fn nobody_edits_their_own_assignments_or_hands_out_more_than_they_hold() {
         .await
         .unwrap();
     let viewer = seeded(&db.pool, "Viewer").await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, _) = call!(
         app,
@@ -600,7 +576,7 @@ async fn a_member_manager_is_offered_who_and_what_they_can_give() {
     RoleService::assign(&db.pool, member.id, reads, Some(p))
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let uri = format!("/api/projects/{p}/members/candidates");
 
     let (status, body) = call!(app, get, uri, manager.token);
@@ -653,7 +629,7 @@ async fn project_members_say_which_roles_come_from_every_project() {
     RoleService::assign(&db.pool, member.id, here, Some(p))
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let uri = format!("/api/projects/{p}/members");
 
     let (status, body) = call!(app, get, uri, owner.token);
@@ -687,7 +663,7 @@ async fn a_role_held_on_every_project_and_here_counts_as_inherited() {
     RoleService::assign(&db.pool, member.id, both, None)
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (_, body) = call!(app, get, format!("/api/projects/{p}/members"), owner.token);
     let roles = body.as_array().unwrap()[0]["roles"]
@@ -709,7 +685,7 @@ async fn a_project_admin_manages_that_projects_members() {
     RoleService::assign(&db.pool, padmin.id, admin_role, Some(p))
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(
         app,
@@ -770,7 +746,7 @@ async fn an_invitation_can_carry_a_role_on_a_project() {
     let owner = who(&db.pool, "o@x.com", true).await;
     let p = project(&db.pool).await;
     let editor = seeded(&db.pool, "Editor").await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(
         app,
@@ -807,7 +783,7 @@ async fn an_inviter_cannot_hand_out_more_than_they_hold() {
         .await
         .unwrap();
     let viewer = seeded(&db.pool, "Viewer").await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, _) = call!(
         app,
@@ -856,7 +832,7 @@ async fn only_an_owner_makes_or_unmakes_an_owner() {
     RoleService::assign(&db.pool, manager.id, r, None)
         .await
         .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, _) = call!(
         app,
@@ -928,7 +904,7 @@ async fn an_invitation_token_only_reaches_who_could_create_that_invitation() {
         None,
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     for (email, role) in [("boss@x.com", "admin"), ("dev@x.com", "member")] {
         let (status, body) = call!(
@@ -991,7 +967,7 @@ async fn resending_does_not_hand_out_an_owner_invitation_token() {
         None,
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (_, body) = call!(
         app,
         post,
@@ -1015,7 +991,7 @@ async fn a_deleted_role_cannot_leave_a_pending_invitation_without_it() {
     let db = TestDb::new().await;
     let owner = who(&db.pool, "o@x.com", true).await;
     let r = role(&db.pool, "r", &[(Resource::Issues, Action::Read)]).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (_, body) = call!(
         app,
         post,
@@ -1052,7 +1028,7 @@ async fn the_ingest_key_needs_client_keys_read() {
         Some(p),
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(app, get, format!("/api/projects/{p}"), logs.token);
     assert_eq!(status, 200, "{body}");
@@ -1106,7 +1082,7 @@ async fn chunk_upload_needs_a_source_map_grant_somewhere() {
         Some(p),
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let upload = "/api/0/organizations/o/chunk-upload/";
     let multipart = ("content-type", "multipart/form-data; boundary=b");
 
@@ -1143,7 +1119,7 @@ async fn recording_a_github_installation_needs_update() {
         None,
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(
         app,
         get,
@@ -1158,7 +1134,7 @@ async fn member_routes_answer_404_for_what_does_not_exist() {
     let db = TestDb::new().await;
     let p = project(&db.pool).await;
     let owner = who(&db.pool, "o@x.com", true).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (nowhere, nobody) = (9_999, 9_999);
 
     let (status, _) = call!(
@@ -1219,7 +1195,7 @@ async fn project_stats_need_issues_read() {
         Some(p),
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let uri = "/api/projects?stats_period=24h";
 
     let (_, body) = call!(app, get, uri, members.token);
@@ -1239,7 +1215,7 @@ async fn a_releases_new_issues_need_issues_read() {
         Some(p),
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(
         app,
         get,
@@ -1253,7 +1229,7 @@ async fn a_releases_new_issues_need_issues_read() {
 async fn a_role_name_longer_than_its_column_is_a_validation_error() {
     let db = TestDb::new().await;
     let owner = who(&db.pool, "o@x.com", true).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(
         app,
         post,
@@ -1310,7 +1286,7 @@ async fn creating_a_project_returns_its_keys_only_to_who_holds_them_there() {
     .await
     .unwrap()
     .token;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(app, post, "/api/projects", wide.token, new_project("a"));
     assert_eq!(status, 201, "{body}");
@@ -1371,7 +1347,7 @@ async fn a_scoped_token_cannot_manage_its_owners_other_tokens() {
         AuthTokenService::create_for_user(&db.pool, CreateAuthToken::default(), Some(owner.id))
             .await
             .unwrap();
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, _) = call!(app, get, "/api/tokens", scoped.token);
     assert_eq!(status, 403);
@@ -1439,7 +1415,7 @@ async fn a_token_does_not_see_projects_its_permissions_do_not_reach() {
     .await
     .unwrap()
     .token;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
 
     let (status, body) = call!(app, get, "/api/projects", limited);
     assert_eq!(status, 200, "{body}");
@@ -1469,7 +1445,7 @@ async fn the_members_api_leaves_personal_permissions_alone() {
     let owner = who(&db.pool, "o@x.com", true).await;
     let member = who(&db.pool, "m@x.com", false).await;
     let shared = role(&db.pool, "viewer", &[(Resource::Issues, Action::Read)]).await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(
         app,
         put,
@@ -1538,7 +1514,7 @@ async fn alert_rule_holders_list_channels_without_their_credentials() {
         Some(p),
     )
     .await;
-    let app = app!(db.pool.clone());
+    let app = crate::common::app(&db.pool).await;
     let (status, body) = call!(
         app,
         post,

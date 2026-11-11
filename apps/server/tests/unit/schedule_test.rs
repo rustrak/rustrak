@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
-use rustrak::scheduler::schedule::{parse_timezone, IntervalUnit, Schedule};
+use rustrak::models::schedule::{parse_timezone, IntervalUnit, Schedule};
 
 fn at(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)

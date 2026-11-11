@@ -1,8 +1,8 @@
 //! Roles and assignments stored in the database, and the access they resolve to.
 
 use crate::common::TestDb;
-use rustrak::auth::rbac::{Action, ProjectScope, Resource};
 use rustrak::db::DbPool;
+use rustrak::models::rbac::{Action, ProjectScope, Resource};
 use rustrak::models::{CreateProject, CreateUserRequest, User, UserRole};
 use rustrak::services::{ProjectService, RoleService, UsersService};
 

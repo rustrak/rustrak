@@ -5,109 +5,42 @@
 //! see usage or trigger a purge. Bearer tokens are user-scoped so the actor
 //! inherits the user's global role.
 
+use crate::common::create_test_project;
+use crate::common::seed_user;
+use crate::common::token_for;
 use crate::common::TestDb;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::{cookie::Key, test, web, App};
+use actix_web::{test, web};
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig, SecurityConfig};
 use rustrak::db::DbPool;
-use rustrak::models::{
-    CleanupFilter, CreateAuthToken, CreateProject, CreateUserRequest, User, UserRole,
-};
-use rustrak::routes;
+use rustrak::models::{CleanupFilter, CreateProject, UserRole};
 use rustrak::services::sourcemap_store::{LocalSourceMapStore, SourceMapStore};
-use rustrak::services::{AuthTokenService, CleanupJob, ProjectService, UsersService};
+use rustrak::services::{CleanupJob, ProjectService};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
-fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: Duration::from_secs(5),
-            idle_timeout: Duration::from_secs(60),
-            max_lifetime: Duration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
+/// The app with its source maps in [`test_store`]'s directory and, when
+/// given, `job` as the one cleanup.
+async fn storage_app(
+    pool: &DbPool,
+    job: Option<web::Data<CleanupJob>>,
+) -> impl actix_web::dev::Service<
+    actix_http::Request,
+    Response = actix_web::dev::ServiceResponse,
+    Error = actix_web::Error,
+> {
+    let config = rustrak::config::Config {
+        sourcemap_storage_path: std::env::temp_dir()
+            .join("rustrak-storage-test")
+            .display()
+            .to_string(),
+        ..crate::common::config()
+    };
+    let mut state = crate::common::state(pool, config).await;
+    if let Some(job) = job {
+        state.cleanup_job = job;
     }
-}
-
-macro_rules! build_app {
-    ($pool:expr, $config:expr) => {
-        build_app!($pool, $config, web::Data::new(CleanupJob::default()))
-    };
-    ($pool:expr, $config:expr, $job:expr) => {
-        test::init_service(
-            App::new()
-                .app_data(web::Data::new($pool))
-                .app_data(web::Data::new($config))
-                .app_data(web::Data::new(Arc::new(LocalSourceMapStore::new(
-                    std::env::temp_dir().join("rustrak-storage-test"),
-                )) as Arc<dyn SourceMapStore>))
-                .app_data($job)
-                .wrap(
-                    SessionMiddleware::builder(
-                        CookieSessionStore::default(),
-                        Key::from(&[0u8; 64]),
-                    )
-                    .cookie_secure(false)
-                    .build(),
-                )
-                .configure(routes::storage::configure),
-        )
-        .await
-    };
-}
-
-async fn seed_user(pool: &DbPool, email: &str, role: UserRole) -> User {
-    UsersService::create_user(
-        pool,
-        &CreateUserRequest {
-            email: email.to_string(),
-            password: "password123".to_string(),
-        },
-        role,
-    )
-    .await
-    .expect("seed user")
-}
-
-async fn token_for(pool: &DbPool, user_id: i32) -> String {
-    AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user_id))
-        .await
-        .expect("seed token")
-        .token
+    crate::common::app_with(&state).await
 }
 
 fn bearer(token: &str) -> (&'static str, String) {
@@ -122,7 +55,7 @@ async fn summary_returns_totals_for_admin_and_403_for_non_admin() {
     let member = seed_user(&db.pool, "member@x.com", UserRole::Member).await;
     let member_token = token_for(&db.pool, member.id).await;
 
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let (k, v) = bearer(&admin_token);
     let req = test::TestRequest::get()
@@ -153,7 +86,7 @@ async fn projects_breakdown_requires_admin() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let admin_token = token_for(&db.pool, admin.id).await;
 
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let (k, v) = bearer(&admin_token);
     let req = test::TestRequest::get()
@@ -172,7 +105,7 @@ async fn preview_cleanup_is_a_dry_run_returning_counts() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let admin_token = token_for(&db.pool, admin.id).await;
 
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let (k, v) = bearer(&admin_token);
     let req = test::TestRequest::post()
@@ -195,7 +128,7 @@ async fn execute_cleanup_is_admin_only() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let admin_token = token_for(&db.pool, admin.id).await;
 
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     // Non-admin must not be able to trigger a destructive purge.
     let (k, v) = bearer(&member_token);
@@ -237,21 +170,17 @@ where
         Error = actix_web::Error,
     >,
 {
-    for _ in 0..200 {
-        let (k, v) = bearer(token);
+    crate::common::eventually(|| async {
         let req = test::TestRequest::get()
             .uri("/api/storage/cleanup/status")
-            .insert_header((k, v))
+            .insert_header(bearer(token))
             .to_request();
         let resp = test::call_service(app, req).await;
         assert_eq!(resp.status(), 200);
         let body: Value = test::read_body_json(resp).await;
-        if body["state"] != "running" {
-            return body;
-        }
-        actix_web::rt::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("cleanup did not finish");
+        (body["state"] != "running").then_some(body)
+    })
+    .await
 }
 
 #[actix_web::test]
@@ -272,7 +201,7 @@ async fn execute_cleanup_refuses_a_second_run_while_one_is_running() {
     let job = web::Data::new(CleanupJob::default());
     job.start(blocked.clone(), 30, None, CleanupFilter::all())
         .unwrap();
-    let app = build_app!(db.pool.clone(), create_test_config(), job.clone());
+    let app = storage_app(&db.pool, Some(job.clone())).await;
 
     let (k, v) = bearer(&admin_token);
     let second = test::TestRequest::post()
@@ -343,7 +272,7 @@ async fn execute_cleanup_honors_data_type_filter_from_request_body() {
     .await
     .expect("seed log");
 
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let (k, v) = bearer(&admin_token);
     let req = test::TestRequest::post()
@@ -384,7 +313,7 @@ async fn source_map_gc_preview_is_admin_only() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let admin_token = token_for(&db.pool, admin.id).await;
 
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let (k, v) = bearer(&member_token);
     let req = test::TestRequest::post()
@@ -413,7 +342,7 @@ async fn source_map_gc_is_admin_only() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let admin_token = token_for(&db.pool, admin.id).await;
 
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let (k, v) = bearer(&member_token);
     let req = test::TestRequest::post()
@@ -433,10 +362,6 @@ async fn source_map_gc_is_admin_only() {
     let body: Value = test::read_body_json(resp).await;
     assert_eq!(body["files_removed"], 0, "no orphans on an empty instance");
 }
-
-// =============================================================================
-// Retention: GET/PUT /api/storage/retention, its preview and its scheduled job
-// =============================================================================
 
 async fn seed_old_log(pool: &DbPool, project_id: i32, days_ago: i64) {
     let old = Utc::now() - chrono::Duration::days(days_ago);
@@ -488,20 +413,6 @@ async fn insert_orphan_source_file(pool: &DbPool, size: i64) {
     .unwrap();
 }
 
-async fn create_project(pool: &DbPool, name: &str) -> i32 {
-    ProjectService::create(
-        pool,
-        CreateProject {
-            name: name.to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .unwrap()
-    .id
-}
-
 async fn project_log_count(pool: &DbPool, project_id: i32) -> i64 {
     sqlx::query_scalar("SELECT COUNT(*) FROM logs WHERE project_id = $1")
         .bind(project_id)
@@ -517,7 +428,7 @@ async fn run_retention_job(pool: &DbPool, cleanup: web::Data<CleanupJob>) {
     use rustrak::scheduler::jobs::StorageCleanupJob;
 
     let scheduler = Scheduler::new(vec![Arc::new(StorageCleanupJob::new(
-        cleanup,
+        cleanup.into_inner(),
         test_store(),
     ))]);
     let now = Utc::now();
@@ -549,7 +460,7 @@ async fn retention_keeps_everything_forever_by_default() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::get()
         .uri("/api/storage/retention")
@@ -576,8 +487,8 @@ async fn retention_settings_are_saved() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "keep-longer").await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let project = create_test_project(&db.pool, "keep-longer").await.id;
+    let app = storage_app(&db.pool, None).await;
 
     let settings = json!({
         "defaults": {"events_days": 90, "transactions_days": 30, "logs_days": null},
@@ -596,6 +507,23 @@ async fn retention_settings_are_saved() {
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body["settings"], settings);
+    // Scheduled on save, not on the scheduler's next tick: Saturday 04:00.
+    let next: chrono::DateTime<chrono::Utc> =
+        serde_json::from_value(body["next_run_at"].clone()).expect("next_run_at is set");
+    assert!(next > chrono::Utc::now());
+    assert_eq!(next.format("%u %H:%M").to_string(), "6 04:00");
+
+    // Keeping everything forever runs nothing.
+    let forever = json!({
+        "defaults": {"events_days": null, "transactions_days": null, "logs_days": null},
+        "overrides": [],
+        "frequency": "daily",
+        "hour": 3,
+        "weekday": 0,
+    });
+    let resp = put_retention(&app, &token, &forever).await;
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["next_run_at"], Value::Null);
 }
 
 #[actix_web::test]
@@ -603,8 +531,8 @@ async fn retention_rejects_settings_that_cannot_run() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "twice").await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let project = create_test_project(&db.pool, "twice").await.id;
+    let app = storage_app(&db.pool, None).await;
 
     let base = json!({
         "defaults": {"events_days": 30, "transactions_days": 30, "logs_days": 30},
@@ -647,7 +575,7 @@ async fn retention_is_admin_only() {
     let db = TestDb::new().await;
     let member = seed_user(&db.pool, "member@x.com", UserRole::Member).await;
     let token = token_for(&db.pool, member.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     for req in [
         test::TestRequest::get().uri("/api/storage/retention"),
@@ -668,13 +596,13 @@ async fn retention_preview_counts_what_each_project_would_lose_without_deleting(
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let default_project = create_project(&db.pool, "default").await;
-    let custom = create_project(&db.pool, "custom").await;
+    let default_project = create_test_project(&db.pool, "default").await.id;
+    let custom = create_test_project(&db.pool, "custom").await.id;
     for project in [default_project, custom] {
         seed_old_log(&db.pool, project, 40).await;
         seed_old_log(&db.pool, project, 5).await;
     }
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::post()
         .uri("/api/storage/retention/preview")
@@ -697,9 +625,9 @@ async fn retention_preview_counts_what_each_project_would_lose_without_deleting(
 #[actix_web::test]
 async fn the_retention_job_applies_each_projects_own_windows() {
     let db = TestDb::new().await;
-    let default_project = create_project(&db.pool, "default").await;
-    let custom = create_project(&db.pool, "custom").await;
-    let forever = create_project(&db.pool, "forever").await;
+    let default_project = create_test_project(&db.pool, "default").await.id;
+    let custom = create_test_project(&db.pool, "custom").await.id;
+    let forever = create_test_project(&db.pool, "forever").await.id;
     for project in [default_project, custom, forever] {
         seed_old_log(&db.pool, project, 40).await;
         seed_old_log(&db.pool, project, 5).await;
@@ -733,7 +661,7 @@ async fn the_retention_job_applies_each_projects_own_windows() {
 #[actix_web::test]
 async fn keeping_everything_forever_never_runs_the_job() {
     let db = TestDb::new().await;
-    let project = create_project(&db.pool, "forever").await;
+    let project = create_test_project(&db.pool, "forever").await.id;
     seed_old_log(&db.pool, project, 400).await;
 
     run_retention_job(&db.pool, web::Data::new(CleanupJob::default())).await;
@@ -774,7 +702,7 @@ async fn a_cleanup_cut_short_by_a_restart_is_not_shown_as_running() {
     .execute(&db.pool)
     .await
     .unwrap();
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::get()
         .uri("/api/storage/retention")
@@ -793,9 +721,9 @@ async fn the_projects_breakdown_splits_its_size_by_kind() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "logs-only").await;
+    let project = create_test_project(&db.pool, "logs-only").await.id;
     seed_old_log(&db.pool, project, 5).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::get()
         .uri("/api/storage/projects")
@@ -820,11 +748,11 @@ async fn the_age_breakdown_buckets_each_kind_by_how_long_ago_it_arrived() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "aged").await;
+    let project = create_test_project(&db.pool, "aged").await.id;
     for days in [5, 40, 400] {
         seed_old_log(&db.pool, project, days).await;
     }
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::get()
         .uri("/api/storage/age")
@@ -849,6 +777,44 @@ async fn the_age_breakdown_buckets_each_kind_by_how_long_ago_it_arrived() {
     assert!(Utc::now() - oldest > chrono::Duration::days(399));
 }
 
+/// The figures read at startup are not served once they are old: new data
+/// arrived since, and a quick read is waited for instead of answering with
+/// the startup figures (an empty instance showed 0 B).
+#[actix_web::test]
+async fn old_figures_are_read_again_before_answering() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "fresh").await.id;
+    let job = CleanupJob::default();
+    job.warm_snapshot(&db.pool).await;
+    seed_old_log(&db.pool, project, 5).await;
+
+    let later = Utc::now() + chrono::Duration::minutes(10);
+    let snapshot = job.snapshot_at(&db.pool, later).await.unwrap();
+    assert_eq!(snapshot.summary.logs_count, 1);
+}
+
+/// The page's three requests arrive together. One starts the read of old
+/// figures; the others wait for that same read instead of answering with the
+/// startup figures (the projects and age tabs showed "no data yet").
+#[actix_web::test]
+async fn concurrent_requests_for_old_figures_share_the_fresh_read() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "fresh").await.id;
+    let job = CleanupJob::default();
+    job.warm_snapshot(&db.pool).await;
+    seed_old_log(&db.pool, project, 5).await;
+
+    let later = Utc::now() + chrono::Duration::minutes(10);
+    let (a, b, c) = tokio::join!(
+        job.snapshot_at(&db.pool, later),
+        job.snapshot_at(&db.pool, later),
+        job.snapshot_at(&db.pool, later),
+    );
+    for snapshot in [a, b, c] {
+        assert_eq!(snapshot.unwrap().summary.logs_count, 1);
+    }
+}
+
 /// The storage page reads summary, projects and age at once. They come from
 /// one read of the tables, kept until a cleanup changes what is stored:
 /// reading each table once per endpoint and per load took over 30s on a
@@ -858,9 +824,9 @@ async fn the_storage_figures_are_read_once_and_kept_until_a_cleanup() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "kept").await;
+    let project = create_test_project(&db.pool, "kept").await.id;
     seed_old_log(&db.pool, project, 40).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
     let get = |uri: &'static str| {
         test::TestRequest::get()
             .uri(uri)
@@ -918,7 +884,7 @@ async fn collecting_source_maps_drops_the_kept_figures() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
     insert_orphan_source_file(&db.pool, 2_048).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
     let files = || async {
         let req = test::TestRequest::get()
             .uri("/api/storage/summary")
@@ -942,7 +908,7 @@ async fn the_age_breakdown_is_admin_only() {
     let db = TestDb::new().await;
     let member = seed_user(&db.pool, "member@x.com", UserRole::Member).await;
     let token = token_for(&db.pool, member.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::get()
         .uri("/api/storage/age")
@@ -956,11 +922,11 @@ async fn cleaning_up_now_enforces_the_saved_retention_in_the_background() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "now").await;
+    let project = create_test_project(&db.pool, "now").await.id;
     seed_old_log(&db.pool, project, 40).await;
     seed_old_log(&db.pool, project, 5).await;
     insert_orphan_source_file(&db.pool, 2_048).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
     let settings =
         json!({"defaults": {"events_days": null, "transactions_days": null, "logs_days": 30}});
     assert_eq!(put_retention(&app, &token, &settings).await.status(), 200);
@@ -980,19 +946,16 @@ async fn cleaning_up_now_enforces_the_saved_retention_in_the_background() {
 
     // It is the last cleanup, as a scheduled one would be. Recorded just
     // after the job finishes, so wait for it.
-    let mut last_run = Value::Null;
-    for _ in 0..100 {
+    let last_run = crate::common::eventually(|| async {
         let req = test::TestRequest::get()
             .uri("/api/storage/retention")
             .insert_header(bearer(&token))
             .to_request();
         let body: Value = test::call_and_read_body_json(&app, req).await;
-        last_run = body["last_run"].clone();
-        if last_run["status"] != "running" && !last_run.is_null() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+        let last_run = body["last_run"].clone();
+        (last_run["status"] != "running" && !last_run.is_null()).then_some(last_run)
+    })
+    .await;
     assert_eq!(last_run["status"], "ok");
     assert_eq!(last_run["removed"]["logs"], 1);
 }
@@ -1002,7 +965,7 @@ async fn cleaning_up_now_refuses_while_everything_is_kept_forever() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::post()
         .uri("/api/storage/retention/run")
@@ -1017,7 +980,7 @@ async fn the_retention_preview_counts_the_unused_source_maps_it_would_delete() {
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
     insert_orphan_source_file(&db.pool, 2_048).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::post()
         .uri("/api/storage/retention/preview")
@@ -1035,7 +998,7 @@ async fn keeping_everything_forever_previews_no_source_maps_since_no_cleanup_run
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
     insert_orphan_source_file(&db.pool, 2_048).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let req = test::TestRequest::post()
         .uri("/api/storage/retention/preview")
@@ -1047,21 +1010,17 @@ async fn keeping_everything_forever_previews_no_source_maps_since_no_cleanup_run
     assert_eq!(body["source_maps"], 0);
 }
 
-// =============================================================================
-// SQLite: a cleanup gives the space it freed back to the filesystem
-// =============================================================================
-
 /// A database built the way the server builds one (`db::create_pool`), so it
 /// has the `auto_vacuum` mode a new deployment gets.
 #[cfg(feature = "sqlite")]
 async fn production_sqlite(path: &std::path::Path) -> DbPool {
-    let pool = rustrak::db::create_pool(&DatabaseConfig {
+    let pool = rustrak::db::create_pool(&rustrak::config::DatabaseConfig {
         url: format!("sqlite://{}?mode=rwc", path.display()),
         max_connections: 1,
         min_connections: 1,
-        acquire_timeout: Duration::from_secs(5),
-        idle_timeout: Duration::from_secs(60),
-        max_lifetime: Duration::from_secs(300),
+        acquire_timeout: std::time::Duration::from_secs(5),
+        idle_timeout: std::time::Duration::from_secs(60),
+        max_lifetime: std::time::Duration::from_secs(300),
     })
     .await
     .expect("create the SQLite pool");
@@ -1146,7 +1105,7 @@ async fn a_cleanup_gives_the_space_it_freed_back_to_the_filesystem() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("rustrak.db");
     let pool = production_sqlite(&path).await;
-    let project = create_project(&pool, "reclaim").await;
+    let project = create_test_project(&pool, "reclaim").await.id;
     // About 8 MiB of logs, all older than the window.
     seed_old_logs(&pool, project, 10, 2_000, 4_096).await;
     let (before, _) = pages(&pool).await;
@@ -1184,14 +1143,14 @@ async fn a_reader_blocking_the_checkpoint_means_nothing_has_left_the_file_yet() 
         .create_if_missing(true)
         .auto_vacuum(sqlx::sqlite::SqliteAutoVacuum::Incremental)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-        .busy_timeout(Duration::from_secs(5));
+        .busy_timeout(std::time::Duration::from_secs(5));
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options.clone())
         .await
         .unwrap();
     rustrak::db::run_migrations(&pool).await.unwrap();
-    let project = create_project(&pool, "busy").await;
+    let project = create_test_project(&pool, "busy").await.id;
     seed_old_logs(&pool, project, 10, 500, 4_096).await;
 
     // A reader on the snapshot before the delete, open across the reclaim.
@@ -1209,12 +1168,12 @@ async fn a_reader_blocking_the_checkpoint_means_nothing_has_left_the_file_yet() 
         .unwrap();
 
     let started = std::time::Instant::now();
-    let released = rustrak::services::StorageService::reclaim_free_space(&pool)
+    let released = rustrak::db::maintenance::reclaim_free_space(&pool)
         .await
         .unwrap();
 
     assert!(
-        started.elapsed() < Duration::from_secs(2),
+        started.elapsed() < std::time::Duration::from_secs(2),
         "the checkpoint does not wait on the reader: {:?}",
         started.elapsed()
     );
@@ -1231,7 +1190,7 @@ async fn a_database_created_before_incremental_mode_keeps_its_freed_pages() {
     // created before this mode existed: freed pages stay on the freelist for
     // reuse, and releasing them needs a one-off VACUUM.
     let db = TestDb::new().await;
-    let project = create_project(&db.pool, "legacy").await;
+    let project = create_test_project(&db.pool, "legacy").await.id;
     seed_old_logs(&db.pool, project, 10, 500, 4_096).await;
 
     let cleanup = CleanupJob::default();
@@ -1242,7 +1201,7 @@ async fn a_database_created_before_incremental_mode_keeps_its_freed_pages() {
 
     assert_eq!(log_count(&db.pool).await, 0);
     assert_eq!(
-        rustrak::services::StorageService::reclaim_free_space(&db.pool)
+        rustrak::db::maintenance::reclaim_free_space(&db.pool)
             .await
             .unwrap(),
         0
@@ -1250,10 +1209,6 @@ async fn a_database_created_before_incremental_mode_keeps_its_freed_pages() {
     let (_, free) = pages(&db.pool).await;
     assert!(free > 0, "the freed pages stay on the freelist");
 }
-
-// =============================================================================
-// SQLite: compacting a database created before incremental mode
-// =============================================================================
 
 /// `GET /api/storage/compaction` as `token`.
 async fn get_compaction<S>(app: &S, token: &str) -> actix_web::dev::ServiceResponse
@@ -1296,13 +1251,13 @@ async fn an_old_database_reports_the_space_a_compaction_gives_back() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "legacy").await;
+    let project = create_test_project(&db.pool, "legacy").await.id;
     seed_old_logs(&db.pool, project, 10, 500, 4_096).await;
     CleanupJob::default()
         .run_retention(db.pool.clone(), logs_retention(1), test_store())
         .await
         .unwrap();
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let resp = get_compaction(&app, &token).await;
     assert_eq!(resp.status(), 200);
@@ -1322,14 +1277,14 @@ async fn compacting_an_old_database_lets_it_give_space_back_from_then_on() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let project = create_project(&db.pool, "legacy").await;
+    let project = create_test_project(&db.pool, "legacy").await.id;
     seed_old_logs(&db.pool, project, 10, 1_000, 4_096).await;
     CleanupJob::default()
         .run_retention(db.pool.clone(), logs_retention(1), test_store())
         .await
         .unwrap();
     let (before, _) = pages(&db.pool).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let resp = post_compaction(&app, &token).await;
     assert_eq!(
@@ -1367,7 +1322,7 @@ async fn a_new_database_is_never_compacted() {
     let pool = production_sqlite(&dir.path().join("rustrak.db")).await;
     let admin = seed_user(&pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&pool, admin.id).await;
-    let app = build_app!(pool.clone(), create_test_config());
+    let app = storage_app(&pool, None).await;
 
     let body: Value = test::read_body_json(get_compaction(&app, &token).await).await;
     assert_eq!(body["needed"], false, "it already gives space back");
@@ -1380,7 +1335,7 @@ async fn postgres_never_needs_a_compaction() {
     let db = TestDb::new().await;
     let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
     let token = token_for(&db.pool, admin.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     let body: Value = test::read_body_json(get_compaction(&app, &token).await).await;
     assert_eq!(body["needed"], false, "autovacuum gives the space back");
@@ -1392,7 +1347,7 @@ async fn compaction_is_admin_only() {
     let db = TestDb::new().await;
     let member = seed_user(&db.pool, "member@x.com", UserRole::Member).await;
     let token = token_for(&db.pool, member.id).await;
-    let app = build_app!(db.pool.clone(), create_test_config());
+    let app = storage_app(&db.pool, None).await;
 
     assert_eq!(get_compaction(&app, &token).await.status(), 403);
     assert_eq!(post_compaction(&app, &token).await.status(), 403);

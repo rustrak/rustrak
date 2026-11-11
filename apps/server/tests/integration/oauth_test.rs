@@ -7,16 +7,14 @@
 use std::sync::Arc;
 
 use actix_http::Request;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::cookie::{Cookie, Key};
+use actix_web::cookie::Cookie;
 use actix_web::dev::{Service, ServiceResponse};
-use actix_web::{test, web, App};
+use actix_web::{test, web};
 use base64::Engine;
 use rustrak::config::Config;
 use rustrak::db::DbPool;
 use rustrak::error::{AppError, AppResult};
 use rustrak::models::{CreateAuthToken, CreateProject, CreateUserRequest, UserRole};
-use rustrak::routes;
 use rustrak::services::oauth::{ClientMetadata, ClientMetadataSource};
 use rustrak::services::{AuthTokenService, ProjectService, UsersService};
 use serde_json::{json, Value};
@@ -78,7 +76,7 @@ async fn app_with(
         pool,
         Config {
             public_url: public_url.map(str::to_string),
-            ..crate::integration::mcp_test::create_test_config()
+            ..crate::common::config()
         },
     )
     .await
@@ -88,24 +86,9 @@ async fn app_configured(
     pool: &DbPool,
     config: Config,
 ) -> impl Service<Request, Response = ServiceResponse, Error = actix_web::Error> {
-    let clients: Arc<dyn ClientMetadataSource> = Arc::new(FakeClients);
-    test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config))
-            .app_data(web::Data::new(clients))
-            .app_data(web::Data::new(None::<rustrak::auth::OidcService>))
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0u8; 64]))
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .configure(routes::auth::configure)
-            .configure(routes::projects::configure)
-            .configure(routes::mcp::configure)
-            .configure(routes::oauth::configure),
-    )
-    .await
+    let mut state = crate::common::state(pool, config).await;
+    state.client_metadata = web::Data::new(Arc::new(FakeClients) as Arc<dyn ClientMetadataSource>);
+    crate::common::app_with(&state).await
 }
 
 /// A member who can see one project, signed in to the dashboard.
@@ -151,7 +134,7 @@ where
     assert_eq!(resp.status(), 200);
     resp.response()
         .cookies()
-        .find(|c| c.name() == "id")
+        .find(|c| c.name() == rustrak::app::SESSION_COOKIE)
         .unwrap()
         .into_owned()
 }
@@ -759,7 +742,7 @@ async fn a_reused_refresh_token_disconnects_the_assistant() {
 #[actix_web::test]
 async fn consent_happens_where_the_dashboard_is_served() {
     let db = TestDb::new().await;
-    let mut config = crate::integration::mcp_test::create_test_config();
+    let mut config = crate::common::config();
     config.public_url = Some(ISSUER.into());
     config.dashboard.url = Some("https://dashboard.example".into());
     let app = app_configured(&db.pool, config).await;

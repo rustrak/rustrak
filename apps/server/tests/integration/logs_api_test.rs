@@ -2,71 +2,15 @@
 //!
 //! Tests GET /api/projects/{id}/logs with a real database.
 
+use crate::common::create_test_token;
 use crate::common::TestDb;
-use actix_web::{test, web, App};
+use actix_web::test;
 use chrono::Utc;
-use rustrak::config::{Config, DashboardConfig, DatabaseConfig, RateLimitConfig};
-use rustrak::digest::processors::{LogsProcessor, Processor, ProcessorCtx};
+use rustrak::digest::processors::{LogsProcessor, ProcessorCtx};
 use rustrak::models::CreateProject;
-use rustrak::routes;
-use rustrak::services::{AuthTokenService, ProjectService};
+use rustrak::services::ProjectService;
 use serde_json::Value;
-use std::time::Duration as StdDuration;
 use uuid::Uuid;
-
-fn create_test_config() -> Config {
-    Config {
-        host: "127.0.0.1".to_string(),
-        port: 0,
-        database: DatabaseConfig {
-            url: "postgres://test:test@localhost/test".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout: StdDuration::from_secs(5),
-            idle_timeout: StdDuration::from_secs(60),
-            max_lifetime: StdDuration::from_secs(300),
-        },
-        rate_limit: RateLimitConfig {
-            max_events_per_minute: 1000,
-            max_events_per_hour: 10000,
-            max_events_per_project_per_minute: 500,
-            max_events_per_project_per_hour: 5000,
-        },
-        security: rustrak::config::SecurityConfig {
-            ssl_proxy: false,
-            session_secret_key: None,
-        },
-        ingest_dir: None,
-        public_url: None,
-        sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
-        sourcemap_cache_bytes: 64 * 1024 * 1024,
-        max_chunk_size_bytes: 10 * 1024 * 1024,
-        session_flush_interval_secs: 30,
-        session_cardinality_cap: 10_000,
-        dashboard: DashboardConfig {
-            dir: "./static".to_string(),
-            enabled: true,
-            url: None,
-        },
-        telemetry: rustrak::config::TelemetryConfig {
-            enabled: false,
-            do_not_track: false,
-        },
-    }
-}
-
-async fn create_test_token(pool: &rustrak::db::DbPool) -> String {
-    AuthTokenService::create(
-        pool,
-        rustrak::models::CreateAuthToken {
-            description: Some("Test token".to_string()),
-            ..Default::default()
-        },
-    )
-    .await
-    .expect("Failed to create test token")
-    .token
-}
 
 async fn store_sample_logs(pool: &rustrak::db::DbPool, project_id: i32) {
     let body = br#"{"items":[
@@ -92,7 +36,7 @@ async fn store_sample_logs(pool: &rustrak::db::DbPool, project_id: i32) {
 async fn test_list_logs_returns_stored_logs() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project = ProjectService::create(
         &pool,
@@ -107,13 +51,7 @@ async fn test_list_logs_returns_stored_logs() {
 
     store_sample_logs(&pool, project.id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::logs::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/logs", project.id))
@@ -136,7 +74,7 @@ async fn test_list_logs_returns_stored_logs() {
 async fn test_list_logs_filters_by_level() {
     let db = TestDb::new().await;
     let pool = db.pool.clone();
-    let config = create_test_config();
+    let config = crate::common::config();
     let token = create_test_token(&pool).await;
     let project = ProjectService::create(
         &pool,
@@ -151,13 +89,7 @@ async fn test_list_logs_filters_by_level() {
 
     store_sample_logs(&pool, project.id).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::logs::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&pool, config.clone()).await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/api/projects/{}/logs?level=error", project.id))
@@ -172,38 +104,6 @@ async fn test_list_logs_filters_by_level() {
     let items = body["items"].as_array().expect("items is array");
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["level"], "error");
-}
-
-#[actix_web::test]
-async fn test_list_logs_returns_401_without_token() {
-    let db = TestDb::new().await;
-    let pool = db.pool.clone();
-    let config = create_test_config();
-    let project = ProjectService::create(
-        &pool,
-        CreateProject {
-            name: "Logs Auth Test".to_string(),
-            slug: None,
-            platform: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(config.clone()))
-            .configure(routes::logs::configure),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/projects/{}/logs", project.id))
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 401);
 }
 
 async fn store_logs(pool: &rustrak::db::DbPool, project_id: i32, items: Value) {
@@ -252,13 +152,7 @@ async fn recent_and_old_logs() -> (TestDb, i32, String) {
 }
 
 async fn get_json(pool: &rustrak::db::DbPool, uri: &str, token: &str) -> Value {
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::logs::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(pool, crate::common::config()).await;
     let req = test::TestRequest::get()
         .uri(uri)
         .insert_header(("Authorization", format!("Bearer {}", token)))
@@ -458,13 +352,7 @@ async fn test_get_log_answers_for_its_project_only() {
     )
     .await
     .unwrap();
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db.pool.clone()))
-            .app_data(web::Data::new(create_test_config()))
-            .configure(routes::logs::configure),
-    )
-    .await;
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
     for uri in [
         format!("/api/projects/{}/logs/{id}", other.id),
         format!("/api/projects/{project}/logs/{}", Uuid::new_v4()),

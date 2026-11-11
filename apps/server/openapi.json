@@ -18,8 +18,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "GET /api/0/issues/{issue_id}/",
-        "description": "One issue with its releases and its 24h and 30d series (Sentry's\n`GroupDetailsEndpoint`). Also served under `/groups/` and the\norganization-scoped paths, as Sentry does.",
+        "summary": "One issue with its releases and its 24h and 30d series (Sentry's\n`GroupDetailsEndpoint`). Also served under `/groups/` and the\norganization-scoped paths, as Sentry does.",
         "operationId": "sentry.getIssue",
         "parameters": [
           {
@@ -75,8 +74,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "PUT /api/0/issues/{issue_id}/",
-        "description": "Sets an issue's status and returns the issue (Sentry's\n`GroupDetailsEndpoint.put`). The change goes through Rustrak's own\nissue update, so it is recorded and mirrored like any other.",
+        "summary": "Sets an issue's status and returns the issue (Sentry's\n`GroupDetailsEndpoint.put`). The change goes through Rustrak's own\nissue update, so it is recorded and mirrored like any other.",
         "operationId": "sentry.updateIssue",
         "parameters": [
           {
@@ -164,8 +162,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "GET /api/0/issues/{issue_id}/events/latest/",
-        "description": "The issue's most recent event (Sentry's `GroupEventDetailsEndpoint`,\n`issues/endpoints/group_event_details.py`).",
+        "summary": "The issue's most recent event (Sentry's `GroupEventDetailsEndpoint`,\n`issues/endpoints/group_event_details.py`).",
         "operationId": "sentry.getLatestEvent",
         "parameters": [
           {
@@ -223,8 +220,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "GET /api/0/organizations/",
-        "description": "The organizations the token belongs to (Sentry's\n`OrganizationIndexEndpoint`): always the one synthetic org.",
+        "summary": "The organizations the token belongs to (Sentry's\n`OrganizationIndexEndpoint`): always the one synthetic org.",
         "operationId": "sentry.listOrganizations",
         "responses": {
           "200": {
@@ -263,7 +259,7 @@
         "tags": [
           "Source Maps"
         ],
-        "summary": "GET /api/0/organizations/{org_slug}/\nAlways returns 200 with synthetic org data — sentry-cli validates this before uploading.",
+        "summary": "Always returns 200 with synthetic org data — sentry-cli validates this before uploading.",
         "operationId": "sourceMaps.orgDetails",
         "parameters": [
           {
@@ -295,7 +291,7 @@
         "tags": [
           "Source Maps"
         ],
-        "summary": "POST /api/0/organizations/{org_slug}/artifactbundle/assemble/",
+        "summary": "Assembles uploaded chunks into an artifact bundle (sentry-cli `sourcemaps upload`).",
         "operationId": "sourceMaps.artifactBundleAssemble",
         "parameters": [
           {
@@ -372,7 +368,7 @@
         "tags": [
           "Source Maps"
         ],
-        "summary": "GET /api/0/organizations/{org_slug}/chunk-upload/",
+        "summary": "Describes how sentry-cli should upload chunks: size, concurrency and accepted kinds.",
         "operationId": "sourceMaps.chunkUploadCapability",
         "parameters": [
           {
@@ -417,7 +413,7 @@
         "tags": [
           "Source Maps"
         ],
-        "summary": "POST /api/0/organizations/{org_slug}/chunk-upload/",
+        "summary": "Receives chunks of a source map or debug file upload from sentry-cli.",
         "operationId": "sourceMaps.chunkUpload",
         "parameters": [
           {
@@ -488,8 +484,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "GET /api/0/organizations/{org_slug}/repos/",
-        "description": "The code repositories connected to the organization (Sentry's\n`OrganizationRepositoriesEndpoint`). Rustrak connects none through\nSentry's integrations, so the list is always empty.",
+        "summary": "The code repositories connected to the organization (Sentry's\n`OrganizationRepositoriesEndpoint`). Rustrak connects none through\nSentry's integrations, so the list is always empty.",
         "operationId": "sentry.listRepos",
         "parameters": [
           {
@@ -539,8 +534,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "GET /api/0/projects/",
-        "description": "The projects the token can see, newest first (Sentry's\n`ProjectIndexEndpoint`, `core/endpoints/project_index.py`).",
+        "summary": "The projects the token can see, newest first (Sentry's\n`ProjectIndexEndpoint`, `core/endpoints/project_index.py`).",
         "operationId": "sentry.listProjects",
         "parameters": [
           {
@@ -806,7 +800,7 @@
         "tags": [
           "Source Maps"
         ],
-        "summary": "GET /api/0/projects/{org_slug}/{project_slug}/files/source-maps/",
+        "summary": "Lists a project's uploaded source map artifacts (sentry-cli).",
         "operationId": "sourceMaps.list",
         "parameters": [
           {
@@ -872,8 +866,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "GET /api/0/projects/{org_slug}/{project_slug}/issues/",
-        "description": "A project's issues, filtered by `query`, sorted by `sort` and paginated\nby `cursor` (Sentry's `ProjectGroupIndexEndpoint`,\n`issues/endpoints/project_group_index.py`).",
+        "summary": "A project's issues, filtered by `query`, sorted by `sort` and paginated\nby `cursor` (Sentry's `ProjectGroupIndexEndpoint`,\n`issues/endpoints/project_group_index.py`).",
         "operationId": "sentry.listIssues",
         "parameters": [
           {
@@ -1024,8 +1017,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "POST /api/0/projects/{org_slug}/{project_slug}/releases/",
-        "description": "Sentry-compatible release creation. Idempotent: repeating the same\n`(project, version)` returns 208 rather than erroring — sentry-cli and JS\nbundler plugins call this on every build. Triggers date-based regression\nclearing (see [`crate::services::issue::IssueService::finalize_release`])\non every call, not just the new-row branch: `finalize_release`'s own\n`UPDATE ... WHERE` is idempotent (a repeat run affects 0 rows once nothing\nis left to clear), so this also self-heals a prior call that created the\nrow but failed before clearing ran — a plain `if created` gate would\notherwise skip clearing forever once a retry lands on the 208 branch.",
+        "summary": "Sentry-compatible release creation. Idempotent: repeating the same\n`(project, version)` returns 208 rather than erroring — sentry-cli and JS\nbundler plugins call this on every build. Triggers date-based regression\nclearing (see [`crate::services::issue::IssueService::finalize_release`])\non every call, not just the new-row branch: `finalize_release`'s own\n`UPDATE ... WHERE` is idempotent (a repeat run affects 0 rows once nothing\nis left to clear), so this also self-heals a prior call that created the\nrow but failed before clearing ran — a plain `if created` gate would\notherwise skip clearing forever once a retry lands on the 208 branch.",
         "operationId": "releases.create",
         "parameters": [
           {
@@ -1121,8 +1113,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "PUT /api/0/projects/{org_slug}/{project_slug}/releases/{version}/",
-        "description": "Generic partial update (`ref`, `url`, `dateReleased`). Setting\n`dateReleased` IS \"finalize\" — there is no separate status flag.",
+        "summary": "Generic partial update (`ref`, `url`, `dateReleased`). Setting\n`dateReleased` IS \"finalize\" — there is no separate status flag.",
         "operationId": "releases.finalize",
         "parameters": [
           {
@@ -1207,8 +1198,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "POST /api/0/projects/{org_slug}/{project_slug}/user-feedback/",
-        "description": "Submit a user report about an error event (Sentry's\n`ProjectUserReportsEndpoint`, `feedback/endpoints/project_user_reports.py`).\nAccepts `Authorization: DSN <dsn>` as well as a token; the report becomes a\nfeedback, as the `user_report` envelope item does.",
+        "summary": "Submit a user report about an error event (Sentry's\n`ProjectUserReportsEndpoint`, `feedback/endpoints/project_user_reports.py`).\nAccepts `Authorization: DSN <dsn>` as well as a token; the report becomes a\nfeedback, as the `user_report` envelope item does.",
         "operationId": "sentry.submitUserFeedback",
         "parameters": [
           {
@@ -1376,7 +1366,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "GET /api/github",
+        "summary": "Shows whether a GitHub App is connected, and how.",
         "operationId": "github.status",
         "responses": {
           "200": {
@@ -1420,7 +1410,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "DELETE /api/github",
+        "summary": "Disconnects the GitHub App from this instance.",
         "operationId": "github.disconnect",
         "responses": {
           "204": {
@@ -1459,7 +1449,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "GET /api/github/callback: GitHub sends the browser here after creating the\napp; the code trades for its credentials.",
+        "summary": "GitHub sends the browser here after creating the\napp; the code trades for its credentials.",
         "operationId": "github.callback",
         "parameters": [
           {
@@ -1528,7 +1518,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "GET /api/github/installed: GitHub sends the browser here after the app is\ninstalled on an account.",
+        "summary": "GitHub sends the browser here after the app is\ninstalled on an account.",
         "operationId": "github.installed",
         "parameters": [
           {
@@ -1589,7 +1579,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "PUT /api/github/issue-template: the labels, title prefix and body footer\nevery GitHub issue starts with, before a project's own.",
+        "summary": "The labels, title prefix and body footer\nevery GitHub issue starts with, before a project's own.",
         "operationId": "github.putIssueTemplate",
         "requestBody": {
           "content": {
@@ -1655,7 +1645,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "POST /api/github/manifest: what the dashboard posts to GitHub so GitHub\ncreates an app already configured for this server.",
+        "summary": "What the dashboard posts to GitHub so GitHub\ncreates an app already configured for this server.",
         "operationId": "github.manifest",
         "requestBody": {
           "content": {
@@ -1721,7 +1711,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "GET /api/github/me: the GitHub username assignees sync through.",
+        "summary": "The GitHub username assignees sync through.",
         "operationId": "github.getMyLogin",
         "responses": {
           "200": {
@@ -1755,7 +1745,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "PUT /api/github/me",
+        "summary": "Sets or clears the caller's GitHub username, which assignees sync through.",
         "operationId": "github.putMyLogin",
         "requestBody": {
           "content": {
@@ -1811,7 +1801,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "GET /api/github/repositories?project_id=: the repositories a project can\npoint at, for whoever may change that project's settings.",
+        "summary": "The repositories a project can\npoint at, for whoever may change that project's settings.",
         "operationId": "github.repositories",
         "parameters": [
           {
@@ -1892,7 +1882,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "POST /api/github/webhook: public, and trusted only through the signature\nGitHub computes with the app's webhook secret.",
+        "summary": "Public, and trusted only through the signature\nGitHub computes with the app's webhook secret.",
         "operationId": "github.webhook",
         "requestBody": {
           "description": "GitHub event payload, signed in X-Hub-Signature-256",
@@ -1998,7 +1988,7 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "POST /api/alert-channels",
+        "summary": "Creates a notification integration (webhook, Slack, email…).",
         "operationId": "alertChannels.create",
         "requestBody": {
           "content": {
@@ -2044,8 +2034,7 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "POST /api/integrations/preview-template",
-        "description": "Renders a Custom Webhook template against a sample payload and hands back\nthe body that would be sent. The dashboard cannot run the template engine,\nso it asks while the reader types; going through the dispatcher's own\nrenderer is what keeps the preview from disagreeing with a delivery.",
+        "summary": "Renders a Custom Webhook template against a sample payload and hands back\nthe body that would be sent. The dashboard cannot run the template engine,\nso it asks while the reader types; going through the dispatcher's own\nrenderer is what keeps the preview from disagreeing with a delivery.",
         "operationId": "alertChannels.previewTemplate",
         "requestBody": {
           "content": {
@@ -2091,7 +2080,7 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "GET /api/alert-channels/{id}",
+        "summary": "Gets one notification integration.",
         "operationId": "alertChannels.get",
         "parameters": [
           {
@@ -2147,7 +2136,7 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "DELETE /api/alert-channels/{id}",
+        "summary": "Deletes a notification integration.",
         "operationId": "alertChannels.delete",
         "parameters": [
           {
@@ -2196,7 +2185,7 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "PATCH /api/alert-channels/{id}",
+        "summary": "Updates a notification integration.",
         "operationId": "alertChannels.update",
         "parameters": [
           {
@@ -2264,7 +2253,7 @@
         "tags": [
           "Alert Channels"
         ],
-        "summary": "POST /api/integrations/{id}/test",
+        "summary": "Sends a test notification through an integration.",
         "operationId": "alertChannels.test",
         "parameters": [
           {
@@ -2331,7 +2320,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "GET /api/invitations — list invitations (needs `invitations:read`)",
+        "summary": "List invitations (needs `invitations:read`)",
         "operationId": "invitations.list",
         "responses": {
           "200": {
@@ -2378,7 +2367,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "POST /api/invitations — create an invitation (needs `invitations:create`)",
+        "summary": "Create an invitation (needs `invitations:create`)",
         "description": "With `send_email: true` the invite link is also emailed. A failed send\nstill creates the invitation, with `email_sent_at: null`, so its link can\nbe shared by hand or the email resent.",
         "operationId": "invitations.create",
         "requestBody": {
@@ -2455,7 +2444,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "GET /api/invitations/email-status — whether invitation emails can be sent (needs `invitations:read`)",
+        "summary": "Whether invitation emails can be sent (needs `invitations:read`)",
         "operationId": "invitations.emailStatus",
         "responses": {
           "200": {
@@ -2511,7 +2500,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "DELETE /api/invitations/{id} — revoke a pending invitation (needs `invitations:delete`)",
+        "summary": "Revoke a pending invitation (needs `invitations:delete`)",
         "operationId": "invitations.revoke",
         "parameters": [
           {
@@ -2571,7 +2560,7 @@
         "tags": [
           "Invitations"
         ],
-        "summary": "POST /api/invitations/{id}/resend — email the invite link again (needs `invitations:create`)",
+        "summary": "Email the invite link again (needs `invitations:create`)",
         "operationId": "invitations.resend",
         "parameters": [
           {
@@ -2892,7 +2881,7 @@
         "tags": [
           "Projects"
         ],
-        "summary": "GET /api/projects - List projects with pagination",
+        "summary": "List projects with pagination.",
         "description": "Only the projects the caller holds a permission on.",
         "operationId": "projects.list",
         "parameters": [
@@ -3115,7 +3104,7 @@
         "tags": [
           "Projects"
         ],
-        "summary": "POST /api/projects - Create a new project",
+        "summary": "Create a new project",
         "description": "Needs `projects:create` and a permission on at least one project, because\nthe creator's own roles extend to the new one. A token limited to chosen\nprojects can create one, but its list does not grow to reach it.",
         "operationId": "projects.create",
         "requestBody": {
@@ -3182,7 +3171,7 @@
         "tags": [
           "Projects"
         ],
-        "summary": "GET /api/projects/{id} - Get a project by ID",
+        "summary": "Get a project by ID",
         "operationId": "projects.get",
         "parameters": [
           {
@@ -3238,7 +3227,7 @@
         "tags": [
           "Projects"
         ],
-        "summary": "DELETE /api/projects/{id} - Delete a project",
+        "summary": "Delete a project",
         "operationId": "projects.delete",
         "parameters": [
           {
@@ -3287,7 +3276,7 @@
         "tags": [
           "Projects"
         ],
-        "summary": "PATCH /api/projects/{id} - Update a project",
+        "summary": "Update a project",
         "operationId": "projects.update",
         "parameters": [
           {
@@ -3318,6 +3307,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid value, such as a limit above the server's",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -3365,7 +3364,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/conversations\nLists conversations -- traces sharing a `gen_ai.conversation.id` -- the most recently active first.",
+        "summary": "Lists conversations -- traces sharing a `gen_ai.conversation.id` -- the most recently active first.",
         "operationId": "agents.conversations",
         "parameters": [
           {
@@ -3564,7 +3563,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/conversations/{conversation_id}\nReturns every AI span of a conversation's turns, oldest first, with its input and output.",
+        "summary": "Returns every AI span of a conversation's turns, oldest first, with its input and output.",
         "operationId": "agents.conversation",
         "parameters": [
           {
@@ -3631,7 +3630,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/duration\nTime-bucketed avg/p95 duration for `agent`/`ai_client` spans.",
+        "summary": "Time-bucketed avg/p95 duration for `agent`/`ai_client` spans.",
         "operationId": "agents.duration",
         "parameters": [
           {
@@ -3728,7 +3727,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/environments\nThe options the environment filter offers, read from the data rather than\nhardcoded — an installation may name its environments anything.",
+        "summary": "The options the environment filter offers, read from the data rather than\nhardcoded — an installation may name its environments anything.",
         "operationId": "agents.environments",
         "parameters": [
           {
@@ -3789,7 +3788,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/models",
+        "summary": "Lists the AI models a project's agents called, with requests, tokens and latency.",
         "operationId": "agents.modelsTable",
         "parameters": [
           {
@@ -3875,7 +3874,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/models/calls\nTop models by LLM call count (`gen_ai.operation.type:ai_client`).",
+        "summary": "Top models by LLM call count (`gen_ai.operation.type:ai_client`).",
         "operationId": "agents.modelsCalls",
         "parameters": [
           {
@@ -3973,7 +3972,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/models/tokens\nTop models by total tokens used (`gen_ai.operation.type:ai_client`).",
+        "summary": "Top models by total tokens used (`gen_ai.operation.type:ai_client`).",
         "operationId": "agents.modelsTokens",
         "parameters": [
           {
@@ -4071,7 +4070,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/runs\nTime-bucketed count of agent-run spans (`gen_ai.operation.type:agent`).",
+        "summary": "Time-bucketed count of agent-run spans (`gen_ai.operation.type:agent`).",
         "operationId": "agents.runs",
         "parameters": [
           {
@@ -4168,7 +4167,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/summary\nAgent runs, LLM calls, tool calls, errors, tokens and latency over the\nselected window — the numbers the six charts cannot state outright.",
+        "summary": "Agent runs, LLM calls, tool calls, errors, tokens and latency over the\nselected window — the numbers the six charts cannot state outright.",
         "operationId": "agents.summary",
         "parameters": [
           {
@@ -4251,7 +4250,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/tools\nTop tools by call count (`gen_ai.operation.type:tool`).",
+        "summary": "Top tools by call count (`gen_ai.operation.type:tool`).",
         "operationId": "agents.tools",
         "parameters": [
           {
@@ -4349,7 +4348,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/tools/stats",
+        "summary": "Lists the tools a project's agents called, with calls, errors and latency.",
         "operationId": "agents.toolsTable",
         "parameters": [
           {
@@ -4435,7 +4434,7 @@
         "tags": [
           "Agents"
         ],
-        "summary": "GET /api/projects/{project_id}/agents/traces\nPaginated per-trace_id aggregate (duration, tokens, tool usage) across\nall AI spans sharing that trace, regardless of origin.",
+        "summary": "Paginated per-trace_id aggregate (duration, tokens, tool usage) across\nall AI spans sharing that trace, regardless of origin.",
         "operationId": "agents.traces",
         "parameters": [
           {
@@ -4689,7 +4688,7 @@
         "tags": [
           "Alert Rules"
         ],
-        "summary": "GET /api/projects/{project_id}/alert-history",
+        "summary": "Lists the alerts a project sent, newest first.",
         "operationId": "alertRules.listHistory",
         "parameters": [
           {
@@ -4871,7 +4870,7 @@
         "tags": [
           "Alert Rules"
         ],
-        "summary": "GET /api/projects/{project_id}/alert-rules",
+        "summary": "Lists a project's alert rules.",
         "operationId": "alertRules.list",
         "parameters": [
           {
@@ -4930,7 +4929,7 @@
         "tags": [
           "Alert Rules"
         ],
-        "summary": "POST /api/projects/{project_id}/alert-rules",
+        "summary": "Creates an alert rule in a project.",
         "operationId": "alertRules.create",
         "parameters": [
           {
@@ -4998,7 +4997,7 @@
         "tags": [
           "Alert Rules"
         ],
-        "summary": "GET /api/projects/{project_id}/alert-rules/{rule_id}",
+        "summary": "Gets one alert rule.",
         "operationId": "alertRules.get",
         "parameters": [
           {
@@ -5064,7 +5063,7 @@
         "tags": [
           "Alert Rules"
         ],
-        "summary": "DELETE /api/projects/{project_id}/alert-rules/{rule_id}",
+        "summary": "Deletes an alert rule.",
         "operationId": "alertRules.delete",
         "parameters": [
           {
@@ -5123,7 +5122,7 @@
         "tags": [
           "Alert Rules"
         ],
-        "summary": "PATCH /api/projects/{project_id}/alert-rules/{rule_id}",
+        "summary": "Updates an alert rule.",
         "operationId": "alertRules.update",
         "parameters": [
           {
@@ -5201,7 +5200,7 @@
         "tags": [
           "Events"
         ],
-        "summary": "GET /api/projects/{project_id}/attachments/{attachment_id}\nDownloads an attachment. Only a real image is served inline; anything\nelse, whatever type it claims, is a download that never runs.",
+        "summary": "Downloads an attachment. Only a real image is served inline; anything\nelse, whatever type it claims, is a download that never runs.",
         "operationId": "events.downloadAttachment",
         "parameters": [
           {
@@ -5269,7 +5268,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /api/projects/{project_id}/environments\nLists the environments a project's issues have been seen in, by name.",
+        "summary": "Lists the environments a project's issues have been seen in, by name.",
         "operationId": "environments.list",
         "parameters": [
           {
@@ -5397,7 +5396,7 @@
         "tags": [
           "Stats"
         ],
-        "summary": "GET /api/projects/{project_id}/events/stats",
+        "summary": "Counts a project's events over time, bucketed for a chart.",
         "operationId": "stats.getEventTimeseries",
         "parameters": [
           {
@@ -5481,7 +5480,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /api/projects/{project_id}/feedback\nLists user feedback with what each user submitted. Every feedback is an\nissue of category `feedback`; spam is a muted one.",
+        "summary": "Lists user feedback with what each user submitted. Every feedback is an\nissue of category `feedback`; spam is a muted one.",
         "operationId": "feedback.list",
         "parameters": [
           {
@@ -5653,7 +5652,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "GET /api/projects/{project_id}/github",
+        "summary": "Gets the GitHub repository a project is linked to.",
         "operationId": "github.getProjectRepository",
         "parameters": [
           {
@@ -5726,7 +5725,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "PUT /api/projects/{project_id}/github",
+        "summary": "Links a project to a GitHub repository.",
         "operationId": "github.putProjectRepository",
         "parameters": [
           {
@@ -5812,7 +5811,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "DELETE /api/projects/{project_id}/github",
+        "summary": "Unlinks a project from its GitHub repository.",
         "operationId": "github.deleteProjectRepository",
         "parameters": [
           {
@@ -5873,7 +5872,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "POST /api/projects/{project_id}/github/codeowners: copies the repository's\nCODEOWNERS so ownership can be answered without asking GitHub each time.",
+        "summary": "Copies the repository's\nCODEOWNERS so ownership can be answered without asking GitHub each time.",
         "operationId": "github.syncCodeowners",
         "parameters": [
           {
@@ -5941,7 +5940,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /api/projects/{project_id}/issues\nLists issues for a project with offset-based pagination",
+        "summary": "Lists issues for a project with offset-based pagination",
         "operationId": "issues.list",
         "parameters": [
           {
@@ -6179,9 +6178,7 @@
                           "issue_category",
                           "first_release",
                           "last_release",
-                          "status_details",
-                          "is_resolved",
-                          "is_muted"
+                          "status_details"
                         ],
                         "properties": {
                           "assigned_to": {
@@ -6226,14 +6223,6 @@
                               "boolean",
                               "null"
                             ]
-                          },
-                          "is_muted": {
-                            "type": "boolean",
-                            "description": "Deprecated: derived from `status`. See `is_resolved`."
-                          },
-                          "is_resolved": {
-                            "type": "boolean",
-                            "description": "Deprecated: derived from `status`. Kept for the legacy client/UI until\nthey migrate to `status`. Remove in the client/frontend phases of #165."
                           },
                           "is_subscribed": {
                             "type": [
@@ -6386,7 +6375,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "PUT /api/projects/{project_id}/issues  (bulk mutate)",
+        "summary": "Sets the status or priority of many issues at once, by id.",
         "operationId": "issues.bulkUpdate",
         "parameters": [
           {
@@ -6442,7 +6431,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "DELETE /api/projects/{project_id}/issues  (bulk delete by ids or filter)",
+        "summary": "Deletes many issues at once, selected by id or by filter.",
         "operationId": "issues.bulkDelete",
         "parameters": [
           {
@@ -6510,7 +6499,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}\nGets a single issue by ID",
+        "summary": "Gets a single issue by ID",
         "operationId": "issues.get",
         "parameters": [
           {
@@ -6576,7 +6565,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "DELETE /api/projects/{project_id}/issues/{issue_id}\nHard-deletes an issue and all associated events",
+        "summary": "Hard-deletes an issue and all associated events",
         "operationId": "issues.delete",
         "parameters": [
           {
@@ -6635,7 +6624,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "PATCH /api/projects/{project_id}/issues/{issue_id}\nUpdates issue state (resolve, mute, etc.)",
+        "summary": "Updates issue state (resolve, mute, etc.)",
         "operationId": "issues.update",
         "parameters": [
           {
@@ -6713,7 +6702,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /{issue_id}/activity — chronological activity log (incl. comments).",
+        "summary": "Chronological activity log (incl. comments).",
         "operationId": "issues.getActivity",
         "parameters": [
           {
@@ -6774,7 +6763,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/aggregates\nReturns the unique user count and top tags for the issue.",
+        "summary": "Returns the unique user count and top tags for the issue.",
         "operationId": "issues.getAggregates",
         "parameters": [
           {
@@ -6832,7 +6821,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "PUT /{issue_id}/bookmark — set/clear the per-user bookmark.",
+        "summary": "Set/clear the per-user bookmark.",
         "operationId": "issues.setBookmark",
         "parameters": [
           {
@@ -6900,7 +6889,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "POST /{issue_id}/comments — add a note.",
+        "summary": "Add a note.",
         "operationId": "issues.createComment",
         "parameters": [
           {
@@ -6968,7 +6957,7 @@
         "tags": [
           "Events"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/events\nLists events for an issue with cursor-based pagination",
+        "summary": "Lists events for an issue with cursor-based pagination",
         "operationId": "events.list",
         "parameters": [
           {
@@ -7143,7 +7132,7 @@
         "tags": [
           "Events"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/events/{event_id}\nGets a single event with full data",
+        "summary": "Gets a single event with full data",
         "operationId": "events.get",
         "parameters": [
           {
@@ -7221,7 +7210,7 @@
         "tags": [
           "Events"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/events/{event_id}/attachments\nLists the files sent with an event, such as a feedback's screenshot.",
+        "summary": "Lists the files sent with an event, such as a feedback's screenshot.",
         "operationId": "events.listAttachments",
         "parameters": [
           {
@@ -7302,7 +7291,7 @@
         "tags": [
           "GitHub"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/github: the issue's links,\nthe commits that may have caused it, and who owns its culprit file.",
+        "summary": "The issue's links,\nthe commits that may have caused it, and who owns its culprit file.",
         "operationId": "github.issue",
         "parameters": [
           {
@@ -7735,7 +7724,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/hashes\nLists the grouping hashes that map to an issue.",
+        "summary": "Lists the grouping hashes that map to an issue.",
         "operationId": "issues.getHashes",
         "parameters": [
           {
@@ -7796,7 +7785,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "POST /{issue_id}/seen — mark the issue as seen by the current user.",
+        "summary": "Mark the issue as seen by the current user.",
         "operationId": "issues.markSeen",
         "parameters": [
           {
@@ -7854,7 +7843,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /{issue_id}/stats?window=24h|30d — zero-filled event-count timeseries.",
+        "summary": "Zero-filled event-count timeseries.",
         "operationId": "issues.getStats",
         "parameters": [
           {
@@ -7921,7 +7910,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "PUT /{issue_id}/subscription — set/clear the per-user subscription.",
+        "summary": "Set/clear the per-user subscription.",
         "operationId": "issues.setSubscription",
         "parameters": [
           {
@@ -7989,7 +7978,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /api/projects/{project_id}/issues/{issue_id}/tags/{key}\nLists the distinct values (with counts) for a tag key across the issue.",
+        "summary": "Lists the distinct values (with counts) for a tag key across the issue.",
         "operationId": "issues.getTagValues",
         "parameters": [
           {
@@ -8059,7 +8048,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "GET /{issue_id}/user-reports — list user feedback for an issue.",
+        "summary": "List user feedback for an issue.",
         "operationId": "issues.listUserReports",
         "parameters": [
           {
@@ -8215,7 +8204,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "POST /{issue_id}/user-reports — attach user feedback to an issue.",
+        "summary": "Attach user feedback to an issue.",
         "operationId": "issues.createUserReport",
         "parameters": [
           {
@@ -8283,7 +8272,7 @@
         "tags": [
           "Logs"
         ],
-        "summary": "GET /api/projects/{project_id}/logs\nLists logs for a project with offset-based pagination (newest first by\nlog timestamp), optionally filtered by level, trace id, message and window.",
+        "summary": "Lists logs for a project with offset-based pagination (newest first by\nlog timestamp), optionally filtered by level, trace id, message and window.",
         "operationId": "logs.list",
         "parameters": [
           {
@@ -8500,7 +8489,7 @@
         "tags": [
           "Logs"
         ],
-        "summary": "GET /api/projects/{project_id}/logs/volume\nCounts a project's logs per level over time, with the list's filters.",
+        "summary": "Counts a project's logs per level over time, with the list's filters.",
         "operationId": "logs.volume",
         "parameters": [
           {
@@ -8609,7 +8598,7 @@
         "tags": [
           "Logs"
         ],
-        "summary": "GET /api/projects/{project_id}/logs/{log_id}\nReturns one of a project's logs, wherever it falls in the list.",
+        "summary": "Returns one of a project's logs, wherever it falls in the list.",
         "operationId": "logs.get",
         "parameters": [
           {
@@ -8976,7 +8965,7 @@
         "tags": [
           "Monitors"
         ],
-        "summary": "GET /api/projects/{project_id}/monitor-stats\nCounts the check-ins of a project's monitors by status over a window, bucket by bucket.",
+        "summary": "Counts the check-ins of a project's monitors by status over a window, bucket by bucket.",
         "operationId": "monitors.stats",
         "parameters": [
           {
@@ -9061,7 +9050,7 @@
         "tags": [
           "Monitors"
         ],
-        "summary": "GET /api/projects/{project_id}/monitors",
+        "summary": "Lists a project's cron monitors.",
         "operationId": "monitors.list",
         "parameters": [
           {
@@ -9120,7 +9109,7 @@
         "tags": [
           "Monitors"
         ],
-        "summary": "POST /api/projects/{project_id}/monitors",
+        "summary": "Creates a cron monitor in a project.",
         "operationId": "monitors.create",
         "parameters": [
           {
@@ -9198,7 +9187,7 @@
         "tags": [
           "Monitors"
         ],
-        "summary": "GET /api/projects/{project_id}/monitors/{slug}",
+        "summary": "Gets one cron monitor.",
         "operationId": "monitors.get",
         "parameters": [
           {
@@ -9263,7 +9252,7 @@
         "tags": [
           "Monitors"
         ],
-        "summary": "PUT /api/projects/{project_id}/monitors/{slug}",
+        "summary": "Updates a cron monitor.",
         "operationId": "monitors.update",
         "parameters": [
           {
@@ -9348,7 +9337,7 @@
         "tags": [
           "Monitors"
         ],
-        "summary": "DELETE /api/projects/{project_id}/monitors/{slug}",
+        "summary": "Deletes a cron monitor and its check-ins.",
         "operationId": "monitors.delete",
         "parameters": [
           {
@@ -9408,7 +9397,7 @@
         "tags": [
           "Monitors"
         ],
-        "summary": "GET /api/projects/{project_id}/monitors/{slug}/checkins",
+        "summary": "Lists a cron monitor's check-ins, newest first.",
         "operationId": "monitors.listCheckins",
         "parameters": [
           {
@@ -9890,7 +9879,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "GET /api/projects/{project_id}/releases/{release}/new-issues",
+        "summary": "Lists the issues first seen in a release.",
         "operationId": "releases.newIssues",
         "parameters": [
           {
@@ -9956,7 +9945,7 @@
         "tags": [
           "Sessions"
         ],
-        "summary": "GET /api/projects/{project_id}/sessions/stats",
+        "summary": "Session counts by release, for release health.",
         "operationId": "sessions.getStats",
         "parameters": [
           {
@@ -10133,7 +10122,7 @@
         "tags": [
           "Sessions"
         ],
-        "summary": "GET /api/projects/{project_id}/sessions/summary",
+        "summary": "Totals and crash-free rates for a project's sessions.",
         "operationId": "sessions.getSummary",
         "parameters": [
           {
@@ -10204,7 +10193,7 @@
         "tags": [
           "Sessions"
         ],
-        "summary": "GET /api/projects/{project_id}/sessions/timeseries",
+        "summary": "Session counts over time, bucketed for a chart.",
         "operationId": "sessions.getTimeseries",
         "parameters": [
           {
@@ -10288,7 +10277,7 @@
         "tags": [
           "Spans"
         ],
-        "summary": "GET /api/projects/{project_id}/spans\nLists spans for a project with offset-based pagination (newest by\nstart_timestamp first), optionally filtered by op/status/trace_id.\nReturns spans regardless of origin — standalone or extracted from a\ntransaction — since both are stored in the same table.",
+        "summary": "Lists spans for a project with offset-based pagination (newest by\nstart_timestamp first), optionally filtered by op/status/trace_id.\nReturns spans regardless of origin — standalone or extracted from a\ntransaction — since both are stored in the same table.",
         "operationId": "spans.list",
         "parameters": [
           {
@@ -10644,7 +10633,7 @@
         "tags": [
           "Spans"
         ],
-        "summary": "GET /api/projects/{project_id}/spans/{span_id}\nReturns one span together with its attributes and tags — the `gen_ai.*`\npayload (prompts, responses, tool arguments and results) that the list\nresponse deliberately omits, since `spans.data` is untrimmed and a whole\ntrace's worth of it would dwarf the waterfall it is drawn from.",
+        "summary": "Returns one span together with its attributes and tags — the `gen_ai.*`\npayload (prompts, responses, tool arguments and results) that the list\nresponse deliberately omits, since `spans.data` is untrimmed and a whole\ntrace's worth of it would dwarf the waterfall it is drawn from.",
         "operationId": "spans.get",
         "parameters": [
           {
@@ -10712,7 +10701,7 @@
         "tags": [
           "Stats"
         ],
-        "summary": "GET /api/projects/{project_id}/stats/summary",
+        "summary": "Headline figures for a project's overview: events, new and open issues.",
         "operationId": "stats.getSummary",
         "parameters": [
           {
@@ -10783,7 +10772,7 @@
         "tags": [
           "Transactions"
         ],
-        "summary": "GET /api/projects/{project_id}/transactions\nLists transactions for a project with offset-based pagination (newest first).",
+        "summary": "Lists transactions for a project with offset-based pagination (newest first).",
         "operationId": "transactions.list",
         "parameters": [
           {
@@ -11055,7 +11044,7 @@
         "tags": [
           "Transactions"
         ],
-        "summary": "GET /api/projects/{project_id}/transactions/stats\nReturns paginated aggregate performance stats (count, time spent, p50/p95/p99\nlatency, failure rate) grouped by transaction name + op, the most time spent\nfirst unless `sort` asks otherwise.",
+        "summary": "Returns paginated aggregate performance stats (count, time spent, p50/p95/p99\nlatency, failure rate) grouped by transaction name + op, the most time spent\nfirst unless `sort` asks otherwise.",
         "operationId": "transactions.getStats",
         "parameters": [
           {
@@ -11285,7 +11274,7 @@
         "tags": [
           "Transactions"
         ],
-        "summary": "GET /api/projects/{project_id}/transactions/stats/group?name=&op=\nReturns the aggregate stats for a single transaction group — a direct lookup\nso the summary header works regardless of how many groups the project has.",
+        "summary": "Returns the aggregate stats for a single transaction group — a direct lookup\nso the summary header works regardless of how many groups the project has.",
         "operationId": "transactions.getStatGroup",
         "parameters": [
           {
@@ -11494,7 +11483,7 @@
         "tags": [
           "Transactions"
         ],
-        "summary": "GET /api/projects/{project_id}/transactions/{transaction_id}\nReturns a single transaction with its full Sentry payload (spans, contexts,\nmeasurements, tags) for the performance detail view.",
+        "summary": "Returns a single transaction with its full Sentry payload (spans, contexts,\nmeasurements, tags) for the performance detail view.",
         "operationId": "transactions.get",
         "parameters": [
           {
@@ -11562,7 +11551,7 @@
         "tags": [
           "Transactions"
         ],
-        "summary": "GET /api/projects/{project_id}/transactions/{transaction_id}/spans\nReturns the indexed spans extracted from a transaction, ordered for the\nwaterfall view (by start_timestamp ascending).",
+        "summary": "Returns the indexed spans extracted from a transaction, ordered for the\nwaterfall view (by start_timestamp ascending).",
         "operationId": "transactions.getSpans",
         "parameters": [
           {
@@ -11828,7 +11817,7 @@
         "tags": [
           "Projects"
         ],
-        "summary": "GET /api/rate-limits - What a project without limits of its own follows",
+        "summary": "What a project without limits of its own follows",
         "operationId": "projects.getRateLimits",
         "responses": {
           "200": {
@@ -12155,8 +12144,7 @@
         "tags": [
           "Schedules"
         ],
-        "summary": "POST /api/schedules/preview",
-        "description": "Validates a schedule and lists its next five runs from now, so no client\never parses a crontab itself.",
+        "summary": "Validates a schedule and lists its next five runs from now, so no client\never parses a crontab itself.",
         "operationId": "schedules.preview",
         "requestBody": {
           "content": {
@@ -12302,7 +12290,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "GET /api/storage/age — rows per age bucket, per project and kind.",
+        "summary": "Rows per age bucket, per project and kind.",
         "operationId": "storage.getAge",
         "responses": {
           "200": {
@@ -12338,7 +12326,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/cleanup — starts deleting old data and the issues it\nempties. Returns at once: the purge runs detached, in batches, and\n`GET /api/storage/cleanup/status` reports its progress.",
+        "summary": "Starts deleting old data and the issues it\nempties. Returns at once: the purge runs detached, in batches, and\n`GET /api/storage/cleanup/status` reports its progress.",
         "operationId": "storage.executeCleanup",
         "requestBody": {
           "content": {
@@ -12404,7 +12392,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/cleanup/preview — dry-run count, mutates nothing.",
+        "summary": "Dry-run count, mutates nothing.",
         "operationId": "storage.previewCleanup",
         "requestBody": {
           "content": {
@@ -12450,7 +12438,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "GET /api/storage/cleanup/status — progress of the running cleanup, or the\noutcome of the last one.",
+        "summary": "Progress of the running cleanup, or the\noutcome of the last one.",
         "operationId": "storage.getCleanupStatus",
         "responses": {
           "200": {
@@ -12486,7 +12474,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "GET /api/storage/compaction — whether the database file shrinks when data\nis deleted, and the disk a one-off compaction needs.",
+        "summary": "Whether the database file shrinks when data\nis deleted, and the disk a one-off compaction needs.",
         "operationId": "storage.getCompaction",
         "responses": {
           "200": {
@@ -12520,7 +12508,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/compaction — rewrites a SQLite file created before\nincremental mode, so it gives freed space back from then on. Writes wait\nwhile it runs; follow it with `GET /api/storage/cleanup/status`.",
+        "summary": "Rewrites a SQLite file created before\nincremental mode, so it gives freed space back from then on. Writes wait\nwhile it runs; follow it with `GET /api/storage/cleanup/status`.",
         "operationId": "storage.compact",
         "responses": {
           "202": {
@@ -12576,7 +12564,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "GET /api/storage/projects — per-project counts and estimated weight.",
+        "summary": "Per-project counts and estimated weight.",
         "operationId": "storage.getProjects",
         "responses": {
           "200": {
@@ -12677,7 +12665,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "GET /api/storage/retention",
+        "summary": "Gets the retention settings and the cleanup schedule.",
         "operationId": "storage.getRetention",
         "responses": {
           "200": {
@@ -12721,7 +12709,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "PUT /api/storage/retention",
+        "summary": "Updates the retention settings; the next cleanup is scheduled at once.",
         "operationId": "storage.updateRetention",
         "requestBody": {
           "content": {
@@ -12787,7 +12775,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/retention/preview — what saving these settings would\ndelete on the next cleanup, without saving or deleting anything.",
+        "summary": "What saving these settings would\ndelete on the next cleanup, without saving or deleting anything.",
         "operationId": "storage.previewRetention",
         "requestBody": {
           "content": {
@@ -12843,7 +12831,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/retention/run — enforces the saved retention now,\nwithout waiting for the schedule. Follow it with the cleanup status.",
+        "summary": "Enforces the saved retention now,\nwithout waiting for the schedule. Follow it with the cleanup status.",
         "operationId": "storage.runRetention",
         "responses": {
           "202": {
@@ -12899,7 +12887,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/source-maps/gc — delete orphaned source maps (DB + disk).",
+        "summary": "Delete orphaned source maps (DB + disk).",
         "operationId": "storage.gcSourceMaps",
         "responses": {
           "200": {
@@ -12935,7 +12923,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "POST /api/storage/source-maps/gc/preview — dry-run orphan count, deletes nothing.",
+        "summary": "Dry-run orphan count, deletes nothing.",
         "operationId": "storage.previewSourceMapGc",
         "responses": {
           "200": {
@@ -12971,7 +12959,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "GET /api/storage/summary — row counts, DB size, and source-map weight.",
+        "summary": "Row counts, DB size, and source-map weight.",
         "operationId": "storage.getSummary",
         "responses": {
           "200": {
@@ -13007,7 +12995,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "GET /api/team — list all users (needs `users:read`)",
+        "summary": "List all users (needs `users:read`)",
         "operationId": "team.list",
         "responses": {
           "200": {
@@ -13056,7 +13044,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "DELETE /api/team/{user_id} — remove a user from the instance (needs `users:delete`)",
+        "summary": "Remove a user from the instance (needs `users:delete`)",
         "operationId": "team.deleteUser",
         "parameters": [
           {
@@ -13127,7 +13115,7 @@
         "tags": [
           "Team"
         ],
-        "summary": "PATCH /api/team/{user_id}/role — change a user's global role (needs `users:update`)",
+        "summary": "Change a user's global role (needs `users:update`)",
         "operationId": "team.updateRole",
         "parameters": [
           {
@@ -13218,7 +13206,7 @@
         "tags": [
           "Telemetry"
         ],
-        "summary": "GET /api/telemetry/preview",
+        "summary": "Shows the exact anonymous telemetry report this instance would send.",
         "operationId": "telemetry.preview",
         "responses": {
           "200": {
@@ -13264,7 +13252,7 @@
         "tags": [
           "Tokens"
         ],
-        "summary": "GET /api/tokens - List tokens (masked)",
+        "summary": "List tokens (masked)",
         "description": "Everyone sees their own tokens; `api-tokens:read` sees every token. A token\nlimited to other permissions sees none: it must not reach its owner's others.",
         "operationId": "tokens.list",
         "responses": {
@@ -13312,7 +13300,7 @@
         "tags": [
           "Tokens"
         ],
-        "summary": "POST /api/tokens - Create a new token (from a signed-in session only)",
+        "summary": "Create a new token (from a signed-in session only)",
         "description": "A token cannot create tokens: a limited or expiring one could otherwise\nmint itself a way out of its limits.",
         "operationId": "tokens.create",
         "requestBody": {
@@ -13332,6 +13320,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AuthTokenCreatedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An expiry that is not in the future",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -13369,7 +13367,7 @@
         "tags": [
           "Tokens"
         ],
-        "summary": "GET /api/tokens/{id} - Token details, masked",
+        "summary": "Token details, masked",
         "description": "Tokens are stored hashed, so the full value is only ever shown on\ncreation. Everyone may view their own; `api-tokens:read` views any.",
         "operationId": "tokens.get",
         "parameters": [
@@ -13436,7 +13434,7 @@
         "tags": [
           "Tokens"
         ],
-        "summary": "DELETE /api/tokens/{id} - Revoke a token",
+        "summary": "Revoke a token",
         "description": "Everyone may revoke their own; `api-tokens:delete` revokes any.",
         "operationId": "tokens.delete",
         "parameters": [
@@ -13643,7 +13641,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "POST /auth/accept-invitation\nAccept a pending invitation: creates the user (with the invite's email + role) and logs in.",
+        "summary": "Accept a pending invitation: creates the user (with the invite's email + role) and logs in.",
         "operationId": "auth.acceptInvitation",
         "requestBody": {
           "content": {
@@ -13687,7 +13685,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "GET /auth/invitation/{token}\nReturns the invitation's details if it is still acceptable (for the accept page).",
+        "summary": "Returns the invitation's details if it is still acceptable (for the accept page).",
         "operationId": "auth.getInvitation",
         "parameters": [
           {
@@ -13742,7 +13740,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "POST /auth/login\nAuthenticate user and create session",
+        "summary": "Authenticate user and create session",
         "operationId": "auth.login",
         "requestBody": {
           "content": {
@@ -13796,7 +13794,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "POST /auth/logout\nClear session",
+        "summary": "Clear session",
         "operationId": "auth.logout",
         "responses": {
           "204": {
@@ -13815,7 +13813,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "GET /auth/me\nGet current authenticated user",
+        "summary": "Get current authenticated user",
         "operationId": "auth.getCurrentUser",
         "responses": {
           "200": {
@@ -13849,7 +13847,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "PATCH /auth/me\nUpdate the current user's presentation preferences",
+        "summary": "Update the current user's presentation preferences",
         "operationId": "auth.updateCurrentUser",
         "requestBody": {
           "content": {
@@ -13905,7 +13903,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "POST /auth/me/password\nChange the current user's password",
+        "summary": "Change the current user's password. Every other session of the user ends;\nthis one continues under a new id.",
         "operationId": "auth.changePassword",
         "requestBody": {
           "content": {
@@ -13949,46 +13947,12 @@
         ]
       }
     },
-    "/auth/register": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "POST /auth/register\nRegistration is invite-only — always rejected. Use `/auth/accept-invitation`.",
-        "operationId": "auth.register",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateUserRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "403": {
-            "description": "Registration is invite-only",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {}
-        ]
-      }
-    },
     "/auth/sso/callback": {
       "get": {
         "tags": [
           "Auth"
         ],
-        "summary": "GET /auth/sso/callback\nValidate the provider response, resolve or provision the local account, and\nestablish the normal Rustrak session.",
+        "summary": "Validate the provider response, resolve or provision the local account, and\nestablish the normal Rustrak session.",
         "operationId": "auth.ssoCallback",
         "parameters": [
           {
@@ -14090,7 +14054,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "GET /auth/sso/config\nPublic, non-sensitive information used to render the login page.",
+        "summary": "Public, non-sensitive information used to render the login page.",
         "operationId": "auth.ssoConfig",
         "responses": {
           "200": {
@@ -14114,7 +14078,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "GET /auth/sso/link\nThe account an SSO login matched, shown while its owner confirms.",
+        "summary": "The account an SSO login matched, shown while its owner confirms.",
         "operationId": "auth.ssoLink",
         "responses": {
           "200": {
@@ -14146,7 +14110,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "POST /auth/sso/link\nLink the pending SSO identity to its account once the account's password\nis given, and sign in. A wrong password keeps the link pending for a retry.",
+        "summary": "Link the pending SSO identity to its account once the account's password\nis given, and sign in. A wrong password keeps the link pending for a retry.",
         "operationId": "auth.confirmSsoLink",
         "requestBody": {
           "content": {
@@ -14210,7 +14174,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "POST /auth/sso/start\nCreate a one-time OIDC authorization request and retain its protections in\nthe encrypted session cookie.",
+        "summary": "Create a one-time OIDC authorization request and retain its protections in\nthe session.",
         "operationId": "auth.ssoStart",
         "responses": {
           "200": {
@@ -14336,8 +14300,7 @@
         "tags": [
           "Sentry API"
         ],
-        "summary": "GET /{org_slug}/{project_slug}/issues/{issue_id}/",
-        "description": "The issue page GitLab's \"View in Sentry\" opens: Sentry redirects this\nlegacy path to the issue (`static/app/router/routes.tsx`), Rustrak to its\ndashboard. A visitor who is not signed in goes to the login page instead,\nso a stranger learns nothing about which issues exist.",
+        "summary": "The issue page GitLab's \"View in Sentry\" opens: Sentry redirects this\nlegacy path to the issue (`static/app/router/routes.tsx`), Rustrak to its\ndashboard. A visitor who is not signed in goes to the login page instead,\nso a stranger learns nothing about which issues exist.",
         "operationId": "sentry.openIssue",
         "parameters": [
           {
@@ -16251,21 +16214,6 @@
           }
         }
       },
-      "CreateUserRequest": {
-        "type": "object",
-        "required": [
-          "email",
-          "password"
-        ],
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
       "DebugFileResponse": {
         "type": "object",
         "description": "A debug information file as Sentry's `DebugFileSerializer` describes it.",
@@ -16665,6 +16613,7 @@
           "already_exists",
           "too_short",
           "too_long",
+          "incorrect",
           "custom"
         ]
       },
@@ -17162,9 +17111,7 @@
           "issue_category",
           "first_release",
           "last_release",
-          "status_details",
-          "is_resolved",
-          "is_muted"
+          "status_details"
         ],
         "properties": {
           "assigned_to": {
@@ -17209,14 +17156,6 @@
               "boolean",
               "null"
             ]
-          },
-          "is_muted": {
-            "type": "boolean",
-            "description": "Deprecated: derived from `status`. See `is_resolved`."
-          },
-          "is_resolved": {
-            "type": "boolean",
-            "description": "Deprecated: derived from `status`. Kept for the legacy client/UI until\nthey migrate to `status`. Remove in the client/frontend phases of #165."
           },
           "is_subscribed": {
             "type": [
@@ -18673,7 +18612,7 @@
       },
       "RateLimitsResponse": {
         "type": "object",
-        "description": "Configure project routes\nThe server's per-project event limits (`MAX_EVENTS_PER_PROJECT_*`).",
+        "description": "The server's per-project event limits (`MAX_EVENTS_PER_PROJECT_*`).",
         "required": [
           "project_per_minute",
           "project_per_hour"
@@ -20847,7 +20786,7 @@
       },
       "UpdateIssueState": {
         "type": "object",
-        "description": "Request to update issue state.\n\n`status`/`substatus`/`priority`/assignment are the canonical fields.\n`is_resolved`/`is_muted` are accepted as a deprecated compatibility shim\nand mapped onto `status`.",
+        "description": "Request to update issue state.\n\n`status`/`substatus`/`priority`/assignment, as in Sentry.",
         "properties": {
           "assigned_to": {
             "type": [
@@ -20860,18 +20799,6 @@
           "assignee_type": {
             "type": [
               "string",
-              "null"
-            ]
-          },
-          "is_muted": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "is_resolved": {
-            "type": [
-              "boolean",
               "null"
             ]
           },
@@ -21271,7 +21198,7 @@
       "session_cookie": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "session"
+        "name": "rustrak_session"
       }
     }
   }

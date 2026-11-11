@@ -52,6 +52,7 @@ async fn require(
     actor.require(resource, action, Some(project_id))
 }
 
+/// Lists a project's cron monitors.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/monitors",
@@ -110,6 +111,7 @@ pub async fn get_monitor_stats(
     Ok(HttpResponse::Ok().json(stats))
 }
 
+/// Creates a cron monitor in a project.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/projects/{project_id}/monitors",
@@ -144,6 +146,7 @@ pub async fn create_monitor(
     Ok(HttpResponse::Created().json(monitor))
 }
 
+/// Gets one cron monitor.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/monitors/{slug}",
@@ -171,6 +174,7 @@ pub async fn get_monitor(
     Ok(HttpResponse::Ok().json(monitor))
 }
 
+/// Updates a cron monitor.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put,
     path = "/api/projects/{project_id}/monitors/{slug}",
@@ -208,6 +212,7 @@ pub async fn update_monitor(
     Ok(HttpResponse::Ok().json(monitor))
 }
 
+/// Deletes a cron monitor and its check-ins.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/api/projects/{project_id}/monitors/{slug}",
@@ -242,6 +247,7 @@ pub async fn delete_monitor(
     Ok(HttpResponse::NoContent().finish())
 }
 
+/// Lists a cron monitor's check-ins, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/api/projects/{project_id}/monitors/{slug}/checkins",

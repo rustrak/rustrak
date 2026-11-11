@@ -7,6 +7,7 @@ Vitest and MSW test. Root context: `/CLAUDE.md`.
 
 ```
 apps/server (utoipa) ──▶ openapi.json ──▶ pnpm generate ──▶ src/generated/  (SDK, types, zod)
+                                                      ├──▶ src/generated/binary.gen.ts (file endpoints)
                                                       └──▶ API reference in README.md
                                                            and apps/docs/content/sdks/client.mdx
 ```
@@ -52,7 +53,9 @@ Server Component to the browser has to survive `structuredClone`. A thrown
 (`network`, `invalid_response`), the request (`invalid_request`, `validation`),
 authorization (`unauthenticated`, `forbidden`), and the response status
 (`not_found`, `conflict`, `gone`, `rate_limited`, `payload_too_large`,
-`client_error`, `server_error`). `isRetryable` decides retries from the kind.
+`client_error`, `server_error`). `TRANSIENT_STATUSES` in `errors.ts` is the one
+retry rule: `isRetryable` reads it, and so does the transport, less a 429 and a
+timeout, whose wait only the caller can choose.
 
 ## Layout
 
@@ -65,7 +68,10 @@ src/
 ├── errors.ts      the RustrakError union and isRetryable
 ├── utils/http.ts  the fetch every request goes through (timeout, retries,
 │                  transport failures) and the status -> RustrakError mapping
-└── generated/     hey-api output. Do not edit.
+└── generated/     hey-api output, plus binary.gen.ts. Do not edit.
+scripts/
+├── spec.ts        the parsed openapi.json, shared by generator and tests
+└── generate.ts    README/docs API reference and binary.gen.ts
 ```
 
 `toResult` in `client.ts` is the single boundary: only failures it recognises
