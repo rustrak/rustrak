@@ -3,7 +3,11 @@ import { useState } from 'react';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { Text } from '../text/text';
 import { formatSpanDuration } from './format';
-import { Waterfall, type WaterfallSpan } from './waterfall';
+import {
+  Waterfall,
+  type WaterfallProps,
+  type WaterfallSpan,
+} from './waterfall';
 
 /**
  * A checkout request worth reading: auth, an N+1 of six identical queries,
@@ -425,5 +429,122 @@ export const EmptyTrace: Story = {
     await expect(canvas.getByText('No spans')).toBeInTheDocument();
     await expect(canvasElement.querySelector('[role="tree"]')).toBeNull();
     await expect(canvas.queryByText('0 µs')).not.toBeInTheDocument();
+  },
+};
+
+const LABELS = {
+  label: 'Waterfall of GET /stuck',
+  unfinishedLabel: 'unfinished',
+  noSpansLabel: 'No spans',
+  noSpansHint: 'This trace carries no timing to draw.',
+  resizeLabel: 'Resize the name column',
+} as const;
+
+// Gap rows are named by the caller, so asking for them without a name is a
+// type error rather than a row of hatching with no label.
+// @ts-expect-error -- `missingInstrumentationLabel` is required with gaps on.
+const _namelessGaps: WaterfallProps = {
+  ...LABELS,
+  spans: [],
+  showMissingInstrumentation: true,
+};
+
+/**
+ * A span that never ended has no end to draw: its `endMs` is whatever the
+ * SDK sent, so the clock takes its start as its end. It cannot stretch the
+ * ruler, its bar is a mark at its start, and the time after it is unclaimed.
+ */
+const STUCK: WaterfallSpan[] = [
+  {
+    id: 'root',
+    op: 'http.server',
+    description: 'GET /stuck',
+    startMs: 0,
+    endMs: 600,
+  },
+  {
+    id: 'stuck',
+    parentId: 'root',
+    op: 'db.query',
+    description: 'SELECT pg_sleep(60)',
+    startMs: 100,
+    endMs: 5000,
+    unfinished: true,
+  },
+  {
+    id: 'later',
+    parentId: 'root',
+    op: 'fn.render',
+    description: 'stuck.rs:12',
+    startMs: 300,
+    endMs: 400,
+  },
+];
+
+export const UnfinishedSpanHasNoLength: Story = {
+  render: () => (
+    <Waterfall
+      {...LABELS}
+      spans={STUCK}
+      showMissingInstrumentation
+      missingInstrumentationLabel="missing instrumentation"
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // The ruler's quarters are of 600 ms, where the finished spans end, not of
+    // the bogus 5 s.
+    await expect(canvas.getByText(formatSpanDuration(450))).toBeInTheDocument();
+    await expect(
+      canvas.queryByText(formatSpanDuration(5000)),
+    ).not.toBeInTheDocument();
+
+    const rows = canvas.getAllByRole('treeitem');
+    const stuck = rows.find((row) => row.textContent?.includes('pg_sleep'));
+    if (!stuck) throw new Error('stuck row not found');
+    await expect(stuck).toHaveTextContent('unfinished');
+    const bar = stuck.querySelector<HTMLElement>('span[style*="width"]');
+    // Zero length, drawn at the minimum mark so it is still seen.
+    await expect(bar?.style.width).toBe('0.6%');
+
+    // 100 ms -> 300 ms belongs to nobody once the stuck span has no length.
+    const gap = rows.find((row) =>
+      row.textContent?.includes('missing instrumentation'),
+    );
+    await expect(gap).toHaveTextContent(formatSpanDuration(200));
+  },
+};
+
+/** A folded run says "unfinished" as soon as one of its members is. */
+export const GroupWithOneUnfinishedMember: Story = {
+  render: () => (
+    <Waterfall
+      {...LABELS}
+      spans={[
+        {
+          id: 'root',
+          op: 'http.server',
+          description: 'GET /n1',
+          startMs: 0,
+          endMs: 100,
+        },
+        ...Array.from({ length: 5 }, (_, index) => ({
+          id: `q${index}`,
+          parentId: 'root',
+          op: 'db.query',
+          description: 'SELECT * FROM users WHERE id = ?',
+          startMs: 10 + index * 15,
+          endMs: 20 + index * 15,
+          unfinished: index === 2,
+        })),
+      ]}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const group = within(canvasElement)
+      .getAllByRole('treeitem')
+      .find((row) => row.textContent?.includes('×5'));
+    await expect(group).toHaveTextContent('unfinished');
   },
 };

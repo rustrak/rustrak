@@ -208,17 +208,28 @@ export function DataTable<TData extends RowData>({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+  // The column under a resize handle never steps aside mid-gesture: its
+  // handle holds the focus, and the next key must be able to undo the last.
+  const [resizing, setResizing] = useState<string>();
   const dropped = droppedToFit(
     visible.map((column) => ({
       id: column.id,
       width: drawnWidth(column),
-      drop: column.columnDef.meta?.drop,
+      drop: column.id === resizing ? undefined : column.columnDef.meta?.drop,
     })),
     available,
   );
   const columns = visible.filter((column) => !dropped.has(column.id));
   const shown = <T extends { column: { id: string } }>(items: T[]) =>
     items.filter((item) => !dropped.has(item.column.id));
+  // A header spans the leaves still drawn under it; a group with none left
+  // spans nothing and is not drawn.
+  const spanOf = (header: Header<DataTableFeatures, TData, unknown>) =>
+    header
+      .getLeafHeaders()
+      .filter(
+        (leaf) => leaf.subHeaders.length === 0 && !dropped.has(leaf.column.id),
+      ).length;
   // Wide enough for every sized column and a readable flexible one; past
   // that the card scrolls sideways instead of crushing the title.
   const minWidth = columns.reduce((sum, column) => sum + drawnWidth(column), 0);
@@ -305,7 +316,7 @@ export function DataTable<TData extends RowData>({
                     </th>
                     <th
                       scope="col"
-                      colSpan={shown(headerGroup.headers).length - 1}
+                      colSpan={columns.length - 1}
                       className={styles.th()}
                     >
                       <div
@@ -329,13 +340,26 @@ export function DataTable<TData extends RowData>({
                     </th>
                   </>
                 ) : (
-                  shown(headerGroup.headers).map((header) => (
-                    <HeaderCell
-                      key={header.id}
-                      header={header}
-                      width={widthOf(header.column)}
-                    />
-                  ))
+                  headerGroup.headers.map((header) => {
+                    const colSpan = spanOf(header);
+                    return colSpan > 0 ? (
+                      <HeaderCell
+                        key={header.id}
+                        header={header}
+                        colSpan={colSpan}
+                        width={widthOf(header.column)}
+                        onResizing={(active) =>
+                          setResizing((current) =>
+                            active
+                              ? header.column.id
+                              : current === header.column.id
+                                ? undefined
+                                : current,
+                          )
+                        }
+                      />
+                    ) : null;
+                  })
                 )}
               </tr>
             ))}
@@ -445,11 +469,16 @@ DataTable.displayName = 'DataTable';
  */
 function HeaderCell<TData extends RowData>({
   header,
+  colSpan,
   width,
+  onResizing,
 }: {
   header: Header<DataTableFeatures, TData, unknown>;
+  /** The leaves still drawn under it, after the fit dropped any. */
+  colSpan: number;
   /** The width the reader set or the design states; none when flexible. */
   width: number | undefined;
+  onResizing: (active: boolean) => void;
 }) {
   const sorted = header.column.getIsSorted();
   const ariaSort =
@@ -462,7 +491,7 @@ function HeaderCell<TData extends RowData>({
   return (
     <th
       scope="col"
-      colSpan={header.colSpan}
+      colSpan={colSpan}
       aria-sort={ariaSort}
       className={styles.th({
         className:
@@ -472,7 +501,7 @@ function HeaderCell<TData extends RowData>({
       <HeaderContent header={header} />
       {/* The two injected columns have one width by design. */}
       {header.column.id !== 'select' && header.column.id !== 'actions' ? (
-        <Resizer header={header} width={width} />
+        <Resizer header={header} width={width} onResizing={onResizing} />
       ) : null}
     </th>
   );
@@ -516,9 +545,12 @@ function HeaderContent<TData extends RowData>({
 function Resizer<TData extends RowData>({
   header,
   width,
+  onResizing,
 }: {
   header: Header<DataTableFeatures, TData, unknown>;
   width: number | undefined;
+  /** A drag, or arrow keys until the handle loses focus. */
+  onResizing: (active: boolean) => void;
 }) {
   const labels = useDataTableLabels();
   const [dragging, setDragging] = useState(false);
@@ -558,6 +590,7 @@ function Resizer<TData extends RowData>({
     // pointer.
     const end = () => {
       setDragging(false);
+      onResizing(false);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
@@ -565,6 +598,7 @@ function Resizer<TData extends RowData>({
     };
 
     setDragging(true);
+    onResizing(true);
     endDrag.current = end;
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
@@ -593,7 +627,11 @@ function Resizer<TData extends RowData>({
         const delta = { ArrowLeft: -16, ArrowRight: 16 }[event.key];
         if (!delta) return;
         event.preventDefault();
+        onResizing(true);
         resize(drawnWidth(event.currentTarget) + delta);
+      }}
+      onBlur={() => {
+        if (!dragging) onResizing(false);
       }}
     />
   );

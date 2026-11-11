@@ -166,6 +166,9 @@ export const ConfirmWithPhrase: Story = {
                 'Every issue, event and alert rule in it is destroyed.',
               confirmLabel: 'Delete project',
               phrase: 'checkout-api',
+              // The words around the phrase are the app's, like every label.
+              phraseLabel: (phrase) => <>Escribe {phrase} para continuar</>,
+              charactersLeft: (count) => `Faltan ${count} caracteres`,
             });
             setAnswer(confirmed ? 'deleted' : 'kept');
           }}
@@ -188,6 +191,14 @@ export const ConfirmWithPhrase: Story = {
       name: /Delete project/,
     });
 
+    // The prompt and the countdown speak the caller's words.
+    await expect(
+      within(dialog).getByRole('textbox', {
+        name: 'Escribe checkout-api para continuar',
+      }),
+    ).toBeInTheDocument();
+    await expect(dialog).toHaveTextContent('Faltan 12 caracteres');
+
     // Locked until the phrase is typed, and typing it unlocks.
     await expect(action).toBeDisabled();
     await userEvent.click(within(dialog).getByRole('textbox'));
@@ -200,6 +211,10 @@ export const ConfirmWithPhrase: Story = {
     );
   },
 };
+
+// A phrase comes with the words that ask for it: no English is made up here.
+// @ts-expect-error -- `phraseLabel` and `charactersLeft` are required with `phrase`.
+const _phraseWithoutLabels = () => confirm({ title: 'Purge', phrase: 'purge' });
 
 /** `alert` tells something that must be read, and waits to be dismissed. */
 export const Alert: Story = {
