@@ -123,7 +123,6 @@ export const spacingTokens = [
   'row-head',
   'page-gutter',
   'search',
-  'toast',
   'dialog-sm',
   'dialog-md',
   'dialog-lg',
@@ -166,12 +165,3 @@ export const easeTokens = ['linear', 'standard', 'entrance', 'exit'] as const;
 export const shadowTokens = ['raised', 'tooltip', 'overlay', 'dialog'] as const;
 
 export const fontTokens = ['sans', 'mono'] as const;
-
-export type ColorToken = (typeof colorTokens)[number];
-export type TextToken = (typeof textTokens)[number];
-export type SpacingToken = (typeof spacingTokens)[number];
-export type RadiusToken = (typeof radiusTokens)[number];
-export type DurationToken = (typeof durationTokens)[number];
-export type EaseToken = (typeof easeTokens)[number];
-export type ShadowToken = (typeof shadowTokens)[number];
-export type FontToken = (typeof fontTokens)[number];

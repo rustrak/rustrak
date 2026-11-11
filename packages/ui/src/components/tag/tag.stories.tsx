@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect, within } from 'storybook/test';
 import { Count } from '../count/count';
 import { Text } from '../text/text';
 import { Tag } from './tag';
@@ -112,4 +113,36 @@ export const Soft: Story = {
       </Tag>
     </div>
   ),
+};
+
+/**
+ * A value as it was sent -- a release, an environment -- is drawn verbatim:
+ * sentence case is for words, and `web@2.0.0` is not `Web@2.0.0`.
+ */
+export const Verbatim: Story = {
+  parameters: { layout: 'padded' },
+  render: () => (
+    <div className="flex items-center gap-3">
+      <Tag variant="soft" verbatim className="font-mono">
+        web@2.0.0
+      </Tag>
+      <Tag variant="soft" verbatim>
+        production
+      </Tag>
+      {/* Composed from parts, the way a caller interpolates a release. */}
+      <Tag variant="soft" verbatim className="font-mono uppercase">
+        {'api'}@{'1.4.0'}
+      </Tag>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const value = within(canvasElement).getByText('web@2.0.0');
+    await expect(getComputedStyle(value).textTransform).toBe('none');
+
+    // However many nodes it arrives in, the value is one flex item: the
+    // tag's gap never opens inside it, and a case passed in never reaches it.
+    const composed = within(canvasElement).getByText('api@1.4.0');
+    await expect(composed.parentElement?.childNodes).toHaveLength(1);
+    await expect(getComputedStyle(composed).textTransform).toBe('none');
+  },
 };

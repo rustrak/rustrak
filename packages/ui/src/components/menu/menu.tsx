@@ -1,5 +1,6 @@
 import { Menu as BaseMenu } from '@base-ui/react/menu';
 import type { ReactElement, ReactNode } from 'react';
+import { PANEL_OFFSET } from '../../lib/panel';
 import { Count } from '../count/count';
 import { ChevronRightIcon, SelectedIcon } from '../icon/icon-catalog';
 import { Kbd } from '../kbd/kbd';
@@ -167,7 +168,7 @@ export function Menu({
         <BaseMenu.Positioner
           side={side}
           align={align}
-          sideOffset={6}
+          sideOffset={PANEL_OFFSET}
           className={styles.positioner()}
         >
           <BaseMenu.Popup

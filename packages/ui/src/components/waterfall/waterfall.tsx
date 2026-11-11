@@ -193,12 +193,23 @@ export interface WaterfallSpan {
   endMs: number;
   /** Anything other than `ok` or absent reads as failed. */
   status?: string;
+  /** Never sent its end: drawn at its start and labelled, not timed. */
+  unfinished?: boolean;
   /**
    * An AI span's kind as the server classified it (`agent`, `ai_client`,
    * `tool`, `handoff`), which knows more `op` spellings than a prefix does:
    * `ai.toolCall` is a tool. Read before `op` when present.
    */
   operationType?: string;
+}
+
+/**
+ * Where a span ends on the clock. One that never ended has no end to draw --
+ * its `endMs` is whatever the SDK sent -- so it ends where it started: it
+ * cannot stretch the ruler, claim time from a gap, or draw a length.
+ */
+function endOf(span: WaterfallSpan): number {
+  return span.unfinished ? span.startMs : span.endMs;
 }
 
 /** The kinds time divides into, plus the one that broke. */
@@ -298,6 +309,11 @@ function buildTree(spans: WaterfallSpan[]): TreeNode[] {
     if (!visited.has(span.id)) roots.push({ span, children: [] });
   }
   return roots;
+}
+
+/** The latest time a node or any of its descendants is known to run to. */
+function reach(node: TreeNode): number {
+  return Math.max(endOf(node.span), ...node.children.map(reach));
 }
 
 function descendants(node: TreeNode): number {
@@ -460,7 +476,7 @@ function flatten(nodes: TreeNode[], state: FlattenState): Row[] {
       });
     }
 
-    return advance(frontier, ...spans.map((s) => s.endMs));
+    return advance(frontier, ...spans.map(endOf));
   };
 
   /** Pushes one span and, when it is open, its children. Returns the frontier. */
@@ -488,7 +504,7 @@ function flatten(nodes: TreeNode[], state: FlattenState): Row[] {
       walk(node.children, depth + 1, [...guides, !last]);
     }
 
-    return advance(frontier, node.span.endMs);
+    return advance(frontier, reach(node));
   };
 
   const walk = (list: TreeNode[], depth: number, guides: boolean[]) => {
@@ -542,7 +558,18 @@ const toggleSet =
 
 /* --- The component -------------------------------------------------------- */
 
-export interface WaterfallProps {
+/**
+ * The hatched rows for unclaimed time between siblings, and what they are
+ * called: "missing instrumentation". The name comes with the switch, so a
+ * gap row can never render nameless.
+ */
+type MissingInstrumentationProps =
+  | { showMissingInstrumentation?: false; missingInstrumentationLabel?: string }
+  | { showMissingInstrumentation: true; missingInstrumentationLabel: string };
+
+export type WaterfallProps = WaterfallBaseProps & MissingInstrumentationProps;
+
+interface WaterfallBaseProps {
   spans: WaterfallSpan[];
   /**
    * The selected span, controlled: selection is a place the app may hold
@@ -556,25 +583,38 @@ export interface WaterfallProps {
    * app owns what it says.
    */
   renderDetail?: (span: WaterfallSpan) => ReactNode;
-  /** Surfaces the hatched rows for unclaimed time between siblings. */
-  showMissingInstrumentation?: boolean;
   /** Names the figure: "Waterfall of POST /checkout/summary". */
   label: string;
+  /** Stands for the duration of a span that never ended: "unfinished". */
+  unfinishedLabel: string;
+  /** The empty state's title and line: "No spans", "This trace carries no timing to draw." */
+  noSpansLabel: string;
+  noSpansHint: string;
+  /** Names the column splitter: "Resize the name column". */
+  resizeLabel: string;
   className?: string;
 }
 
 const MIN_SPLIT = 0.15;
 const MAX_SPLIT = 0.85;
 
-export function Waterfall({
-  spans,
-  selectedId,
-  onSelect,
-  renderDetail,
-  showMissingInstrumentation = false,
-  label,
-  className,
-}: WaterfallProps) {
+export function Waterfall(props: WaterfallProps) {
+  const {
+    spans,
+    selectedId,
+    onSelect,
+    renderDetail,
+    label,
+    unfinishedLabel,
+    noSpansLabel,
+    noSpansHint,
+    resizeLabel,
+    className,
+  } = props;
+  // The gap rows' name, or null when they are off.
+  const gapLabel = props.showMissingInstrumentation
+    ? props.missingInstrumentationLabel
+    : null;
   const rootRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -590,13 +630,13 @@ export function Waterfall({
       flatten(tree, {
         collapsed,
         openGroups,
-        showGaps: showMissingInstrumentation,
+        showGaps: gapLabel !== null,
       }),
-    [tree, collapsed, openGroups, showMissingInstrumentation],
+    [tree, collapsed, openGroups, gapLabel],
   );
 
   const start = Math.min(...spans.map((span) => span.startMs));
-  const end = Math.max(...spans.map((span) => span.endMs));
+  const end = Math.max(...spans.map(endOf));
   const total = Math.max(end - start, 1);
 
   const kinds = useMemo(() => {
@@ -630,9 +670,9 @@ export function Waterfall({
         <div className={styles.empty()}>
           <EmptyIcon size="2xl" aria-hidden="true" className="text-fg-ghost" />
           <div className="flex flex-col gap-1">
-            <Text variant="card-title">No spans</Text>
+            <Text variant="card-title">{noSpansLabel}</Text>
             <Text variant="meta" tone="subtle">
-              This trace carries no timing to draw.
+              {noSpansHint}
             </Text>
           </div>
         </div>
@@ -711,7 +751,16 @@ export function Waterfall({
         <div role="tree" aria-label={label}>
           {rows.map((row, rowIndex) =>
             row.kind === 'gap' ? (
-              <GapRow key={row.id} row={row} start={start} total={total} />
+              // Gap rows only exist while `gapLabel` is set.
+              gapLabel !== null && (
+                <GapRow
+                  key={row.id}
+                  row={row}
+                  start={start}
+                  total={total}
+                  label={gapLabel}
+                />
+              )
             ) : (
               <SpanRow
                 key={row.id}
@@ -724,6 +773,7 @@ export function Waterfall({
                 renderDetail={renderDetail}
                 onToggle={row.kind === 'group' ? toggleGroup : toggleCollapsed}
                 moveFocus={moveFocus}
+                unfinishedLabel={unfinishedLabel}
               />
             ),
           )}
@@ -734,7 +784,7 @@ export function Waterfall({
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize the name column"
+          aria-label={resizeLabel}
           aria-valuenow={Math.round(split * 100)}
           aria-valuemin={MIN_SPLIT * 100}
           aria-valuemax={MAX_SPLIT * 100}
@@ -808,10 +858,12 @@ function GapRow({
   row,
   start,
   total,
+  label,
 }: {
   row: Extract<Row, { kind: 'gap' }>;
   start: number;
   total: number;
+  label: string;
 }) {
   const left = ((row.startMs - start) / total) * 100;
   const width = ((row.endMs - row.startMs) / total) * 100;
@@ -827,7 +879,7 @@ function GapRow({
       <div className={styles.gutter()}>
         <RowGuides guides={row.guides} />
         <span className={styles.pillGap()} />
-        <span className={styles.gapLabel()}>missing instrumentation</span>
+        <span className={styles.gapLabel()}>{label}</span>
       </div>
       <div className={styles.track()}>
         <RowGridlines />
@@ -897,7 +949,7 @@ function RowBars({
             aria-hidden="true"
             style={{
               left: `${((span.startMs - start) / total) * 100}%`,
-              width: `${Math.max(((span.endMs - span.startMs) / total) * 100, 0.4)}%`,
+              width: `${Math.max(((endOf(span) - span.startMs) / total) * 100, 0.4)}%`,
             }}
             className={styles.bar({ className: KIND_BAR[kind] })}
           />
@@ -1000,6 +1052,7 @@ function SpanRow({
   renderDetail,
   onToggle,
   moveFocus,
+  unfinishedLabel,
 }: {
   row: SpanRowData;
   start: number;
@@ -1010,19 +1063,20 @@ function SpanRow({
   renderDetail?: (span: WaterfallSpan) => ReactNode;
   onToggle: (id: string) => void;
   moveFocus: (from: HTMLElement, delta: number | 'home' | 'end') => void;
+  unfinishedLabel: string;
 }) {
   const spans = row.kind === 'group' ? row.spans : [row.span];
   const rowStart = Math.min(...spans.map((s) => s.startMs));
-  const rowEnd = Math.max(...spans.map((s) => s.endMs));
+  const rowEnd = Math.max(...spans.map(endOf));
   const { failed, kind } = rowAppearance(row);
 
-  const left = ((rowStart - start) / total) * 100;
   // A 2 ms span in a 600 ms trace still has to be visible: it may be the
-  // one that threw.
+  // one that threw. One that starts at the very end slides back to show it.
   const width = Math.min(
     Math.max(((rowEnd - rowStart) / total) * 100, 0.6),
-    100 - left,
+    100,
   );
+  const left = Math.min(((rowStart - start) / total) * 100, 100 - width);
 
   const expandable = row.kind === 'group' || row.hasChildren;
   const isOpen = row.kind === 'span' && row.hasChildren && !row.collapsed;
@@ -1110,11 +1164,10 @@ function SpanRow({
         <DurationLabel
           left={left}
           width={width}
-          ms={
-            row.kind === 'group'
-              ? spans.reduce((acc, s) => acc + (s.endMs - s.startMs), 0)
-              : rowEnd - rowStart
-          }
+          ms={spans.reduce((acc, s) => acc + (endOf(s) - s.startMs), 0)}
+          // One member that never ended is the one worth looking at.
+          unfinished={spans.some((s) => s.unfinished)}
+          unfinishedLabel={unfinishedLabel}
           failed={failed}
         />
       </div>
@@ -1139,11 +1192,16 @@ function DurationLabel({
   left,
   width,
   ms,
+  unfinished,
+  unfinishedLabel,
   failed,
 }: {
   left: number;
   width: number;
   ms: number;
+  unfinished?: boolean;
+  /** Required whenever `unfinished` can be true. */
+  unfinishedLabel?: string;
   failed?: boolean;
 }) {
   const inside = left + width > 82;
@@ -1158,7 +1216,7 @@ function DurationLabel({
       }
       className={styles.duration()}
     >
-      {formatSpanDuration(ms)}
+      {unfinished ? unfinishedLabel : formatSpanDuration(ms)}
     </span>
   );
 }

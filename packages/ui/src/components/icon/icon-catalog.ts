@@ -338,5 +338,3 @@ export const icons = {
   navigation: NavigationIcon,
   console: ConsoleIcon,
 } as const satisfies Record<string, IconComponent>;
-
-export type IconName = keyof typeof icons;

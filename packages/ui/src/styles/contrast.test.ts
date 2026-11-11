@@ -1,56 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { contrastRatio, parseColor } from './color';
+import { dark, light, resolve, type Theme } from './token-values';
 
-const css = readFileSync(
-  fileURLToPath(new URL('./tokens.css', import.meta.url)),
-  'utf8',
-).replace(/\/\*[\s\S]*?\*\//g, '');
-
-/** Every `--name: value` inside one selector's block. */
-function declarationsIn(selector: string): Map<string, string> {
-  const block = css.match(
-    new RegExp(`${selector}\\s*\\{([\\s\\S]*?)\\n\\}`),
-  )?.[1];
-  const out = new Map<string, string>();
-
-  for (const [, name, value] of (block ?? '').matchAll(
-    /^\s{2}(--[a-z0-9-]+)\s*:\s*([^;]+);/gm,
-  )) {
-    if (name && value) out.set(name, value.trim());
-  }
-
-  return out;
-}
-
-const primitives = declarationsIn(':root');
-const dark = declarationsIn(':root,\\n\\[data-theme="dark"\\]');
-const light = declarationsIn('\\[data-theme="light"\\]');
-
-/**
- * Follows a `var(--x)` chain down to a literal.
- *
- * The theme is asked first and the primitives second, which is exactly the
- * cascade a browser would apply: a semantic name can point at another semantic
- * name, and only the bottom of the chain is a raw value.
- */
-function resolve(name: string, theme: Map<string, string>): string {
-  const seen = new Set<string>();
-  let value = theme.get(name) ?? primitives.get(name);
-
-  while (value?.startsWith('var(')) {
-    const next = value.slice(4, -1).trim();
-    if (seen.has(next)) throw new Error(`Cycle resolving ${name}`);
-    seen.add(next);
-    value = theme.get(next) ?? primitives.get(next);
-  }
-
-  if (value == null) throw new Error(`Undeclared token: ${name}`);
-  return value;
-}
-
-function ratio(fg: string, bg: string, theme: Map<string, string>): number {
+function ratio(fg: string, bg: string, theme: Theme): number {
   return contrastRatio(
     parseColor(resolve(fg, theme)),
     parseColor(resolve(bg, theme)),

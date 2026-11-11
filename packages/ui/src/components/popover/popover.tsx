@@ -1,6 +1,6 @@
 import { Popover as BasePopover } from '@base-ui/react/popover';
 import type { ReactElement, ReactNode } from 'react';
-import { popTransition } from '../../lib/motion';
+import { PANEL_OFFSET, panelSurface } from '../../lib/panel';
 import { tv } from '../../lib/tv';
 
 /**
@@ -13,10 +13,7 @@ import { tv } from '../../lib/tv';
  * first element is an input. A popover hands focus to its content and lets it
  * be content.
  *
- * The surface itself -- radius, border, shadow, entry -- matches the menu's
- * recipe line for line, on purpose: to the person looking at it, both are "a
- * panel out of that button", and two shades of the same panel would read as a
- * bug.
+ * The surface is the menu's (`lib/panel.ts`).
  */
 const popover = tv({
   slots: {
@@ -25,11 +22,8 @@ const popover = tv({
     positioner: 'z-50',
     popup: [
       'flex max-h-(--available-height) min-w-52 flex-col',
-      'overflow-x-hidden overflow-y-auto',
-      'rounded-2xl border border-border bg-surface-floating',
-      'shadow-overlay',
-      'outline-none',
-      popTransition,
+      'overflow-x-hidden overflow-y-auto outline-none',
+      panelSurface,
     ],
     /*
      * The header names what the panel filters: "Nivel", "Eventos". It reads as
@@ -97,7 +91,7 @@ export function Popover({
         <BasePopover.Positioner
           side={side}
           align={align}
-          sideOffset={6}
+          sideOffset={PANEL_OFFSET}
           className={styles.positioner()}
         >
           <BasePopover.Popup

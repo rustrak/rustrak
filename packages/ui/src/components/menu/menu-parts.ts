@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { popTransition } from '../../lib/motion';
+import { panelItem, panelSurface } from '../../lib/panel';
 import { tv } from '../../lib/tv';
 import type { IconComponent } from '../icon/icon';
 
@@ -31,18 +31,14 @@ const menu = tv({
      */
     popup: [
       'flex max-h-(--available-height) min-w-52 flex-col',
-      'overflow-x-hidden overflow-y-auto',
-      'rounded-2xl border border-border bg-surface-floating p-1.5',
-      'shadow-overlay',
-      popTransition,
+      'overflow-x-hidden overflow-y-auto p-1.5',
+      panelSurface,
     ],
     item: [
-      'group/item flex h-menu-item shrink-0 cursor-default items-center gap-2.5',
-      'rounded-md px-2.5 text-control text-fg-muted outline-none select-none',
+      panelItem,
+      'group/item shrink-0 px-2.5',
       // The highlight runs ahead of the pointer, not behind it: no transition.
       'transition-none',
-      'data-highlighted:bg-surface-selected data-highlighted:text-fg',
-      'data-disabled:text-fg-disabled',
       /*
        * Destructive is read before it is pressed. The red goes on the label and
        * the icon, never on the resting background: a red row at rest shouts,

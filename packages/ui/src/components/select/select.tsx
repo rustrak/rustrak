@@ -2,9 +2,11 @@ import { Select as BaseSelect } from '@base-ui/react/select';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 import { focusRing } from '../../lib/focus';
-import { interactiveTransition, popTransition } from '../../lib/motion';
+import { interactiveTransition } from '../../lib/motion';
+import { PANEL_OFFSET, panelItem, panelSurface } from '../../lib/panel';
 import { tv } from '../../lib/tv';
 import { SelectedIcon, SelectorIcon } from '../icon/icon-catalog';
+import { fieldFrame } from '../input/input-shell';
 
 /**
  * A closed list of choices, drawn like the text field it sits beside: same
@@ -14,9 +16,9 @@ import { SelectedIcon, SelectorIcon } from '../icon/icon-catalog';
 const select = tv({
   slots: {
     trigger: [
-      'flex w-full min-w-0 items-center gap-2 rounded-md border ps-2.5 pe-2',
-      'border-border-field bg-canvas text-start text-control text-fg',
-      'hover:border-border-strong data-popup-open:border-border-strong',
+      fieldFrame,
+      'min-w-0 ps-2.5 pe-2 text-start text-control text-fg',
+      'data-popup-open:border-border-strong',
       'data-disabled:cursor-not-allowed data-disabled:border-border-subtle',
       'data-disabled:bg-surface-disabled data-disabled:text-fg-disabled',
       'data-invalid:border-danger',
@@ -28,16 +30,10 @@ const select = tv({
     positioner: 'z-50 outline-none',
     popup: [
       'max-h-(--available-height) min-w-(--anchor-width) overflow-y-auto',
-      'rounded-xl border border-border bg-surface-floating p-1.5',
-      'shadow-overlay outline-none',
-      popTransition,
+      'p-1.5 outline-none',
+      panelSurface,
     ],
-    item: [
-      'flex h-menu-item cursor-default items-center gap-2.5 rounded-md',
-      'ps-2.5 pe-2 text-control text-fg-muted outline-none select-none',
-      'data-highlighted:bg-surface-selected data-highlighted:text-fg',
-      'data-selected:text-fg data-disabled:text-fg-disabled',
-    ],
+    item: [panelItem, 'ps-2.5 pe-2 data-selected:text-fg'],
     itemText: 'min-w-0 flex-1 truncate',
     indicator: 'shrink-0 text-fg-brand',
   },
@@ -121,7 +117,7 @@ export function Select<Value extends string>({
       <BaseSelect.Portal>
         <BaseSelect.Positioner
           className={styles.positioner()}
-          sideOffset={4}
+          sideOffset={PANEL_OFFSET}
           alignItemWithTrigger={false}
         >
           <BaseSelect.Popup className={styles.popup()}>

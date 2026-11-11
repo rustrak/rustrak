@@ -151,6 +151,7 @@ function SuggestionRow({
   onHighlight,
   onSelect,
 }: SuggestionRowProps) {
+  const labels = useDataTableLabels();
   const shared = {
     id: optionId,
     'data-highlighted': highlighted,
@@ -210,7 +211,9 @@ function SuggestionRow({
   return (
     <div {...shared} role="option" tabIndex={-1} aria-selected={false}>
       <SearchIcon size="lg" className={styles.optionIcon()} />
-      <span className={styles.optionLabel()}>Search “{suggestion.text}”</span>
+      <span className={styles.optionLabel()}>
+        {labels.searchFor(suggestion.text)}
+      </span>
       <Kbd>⏎</Kbd>
     </div>
   );
@@ -293,7 +296,7 @@ function SuggestionsPopup({
         ) : null}
         {activeField && activeField.variant === 'text' ? (
           <div className={styles.option()}>
-            <span className={styles.optionLabel()}>Type a value, then</span>
+            <span className={styles.optionLabel()}>{labels.typeValueThen}</span>
             <Kbd>⏎</Kbd>
           </div>
         ) : null}
@@ -302,15 +305,15 @@ function SuggestionsPopup({
         suggestions.length === 0 &&
         activeField?.variant === 'options' ? (
           <div className="px-2.5 py-3 text-center text-control text-fg-ghost">
-            Nothing matches
+            {labels.nothingMatches}
           </div>
         ) : null}
       </div>
 
       <span aria-hidden="true" className={styles.hints()}>
-        <span>↑↓ navigate</span>
-        <span>⏎ select</span>
-        <span>esc closes</span>
+        <span>↑↓ {labels.hintNavigate}</span>
+        <span>⏎ {labels.hintSelect}</span>
+        <span>{labels.hintClose}</span>
       </span>
     </div>
   );
@@ -379,7 +382,7 @@ export function QueryBar({
                 <span className={styles.chipValue()}>{chip.value}</span>
                 <button
                   type="button"
-                  aria-label={`Remove ${chip.label} filter`}
+                  aria-label={labels.removeFilter(chip.label)}
                   className={styles.chipRemove()}
                   onClick={() => removeFilter(chip.key)}
                 >

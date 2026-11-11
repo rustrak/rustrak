@@ -46,7 +46,9 @@ export function YTick({ x, y, payload, format }: TickProps) {
       y={y}
       dy={3}
       textAnchor="end"
-      className="fill-fg-ghost font-mono text-mono-sm tabular-nums"
+      // `width="auto"` measures only nodes carrying recharts' own tick class;
+      // without it the axis is sized to 0 and every label falls off the left.
+      className="recharts-cartesian-axis-tick-value fill-fg-ghost font-mono text-mono-sm tabular-nums"
     >
       {format ? format(payload.value) : payload.value}
     </text>

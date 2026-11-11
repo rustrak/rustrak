@@ -20,7 +20,7 @@ const meta = {
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
-      <DialogProvider>
+      <DialogProvider closeLabel="Close">
         <Story />
       </DialogProvider>
     ),
@@ -125,12 +125,24 @@ export const Confirm: Story = {
       expect(canvas.getByTestId('answer')).toHaveTextContent('kept'),
     );
 
+    // Enter is a no too: focus starts on the way out, and the action
+    // promises no ⏎ it would not keep.
+    await userEvent.click(canvas.getByRole('button', { name: 'Delete issue' }));
+    let dialog = await body.findByRole('alertdialog');
+    await expect(
+      within(dialog).getByRole('button', { name: 'Delete' }),
+    ).toBeInTheDocument();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(body.queryByRole('alertdialog')).not.toBeInTheDocument(),
+    );
+    await expect(canvas.getByTestId('answer')).toHaveTextContent('kept');
+
     // Accepting: the action, and only the action, answers yes.
     await userEvent.click(canvas.getByRole('button', { name: 'Delete issue' }));
-    const dialog = await body.findByRole('alertdialog');
-    // The shortcut rides in the accessible name: "Delete ⏎".
+    dialog = await body.findByRole('alertdialog');
     await userEvent.click(
-      within(dialog).getByRole('button', { name: /^Delete/ }),
+      within(dialog).getByRole('button', { name: 'Delete' }),
     );
     await waitFor(() =>
       expect(canvas.getByTestId('answer')).toHaveTextContent('deleted'),
@@ -154,6 +166,9 @@ export const ConfirmWithPhrase: Story = {
                 'Every issue, event and alert rule in it is destroyed.',
               confirmLabel: 'Delete project',
               phrase: 'checkout-api',
+              // The words around the phrase are the app's, like every label.
+              phraseLabel: (phrase) => <>Escribe {phrase} para continuar</>,
+              charactersLeft: (count) => `Faltan ${count} caracteres`,
             });
             setAnswer(confirmed ? 'deleted' : 'kept');
           }}
@@ -176,6 +191,14 @@ export const ConfirmWithPhrase: Story = {
       name: /Delete project/,
     });
 
+    // The prompt and the countdown speak the caller's words.
+    await expect(
+      within(dialog).getByRole('textbox', {
+        name: 'Escribe checkout-api para continuar',
+      }),
+    ).toBeInTheDocument();
+    await expect(dialog).toHaveTextContent('Faltan 12 caracteres');
+
     // Locked until the phrase is typed, and typing it unlocks.
     await expect(action).toBeDisabled();
     await userEvent.click(within(dialog).getByRole('textbox'));
@@ -188,6 +211,10 @@ export const ConfirmWithPhrase: Story = {
     );
   },
 };
+
+// A phrase comes with the words that ask for it: no English is made up here.
+// @ts-expect-error -- `phraseLabel` and `charactersLeft` are required with `phrase`.
+const _phraseWithoutLabels = () => confirm({ title: 'Purge', phrase: 'purge' });
 
 /** `alert` tells something that must be read, and waits to be dismissed. */
 export const Alert: Story = {

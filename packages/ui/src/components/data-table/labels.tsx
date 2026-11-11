@@ -50,6 +50,16 @@ export interface DataTableLabels {
   filterAndSearch: string;
   addFilter: string;
   clearAll: string;
+  /** The suggestions' key hints: "↑↓ navigate", "⏎ select", "esc closes". */
+  hintNavigate: string;
+  hintSelect: string;
+  hintClose: string;
+  /** Before the ⏎ key, while a free-text value is being typed. */
+  typeValueThen: string;
+  /** Names a chip's remove button: "Remove Level filter". */
+  removeFilter: (name: string) => string;
+  /** The free-text suggestion: "Search “timeout”". */
+  searchFor: (text: string) => string;
 }
 
 const ENGLISH_LABELS: DataTableLabels = {
@@ -91,6 +101,12 @@ const ENGLISH_LABELS: DataTableLabels = {
   filterAndSearch: 'Filter and search',
   addFilter: 'Add a filter…',
   clearAll: 'Clear filters and search',
+  hintNavigate: 'navigate',
+  hintSelect: 'select',
+  hintClose: 'esc closes',
+  typeValueThen: 'Type a value, then',
+  removeFilter: (name) => `Remove ${name} filter`,
+  searchFor: (text) => `Search “${text}”`,
 };
 
 const LabelsContext = createContext<DataTableLabels>(ENGLISH_LABELS);
