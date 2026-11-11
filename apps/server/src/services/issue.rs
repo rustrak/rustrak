@@ -188,8 +188,8 @@ fn value_to_tag_string_opt(v: &serde_json::Value) -> Option<String> {
     value_to_tag_string(v)
 }
 
-/// Extracts a stable user identity (id, else email, else ip_address) for unique
-/// user counting.
+/// The identity a user is counted by, as Sentry's `EventUser.tag_value`:
+/// the first non-empty of id, username, email and ip_address.
 fn extract_user_identity(data: &serde_json::Value) -> Option<String> {
     user_identity_from_user_field(data.get("user")?)
 }
@@ -199,10 +199,15 @@ fn extract_user_identity(data: &serde_json::Value) -> Option<String> {
 /// `list_stats`'s SQL can project just `data->'user'` instead of hydrating
 /// the entire event payload for every event on the issue-list hot path.
 pub(crate) fn user_identity_from_user_field(user: &serde_json::Value) -> Option<String> {
-    for field in ["id", "email", "username", "ip_address"] {
+    for (field, key) in [
+        ("id", "id"),
+        ("username", "username"),
+        ("email", "email"),
+        ("ip_address", "ip"),
+    ] {
         if let Some(s) = user.get(field).and_then(|v| v.as_str()) {
             if !s.is_empty() {
-                return Some(format!("{}:{}", field, s));
+                return Some(format!("{key}:{s}"));
             }
         }
     }
@@ -1536,6 +1541,21 @@ mod tests {
         assert_eq!(
             user_identity_from_user_field(&user),
             Some("email:a@b.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_user_identity_from_user_field_follows_sentry_order() {
+        let user =
+            serde_json::json!({"email": "a@b.com", "username": "bob", "ip_address": "1.2.3.4"});
+        assert_eq!(
+            user_identity_from_user_field(&user),
+            Some("username:bob".to_string())
+        );
+        let user = serde_json::json!({"ip_address": "1.2.3.4"});
+        assert_eq!(
+            user_identity_from_user_field(&user),
+            Some("ip:1.2.3.4".to_string())
         );
     }
 

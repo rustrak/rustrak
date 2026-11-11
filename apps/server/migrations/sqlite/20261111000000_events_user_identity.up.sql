@@ -1,6 +1,7 @@
--- The identity an event's user is counted by: the first of `user.id`,
--- `email`, `username` and `ip_address` that is a non-empty string, prefixed
--- with its name (`user_identity_from_user_field`). Kept at digest time, so
+-- The identity an event's user is counted by, as Sentry's
+-- `EventUser.tag_value`: the first of `user.id`, `username`, `email` and
+-- `ip_address` that is a non-empty string, prefixed `id:`, `username:`,
+-- `email:` or `ip:` (`user_identity_from_user_field`). Kept at digest time, so
 -- the issue list counts users without reading every event's payload.
 ALTER TABLE events ADD COLUMN user_identity TEXT;
 
@@ -11,12 +12,12 @@ ALTER TABLE events ADD COLUMN user_identity TEXT;
 UPDATE events SET user_identity = CASE
     WHEN json_type(data, '$.user.id') = 'text' AND json_extract(data, '$.user.id') <> ''
         THEN 'id:' || json_extract(data, '$.user.id')
-    WHEN json_type(data, '$.user.email') = 'text' AND json_extract(data, '$.user.email') <> ''
-        THEN 'email:' || json_extract(data, '$.user.email')
     WHEN json_type(data, '$.user.username') = 'text' AND json_extract(data, '$.user.username') <> ''
         THEN 'username:' || json_extract(data, '$.user.username')
+    WHEN json_type(data, '$.user.email') = 'text' AND json_extract(data, '$.user.email') <> ''
+        THEN 'email:' || json_extract(data, '$.user.email')
     WHEN json_type(data, '$.user.ip_address') = 'text' AND json_extract(data, '$.user.ip_address') <> ''
-        THEN 'ip_address:' || json_extract(data, '$.user.ip_address')
+        THEN 'ip:' || json_extract(data, '$.user.ip_address')
 END
 WHERE ingested_at >= date('now', '-2 days');
 
