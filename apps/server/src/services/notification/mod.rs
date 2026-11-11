@@ -223,6 +223,10 @@ pub(crate) fn shared_http_client() -> &'static reqwest::Client {
             .dns_resolver(std::sync::Arc::new(PublicOnly))
             // A redirect is a second destination nobody checked.
             .redirect(reqwest::redirect::Policy::none())
+            // A proxy resolves the host itself, out of PublicOnly's reach, and
+            // reqwest reads HTTP(S)_PROXY / ALL_PROXY even without default
+            // features. Alerts connect directly.
+            .no_proxy()
             .build()
             .expect("the alert HTTP client could not be built")
     })
