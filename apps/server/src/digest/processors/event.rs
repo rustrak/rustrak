@@ -193,7 +193,13 @@ impl ErrorProcessor {
         // original per-item budget — see services::event_trim. Only runs for
         // the (rare) events that needed the relaxed ingest ceiling, so this
         // is a no-op for the common case.
-        if event_bytes.len() > crate::ingest::parser::TARGET_EVENT_SIZE {
+        // Measured without the attachments it carried, as Relay measures it.
+        let event_size = if attachments.is_empty() {
+            event_bytes.len()
+        } else {
+            serde_json::to_vec(&event_data).map_or(event_bytes.len(), |bytes| bytes.len())
+        };
+        if event_size > crate::ingest::parser::TARGET_EVENT_SIZE {
             crate::services::trim_oversized_event(&mut event_data);
         }
         // The raw file contents are no longer needed once the tree is parsed
