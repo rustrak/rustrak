@@ -278,13 +278,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_accumulator_default() {
-        let acc = MetricsAccumulator::default();
-        assert_eq!(acc.cpu_samples, 0);
-        assert_eq!(acc.memory_samples, 0);
-    }
-
-    #[test]
     fn test_metrics_finalize() {
         let acc = MetricsAccumulator {
             cpu_total: 150.0,

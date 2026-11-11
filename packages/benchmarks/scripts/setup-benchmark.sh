@@ -30,46 +30,36 @@ if [ $attempt -eq $max_attempts ]; then
     exit 1
 fi
 
-# Small delay to ensure migrations are complete
-sleep 2
-
 # Login to get session cookie
 echo "🔐 Logging in as superuser..."
-LOGIN_RESPONSE=$(curl -s -c /tmp/bench-cookies.txt -b /tmp/bench-cookies.txt \
+if ! curl -sSf -o /dev/null -c /tmp/bench-cookies.txt -b /tmp/bench-cookies.txt \
     -X POST "$SERVER_URL/auth/login" \
     -H "Content-Type: application/json" \
-    -d "{\"email\": \"$SUPERUSER_EMAIL\", \"password\": \"$SUPERUSER_PASSWORD\"}")
-
-if echo "$LOGIN_RESPONSE" | grep -q "error"; then
-    echo "❌ Login failed: $LOGIN_RESPONSE"
+    -d "{\"email\": \"$SUPERUSER_EMAIL\", \"password\": \"$SUPERUSER_PASSWORD\"}"; then
+    echo "❌ Login failed"
     exit 1
 fi
 echo "✅ Logged in successfully"
 
 # Check if project already exists
 echo "📦 Checking for existing benchmark project..."
-PROJECTS_RESPONSE=$(curl -s -b /tmp/bench-cookies.txt "$SERVER_URL/api/projects")
+PROJECT=$(curl -sSf -b /tmp/bench-cookies.txt "$SERVER_URL/api/projects" |
+    jq -c --arg name "$PROJECT_NAME" '.items[] | select(.name == $name)' | head -1)
 
-if echo "$PROJECTS_RESPONSE" | grep -q "$PROJECT_NAME"; then
+if [ -n "$PROJECT" ]; then
     echo "✅ Benchmark project already exists"
-    # Extract project info
-    PROJECT_ID=$(echo "$PROJECTS_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
-    SENTRY_KEY=$(echo "$PROJECTS_RESPONSE" | grep -o '"sentry_key":"[^"]*"' | head -1 | cut -d'"' -f4)
+    PROJECT_ID=$(echo "$PROJECT" | jq -r .id)
+    SENTRY_KEY=$(echo "$PROJECT" | jq -r .sentry_key)
 else
     # Create benchmark project
     echo "📦 Creating benchmark project..."
-    CREATE_RESPONSE=$(curl -s -b /tmp/bench-cookies.txt \
+    CREATE_RESPONSE=$(curl -sSf -b /tmp/bench-cookies.txt \
         -X POST "$SERVER_URL/api/projects" \
         -H "Content-Type: application/json" \
         -d "{\"name\": \"$PROJECT_NAME\", \"slug\": \"benchmark\"}")
 
-    if echo "$CREATE_RESPONSE" | grep -q "error"; then
-        echo "❌ Failed to create project: $CREATE_RESPONSE"
-        exit 1
-    fi
-
-    PROJECT_ID=$(echo "$CREATE_RESPONSE" | grep -o '"id":[0-9]*' | cut -d: -f2)
-    SENTRY_KEY=$(echo "$CREATE_RESPONSE" | grep -o '"sentry_key":"[^"]*"' | cut -d'"' -f4)
+    PROJECT_ID=$(echo "$CREATE_RESPONSE" | jq -r .id)
+    SENTRY_KEY=$(echo "$CREATE_RESPONSE" | jq -r .sentry_key)
     echo "✅ Created project with ID: $PROJECT_ID"
 fi
 
@@ -83,7 +73,7 @@ TOKEN_RESPONSE=$(curl -s -b /tmp/bench-cookies.txt \
     -H "Content-Type: application/json" \
     -d '{"description": "benchmark-read-scenario"}')
 
-API_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+API_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.token // empty')
 
 if [ -z "$API_TOKEN" ]; then
     echo "⚠️  Could not create API token: $TOKEN_RESPONSE"

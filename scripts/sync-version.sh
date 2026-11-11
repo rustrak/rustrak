@@ -20,11 +20,7 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed -i '' -E "s/^version = \".+\"/version = \"$VERSION\"/" "$CARGO_TOML"
-else
-  sed -i -E "s/^version = \".+\"/version = \"$VERSION\"/" "$CARGO_TOML"
-fi
+perl -pi -e "s/^version = \".+\"/version = \"$VERSION\"/" "$CARGO_TOML"
 
 if ! grep -Eq "^version = \"$VERSION\"$" "$CARGO_TOML"; then
   echo "ERROR: failed to update version in $CARGO_TOML"

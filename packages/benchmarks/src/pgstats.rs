@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use thiserror::Error;
+use tokio_postgres::error::SqlState;
 use tokio_postgres::{Client, NoTls};
 
 /// PostgreSQL stats collection errors
@@ -285,10 +286,10 @@ impl PgStatsCollector {
                     }
                 }
                 Ok(None) => {}
-                Err(_) => {
-                    // View absent on this major version (e.g. pg_stat_checkpointer
-                    // before 17). Not an error — just nothing to record.
-                }
+                // View absent on this major version (e.g. pg_stat_checkpointer
+                // before 17): nothing to record.
+                Err(e) if e.code() == Some(&SqlState::UNDEFINED_TABLE) => {}
+                Err(e) => eprintln!("Warning: could not sample {label}: {e}"),
             }
         }
 

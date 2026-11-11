@@ -4,7 +4,7 @@
  * hand-rolled envelope. This is the true compatibility test: if Rustrak stores
  * what `@sentry/node` sends, a Sentry SDK can't tell the difference.
  *
- * Logs are enabled with `enableLogs: true` and emitted via `Sentry.logger.*`.
+ * Logs are emitted via `Sentry.logger.*`.
  * The SDK batches them and flushes on `Sentry.flush()`.
  *
  * Usage:
@@ -12,19 +12,12 @@
  * Default DSN targets project 1 on a local server.
  */
 import * as Sentry from '@sentry/node';
-
-const DSN =
-  process.env.SENTRY_DSN ??
-  'http://0cabb1ed295f4cf6b41411220caa8eb6@localhost:8080/1';
-const RELEASE = process.env.SENTRY_RELEASE ?? 'demo@1.0.0';
-const ENV = process.env.SENTRY_ENV ?? 'production';
+import { DSN, ENV, RELEASE } from '../../src/env.js';
 
 Sentry.init({
   dsn: DSN,
   release: RELEASE,
   environment: ENV,
-  // Logs feature (Sentry SDK v9.17+/v10).
-  enableLogs: true,
   // Tracing on so logs emitted inside a span pick up trace_id/span_id.
   tracesSampleRate: 1.0,
   defaultIntegrations: false,

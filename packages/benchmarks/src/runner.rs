@@ -29,6 +29,8 @@ pub enum RunnerError {
     InvalidUrl(String),
     #[error("The '{0}' scenario needs a PostgreSQL connection (pass --postgres-url)")]
     PostgresRequired(String),
+    #[error(transparent)]
+    Postgres(#[from] crate::pgstats::PgStatsError),
 }
 
 /// Request result
@@ -40,6 +42,23 @@ pub struct RequestResult {
     pub status: u16,
     /// Whether the request was successful (2xx)
     pub success: bool,
+}
+
+/// A request's result, timed from `start` to the end of its body.
+///
+/// The body is read to the end: a response dropped unread closes its
+/// connection, so every request opened a new one and a high rate ran out of
+/// local ports.
+async fn outcome(result: reqwest::Result<reqwest::Response>, start: Instant) -> RequestResult {
+    let (status, read) = match result {
+        Ok(resp) => (resp.status().as_u16(), resp.bytes().await.is_ok()),
+        Err(_) => (0, false),
+    };
+    RequestResult {
+        latency_us: start.elapsed().as_micros() as u64,
+        status,
+        success: read && (200..300).contains(&status),
+    }
 }
 
 /// Live statistics during benchmark
@@ -221,23 +240,7 @@ impl BenchmarkRunner {
             .send()
             .await;
 
-        let latency_us = start.elapsed().as_micros() as u64;
-
-        match result {
-            Ok(resp) => {
-                let status = resp.status().as_u16();
-                RequestResult {
-                    latency_us,
-                    status,
-                    success: resp.status().is_success(),
-                }
-            }
-            Err(_) => RequestResult {
-                latency_us,
-                status: 0,
-                success: false,
-            },
-        }
+        outcome(result, start).await
     }
 
     /// Run warmup phase
@@ -323,28 +326,13 @@ impl BenchmarkRunner {
                         .send()
                         .await;
 
-                    let latency_us = req_start.elapsed().as_micros() as u64;
-
-                    let request_result = match result {
-                        Ok(resp) => {
-                            let status = resp.status().as_u16();
-                            RequestResult {
-                                latency_us,
-                                status,
-                                success: resp.status().is_success(),
-                            }
-                        }
-                        Err(_) => RequestResult {
-                            latency_us,
-                            status: 0,
-                            success: false,
-                        },
-                    };
+                    let request_result = outcome(result, req_start).await;
+                    let latency_us = request_result.latency_us;
 
                     stats.record(&request_result);
 
                     if let Ok(mut hist) = histogram.try_lock() {
-                        let _ = hist.record(latency_us);
+                        hist.saturating_record(latency_us);
                     }
                 }
             });
@@ -443,23 +431,7 @@ impl BenchmarkRunner {
                             .send()
                             .await;
 
-                        let latency_us = req_start.elapsed().as_micros() as u64;
-
-                        match result {
-                            Ok(resp) => {
-                                let status = resp.status().as_u16();
-                                RequestResult {
-                                    latency_us,
-                                    status,
-                                    success: resp.status().is_success(),
-                                }
-                            }
-                            Err(_) => RequestResult {
-                                latency_us,
-                                status: 0,
-                                success: false,
-                            },
-                        }
+                        outcome(result, req_start).await
                     }
                 })
                 .buffer_unordered(self.config.concurrency as usize)
@@ -471,7 +443,7 @@ impl BenchmarkRunner {
             for result in &results {
                 stats.record(result);
                 if let Ok(mut hist) = histogram.try_lock() {
-                    let _ = hist.record(result.latency_us);
+                    hist.saturating_record(result.latency_us);
                 }
             }
 
@@ -525,7 +497,7 @@ impl BenchmarkRunner {
 
             {
                 let mut hist = histogram.lock().await;
-                let _ = hist.record(result.latency_us);
+                hist.saturating_record(result.latency_us);
             }
 
             pb.set_position(start.elapsed().as_secs());
@@ -617,29 +589,14 @@ impl BenchmarkRunner {
                             .send()
                             .await;
 
-                        let latency_us = req_start.elapsed().as_micros() as u64;
-
-                        let request_result = match result {
-                            Ok(resp) => {
-                                let status = resp.status().as_u16();
-                                RequestResult {
-                                    latency_us,
-                                    status,
-                                    success: resp.status().is_success(),
-                                }
-                            }
-                            Err(_) => RequestResult {
-                                latency_us,
-                                status: 0,
-                                success: false,
-                            },
-                        };
+                        let request_result = outcome(result, req_start).await;
+                        let latency_us = request_result.latency_us;
 
                         local_step_stats.record(&request_result);
                         global_stats.record(&request_result);
 
                         if let Ok(mut hist) = histogram.try_lock() {
-                            let _ = hist.record(latency_us);
+                            hist.saturating_record(latency_us);
                         }
                     }
                 });
@@ -752,30 +709,15 @@ impl BenchmarkRunner {
                         .send()
                         .await;
 
-                    let latency_us = req_start.elapsed().as_micros() as u64;
-
-                    let request_result = match result {
-                        Ok(resp) => {
-                            let status = resp.status().as_u16();
-                            RequestResult {
-                                latency_us,
-                                status,
-                                success: resp.status().is_success(),
-                            }
-                        }
-                        Err(_) => RequestResult {
-                            latency_us,
-                            status: 0,
-                            success: false,
-                        },
-                    };
+                    let request_result = outcome(result, req_start).await;
+                    let latency_us = request_result.latency_us;
 
                     stats.record(&request_result);
                     if request_result.success && matches!(kind, PayloadKind::Error) {
                         errors_ok.fetch_add(1, Ordering::Relaxed);
                     }
                     if let Ok(mut hist) = histogram.try_lock() {
-                        let _ = hist.record(latency_us);
+                        hist.saturating_record(latency_us);
                     }
                     pb.inc(1);
                 }
@@ -961,7 +903,7 @@ impl BenchmarkRunner {
         &self,
         generator: Arc<Mutex<EnvelopeGenerator>>,
         pg: &crate::pgstats::PgStatsCollector,
-    ) -> BenchmarkResults {
+    ) -> Result<BenchmarkResults, RunnerError> {
         let read_config = &self.config.read;
 
         // ---- Seed phase (not measured) ----
@@ -1008,10 +950,10 @@ impl BenchmarkRunner {
         // comparison measures the engine rather than which run happened to get
         // an autovacuum or a checkpoint mid-flight.
         println!("{}", "Running ANALYZE and CHECKPOINT...".dimmed());
-        let _ = pg.analyze().await;
-        let _ = pg.checkpoint().await;
+        pg.analyze().await?;
+        pg.checkpoint().await?;
 
-        let issue_ids = self.fetch_issue_ids().await;
+        let issue_ids = self.fetch_issue_ids().await?;
         println!(
             "{}",
             format!("Querying against {} issues", issue_ids.len()).dimmed()
@@ -1036,14 +978,14 @@ impl BenchmarkRunner {
                 "No read endpoints responded successfully; nothing to measure".red()
             );
             let empty = Histogram::<u64>::new_with_bounds(1, 60_000_000, 3).unwrap();
-            return BenchmarkResults::new(
+            return Ok(BenchmarkResults::new(
                 &self.config,
                 StatsSnapshot::default(),
                 &empty,
                 Duration::from_secs(0),
                 None,
             )
-            .with_endpoint_metrics(Vec::new());
+            .with_endpoint_metrics(Vec::new()));
         }
 
         let duration = Duration::from_secs(read_config.duration_secs);
@@ -1103,21 +1045,8 @@ impl BenchmarkRunner {
                     if let Some(ref token) = token {
                         request = request.bearer_auth(token);
                     }
-                    let result = request.send().await;
-                    let latency_us = req_start.elapsed().as_micros() as u64;
-
-                    let request_result = match result {
-                        Ok(resp) => RequestResult {
-                            latency_us,
-                            status: resp.status().as_u16(),
-                            success: resp.status().is_success(),
-                        },
-                        Err(_) => RequestResult {
-                            latency_us,
-                            status: 0,
-                            success: false,
-                        },
-                    };
+                    let request_result = outcome(request.send().await, req_start).await;
+                    let latency_us = request_result.latency_us;
 
                     stats.record(&request_result);
                     per_endpoint_counts[index].0.fetch_add(1, Ordering::Relaxed);
@@ -1126,10 +1055,10 @@ impl BenchmarkRunner {
                     }
 
                     if let Ok(mut hist) = combined.try_lock() {
-                        let _ = hist.record(latency_us);
+                        hist.saturating_record(latency_us);
                     }
                     if let Ok(mut hist) = per_endpoint[index].try_lock() {
-                        let _ = hist.record(latency_us);
+                        hist.saturating_record(latency_us);
                     }
 
                     index = (index + 1) % endpoints.len();
@@ -1174,15 +1103,17 @@ impl BenchmarkRunner {
 
         let combined_hist = combined.lock().await;
 
-        BenchmarkResults::new(&self.config, snapshot, &combined_hist, total_duration, None)
-            .with_endpoint_metrics(endpoint_metrics)
+        Ok(
+            BenchmarkResults::new(&self.config, snapshot, &combined_hist, total_duration, None)
+                .with_endpoint_metrics(endpoint_metrics),
+        )
     }
 
     /// Fetch issue IDs to query during the read scenario.
     ///
     /// Issue IDs are UUID strings, and the list endpoint wraps results in an
     /// `items` array.
-    async fn fetch_issue_ids(&self) -> Vec<String> {
+    async fn fetch_issue_ids(&self) -> Result<Vec<String>, RunnerError> {
         let url = format!(
             "{}/api/projects/{}/issues?limit=100",
             self.server_url, self.project_id
@@ -1193,12 +1124,12 @@ impl BenchmarkRunner {
             request = request.bearer_auth(token);
         }
 
-        let Ok(resp) = request.send().await else {
-            return Vec::new();
-        };
-        let Ok(body) = resp.json::<serde_json::Value>().await else {
-            return Vec::new();
-        };
+        let body = request
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<serde_json::Value>()
+            .await?;
 
         let items = body
             .get("items")
@@ -1206,14 +1137,14 @@ impl BenchmarkRunner {
             .cloned()
             .unwrap_or_default();
 
-        items
+        Ok(items
             .iter()
             .filter_map(|item| {
                 item.get("id")
                     .and_then(|id| id.as_str())
                     .map(str::to_string)
             })
-            .collect()
+            .collect())
     }
 
     /// Probe each endpoint once, keeping only those that return 2xx.
@@ -1317,19 +1248,13 @@ impl BenchmarkRunner {
             include_tags: self.config.event.include_tags,
             include_extra: self.config.event.include_extra,
             environment: "benchmark".to_string(),
-            release: "rustrak-bench@0.1.0".to_string(),
+            release: concat!("rustrak-bench@", env!("CARGO_PKG_VERSION")).to_string(),
             error_type: "BenchmarkError".to_string(),
             distinct_groups: self.config.event.distinct_groups,
             transaction_ratio: self.config.event.transaction_ratio,
             spans_per_transaction: self.config.event.spans_per_transaction,
         };
         let generator = Arc::new(Mutex::new(EnvelopeGenerator::new(event_config)));
-
-        // Warmup
-        {
-            let mut gen = generator.lock().await;
-            self.warmup(&mut gen).await;
-        }
 
         // Connect to PostgreSQL for engine statistics. The drain and read
         // scenarios require it (they need to observe digest progress); the
@@ -1368,7 +1293,11 @@ impl BenchmarkRunner {
             ));
         }
 
-        // Start container metrics collection
+        {
+            let mut gen = generator.lock().await;
+            self.warmup(&mut gen).await;
+        }
+
         let server_metrics = self
             .start_container_metrics(self.container_name.as_deref())
             .await;
@@ -1392,7 +1321,7 @@ impl BenchmarkRunner {
             }
             ScenarioType::Read => {
                 let pg = pg_collector.as_ref().expect("checked above");
-                self.run_read(generator, pg).await
+                self.run_read(generator, pg).await?
             }
         };
 
@@ -1458,5 +1387,68 @@ fn histogram_to_latency(histogram: &Histogram<u64>) -> LatencyMetrics {
         max: histogram.max() as f64 / 1000.0,
         min: histogram.min() as f64 / 1000.0,
         mean: histogram.mean() / 1000.0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A server that answers every request with a body and counts the
+    /// connections it accepts.
+    async fn counting_server() -> (String, Arc<AtomicU64>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        let connections = Arc::new(AtomicU64::new(0));
+        let counted = Arc::clone(&connections);
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                counted.fetch_add(1, Ordering::Relaxed);
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let mut seen = Vec::new();
+                    loop {
+                        let Ok(n) = socket.read(&mut buf).await else {
+                            return;
+                        };
+                        if n == 0 {
+                            return;
+                        }
+                        seen.extend_from_slice(&buf[..n]);
+                        while let Some(end) = seen.windows(4).position(|w| w == b"\r\n\r\n") {
+                            seen.drain(..end + 4);
+                            // Larger than one read, so the body is still
+                            // unread when the headers are handed out.
+                            let body = vec![b'x'; 1 << 20];
+                            let mut reply = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                                body.len()
+                            )
+                            .into_bytes();
+                            reply.extend_from_slice(&body);
+                            if socket.write_all(&reply).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        (url, connections)
+    }
+
+    #[tokio::test]
+    async fn responses_are_drained_so_the_connection_is_reused() {
+        let (url, connections) = counting_server().await;
+        let client = Client::new();
+        for _ in 0..5 {
+            let start = Instant::now();
+            let result = outcome(client.get(&url).send().await, start).await;
+            assert!(result.success);
+            assert_eq!(result.status, 200);
+        }
+        assert_eq!(connections.load(Ordering::Relaxed), 1);
     }
 }

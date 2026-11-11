@@ -7,7 +7,7 @@ scenario_type = "stress"
 
 # Duration and load settings
 duration_secs = 600   # 10 minutes max
-target_rps = 0        # Not used for stress
+target_rps = 0
 concurrency = 100     # High concurrency for stress
 warmup_secs = 10
 
@@ -26,10 +26,3 @@ stack_depth = 5
 include_user = true
 include_tags = true
 include_extra = false
-
-# Docker resource limits
-[docker]
-server_cpus = "2"
-server_memory = "256M"
-postgres_cpus = "1"
-postgres_memory = "512M"

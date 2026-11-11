@@ -1,14 +1,17 @@
 //! Configuration parsing for benchmark scenarios.
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// Configuration errors
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("Failed to read config file: {0}")]
-    IoError(#[from] std::io::Error),
+    #[error("Failed to read {}: {source}", path.display())]
+    IoError {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("Failed to parse TOML: {0}")]
     TomlError(#[from] toml::de::Error),
 }
@@ -105,50 +108,6 @@ impl Default for EventConfig {
             distinct_groups: None,
             transaction_ratio: 0.0,
             spans_per_transaction: default_spans_per_transaction(),
-        }
-    }
-}
-
-/// Docker resource limits for the benchmark environment
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DockerLimits {
-    /// CPU limit for server container (e.g., "2")
-    #[serde(default = "default_server_cpus")]
-    pub server_cpus: String,
-    /// Memory limit for server container (e.g., "256M")
-    #[serde(default = "default_server_memory")]
-    pub server_memory: String,
-    /// CPU limit for postgres container
-    #[serde(default = "default_postgres_cpus")]
-    pub postgres_cpus: String,
-    /// Memory limit for postgres container
-    #[serde(default = "default_postgres_memory")]
-    pub postgres_memory: String,
-}
-
-fn default_server_cpus() -> String {
-    "2".to_string()
-}
-
-fn default_server_memory() -> String {
-    "256M".to_string()
-}
-
-fn default_postgres_cpus() -> String {
-    "1".to_string()
-}
-
-fn default_postgres_memory() -> String {
-    "512M".to_string()
-}
-
-impl Default for DockerLimits {
-    fn default() -> Self {
-        Self {
-            server_cpus: default_server_cpus(),
-            server_memory: default_server_memory(),
-            postgres_cpus: default_postgres_cpus(),
-            postgres_memory: default_postgres_memory(),
         }
     }
 }
@@ -369,9 +328,6 @@ pub struct ScenarioConfig {
     /// Event configuration
     #[serde(default)]
     pub event: EventConfig,
-    /// Docker resource limits
-    #[serde(default)]
-    pub docker: DockerLimits,
     /// Burst-specific configuration
     #[serde(default)]
     pub burst: BurstConfig,
@@ -413,7 +369,6 @@ impl Default for ScenarioConfig {
             concurrency: default_concurrency(),
             warmup_secs: default_warmup(),
             event: EventConfig::default(),
-            docker: DockerLimits::default(),
             burst: BurstConfig::default(),
             stress: StressConfig::default(),
             drain: DrainConfig::default(),
@@ -423,157 +378,54 @@ impl Default for ScenarioConfig {
 }
 
 impl ScenarioConfig {
-    /// Load configuration from a TOML file
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
-        let content = std::fs::read_to_string(path)?;
-        let config: ScenarioConfig = toml::from_str(&content)?;
-        Ok(config)
+    /// A scenario by name, `scenarios/<name>.toml`, or by path to any TOML.
+    pub fn load(name_or_path: &str) -> Result<Self, ConfigError> {
+        let path = Path::new(name_or_path);
+        let path = if path.extension().is_some_and(|e| e == "toml") {
+            path.to_path_buf()
+        } else {
+            scenarios_dir().join(format!("{name_or_path}.toml"))
+        };
+        let content = std::fs::read_to_string(&path)
+            .map_err(|source| ConfigError::IoError { path, source })?;
+        Ok(toml::from_str(&content)?)
     }
+}
 
-    /// Get baseline scenario configuration
-    pub fn baseline() -> Self {
-        Self {
-            name: "baseline".to_string(),
-            description: "Measure baseline latency with minimal load".to_string(),
-            scenario_type: ScenarioType::Baseline,
-            duration_secs: 60,
-            target_rps: 1,
-            concurrency: 1,
-            warmup_secs: 5,
-            ..Default::default()
-        }
-    }
-
-    /// Get burst scenario configuration
-    pub fn burst() -> Self {
-        Self {
-            name: "burst".to_string(),
-            description: "Test handling of traffic spikes".to_string(),
-            scenario_type: ScenarioType::Burst,
-            duration_secs: 120,
-            target_rps: 0, // Not used for burst
-            concurrency: 50,
-            warmup_secs: 5,
-            burst: BurstConfig {
-                burst_size: 10000,
-                pause_secs: 10,
-                cycles: 5,
-            },
-            ..Default::default()
-        }
-    }
-
-    /// Get sustained load scenario configuration
-    pub fn sustained() -> Self {
-        Self {
-            name: "sustained".to_string(),
-            description: "Test sustained load handling and memory stability".to_string(),
-            scenario_type: ScenarioType::Sustained,
-            duration_secs: 300,
-            target_rps: 1000,
-            concurrency: 50,
-            warmup_secs: 10,
-            ..Default::default()
-        }
-    }
-
-    /// Get stress test scenario configuration
-    pub fn stress() -> Self {
-        Self {
-            name: "stress".to_string(),
-            description: "Find server limits by ramping up load".to_string(),
-            scenario_type: ScenarioType::Stress,
-            duration_secs: 600,
-            target_rps: 0, // Not used for stress
-            concurrency: 100,
-            warmup_secs: 10,
-            stress: StressConfig {
-                initial_rps: 100,
-                rps_increment: 200,
-                step_duration_secs: 30,
-                max_rps: 10000,
-                error_threshold: 0.05,
-            },
-            ..Default::default()
-        }
-    }
-
-    /// Get digest-drain scenario configuration
-    pub fn drain() -> Self {
-        Self {
-            name: "drain".to_string(),
-            description: "Measure asynchronous digest throughput (the database-bound phase)"
-                .to_string(),
-            scenario_type: ScenarioType::Drain,
-            duration_secs: 0, // Bounded by event_count, not by time
-            target_rps: 0,
-            concurrency: 50,
-            warmup_secs: 5,
-            drain: DrainConfig::default(),
-            ..Default::default()
-        }
-    }
-
-    /// Get read-path scenario configuration
-    pub fn read() -> Self {
-        Self {
-            name: "read".to_string(),
-            description: "Measure dashboard query latency against a populated database".to_string(),
-            scenario_type: ScenarioType::Read,
-            duration_secs: 60,
-            target_rps: 0, // Readers run flat out
-            concurrency: 20,
-            warmup_secs: 5,
-            read: ReadConfig::default(),
-            ..Default::default()
-        }
-    }
-
-    /// Get a predefined scenario by name
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "baseline" => Some(Self::baseline()),
-            "burst" => Some(Self::burst()),
-            "sustained" => Some(Self::sustained()),
-            "stress" => Some(Self::stress()),
-            "drain" => Some(Self::drain()),
-            "read" => Some(Self::read()),
-            _ => None,
-        }
-    }
+/// The scenarios `--scenario <name>` resolves to.
+pub fn scenarios_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("scenarios")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Every shipped scenario parses, including the matrix's own.
     #[test]
-    fn test_default_config() {
-        let config = ScenarioConfig::default();
-        assert_eq!(config.duration_secs, 60);
-        assert_eq!(config.target_rps, 100);
-        assert_eq!(config.concurrency, 10);
+    fn every_scenario_file_loads() {
+        let dir = scenarios_dir();
+        let files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .chain(std::fs::read_dir(dir.join("matrix")).unwrap())
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|e| e == "toml"))
+            .collect();
+        assert!(files.len() >= 6);
+        for path in files {
+            let config =
+                ScenarioConfig::load(path.to_str().unwrap()).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(config.name, path.file_stem().unwrap().to_str().unwrap());
+        }
     }
 
     #[test]
-    fn test_predefined_scenarios() {
-        let baseline = ScenarioConfig::baseline();
-        assert_eq!(baseline.scenario_type, ScenarioType::Baseline);
-        assert_eq!(baseline.target_rps, 1);
-
-        let sustained = ScenarioConfig::sustained();
-        assert_eq!(sustained.scenario_type, ScenarioType::Sustained);
-        assert_eq!(sustained.target_rps, 1000);
-
-        let stress = ScenarioConfig::stress();
-        assert_eq!(stress.scenario_type, ScenarioType::Stress);
-    }
-
-    #[test]
-    fn test_from_name() {
-        assert!(ScenarioConfig::from_name("baseline").is_some());
-        assert!(ScenarioConfig::from_name("SUSTAINED").is_some());
-        assert!(ScenarioConfig::from_name("unknown").is_none());
+    fn a_name_resolves_to_its_file() {
+        assert_eq!(
+            ScenarioConfig::load("read").unwrap().scenario_type,
+            ScenarioType::Read
+        );
+        assert!(ScenarioConfig::load("unknown").is_err());
     }
 
     #[test]

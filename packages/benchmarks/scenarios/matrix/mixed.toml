@@ -37,9 +37,3 @@ distinct_groups = 300
 # 20% transactions, each carrying 10 child spans.
 transaction_ratio = 0.2
 spans_per_transaction = 10
-
-[docker]
-server_cpus = "2"
-server_memory = "256M"
-postgres_cpus = "1"
-postgres_memory = "512M"

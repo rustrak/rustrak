@@ -1,26 +1,17 @@
 import * as Sentry from '@sentry/node';
 
-export type { SourceMapTestConfig } from './sourcemaps.js';
-export { generateDebugId, testSourceMaps } from './sourcemaps.js';
-
-export interface TestConfig {
+export function initSentry(config: {
   dsn: string;
-  debug?: boolean;
-  environment?: string;
+  debug: boolean;
+  environment: string;
   release?: string;
-}
-
-/**
- * Initialize Sentry with the given configuration
- */
-export function initSentry(config: TestConfig): void {
+}): void {
   Sentry.init({
     dsn: config.dsn,
-    debug: config.debug ?? false,
-    environment: config.environment ?? 'test',
+    debug: config.debug,
+    environment: config.environment,
     release: config.release ?? 'test-sentry@1.0.0',
     tracesSampleRate: 1.0,
-    // Disable default integrations that might interfere with testing
     defaultIntegrations: false,
     integrations: [
       Sentry.consoleIntegration(),
@@ -30,34 +21,14 @@ export function initSentry(config: TestConfig): void {
   });
 }
 
-/**
- * Wait for all events to be sent to Sentry
- */
-export async function flush(timeout = 5000): Promise<boolean> {
-  return Sentry.flush(timeout);
-}
-
-// ============================================================================
-// Test Scenarios
-// ============================================================================
-
-/**
- * Test 1: Basic captured exception
- * Captures a simple Error with a message
- */
-export function testCapturedError(): string {
+export function testCapturedError(): void {
   const eventId = Sentry.captureException(
     new Error('Test captured error from test-sentry package'),
   );
   console.log(`[testCapturedError] Sent event: ${eventId}`);
-  return eventId;
 }
 
-/**
- * Test 2: TypeError exception
- * Simulates a common TypeError
- */
-export function testTypeError(): string {
+export function testTypeError(): void {
   try {
     const obj: unknown = null;
     // @ts-expect-error intentional error for testing
@@ -65,33 +36,20 @@ export function testTypeError(): string {
   } catch (error) {
     const eventId = Sentry.captureException(error);
     console.log(`[testTypeError] Sent event: ${eventId}`);
-    return eventId;
   }
-  return '';
 }
 
-/**
- * Test 3: ReferenceError exception
- * Simulates an undefined variable access
- */
-export function testReferenceError(): string {
+export function testReferenceError(): void {
   try {
     // @ts-expect-error intentional error for testing
-    // eslint-disable-next-line no-undef
     console.log(undefinedVariable);
   } catch (error) {
     const eventId = Sentry.captureException(error);
     console.log(`[testReferenceError] Sent event: ${eventId}`);
-    return eventId;
   }
-  return '';
 }
 
-/**
- * Test 4: Custom error class
- * Tests that custom error types are properly captured
- */
-export class CustomApplicationError extends Error {
+class CustomApplicationError extends Error {
   constructor(
     message: string,
     public readonly code: string,
@@ -102,7 +60,7 @@ export class CustomApplicationError extends Error {
   }
 }
 
-export function testCustomError(): string {
+export function testCustomError(): void {
   const error = new CustomApplicationError(
     'Something went wrong in the application',
     'ERR_CUSTOM_001',
@@ -110,28 +68,17 @@ export function testCustomError(): string {
   );
   const eventId = Sentry.captureException(error);
   console.log(`[testCustomError] Sent event: ${eventId}`);
-  return eventId;
 }
 
-/**
- * Test 5: Capture message (non-error event)
- * Tests log-level messages
- */
-export function testCaptureMessage(): string {
+export function testCaptureMessage(): void {
   const eventId = Sentry.captureMessage(
     'This is a test message from test-sentry',
     'info',
   );
   console.log(`[testCaptureMessage] Sent event: ${eventId}`);
-  return eventId;
 }
 
-/**
- * Test 6: Error with breadcrumbs
- * Tests that breadcrumbs are properly attached to events
- */
-export function testWithBreadcrumbs(): string {
-  // Add custom breadcrumbs
+export function testWithBreadcrumbs(): void {
   Sentry.addBreadcrumb({
     category: 'auth',
     message: 'User logged in',
@@ -177,14 +124,9 @@ export function testWithBreadcrumbs(): string {
     new Error('Error after breadcrumb trail'),
   );
   console.log(`[testWithBreadcrumbs] Sent event: ${eventId}`);
-  return eventId;
 }
 
-/**
- * Test 7: Error with user context
- * Tests that user information is properly attached
- */
-export function testWithUserContext(): string {
+export function testWithUserContext(): void {
   Sentry.setUser({
     id: 'user-456',
     email: 'testuser@example.com',
@@ -197,16 +139,10 @@ export function testWithUserContext(): string {
   );
   console.log(`[testWithUserContext] Sent event: ${eventId}`);
 
-  // Clear user context after test
   Sentry.setUser(null);
-  return eventId;
 }
 
-/**
- * Test 8: Error with tags
- * Tests that custom tags are properly attached
- */
-export function testWithTags(): string {
+export function testWithTags(): void {
   Sentry.setTag('environment', 'testing');
   Sentry.setTag('feature', 'error-tracking');
   Sentry.setTag('version', '2.0.0');
@@ -220,15 +156,9 @@ export function testWithTags(): string {
     );
     console.log(`[testWithTags] Sent event: ${eventId}`);
   });
-
-  return '';
 }
 
-/**
- * Test 9: Error with extra context
- * Tests that extra data is properly attached
- */
-export function testWithExtraContext(): string {
+export function testWithExtraContext(): void {
   Sentry.setExtra('request_id', 'req-789');
   Sentry.setExtra('timestamp', new Date().toISOString());
 
@@ -247,17 +177,10 @@ export function testWithExtraContext(): string {
     );
     console.log(`[testWithExtraContext] Sent event: ${eventId}`);
   });
-
-  return '';
 }
 
-/**
- * Test 10: Error with custom fingerprint
- * Tests custom grouping via fingerprint
- */
-export function testWithFingerprint(): string {
+export function testWithFingerprint(): void {
   Sentry.withScope((scope) => {
-    // Custom fingerprint to force grouping
     scope.setFingerprint(['custom-group', 'database-error']);
 
     const eventId = Sentry.captureException(
@@ -265,15 +188,9 @@ export function testWithFingerprint(): string {
     );
     console.log(`[testWithFingerprint] Sent event: ${eventId}`);
   });
-
-  return '';
 }
 
-/**
- * Test 11: Error with transaction name
- * Tests that transaction context is properly attached
- */
-export function testWithTransaction(): string {
+export function testWithTransaction(): void {
   Sentry.withScope((scope) => {
     scope.setTransactionName('POST /api/users/create');
 
@@ -282,15 +199,9 @@ export function testWithTransaction(): string {
     );
     console.log(`[testWithTransaction] Sent event: ${eventId}`);
   });
-
-  return '';
 }
 
-/**
- * Test 12: Nested error with cause
- * Tests error chain/cause handling
- */
-export function testNestedError(): string {
+export function testNestedError(): void {
   try {
     try {
       throw new Error('Root cause: database timeout');
@@ -302,15 +213,10 @@ export function testNestedError(): string {
   } catch (error) {
     const eventId = Sentry.captureException(error);
     console.log(`[testNestedError] Sent event: ${eventId}`);
-    return eventId;
   }
 }
 
-/**
- * Test 13: Error with stack trace from async operation
- * Tests async stack traces
- */
-export async function testAsyncError(): Promise<string> {
+export async function testAsyncError(): Promise<void> {
   async function innerAsync(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10));
     throw new Error('Async operation failed');
@@ -325,53 +231,30 @@ export async function testAsyncError(): Promise<string> {
   } catch (error) {
     const eventId = Sentry.captureException(error);
     console.log(`[testAsyncError] Sent event: ${eventId}`);
-    return eventId;
   }
-  return '';
 }
 
-/**
- * Test 14: Multiple errors in sequence
- * Tests that multiple events are properly queued and sent
- */
-export function testMultipleErrors(): string[] {
-  const eventIds: string[] = [];
-
+export function testMultipleErrors(): void {
   for (let i = 1; i <= 5; i++) {
     const eventId = Sentry.captureException(
       new Error(`Sequential error #${i}`),
     );
-    eventIds.push(eventId);
     console.log(`[testMultipleErrors] Sent event #${i}: ${eventId}`);
   }
-
-  return eventIds;
 }
 
-/**
- * Test 15: Error flood (rate limit test)
- * Sends many errors quickly to test rate limiting
- */
-export function testErrorFlood(count = 50): string[] {
-  const eventIds: string[] = [];
-
+export function testErrorFlood(count: number): void {
   console.log(`[testErrorFlood] Sending ${count} errors...`);
 
   for (let i = 1; i <= count; i++) {
-    const eventId = Sentry.captureException(
+    Sentry.captureException(
       new Error(`Flood error #${i} - testing rate limits`),
     );
-    eventIds.push(eventId);
   }
 
-  console.log(`[testErrorFlood] Sent ${eventIds.length} events`);
-  return eventIds;
+  console.log(`[testErrorFlood] Sent ${count} events`);
 }
 
-/**
- * Test 16: Different error levels
- * Tests various severity levels
- */
 export function testErrorLevels(): void {
   const levels: Sentry.SeverityLevel[] = [
     'fatal',
@@ -393,11 +276,7 @@ export function testErrorLevels(): void {
   }
 }
 
-/**
- * Test 17: Error with contexts (device, os, browser, etc.)
- * Tests custom context objects
- */
-export function testWithContexts(): string {
+export function testWithContexts(): void {
   Sentry.withScope((scope) => {
     scope.setContext('device', {
       name: 'Test Device',
@@ -430,54 +309,4 @@ export function testWithContexts(): string {
     );
     console.log(`[testWithContexts] Sent event: ${eventId}`);
   });
-
-  return '';
-}
-
-/**
- * Run all tests
- */
-export async function runAllTests(): Promise<void> {
-  console.log('\n=== Running All Sentry Tests ===\n');
-
-  // Basic errors
-  console.log('--- Basic Errors ---');
-  testCapturedError();
-  testTypeError();
-  testReferenceError();
-  testCustomError();
-  testNestedError();
-  await testAsyncError();
-
-  // Messages
-  console.log('\n--- Messages ---');
-  testCaptureMessage();
-
-  // Context tests
-  console.log('\n--- Context Tests ---');
-  testWithBreadcrumbs();
-  testWithUserContext();
-  testWithTags();
-  testWithExtraContext();
-  testWithContexts();
-
-  // Grouping tests
-  console.log('\n--- Grouping Tests ---');
-  testWithFingerprint();
-  testWithTransaction();
-
-  // Severity levels
-  console.log('\n--- Severity Levels ---');
-  testErrorLevels();
-
-  // Multiple errors
-  console.log('\n--- Multiple Errors ---');
-  testMultipleErrors();
-
-  // Flush and wait
-  console.log('\n--- Flushing Events ---');
-  const flushed = await flush(10000);
-  console.log(`Flush completed: ${flushed ? 'success' : 'timeout'}`);
-
-  console.log('\n=== All Tests Complete ===\n');
 }
