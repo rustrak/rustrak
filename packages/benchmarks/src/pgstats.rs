@@ -394,9 +394,19 @@ impl PgStatsCollector {
     }
 
     /// Force a checkpoint so buffered writes are flushed before measuring.
-    pub async fn checkpoint(&self) -> Result<(), PgStatsError> {
-        self.client.batch_execute("CHECKPOINT").await?;
-        Ok(())
+    /// `false` when the role may not checkpoint (superuser or `pg_checkpoint`
+    /// only); any other failure is an error.
+    pub async fn checkpoint(&self) -> Result<bool, PgStatsError> {
+        match self.client.batch_execute("CHECKPOINT").await {
+            Ok(()) => Ok(true),
+            Err(error)
+                if error.code()
+                    == Some(&tokio_postgres::error::SqlState::INSUFFICIENT_PRIVILEGE) =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 }
 

@@ -956,12 +956,10 @@ impl BenchmarkRunner {
         // an autovacuum or a checkpoint mid-flight.
         println!("{}", "Running ANALYZE and CHECKPOINT...".dimmed());
         pg.analyze().await?;
-        // CHECKPOINT needs superuser or pg_checkpoint; without it the run goes
-        // on, unnormalised, and says so.
-        if let Err(error) = pg.checkpoint().await {
+        if !pg.checkpoint().await? {
             println!(
                 "{}",
-                format!("CHECKPOINT skipped ({error}): a mid-run checkpoint may skew reads")
+                "CHECKPOINT skipped (role lacks the privilege): a mid-run checkpoint may skew reads"
                     .yellow()
             );
         }
