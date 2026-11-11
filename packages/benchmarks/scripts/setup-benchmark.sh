@@ -2,7 +2,7 @@
 # Setup script for benchmark environment
 # Creates a test project and saves credentials for the benchmark tool
 
-set -e
+set -eo pipefail
 
 SERVER_URL="${SERVER_URL:-http://localhost:8080}"
 SUPERUSER_EMAIL="bench@test.local"

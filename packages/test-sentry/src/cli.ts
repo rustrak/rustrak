@@ -160,10 +160,11 @@ function readOptions(args: string[]) {
     debug: values.debug === true,
     // `--flood 100`: the count is the one positional.
     floodCount: Number(positionals[0] ?? 50),
-    selected: SCENARIOS.filter((s) =>
-      values.all
-        ? s.inAll !== false
-        : (values as Record<string, unknown>)[s.flag],
+    // `--all` adds to the flags named explicitly, never replaces them.
+    selected: SCENARIOS.filter(
+      (s) =>
+        (values.all && s.inAll !== false) ||
+        (values as Record<string, unknown>)[s.flag],
     ),
   };
 }
@@ -173,6 +174,13 @@ const options = readOptions(process.argv.slice(2));
 if (options.help || options.selected.length === 0) {
   console.log(HELP);
   process.exit(options.help ? 0 : 1);
+}
+if (
+  options.selected.some((s) => s.flag === 'flood') &&
+  !(Number.isSafeInteger(options.floodCount) && options.floodCount > 0)
+) {
+  console.error('--flood takes a positive whole number of events');
+  process.exit(1);
 }
 if (options.selected.some((s) => s.flag === 'source-maps') && !options.token) {
   console.error('--source-maps needs --token <token> or RUSTRAK_TOKEN');

@@ -29,6 +29,8 @@ pub enum RunnerError {
     InvalidUrl(String),
     #[error("The '{0}' scenario needs a PostgreSQL connection (pass --postgres-url)")]
     PostgresRequired(String),
+    #[error("The '{0}' scenario needs an API token (pass --api-token)")]
+    ApiTokenRequired(String),
     #[error(transparent)]
     Postgres(#[from] crate::pgstats::PgStatsError),
 }
@@ -904,6 +906,9 @@ impl BenchmarkRunner {
         generator: Arc<Mutex<EnvelopeGenerator>>,
         pg: &crate::pgstats::PgStatsCollector,
     ) -> Result<BenchmarkResults, RunnerError> {
+        if self.api_token.is_none() {
+            return Err(RunnerError::ApiTokenRequired("read".to_string()));
+        }
         let read_config = &self.config.read;
 
         // ---- Seed phase (not measured) ----
@@ -951,7 +956,15 @@ impl BenchmarkRunner {
         // an autovacuum or a checkpoint mid-flight.
         println!("{}", "Running ANALYZE and CHECKPOINT...".dimmed());
         pg.analyze().await?;
-        pg.checkpoint().await?;
+        // CHECKPOINT needs superuser or pg_checkpoint; without it the run goes
+        // on, unnormalised, and says so.
+        if let Err(error) = pg.checkpoint().await {
+            println!(
+                "{}",
+                format!("CHECKPOINT skipped ({error}): a mid-run checkpoint may skew reads")
+                    .yellow()
+            );
+        }
 
         let issue_ids = self.fetch_issue_ids().await?;
         println!(
