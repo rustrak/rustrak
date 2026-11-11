@@ -21,7 +21,7 @@ import { createDialog } from './dialog-store';
  * -- is written with `createDialog`.
  */
 
-export interface ConfirmOptions {
+interface ConfirmBaseOptions {
   /** What will happen, subject included: "Delete the RUSTRAK-1042 issue". */
   title: string;
   /** What it takes with it and what can be recovered. This is what is read. */
@@ -33,27 +33,42 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** What must be reviewed before deciding: figures, checks. */
   details?: ReactNode;
-  /**
-   * A word that must be typed to unlock the action. Only for what has no way
-   * back -- deleting a project, purging events --: it forces reading, which
-   * is the point.
-   */
-  phrase?: string;
 }
 
-function ConfirmContent({
-  title,
-  description,
-  tone = 'danger',
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
-  details,
-  phrase,
-  close,
-}: ConfirmOptions & { close: (result?: boolean) => void }) {
+/**
+ * A word that must be typed to unlock the action. Only for what has no way
+ * back -- deleting a project, purging events --: it forces reading, which is
+ * the point. It comes with the words that ask for it, in the app's language.
+ */
+type ConfirmPhraseOptions =
+  | { phrase?: undefined; phraseLabel?: never; charactersLeft?: never }
+  | {
+      phrase: string;
+      /** The box's label, given the phrase drawn in mono: "Type {phrase} to continue". */
+      phraseLabel: (phrase: ReactNode) => ReactNode;
+      /** The footer's countdown while locked: "3 characters left". */
+      charactersLeft: (count: number) => string;
+    };
+
+export type ConfirmOptions = ConfirmBaseOptions & ConfirmPhraseOptions;
+
+function ConfirmContent(
+  options: ConfirmOptions & { close: (result?: boolean) => void },
+) {
+  const {
+    title,
+    description,
+    tone = 'danger',
+    confirmLabel = 'Confirm',
+    cancelLabel = 'Cancel',
+    details,
+    close,
+  } = options;
   const [typed, setTyped] = useState('');
-  const locked = !!phrase && typed.trim() !== phrase;
-  const remaining = phrase == null ? 0 : phrase.length - typed.trim().length;
+  // Narrowed once: with a phrase, its two labels are there too.
+  const ask = options.phrase ? options : null;
+  const locked = ask !== null && typed.trim() !== ask.phrase;
+  const remaining = ask ? ask.phrase.length - typed.trim().length : 0;
 
   return (
     <>
@@ -63,15 +78,17 @@ function ConfirmContent({
         dismissible={false}
       />
 
-      {details || phrase ? (
+      {details || ask ? (
         <DialogBody>
           {details}
-          {phrase ? (
+          {ask ? (
             // A `Field`, which is what ties the label to the box: written by
             // hand it would end in an `htmlFor` with no partner.
             <Field className="pt-3.5 first:pt-0">
               <FieldLabel>
-                Type <b className="font-mono text-fg">{phrase}</b> to continue
+                {ask.phraseLabel(
+                  <b className="font-mono text-fg">{ask.phrase}</b>,
+                )}
               </FieldLabel>
               <Input
                 value={typed}
@@ -87,7 +104,9 @@ function ConfirmContent({
       ) : null}
 
       <DialogFooter
-        hint={locked ? `${Math.max(remaining, 0)} characters left` : undefined}
+        hint={
+          locked && ask ? ask.charactersLeft(Math.max(remaining, 0)) : undefined
+        }
       >
         {/* The modal's first focusable element, which is where Base UI puts
             the focus on open: in the destructive, the way out comes before
