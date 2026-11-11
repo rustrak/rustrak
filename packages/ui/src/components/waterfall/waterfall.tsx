@@ -311,6 +311,11 @@ function buildTree(spans: WaterfallSpan[]): TreeNode[] {
   return roots;
 }
 
+/** The latest time a node or any of its descendants is known to run to. */
+function reach(node: TreeNode): number {
+  return Math.max(endOf(node.span), ...node.children.map(reach));
+}
+
 function descendants(node: TreeNode): number {
   return node.children.reduce((acc, c) => acc + 1 + descendants(c), 0);
 }
@@ -499,7 +504,7 @@ function flatten(nodes: TreeNode[], state: FlattenState): Row[] {
       walk(node.children, depth + 1, [...guides, !last]);
     }
 
-    return advance(frontier, endOf(node.span));
+    return advance(frontier, reach(node));
   };
 
   const walk = (list: TreeNode[], depth: number, guides: boolean[]) => {
@@ -1065,13 +1070,13 @@ function SpanRow({
   const rowEnd = Math.max(...spans.map(endOf));
   const { failed, kind } = rowAppearance(row);
 
-  const left = ((rowStart - start) / total) * 100;
   // A 2 ms span in a 600 ms trace still has to be visible: it may be the
-  // one that threw.
+  // one that threw. One that starts at the very end slides back to show it.
   const width = Math.min(
     Math.max(((rowEnd - rowStart) / total) * 100, 0.6),
-    100 - left,
+    100,
   );
+  const left = Math.min(((rowStart - start) / total) * 100, 100 - width);
 
   const expandable = row.kind === 'group' || row.hasChildren;
   const isOpen = row.kind === 'span' && row.hasChildren && !row.collapsed;
