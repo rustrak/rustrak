@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.5
+
+### Patch Changes
+
+- [`0235e93`](https://github.com/rustrak/rustrak/commit/0235e93678a86ecedc67d8d429563c7c7740f70a) Thanks [@AbianS](https://github.com/AbianS)! - Document `RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS`, describe every API operation in the client reference, and build the version list from the changelog page's own parser.
+
 ## 0.17.4
 
 ### Patch Changes
