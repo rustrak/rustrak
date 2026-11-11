@@ -6,12 +6,14 @@ use serde::{Deserialize, Serialize};
 /// `older_than_days` must be at least 1 — the service rejects smaller values,
 /// since a window of 0 (or negative) would move the cutoff to now/the future and
 /// purge the entire dataset.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CleanupRequest {
     #[cfg_attr(feature = "openapi", schema(minimum = 1))]
+    #[schemars(description = "Delete data older than this many days")]
     pub older_than_days: i64,
     #[serde(default)]
+    #[schemars(description = "Scope to one project (omit for all projects)")]
     pub project_id: Option<i32>,
     /// Whether to purge error events (and the issues they empty). Defaults to
     /// `true` so an older client that omits it keeps the "delete everything"
@@ -280,7 +282,9 @@ pub struct SourceMapStorage {
 }
 
 /// How long each kind of data is kept, in days. `None` keeps it forever.
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(
+    Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema,
+)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default)]
 pub struct RetentionWindows {
@@ -291,6 +295,7 @@ pub struct RetentionWindows {
     #[cfg_attr(feature = "openapi", schema(required))]
     pub transactions_days: Option<i64>,
     #[cfg_attr(feature = "openapi", schema(required))]
+    #[schemars(description = "Logs")]
     pub logs_days: Option<i64>,
 }
 
@@ -326,7 +331,7 @@ impl RetentionWindows {
             ("logs_days", self.logs_days),
         ] {
             if let Some(days) = days {
-                crate::services::storage::validate_retention(days)
+                validate_retention(days)
                     .map_err(|e| e.with_field(field, FieldErrorCode::Invalid))?;
             }
         }
@@ -336,7 +341,7 @@ impl RetentionWindows {
 
 /// A project that keeps its data for other windows than the defaults. Every
 /// kind is set: an override replaces the defaults whole.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProjectRetention {
     pub project_id: i32,
@@ -359,7 +364,9 @@ impl ProjectRetention {
 }
 
 /// How often the cleanup that enforces retention runs.
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(
+    Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum CleanupFrequency {
@@ -372,15 +379,19 @@ pub enum CleanupFrequency {
 /// project, and when the cleanup that enforces it runs. Stored as the
 /// settings of the `storage_cleanup` scheduled job; a field left out takes
 /// its default. Keeping everything forever runs nothing.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default)]
+#[schemars(extend("required" = ["defaults", "overrides", "frequency", "hour", "weekday"]))]
 pub struct RetentionSettings {
     #[cfg_attr(feature = "openapi", schema(required))]
+    #[schemars(description = "How long every project keeps each kind; null is forever")]
     pub defaults: RetentionWindows,
     #[cfg_attr(feature = "openapi", schema(required))]
+    #[schemars(description = "Projects kept for other windows; each replaces the defaults whole")]
     pub overrides: Vec<ProjectRetention>,
     #[cfg_attr(feature = "openapi", schema(required))]
+    #[schemars(description = "How often it runs: daily or weekly")]
     pub frequency: CleanupFrequency,
     /// Hour of the day it runs, UTC.
     #[cfg_attr(feature = "openapi", schema(minimum = 0, maximum = 23, required))]
@@ -450,12 +461,12 @@ impl RetentionSettings {
     }
 
     /// When the cleanup runs, in UTC.
-    pub fn schedule(&self) -> crate::scheduler::schedule::Schedule {
+    pub fn schedule(&self) -> crate::models::schedule::Schedule {
         let value = match self.frequency {
             CleanupFrequency::Daily => format!("0 {} * * *", self.hour),
             CleanupFrequency::Weekly => format!("0 {} * * {}", self.hour, self.weekday),
         };
-        crate::scheduler::schedule::Schedule::Crontab { value }
+        crate::models::schedule::Schedule::Crontab { value }
     }
 }
 
@@ -484,4 +495,30 @@ pub struct RetentionResponse {
     pub next_run_at: Option<chrono::DateTime<chrono::Utc>>,
     #[cfg_attr(feature = "openapi", schema(required))]
     pub last_run: Option<RetentionRun>,
+}
+
+/// Smallest accepted retention window. A value below this would push the cutoff
+/// to "now" or into the future, turning the cleanup into a full data wipe — so
+/// it's rejected before any cutoff is computed. Mirrors the `min(1)` the MCP and
+/// UI already enforce on the client side.
+const MIN_RETENTION_DAYS: i64 = 1;
+/// Largest accepted window, a century: far past any real retention, and far
+/// below where `Duration::days` panics.
+const MAX_RETENTION_DAYS: i64 = 36_500;
+
+/// Rejects retention windows that would delete current/future data, or that
+/// no cutoff can be computed for. Shared by the preview, execute and
+/// automatic paths so all fail fast on the same contract.
+pub(crate) fn validate_retention(older_than_days: i64) -> crate::error::AppResult<()> {
+    if older_than_days < MIN_RETENTION_DAYS {
+        return Err(crate::error::AppError::Validation(format!(
+            "older_than_days must be at least {MIN_RETENTION_DAYS}"
+        )));
+    }
+    if older_than_days > MAX_RETENTION_DAYS {
+        return Err(crate::error::AppError::Validation(format!(
+            "older_than_days must be at most {MAX_RETENTION_DAYS}"
+        )));
+    }
+    Ok(())
 }

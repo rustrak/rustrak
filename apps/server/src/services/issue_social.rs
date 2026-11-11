@@ -97,16 +97,24 @@ impl IssueSocialService {
         Ok(())
     }
 
-    /// Convenience: record a status-change activity entry.
     pub async fn record_status_change(
         pool: &DbPool,
         issue_id: Uuid,
         user_id: Option<i32>,
         status: &str,
     ) -> AppResult<()> {
+        Self::record_status_change_on(&mut *pool.acquire().await?, issue_id, user_id, status).await
+    }
+
+    /// [`Self::record_status_change`] on the caller's connection.
+    pub async fn record_status_change_on(
+        executor: &mut <crate::db::Db as sqlx::Database>::Connection,
+        issue_id: Uuid,
+        user_id: Option<i32>,
+        status: &str,
+    ) -> AppResult<()> {
         let data = serde_json::json!({ "status": status }).to_string();
-        Self::add_activity(pool, issue_id, user_id, "set_status", &data).await?;
-        Ok(())
+        Self::add_activity_on(executor, issue_id, user_id, "set_status", &data).await
     }
 
     /// Adds a comment (note) to an issue.

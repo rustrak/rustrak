@@ -3,40 +3,13 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool, tool_router};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use super::{args, reply, uuid, ProjectPageArgs, RustrakMcp};
+use super::{reply, uuid, InProject, RustrakMcp};
 use crate::error::AppResult;
 use crate::routes::transactions;
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ListTransactionsArgs {
-    /// Project ID
-    project_id: i32,
-    /// Page number (1-indexed, default 1)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    /// Items per page (default 20, max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_page: Option<i64>,
-    /// Filter by exact transaction name (lists one group's samples)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    /// Filter by trace operation, e.g. http.server
-    #[serde(skip_serializing_if = "Option::is_none")]
-    op: Option<String>,
-    /// Filter by trace status, e.g. ok
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<String>,
-    /// Filter by environment
-    #[serde(skip_serializing_if = "Option::is_none")]
-    environment: Option<String>,
-    /// Filter by release
-    #[serde(skip_serializing_if = "Option::is_none")]
-    release: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub struct TransactionArgs {
     /// Project ID
     project_id: i32,
@@ -61,13 +34,13 @@ impl RustrakMcp {
     )]
     async fn list_transactions(
         &self,
-        Parameters(a): Parameters<ListTransactionsArgs>,
+        Parameters(a): Parameters<InProject<transactions::ListTransactionsQuery>>,
     ) -> CallToolResult {
         reply(async {
             transactions::list_transactions(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await
@@ -90,13 +63,13 @@ impl RustrakMcp {
     )]
     async fn get_transaction_stats(
         &self,
-        Parameters(a): Parameters<ProjectPageArgs>,
+        Parameters(a): Parameters<InProject<transactions::TransactionStatsQuery>>,
     ) -> CallToolResult {
         reply(async {
             transactions::get_transaction_stats(
                 self.pool(),
                 web::Path::from(a.project_id),
-                web::Query(args(&a)?),
+                web::Query(a.rest),
                 self.actor(),
             )
             .await

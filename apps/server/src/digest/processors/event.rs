@@ -1,13 +1,15 @@
 use super::feedback::{self, Feedback, NewAttachment};
-use super::{clamp, is_stale, relay_level, InFlightDigests, Processor, ProcessorCtx};
-use crate::config::RateLimitConfig;
+use super::InFlightDigests;
+use crate::config::SmtpSettings;
+use crate::config::{Config, RateLimitConfig};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::ingest::storage::{delete_event_at, read_event_with_location, EventStorageLocation};
+use crate::ingest::storage::{delete_event, read_event};
 #[cfg(feature = "sqlite")]
-use crate::ingest::storage::{delete_paths, event_paths_at};
+use crate::ingest::storage::{delete_paths, pending_event_path};
 use crate::ingest::EventMetadata;
 use crate::models::{AlertType, Grouping, Issue, Product};
+use crate::protocol::{clamp, is_stale, relay_level};
 use crate::services::rate_limit::QuotaScope;
 use crate::services::sourcemap::SourceMapProvider;
 use crate::services::{
@@ -18,8 +20,6 @@ use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
-
-const INVALID_EVENT_JSON_PREFIX: &str = "Invalid event JSON";
 
 /// Processes error/exception events: source-map rewrite → grouping → issue → store.
 ///
@@ -33,7 +33,9 @@ pub struct ErrorProcessor {
     sourcemap_provider: Arc<dyn SourceMapProvider>,
     in_flight: Arc<InFlightDigests>,
     /// The base of the issue links in alert notifications.
-    pub(super) dashboard_url: String,
+    dashboard_url: String,
+    /// The SMTP fallback of email alert integrations.
+    smtp: SmtpSettings,
     /// SQLite has one writer at a time. Digests queue for it here, in process,
     /// rather than in SQLite's busy handler: that handler polls with sleeps
     /// that grow to 100ms, so with several digests waiting the lock sat idle
@@ -47,11 +49,8 @@ pub struct ErrorProcessor {
 }
 
 impl ErrorProcessor {
-    pub fn new(
-        ingest_dir: PathBuf,
-        rate_limit_config: RateLimitConfig,
-        sourcemap_provider: Arc<dyn SourceMapProvider>,
-    ) -> Self {
+    pub fn new(config: &Config, sourcemap_provider: Arc<dyn SourceMapProvider>) -> Self {
+        let ingest_dir = config.ingest_dir.clone();
         #[cfg(feature = "sqlite")]
         let write_slot = Arc::new(tokio::sync::Mutex::new(()));
         Self {
@@ -61,10 +60,11 @@ impl ErrorProcessor {
                 Arc::clone(&write_slot),
             )),
             ingest_dir,
-            rate_limit_config,
+            rate_limit_config: config.rate_limit.clone(),
             sourcemap_provider,
             in_flight: Arc::new(InFlightDigests::default()),
-            dashboard_url: "http://localhost:8080".to_string(),
+            dashboard_url: config.dashboard_url(),
+            smtp: config.smtp.clone(),
             #[cfg(feature = "sqlite")]
             write_slot,
         }
@@ -74,75 +74,58 @@ impl ErrorProcessor {
         &self.ingest_dir
     }
 
+    /// Waits for this process's turn at SQLite's one writer, in the queue
+    /// the digests take turns in. Every write on the ingest path takes it:
+    /// left to SQLite's busy handler, a writer lost each race to the digests
+    /// handing the lock to each other and failed after `busy_timeout`.
+    #[cfg(feature = "sqlite")]
+    pub async fn write_turn(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.write_slot.lock().await
+    }
+
     /// The digests this processor's process currently owns.
     pub fn in_flight(&self) -> &Arc<InFlightDigests> {
         &self.in_flight
     }
 
-    pub(crate) async fn process_ref(
-        &self,
-        metadata: &EventMetadata,
-        ctx: &ProcessorCtx,
-    ) -> AppResult<Digested> {
-        let result = self.process_impl(metadata, ctx).await;
+    /// Digests one stored event. A failure worth replaying keeps its file
+    /// for the recovery worker; any other drops it.
+    pub async fn digest(&self, pool: &DbPool, metadata: &EventMetadata) -> AppResult<Digested> {
+        let result = self.process_impl(pool, metadata).await;
         if let Err(e) = &result {
             if should_retain_event(e) {
                 return result;
             }
-            match read_event_with_location(
-                &self.ingest_dir,
-                metadata.project_id,
-                &metadata.event_id,
-            )
-            .await
+            if let Err(e) =
+                delete_event(&self.ingest_dir, metadata.project_id, &metadata.event_id).await
             {
-                Ok((_, location)) => {
-                    if let Err(e) = delete_event_at(
-                        &self.ingest_dir,
-                        metadata.project_id,
-                        &metadata.event_id,
-                        location,
-                    )
-                    .await
-                    {
-                        log::warn!(
-                            "Failed to clean up orphaned event file {}: {:?}",
-                            metadata.event_id,
-                            e
-                        );
-                    }
-                }
-                Err(e) => log::warn!(
-                    "Failed to locate orphaned event file {}: {:?}",
+                log::warn!(
+                    "Failed to clean up orphaned event file {}: {:?}",
                     metadata.event_id,
                     e
-                ),
+                );
             }
         }
         result
     }
 
     /// Runs the digest pipeline; retryable contention leaves the durable event queued.
-    async fn process_impl(
-        &self,
-        metadata: &EventMetadata,
-        ctx: &ProcessorCtx,
-    ) -> AppResult<Digested> {
-        let pool = &ctx.pool;
-
-        // 0. Read the event before quota checks so cleanup can target the exact
+    async fn process_impl(&self, pool: &DbPool, metadata: &EventMetadata) -> AppResult<Digested> {
+        // Read the event before quota checks so cleanup can target the exact
         // project-scoped file that was read. The project row loaded here is
         // the one the quota check and the platform inference read too.
         let project = ProjectService::get_by_id(pool, metadata.project_id).await?;
-        let (event_bytes, storage_location) =
-            read_event_with_location(&self.ingest_dir, metadata.project_id, &metadata.event_id)
-                .await?;
+        let Some(event_bytes) =
+            read_event(&self.ingest_dir, metadata.project_id, &metadata.event_id).await?
+        else {
+            return Ok(Digested::Missing);
+        };
 
-        // 2. Parse event from filesystem. Ingest strips NUL escapes already;
+        // Parse event from filesystem. Ingest strips NUL escapes already;
         // this covers files queued by a release that did not.
         let mut event_data: serde_json::Value =
             serde_json::from_slice(&crate::ingest::parser::strip_nul_escapes(&event_bytes))
-                .map_err(|e| AppError::Internal(format!("{INVALID_EVENT_JSON_PREFIX}: {e}")))?;
+                .map_err(|e| AppError::Validation(format!("Invalid event JSON: {e}")))?;
 
         // Relay's `TimestampProcessor`: an event from before 1970 is invalid,
         // and so is each breadcrumb from before 1970.
@@ -152,8 +135,7 @@ impl ErrorProcessor {
             ));
         }
         drop_stale_breadcrumbs(&mut event_data);
-        // Taken out of every event so they are never stored in its data, and
-        // kept only for a feedback: ingest attaches them to no other event.
+        // Taken out of every event so they are never stored in its data.
         let attachments = feedback::take_attachments(&mut event_data);
         // A feedback Sentry would filter is dropped here, like an invalid event.
         let feedback = Feedback::from_event(&event_data)?;
@@ -176,12 +158,7 @@ impl ErrorProcessor {
         {
             event_data["level"] = serde_json::json!("info");
         }
-        let attachments = match feedback {
-            Some(_) => attachments,
-            None => Vec::new(),
-        };
-
-        // 2b. Rewrite stack frames using source maps (non-fatal)
+        // Rewrite stack frames using source maps (non-fatal)
         if let Err(e) = crate::services::sourcemap::rewrite_frames(
             self.sourcemap_provider.as_ref(),
             metadata.project_id,
@@ -195,7 +172,7 @@ impl ErrorProcessor {
                 e
             );
         }
-        // 2b'. Deobfuscate JVM frames with ProGuard mappings and source
+        // Deobfuscate JVM frames with ProGuard mappings and source
         // bundles, before grouping as Sentry does (non-fatal).
         crate::services::jvm::process_event(
             self.sourcemap_provider.as_ref(),
@@ -203,7 +180,7 @@ impl ErrorProcessor {
             &mut event_data,
         )
         .await;
-        // 2b''. Symbolicate native (Apple) frames with dSYMs, likewise.
+        // Symbolicate native (Apple) frames with dSYMs, likewise.
         crate::services::native::process_event(
             self.sourcemap_provider.as_ref(),
             metadata.project_id,
@@ -211,12 +188,18 @@ impl ErrorProcessor {
         )
         .await;
 
-        // 2c. Trim oversized fields (deep context windows, frame vars, huge
+        // Trim oversized fields (deep context windows, frame vars, huge
         // breadcrumb trails) for events whose raw payload came in above the
         // original per-item budget — see services::event_trim. Only runs for
         // the (rare) events that needed the relaxed ingest ceiling, so this
         // is a no-op for the common case.
-        if event_bytes.len() > crate::ingest::parser::TARGET_EVENT_SIZE {
+        // Measured without the attachments it carried, as Relay measures it.
+        let event_size = if attachments.is_empty() {
+            event_bytes.len()
+        } else {
+            serde_json::to_vec(&event_data).map_or(event_bytes.len(), |bytes| bytes.len())
+        };
+        if event_size > crate::ingest::parser::TARGET_EVENT_SIZE {
             crate::services::trim_oversized_event(&mut event_data);
         }
         // The raw file contents are no longer needed once the tree is parsed
@@ -224,11 +207,9 @@ impl ErrorProcessor {
         // DB writes do not carry a second copy of the payload in memory.
         drop(event_bytes);
 
-        // 3. Parse event_id as UUID
         let event_id = Uuid::parse_str(&metadata.event_id)
             .map_err(|_| AppError::Validation("Invalid event_id".to_string()))?;
 
-        // 4. Check for duplicates
         if EventService::exists(pool, metadata.project_id, event_id).await? {
             log::warn!("Duplicate event_id: {}", metadata.event_id);
             let existing =
@@ -266,6 +247,7 @@ impl ErrorProcessor {
                         event_id,
                         facts,
                         &self.dashboard_url,
+                        &self.smtp,
                     )
                     .await?;
                 }
@@ -274,18 +256,12 @@ impl ErrorProcessor {
                     self.spawn_auto_create(pool, &project, &issue, facts);
                 }
             }
-            self.delete_after_success(
-                pool,
-                metadata.project_id,
-                event_id,
-                &metadata.event_id,
-                storage_location,
-            )
-            .await?;
+            self.delete_after_success(pool, metadata.project_id, event_id, &metadata.event_id)
+                .await?;
             return Ok(Digested::Stored);
         }
 
-        // 4b. The cached check, as Relay's `CombinedRateLimiter` runs first: the
+        // The cached check, as Relay's `CombinedRateLimiter` runs first: the
         // counters this project row was loaded with already show whether the
         // window is full. Dropping here skips the write lock and the rows a
         // rollback would undo; `try_consume` in the transaction stays the one
@@ -294,12 +270,10 @@ impl ErrorProcessor {
             .await?
             .is_some()
         {
-            return self
-                .drop_rate_limited(pool, metadata, storage_location)
-                .await;
+            return self.drop_rate_limited(pool, metadata).await;
         }
 
-        // 5. Calculate grouping key and hash. Every feedback is its own issue:
+        // Calculate grouping key and hash. Every feedback is its own issue:
         // Sentry gives each one a random fingerprint.
         let grouping_key = match &feedback {
             Some(_) => format!("feedback:{}", event_id.simple()),
@@ -311,7 +285,6 @@ impl ErrorProcessor {
             None => hash_grouping_key(&crate::services::calculate_grouping_key_v1(&event_data)),
         };
 
-        // 6. Extract denormalized fields
         let mut denormalized = get_denormalized_fields(&event_data);
         if let Some(feedback) = &feedback {
             // Sentry's occurrence: title "User Feedback", the message as its
@@ -334,7 +307,7 @@ impl ErrorProcessor {
             .and_then(relay_level);
         let platform = str_field("platform", 64);
 
-        // 7+8. Write the digest: grouping, issue, the event itself and the
+        // Write the digest: grouping, issue, the event itself and the
         // project's stored-event counter, in one transaction, retried as a
         // whole when SQLite reports the database busy. On SQLite the digests
         // take turns at the write here, in process (see `write_slot`).
@@ -367,13 +340,11 @@ impl ErrorProcessor {
         let (issue, issue_created, regressed) = match landed {
             DigestOutcome::Written(issue, created, regressed) => (*issue, created, regressed),
             DigestOutcome::RateLimited(_) => {
-                return self
-                    .drop_rate_limited(pool, metadata, storage_location)
-                    .await;
+                return self.drop_rate_limited(pool, metadata).await;
             }
         };
 
-        // 9b. Sentry-parity platform auto-detection (set once, never overwritten).
+        // Sentry-parity platform auto-detection (set once, never overwritten).
         // Best-effort: the digest transaction already committed the event, so
         // ancillary project metadata must not make the durable event fail.
         // Skipped once the project has a platform: the UPDATE would match no
@@ -396,7 +367,7 @@ impl ErrorProcessor {
             }
         }
 
-        // 10. Persist alert history before deleting the only durable source.
+        // Persist alert history before deleting the only durable source.
         let lifecycle = alert_type_for_lifecycle(issue_created, regressed, feedback.is_some());
         let types = event_alert_types(lifecycle, issue.is_muted(), feedback.is_some());
         for &alert_type in &types {
@@ -408,6 +379,7 @@ impl ErrorProcessor {
                 event_id,
                 facts,
                 &self.dashboard_url,
+                &self.smtp,
             )
             .await?;
         }
@@ -422,16 +394,10 @@ impl ErrorProcessor {
             );
         }
 
-        // 11. Delete after the event and alert writes complete; SQLite also
+        // Delete after the event and alert writes complete; SQLite also
         // requires a successful durability checkpoint.
-        self.delete_after_success(
-            pool,
-            metadata.project_id,
-            event_id,
-            &metadata.event_id,
-            storage_location,
-        )
-        .await?;
+        self.delete_after_success(pool, metadata.project_id, event_id, &metadata.event_id)
+            .await?;
 
         log::info!(
             "Digested event {} -> issue {} ({})",
@@ -471,25 +437,17 @@ impl ErrorProcessor {
         &self,
         pool: &DbPool,
         metadata: &EventMetadata,
-        storage_location: EventStorageLocation,
     ) -> AppResult<Digested> {
         log::debug!("Event {} dropped: quota exceeded", metadata.event_id);
         RateLimitService::record_rate_limited(pool, metadata.project_id).await?;
-        delete_event_at(
-            &self.ingest_dir,
-            metadata.project_id,
-            &metadata.event_id,
-            storage_location,
-        )
-        .await?;
+        delete_event(&self.ingest_dir, metadata.project_id, &metadata.event_id).await?;
         Ok(Digested::RateLimited)
     }
 
     /// Removes the durable copy of an event whose digest has committed.
     ///
-    /// A legacy-location file goes at once. A project-scoped file is what a
-    /// restart replays, so on SQLite it waits for a durability checkpoint
-    /// first: the commit is in the write-ahead log, and with
+    /// The file is what a restart replays, so on SQLite it waits for a
+    /// durability checkpoint first: the commit is in the write-ahead log, and with
     /// `synchronous=NORMAL` only a completed `FULL` checkpoint puts it in the
     /// database file. The wait happens on the [`DurabilityQueue`], not here,
     /// so the digest (and the processing slot it holds) is released as soon
@@ -501,18 +459,12 @@ impl ErrorProcessor {
         project_id: i32,
         event_id: Uuid,
         raw_event_id: &str,
-        storage_location: EventStorageLocation,
     ) -> AppResult<()> {
-        if matches!(storage_location, EventStorageLocation::Legacy) {
-            delete_event_at(&self.ingest_dir, project_id, raw_event_id, storage_location).await?;
-            return Ok(());
-        }
         self.durability.enqueue(
             pool,
             PendingDelete {
                 project_id,
                 event_id: raw_event_id.to_string(),
-                location: storage_location,
                 attempts: 0,
                 _owner: self.in_flight.register(project_id, event_id),
             },
@@ -527,10 +479,8 @@ impl ErrorProcessor {
         project_id: i32,
         _event_id: Uuid,
         raw_event_id: &str,
-        storage_location: EventStorageLocation,
     ) -> AppResult<()> {
-        delete_event_at(&self.ingest_dir, project_id, raw_event_id, storage_location).await?;
-        Ok(())
+        delete_event(&self.ingest_dir, project_id, raw_event_id).await
     }
 }
 
@@ -552,7 +502,6 @@ const MAX_CHECKPOINT_ATTEMPTS: u32 = 3;
 struct PendingDelete {
     project_id: i32,
     event_id: String,
-    location: EventStorageLocation,
     attempts: u32,
     /// Keeps the event registered as in flight, so the recovery worker does
     /// not replay a file that only awaits its deletion.
@@ -632,15 +581,10 @@ impl DurabilityQueue {
             delay = CHECKPOINT_PACING;
             if completed {
                 // One round trip to the blocking pool for the whole batch.
-                let mut paths = Vec::with_capacity(batch.len() * 2);
+                let mut paths = Vec::with_capacity(batch.len());
                 for entry in &batch {
-                    match event_paths_at(
-                        &self.ingest_dir,
-                        entry.project_id,
-                        &entry.event_id,
-                        entry.location,
-                    ) {
-                        Ok(entry_paths) => paths.extend(entry_paths),
+                    match pending_event_path(&self.ingest_dir, entry.project_id, &entry.event_id) {
+                        Ok(path) => paths.push(path),
                         Err(e) => log::warn!(
                             "Failed to resolve digested event file {}: {:?}",
                             entry.event_id,
@@ -676,22 +620,11 @@ impl DurabilityQueue {
     }
 }
 
-impl Processor for ErrorProcessor {
-    type Input = EventMetadata;
-
-    async fn process(&self, metadata: EventMetadata, ctx: &ProcessorCtx) -> AppResult<()> {
-        self.process_ref(&metadata, ctx).await.map(|_| ())
-    }
-}
-
+/// Database and internal failures keep the file for a replay: an unknown
+/// transient failure must not silently become data loss. Anything else (an
+/// invalid event) is dropped with its file.
 fn should_retain_event(err: &AppError) -> bool {
-    match err.kind() {
-        AppError::Database(_) => true,
-        // Unknown internal failures are safer to replay than to discard: a new
-        // transient failure must not silently become data loss.
-        AppError::Internal(message) => !message.starts_with(INVALID_EVENT_JSON_PREFIX),
-        _ => false,
-    }
+    matches!(err.kind(), AppError::Database(_) | AppError::Internal(_))
 }
 
 /// Write attempts per digest on SQLite. Bounded: sustained contention
@@ -700,7 +633,6 @@ const MAX_SQLITE_WRITE_ATTEMPTS: usize = 3;
 
 /// Backoff before retry `attempt` (0-based): 50ms, then 100ms — brief,
 /// so writers that timed out together don't retry in lockstep.
-#[cfg_attr(feature = "postgres", allow(dead_code))]
 fn sqlite_retry_delay(attempt: usize) -> std::time::Duration {
     std::time::Duration::from_millis(50 << attempt)
 }
@@ -746,7 +678,7 @@ struct DigestWrite<'a> {
     project: &'a crate::models::Project,
     /// Set when the event is a user feedback.
     feedback: Option<&'a Feedback>,
-    /// The feedback's attachments, stored with the event.
+    /// The event's attachments, stored with it.
     attachments: &'a [NewAttachment],
 }
 
@@ -757,6 +689,8 @@ pub enum Digested {
     Stored,
     /// Dropped by the quota: nothing was written.
     RateLimited,
+    /// No file held the event: its digest already finished and deleted it.
+    Missing,
 }
 
 /// What one digest attempt left behind.
@@ -1147,134 +1081,59 @@ async fn find_or_create_issue_and_grouping_inner(
         let frame_function =
             keep_if_blank(&denormalized.last_frame_function, &prev.last_frame_function);
 
-        // Grouping exists, update issue (reopening it if it regressed).
-        let issue: Issue = if regressed {
-            sqlx::query_as(
-                r#"
-                UPDATE issues
-                SET first_seen = $8,
-                    last_seen = $2,
-                    digested_event_count = digested_event_count + 1,
-                    stored_event_count = stored_event_count + 1,
-                    calculated_type = $4,
-                    calculated_value = $5,
-                    level = $6,
-                    culprit = $7,
-                    last_frame_filename = $9,
-                    last_frame_module = $10,
-                    last_frame_function = $11,
-                    status = 'unresolved',
-                    substatus = 'regressed',
-                    status_details = '{}',
-                    last_release = CASE WHEN $3 <> '' THEN $3 ELSE last_release END,
-                    first_release = CASE WHEN first_release = '' THEN $3 ELSE first_release END
-                WHERE id = $1
-                RETURNING *
-                "#,
-            )
-            .bind(grouping.issue_id)
-            .bind(last_seen)
-            .bind(&denormalized.release)
-            .bind(calculated_type)
-            .bind(calculated_value)
-            .bind(level)
-            .bind(&denormalized.culprit)
-            .bind(first_seen)
-            .bind(frame_filename)
-            .bind(frame_module)
-            .bind(frame_function)
-            .fetch_one(&mut **tx)
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"
-                UPDATE issues
-                SET first_seen = $8,
-                    last_seen = $2,
-                    digested_event_count = digested_event_count + 1,
-                    stored_event_count = stored_event_count + 1,
-                    calculated_type = $4,
-                    calculated_value = $5,
-                    level = $6,
-                    culprit = $7,
-                    last_frame_filename = $9,
-                    last_frame_module = $10,
-                    last_frame_function = $11,
-                    last_release = CASE WHEN $3 <> '' THEN $3 ELSE last_release END,
-                    first_release = CASE WHEN first_release = '' THEN $3 ELSE first_release END
-                WHERE id = $1
-                RETURNING *
-                "#,
-            )
-            .bind(grouping.issue_id)
-            .bind(last_seen)
-            .bind(&denormalized.release)
-            .bind(calculated_type)
-            .bind(calculated_value)
-            .bind(level)
-            .bind(&denormalized.culprit)
-            .bind(first_seen)
-            .bind(frame_filename)
-            .bind(frame_module)
-            .bind(frame_function)
-            .fetch_one(&mut **tx)
-            .await?
-        };
+        // A regression reopens the issue.
+        let issue: Issue = sqlx::query_as(
+            r#"
+            UPDATE issues
+            SET first_seen = $8,
+                last_seen = $2,
+                digested_event_count = digested_event_count + 1,
+                stored_event_count = stored_event_count + 1,
+                calculated_type = $4,
+                calculated_value = $5,
+                level = $6,
+                culprit = $7,
+                last_frame_filename = $9,
+                last_frame_module = $10,
+                last_frame_function = $11,
+                status = CASE WHEN $12 THEN 'unresolved' ELSE status END,
+                substatus = CASE WHEN $12 THEN 'regressed' ELSE substatus END,
+                status_details = CASE WHEN $12 THEN '{}' ELSE status_details END,
+                last_release = CASE WHEN $3 <> '' THEN $3 ELSE last_release END,
+                first_release = CASE WHEN first_release = '' THEN $3 ELSE first_release END
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(grouping.issue_id)
+        .bind(last_seen)
+        .bind(&denormalized.release)
+        .bind(calculated_type)
+        .bind(calculated_value)
+        .bind(level)
+        .bind(&denormalized.culprit)
+        .bind(first_seen)
+        .bind(frame_filename)
+        .bind(frame_module)
+        .bind(frame_function)
+        .bind(regressed)
+        .fetch_one(&mut **tx)
+        .await?;
 
         return Ok((issue, grouping, false, regressed));
     }
 
-    // Get the next digest_order for this project (safe because we hold the advisory lock)
-    let max_order: Option<i32> =
-        sqlx::query_scalar("SELECT MAX(digest_order) FROM issues WHERE project_id = $1")
-            .bind(project_id)
-            .fetch_one(&mut **tx)
-            .await?;
-
-    let digest_order = max_order.unwrap_or(0) + 1;
-
-    // Create new issue (generate UUID in application for cross-DB compatibility)
-    let issue_id = Uuid::new_v4();
-    let priority = crate::services::issue::derive_priority(level);
-    let issue: Issue = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        r#"
-        INSERT INTO issues (
-            id, project_id, digest_order, first_seen, last_seen,
-            digested_event_count, stored_event_count,
-            calculated_type, calculated_value, "transaction",
-            last_frame_filename, last_frame_module, last_frame_function,
-            level, platform, status, substatus, priority, culprit, logger,
-            first_release, last_release, issue_type, issue_category, numeric_id
-        )
-        VALUES (
-            $1, $2, $3, $4, $4, 1, 1, $5, $6, $7, $8, $9, $10, $11, $12,
-            'unresolved', 'new', $13, $14, $15, $16, $16, $17, $17, {}
-        )
-        RETURNING *
-        "#,
-        crate::services::issue::NEXT_NUMERIC_ID
-    )))
-    .bind(issue_id)
-    .bind(project_id)
-    .bind(digest_order)
-    .bind(timestamp)
-    .bind(&denormalized.calculated_type)
-    .bind(&denormalized.calculated_value)
-    .bind(&denormalized.transaction)
-    .bind(&denormalized.last_frame_filename)
-    .bind(&denormalized.last_frame_module)
-    .bind(&denormalized.last_frame_function)
-    .bind(level)
-    .bind(platform)
-    .bind(priority)
-    .bind(&denormalized.culprit)
-    .bind(&denormalized.logger)
-    .bind(&denormalized.release)
-    .bind(category)
-    .fetch_one(&mut **tx)
+    let issue = IssueService::create_in(
+        tx,
+        project_id,
+        timestamp,
+        denormalized,
+        level,
+        platform,
+        category,
+    )
     .await?;
 
-    // Create new grouping
     let grouping: Grouping = sqlx::query_as(
         r#"
         INSERT INTO groupings (project_id, issue_id, grouping_key, grouping_key_hash)
@@ -1461,11 +1320,9 @@ mod tests {
         assert!(should_retain_event(&AppError::Internal(
             "temporary database connection failure".to_string(),
         )));
-        assert!(!should_retain_event(&AppError::Internal(
-            "Invalid event JSON: trailing data".to_string(),
-        )));
+        // An event that does not parse is invalid, not a failure to retry.
         assert!(!should_retain_event(&AppError::Validation(
-            "Invalid event JSON".to_string(),
+            "Invalid event JSON: trailing data".to_string(),
         )));
     }
 }

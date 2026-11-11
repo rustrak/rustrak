@@ -3,27 +3,11 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
-use serde::Serialize;
 use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-
-/// An attachment, without its bytes.
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct AttachmentInfo {
-    pub id: Uuid,
-    /// The event it was sent with (the stored row's id).
-    pub event_id: Uuid,
-    pub filename: String,
-    /// As the SDK declared it; the download trusts only the bytes.
-    pub content_type: String,
-    /// Size in bytes.
-    pub size: i32,
-    pub created_at: DateTime<Utc>,
-}
+use crate::models::AttachmentInfo;
 
 #[derive(sqlx::FromRow)]
 struct IssueAttachment {

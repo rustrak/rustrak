@@ -1,15 +1,14 @@
 use super::span::{insert_span_rows, SpanRow};
-use super::{clamp, clamp_opt, Processor, ProcessorCtx};
+use super::ProcessorCtx;
 use crate::error::AppResult;
 use crate::models::span_v2::{parse_span_v2_container, SpanV2Entry};
+use crate::protocol::{clamp, clamp_opt};
 use crate::services::gen_ai::extract_gen_ai_columns;
 use bytes::Bytes;
 
 pub struct SpanV2Processor;
 
-impl Processor for SpanV2Processor {
-    type Input = Bytes;
-
+impl SpanV2Processor {
     /// Stores a Spans Protocol v2 batch (Sentry "span" item type,
     /// `application/vnd.sentry.items.span.v2+json`) into the shared `spans`
     /// table, one row per entry, with `transaction_id = NULL` — same
@@ -17,7 +16,7 @@ impl Processor for SpanV2Processor {
     /// just a different (batched, typed-attribute) wire format. Mirrors
     /// `LogsProcessor`'s container-expansion + single-transaction-batch
     /// pattern.
-    async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
+    pub async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
         let entries = parse_span_v2_container(&work)?;
 
         let mut rows = Vec::with_capacity(entries.len());

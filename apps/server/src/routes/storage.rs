@@ -6,12 +6,11 @@
 use std::sync::Arc;
 
 use actix_web::{web, HttpResponse};
-use chrono::DurationRound;
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
 use crate::models::{
     CleanupCounts, CleanupStatus, Compaction, ProjectStorage, SourceMapGcResult, SourceMapStorage,
@@ -39,7 +38,7 @@ use utoipa::OpenApi;
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/storage/summary — row counts, DB size, and source-map weight.
+/// Row counts, DB size, and source-map weight.
 pub async fn get_summary(
     pool: web::Data<DbPool>,
     job: web::Data<CleanupJob>,
@@ -61,7 +60,7 @@ pub async fn get_summary(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/storage/projects — per-project counts and estimated weight.
+/// Per-project counts and estimated weight.
 pub async fn get_projects(
     pool: web::Data<DbPool>,
     job: web::Data<CleanupJob>,
@@ -84,7 +83,7 @@ pub async fn get_projects(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/cleanup/preview — dry-run count, mutates nothing.
+/// Dry-run count, mutates nothing.
 pub async fn preview_cleanup(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -115,7 +114,7 @@ pub async fn preview_cleanup(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/cleanup — starts deleting old data and the issues it
+/// Starts deleting old data and the issues it
 /// empties. Returns at once: the purge runs detached, in batches, and
 /// `GET /api/storage/cleanup/status` reports its progress.
 pub async fn execute_cleanup(
@@ -145,7 +144,7 @@ pub async fn execute_cleanup(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/storage/cleanup/status — progress of the running cleanup, or the
+/// Progress of the running cleanup, or the
 /// outcome of the last one.
 pub async fn get_cleanup_status(
     job: web::Data<CleanupJob>,
@@ -166,7 +165,7 @@ pub async fn get_cleanup_status(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/source-maps/gc/preview — dry-run orphan count, deletes nothing.
+/// Dry-run orphan count, deletes nothing.
 pub async fn preview_source_map_gc(
     pool: web::Data<DbPool>,
     actor: ApiActor,
@@ -187,7 +186,7 @@ pub async fn preview_source_map_gc(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/source-maps/gc — delete orphaned source maps (DB + disk).
+/// Delete orphaned source maps (DB + disk).
 pub async fn gc_source_maps(
     pool: web::Data<DbPool>,
     job: web::Data<CleanupJob>,
@@ -211,11 +210,11 @@ pub async fn gc_source_maps(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/storage/compaction — whether the database file shrinks when data
+/// Whether the database file shrinks when data
 /// is deleted, and the disk a one-off compaction needs.
 pub async fn get_compaction(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<HttpResponse> {
     actor.require(Resource::Storage, Action::Read, None)?;
-    let compaction = StorageService::compaction(pool.get_ref()).await?;
+    let compaction = crate::db::maintenance::compaction(pool.get_ref()).await?;
     Ok(HttpResponse::Ok().json(compaction))
 }
 
@@ -232,7 +231,7 @@ pub async fn get_compaction(pool: web::Data<DbPool>, actor: ApiActor) -> AppResu
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/compaction — rewrites a SQLite file created before
+/// Rewrites a SQLite file created before
 /// incremental mode, so it gives freed space back from then on. Writes wait
 /// while it runs; follow it with `GET /api/storage/cleanup/status`.
 pub async fn compact(
@@ -300,7 +299,6 @@ pub struct StorageApi;
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/storage/retention
 pub async fn get_retention(
     pool: web::Data<DbPool>,
     job: web::Data<CleanupJob>,
@@ -325,7 +323,6 @@ pub async fn get_retention(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// PUT /api/storage/retention
 pub async fn update_retention(
     pool: web::Data<DbPool>,
     job: web::Data<CleanupJob>,
@@ -335,10 +332,14 @@ pub async fn update_retention(
     actor.require(Resource::Storage, Action::Update, None)?;
     let settings = body.into_inner();
     settings.validate()?;
-    Scheduler::update_settings(
+    let settings =
+        serde_json::to_value(&settings).map_err(|e| AppError::Internal(e.to_string()))?;
+    Scheduler::save_settings(
         pool.get_ref(),
         StorageCleanupJob::KEY,
-        serde_json::to_value(&settings).unwrap_or_default(),
+        settings.clone(),
+        StorageCleanupJob::schedule_of(&settings),
+        chrono::Utc::now(),
     )
     .await?;
     let retention = retention_response(pool.get_ref(), &job).await?;
@@ -358,7 +359,7 @@ pub async fn update_retention(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/retention/preview — what saving these settings would
+/// What saving these settings would
 /// delete on the next cleanup, without saving or deleting anything.
 pub async fn preview_retention(
     pool: web::Data<DbPool>,
@@ -383,7 +384,7 @@ pub async fn preview_retention(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/storage/retention/run — enforces the saved retention now,
+/// Enforces the saved retention now,
 /// without waiting for the schedule. Follow it with the cleanup status.
 pub async fn run_retention(
     pool: web::Data<DbPool>,
@@ -404,27 +405,23 @@ pub async fn run_retention(
         Arc::clone(store.get_ref()),
     )?;
     // Recorded as the job's last run, like a scheduled one, so the page's
-    // "last cleanup" is this one. Milliseconds, so the finish matches the
-    // start on every backend (Postgres keeps microseconds). The cleanup has
-    // already started: failing to record it is logged, not answered.
-    let pool = pool.get_ref().clone();
-    let started = status
-        .started_at
-        .unwrap_or_else(chrono::Utc::now)
-        .duration_trunc(chrono::Duration::milliseconds(1))
-        .unwrap_or_else(|_| chrono::Utc::now());
-    if let Err(e) = Scheduler::record_start(&pool, StorageCleanupJob::KEY, started).await {
-        log::error!("Could not record the start of a retention cleanup: {e}");
-    }
-    tokio::spawn(async move {
-        let outcome = match handle.await {
-            Ok(result) => result.map(|removed| serde_json::to_value(removed).unwrap_or_default()),
-            Err(e) => Err(AppError::Internal(format!(
-                "The cleanup stopped unexpectedly: {e}"
-            ))),
-        };
-        Scheduler::record_finish(&pool, StorageCleanupJob::KEY, started, outcome).await;
-    });
+    // "last cleanup" is this one.
+    Scheduler::record_run_now(
+        pool.get_ref().clone(),
+        StorageCleanupJob::KEY,
+        status.started_at.unwrap_or_else(chrono::Utc::now),
+        async move {
+            match handle.await {
+                Ok(result) => result.and_then(|removed| {
+                    serde_json::to_value(removed).map_err(|e| AppError::Internal(e.to_string()))
+                }),
+                Err(e) => Err(AppError::Internal(format!(
+                    "The cleanup stopped unexpectedly: {e}"
+                ))),
+            }
+        },
+    )
+    .await;
     Ok(HttpResponse::Accepted().json(status))
 }
 
@@ -439,7 +436,7 @@ pub async fn run_retention(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/storage/age — rows per age bucket, per project and kind.
+/// Rows per age bucket, per project and kind.
 pub async fn get_age(
     pool: web::Data<DbPool>,
     job: web::Data<CleanupJob>,

@@ -23,7 +23,9 @@ actix-rt = "2.15.0"
 actix-files = "0.7.2"
 
 # Session management
-actix-session = { version = "0.11", features = ["cookie-session"] }
+actix-session = "0.11"
+# The error type actix-session's `SessionStore` trait speaks.
+anyhow = "1.0.104"
 
 # Password hashing
 argon2 = "0.6.0"
@@ -127,6 +129,8 @@ async-trait = "0.1.92"
 
 # MCP server at /mcp (stateless Streamable HTTP, protocol 2026-07-28)
 rmcp = { version = "3.8.0", features = ["transport-streamable-http-server"] }
+# The tools' argument schemas, derived on the handlers' own request types.
+schemars = { version = "1.2.2", features = ["uuid1"] }
 http = "1.5.0"
 http-body-util = "0.1.5"
 
@@ -173,7 +177,6 @@ actix-http = "3.20.0"
 
 # Test framework & fixtures
 rstest = "0.28.0"
-serial_test = "4.0.1"
 
 # Note: reqwest available from main dependencies
 

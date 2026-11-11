@@ -103,17 +103,6 @@ pub fn install_panic_hook(counters: &'static Counters) {
     }));
 }
 
-/// `3.46.1` reads as `3.46`, `16.4 (Debian 16.4-1)` as `16.4`.
-pub fn major_minor(raw: &str) -> String {
-    raw.split(|c: char| !c.is_ascii_digit() && c != '.')
-        .next()
-        .unwrap_or("")
-        .split('.')
-        .take(2)
-        .collect::<Vec<_>>()
-        .join(".")
-}
-
 /// The file behind a `sqlite:` `DATABASE_URL`, for its size. `None` for any
 /// other engine and for an in-memory database.
 pub fn sqlite_path_from_url(url: &str) -> Option<std::path::PathBuf> {

@@ -7,7 +7,7 @@
 //! instant here as it would in Sentry.
 
 use crate::error::{AppError, AppResult, FieldErrorCode};
-use crate::scheduler::schedule::{parse_timezone, truncate_to_minute};
+use crate::models::schedule::{parse_timezone, truncate_to_minute, Schedule};
 use chrono::{DateTime, Duration, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
@@ -26,8 +26,6 @@ pub const MAX_THRESHOLD: u64 = 720;
 /// for, for clock skew.
 pub const EARLY_CHECKIN_SECS: i64 = 10;
 
-pub use crate::scheduler::schedule::{IntervalUnit, Schedule};
-
 /// A validated monitor configuration, with every default filled in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -44,14 +42,20 @@ pub struct MonitorConfig {
 }
 
 /// `monitor_config` as an SDK or the dashboard sends it: every field optional.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MonitorConfigInput {
+    #[schemars(description = "Required when creating a monitor")]
     pub schedule: Option<Schedule>,
+    #[schemars(description = "Minutes a check-in may be late before the run counts as missed")]
     pub checkin_margin: Option<u64>,
+    #[schemars(description = "Minutes a run may stay in progress before it times out")]
     pub max_runtime: Option<u64>,
+    #[schemars(description = "IANA zone the crontab is read in")]
     pub timezone: Option<String>,
+    #[schemars(description = "Consecutive failures before an issue opens (1-720)")]
     pub failure_issue_threshold: Option<u64>,
+    #[schemars(description = "Consecutive successes before the issue resolves (1-720)")]
     pub recovery_threshold: Option<u64>,
 }
 
@@ -487,22 +491,27 @@ pub struct MonitorResponse {
 }
 
 /// Body of `POST /api/projects/{project_id}/monitors`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateMonitor {
+    #[schemars(description = "Display name (max 128 characters)")]
     pub name: String,
     /// Derived from `name` when left out. This is the slug SDKs check in with.
     pub slug: Option<String>,
+    #[schemars(description = "Config; schedule is required")]
     pub config: MonitorConfigInput,
 }
 
 /// Body of `PUT /api/projects/{project_id}/monitors/{slug}`. Fields left out
 /// keep their value, including each field of `config`.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateMonitor {
+    #[schemars(description = "New name")]
     pub name: Option<String>,
+    #[schemars(description = "Config fields to change")]
     pub config: Option<MonitorConfigInput>,
+    #[schemars(description = "Mute or unmute")]
     pub is_muted: Option<bool>,
 }
 

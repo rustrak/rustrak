@@ -11,19 +11,16 @@
 
 use actix_web::{web, HttpResponse};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::AppResult;
+use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
 use crate::models::{
     AgentConversation, AgentConversationSummary, AgentDurationPoint, AgentModelRow, AgentSummary,
     AgentTimeseriesPoint, AgentToolRow, AgentTraceSummary, GenAiBreakdownRow,
 };
-use crate::pagination::{
-    AgentBreakdownQuery, AgentConversationsQuery, AgentTimeseriesQuery, AgentTracesQuery,
-    AgentWindowQuery, OffsetPaginatedResponse,
-};
+use crate::pagination::OffsetPaginatedResponse;
 use crate::services::span::{AgentFilters, SpanService};
 
 #[cfg(feature = "openapi")]
@@ -31,6 +28,138 @@ use utoipa::OpenApi;
 
 async fn require_view_access(_pool: &DbPool, project_id: i32, actor: &ApiActor) -> AppResult<()> {
     actor.require(Resource::Performance, Action::Read, Some(project_id))
+}
+
+/// Query parameters for AI Agent Monitoring time-series widgets (Agent Runs,
+/// Estimated Cost, Duration).
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct AgentTimeseriesQuery {
+    /// Lookback window in hours (default: all time, no filter).
+    pub period_hours: Option<i64>,
+
+    /// Restrict to spans reporting this environment (default: all).
+    pub environment: Option<String>,
+
+    /// Bucket width in hours (default: 1).
+    #[serde(default = "default_interval_hours")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1))]
+    pub interval_hours: i64,
+}
+
+fn default_interval_hours() -> i64 {
+    1
+}
+
+/// Query parameters for AI Agent Monitoring breakdown widgets (LLM Calls by
+/// Model, Tokens Used by Model, Tool Calls by Tool).
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct AgentBreakdownQuery {
+    /// Lookback window in hours (default: all time, no filter).
+    pub period_hours: Option<i64>,
+
+    /// Restrict to spans reporting this environment (default: all).
+    pub environment: Option<String>,
+
+    /// Max rows returned (default: 3, matching Sentry's own widget cap).
+    #[serde(default = "default_breakdown_limit")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
+    pub limit: i64,
+}
+
+fn default_breakdown_limit() -> i64 {
+    3
+}
+
+/// Query parameters for the agents-dashboard aggregates that return a whole
+/// table rather than a top-N slice: summary, models, tools/stats.
+///
+/// Deliberately not `AgentBreakdownQuery`: that one carries `limit`, which
+/// these endpoints have no way to honour, and reusing it published a
+/// documented parameter they silently ignored.
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct AgentWindowQuery {
+    /// Lookback window in hours (default: all time, no filter).
+    pub period_hours: Option<i64>,
+
+    /// Restrict to spans reporting this environment (default: all).
+    pub environment: Option<String>,
+}
+
+/// Query parameters for the AI Agent Monitoring Traces table (offset-based).
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct AgentTracesQuery {
+    /// Lookback window in hours (default: all time, no filter). The dashboard
+    /// applies one window to every widget, and this table is one of them.
+    pub period_hours: Option<i64>,
+
+    /// Restrict to spans reporting this environment (default: all).
+    pub environment: Option<String>,
+
+    /// Page number (1-indexed, default: 1)
+    #[serde(default = "crate::pagination::default_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1))]
+    pub page: i64,
+
+    /// Items per page (default: 20, max: 100)
+    #[serde(default = "crate::pagination::default_per_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
+    pub per_page: i64,
+
+    /// Only the traces where this agent ran.
+    pub agent: Option<String>,
+
+    /// Only the traces that called this model (response model, else request).
+    pub model: Option<String>,
+
+    /// Only the traces that used this tool.
+    pub tool: Option<String>,
+
+    /// Only the traces with a failing AI span.
+    #[serde(default)]
+    pub errors: bool,
+
+    /// How to rank them; newest first by default.
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", param(inline))]
+    pub sort: crate::services::span::AgentTraceSort,
+}
+
+impl AgentTracesQuery {
+    pub fn trace_filters(&self) -> crate::services::span::AgentTraceFilters {
+        let set = |v: &Option<String>| v.clone().filter(|s| !s.is_empty());
+        crate::services::span::AgentTraceFilters {
+            agent: set(&self.agent),
+            model: set(&self.model),
+            tool: set(&self.tool),
+            errors: self.errors,
+            sort: self.sort,
+        }
+    }
+}
+
+/// Query parameters for the agent conversations list (offset-based).
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
+pub struct AgentConversationsQuery {
+    /// Lookback window in hours (default: all time, no filter).
+    pub period_hours: Option<i64>,
+
+    /// Restrict to spans reporting this environment (default: all).
+    pub environment: Option<String>,
+
+    /// Page number (1-indexed, default: 1)
+    #[serde(default = "crate::pagination::default_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1))]
+    pub page: i64,
+
+    /// Items per page (default: 20, max: 100)
+    #[serde(default = "crate::pagination::default_per_page")]
+    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
+    pub per_page: i64,
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -46,7 +175,6 @@ async fn require_view_access(_pool: &DbPool, project_id: i32, actor: &ApiActor) 
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/runs
 /// Time-bucketed count of agent-run spans (`gen_ai.operation.type:agent`).
 pub async fn agent_runs(
     pool: web::Data<DbPool>,
@@ -84,7 +212,6 @@ pub async fn agent_runs(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/duration
 /// Time-bucketed avg/p95 duration for `agent`/`ai_client` spans.
 pub async fn agent_duration(
     pool: web::Data<DbPool>,
@@ -122,7 +249,6 @@ pub async fn agent_duration(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/models/calls
 /// Top models by LLM call count (`gen_ai.operation.type:ai_client`).
 pub async fn agent_models_calls(
     pool: web::Data<DbPool>,
@@ -160,7 +286,6 @@ pub async fn agent_models_calls(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/models/tokens
 /// Top models by total tokens used (`gen_ai.operation.type:ai_client`).
 pub async fn agent_models_tokens(
     pool: web::Data<DbPool>,
@@ -198,7 +323,6 @@ pub async fn agent_models_tokens(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/tools
 /// Top tools by call count (`gen_ai.operation.type:tool`).
 pub async fn agent_tools(
     pool: web::Data<DbPool>,
@@ -236,7 +360,6 @@ pub async fn agent_tools(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/traces
 /// Paginated per-trace_id aggregate (duration, tokens, tool usage) across
 /// all AI spans sharing that trace, regardless of origin.
 pub async fn agent_traces(
@@ -249,7 +372,7 @@ pub async fn agent_traces(
     require_view_access(pool.get_ref(), project_id, &actor).await?;
 
     let page = query.page.max(1);
-    let per_page = query.per_page.clamp(1, 100);
+    let per_page = crate::pagination::per_page(query.per_page)?;
 
     let filters = AgentFilters {
         environment: query.environment.clone(),
@@ -286,7 +409,6 @@ pub async fn agent_traces(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/summary
 /// Agent runs, LLM calls, tool calls, errors, tokens and latency over the
 /// selected window — the numbers the six charts cannot state outright.
 pub async fn agent_summary(
@@ -321,7 +443,6 @@ pub async fn agent_summary(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/models
 pub async fn agent_models_table(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -353,7 +474,6 @@ pub async fn agent_models_table(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/tools/stats
 pub async fn agent_tools_table(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -385,7 +505,6 @@ pub async fn agent_tools_table(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/environments
 /// The options the environment filter offers, read from the data rather than
 /// hardcoded — an installation may name its environments anything.
 pub async fn agent_environments(
@@ -417,7 +536,6 @@ pub async fn agent_environments(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/conversations
 /// Lists conversations -- traces sharing a `gen_ai.conversation.id` -- the most recently active first.
 pub async fn agent_conversations(
     pool: web::Data<DbPool>,
@@ -429,7 +547,7 @@ pub async fn agent_conversations(
     require_view_access(pool.get_ref(), project_id, &actor).await?;
 
     let page = query.page.max(1);
-    let per_page = query.per_page.clamp(1, 100);
+    let per_page = crate::pagination::per_page(query.per_page)?;
     let filters = AgentFilters {
         environment: query.environment.clone(),
     };
@@ -467,7 +585,6 @@ pub async fn agent_conversations(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// GET /api/projects/{project_id}/agents/conversations/{conversation_id}
 /// Returns every AI span of a conversation's turns, oldest first, with its input and output.
 pub async fn agent_conversation(
     pool: web::Data<DbPool>,
@@ -499,24 +616,20 @@ pub async fn agent_conversation(
 ))]
 pub struct AgentsApi;
 
-/// Configure AI Agent Monitoring dashboard routes.
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/projects/{project_id}/agents")
-            .route("/runs", web::get().to(agent_runs))
-            .route("/duration", web::get().to(agent_duration))
-            .route("/models/calls", web::get().to(agent_models_calls))
-            .route("/models/tokens", web::get().to(agent_models_tokens))
-            .route("/tools", web::get().to(agent_tools))
-            .route("/tools/stats", web::get().to(agent_tools_table))
-            .route("/traces", web::get().to(agent_traces))
-            .route("/summary", web::get().to(agent_summary))
-            .route("/models", web::get().to(agent_models_table))
-            .route("/environments", web::get().to(agent_environments))
-            .route("/conversations", web::get().to(agent_conversations))
-            .route(
-                "/conversations/{conversation_id}",
-                web::get().to(agent_conversation),
-            ),
-    );
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/agents/runs", web::get().to(agent_runs))
+        .route("/agents/duration", web::get().to(agent_duration))
+        .route("/agents/models/calls", web::get().to(agent_models_calls))
+        .route("/agents/models/tokens", web::get().to(agent_models_tokens))
+        .route("/agents/tools", web::get().to(agent_tools))
+        .route("/agents/tools/stats", web::get().to(agent_tools_table))
+        .route("/agents/traces", web::get().to(agent_traces))
+        .route("/agents/summary", web::get().to(agent_summary))
+        .route("/agents/models", web::get().to(agent_models_table))
+        .route("/agents/environments", web::get().to(agent_environments))
+        .route("/agents/conversations", web::get().to(agent_conversations))
+        .route(
+            "/agents/conversations/{conversation_id}",
+            web::get().to(agent_conversation),
+        );
 }

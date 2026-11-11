@@ -55,7 +55,7 @@ where
     let raw = <Option<serde_json::Value> as serde::Deserialize>::deserialize(deserializer)?;
     Ok(raw
         .as_ref()
-        .and_then(crate::digest::processors::timestamp_from_value)
+        .and_then(crate::protocol::timestamp_from_value)
         .filter(|dt| *dt > chrono::DateTime::UNIX_EPOCH))
 }
 
@@ -71,52 +71,29 @@ pub mod issue;
 pub mod log;
 pub mod monitor;
 pub mod project;
+pub mod rbac;
 pub mod release;
 pub mod role;
+pub mod schedule;
 pub mod session;
 pub mod source_file;
 pub mod span_v2;
 pub mod stats;
 pub mod storage;
+pub mod token;
 pub mod transaction;
 pub mod user;
 
 pub use alert::{
-    AlertHistory,
-    AlertHistoryDay,
-    AlertIntegration,
-    AlertPayload,
-    AlertRule,
-    AlertRuleChannel,
-    AlertRuleChannelInput,
-    AlertRuleResponse,
-    AlertStatus,
-    AlertType,
-    // New types
-    // Legacy aliases
-    ChannelType,
-    CreateAlertIntegration,
-    CreateAlertRule,
-    CreateNotificationChannel,
-    CustomWebhookConfig,
-    EmailConfig,
-    EmailRoutingOverride,
-    IssueInfo,
-    NotificationChannel,
-    ProjectInfo,
-    ProviderType,
-    SlackBotTokenConfig,
-    SlackConfig,
-    SlackRoutingOverride,
-    SlackWebhookConfig,
-    UpdateAlertIntegration,
-    UpdateAlertRule,
-    UpdateNotificationChannel,
-    WebhookConfig,
+    AlertHistory, AlertHistoryDay, AlertIntegration, AlertPayload, AlertRule, AlertRuleChannel,
+    AlertRuleChannelInput, AlertRuleResponse, AlertStatus, AlertType, CreateAlertIntegration,
+    CreateAlertRule, CustomWebhookConfig, EmailConfig, EmailRoutingOverride, IssueInfo,
+    ProjectInfo, ProviderType, SlackBotTokenConfig, SlackConfig, SlackRoutingOverride,
+    SlackWebhookConfig, UpdateAlertIntegration, UpdateAlertRule, WebhookConfig,
     WebhookRoutingOverride,
 };
 pub use auth_token::{AuthToken, AuthTokenCreatedResponse, AuthTokenResponse, CreateAuthToken};
-pub use event::{Event, EventDetailResponse, EventResponse, EventSummary};
+pub use event::{AttachmentInfo, Event, EventDetailResponse, EventResponse, EventSummary};
 pub use gen_ai::{
     AgentConversation, AgentConversationSummary, AgentDurationPoint, AgentModelRow, AgentSummary,
     AgentTimeseriesPoint, AgentToolRow, AgentTraceSummary, ConversationSpan, GenAiBreakdownRow,

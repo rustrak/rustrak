@@ -160,6 +160,11 @@ pub struct SessionTimeseriesPoint {
     pub crash_free_sessions_rate: Option<f64>,
 }
 
+/// The share of `total` that did not crash; `None` without any.
+pub fn crash_free_rate(crashed: i64, total: i64) -> Option<f64> {
+    (total > 0).then(|| 1.0 - crashed as f64 / total as f64)
+}
+
 /// Parse an ISO-8601 timestamp string into a UTC DateTime, returning None on failure.
 pub fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
@@ -265,40 +270,6 @@ mod tests {
     #[test]
     fn is_terminal_exited_is() {
         assert!(SessionStatus::Exited.is_terminal());
-    }
-
-    #[test]
-    fn parse_session_update_with_init() {
-        let json = r#"{
-            "sid": "abc123",
-            "did": "user-1",
-            "seq": 0,
-            "init": true,
-            "started": "2026-06-10T10:00:00.000Z",
-            "status": "ok",
-            "errors": 0,
-            "attrs": {"release": "1.0.0", "environment": "production"}
-        }"#;
-        let update: SessionUpdate = serde_json::from_str(json).unwrap();
-        assert!(update.init);
-        assert_eq!(update.did.as_deref(), Some("user-1"));
-        assert_eq!(
-            update.attrs.as_ref().unwrap().release.as_deref(),
-            Some("1.0.0")
-        );
-    }
-
-    #[test]
-    fn parse_session_aggregates() {
-        let json = r#"{
-            "attrs": {"release": "2.0.0", "environment": "staging"},
-            "aggregates": [
-                {"started": "2026-06-10T10:00:00Z", "exited": 5, "errored": 1, "crashed": 2, "abnormal": 0}
-            ]
-        }"#;
-        let agg: SessionAggregates = serde_json::from_str(json).unwrap();
-        assert_eq!(agg.aggregates.len(), 1);
-        assert_eq!(agg.aggregates[0].crashed, 2);
     }
 
     #[test]

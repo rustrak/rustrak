@@ -1,8 +1,12 @@
+//! Every environment variable the server reads is read here, once, at startup.
+
 use actix_web::cookie::Key;
+use chrono_tz::Tz;
 use std::env;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::Duration;
 
-/// Application configuration loaded from environment variables
 #[derive(Debug, Clone)]
 pub struct Config {
     pub host: String,
@@ -10,30 +14,35 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub rate_limit: RateLimitConfig,
     pub security: SecurityConfig,
-    pub ingest_dir: Option<String>,
-    /// Optional public-facing URL used to build DSN strings shown to users.
-    /// Must include scheme (http:// or https://). Trailing slash is stripped at load time.
-    /// Falls back to `http://{HOST}:{PORT}` when unset.
+    /// Where events wait for the digest.
+    pub ingest_dir: PathBuf,
+    /// Public-facing URL used to build DSN strings shown to users. Includes
+    /// the scheme; trailing slashes are stripped at load time.
     pub public_url: Option<String>,
     /// Directory where assembled source map files are stored on disk (CAS layout).
-    /// Default: /data/sourcemaps. Override with SOURCEMAP_STORAGE_PATH env var.
     pub sourcemap_storage_path: String,
     /// Budget for parsed source maps kept in memory across events, in bytes.
-    /// Default: 64 MB. Override with SOURCEMAP_CACHE_MB env var.
     pub sourcemap_cache_bytes: usize,
-    /// Maximum allowed size of a single uploaded chunk in bytes.
-    /// Default: 10 MB. Override with MAX_CHUNK_SIZE_BYTES env var.
     pub max_chunk_size_bytes: usize,
-    /// How often the session aggregator flushes in-memory buckets to the DB (seconds).
-    /// Default: 30. Override with SESSION_FLUSH_INTERVAL_SECS env var.
+    /// How often the session aggregator flushes in-memory buckets to the DB.
     pub session_flush_interval_secs: u64,
     /// Max distinct (release, environment) pairs tracked per project before folding into <overflow>.
-    /// Default: 10000. Override with SESSION_CARDINALITY_CAP env var.
     pub session_cardinality_cap: usize,
-    /// The compiled dashboard: where it is and whether to serve it.
     pub dashboard: DashboardConfig,
-    /// Anonymous usage telemetry, as the environment describes it.
     pub telemetry: TelemetryConfig,
+    /// The Prometheus scrape at `/metrics`. Off unless switched on: anyone who
+    /// can reach the port can read it.
+    pub metrics_enabled: bool,
+    /// The global SMTP server alert and invitation emails go through.
+    pub smtp: SmtpSettings,
+    /// `None` when SSO is not configured.
+    pub oidc: Option<OidcConfig>,
+    /// `RUSTRAK_BOOTSTRAP_TOKEN` is set: mint a first API token on an empty install.
+    pub bootstrap_token: bool,
+    /// `CREATE_SUPERUSER`, `email:password`.
+    pub create_superuser: Option<String>,
+    /// GitHub's REST API, or a GitHub Enterprise Server's.
+    pub github_api_url: String,
 }
 
 /// The anonymous telemetry switches. Whether anything is actually sent is
@@ -41,33 +50,28 @@ pub struct Config {
 /// compiled into the binary.
 #[derive(Debug, Clone)]
 pub struct TelemetryConfig {
-    /// `RUSTRAK_TELEMETRY`: on unless it says otherwise.
     pub enabled: bool,
-    /// `DO_NOT_TRACK=1`, the cross-tool convention from consoledonottrack.com.
+    /// `DO_NOT_TRACK`, the cross-tool convention from consoledonottrack.com.
     pub do_not_track: bool,
 }
 
-/// The compiled dashboard, as the environment describes it.
 #[derive(Debug, Clone)]
 pub struct DashboardConfig {
     /// Where the build lives, relative to the working directory or absolute.
-    /// Default: `./static`. Override with RUSTRAK_DASHBOARD_DIR.
     ///
     /// A path, not a switch: the dashboard is mounted when the directory
     /// actually holds an `index.html` and skipped when it does not, so an
     /// image built without one needs no configuration to stay API-only.
     pub dir: String,
-    /// Whether to serve it at all. Default: on. Override with
-    /// RUSTRAK_DASHBOARD=off, for the deployment that has a build in the image
-    /// and runs the dashboard from another host anyway.
+    /// Off for the deployment that has a build in the image and runs the
+    /// dashboard from another host anyway.
     pub enabled: bool,
     /// Where people open it, when that is not the server's own `PUBLIC_URL`:
-    /// a dashboard on its own host. Set with DASHBOARD_URL. Read through
-    /// [`Config::dashboard_url`], which applies the fallbacks.
+    /// a dashboard on its own host. Read through [`Config::dashboard_url`],
+    /// which applies the fallbacks.
     pub url: Option<String>,
 }
 
-/// Database connection pool configuration
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
     pub url: String,
@@ -78,27 +82,25 @@ pub struct DatabaseConfig {
     pub max_lifetime: Duration,
 }
 
-/// Security configuration for production deployments
 #[derive(Clone)]
 pub struct SecurityConfig {
-    /// True if server is behind a proxy that terminates SSL (nginx, Cloudflare, etc.)
-    /// When true: cookie_secure=true is enabled
+    /// Behind a proxy that terminates TLS: session cookies are `Secure`.
     pub ssl_proxy: bool,
-    /// Session encryption key (64 hex chars). Required when ssl_proxy=true
-    pub session_secret_key: Option<String>,
+    /// `SESSION_SECRET_KEY` was set, so sessions survive a restart.
+    pub session_secret_set: bool,
+    /// Signs and encrypts session cookies: built from `SESSION_SECRET_KEY`,
+    /// or random for this process when it is unset.
+    pub session_key: Key,
 }
 
 impl std::fmt::Debug for SecurityConfig {
-    /// Hand-written so the secret cannot reach a log line through the derived
+    /// Hand-written so the key cannot reach a log line through the derived
     /// `Debug` on `Config`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SecurityConfig")
             .field("ssl_proxy", &self.ssl_proxy)
-            .field(
-                "session_secret_key",
-                &self.session_secret_key.as_ref().map(|_| "[redacted]"),
-            )
-            .finish()
+            .field("session_secret_set", &self.session_secret_set)
+            .finish_non_exhaustive()
     }
 }
 
@@ -150,67 +152,110 @@ impl std::fmt::Debug for OidcConfig {
     }
 }
 
-/// Rate limiting configuration
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RateLimitConfig {
-    /// Global (installation-wide) max events per minute
+    /// Installation-wide.
     pub max_events_per_minute: i64,
-    /// Global (installation-wide) max events per hour
+    /// Installation-wide.
     pub max_events_per_hour: i64,
-    /// Per-project max events per minute
     pub max_events_per_project_per_minute: i64,
-    /// Per-project max events per hour
     pub max_events_per_project_per_hour: i64,
 }
 
-impl Config {
-    /// Load configuration from environment variables
-    pub fn from_env() -> Result<Self, ConfigError> {
-        Ok(Self {
-            host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
-            port: env::var("PORT")
-                .unwrap_or_else(|_| "8080".to_string())
-                .parse()
-                .map_err(|_| ConfigError::InvalidPort)?,
-            database: DatabaseConfig::from_env()?,
-            rate_limit: RateLimitConfig::from_env(),
-            security: SecurityConfig::from_env()?,
-            ingest_dir: env::var("INGEST_DIR").ok(),
-            sourcemap_storage_path: env::var("SOURCEMAP_STORAGE_PATH")
-                .unwrap_or_else(|_| "/data/sourcemaps".to_string()),
-            sourcemap_cache_bytes: env::var("SOURCEMAP_CACHE_MB")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .and_then(|mb| mb.checked_mul(1024 * 1024))
-                .unwrap_or(crate::services::sourcemap::DEFAULT_SOURCEMAP_CACHE_BYTES),
-            max_chunk_size_bytes: env::var("MAX_CHUNK_SIZE_BYTES")
-                .unwrap_or_else(|_| (10 * 1024 * 1024).to_string())
-                .parse()
-                .unwrap_or(10 * 1024 * 1024),
-            public_url: url_from_env("PUBLIC_URL"),
-            session_flush_interval_secs: env::var("SESSION_FLUSH_INTERVAL_SECS")
-                .unwrap_or_else(|_| "30".to_string())
-                .parse()
-                .unwrap_or(30),
-            session_cardinality_cap: env::var("SESSION_CARDINALITY_CAP")
-                .unwrap_or_else(|_| "10000".to_string())
-                .parse()
-                .unwrap_or(10_000),
-            dashboard: DashboardConfig::from_env()?,
-            telemetry: TelemetryConfig::from_env()?,
-        })
+/// What the server runs with when the environment sets nothing.
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            host: "0.0.0.0".to_string(),
+            port: 8080,
+            database: DatabaseConfig::default(),
+            rate_limit: RateLimitConfig::default(),
+            security: SecurityConfig::default(),
+            ingest_dir: PathBuf::from("/tmp/rustrak/ingest"),
+            public_url: None,
+            sourcemap_storage_path: "/data/sourcemaps".to_string(),
+            sourcemap_cache_bytes: DEFAULT_SOURCEMAP_CACHE_BYTES,
+            max_chunk_size_bytes: 10 * 1024 * 1024,
+            session_flush_interval_secs: 30,
+            session_cardinality_cap: 10_000,
+            dashboard: DashboardConfig {
+                dir: "./static".to_string(),
+                enabled: true,
+                url: None,
+            },
+            telemetry: TelemetryConfig {
+                enabled: true,
+                do_not_track: false,
+            },
+            metrics_enabled: false,
+            smtp: SmtpSettings::default(),
+            oidc: None,
+            bootstrap_token: false,
+            create_superuser: None,
+            github_api_url: "https://api.github.com".to_string(),
+        }
     }
 }
 
 impl Config {
-    /// Where people open the dashboard, for the links in alert notifications:
-    /// `DASHBOARD_URL`, else `PUBLIC_URL` (the server serves the dashboard, so
-    /// the address SDKs reach is also the one people open), else the bind
-    /// address.
-    pub fn dashboard_url(&self) -> String {
-        self.public_dashboard_url()
-            .map(str::to_string)
+    pub fn from_env() -> Result<Self, ConfigError> {
+        let defaults = Self::default();
+        Ok(Self {
+            host: env::var("HOST").unwrap_or(defaults.host),
+            port: match env::var("PORT") {
+                Ok(port) => port.parse().map_err(|_| ConfigError::InvalidPort)?,
+                Err(_) => defaults.port,
+            },
+            database: DatabaseConfig::from_env()?,
+            rate_limit: RateLimitConfig::from_env(),
+            security: SecurityConfig::from_env()?,
+            ingest_dir: non_empty("INGEST_DIR")
+                .map(PathBuf::from)
+                .unwrap_or(defaults.ingest_dir),
+            sourcemap_storage_path: env::var("SOURCEMAP_STORAGE_PATH")
+                .unwrap_or(defaults.sourcemap_storage_path),
+            sourcemap_cache_bytes: env::var("SOURCEMAP_CACHE_MB")
+                .ok()
+                .and_then(|mb| mb.parse::<usize>().ok())
+                .and_then(|mb| mb.checked_mul(1024 * 1024))
+                .unwrap_or(defaults.sourcemap_cache_bytes),
+            max_chunk_size_bytes: env_number("MAX_CHUNK_SIZE_BYTES", defaults.max_chunk_size_bytes),
+            public_url: url_from_env("PUBLIC_URL"),
+            session_flush_interval_secs: env_number(
+                "SESSION_FLUSH_INTERVAL_SECS",
+                defaults.session_flush_interval_secs,
+            ),
+            session_cardinality_cap: env_number(
+                "SESSION_CARDINALITY_CAP",
+                defaults.session_cardinality_cap,
+            ),
+            dashboard: DashboardConfig::from_env()?,
+            telemetry: TelemetryConfig::from_env()?,
+            metrics_enabled: env_bool("RUSTRAK_METRICS", false)?,
+            smtp: SmtpSettings::from_env(),
+            oidc: OidcConfig::from_env()?,
+            bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").is_ok(),
+            create_superuser: env::var("CREATE_SUPERUSER").ok(),
+            github_api_url: non_empty("GITHUB_API_URL").unwrap_or(defaults.github_api_url),
+        })
+    }
+
+    /// The address this server is reached at: `PUBLIC_URL`, else the bind
+    /// address. Never a request's `Host`, which the client controls.
+    pub fn base_url(&self) -> String {
+        self.public_url
+            .clone()
             .unwrap_or_else(|| format!("http://{}:{}", self.host, self.port))
+    }
+
+    /// Where people open the dashboard, for the links in alert notifications:
+    /// `DASHBOARD_URL`, else [`Config::base_url`] (the server serves the
+    /// dashboard, so the address SDKs reach is also the one people open).
+    pub fn dashboard_url(&self) -> String {
+        self.dashboard
+            .url
+            .clone()
+            .unwrap_or_else(|| self.base_url())
     }
 
     /// [`Config::dashboard_url`] without the bind-address fallback: a link
@@ -219,25 +264,32 @@ impl Config {
     pub fn public_dashboard_url(&self) -> Option<&str> {
         self.dashboard.url.as_deref().or(self.public_url.as_deref())
     }
+
+    /// The largest artifact bundle sentry-cli may assemble: it uploads at
+    /// most 64 chunks per request.
+    pub fn max_bundle_size_bytes(&self) -> usize {
+        self.max_chunk_size_bytes.saturating_mul(64)
+    }
+}
+
+/// `RUSTRAK_LOG_TIMEZONE`, the IANA zone log timestamps are shown in.
+/// Display-only: event and issue timestamps stay UTC. Read apart from
+/// [`Config::from_env`] because the logger starts before the configuration
+/// loads. `Err` holds a name that is not an IANA zone.
+pub fn log_timezone() -> Result<Option<Tz>, String> {
+    match env::var("RUSTRAK_LOG_TIMEZONE") {
+        Ok(name) => Tz::from_str(&name).map(Some).map_err(|_| name),
+        Err(_) => Ok(None),
+    }
 }
 
 impl TelemetryConfig {
-    /// Load telemetry configuration from environment variables
     pub fn from_env() -> Result<Self, ConfigError> {
-        let enabled = match env::var("RUSTRAK_TELEMETRY").ok() {
-            None => true,
-            Some(value) => match value.trim().to_ascii_lowercase().as_str() {
-                "on" | "true" | "1" => true,
-                "off" | "false" | "0" => false,
-                _ => return Err(ConfigError::InvalidTelemetrySwitch { value }),
-            },
-        };
-        let do_not_track = env::var("DO_NOT_TRACK")
-            .map(|v| matches!(v.trim(), "1" | "true"))
-            .unwrap_or(false);
         Ok(Self {
-            enabled,
-            do_not_track,
+            enabled: env_bool("RUSTRAK_TELEMETRY", true)?,
+            // The convention is "set means opt out": a spelling we do not know
+            // still opts out rather than stopping the server.
+            do_not_track: env_bool("DO_NOT_TRACK", false).unwrap_or(true),
         })
     }
 }
@@ -256,129 +308,186 @@ impl Default for RateLimitConfig {
 }
 
 impl RateLimitConfig {
-    /// Load rate limit configuration from environment variables
     pub fn from_env() -> Self {
         let defaults = Self::default();
-        let limit = |name: &str, default: i64| {
-            env::var(name)
-                .ok()
-                .and_then(|value| value.parse().ok())
-                .unwrap_or(default)
-        };
         Self {
-            max_events_per_minute: limit("MAX_EVENTS_PER_MINUTE", defaults.max_events_per_minute),
-            max_events_per_hour: limit("MAX_EVENTS_PER_HOUR", defaults.max_events_per_hour),
-            max_events_per_project_per_minute: limit(
+            max_events_per_minute: env_number(
+                "MAX_EVENTS_PER_MINUTE",
+                defaults.max_events_per_minute,
+            ),
+            max_events_per_hour: env_number("MAX_EVENTS_PER_HOUR", defaults.max_events_per_hour),
+            max_events_per_project_per_minute: env_number(
                 "MAX_EVENTS_PER_PROJECT_PER_MINUTE",
                 defaults.max_events_per_project_per_minute,
             ),
-            max_events_per_project_per_hour: limit(
+            max_events_per_project_per_hour: env_number(
                 "MAX_EVENTS_PER_PROJECT_PER_HOUR",
                 defaults.max_events_per_project_per_hour,
             ),
         }
     }
 
-    /// Whether any limit differs from its default.
     pub fn is_customized(&self) -> bool {
         *self != Self::default()
     }
 }
 
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            url: "sqlite:///data/rustrak.db".to_string(),
+            max_connections: 10,
+            min_connections: 1,
+            acquire_timeout: Duration::from_secs(5),
+            idle_timeout: Duration::from_secs(600),
+            max_lifetime: Duration::from_secs(1800),
+        }
+    }
+}
+
 impl DatabaseConfig {
-    /// Load database configuration from environment variables
     pub fn from_env() -> Result<Self, ConfigError> {
+        let defaults = Self::default();
         #[cfg(feature = "sqlite")]
-        let url =
-            env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:///data/rustrak.db".to_string());
+        let url = env::var("DATABASE_URL").unwrap_or(defaults.url);
         #[cfg(not(feature = "sqlite"))]
         let url = env::var("DATABASE_URL").map_err(|_| ConfigError::MissingDatabaseUrl)?;
+        let secs = |name: &str, default: Duration| {
+            Duration::from_secs(env_number(name, default.as_secs()))
+        };
 
         Ok(Self {
             url,
-            max_connections: env::var("DATABASE_MAX_CONNECTIONS")
-                .unwrap_or_else(|_| "10".to_string())
-                .parse()
-                .unwrap_or(10),
-            min_connections: env::var("DATABASE_MIN_CONNECTIONS")
-                .unwrap_or_else(|_| "1".to_string())
-                .parse()
-                .unwrap_or(1),
-            acquire_timeout: Duration::from_secs(
-                env::var("DATABASE_ACQUIRE_TIMEOUT_SECS")
-                    .unwrap_or_else(|_| "5".to_string())
-                    .parse()
-                    .unwrap_or(5),
-            ),
-            idle_timeout: Duration::from_secs(
-                env::var("DATABASE_IDLE_TIMEOUT_SECS")
-                    .unwrap_or_else(|_| "600".to_string())
-                    .parse()
-                    .unwrap_or(600),
-            ),
-            max_lifetime: Duration::from_secs(
-                env::var("DATABASE_MAX_LIFETIME_SECS")
-                    .unwrap_or_else(|_| "1800".to_string())
-                    .parse()
-                    .unwrap_or(1800),
-            ),
+            max_connections: env_number("DATABASE_MAX_CONNECTIONS", defaults.max_connections),
+            min_connections: env_number("DATABASE_MIN_CONNECTIONS", defaults.min_connections),
+            acquire_timeout: secs("DATABASE_ACQUIRE_TIMEOUT_SECS", defaults.acquire_timeout),
+            idle_timeout: secs("DATABASE_IDLE_TIMEOUT_SECS", defaults.idle_timeout),
+            max_lifetime: secs("DATABASE_MAX_LIFETIME_SECS", defaults.max_lifetime),
         })
     }
 }
 
 impl DashboardConfig {
-    /// Load dashboard configuration from environment variables
     pub fn from_env() -> Result<Self, ConfigError> {
         Ok(Self {
-            dir: env::var("RUSTRAK_DASHBOARD_DIR")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| "./static".to_string()),
-            enabled: Self::switch(env::var("RUSTRAK_DASHBOARD").ok())?,
+            dir: non_empty("RUSTRAK_DASHBOARD_DIR")
+                .unwrap_or_else(|| Config::default().dashboard.dir),
+            // A typo is refused rather than defaulted: one that silently left
+            // the dashboard on would expose a UI the operator meant to keep
+            // off the box.
+            enabled: env_bool("RUSTRAK_DASHBOARD", true)?,
             url: url_from_env("DASHBOARD_URL"),
         })
     }
+}
 
-    /// `RUSTRAK_DASHBOARD`: on unless it says otherwise.
-    ///
-    /// Refuses anything it does not recognise rather than defaulting, because
-    /// the two ways to misread a switch are not symmetric here: a typo that
-    /// silently left the dashboard *on* would expose a UI the operator meant
-    /// to keep off the box.
-    fn switch(value: Option<String>) -> Result<bool, ConfigError> {
-        let Some(value) = value else {
-            return Ok(true);
-        };
+/// Default budget for parsed source maps kept across events (`SOURCEMAP_CACHE_MB`).
+pub const DEFAULT_SOURCEMAP_CACHE_BYTES: usize = 64 * 1024 * 1024;
+
+/// The sender used when none is configured or the configured one does not
+/// parse.
+pub const DEFAULT_FROM: &str = "alerts@rustrak.local";
+
+/// How the connection to the SMTP server is encrypted (`SMTP_TLS`), like
+/// Sentry's `mail.use-tls` and `mail.use-ssl`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmtpTls {
+    /// Upgrade with STARTTLS, and refuse a server that cannot.
+    StartTls,
+    /// TLS from the first byte (SMTPS).
+    Tls,
+    /// No encryption: a relay on a trusted network, or a local test server.
+    None,
+}
+
+impl SmtpTls {
+    /// `starttls`, `tls` or `none`, in any case.
+    pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "on" | "true" | "1" => Ok(true),
-            "off" | "false" | "0" => Ok(false),
-            _ => Err(ConfigError::InvalidDashboardSwitch { value }),
+            "starttls" => Some(Self::StartTls),
+            "tls" => Some(Self::Tls),
+            "none" => Some(Self::None),
+            _ => None,
         }
     }
+}
+
+/// The global SMTP configuration, read from `SMTP_HOST`, `SMTP_PORT`,
+/// `SMTP_TLS`, `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM`.
+#[derive(Debug, Clone)]
+pub struct SmtpSettings {
+    pub host: Option<String>,
+    pub port: u16,
+    /// `None` picks by port: TLS on 465, STARTTLS elsewhere.
+    pub tls: Option<SmtpTls>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub from_address: String,
+}
+
+impl Default for SmtpSettings {
+    fn default() -> Self {
+        Self {
+            host: None,
+            port: 587,
+            tls: None,
+            username: None,
+            password: None,
+            from_address: DEFAULT_FROM.to_string(),
+        }
+    }
+}
+
+impl SmtpSettings {
+    pub fn from_env() -> Self {
+        let defaults = Self::default();
+        Self {
+            host: non_empty("SMTP_HOST"),
+            port: env_number("SMTP_PORT", defaults.port),
+            tls: env::var("SMTP_TLS").ok().and_then(|value| {
+                let tls = SmtpTls::parse(&value);
+                if tls.is_none() {
+                    log::warn!("Ignoring SMTP_TLS={value}: expected starttls, tls or none");
+                }
+                tls
+            }),
+            username: env::var("SMTP_USERNAME").ok(),
+            password: env::var("SMTP_PASSWORD").ok(),
+            from_address: env::var("SMTP_FROM").unwrap_or(defaults.from_address),
+        }
+    }
+}
+
+/// A variable's value, unless it is unset or blank.
+fn non_empty(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|s| !s.trim().is_empty())
+}
+
+/// A number from the environment; unset or unparsable reads as `default`.
+fn env_number<T: FromStr>(name: &str, default: T) -> T {
+    env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
 }
 
 /// An address from the environment: unset or blank is `None`, surrounding
 /// whitespace and trailing slashes go, and the scheme is lowercased (RFC 3986:
 /// it is case-insensitive).
 fn url_from_env(var: &str) -> Option<String> {
-    env::var(var)
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| {
-            let trimmed = s.trim().trim_end_matches('/');
-            if let Some(pos) = trimmed.find("://") {
-                format!("{}{}", trimmed[..pos].to_lowercase(), &trimmed[pos..])
-            } else {
-                trimmed.to_string()
-            }
-        })
+    non_empty(var).map(|s| {
+        let trimmed = s.trim().trim_end_matches('/');
+        if let Some(pos) = trimmed.find("://") {
+            format!("{}{}", trimmed[..pos].to_lowercase(), &trimmed[pos..])
+        } else {
+            trimmed.to_string()
+        }
+    })
 }
 
 #[derive(Debug)]
 pub enum ConfigError {
     InvalidPort,
-    InvalidDashboardSwitch { value: String },
-    InvalidTelemetrySwitch { value: String },
     MissingDatabaseUrl,
     MissingSessionSecret,
     SessionSecretTooShort { len: usize },
@@ -391,14 +500,6 @@ impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigError::InvalidPort => write!(f, "PORT must be a valid number"),
-            ConfigError::InvalidDashboardSwitch { value } => write!(
-                f,
-                "RUSTRAK_DASHBOARD is {value:?}, but it must be on or off"
-            ),
-            ConfigError::InvalidTelemetrySwitch { value } => write!(
-                f,
-                "RUSTRAK_TELEMETRY is {value:?}, but it must be on or off"
-            ),
             ConfigError::MissingDatabaseUrl => {
                 write!(f, "DATABASE_URL environment variable is required")
             }
@@ -421,7 +522,7 @@ impl std::fmt::Display for ConfigError {
             }
             ConfigError::InvalidBoolean { name, value } => write!(
                 f,
-                "{name} must be true or false (also accepted: 1/0, yes/no, on/off), got \"{value}\""
+                "{name} must be on or off (also accepted: true/false, 1/0, yes/no), got \"{value}\""
             ),
             ConfigError::PasswordLoginDisabledWithoutSso => write!(
                 f,
@@ -468,10 +569,7 @@ impl OidcConfig {
         // and silently ignoring it would let an operator believe password
         // login is off while it still works.
         let disable_password_login = env_bool("OIDC_DISABLE_PASSWORD_LOGIN", false)?;
-        let Some(issuer_url) = env::var("OIDC_ISSUER_URL")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-        else {
+        let Some(issuer_url) = non_empty("OIDC_ISSUER_URL") else {
             if disable_password_login {
                 return Err(ConfigError::PasswordLoginDisabledWithoutSso);
             }
@@ -479,50 +577,39 @@ impl OidcConfig {
         };
 
         let required = |name: &str| {
-            env::var(name)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| ConfigError::IncompleteOidcConfig(name.to_string()))
+            non_empty(name).ok_or_else(|| ConfigError::IncompleteOidcConfig(name.to_string()))
         };
-
-        let scopes = env::var("OIDC_SCOPES")
-            .unwrap_or_else(|_| "openid email profile".to_string())
-            .split_whitespace()
-            .map(str::to_string)
-            .collect();
-        let allowed_domains = env::var("OIDC_ALLOWED_DOMAINS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|domain| domain.trim().to_ascii_lowercase())
-            .filter(|domain| !domain.is_empty())
-            .collect();
-        let admin_groups: Vec<String> = env::var("OIDC_ADMIN_GROUPS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|group| group.trim().to_string())
-            .filter(|group| !group.is_empty())
-            .collect();
+        let list = |name: &str| -> Vec<String> {
+            env::var(name)
+                .unwrap_or_default()
+                .split(',')
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect()
+        };
 
         Ok(Some(Self {
             issuer_url: issuer_url.trim().to_string(),
             client_id: required("OIDC_CLIENT_ID")?,
             client_secret: required("OIDC_CLIENT_SECRET")?,
             redirect_url: required("OIDC_REDIRECT_URL")?,
-            provider_name: env::var("OIDC_PROVIDER_NAME")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| "SSO".to_string()),
-            scopes,
-            allowed_domains,
+            provider_name: non_empty("OIDC_PROVIDER_NAME").unwrap_or_else(|| "SSO".to_string()),
+            scopes: env::var("OIDC_SCOPES")
+                .unwrap_or_else(|_| "openid email profile".to_string())
+                .split_whitespace()
+                .map(str::to_string)
+                .collect(),
+            allowed_domains: list("OIDC_ALLOWED_DOMAINS")
+                .into_iter()
+                .map(|domain| domain.to_ascii_lowercase())
+                .collect(),
             auto_provision: env_bool("OIDC_AUTO_PROVISION", false)?,
             require_email_verified: env_bool("OIDC_REQUIRE_EMAIL_VERIFIED", true)?,
             link_existing_accounts: env_bool("OIDC_LINK_EXISTING_ACCOUNTS", false)?,
-            groups_claim: env::var("OIDC_GROUPS_CLAIM")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
+            groups_claim: non_empty("OIDC_GROUPS_CLAIM")
                 .map(|value| value.trim().to_string())
                 .unwrap_or_else(|| "groups".to_string()),
-            admin_groups,
+            admin_groups: list("OIDC_ADMIN_GROUPS"),
             disable_password_login,
         }))
     }
@@ -530,51 +617,80 @@ impl OidcConfig {
 
 impl std::error::Error for ConfigError {}
 
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            ssl_proxy: false,
+            session_secret_set: false,
+            session_key: Key::generate(),
+        }
+    }
+}
+
 impl SecurityConfig {
     /// Required length of `SESSION_SECRET_KEY`, in bytes: the cookie master key
     /// is a 256-bit signing key followed by a 256-bit encryption key.
     pub const MIN_SECRET_LEN: usize = 64;
 
-    /// Load security configuration from environment variables
+    /// Builds the key here so an unusable secret stops the process before it
+    /// opens the database, runs migrations and starts the workers.
     pub fn from_env() -> Result<Self, ConfigError> {
-        let session_secret_key = env::var("SESSION_SECRET_KEY").ok();
-
-        let ssl_proxy = env::var("SSL_PROXY")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(false);
-
-        // When SSL_PROXY is enabled, SESSION_SECRET_KEY is required
-        if ssl_proxy && session_secret_key.is_none() {
+        let secret = env::var("SESSION_SECRET_KEY").ok();
+        let ssl_proxy = env_bool("SSL_PROXY", false)?;
+        if ssl_proxy && secret.is_none() {
             return Err(ConfigError::MissingSessionSecret);
         }
-
-        // Build the key here so an unusable secret stops the process before it
-        // opens the database, runs migrations and starts the workers.
-        if let Some(secret) = &session_secret_key {
-            Self::key_from_secret(secret)?;
-        }
-
+        let session_key = match &secret {
+            Some(secret) if secret.len() < Self::MIN_SECRET_LEN => {
+                return Err(ConfigError::SessionSecretTooShort { len: secret.len() })
+            }
+            Some(secret) => Key::from(secret.as_bytes()),
+            None => Key::generate(),
+        };
         Ok(Self {
             ssl_proxy,
-            session_secret_key,
+            session_secret_set: secret.is_some(),
+            session_key,
         })
     }
+}
 
-    /// Builds the master key used to sign and encrypt session cookies.
-    pub fn session_key(&self) -> Result<Key, ConfigError> {
-        match &self.session_secret_key {
-            Some(secret) => Self::key_from_secret(secret),
-            None => Ok(Key::generate()),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn events_wait_for_the_digest_under_tmp_by_default() {
+        assert_eq!(
+            Config::default().ingest_dir,
+            PathBuf::from("/tmp/rustrak/ingest")
+        );
     }
 
-    fn key_from_secret(secret: &str) -> Result<Key, ConfigError> {
-        let bytes = secret.as_bytes();
+    #[test]
+    fn smtp_tls_parses_the_three_modes_and_nothing_else() {
+        assert_eq!(SmtpTls::parse("starttls"), Some(SmtpTls::StartTls));
+        assert_eq!(SmtpTls::parse(" TLS "), Some(SmtpTls::Tls));
+        assert_eq!(SmtpTls::parse("none"), Some(SmtpTls::None));
+        assert_eq!(SmtpTls::parse("ssl"), None);
+    }
 
-        if bytes.len() < Self::MIN_SECRET_LEN {
-            return Err(ConfigError::SessionSecretTooShort { len: bytes.len() });
-        }
+    #[test]
+    fn base_url_is_the_public_url_when_set() {
+        let config = Config {
+            public_url: Some("https://api.example.com".to_string()),
+            ..Config::default()
+        };
+        assert_eq!(config.base_url(), "https://api.example.com");
+    }
 
-        Ok(Key::from(bytes))
+    #[test]
+    fn base_url_falls_back_to_the_bind_address() {
+        let config = Config {
+            host: "127.0.0.1".to_string(),
+            port: 9090,
+            ..Config::default()
+        };
+        assert_eq!(config.base_url(), "http://127.0.0.1:9090");
     }
 }

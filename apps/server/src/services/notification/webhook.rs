@@ -3,7 +3,7 @@
 //! Sends alerts as HTTP POST requests with JSON payloads.
 //! Supports HMAC-SHA256 signature verification for security.
 //!
-//! Routing override (flat struct, no provider_type discriminator — SCL-1):
+//! Routing override (flat struct, no provider_type discriminator):
 //! `{"url": "https://override.example.com/hook", "extra_headers": {...}}`
 //!
 //! Effective URL (K5): routing.url ?? credentials.url
@@ -16,7 +16,7 @@ use hmac::{Hmac, KeyInit, Mac};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use sha2::Sha256;
 
-use super::{NotificationDispatcher, NotificationResult};
+use super::{deliver, http_result, NotificationDispatcher, NotificationResult};
 use crate::error::{AppError, AppResult};
 use crate::models::{AlertIntegration, AlertPayload, WebhookConfig, WebhookRoutingOverride};
 
@@ -115,13 +115,11 @@ pub(crate) fn own_headers(
     Ok(map)
 }
 
-/// Webhook notification dispatcher
 pub struct WebhookNotifier {
     client: reqwest::Client,
 }
 
 impl WebhookNotifier {
-    /// Creates a new webhook notifier
     pub fn new() -> Self {
         Self {
             client: super::shared_http_client().clone(),
@@ -164,17 +162,6 @@ impl NotificationDispatcher for WebhookNotifier {
         routing: &serde_json::Value,
         payload: &AlertPayload,
     ) -> NotificationResult {
-        // is_enabled check FIRST (SCL-1)
-        if !integration.is_enabled {
-            log::debug!(
-                "Skipping dispatch to disabled Webhook integration {} ({})",
-                integration.id,
-                integration.name
-            );
-            return NotificationResult::success(None);
-        }
-
-        // Parse credentials
         let credentials: WebhookConfig =
             match serde_json::from_value(integration.credentials.clone()) {
                 Ok(c) => c,
@@ -186,7 +173,6 @@ impl NotificationDispatcher for WebhookNotifier {
                 }
             };
 
-        // Parse flat routing override (no tag — SCL-1)
         let routing_override: WebhookRoutingOverride = serde_json::from_value(routing.clone())
             .unwrap_or(WebhookRoutingOverride {
                 url: None,
@@ -204,7 +190,6 @@ impl NotificationDispatcher for WebhookNotifier {
             }
         };
 
-        // Serialize payload
         let body = match serde_json::to_vec(payload) {
             Ok(b) => b,
             Err(e) => {
@@ -237,39 +222,9 @@ impl NotificationDispatcher for WebhookNotifier {
             Err(e) => return NotificationResult::failure(e, None),
         };
 
-        // Send request
-        match self
-            .client
-            .post(url)
-            .headers(headers)
-            .body(body)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                let status = response.status().as_u16();
-                if response.status().is_success() {
-                    NotificationResult::success(Some(status))
-                } else {
-                    let error_body = response.text().await.unwrap_or_default();
-                    let error_msg = if error_body.is_empty() {
-                        format!("HTTP {}", status)
-                    } else {
-                        format!("HTTP {}: {}", status, error_body)
-                    };
-                    NotificationResult::failure(error_msg, Some(status))
-                }
-            }
-            Err(e) => {
-                let error_msg = if e.is_timeout() {
-                    "Request timed out".to_string()
-                } else if e.is_connect() {
-                    "Connection failed".to_string()
-                } else {
-                    format!("Request failed: {}", e)
-                };
-                NotificationResult::failure(error_msg, None)
-            }
+        match deliver(self.client.post(url).headers(headers).body(body)).await {
+            Ok((status, body)) => http_result(status, body),
+            Err(failure) => failure,
         }
     }
 
@@ -303,51 +258,6 @@ impl NotificationDispatcher for WebhookNotifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-
-    fn make_webhook_integration(url: Option<&str>, is_enabled: bool) -> AlertIntegration {
-        let credentials = if let Some(u) = url {
-            serde_json::json!({"url": u, "secret": "my-secret"})
-        } else {
-            serde_json::json!({"secret": "my-secret"})
-        };
-        AlertIntegration {
-            id: 3,
-            name: "Test Webhook".to_string(),
-            provider_type: crate::models::ProviderType::Webhook,
-            credentials,
-            is_enabled,
-            failure_count: 0,
-            last_failure_at: None,
-            last_failure_message: None,
-            last_success_at: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Task 4 RED→GREEN: disabled integration skipped
-    // -------------------------------------------------------------------------
-
-    #[tokio::test]
-    async fn test_disabled_webhook_integration_skipped() {
-        let notifier = WebhookNotifier::new();
-        let integration = make_webhook_integration(Some("https://example.com/hook"), false);
-        let routing = serde_json::json!({});
-        let payload = create_test_payload();
-
-        let result = notifier.send(&integration, &routing, &payload).await;
-
-        assert!(
-            result.success,
-            "disabled integration must return success (skip)"
-        );
-    }
-
-    // -------------------------------------------------------------------------
-    // Task 4 RED→GREEN: effective_url = routing.url ?? credentials.url (K5)
-    // -------------------------------------------------------------------------
 
     #[test]
     fn test_effective_url_routing_wins_over_credentials() {
@@ -393,10 +303,6 @@ mod tests {
         let url = WebhookNotifier::effective_url(&routing, &credentials);
         assert!(url.is_none());
     }
-
-    // -------------------------------------------------------------------------
-    // Existing tests
-    // -------------------------------------------------------------------------
 
     #[test]
     fn test_generate_signature() {
@@ -547,29 +453,5 @@ mod tests {
     fn test_request_headers_invalid_header_is_an_error() {
         let creds = headers(&[("Bad Header", "x")]);
         assert!(request_headers([Some(&creds), None], HeaderMap::new()).is_err());
-    }
-
-    fn create_test_payload() -> AlertPayload {
-        AlertPayload {
-            alert_id: "test-123".to_string(),
-            alert_type: "new_issue".to_string(),
-            triggered_at: Utc::now(),
-            project: crate::models::ProjectInfo {
-                id: 1,
-                name: "Test Project".to_string(),
-                slug: "test-project".to_string(),
-            },
-            issue: crate::models::IssueInfo {
-                id: "abc-123".to_string(),
-                short_id: "TEST-1".to_string(),
-                title: "Test error".to_string(),
-                level: Some("error".to_string()),
-                first_seen: Utc::now(),
-                last_seen: Utc::now(),
-                event_count: 1,
-            },
-            issue_url: "https://example.com/issues/abc-123".to_string(),
-            actor: "Rustrak".to_string(),
-        }
     }
 }

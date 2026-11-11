@@ -52,17 +52,9 @@ fn last_day(table: &str, column: &str) -> String {
     )
 }
 
-/// The dialect-specific "in the last 24 hours" predicate. SQLite stores the
-/// timestamps as TEXT, so both sides go through `datetime()`.
+/// In the last 24 hours, as SQL.
 fn since_last_day(column: &str) -> String {
-    #[cfg(feature = "postgres")]
-    {
-        format!("{column} >= NOW() - '24 hours'::interval")
-    }
-    #[cfg(not(feature = "postgres"))]
-    {
-        format!("datetime({column}) >= datetime('now', '-24 hours')")
-    }
+    crate::db::dialect::since(column, Some(24))
 }
 
 /// The kinds of alert channel switched on, sorted and deduplicated.

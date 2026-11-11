@@ -12,10 +12,11 @@ use lettre::{AsyncTransport, Message};
 use serde::Serialize;
 
 use crate::config::Config;
+use crate::config::{SmtpSettings, DEFAULT_FROM};
 use crate::db::DbPool;
 use crate::error::AppResult;
-use crate::models::{EmailConfig, Invitation};
-use crate::services::mail::{self, SmtpSettings};
+use crate::models::{EmailConfig, Invitation, UserRole};
+use crate::services::mail;
 
 const SUBJECT: &str = "You have been invited to Rustrak";
 
@@ -44,7 +45,7 @@ impl InvitationMailer {
     /// The mailer for this instance, or `None` when invitation emails cannot
     /// be sent.
     pub async fn resolve(pool: &DbPool, config: &Config) -> AppResult<Option<Self>> {
-        let mut smtp = SmtpSettings::from_env();
+        let mut smtp = config.smtp.clone();
         if let Some(credentials) = first_enabled_email_integration(pool).await? {
             smtp = smtp.overridden_by(&credentials);
         }
@@ -68,7 +69,7 @@ impl InvitationMailer {
             .smtp
             .from_address
             .parse()
-            .unwrap_or_else(|_| mail::DEFAULT_FROM.parse().expect("valid fallback address"));
+            .unwrap_or_else(|_| DEFAULT_FROM.parse().expect("valid fallback address"));
         let to = invitation
             .email
             .parse()
@@ -128,10 +129,9 @@ async fn first_enabled_email_integration(pool: &DbPool) -> AppResult<Option<Emai
 /// The role shown to the reader, with its article; anything unexpected
 /// reads as the least-privileged one.
 fn role_display(role: &str) -> &'static str {
-    if role == "admin" {
-        "an admin"
-    } else {
-        "a member"
+    match UserRole::from_db(role) {
+        UserRole::Admin => "an admin",
+        UserRole::Member => "a member",
     }
 }
 

@@ -1,20 +1,15 @@
 //! Project members: who holds which roles on one project.
 //!
-//! - GET    /api/projects/{id}/members            — list members (`project-members:read`)
-//! - GET    /api/projects/{id}/members/candidates — who and what can be given (`project-members:update`)
-//! - PUT    /api/projects/{id}/members            — set a member's roles (`project-members:update`)
-//! - DELETE /api/projects/{id}/members/{user_id}  — remove a member (`project-members:update`)
-//!
 //! Nobody changes their own membership, or hands out a role beyond what they
 //! hold on this project.
 
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::rbac::{Action, Resource};
 use crate::auth::ApiActor;
 use crate::db::DbPool;
-use crate::error::{AppError, AppResult, FieldErrorCode};
+use crate::error::{AppError, AppResult};
+use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
 use crate::services::role::ProjectMember;
 use crate::services::role::RoleRef;
@@ -23,9 +18,10 @@ use crate::services::{ProjectService, RoleService, UsersService};
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SetProjectMember {
+    #[schemars(description = "User ID to add or update")]
     pub user_id: i32,
     /// The member's roles on this project; empty removes them.
     pub role_ids: Vec<i32>,
@@ -49,29 +45,17 @@ async fn require_covered(
     user_id: i32,
     new_role_ids: &[i32],
 ) -> AppResult<()> {
-    // Only roles of the list can be given; what is taken away may be anyone's.
-    let shared = RoleService::list(pool).await?;
-    let all = RoleService::list_all(pool).await?;
-    let current = RoleService::assignments_for(pool, user_id).await?;
-    let new = new_role_ids
+    let give: Vec<_> = new_role_ids
         .iter()
-        .map(|id| shared.iter().find(|r| r.id == *id).ok_or(*id));
-    let old = current
-        .iter()
+        .map(|&id| (id, Some(project_id)))
+        .collect();
+    let take: Vec<_> = RoleService::assignments_for(pool, user_id)
+        .await?
+        .into_iter()
         .filter(|a| a.project_id == Some(project_id) && !a.is_personal)
-        .map(|a| all.iter().find(|r| r.id == a.role_id).ok_or(a.role_id));
-    for role in new.chain(old) {
-        let role = role.map_err(|id| {
-            AppError::Validation(format!("Unknown role {id}"))
-                .with_field("role_ids", FieldErrorCode::Invalid)
-        })?;
-        if !actor.access.covers(&role.grants(), Some(project_id)) {
-            return Err(AppError::Forbidden(
-                "You cannot grant permissions you do not hold".to_string(),
-            ));
-        }
-    }
-    Ok(())
+        .map(|a| (a.role_id, a.project_id))
+        .collect();
+    RoleService::check_grantable(pool, &actor.access, &give, &take, "role_ids").await
 }
 
 /// Someone who can be made a member.
@@ -253,13 +237,9 @@ pub async fn remove_member(
 )]
 pub struct MembersApi;
 
-/// Configure project member routes
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/projects/{project_id}/members")
-            .route("", web::get().to(list_members))
-            .route("", web::put().to(upsert_member))
-            .route("/candidates", web::get().to(member_candidates))
-            .route("/{user_id}", web::delete().to(remove_member)),
-    );
+pub fn configure_project(cfg: &mut web::ServiceConfig) {
+    cfg.route("/members", web::get().to(list_members))
+        .route("/members", web::put().to(upsert_member))
+        .route("/members/candidates", web::get().to(member_candidates))
+        .route("/members/{user_id}", web::delete().to(remove_member));
 }

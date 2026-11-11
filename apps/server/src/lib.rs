@@ -2,6 +2,7 @@
 //!
 //! This module exposes the server components for testing purposes.
 
+pub mod app;
 pub mod auth;
 pub mod bootstrap;
 pub mod config;
@@ -16,6 +17,7 @@ pub mod models;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 pub mod pagination;
+pub mod protocol;
 pub mod routes;
 pub mod scheduler;
 pub mod services;

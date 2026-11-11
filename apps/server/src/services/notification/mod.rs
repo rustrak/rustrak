@@ -1,8 +1,5 @@
-//! Notification dispatcher system using the Strategy pattern.
-//!
-//! This module provides a pluggable notification system that supports
-//! multiple delivery integrations (Webhook, Custom Webhook, Email, Slack)
-//! through a common trait.
+//! Alert delivery, one dispatcher per provider (Webhook, Custom Webhook,
+//! Email, Slack).
 
 pub mod custom_webhook;
 pub mod email;
@@ -12,6 +9,7 @@ pub mod webhook;
 
 use async_trait::async_trait;
 
+use crate::config::SmtpSettings;
 use crate::error::AppResult;
 use crate::models::{AlertIntegration, AlertPayload, ProviderType};
 
@@ -20,18 +18,10 @@ pub use email::EmailNotifier;
 pub use slack::SlackNotifier;
 pub use webhook::WebhookNotifier;
 
-// =============================================================================
-// Notification Result
-// =============================================================================
-
-/// Result of a notification delivery attempt
 #[derive(Debug)]
 pub struct NotificationResult {
-    /// Whether the notification was delivered successfully
     pub success: bool,
-    /// HTTP status code (if applicable)
     pub http_status: Option<u16>,
-    /// Error message (if failed)
     pub error_message: Option<String>,
     /// What the endpoint answered, when it answered anything.
     ///
@@ -43,7 +33,6 @@ pub struct NotificationResult {
 }
 
 impl NotificationResult {
-    /// Creates a successful result
     pub fn success(http_status: Option<u16>) -> Self {
         Self {
             success: true,
@@ -62,7 +51,6 @@ impl NotificationResult {
         self
     }
 
-    /// Creates a failed result
     pub fn failure(error_message: String, http_status: Option<u16>) -> Self {
         Self {
             success: false,
@@ -73,9 +61,68 @@ impl NotificationResult {
     }
 }
 
-// =============================================================================
-// Notification Dispatcher Trait
-// =============================================================================
+/// Upper bound for a response body a dispatcher buffers. Endpoints answer an
+/// alert with a small reply; the limit exists so one that answers with a giant
+/// (or endless) body cannot pin memory in the notification worker.
+const MAX_RESPONSE_BODY_BYTES: usize = 64 * 1024;
+
+/// Sends `request` and returns the status and the body. The body is read up to
+/// [`MAX_RESPONSE_BODY_BYTES`]: `Response::text()` buffers whatever the
+/// endpoint sends, and the 30s timeout does not limit size. A body that cannot
+/// be read (truncated, oversized, non-UTF-8) fails the delivery on every
+/// status: on a 2xx we would otherwise record it as sent while unable to see a
+/// bot rejection hidden inside it.
+pub(crate) async fn deliver(
+    request: reqwest::RequestBuilder,
+) -> Result<(u16, String), NotificationResult> {
+    let mut response = request.send().await.map_err(|e| {
+        let message = if e.is_timeout() {
+            "Request timed out".to_string()
+        } else if e.is_connect() {
+            "Connection failed".to_string()
+        } else {
+            format!("Request failed: {e}")
+        };
+        NotificationResult::failure(message, None)
+    })?;
+    let status = response.status().as_u16();
+    let read = async {
+        let mut bytes: Vec<u8> = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|e| format!("stream interrupted: {e}"))?
+        {
+            if bytes.len() + chunk.len() > MAX_RESPONSE_BODY_BYTES {
+                return Err(format!(
+                    "response body exceeds the {MAX_RESPONSE_BODY_BYTES}-byte limit"
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        String::from_utf8(bytes).map_err(|e| format!("body is not valid UTF-8: {e}"))
+    };
+    read.await.map(|body| (status, body)).map_err(|e| {
+        NotificationResult::failure(
+            format!("HTTP {status}: failed to read response body: {e}"),
+            Some(status),
+        )
+    })
+}
+
+/// A plain HTTP answer: 2xx is a delivery whatever the body says (the body is
+/// kept for the reader), anything else fails with the body as the reason.
+pub(crate) fn http_result(status: u16, body: String) -> NotificationResult {
+    if !(200..=299).contains(&status) {
+        let message = if body.is_empty() {
+            format!("HTTP {status}")
+        } else {
+            format!("HTTP {status}: {body}")
+        };
+        return NotificationResult::failure(message, Some(status));
+    }
+    NotificationResult::success(Some(status)).with_response_body(body)
+}
 
 /// Shared HTTP client for every dispatcher. Built once process-wide so each
 /// delivery reuses the connection pool and TLS session instead of building a
@@ -93,20 +140,12 @@ pub(crate) fn shared_http_client() -> &'static reqwest::Client {
     })
 }
 
-/// Trait for notification dispatchers (Strategy pattern)
-///
-/// Each provider type (Webhook, Custom Webhook, Email, Slack) implements this
-/// trait to provide provider-specific delivery logic.
 #[async_trait]
 pub trait NotificationDispatcher: Send + Sync {
-    /// Send a notification to the integration.
-    ///
-    /// `routing` is the flat JSON routing_override from alert_rule_channels.
-    /// Each dispatcher deserializes it into its own routing struct (no tag needed —
-    /// the provider type is already known from the integration).
-    ///
-    /// Dispatchers MUST check `integration.is_enabled` first and return
-    /// `Ok(NotificationResult::success(None))` immediately if disabled.
+    /// Sends one alert. `routing` is the flat JSON routing_override from
+    /// alert_rule_channels; each dispatcher deserializes it into its own
+    /// routing struct (the provider type is already known). Whether the
+    /// integration is enabled is the caller's decision, not the dispatcher's.
     async fn send(
         &self,
         integration: &AlertIntegration,
@@ -114,23 +153,20 @@ pub trait NotificationDispatcher: Send + Sync {
         payload: &AlertPayload,
     ) -> NotificationResult;
 
-    /// Validate integration credentials.
-    ///
-    /// Called before creating or updating an integration to ensure
-    /// the credentials are valid for this provider type.
+    /// Validates credentials before an integration is created or updated.
     fn validate_config(&self, config: &serde_json::Value) -> AppResult<()>;
 }
 
-// =============================================================================
-// Dispatcher Factory
-// =============================================================================
-
-/// Creates the appropriate dispatcher for a provider type
-pub fn create_dispatcher(provider_type: ProviderType) -> Box<dyn NotificationDispatcher> {
+/// The dispatcher for a provider type. `smtp` is the global SMTP configuration
+/// (`Config::smtp`) an email integration falls back on.
+pub fn create_dispatcher(
+    provider_type: ProviderType,
+    smtp: &SmtpSettings,
+) -> Box<dyn NotificationDispatcher> {
     match provider_type {
         ProviderType::Webhook => Box::new(WebhookNotifier::new()),
         ProviderType::CustomWebhook => Box::new(CustomWebhookNotifier::new()),
-        ProviderType::Email => Box::new(EmailNotifier::new()),
+        ProviderType::Email => Box::new(EmailNotifier::new(smtp.clone())),
         ProviderType::Slack => Box::new(SlackNotifier::new()),
     }
 }

@@ -7,21 +7,22 @@ The Rust API server. Actix-web 4, SQLx against SQLite (default) or PostgreSQL
 
 ```
 src/
-├── main.rs, lib.rs, bootstrap.rs   entry, wiring, startup (superuser, migrations)
-├── config.rs, logging.rs           env config and env_logger setup
+├── main.rs, lib.rs, bootstrap.rs   entry and startup (superuser, migrations)
+├── app.rs                          the one assembly: state, app, workers
+├── config.rs, logging.rs           every env read, and env_logger setup
 ├── error.rs                        AppError, built on thiserror
 ├── openapi.rs                      utoipa spec; bin/gen_openapi.rs writes it out
 ├── routes/                         HTTP handlers, one module per resource
 ├── services/                       business logic the handlers call
 ├── models/                         domain types and their SQLx mappings
 ├── db/                             pool, queries and migrations
-├── ingest/                         Sentry envelope parsing and temp storage
-├── digest/                         grouping and issue creation, off the hot path
+├── ingest/                         envelope parsing, temp storage, the pipeline
+├── digest/                         grouping, issue creation and session counts, off the hot path
 ├── workers/                        Tokio background tasks
 ├── mcp/                            the MCP tools served at /mcp
 ├── auth/                           the three extractors
-├── middleware/                     rate limiting, auth enforcement, tracing
-└── pagination/                     cursor and offset helpers
+├── middleware/                     CORS and telemetry (extractors authenticate)
+└── pagination/                     the page contract and the event cursor
 ```
 
 ## Ingestion is two-phase
@@ -40,7 +41,7 @@ group, always.
 
 | Method | Who | How |
 |---|---|---|
-| Session | humans on the dashboard | email + password, Argon2id, httpOnly cookie |
+| Session | humans on the dashboard | email + password, Argon2id; the httpOnly cookie holds an opaque id, the row (its SHA-256) is in `sessions` |
 | Bearer token | API and scripts | 40-char hex, stored as its SHA-256 in `auth_tokens` |
 | Sentry auth | SDKs on ingest routes | the key embedded in the DSN |
 | OAuth access token | MCP clients, `/mcp` only | `rto_` + hex, hashed in `oauth_grants` |
@@ -50,7 +51,7 @@ Session auth is better UX for people; token auth is the standard for machines.
 
 DSN format: `http://<sentry_key>@<host>/<project_id>`.
 
-## Permissions (`src/auth/rbac.rs`)
+## Permissions (`src/models/rbac.rs`)
 
 A person's access is set on one page: a role and where it applies, or
 permissions of their own. Never put projects inside a role: that needs one role
@@ -124,14 +125,18 @@ one module per area, mirroring `routes/`.
 - **Stateless** (protocol `2026-07-28`, `rmcp`): one `POST` per call, nothing
   kept between calls, no session store.
 - **A tool calls the REST handler**, in-process, with extractors built from its
-  arguments (`web::Path::from`, `web::Query(args(&a)?)`, `web::Json(...)`).
+  arguments (`web::Path::from`, `web::Query(a.rest)`, `web::Json(...)`).
   Access checks, validation and the response are the handler's own, so a tool
   cannot drift from the endpoint. Do not reimplement a handler in a tool.
+- **A tool's arguments are the handler's own query or body type**, wrapped
+  with its path ids (`InProject<T>`, `OnIssue<T>`, `OnMonitor<T>`), so those
+  types derive `schemars::JsonSchema`. A field with no doc comment gets
+  `#[schemars(description = "...")]`, which leaves `openapi.json` alone.
 - **A handler a tool calls must return a `Send` future.** Await a value before
   starting `HttpResponse::Ok()`; an `actix_web::Error` argument needs a
   `Send` inner function (see `issues::delete_issues`).
-- `tests/integration/mcp_test.rs` pins the full tool list, so adding or
-  removing a tool updates `TOOLS` there.
+- `tests/fixtures/mcp_tools.json` pins every tool's description and required
+  arguments (`mcp_test.rs`), so adding or removing a tool updates it.
 
 ## It also serves the dashboard
 
@@ -187,8 +192,10 @@ cargo test --test e2e_tests
 ```
 
 `tests/unit` is pure logic, `tests/integration` hits the database, `tests/e2e`
-drives real HTTP. Shared fixtures live in `tests/common`. Server changes are
-written test-first.
+drives real HTTP. Shared fixtures live in `tests/common`; a test server is
+`common::app(&pool)` (or `common::state` + `common::app_with` to swap one
+piece), the same `app::app` main serves. Server changes are written
+test-first.
 
 ## Conventions
 

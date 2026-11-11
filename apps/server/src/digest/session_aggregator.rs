@@ -23,7 +23,6 @@ pub struct BucketKey {
     pub bucket: DateTime<Utc>,
 }
 
-/// Aggregated counters for a bucket key.
 #[derive(Debug, Default, Clone)]
 pub struct Counters {
     pub total: i64,
@@ -42,31 +41,11 @@ pub struct UserKey {
     pub did: String,
 }
 
-/// State held under the mutex.
 #[derive(Debug, Default)]
 pub struct AggregatorState {
     pub counts: HashMap<BucketKey, Counters>,
     /// Map of UserKey → crashed; TRUE means this user had a crash this flush cycle.
     pub users: HashMap<UserKey, bool>,
-}
-
-/// Shared handle to the session aggregator — cheaply cloneable across handlers.
-#[derive(Clone)]
-pub struct SessionAggregatorHandle(Arc<SessionAggregator>);
-
-impl SessionAggregatorHandle {
-    pub async fn ingest_session(&self, project_id: i32, update: &SessionUpdate) {
-        self.0.ingest_session(project_id, update).await;
-    }
-
-    pub async fn ingest_aggregates(&self, project_id: i32, agg: &SessionAggregates) {
-        self.0.ingest_aggregates(project_id, agg).await;
-    }
-
-    /// Flush all in-memory state to DB.  Called on shutdown.
-    pub async fn flush(&self) -> AppResult<()> {
-        self.0.flush().await
-    }
 }
 
 pub struct SessionAggregator {
@@ -80,20 +59,14 @@ pub struct SessionAggregator {
 }
 
 impl SessionAggregator {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(
-        pool: DbPool,
-        flush_interval_secs: u64,
-        cardinality_cap: usize,
-    ) -> SessionAggregatorHandle {
-        let agg = Arc::new(Self {
+    pub fn new(pool: DbPool, flush_interval_secs: u64, cardinality_cap: usize) -> Arc<Self> {
+        Arc::new(Self {
             pool,
             state: Mutex::new(AggregatorState::default()),
             flushing: Mutex::new(()),
             flush_interval_secs,
             cardinality_cap,
-        });
-        SessionAggregatorHandle(agg)
+        })
     }
 
     /// Ingest a single `session` envelope item.
@@ -360,15 +333,15 @@ impl SessionAggregator {
         Ok(())
     }
 
-    /// Run the aggregator interval loop.  Pass the handle here; it owns the Arc.
-    pub async fn run(handle: SessionAggregatorHandle) {
+    /// The interval loop that flushes the counters.
+    pub async fn run(self: Arc<Self>) {
         log::info!("session_aggregator: started");
-        let interval_secs = handle.0.flush_interval_secs;
+        let interval_secs = self.flush_interval_secs;
         let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
         interval.tick().await; // consume the immediate first tick
         loop {
             interval.tick().await;
-            if let Err(e) = handle.0.flush().await {
+            if let Err(e) = self.flush().await {
                 log::error!("session_aggregator: flush error: {:?}", e);
             }
         }
@@ -677,7 +650,6 @@ mod tests {
     #[test]
     fn cardinality_cap_overflows() {
         let mut state = AggregatorState::default();
-        // Fill up to cap
         for i in 0..3usize {
             let key = BucketKey {
                 project_id: 1,
