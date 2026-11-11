@@ -1,15 +1,14 @@
 //! The jobs the server schedules.
 
-use actix_web::web;
 use async_trait::async_trait;
 use chrono_tz::Tz;
 use serde_json::{json, Value};
 
 use crate::digest::processors::Processors;
 use crate::error::AppResult;
+use crate::models::schedule::{IntervalUnit, Schedule};
 use crate::models::{CleanupState, RetentionSettings};
 use crate::scheduler::engine::{JobContext, Misfire, ScheduledJob};
-use crate::scheduler::schedule::{IntervalUnit, Schedule};
 use crate::services::sourcemap_store::SourceMapStore;
 use crate::services::CleanupJob;
 use std::sync::Arc;
@@ -17,13 +16,13 @@ use std::sync::Arc;
 /// Cron monitors: marks the check-ins that were missed or ran past their max
 /// runtime, once a minute, the granularity of every monitor schedule.
 pub struct MonitorSweepJob {
-    processors: web::Data<Processors>,
+    processors: Arc<Processors>,
 }
 
 impl MonitorSweepJob {
     pub const KEY: &'static str = "monitor_sweep";
 
-    pub fn new(processors: web::Data<Processors>) -> Self {
+    pub fn new(processors: Arc<Processors>) -> Self {
         Self { processors }
     }
 }
@@ -52,8 +51,42 @@ impl ScheduledJob for MonitorSweepJob {
 
     async fn run(&self, ctx: JobContext<'_>) -> AppResult<Value> {
         let failures =
-            crate::routes::ingest::run_monitor_sweep(&self.processors, ctx.pool, ctx.now).await?;
+            crate::ingest::pipeline::run_monitor_sweep(&self.processors, ctx.pool, ctx.now).await?;
         Ok(json!({ "failures": failures }))
+    }
+}
+
+/// Deletes the sign-in sessions that expired or went idle, hourly. Expired
+/// rows are already refused; this only keeps the table small.
+pub struct SessionPurgeJob;
+
+impl SessionPurgeJob {
+    pub const KEY: &'static str = "session_purge";
+}
+
+#[async_trait]
+impl ScheduledJob for SessionPurgeJob {
+    fn key(&self) -> &'static str {
+        Self::KEY
+    }
+
+    fn schedule(&self, _settings: &Value) -> Option<(Schedule, Tz)> {
+        Some((
+            Schedule::Interval {
+                value: 1,
+                unit: IntervalUnit::Hour,
+            },
+            Tz::UTC,
+        ))
+    }
+
+    fn misfire(&self) -> Misfire {
+        Misfire::RunOnce
+    }
+
+    async fn run(&self, ctx: JobContext<'_>) -> AppResult<Value> {
+        let purged = crate::services::AuthSessionService::purge_expired(ctx.pool).await?;
+        Ok(json!({ "purged": purged }))
     }
 }
 
@@ -62,15 +95,25 @@ impl ScheduledJob for MonitorSweepJob {
 /// kept forever. Runs through the manual cleanup's [`CleanupJob`], so the
 /// two never overlap.
 pub struct StorageCleanupJob {
-    cleanup: web::Data<CleanupJob>,
+    cleanup: Arc<CleanupJob>,
     store: Arc<dyn SourceMapStore>,
 }
 
 impl StorageCleanupJob {
     pub const KEY: &'static str = "storage_cleanup";
 
-    pub fn new(cleanup: web::Data<CleanupJob>, store: Arc<dyn SourceMapStore>) -> Self {
+    pub fn new(cleanup: Arc<CleanupJob>, store: Arc<dyn SourceMapStore>) -> Self {
         Self { cleanup, store }
+    }
+
+    /// When it runs with these stored settings: never when they keep
+    /// everything forever or cannot run.
+    pub fn schedule_of(settings: &Value) -> Option<(Schedule, Tz)> {
+        let settings = Self::settings(settings);
+        if !settings.deletes_anything() || settings.validate().is_err() {
+            return None;
+        }
+        Some((settings.schedule(), Tz::UTC))
     }
 
     /// Stored settings, with defaults for anything missing or unreadable.
@@ -86,11 +129,7 @@ impl ScheduledJob for StorageCleanupJob {
     }
 
     fn schedule(&self, settings: &Value) -> Option<(Schedule, Tz)> {
-        let settings = Self::settings(settings);
-        if !settings.deletes_anything() || settings.validate().is_err() {
-            return None;
-        }
-        Some((settings.schedule(), Tz::UTC))
+        Self::schedule_of(settings)
     }
 
     /// A missed cleanup runs once: catching up on every night it slept
@@ -110,6 +149,6 @@ impl ScheduledJob for StorageCleanupJob {
             .cleanup
             .run_retention(ctx.pool.clone(), settings, Arc::clone(&self.store))
             .await?;
-        Ok(serde_json::to_value(removed).unwrap_or_default())
+        serde_json::to_value(removed).map_err(|e| crate::error::AppError::Internal(e.to_string()))
     }
 }

@@ -64,9 +64,10 @@ impl Invitation {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateInvitation {
+    #[schemars(description = "Email address of the invitee")]
     pub email: String,
     /// Global role the invited user will receive (`admin` | `member`).
     #[cfg_attr(feature = "openapi", schema(value_type = crate::models::UserRole))]

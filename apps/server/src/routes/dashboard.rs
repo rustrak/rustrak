@@ -38,11 +38,9 @@
 use actix_files::Files;
 use actix_web::body::BoxBody;
 use actix_web::dev::{fn_service, ServiceRequest, ServiceResponse};
-use actix_web::http::header::{
-    CacheControl, CacheDirective, ETag, EntityTag, IfNoneMatch, CONTENT_TYPE,
-};
+use actix_web::http::header::{CacheControl, CacheDirective, CONTENT_TYPE};
 use actix_web::middleware::DefaultHeaders;
-use actix_web::{web, Error, HttpMessage, HttpRequest, HttpResponse, ResponseError};
+use actix_web::{web, Error, HttpResponse, ResponseError};
 use bytes::Bytes;
 use std::path::{Path, PathBuf};
 
@@ -84,8 +82,6 @@ pub struct Dashboard {
     /// that cannot change while the process lives. `Bytes` clones by
     /// refcount, so handing it out costs nothing.
     shell: Bytes,
-    /// The shell's identity, for revalidation. See [`Dashboard::shell_response`].
-    etag: EntityTag,
 }
 
 impl Dashboard {
@@ -109,11 +105,7 @@ impl Dashboard {
         // request rather than at the time it started.
         let root = root.canonicalize().ok()?;
         let shell = Bytes::from(std::fs::read(&index).ok()?);
-        let etag = EntityTag::new_weak(hex::encode(
-            &<sha2::Sha256 as sha2::Digest>::digest(&shell)[..8],
-        ));
-
-        Some(Self { root, shell, etag })
+        Some(Self { root, shell })
     }
 
     /// The dashboard the configuration describes, if it is to be served.
@@ -135,40 +127,24 @@ impl Dashboard {
 
     /// The application shell.
     ///
-    /// `no-cache` is not `no-store`: the browser may keep it, it just may not
-    /// use it without asking. It has to ask, because the shell names the
-    /// hashed bundles and a cached copy keeps pointing at chunks a deploy has
-    /// already removed. The ETag is what makes that cheap -- a navigation
-    /// after the first costs a 304 and no body.
-    fn shell_response(&self, req: &HttpRequest) -> HttpResponse {
-        let unchanged = req
-            .get_header::<IfNoneMatch>()
-            .is_some_and(|if_none_match| match if_none_match {
-                IfNoneMatch::Any => true,
-                IfNoneMatch::Items(tags) => tags.iter().any(|tag| tag.weak_eq(&self.etag)),
-            });
-
-        let mut builder = if unchanged {
-            HttpResponse::NotModified()
-        } else {
-            HttpResponse::Ok()
-        };
-
-        builder
+    /// `no-store`, as Django's `never_cache` (which Sentry's pages use) also
+    /// sends. Never reused from a cache, because the shell names the hashed
+    /// bundles and a cached copy keeps pointing at chunks a deploy has
+    /// already removed. And never stored, because a page that may be stored
+    /// is kept whole in the browser's back/forward cache: Back after a logout
+    /// showed the signed-in page with its data still in memory. Nothing is
+    /// stored, so there is no ETag to revalidate against; the shell is a few
+    /// hundred bytes.
+    fn shell_response(&self) -> HttpResponse {
+        HttpResponse::Ok()
             .insert_header((CONTENT_TYPE, "text/html; charset=utf-8"))
-            .insert_header(ETag(self.etag.clone()))
-            .insert_header(CacheControl(vec![CacheDirective::NoCache]))
+            .insert_header(CacheControl(vec![CacheDirective::NoStore]))
             // No page of the dashboard may be framed: `/oauth/authorize` is a
             // consent screen, and inside another site's frame one disguised
             // click would connect an attacker's client to the account.
             .insert_header(("X-Frame-Options", "DENY"))
-            .insert_header(("Content-Security-Policy", "frame-ancestors 'none'"));
-
-        if unchanged {
-            builder.finish()
-        } else {
-            builder.body(self.shell.clone())
-        }
+            .insert_header(("Content-Security-Policy", "frame-ancestors 'none'"))
+            .body(self.shell.clone())
     }
 
     /// The service configuration. Register it **last**: it ends in a catch-all,
@@ -201,15 +177,23 @@ impl Dashboard {
             // keeps every shell response coming from one place, headers
             // included; `index_file` would have served it from a second.
             let root_shell = shell.clone();
-            let serve_shell = move |req: HttpRequest| {
+            let serve_shell = move || {
                 let dashboard = root_shell.clone();
-                async move { dashboard.shell_response(&req) }
+                async move { dashboard.shell_response() }
             };
             cfg.service(
                 web::resource("/")
                     .route(web::get().to(serve_shell.clone()))
                     .route(web::head().to(serve_shell)),
             );
+
+            // An API path no handler claimed is a JSON 404 whatever its method:
+            // `Files` would answer anything but GET/HEAD with its own 405.
+            for prefix in API_PREFIXES {
+                cfg.service(web::scope(prefix).default_service(fn_service(
+                    |req: ServiceRequest| async move { Ok(not_found(req)) },
+                )));
+            }
 
             // Everything else.
             cfg.service(
@@ -224,34 +208,28 @@ impl Dashboard {
     }
 }
 
-/// The fallback: the shell for a client route, a JSON 404 for anything the API
-/// owns.
+fn not_found(req: ServiceRequest) -> ServiceResponse<BoxBody> {
+    let (http_req, _payload) = req.into_parts();
+    let response = AppError::NotFound(http_req.path().to_string()).error_response();
+    ServiceResponse::new(http_req, response)
+}
+
+/// The fallback: the shell for a client route.
 fn shell_or_not_found(
     req: ServiceRequest,
     dashboard: Dashboard,
 ) -> Result<ServiceResponse<BoxBody>, Error> {
-    let (http_req, _payload) = req.into_parts();
-    let path = http_req.path();
-
-    let api_path = API_PREFIXES.iter().any(|prefix| {
-        // Prefix *segments*, not string prefixes: `/api` and `/api/x` are the
-        // API's, `/apidocs-for-humans` is a client route the dashboard may
-        // legitimately own one day.
-        path == *prefix || path.starts_with(&format!("{prefix}/"))
-    });
-
     // A miss under `/assets` is a missing build artifact, never a client
     // route. Answering it with the shell hands the browser HTML under a `.js`
     // URL, and the syntax error that follows names the bundle rather than the
     // deploy that dropped it.
-    let missing_asset = path == "/assets" || path.starts_with("/assets/");
-
-    if api_path || missing_asset {
-        let response = AppError::NotFound(path.to_string()).error_response();
-        return Ok(ServiceResponse::new(http_req, response));
+    let path = req.path();
+    if path == "/assets" || path.starts_with("/assets/") {
+        return Ok(not_found(req));
     }
 
-    let response = dashboard.shell_response(&http_req);
+    let (http_req, _payload) = req.into_parts();
+    let response = dashboard.shell_response();
 
     Ok(ServiceResponse::new(http_req, response))
 }

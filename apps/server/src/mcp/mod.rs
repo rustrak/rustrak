@@ -17,8 +17,7 @@ use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::schemars::{self, JsonSchema};
 use rmcp::{tool_handler, ServerHandler};
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::auth::ApiActor;
@@ -78,12 +77,26 @@ pub struct RustrakMcp {
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     actor: Arc<ApiActor>,
-    cleanup_job: Option<web::Data<CleanupJob>>,
-    sourcemap_store: Option<web::Data<Arc<dyn SourceMapStore>>>,
+    cleanup_job: web::Data<CleanupJob>,
+    sourcemap_store: web::Data<Arc<dyn SourceMapStore>>,
 }
 
 #[tool_handler(router = TOOLS.clone())]
 impl ServerHandler for RustrakMcp {
+    /// Models send an unset optional argument as `null`; the handlers' types
+    /// read a missing key as unset but refuse `null`, so it is dropped here.
+    async fn call_tool(
+        &self,
+        mut request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        if let Some(arguments) = request.arguments.as_mut() {
+            arguments.retain(|_, value| !value.is_null());
+        }
+        let context = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        TOOLS.clone().call(context).await
+    }
+
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("rustrak", env!("CARGO_PKG_VERSION")))
@@ -106,10 +119,14 @@ impl RustrakMcp {
                 .cloned()
                 .ok_or_else(|| missing("Config"))?,
             actor: Arc::new(actor),
-            cleanup_job: req.app_data::<web::Data<CleanupJob>>().cloned(),
+            cleanup_job: req
+                .app_data::<web::Data<CleanupJob>>()
+                .cloned()
+                .ok_or_else(|| missing("Cleanup job"))?,
             sourcemap_store: req
                 .app_data::<web::Data<Arc<dyn SourceMapStore>>>()
-                .cloned(),
+                .cloned()
+                .ok_or_else(|| missing("Source map store"))?,
         })
     }
 
@@ -130,50 +147,34 @@ impl RustrakMcp {
         }
     }
 
-    fn cleanup_job(&self) -> AppResult<web::Data<CleanupJob>> {
-        self.cleanup_job
-            .clone()
-            .ok_or_else(|| AppError::Internal("Cleanup job not configured".to_string()))
+    fn cleanup_job(&self) -> web::Data<CleanupJob> {
+        self.cleanup_job.clone()
     }
 
-    fn sourcemap_store(&self) -> AppResult<web::Data<Arc<dyn SourceMapStore>>> {
-        self.sourcemap_store
-            .clone()
-            .ok_or_else(|| AppError::Internal("Source map store not configured".to_string()))
+    fn sourcemap_store(&self) -> web::Data<Arc<dyn SourceMapStore>> {
+        self.sourcemap_store.clone()
     }
 }
 
 /// A tool that takes only a project.
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub(super) struct ProjectArgs {
     /// Project ID
     project_id: i32,
 }
 
-/// A project and a page of one of its lists.
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub(super) struct ProjectPageArgs {
+/// A project and the handler's own query or body for it.
+#[derive(Deserialize, JsonSchema)]
+pub(super) struct InProject<T> {
     /// Project ID
     project_id: i32,
-    /// Page number (1-indexed, default 1)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    page: Option<i64>,
-    /// Items per page (default 20, max 100)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    per_page: Option<i64>,
+    #[serde(flatten)]
+    rest: T,
 }
 
 /// A tool with no arguments.
-#[derive(Serialize, Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
 pub(super) struct NoArgs {}
-
-/// Reads tool arguments as the request type they stand for, so the handler's
-/// own defaults and validation apply.
-fn args<T: DeserializeOwned>(params: &impl Serialize) -> AppResult<T> {
-    serde_json::to_value(params)
-        .and_then(serde_json::from_value)
-        .map_err(|e| AppError::Validation(e.to_string()))
-}
 
 /// A path id the API types as a UUID, which tool arguments carry as text.
 fn uuid(field: &str, value: &str) -> AppResult<Uuid> {

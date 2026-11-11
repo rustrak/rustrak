@@ -4,10 +4,11 @@ use chrono::{DateTime, Utc};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::db::dialect::{epoch, like_pattern, since};
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::models::{LogResponse, LogVolumePoint};
-use crate::services::scope::{bucket_hours, epoch, like_pattern, since};
+use crate::services::scope::bucket_hours;
 
 pub struct LogService;
 
@@ -63,7 +64,6 @@ impl LogService {
         // Clamp at the service boundary so a direct caller passing page <= 0
         // can't produce a negative SQL OFFSET (the HTTP route already guards it).
         let page = page.max(1);
-        let per_page = per_page.clamp(1, 100);
         let offset = crate::pagination::offset(page, per_page);
         let like = like_pattern(filters.query.as_deref());
         let condition = filters.condition();

@@ -15,7 +15,7 @@ const MAX_MESSAGE_CHARS: usize = 4096;
 /// The issue type and category a feedback issue carries.
 pub(crate) const CATEGORY: &str = "feedback";
 
-/// Where ingest puts a feedback's attachments in the stored event, until the
+/// Where ingest puts an event's attachments in the stored event, until the
 /// digest moves them to `event_attachments`. Never stored in `events.data`.
 pub(crate) const ATTACHMENTS_KEY: &str = "_rustrak_attachments";
 
@@ -43,8 +43,8 @@ pub(crate) fn take_attachments(event: &mut Value) -> Vec<NewAttachment> {
             let text = |key: &str| item.get(key).and_then(Value::as_str);
             Some(NewAttachment {
                 // Cut to the VARCHAR(255) columns, which Postgres enforces.
-                filename: super::clamp(text("filename")?, 255),
-                content_type: super::clamp(text("content_type")?, 255),
+                filename: crate::protocol::clamp(text("filename")?, 255),
+                content_type: crate::protocol::clamp(text("content_type")?, 255),
                 data: base64::engine::general_purpose::STANDARD
                     .decode(text("data")?)
                     .ok()?,

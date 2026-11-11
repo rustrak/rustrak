@@ -1,14 +1,12 @@
 use rand::RngExt;
 
-/// Generates a cryptographically secure 40-character hex token
 pub fn generate_token() -> String {
     let mut rng = rand::rng();
     let bytes: [u8; 20] = rng.random();
     hex::encode(bytes)
 }
 
-/// Validates token format (40 lowercase hex chars)
-#[allow(dead_code)]
+/// 40 lowercase hex chars.
 pub fn is_valid_token_format(token: &str) -> bool {
     token.len() == 40
         && token

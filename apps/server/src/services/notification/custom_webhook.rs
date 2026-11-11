@@ -14,7 +14,7 @@
 //! [`super::json_template`]): inside a string literal as string content, in a
 //! value position as a JSON value. Unknown paths are a render error.
 //!
-//! Routing override is the same flat shape as the webhook's (SCL-1):
+//! Routing override is the same flat shape as the webhook's:
 //! `{"url": "...", "extra_headers": {...}}`.
 //! Effective URL (K5): routing.url ?? credentials.url
 
@@ -23,20 +23,13 @@ use chrono::Utc;
 
 use super::json_template;
 use super::webhook::{own_headers, request_headers, validate_headers, WebhookNotifier};
-use super::{NotificationDispatcher, NotificationResult};
+use super::{deliver, http_result, NotificationDispatcher, NotificationResult};
 use crate::error::{AppError, AppResult};
 use crate::models::{AlertIntegration, AlertPayload, CustomWebhookConfig, WebhookRoutingOverride};
 
-/// Custom webhook notification dispatcher
 pub struct CustomWebhookNotifier {
     client: reqwest::Client,
 }
-
-/// Upper bound for a response body the dispatcher will buffer. Bot replies
-/// are one small JSON object; the limit exists so an endpoint that answers
-/// the alert POST with a giant (or endless) body cannot pin memory in the
-/// notification worker.
-const MAX_RESPONSE_BODY_BYTES: u64 = 64 * 1024;
 
 /// Upper bound for the body a template may render. Generous next to any bot
 /// message, small next to what an unbounded loop produces; the writer stops at
@@ -86,7 +79,6 @@ impl std::io::Write for LimitedWriter {
 }
 
 impl CustomWebhookNotifier {
-    /// Creates a new custom webhook notifier
     pub fn new() -> Self {
         Self {
             client: super::shared_http_client().clone(),
@@ -231,33 +223,6 @@ impl CustomWebhookNotifier {
         let body = Self::render_body(template, &sample)?;
         String::from_utf8(body).map_err(|e| format!("Rendered body is not UTF-8: {e}"))
     }
-
-    /// Reads the response body with a hard cap. `Response::text()` buffers
-    /// whatever the endpoint sends, and the 30s timeout does not limit size;
-    /// this dispatcher only ever needs a bot's small JSON reply, so anything
-    /// past the bound is an error rather than an allocation.
-    async fn read_capped_body(mut response: reqwest::Response) -> Result<String, String> {
-        let mut bytes: Vec<u8> = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|e| format!("stream interrupted: {e}"))?
-        {
-            if bytes.len() + chunk.len() > MAX_RESPONSE_BODY_BYTES as usize {
-                return Err(format!(
-                    "response body exceeds the {MAX_RESPONSE_BODY_BYTES}-byte limit"
-                ));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        String::from_utf8(bytes).map_err(|e| format!("body is not valid UTF-8: {e}"))
-    }
-}
-
-/// Whether an HTTP status counts as a delivered response (mirrors
-/// `StatusCode::is_success`, evaluated from the integer the dispatcher kept).
-fn response_status_is_success(status: u16) -> bool {
-    (200..=299).contains(&status)
 }
 
 impl Default for CustomWebhookNotifier {
@@ -274,16 +239,6 @@ impl NotificationDispatcher for CustomWebhookNotifier {
         routing: &serde_json::Value,
         payload: &AlertPayload,
     ) -> NotificationResult {
-        // is_enabled check FIRST (SCL-1)
-        if !integration.is_enabled {
-            log::debug!(
-                "Skipping dispatch to disabled Custom Webhook integration {} ({})",
-                integration.id,
-                integration.name
-            );
-            return NotificationResult::success(None);
-        }
-
         let credentials: CustomWebhookConfig =
             match serde_json::from_value(integration.credentials.clone()) {
                 Ok(c) => c,
@@ -339,49 +294,9 @@ impl NotificationDispatcher for CustomWebhookNotifier {
             Err(e) => return NotificationResult::failure(e, None),
         };
 
-        match self
-            .client
-            .post(&url)
-            .headers(headers)
-            .body(body)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                let status = response.status().as_u16();
-                // A body that cannot be read (truncated, oversized past
-                // MAX_RESPONSE_BODY_BYTES, non-UTF-8) is a failure on every
-                // status: on a 2xx we would otherwise record a delivery as
-                // sent while unable to see a bot rejection hidden inside it.
-                let response_body = match Self::read_capped_body(response).await {
-                    Ok(b) => b,
-                    Err(e) => {
-                        return NotificationResult::failure(
-                            format!("HTTP {status}: failed to read response body: {e}"),
-                            Some(status),
-                        );
-                    }
-                };
-                if !response_status_is_success(status) {
-                    let error_msg = if response_body.is_empty() {
-                        format!("HTTP {}", status)
-                    } else {
-                        format!("HTTP {}: {}", status, response_body)
-                    };
-                    return NotificationResult::failure(error_msg, Some(status));
-                }
-                NotificationResult::success(Some(status)).with_response_body(response_body)
-            }
-            Err(e) => {
-                let error_msg = if e.is_timeout() {
-                    "Request timed out".to_string()
-                } else if e.is_connect() {
-                    "Connection failed".to_string()
-                } else {
-                    format!("Request failed: {}", e)
-                };
-                NotificationResult::failure(error_msg, None)
-            }
+        match deliver(self.client.post(&url).headers(headers).body(body)).await {
+            Ok((status, body)) => http_result(status, body),
+            Err(failure) => failure,
         }
     }
 
@@ -467,10 +382,6 @@ mod tests {
             actor: "Rustrak".to_string(),
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Rendering
-    // -------------------------------------------------------------------------
 
     #[test]
     fn test_render_dingtalk_style_template() {
@@ -663,10 +574,10 @@ mod tests {
 
     #[test]
     fn test_status_is_success_matches_2xx() {
-        assert!(response_status_is_success(200));
-        assert!(response_status_is_success(204));
-        assert!(!response_status_is_success(301));
-        assert!(!response_status_is_success(500));
+        assert!(super::super::http_result(200, String::new()).success);
+        assert!(super::super::http_result(204, String::new()).success);
+        assert!(!super::super::http_result(301, String::new()).success);
+        assert!(!super::super::http_result(500, String::new()).success);
     }
 
     // -------------------------------------------------------------------------
@@ -829,10 +740,6 @@ mod tests {
         );
     }
 
-    // -------------------------------------------------------------------------
-    // Preview
-    // -------------------------------------------------------------------------
-
     #[test]
     fn test_preview_shows_the_body_that_would_be_sent() {
         // The dashboard cannot render minijinja, so it asks the server. The
@@ -867,10 +774,6 @@ mod tests {
         .expect_err("the preview must not be a way around the render budget");
         assert!(err.contains("too complex"), "got: {err}");
     }
-
-    // -------------------------------------------------------------------------
-    // validate_config
-    // -------------------------------------------------------------------------
 
     #[test]
     fn test_validate_accepts_valid_config() {
@@ -1006,55 +909,8 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // effective_url and dispatch guards
+    // Dispatch guards
     // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_effective_url_routing_wins_over_credentials() {
-        let routing = WebhookRoutingOverride {
-            url: Some("https://routing.example.com/hook".to_string()),
-            extra_headers: None,
-        };
-        let credentials = CustomWebhookConfig {
-            url: Some("https://creds.example.com/hook".to_string()),
-            secret: None,
-            headers: None,
-            template: "{}".to_string(),
-        };
-        assert_eq!(
-            CustomWebhookNotifier::effective_url(&routing, &credentials),
-            Some("https://routing.example.com/hook")
-        );
-    }
-
-    #[test]
-    fn test_effective_url_none_when_both_absent() {
-        let routing = WebhookRoutingOverride {
-            url: None,
-            extra_headers: None,
-        };
-        let credentials = CustomWebhookConfig {
-            url: None,
-            secret: None,
-            headers: None,
-            template: "{}".to_string(),
-        };
-        assert_eq!(
-            CustomWebhookNotifier::effective_url(&routing, &credentials),
-            None
-        );
-    }
-
-    #[tokio::test]
-    async fn test_disabled_integration_skipped() {
-        let notifier = CustomWebhookNotifier::new();
-        let integration =
-            make_integration(make_config("{}", Some("https://example.com/hook")), false);
-        let result = notifier
-            .send(&integration, &json!({}), &create_test_payload())
-            .await;
-        assert!(result.success, "disabled integration must skip");
-    }
 
     #[tokio::test]
     async fn test_missing_url_fails_before_render() {
@@ -1261,7 +1117,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_oversized_response_body_is_a_failure() {
-        let big = vec![b'x'; (MAX_RESPONSE_BODY_BYTES as usize) + 4096];
+        let big = vec![b'x'; super::super::MAX_RESPONSE_BODY_BYTES + 4096];
         let head = format!(
             "HTTP/1.1 200 OK
 content-type: text/plain

@@ -4560,6 +4560,7 @@ dependencies = [
  "actix-rt",
  "actix-session",
  "actix-web",
+ "anyhow",
  "argon2",
  "async-trait",
  "base64 0.23.1",
@@ -4594,10 +4595,10 @@ dependencies = [
  "rsa",
  "rstest",
  "rustrak",
+ "schemars 1.2.2",
  "sentry",
  "serde",
  "serde_json",
- "serial_test",
  "sha1",
  "sha2 0.11.1",
  "slug",
@@ -4687,6 +4688,7 @@ dependencies = [
  "schemars_derive",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -5045,31 +5047,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e17bbc68e28663bbbb90df47e058aa7eda4fb445b89fe70457bb94fbccf6e49"
 dependencies = [
  "darling 0.24.1",
- "proc-macro2",
- "quote",
- "syn 3.0.6",
-]
-
-[[package]]
-name = "serial_test"
-version = "4.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6df5ed973ad8d834e09f824f9e9f449af6b9a3745f78dec7cc752770bd3bf11"
-dependencies = [
- "futures-executor",
- "futures-util",
- "log",
- "once_cell",
- "parking_lot",
- "serial_test_derive",
-]
-
-[[package]]
-name = "serial_test_derive"
-version = "4.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a22144e767da4ddd8416dbf383700542ffd8a5dc493dfecedfe1fe3ad03c98ae"
-dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",

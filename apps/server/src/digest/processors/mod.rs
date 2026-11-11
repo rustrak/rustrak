@@ -1,100 +1,25 @@
 pub mod event;
 mod feedback;
 pub mod logs;
-pub mod session;
 pub mod span;
 pub mod span_v2;
 pub mod transaction;
 
-pub(crate) use event::is_retryable_write_contention;
 pub use event::{Digested, ErrorProcessor};
 pub(crate) use feedback::{Feedback, ATTACHMENTS_KEY};
 pub use logs::LogsProcessor;
-pub use session::{SessionItem, SessionProcessor};
 pub use span::SpanProcessor;
 pub use span_v2::SpanV2Processor;
 pub use transaction::TransactionProcessor;
 
-use crate::config::RateLimitConfig;
+use crate::config::Config;
 use crate::db::DbPool;
-use crate::error::AppResult;
-use crate::ingest::envelope::EnvelopeItemKind;
+use crate::digest::session_aggregator::SessionAggregator;
 use crate::services::sourcemap::SourceMapProvider;
-use crate::workers::session_aggregator::SessionAggregatorHandle;
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
-
-/// Cuts `s` to the `max_chars` of the VARCHAR column it is bound to. Postgres
-/// rejects a longer value and fails the whole envelope, SQLite stores it, and
-/// Relay truncates to its own `max_chars` instead of rejecting.
-pub(crate) fn clamp(s: &str, max_chars: usize) -> String {
-    s.chars().take(max_chars).collect()
-}
-
-/// [`clamp`] for a nullable column.
-pub(crate) fn clamp_opt(s: Option<String>, max_chars: usize) -> Option<String> {
-    s.map(|s| clamp(&s, max_chars))
-}
-
-/// The instant `epoch` seconds after 1970, if Postgres can store it as well.
-/// chrono reaches years Postgres rejects, and one such value failed the whole
-/// insert; an absurd device clock now reads as no timestamp at all.
-pub(crate) fn epoch_to_utc(epoch: f64) -> Option<DateTime<Utc>> {
-    if !epoch.is_finite() {
-        return None;
-    }
-    let secs = epoch.floor() as i64;
-    let nanos = ((epoch - epoch.floor()) * 1_000_000_000.0) as u32;
-    Utc.timestamp_opt(secs, nanos)
-        .single()
-        .filter(|dt| (1..=9999).contains(&dt.year()))
-}
-
-/// Whether `data[key]` is a timestamp from before 1970. Relay's
-/// `TimestampProcessor` drops an event or transaction carrying one, and removes
-/// such a span or breadcrumb from its event.
-pub(crate) fn is_stale(data: &serde_json::Value, key: &str) -> bool {
-    match data.get(key) {
-        Some(serde_json::Value::Number(n)) => n.as_f64().is_some_and(|epoch| epoch < 0.0),
-        Some(serde_json::Value::String(s)) => {
-            DateTime::parse_from_rfc3339(s).is_ok_and(|dt| dt.timestamp_millis() < 0)
-        }
-        _ => false,
-    }
-}
-
-/// `level` as Relay's `Level::from_str` reads it. Relay removes anything else,
-/// so the caller's default applies.
-pub(crate) fn relay_level(raw: &str) -> Option<&'static str> {
-    Some(match raw {
-        "debug" => "debug",
-        "info" | "log" => "info",
-        "warning" => "warning",
-        "error" => "error",
-        "fatal" | "critical" => "fatal",
-        _ => return None,
-    })
-}
-
-/// A payload timestamp, as epoch seconds or RFC 3339.
-pub(crate) fn extract_timestamp(data: &serde_json::Value, key: &str) -> Option<DateTime<Utc>> {
-    timestamp_from_value(data.get(key)?)
-}
-
-/// Relay's `Timestamp` (relay-event-schema/src/protocol/types.rs): epoch
-/// seconds or an RFC 3339 string.
-pub(crate) fn timestamp_from_value(raw: &serde_json::Value) -> Option<DateTime<Utc>> {
-    if let Some(epoch) = raw.as_f64() {
-        return epoch_to_utc(epoch);
-    }
-    raw.as_str()
-        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-        .map(|dt| dt.with_timezone(&Utc))
-        .filter(|dt| (1..=9999).contains(&dt.year()))
-}
 
 /// The error digests this process currently owns: spawned by the ingest route
 /// and not finished yet, or committed and waiting for the durability
@@ -167,18 +92,14 @@ impl Drop for InFlightGuard {
 /// transactions and spans are persisted inline regardless of the backlog.
 pub(crate) const MAX_CONCURRENT_PROCESSING: usize = 16;
 
-/// The processor registry: one instance per processor, built once at startup
-/// and shared as application state. Mirrors Relay's `inner.processing` struct
-/// (relay-server/src/services/processor.rs) — each processor owns the
-/// dependencies it needs; per-request values travel in [`ProcessorCtx`].
-///
-/// This is the single dispatch surface for the ingest pipeline. Adding a new
-/// item type means adding a field here, a [`Route`] variant, and a `match` arm
-/// — the compiler enforces the rest.
+/// What the ingest pipeline hands envelope items to, built once at startup and
+/// shared as application state. Each processor owns the dependencies it
+/// needs; per-request values travel in [`ProcessorCtx`].
 pub struct Processors {
     pub errors: ErrorProcessor,
     pub transactions: TransactionProcessor,
-    pub sessions: SessionProcessor,
+    /// Session updates are counted in memory and flushed on its own cycle.
+    pub sessions: Arc<SessionAggregator>,
     pub logs: LogsProcessor,
     pub spans: SpanProcessor,
     pub spans_v2: SpanV2Processor,
@@ -194,27 +115,20 @@ pub struct Processors {
 
 impl Processors {
     pub fn new(
-        ingest_dir: PathBuf,
-        rate_limit_config: RateLimitConfig,
+        config: &Config,
         sourcemap_provider: Arc<dyn SourceMapProvider>,
-        session_aggregator: Option<SessionAggregatorHandle>,
+        session_aggregator: Arc<SessionAggregator>,
     ) -> Self {
         Self {
-            errors: ErrorProcessor::new(ingest_dir, rate_limit_config, sourcemap_provider),
+            errors: ErrorProcessor::new(config, sourcemap_provider),
             transactions: TransactionProcessor,
-            sessions: SessionProcessor::new(session_aggregator),
+            sessions: session_aggregator,
             logs: LogsProcessor,
             spans: SpanProcessor,
             spans_v2: SpanV2Processor,
             processing_slot: Arc::new(tokio::sync::Semaphore::const_new(MAX_CONCURRENT_PROCESSING)),
             counters: crate::telemetry::Counters::global(),
         }
-    }
-
-    /// Where alert notifications link to; see [`crate::config::Config::dashboard_url`].
-    pub fn with_dashboard_url(mut self, url: impl Into<String>) -> Self {
-        self.errors.dashboard_url = url.into();
-        self
     }
 
     pub fn with_counters(mut self, counters: &'static crate::telemetry::Counters) -> Self {
@@ -227,76 +141,7 @@ impl Processors {
     }
 }
 
-/// A processor for one category of envelope work.
-///
-/// One impl per [`Route`]. Mirrors Relay's `Processor` trait
-/// (relay-server/src/processing/mod.rs): static dispatch, no `dyn`.
-///
-/// The return type is spelled `impl Future + Send` (RPITIT) rather than a bare
-/// `async fn` so the future is guaranteed `Send` — processors run inside
-/// `tokio::spawn` — and to avoid the `async_fn_in_trait` lint under `-D warnings`.
-pub trait Processor {
-    /// The unit of work this processor consumes (extracted from an `EnvelopeItemKind`).
-    type Input;
-
-    /// Process one unit of work. Errors are logged by the caller and never
-    /// abort sibling items in the same envelope.
-    fn process(
-        &self,
-        work: Self::Input,
-        ctx: &ProcessorCtx,
-    ) -> impl std::future::Future<Output = AppResult<()>> + Send;
-}
-
-/// Identifies which processor handles a given envelope item.
-///
-/// Pure routing — no DB, no side effects. This is the single source of truth
-/// for "which processor owns this item type", mirroring Relay's
-/// `ProcessingGroup` (relay-server/src/services/processor.rs).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Route {
-    /// Error/exception events — durable two-phase digest (temp file + worker).
-    Error,
-    /// Performance transactions — direct store, no grouping.
-    Transaction,
-    /// Session health updates and aggregates.
-    Session,
-    /// Standalone logs — direct store, no grouping.
-    Log,
-    /// Standalone spans — direct store, no grouping.
-    Span,
-    /// Standalone spans, Spans Protocol v2 (batched container) — direct
-    /// store, no grouping.
-    SpanV2,
-    /// Cron monitor check-ins — recorded inline by the monitor service.
-    CheckIn,
-    /// Forward-compatible catch-all: logged and dropped, never processed.
-    Ignored,
-}
-
-/// Maps an envelope item to the processor that owns it.
-///
-/// Exhaustiveness is compiler-enforced: a new `EnvelopeItemKind` variant
-/// without a route arm is a build error, never a silent drop.
-pub fn route(item: &EnvelopeItemKind) -> Route {
-    match item {
-        // Feedback is an event; a legacy user report is shimmed into one.
-        EnvelopeItemKind::Event(_)
-        | EnvelopeItemKind::Feedback(_)
-        | EnvelopeItemKind::UserReport(_)
-        | EnvelopeItemKind::Attachment(_) => Route::Error,
-        EnvelopeItemKind::Transaction(_) => Route::Transaction,
-        EnvelopeItemKind::Session(_) | EnvelopeItemKind::Sessions(_) => Route::Session,
-        EnvelopeItemKind::Log(_) => Route::Log,
-        EnvelopeItemKind::Span(_) => Route::Span,
-        EnvelopeItemKind::SpanV2Batch(_) => Route::SpanV2,
-        EnvelopeItemKind::CheckIn(_) => Route::CheckIn,
-        EnvelopeItemKind::Other(_, _) => Route::Ignored,
-    }
-}
-
-/// Shared context injected into all processors.
-/// Add new fields here — not to individual processor signatures.
+/// The per-request values a processor reads.
 pub struct ProcessorCtx {
     pub pool: DbPool,
     pub project_id: i32,

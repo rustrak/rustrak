@@ -4,15 +4,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::ApiActor;
 use crate::error::{AppError, AppResult, FieldErrorCode};
-use crate::scheduler::schedule::{parse_timezone, Schedule};
+use crate::models::schedule::{parse_timezone, Schedule};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
 
 /// Body of `POST /api/schedules/preview`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PreviewSchedule {
+    #[schemars(description = "The schedule to preview")]
     pub schedule: Schedule,
     /// IANA zone the schedule is read in. Defaults to UTC.
     pub timezone: Option<String>,
@@ -39,15 +40,13 @@ pub struct SchedulePreview {
     ),
     security(("bearer_auth" = [])),
 ))]
-/// POST /api/schedules/preview
-///
 /// Validates a schedule and lists its next five runs from now, so no client
 /// ever parses a crontab itself.
 pub async fn preview_schedule(
-    body: web::Json<PreviewSchedule>,
+    body: AppResult<web::Json<PreviewSchedule>>,
     _actor: ApiActor,
 ) -> AppResult<HttpResponse> {
-    let PreviewSchedule { schedule, timezone } = body.into_inner();
+    let PreviewSchedule { schedule, timezone } = body?.into_inner();
     schedule.validate().map_err(|message| {
         AppError::Validation(format!("Invalid schedule: {message}"))
             .with_field("schedule", FieldErrorCode::Invalid)

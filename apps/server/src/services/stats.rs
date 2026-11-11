@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
 
+use crate::db::dialect::{bucket, bucket_time, compare_time, epoch, since};
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::models::stats::{
@@ -220,54 +221,28 @@ async fn query_list_volume(
     bucket_secs: i64,
 ) -> AppResult<Vec<(i32, i64, i64, i64)>> {
     let ids = id_list(project_ids);
-
-    #[cfg(feature = "postgres")]
-    {
-        let sql = format!(
-            r#"
-            SELECT
-                project_id,
-                floor((extract(epoch FROM ingested_at) - {first}) / {bucket_secs})::bigint
-                    AS bucket_idx,
-                COUNT(*)::bigint AS events,
-                COUNT(DISTINCT issue_id)::bigint AS issues
-            FROM events
-            WHERE project_id IN ({ids})
-              AND event_type = 'error'
-              AND ingested_at >= to_timestamp({first})
-            GROUP BY 1, 2
-            "#,
-        );
-
-        Ok(sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .fetch_all(pool)
-            .await?)
-    }
-
-    #[cfg(not(feature = "postgres"))]
-    {
-        // The WHERE clause keeps the numerator non-negative, so SQLite's
-        // truncating integer division agrees with Postgres' `floor`.
-        let sql = format!(
-            r#"
-            SELECT
-                project_id,
-                (CAST(strftime('%s', ingested_at) AS INTEGER) - {first}) / {bucket_secs}
-                    AS bucket_idx,
-                COUNT(*) AS events,
-                COUNT(DISTINCT issue_id) AS issues
-            FROM events
-            WHERE project_id IN ({ids})
-              AND event_type = 'error'
-              AND CAST(strftime('%s', ingested_at) AS INTEGER) >= {first}
-            GROUP BY 1, 2
-            "#,
-        );
-
-        Ok(sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .fetch_all(pool)
-            .await?)
-    }
+    // The WHERE clause keeps the numerator non-negative, so integer division
+    // is `floor`.
+    let sql = format!(
+        r#"
+        SELECT
+            project_id,
+            ({ingested} - {first}) / {bucket_secs} AS bucket_idx,
+            COUNT(*) AS events,
+            COUNT(DISTINCT issue_id) AS issues
+        FROM events
+        WHERE project_id IN ({ids})
+          AND event_type = 'error'
+          AND {since_first}
+        GROUP BY 1, 2
+        "#,
+        ingested = epoch("ingested_at"),
+        since_first = compare_time("ingested_at", ">=", 1),
+    );
+    Ok(sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+        .bind(bucket_time(first)?)
+        .fetch_all(pool)
+        .await?)
 }
 
 /// `(project_id, (open, fatal, new_in_current_window, new_in_previous_window))`.
@@ -289,55 +264,28 @@ async fn query_list_issue_counts(
     let ids = id_list(project_ids);
     let [fatal, _, _] = NAMED_LEVELS;
 
-    #[cfg(feature = "postgres")]
-    let rows: Vec<(i32, i64, i64, i64, i64)> = {
-        let sql = format!(
-            r#"
-            SELECT
-                project_id,
-                SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END)::bigint AS open_issues,
-                SUM(CASE WHEN status = 'unresolved' AND COALESCE(level, '') = '{fatal}'
-                         THEN 1 ELSE 0 END)::bigint AS fatal_issues,
-                SUM(CASE WHEN first_seen >= to_timestamp({current_start})
-                         THEN 1 ELSE 0 END)::bigint AS new_current,
-                SUM(CASE WHEN first_seen >= to_timestamp({first})
-                          AND first_seen < to_timestamp({current_start})
-                         THEN 1 ELSE 0 END)::bigint AS new_previous
-            FROM issues
-            WHERE project_id IN ({ids}) AND issue_category = 'error'
-            GROUP BY 1
-            "#,
-        );
-
-        sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .fetch_all(pool)
-            .await?
-    };
-
-    #[cfg(not(feature = "postgres"))]
-    let rows: Vec<(i32, i64, i64, i64, i64)> = {
-        let sql = format!(
-            r#"
-            SELECT
-                project_id,
-                SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END) AS open_issues,
-                SUM(CASE WHEN status = 'unresolved' AND COALESCE(level, '') = '{fatal}'
-                         THEN 1 ELSE 0 END) AS fatal_issues,
-                SUM(CASE WHEN CAST(strftime('%s', first_seen) AS INTEGER) >= {current_start}
-                         THEN 1 ELSE 0 END) AS new_current,
-                SUM(CASE WHEN CAST(strftime('%s', first_seen) AS INTEGER) >= {first}
-                          AND CAST(strftime('%s', first_seen) AS INTEGER) < {current_start}
-                         THEN 1 ELSE 0 END) AS new_previous
-            FROM issues
-            WHERE project_id IN ({ids}) AND issue_category = 'error'
-            GROUP BY 1
-            "#,
-        );
-
-        sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .fetch_all(pool)
-            .await?
-    };
+    let sql = format!(
+        r#"
+        SELECT
+            project_id,
+            SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END) AS open_issues,
+            SUM(CASE WHEN status = 'unresolved' AND COALESCE(level, '') = '{fatal}'
+                     THEN 1 ELSE 0 END) AS fatal_issues,
+            SUM(CASE WHEN {in_current} THEN 1 ELSE 0 END) AS new_current,
+            SUM(CASE WHEN {since_first} AND {before_current} THEN 1 ELSE 0 END) AS new_previous
+        FROM issues
+        WHERE project_id IN ({ids}) AND issue_category = 'error'
+        GROUP BY 1
+        "#,
+        in_current = compare_time("first_seen", ">=", 2),
+        before_current = compare_time("first_seen", "<", 2),
+        since_first = compare_time("first_seen", ">=", 1),
+    );
+    let rows: Vec<(i32, i64, i64, i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+        .bind(bucket_time(first)?)
+        .bind(bucket_time(current_start)?)
+        .fetch_all(pool)
+        .await?;
 
     Ok(rows
         .into_iter()
@@ -400,119 +348,49 @@ async fn query_event_timeseries(
     scope: Scope<'_>,
 ) -> AppResult<Vec<EventTimeseriesPoint>> {
     let [fatal, error, warning] = NAMED_LEVELS;
-
-    #[cfg(feature = "postgres")]
-    {
-        let time_filter = match period_hours {
-            Some(hours) => format!("AND ingested_at >= NOW() - '{hours} hours'::interval"),
-            None => String::new(),
-        };
-
-        // COALESCE(level, '') keeps the four severity buckets exhaustive: on a
-        // NULL level `level NOT IN (...)` is NULL, not true, so the row would
-        // count toward `total` but toward none of the segments.
-        let sql = format!(
-            r#"
-            SELECT
-                to_timestamp(
-                    floor(extract(epoch FROM ingested_at) / {interval_secs}) * {interval_secs}
-                ) AS bucket,
-                COUNT(*)::bigint AS total,
-                SUM(CASE WHEN COALESCE(level, '') = '{fatal}'   THEN 1 ELSE 0 END)::bigint AS fatal,
-                SUM(CASE WHEN COALESCE(level, '') = '{error}'   THEN 1 ELSE 0 END)::bigint AS error,
-                SUM(CASE WHEN COALESCE(level, '') = '{warning}' THEN 1 ELSE 0 END)::bigint AS warning,
-                SUM(CASE WHEN COALESCE(level, '') NOT IN ('{fatal}', '{error}', '{warning}')
-                         THEN 1 ELSE 0 END)::bigint AS info
-            FROM events
-            WHERE project_id = $1
-              AND event_type = 'error'
-              AND ($2::text IS NULL OR environment = $2)
-              AND ($3::text IS NULL OR release = $3)
-              {time_filter}
-            GROUP BY 1
-            ORDER BY 1 ASC
-            "#,
-        );
-
-        let rows: Vec<(DateTime<Utc>, i64, i64, i64, i64, i64)> =
-            sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-                .bind(project_id)
-                .bind(scope.environment)
-                .bind(scope.release)
-                .fetch_all(pool)
-                .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(
-                |(bucket, total, fatal, error, warning, info)| EventTimeseriesPoint {
-                    bucket,
-                    total,
-                    fatal,
-                    error,
-                    warning,
-                    info,
-                },
-            )
-            .collect())
-    }
-
-    #[cfg(not(feature = "postgres"))]
-    {
-        let time_filter = match period_hours {
-            Some(hours) => format!(
-                "AND datetime(ingested_at) >= datetime('now', '-' || '{hours}' || ' hours')"
-            ),
-            None => String::new(),
-        };
-
-        let sql = format!(
-            r#"
-            SELECT
-                strftime(
-                    '%Y-%m-%dT%H:%M:%SZ',
-                    (CAST(strftime('%s', ingested_at) AS INTEGER) / {interval_secs}) * {interval_secs},
-                    'unixepoch'
-                ) AS bucket,
-                COUNT(*) AS total,
-                SUM(CASE WHEN COALESCE(level, '') = '{fatal}'   THEN 1 ELSE 0 END) AS fatal,
-                SUM(CASE WHEN COALESCE(level, '') = '{error}'   THEN 1 ELSE 0 END) AS error,
-                SUM(CASE WHEN COALESCE(level, '') = '{warning}' THEN 1 ELSE 0 END) AS warning,
-                SUM(CASE WHEN COALESCE(level, '') NOT IN ('{fatal}', '{error}', '{warning}')
-                         THEN 1 ELSE 0 END) AS info
-            FROM events
-            WHERE project_id = ?1
-              AND event_type = 'error'
-              AND (?2 IS NULL OR environment = ?2)
-              AND (?3 IS NULL OR release = ?3)
-              {time_filter}
-            GROUP BY 1
-            ORDER BY 1 ASC
-            "#,
-        );
-
-        let rows: Vec<(String, i64, i64, i64, i64, i64)> =
-            sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-                .bind(project_id)
-                .bind(scope.environment)
-                .bind(scope.release)
-                .fetch_all(pool)
-                .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(
-                |(bucket, total, fatal, error, warning, info)| EventTimeseriesPoint {
-                    bucket: crate::models::session::parse_ts(&bucket).unwrap_or_else(Utc::now),
-                    total,
-                    fatal,
-                    error,
-                    warning,
-                    info,
-                },
-            )
-            .collect())
-    }
+    // COALESCE(level, '') keeps the four severity buckets exhaustive: on a
+    // NULL level `level NOT IN (...)` is NULL, not true, so the row would
+    // count toward `total` but toward none of the segments.
+    let sql = format!(
+        r#"
+        SELECT
+            {bucket} AS bucket,
+            COUNT(*) AS total,
+            SUM(CASE WHEN COALESCE(level, '') = '{fatal}'   THEN 1 ELSE 0 END) AS fatal,
+            SUM(CASE WHEN COALESCE(level, '') = '{error}'   THEN 1 ELSE 0 END) AS error,
+            SUM(CASE WHEN COALESCE(level, '') = '{warning}' THEN 1 ELSE 0 END) AS warning,
+            SUM(CASE WHEN COALESCE(level, '') NOT IN ('{fatal}', '{error}', '{warning}')
+                     THEN 1 ELSE 0 END) AS info
+        FROM events
+        WHERE project_id = $1
+          AND event_type = 'error'
+          AND ($2 IS NULL OR environment = $2)
+          AND ($3 IS NULL OR release = $3)
+          AND {window}
+        GROUP BY 1
+        ORDER BY 1 ASC
+        "#,
+        bucket = bucket("ingested_at", interval_secs),
+        window = since("ingested_at", period_hours),
+    );
+    let rows: Vec<(i64, i64, i64, i64, i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+        .bind(project_id)
+        .bind(scope.environment)
+        .bind(scope.release)
+        .fetch_all(pool)
+        .await?;
+    rows.into_iter()
+        .map(|(bucket, total, fatal, error, warning, info)| {
+            Ok(EventTimeseriesPoint {
+                bucket: bucket_time(bucket)?,
+                total,
+                fatal,
+                error,
+                warning,
+                info,
+            })
+        })
+        .collect()
 }
 
 /// Window bounds as `(previous_start, current_start)`, or `None` for all time.
@@ -521,18 +399,11 @@ type Bounds = Option<(DateTime<Utc>, DateTime<Utc>)>;
 /// Narrows `issues` to the ones seen in the scope's environment (bound as
 /// `$2`) and release (`$3`); either one `NULL` narrows nothing. With both, one
 /// event has to be in both, as `IssueService::list` reads them.
-#[cfg(feature = "postgres")]
-const ISSUE_IN_SCOPE: &str = "($2::text IS NULL OR id IN (
+const ISSUE_IN_SCOPE: &str = "($2 IS NULL OR id IN (
         SELECT issue_id FROM issue_environments WHERE project_id = $1 AND environment = $2))
-    AND ($3::text IS NULL OR id IN (
+    AND ($3 IS NULL OR id IN (
         SELECT issue_id FROM events WHERE project_id = $1 AND release = $3
-        AND ($2::text IS NULL OR environment = $2)))";
-#[cfg(not(feature = "postgres"))]
-const ISSUE_IN_SCOPE: &str = "(?2 IS NULL OR id IN (
-        SELECT issue_id FROM issue_environments WHERE project_id = ?1 AND environment = ?2))
-    AND (?3 IS NULL OR id IN (
-        SELECT issue_id FROM events WHERE project_id = ?1 AND release = ?3
-        AND (?2 IS NULL OR environment = ?2)))";
+        AND ($2 IS NULL OR environment = $2)))";
 
 async fn count_events(
     pool: &DbPool,
@@ -541,74 +412,42 @@ async fn count_events(
     scope: Scope<'_>,
 ) -> AppResult<MetricDelta> {
     let Some((previous_start, current_start)) = bounds else {
-        #[cfg(feature = "postgres")]
         let (total,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::bigint FROM events WHERE project_id = $1 AND event_type = 'error' \
-             AND ($2::text IS NULL OR environment = $2) AND ($3::text IS NULL OR release = $3)",
+            "SELECT COUNT(*) FROM events WHERE project_id = $1 AND event_type = 'error' \
+             AND ($2 IS NULL OR environment = $2) AND ($3 IS NULL OR release = $3)",
         )
         .bind(project_id)
         .bind(scope.environment)
         .bind(scope.release)
         .fetch_one(pool)
         .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let (total,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM events WHERE project_id = ?1 AND event_type = 'error' \
-             AND (?2 IS NULL OR environment = ?2) AND (?3 IS NULL OR release = ?3)",
-        )
-        .bind(project_id)
-        .bind(scope.environment)
-        .bind(scope.release)
-        .fetch_one(pool)
-        .await?;
-
         return Ok(MetricDelta::new(total, None));
     };
 
-    #[cfg(feature = "postgres")]
-    let (current, previous): (i64, i64) = sqlx::query_as(
+    let sql = format!(
         r#"
         SELECT
-            COALESCE(SUM(CASE WHEN ingested_at >= $4 THEN 1 ELSE 0 END), 0)::bigint,
-            COALESCE(SUM(CASE WHEN ingested_at <  $4 THEN 1 ELSE 0 END), 0)::bigint
+            CAST(COALESCE(SUM(CASE WHEN {current} THEN 1 ELSE 0 END), 0) AS BIGINT),
+            CAST(COALESCE(SUM(CASE WHEN {previous} THEN 1 ELSE 0 END), 0) AS BIGINT)
         FROM events
         WHERE project_id = $1
-          AND ($2::text IS NULL OR environment = $2)
-          AND ($3::text IS NULL OR release = $3)
+          AND ($2 IS NULL OR environment = $2)
+          AND ($3 IS NULL OR release = $3)
           AND event_type = 'error'
-          AND ingested_at >= $5
+          AND {window}
         "#,
-    )
-    .bind(project_id)
-    .bind(scope.environment)
-    .bind(scope.release)
-    .bind(current_start)
-    .bind(previous_start)
-    .fetch_one(pool)
-    .await?;
-
-    #[cfg(not(feature = "postgres"))]
-    let (current, previous): (i64, i64) = sqlx::query_as(
-        r#"
-        SELECT
-            COALESCE(SUM(CASE WHEN datetime(ingested_at) >= datetime(?4) THEN 1 ELSE 0 END), 0),
-            COALESCE(SUM(CASE WHEN datetime(ingested_at) <  datetime(?4) THEN 1 ELSE 0 END), 0)
-        FROM events
-        WHERE project_id = ?1
-          AND (?2 IS NULL OR environment = ?2)
-          AND (?3 IS NULL OR release = ?3)
-          AND event_type = 'error'
-          AND datetime(ingested_at) >= datetime(?5)
-        "#,
-    )
-    .bind(project_id)
-    .bind(scope.environment)
-    .bind(scope.release)
-    .bind(current_start.naive_utc())
-    .bind(previous_start.naive_utc())
-    .fetch_one(pool)
-    .await?;
+        current = compare_time("ingested_at", ">=", 4),
+        previous = compare_time("ingested_at", "<", 4),
+        window = compare_time("ingested_at", ">=", 5),
+    );
+    let (current, previous): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+        .bind(project_id)
+        .bind(scope.environment)
+        .bind(scope.release)
+        .bind(current_start)
+        .bind(previous_start)
+        .fetch_one(pool)
+        .await?;
 
     Ok(MetricDelta::new(current, Some(previous)))
 }
@@ -620,74 +459,42 @@ async fn count_new_issues(
     scope: Scope<'_>,
 ) -> AppResult<MetricDelta> {
     let Some((previous_start, current_start)) = bounds else {
-        #[cfg(feature = "postgres")]
         let sql = format!(
-            "SELECT COUNT(*)::bigint FROM issues WHERE project_id = $1 \
+            "SELECT COUNT(*) FROM issues WHERE project_id = $1 \
              AND issue_category = 'error' AND {ISSUE_IN_SCOPE}"
         );
-        #[cfg(not(feature = "postgres"))]
-        let sql = format!(
-            "SELECT COUNT(*) FROM issues WHERE project_id = ?1 \
-             AND issue_category = 'error' AND {ISSUE_IN_SCOPE}"
-        );
-
         let (total,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
             .bind(project_id)
             .bind(scope.environment)
             .bind(scope.release)
             .fetch_one(pool)
             .await?;
-
         return Ok(MetricDelta::new(total, None));
     };
 
-    #[cfg(feature = "postgres")]
-    let (current, previous): (i64, i64) = {
-        let sql = format!(
-            r#"
-            SELECT
-                COALESCE(SUM(CASE WHEN first_seen >= $4 THEN 1 ELSE 0 END), 0)::bigint,
-                COALESCE(SUM(CASE WHEN first_seen <  $4 THEN 1 ELSE 0 END), 0)::bigint
-            FROM issues
-            WHERE project_id = $1
-              AND issue_category = 'error'
-              AND first_seen >= $5
-              AND {ISSUE_IN_SCOPE}
-            "#
-        );
-        sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .bind(project_id)
-            .bind(scope.environment)
-            .bind(scope.release)
-            .bind(current_start)
-            .bind(previous_start)
-            .fetch_one(pool)
-            .await?
-    };
-
-    #[cfg(not(feature = "postgres"))]
-    let (current, previous): (i64, i64) = {
-        let sql = format!(
-            r#"
-            SELECT
-                COALESCE(SUM(CASE WHEN datetime(first_seen) >= datetime(?4) THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN datetime(first_seen) <  datetime(?4) THEN 1 ELSE 0 END), 0)
-            FROM issues
-            WHERE project_id = ?1
-              AND issue_category = 'error'
-              AND datetime(first_seen) >= datetime(?5)
-              AND {ISSUE_IN_SCOPE}
-            "#
-        );
-        sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
-            .bind(project_id)
-            .bind(scope.environment)
-            .bind(scope.release)
-            .bind(current_start.naive_utc())
-            .bind(previous_start.naive_utc())
-            .fetch_one(pool)
-            .await?
-    };
+    let sql = format!(
+        r#"
+        SELECT
+            CAST(COALESCE(SUM(CASE WHEN {current} THEN 1 ELSE 0 END), 0) AS BIGINT),
+            CAST(COALESCE(SUM(CASE WHEN {previous} THEN 1 ELSE 0 END), 0) AS BIGINT)
+        FROM issues
+        WHERE project_id = $1
+          AND issue_category = 'error'
+          AND {window}
+          AND {ISSUE_IN_SCOPE}
+        "#,
+        current = compare_time("first_seen", ">=", 4),
+        previous = compare_time("first_seen", "<", 4),
+        window = compare_time("first_seen", ">=", 5),
+    );
+    let (current, previous): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+        .bind(project_id)
+        .bind(scope.environment)
+        .bind(scope.release)
+        .bind(current_start)
+        .bind(previous_start)
+        .fetch_one(pool)
+        .await?;
 
     Ok(MetricDelta::new(current, Some(previous)))
 }
@@ -695,14 +502,8 @@ async fn count_new_issues(
 /// Issues currently unresolved. A backlog size, not a windowed rate, so it has
 /// no previous-period counterpart.
 async fn count_open_issues(pool: &DbPool, project_id: i32, scope: Scope<'_>) -> AppResult<i64> {
-    #[cfg(feature = "postgres")]
     let sql = format!(
-        "SELECT COUNT(*)::bigint FROM issues WHERE project_id = $1 AND status = 'unresolved' \
-         AND issue_category = 'error' AND {ISSUE_IN_SCOPE}"
-    );
-    #[cfg(not(feature = "postgres"))]
-    let sql = format!(
-        "SELECT COUNT(*) FROM issues WHERE project_id = ?1 AND status = 'unresolved' \
+        "SELECT COUNT(*) FROM issues WHERE project_id = $1 AND status = 'unresolved' \
          AND issue_category = 'error' AND {ISSUE_IN_SCOPE}"
     );
 

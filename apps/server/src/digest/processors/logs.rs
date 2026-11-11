@@ -1,6 +1,7 @@
-use super::{clamp, clamp_opt, Processor, ProcessorCtx};
+use super::ProcessorCtx;
 use crate::error::AppResult;
 use crate::models::log::{LogContainer, LogItem};
+use crate::protocol::{clamp, clamp_opt};
 use bytes::Bytes;
 use sha1::{Digest as _, Sha1};
 use uuid::Uuid;
@@ -13,10 +14,8 @@ use uuid::Uuid;
 /// Rustrak is the terminal store, not a forwarding Relay.
 pub struct LogsProcessor;
 
-impl Processor for LogsProcessor {
-    type Input = Bytes;
-
-    async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
+impl LogsProcessor {
+    pub async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
         // Reject a malformed container instead of silently dropping the batch.
         let logs = LogContainer::parse(&work)?;
 

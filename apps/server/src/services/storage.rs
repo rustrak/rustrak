@@ -10,9 +10,10 @@ use chrono::Utc;
 
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::storage::validate_retention;
 use crate::models::{
-    CleanupCounts, CleanupFilter, CleanupKind, CleanupState, CleanupStatus, Compaction, KindAge,
-    ProjectAge, ProjectStorage, RetentionSettings, SourceMapGcResult, SourceMapStorage, StorageAge,
+    CleanupCounts, CleanupFilter, CleanupKind, CleanupState, CleanupStatus, KindAge, ProjectAge,
+    ProjectStorage, RetentionSettings, SourceMapGcResult, SourceMapStorage, StorageAge,
     StorageSummary, AGE_BUCKET_DAYS,
 };
 use crate::services::sourcemap_store::SourceMapStore;
@@ -26,11 +27,17 @@ pub struct StorageSnapshot {
     pub age: StorageAge,
 }
 
-/// How long [`CleanupJob::snapshot`] reuses a snapshot.
+/// How long [`CleanupJob::snapshot`] reuses a snapshot: long enough for the
+/// page's three requests to share one read.
 ///
 /// ponytail: a cleanup through the job is the only change it notices. New
 /// data, a deleted project or a source-map GC show once this runs out.
-const SNAPSHOT_TTL_MINUTES: i64 = 5;
+const SNAPSHOT_TTL_MINUTES: i64 = 1;
+
+/// How long a request for old figures waits for them to be read again before
+/// it answers with the old ones. A small instance reads in well under this; a
+/// large one answers at once and the next request gets the new read.
+const REFRESH_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Rows a cleanup deletes per transaction.
 ///
@@ -47,13 +54,6 @@ const SNAPSHOT_TTL_MINUTES: i64 = 5;
 /// Postgres answered 500s while it ran. Batches trade that speed for never
 /// blocking. Revisit if cleanups of tens of millions of rows become routine.
 const CLEANUP_BATCH_SIZE: i64 = 10_000;
-
-/// One step of handing freed pages back to the filesystem: 2,000 pages, 8 MiB
-/// at SQLite's default 4 KiB page. Each step is its own write transaction, so
-/// like a cleanup batch it holds the write lock briefly and ingestion gets a
-/// turn between steps.
-#[cfg(feature = "sqlite")]
-const INCREMENTAL_VACUUM_STEP: &str = "PRAGMA incremental_vacuum(2000)";
 
 /// Rows per project and table the storage page's size estimate reads.
 const SIZE_SAMPLE_ROWS: i64 = 200;
@@ -115,32 +115,6 @@ const TRANSACTION_SPANS_SAMPLE: &str = "WITH sample AS ( \
      ORDER BY event_id LIMIT $3) \
      SELECT CAST(COALESCE(SUM((SELECT COUNT(*) FROM spans s WHERE s.transaction_id = sample.id)), 0) AS BIGINT), \
             COUNT(*) FROM sample";
-
-/// Gives waiting writers a turn between cleanup batches. SQLite's busy
-/// handler retries a blocked writer at intervals of up to 100ms, so a pause
-/// at least that long guarantees ingestion gets the lock between batches
-/// instead of starving behind the cleanup. Postgres writers do not wait on
-/// the cleanup, so it needs none.
-async fn pause_between_batches() {
-    #[cfg(feature = "sqlite")]
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-}
-
-/// Free bytes on the filesystem holding `file`, `None` when unreadable (an
-/// in-memory database, or a platform without `statvfs`).
-#[cfg(all(feature = "sqlite", unix))]
-// `fsblkcnt_t` and `c_ulong` are u64 on Linux but u32 on macOS.
-#[allow(clippy::unnecessary_cast)]
-fn free_disk_bytes(file: &std::path::Path) -> Option<i64> {
-    let stat = nix::sys::statvfs::statvfs(file.parent()?).ok()?;
-    let bytes = (stat.blocks_available() as u64).checked_mul(stat.fragment_size() as u64)?;
-    i64::try_from(bytes).ok()
-}
-
-#[cfg(all(feature = "sqlite", not(unix)))]
-fn free_disk_bytes(_file: &std::path::Path) -> Option<i64> {
-    None
-}
 
 /// The instance's cleanup job: at most one runs at a time, detached from the
 /// request that started it.
@@ -225,14 +199,22 @@ impl CleanupJob {
 
     /// The storage page's figures.
     ///
-    /// The kept snapshot answers at once, even past [`SNAPSHOT_TTL_MINUTES`]:
-    /// on a large instance the read takes longer than a client waits, so a
-    /// request that waited for it would time out every time the figures went
-    /// stale. A stale one starts a read in the background instead, and the
-    /// next request gets that. Only with nothing kept, or after a cleanup,
+    /// Past [`SNAPSHOT_TTL_MINUTES`] the kept snapshot is read again, waited
+    /// for only up to [`REFRESH_WAIT`]: on a large instance the read takes
+    /// longer than a client waits, so a request that waited for it would time
+    /// out every time the figures went stale. Such a read goes on in the
+    /// background, and the next request gets it. Only with nothing kept, or after a cleanup,
     /// does a request wait for a read (see [`serve`]).
     pub async fn snapshot(&self, pool: &DbPool) -> AppResult<Arc<StorageSnapshot>> {
-        let asked_at = Utc::now();
+        self.snapshot_at(pool, Utc::now()).await
+    }
+
+    /// [`Self::snapshot`] as asked at `asked_at`.
+    pub async fn snapshot_at(
+        &self,
+        pool: &DbPool,
+        asked_at: chrono::DateTime<Utc>,
+    ) -> AppResult<Arc<StorageSnapshot>> {
         let kept = self
             .snapshot
             .lock()
@@ -242,19 +224,44 @@ impl CleanupJob {
             match serve(read_at, asked_at, &self.status()) {
                 Serve::Kept => return Ok(snapshot),
                 Serve::KeptAndRefresh => {
-                    // One read at a time: a read already running is the refresh.
-                    if let Ok(guard) = Arc::clone(&self.reading).try_lock_owned() {
-                        let cache = Arc::clone(&self.snapshot);
-                        let pool = pool.clone();
-                        tokio::spawn(async move {
-                            let _guard = guard;
-                            match StorageService::snapshot(&pool).await {
-                                Ok(fresh) => store(&cache, asked_at, Arc::new(fresh)),
-                                Err(e) => log::warn!("Refreshing the storage figures failed: {e}"),
+                    // One read at a time: a read already running is the
+                    // refresh, waited for as long as its starter waits.
+                    let Ok(guard) = Arc::clone(&self.reading).try_lock_owned() else {
+                        if tokio::time::timeout(REFRESH_WAIT, self.reading.lock())
+                            .await
+                            .is_ok()
+                        {
+                            if let Some((_, fresh)) = self
+                                .snapshot
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .clone()
+                            {
+                                return Ok(fresh);
                             }
-                        });
-                    }
-                    return Ok(snapshot);
+                        }
+                        return Ok(snapshot);
+                    };
+                    let cache = Arc::clone(&self.snapshot);
+                    let pool = pool.clone();
+                    let refresh = tokio::spawn(async move {
+                        let _guard = guard;
+                        match StorageService::snapshot(&pool).await {
+                            Ok(fresh) => {
+                                let fresh = Arc::new(fresh);
+                                store(&cache, asked_at, Arc::clone(&fresh));
+                                Some(fresh)
+                            }
+                            Err(e) => {
+                                log::warn!("Refreshing the storage figures failed: {e}");
+                                None
+                            }
+                        }
+                    });
+                    return Ok(match tokio::time::timeout(REFRESH_WAIT, refresh).await {
+                        Ok(Ok(Some(fresh))) => fresh,
+                        _ => snapshot,
+                    });
                 }
                 Serve::Read => {}
             }
@@ -386,7 +393,7 @@ impl CleanupJob {
     /// compaction or the disk has no room for it, and with `Conflict` while
     /// a cleanup runs.
     pub async fn start_compaction(&self, pool: DbPool) -> AppResult<CleanupStatus> {
-        let compaction = StorageService::compaction(&pool).await?;
+        let compaction = crate::db::maintenance::compaction(&pool).await?;
         if !compaction.needed {
             return Err(AppError::Validation(
                 "This database already gives the space it frees back to the disk".to_string(),
@@ -468,14 +475,14 @@ impl CleanupJob {
                     lock(&progress).removed = counts.clone();
                     Ok(counts)
                 }
-                CleanupPlan::Compact => StorageService::compact(&pool)
+                CleanupPlan::Compact => crate::db::maintenance::compact(&pool)
                     .await
                     .map(|()| CleanupCounts::default()),
             };
             // The rows are gone either way; giving their space back is best
             // effort, so a failure here is logged rather than failing the run.
             if removed.is_ok() {
-                match StorageService::reclaim_free_space(&pool).await {
+                match crate::db::maintenance::reclaim_free_space(&pool).await {
                     Ok(0) => {}
                     Ok(bytes) => log::info!(
                         "Storage cleanup released {} MiB back to the filesystem",
@@ -515,159 +522,7 @@ impl CleanupJob {
     }
 }
 
-/// Smallest accepted retention window. A value below this would push the cutoff
-/// to "now" or into the future, turning the cleanup into a full data wipe — so
-/// it's rejected before any cutoff is computed. Mirrors the `min(1)` the MCP and
-/// UI already enforce on the client side.
-const MIN_RETENTION_DAYS: i64 = 1;
-/// Largest accepted window, a century: far past any real retention, and far
-/// below where `Duration::days` panics.
-const MAX_RETENTION_DAYS: i64 = 36_500;
-
-/// Rejects retention windows that would delete current/future data, or that
-/// no cutoff can be computed for. Shared by the preview, execute and
-/// automatic paths so all fail fast on the same contract.
-pub(crate) fn validate_retention(older_than_days: i64) -> AppResult<()> {
-    if older_than_days < MIN_RETENTION_DAYS {
-        return Err(AppError::Validation(format!(
-            "older_than_days must be at least {MIN_RETENTION_DAYS}"
-        )));
-    }
-    if older_than_days > MAX_RETENTION_DAYS {
-        return Err(AppError::Validation(format!(
-            "older_than_days must be at most {MAX_RETENTION_DAYS}"
-        )));
-    }
-    Ok(())
-}
-
 impl StorageService {
-    /// Hands the pages a cleanup freed back to the filesystem, returning the
-    /// bytes the database file gave up: 0 when there was nothing to release,
-    /// or when a reader kept the closing checkpoint from shrinking the file.
-    ///
-    /// SQLite keeps a deleted row's pages on its freelist and reuses them, so
-    /// after a cleanup the database stops growing but its file never shrinks.
-    /// A database created with `auto_vacuum = INCREMENTAL` (every database
-    /// `db::create_pool` creates) releases them with `incremental_vacuum`, a
-    /// bounded step at a time. A database created before keeps `NONE`, which
-    /// only a one-off `VACUUM` changes, and is left alone.
-    #[cfg(feature = "sqlite")]
-    pub async fn reclaim_free_space(pool: &DbPool) -> AppResult<i64> {
-        let auto_vacuum: i64 = sqlx::query_scalar("PRAGMA auto_vacuum")
-            .fetch_one(pool)
-            .await?;
-        // 0 = NONE, 1 = FULL (already shrinks on every commit), 2 = INCREMENTAL.
-        if auto_vacuum != 2 {
-            return Ok(0);
-        }
-        let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
-            .fetch_one(pool)
-            .await?;
-        let mut released = 0;
-        loop {
-            let free: i64 = sqlx::query_scalar("PRAGMA freelist_count")
-                .fetch_one(pool)
-                .await?;
-            if free == 0 {
-                break;
-            }
-            sqlx::query(INCREMENTAL_VACUUM_STEP).execute(pool).await?;
-            let left: i64 = sqlx::query_scalar("PRAGMA freelist_count")
-                .fetch_one(pool)
-                .await?;
-            if left >= free {
-                break;
-            }
-            released += free - left;
-            pause_between_batches().await;
-        }
-        // Under WAL the shrink is recorded in the log; the checkpoint applies
-        // it to the database file. PASSIVE never waits: TRUNCATE or FULL
-        // would hold every writer back for the busy timeout while a reader
-        // sits on an older snapshot. A checkpoint that could not copy the
-        // whole log leaves the shrink to a later one, so nothing has left the
-        // file yet.
-        let (_, logged, copied): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(PASSIVE)")
-            .fetch_one(pool)
-            .await?;
-        if copied < logged {
-            return Ok(0);
-        }
-        Ok(released * page_size)
-    }
-
-    /// Whether the database file can give freed space back, and what
-    /// compacting it once would take. See [`Compaction`].
-    #[cfg(feature = "sqlite")]
-    pub async fn compaction(pool: &DbPool) -> AppResult<Compaction> {
-        let auto_vacuum: i64 = sqlx::query_scalar("PRAGMA auto_vacuum")
-            .fetch_one(pool)
-            .await?;
-        let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
-            .fetch_one(pool)
-            .await?;
-        let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
-            .fetch_one(pool)
-            .await?;
-        let free: i64 = sqlx::query_scalar("PRAGMA freelist_count")
-            .fetch_one(pool)
-            .await?;
-        let file: String =
-            sqlx::query_scalar("SELECT file FROM pragma_database_list WHERE name = 'main'")
-                .fetch_one(pool)
-                .await?;
-        let live_bytes = (pages - free) * page_size;
-        Ok(Compaction {
-            needed: auto_vacuum == 0,
-            file_bytes: pages * page_size,
-            live_bytes,
-            reclaimable_bytes: free * page_size,
-            required_disk_bytes: 2 * live_bytes,
-            free_disk_bytes: free_disk_bytes(std::path::Path::new(&file)),
-        })
-    }
-
-    #[cfg(feature = "postgres")]
-    pub async fn compaction(_pool: &DbPool) -> AppResult<Compaction> {
-        Ok(Compaction::default())
-    }
-
-    /// Rewrites the database in incremental mode with one `VACUUM`. It holds
-    /// the write lock throughout: digests wait and retry from their files,
-    /// while logs, spans and sessions arriving meanwhile fail once the busy
-    /// timeout runs out. Measured at about 3 s per GB of live data on NVMe.
-    #[cfg(feature = "sqlite")]
-    pub async fn compact(pool: &DbPool) -> AppResult<()> {
-        let mut conn = pool.acquire().await?;
-        sqlx::query("PRAGMA auto_vacuum = INCREMENTAL")
-            .execute(&mut *conn)
-            .await?;
-        sqlx::query("VACUUM").execute(&mut *conn).await?;
-        // The log now holds a copy of the whole database. TRUNCATE gives that
-        // back too; it may wait up to the busy timeout on a reader, which
-        // next to the VACUUM itself is nothing. Best effort: the next
-        // checkpoints apply it anyway, only the log file keeps its size.
-        if let Err(error) = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-            .execute(&mut *conn)
-            .await
-        {
-            log::warn!("Compaction could not truncate the write-ahead log: {error}");
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "postgres")]
-    pub async fn compact(_pool: &DbPool) -> AppResult<()> {
-        Ok(())
-    }
-
-    /// Postgres reclaims a deleted row's space with its own autovacuum.
-    #[cfg(feature = "postgres")]
-    pub async fn reclaim_free_space(_pool: &DbPool) -> AppResult<i64> {
-        Ok(0)
-    }
-
     /// Dry-run for [`Self::gc_source_maps`]: counts the orphaned `source_file`
     /// rows and the bytes a GC would reclaim. Mutates nothing.
     pub async fn preview_source_map_gc(pool: &DbPool) -> AppResult<SourceMapGcResult> {
@@ -740,10 +595,12 @@ impl StorageService {
             .await?;
 
             if let Some((storage_path, size)) = deleted {
-                // The DB row is gone; now unlink the file. The store's delete is
-                // idempotent (a missing file is not an error), so a crash here just
-                // leaves a stray file that a rerun re-reaps.
-                let _ = store.delete(&storage_path).await;
+                // The row goes first: only its conditional DELETE knows the file
+                // is still unreferenced. A failed unlink leaves a file no row
+                // points at, which no later run can find, so it is logged.
+                if let Err(e) = store.delete(&storage_path).await {
+                    log::warn!("Could not delete orphaned source file {storage_path}: {e}");
+                }
                 files_removed += 1;
                 bytes_freed += size;
             }
@@ -910,7 +767,7 @@ impl StorageService {
                     counts.transactions += transactions;
                     counts.spans += spans;
                     on_batch(counts);
-                    pause_between_batches().await;
+                    crate::db::maintenance::yield_to_writers().await;
                 }
             }
 
@@ -933,7 +790,7 @@ impl StorageService {
                     }
                     counts.logs += logs;
                     on_batch(counts);
-                    pause_between_batches().await;
+                    crate::db::maintenance::yield_to_writers().await;
                 }
             }
 
@@ -947,7 +804,7 @@ impl StorageService {
                     counts.events += events;
                     counts.issues_removed += issues_removed;
                     on_batch(counts);
-                    pause_between_batches().await;
+                    crate::db::maintenance::yield_to_writers().await;
                 }
             }
         }
@@ -1195,7 +1052,7 @@ impl StorageService {
         let projects = Self::projects_from(pool, &age).await?;
         let sum = |count: fn(&ProjectStorage) -> i64| projects.iter().map(count).sum();
         let summary = StorageSummary {
-            total_db_size_bytes: Self::db_size_bytes(pool).await?,
+            total_db_size_bytes: crate::db::maintenance::size_bytes(pool).await?,
             events_count: sum(|p| p.events_count),
             transactions_count: sum(|p| p.transactions_count),
             spans_count: sum(|p| p.spans_count),
@@ -1424,28 +1281,6 @@ impl StorageService {
     /// The counts are the projects' of [`Self::by_project`].
     pub async fn global_summary(pool: &DbPool) -> AppResult<StorageSummary> {
         Ok(Self::snapshot(pool).await?.summary)
-    }
-
-    /// Whole-database size in bytes, reported by the backend. Best-effort: it's a
-    /// headline figure, not a per-row sum.
-    #[cfg(feature = "postgres")]
-    pub(crate) async fn db_size_bytes(pool: &DbPool) -> AppResult<i64> {
-        let (size,): (i64,) = sqlx::query_as("SELECT pg_database_size(current_database())::BIGINT")
-            .fetch_one(pool)
-            .await?;
-        Ok(size)
-    }
-
-    /// SQLite has no `pg_database_size`; the file size is `page_count * page_size`.
-    #[cfg(feature = "sqlite")]
-    pub(crate) async fn db_size_bytes(pool: &DbPool) -> AppResult<i64> {
-        let page_count: i64 = sqlx::query_scalar("PRAGMA page_count")
-            .fetch_one(pool)
-            .await?;
-        let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
-            .fetch_one(pool)
-            .await?;
-        Ok(page_count * page_size)
     }
 
     /// Exact source-map storage weight, summed from `chunk.size` + `source_file.size`.

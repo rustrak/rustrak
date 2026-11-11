@@ -1,13 +1,17 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::db::dialect::{bucket, compare_time, epoch, json_member, push_compare_time, since};
 use crate::db::{Db, DbPool};
 use crate::error::{AppError, AppResult};
 use crate::models::{Grouping, Issue};
-use crate::pagination::{IssueCategory, IssueCursor, IssueFilter, IssueSort, SortOrder};
+use crate::pagination::{IssueCategory, IssueFilter, IssueSort, SortOrder};
+use crate::services::github;
 use crate::services::grouping::DenormalizedFields;
 use crate::services::scope::Scope;
+use crate::services::IssueSocialService;
 use serde::Serialize;
+use sqlx::QueryBuilder;
 use std::collections::HashMap;
 
 /// A tag value with its event count within an issue.
@@ -99,6 +103,9 @@ pub struct IssueFilters {
     pub events_min: Option<i64>,
     pub events_max: Option<i64>,
 }
+
+/// The status an update sets to resolve an issue until the next release.
+pub const RESOLVED_IN_NEXT_RELEASE: &str = "resolvedInNextRelease";
 
 pub struct IssueService;
 
@@ -213,314 +220,6 @@ fn sort_counts(counts: HashMap<String, i64>) -> Vec<TagValueCount> {
 }
 
 impl IssueService {
-    /// Lists issues with cursor-based pagination
-    ///
-    /// Uses KEYSET pagination for efficient large dataset handling.
-    /// Returns (issues, has_more) where has_more indicates if there are more results.
-    pub async fn list_paginated(
-        pool: &DbPool,
-        project_id: i32,
-        sort: IssueSort,
-        order: SortOrder,
-        include_resolved: bool,
-        cursor: Option<&IssueCursor>,
-        limit: i64,
-    ) -> AppResult<(Vec<Issue>, bool)> {
-        // Fetch limit+1 to determine if there are more results
-        let fetch_limit = limit + 1;
-
-        let issues = match (sort, order, cursor) {
-            // digest_order DESC (default) - no cursor
-            (IssueSort::DigestOrder, SortOrder::Desc, None) => {
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                        ORDER BY digest_order DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                        ORDER BY digest_order DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // digest_order DESC - with cursor
-            (IssueSort::DigestOrder, SortOrder::Desc, Some(c)) => {
-                let last_order = c.last_digest_order.unwrap_or(i32::MAX);
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                          AND digest_order < $3
-                        ORDER BY digest_order DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_order)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                          AND digest_order < $3
-                        ORDER BY digest_order DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_order)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // digest_order ASC - no cursor
-            (IssueSort::DigestOrder, SortOrder::Asc, None) => {
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                        ORDER BY digest_order ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                        ORDER BY digest_order ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // digest_order ASC - with cursor
-            (IssueSort::DigestOrder, SortOrder::Asc, Some(c)) => {
-                let last_order = c.last_digest_order.unwrap_or(0);
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                          AND digest_order > $3
-                        ORDER BY digest_order ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_order)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                          AND digest_order > $3
-                        ORDER BY digest_order ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_order)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // last_seen DESC - no cursor
-            (IssueSort::LastSeen, SortOrder::Desc, None) => {
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                        ORDER BY last_seen DESC, id DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                        ORDER BY last_seen DESC, id DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // last_seen DESC - with cursor
-            (IssueSort::LastSeen, SortOrder::Desc, Some(c)) => {
-                let last_seen = c.last_seen.unwrap_or_else(Utc::now);
-                let last_id = c.last_id.unwrap_or(Uuid::nil());
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                          AND (last_seen < $3 OR (last_seen = $3 AND id < $4))
-                        ORDER BY last_seen DESC, id DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_seen)
-                    .bind(last_id)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                          AND (last_seen < $3 OR (last_seen = $3 AND id < $4))
-                        ORDER BY last_seen DESC, id DESC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_seen)
-                    .bind(last_id)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // last_seen ASC - no cursor
-            (IssueSort::LastSeen, SortOrder::Asc, None) => {
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                        ORDER BY last_seen ASC, id ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                        ORDER BY last_seen ASC, id ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // last_seen ASC - with cursor
-            (IssueSort::LastSeen, SortOrder::Asc, Some(c)) => {
-                let last_seen = c.last_seen.unwrap_or(DateTime::UNIX_EPOCH);
-                let last_id = c.last_id.unwrap_or(Uuid::nil());
-                if include_resolved {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1
-                          AND (last_seen > $3 OR (last_seen = $3 AND id > $4))
-                        ORDER BY last_seen ASC, id ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_seen)
-                    .bind(last_id)
-                    .fetch_all(pool)
-                    .await?
-                } else {
-                    sqlx::query_as::<_, Issue>(
-                        r#"
-                        SELECT * FROM issues
-                        WHERE project_id = $1 AND status = 'unresolved'
-                          AND (last_seen > $3 OR (last_seen = $3 AND id > $4))
-                        ORDER BY last_seen ASC, id ASC
-                        LIMIT $2
-                        "#,
-                    )
-                    .bind(project_id)
-                    .bind(fetch_limit)
-                    .bind(last_seen)
-                    .bind(last_id)
-                    .fetch_all(pool)
-                    .await?
-                }
-            }
-
-            // list_paginated has no callers (superseded by list_offset, GH #165).
-            // IssueCursor has no event-count field, so cursor-based EventCount
-            // pagination isn't implemented — the live sort=event_count path is
-            // IssueService::list_offset.
-            (IssueSort::EventCount | IssueSort::FirstSeen | IssueSort::Priority, _, _) => {
-                return Err(AppError::Validation(format!(
-                    "{sort} sort is not supported for cursor-based pagination"
-                )));
-            }
-        };
-
-        let has_more = issues.len() > limit as usize;
-        let issues: Vec<Issue> = issues.into_iter().take(limit as usize).collect();
-
-        Ok((issues, has_more))
-    }
-
     /// Lists issues first seen in a given release, most recently introduced first.
     /// Powers the "New Issues" section of a release detail page.
     pub async fn top_issues_for_release(
@@ -569,15 +268,9 @@ impl IssueService {
                 page
             )));
         }
-        if !(1..=100).contains(&per_page) {
-            return Err(AppError::Validation(format!(
-                "per_page must be between 1 and 100, got {}",
-                per_page
-            )));
-        }
+        crate::pagination::per_page(per_page)?;
         let offset = crate::pagination::offset(page, per_page);
 
-        // Build ORDER BY clause
         let order_clause = match (sort, order) {
             (IssueSort::DigestOrder, SortOrder::Desc) => "digest_order DESC",
             (IssueSort::DigestOrder, SortOrder::Asc) => "digest_order ASC",
@@ -743,7 +436,6 @@ impl IssueService {
         Ok(rows.into_iter().map(|(env,)| env).collect())
     }
 
-    /// Gets an issue by ID
     pub async fn get_by_id(pool: &DbPool, id: Uuid) -> AppResult<Issue> {
         let issue = sqlx::query_as::<_, Issue>("SELECT * FROM issues WHERE id = $1")
             .bind(id)
@@ -751,6 +443,16 @@ impl IssueService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Issue {} not found", id)))?;
 
+        Ok(issue)
+    }
+
+    /// The issue, if it belongs to `project_id`. Another project's issue is
+    /// the same 404 as a missing one, so ids cannot be probed across projects.
+    pub async fn get_in_project(pool: &DbPool, project_id: i32, id: Uuid) -> AppResult<Issue> {
+        let issue = Self::get_by_id(pool, id).await?;
+        if issue.project_id != project_id {
+            return Err(AppError::NotFound(format!("Issue {} not found", id)));
+        }
         Ok(issue)
     }
 
@@ -765,7 +467,7 @@ impl IssueService {
         Ok(issue)
     }
 
-    /// Creates a new issue
+    /// Creates an issue for its first event, with the default category.
     pub async fn create(
         pool: &DbPool,
         project_id: i32,
@@ -774,21 +476,38 @@ impl IssueService {
         level: Option<&str>,
         platform: Option<&str>,
     ) -> AppResult<Issue> {
-        // Get the next digest_order for this project
+        let mut conn = pool.acquire().await?;
+        let category = IssueCategory::Error.as_str();
+        Self::create_in(
+            &mut conn,
+            project_id,
+            timestamp,
+            denormalized,
+            level,
+            platform,
+            category,
+        )
+        .await
+    }
+
+    /// Creates an issue for its first event on the caller's connection, so
+    /// the digest creates it in the transaction that groups the event. The
+    /// caller serialises writers per project: `digest_order` is the next one.
+    pub async fn create_in(
+        conn: &mut <Db as sqlx::Database>::Connection,
+        project_id: i32,
+        timestamp: DateTime<Utc>,
+        denormalized: &DenormalizedFields,
+        level: Option<&str>,
+        platform: Option<&str>,
+        category: &str,
+    ) -> AppResult<Issue> {
         let max_order: Option<i32> =
             sqlx::query_scalar("SELECT MAX(digest_order) FROM issues WHERE project_id = $1")
                 .bind(project_id)
-                .fetch_one(pool)
+                .fetch_one(&mut *conn)
                 .await?;
-
-        let digest_order = max_order.unwrap_or(0) + 1;
-
-        // Generate UUID in application for cross-DB compatibility
-        let issue_id = Uuid::new_v4();
-
-        let priority = derive_priority(level);
-
-        let issue = sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(format!(
+        Ok(sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(format!(
             r#"
             INSERT INTO issues (
                 id, project_id, digest_order, first_seen, last_seen,
@@ -796,18 +515,18 @@ impl IssueService {
                 calculated_type, calculated_value, "transaction",
                 last_frame_filename, last_frame_module, last_frame_function,
                 level, platform, status, substatus, priority, culprit, logger,
-                first_release, last_release, numeric_id
+                first_release, last_release, issue_type, issue_category, numeric_id
             )
             VALUES (
                 $1, $2, $3, $4, $4, 1, 1, $5, $6, $7, $8, $9, $10, $11, $12,
-                'unresolved', 'new', $13, $14, $15, $16, $16, {NEXT_NUMERIC_ID}
+                'unresolved', 'new', $13, $14, $15, $16, $16, $17, $17, {NEXT_NUMERIC_ID}
             )
             RETURNING *
             "#,
         )))
-        .bind(issue_id)
+        .bind(Uuid::new_v4())
         .bind(project_id)
-        .bind(digest_order)
+        .bind(max_order.unwrap_or(0) + 1)
         .bind(timestamp)
         .bind(&denormalized.calculated_type)
         .bind(&denormalized.calculated_value)
@@ -817,38 +536,13 @@ impl IssueService {
         .bind(&denormalized.last_frame_function)
         .bind(level)
         .bind(platform)
-        .bind(priority)
+        .bind(derive_priority(level))
         .bind(&denormalized.culprit)
         .bind(&denormalized.logger)
         .bind(&denormalized.release)
-        .fetch_one(pool)
-        .await?;
-
-        Ok(issue)
-    }
-
-    /// Updates an existing issue for a new event
-    pub async fn update_for_new_event(
-        pool: &DbPool,
-        issue_id: Uuid,
-        timestamp: DateTime<Utc>,
-    ) -> AppResult<Issue> {
-        let issue = sqlx::query_as::<_, Issue>(
-            r#"
-            UPDATE issues
-            SET last_seen = $2,
-                digested_event_count = digested_event_count + 1,
-                stored_event_count = stored_event_count + 1
-            WHERE id = $1
-            RETURNING *
-            "#,
-        )
-        .bind(issue_id)
-        .bind(timestamp)
-        .fetch_one(pool)
-        .await?;
-
-        Ok(issue)
+        .bind(category)
+        .fetch_one(&mut *conn)
+        .await?)
     }
 
     /// Sets an issue's status. `substatus_override` takes precedence when
@@ -1047,18 +741,80 @@ impl IssueService {
         Ok(hashes)
     }
 
-    /// Bulk-sets the status of multiple issues in one project.
-    /// Returns the number of issues updated.
-    ///
-    /// Takes an open transaction rather than a pool so callers that also
-    /// touch priority in the same request (see `bulk_update_issues`) can
-    /// commit both changes atomically.
+    /// Sets an issue's status the way a person does (a canonical status or
+    /// [`RESOLVED_IN_NEXT_RELEASE`]): recorded in its activity and mirrored to
+    /// the GitHub issues linked to it.
+    pub async fn change_status(
+        pool: &DbPool,
+        id: Uuid,
+        status: &str,
+        substatus: Option<&str>,
+        user_id: Option<i32>,
+    ) -> AppResult<Issue> {
+        let issue = if status == RESOLVED_IN_NEXT_RELEASE {
+            Self::resolve_in_next_release(pool, id).await?
+        } else {
+            Self::set_status(pool, id, status, substatus).await?
+        };
+        IssueSocialService::record_status_change(pool, id, user_id, status).await?;
+        github::sync::spawn("status sync", github::sync::mirror_status(pool.clone(), id));
+        Ok(issue)
+    }
+
+    /// The bulk form of [`Self::change_status`] and of setting the priority:
+    /// both in one transaction, so a request that sets both never leaves
+    /// issues with the new status but the old priority. Ids of other projects
+    /// are skipped. Returns the number of issues updated.
+    pub async fn bulk_update(
+        pool: &DbPool,
+        project_id: i32,
+        ids: &[Uuid],
+        status: Option<&str>,
+        priority: Option<&str>,
+        user_id: Option<i32>,
+    ) -> AppResult<u64> {
+        // Write-first (UPDATE opens the tx) — deferred BEGIN deliberate, see db::begin_write.
+        let mut tx = pool.begin().await?;
+        let mut updated = 0u64;
+        if let Some(status) = status {
+            updated = Self::bulk_set_status(&mut tx, project_id, ids, status, user_id).await?;
+        }
+        if let Some(priority) = priority {
+            let priority_updated =
+                Self::bulk_set_priority(&mut tx, project_id, ids, priority).await?;
+            if status.is_none() {
+                updated = priority_updated;
+            }
+        }
+        tx.commit().await?;
+
+        if status.is_some() {
+            for &id in ids {
+                let pool = pool.clone();
+                github::sync::spawn("status sync", async move {
+                    if Self::get_by_id(&pool, id).await?.project_id == project_id {
+                        github::sync::mirror_status(pool, id).await?;
+                    }
+                    Ok(())
+                });
+            }
+        }
+        Ok(updated)
+    }
+
+    /// Bulk-sets the status (a canonical one or [`RESOLVED_IN_NEXT_RELEASE`])
+    /// of multiple issues in one project, recording each change in the issue's
+    /// activity. Returns the number of issues updated.
     pub async fn bulk_set_status(
         tx: &mut sqlx::Transaction<'_, Db>,
         project_id: i32,
         ids: &[Uuid],
         status: &str,
+        user_id: Option<i32>,
     ) -> AppResult<u64> {
+        if status == RESOLVED_IN_NEXT_RELEASE {
+            return Self::bulk_resolve_in_next_release(tx, project_id, ids, user_id).await;
+        }
         let substatus: Option<&str> = match status {
             crate::models::STATUS_UNRESOLVED => Some("ongoing"),
             crate::models::STATUS_RESOLVED => None,
@@ -1077,6 +833,9 @@ impl IssueService {
             .bind(project_id)
             .execute(&mut **tx)
             .await?;
+            if res.rows_affected() > 0 {
+                IssueSocialService::record_status_change_on(tx, *id, user_id, status).await?;
+            }
             updated += res.rows_affected();
         }
         Ok(updated)
@@ -1086,7 +845,8 @@ impl IssueService {
     /// query. Ids that don't exist or belong to another project are silently
     /// not counted, matching [`bulk_set_status`]'s semantics.
     ///
-    /// Takes an open transaction — see [`bulk_set_status`] for why.
+    /// Takes an open transaction so [`Self::bulk_update`] commits it together
+    /// with the status.
     ///
     /// [`bulk_set_status`]: Self::bulk_set_status
     pub async fn bulk_set_priority(
@@ -1105,54 +865,28 @@ impl IssueService {
             return Ok(0);
         }
 
-        let now = Utc::now();
-
-        #[cfg(feature = "postgres")]
-        {
-            let res = sqlx::query(
-                "UPDATE issues SET priority = $1, priority_locked_at = $2 \
-                 WHERE project_id = $3 AND id = ANY($4)",
-            )
-            .bind(priority)
-            .bind(now)
-            .bind(project_id)
-            .bind(ids)
-            .execute(&mut **tx)
-            .await?;
-            Ok(res.rows_affected())
+        let mut qb = QueryBuilder::new("UPDATE issues SET priority = ");
+        qb.push_bind(priority);
+        qb.push(", priority_locked_at = ");
+        qb.push_bind(Utc::now());
+        qb.push(" WHERE project_id = ");
+        qb.push_bind(project_id);
+        qb.push(" AND id IN (");
+        let mut sep = qb.separated(", ");
+        for id in ids {
+            sep.push_bind(*id);
         }
-
-        #[cfg(not(feature = "postgres"))]
-        {
-            use sqlx::QueryBuilder;
-            let mut qb = QueryBuilder::new("UPDATE issues SET priority = ");
-            qb.push_bind(priority);
-            qb.push(", priority_locked_at = ");
-            qb.push_bind(now);
-            qb.push(" WHERE project_id = ");
-            qb.push_bind(project_id);
-            qb.push(" AND id IN (");
-            let mut sep = qb.separated(", ");
-            for id in ids {
-                sep.push_bind(*id);
-            }
-            qb.push(")");
-            let res = qb.build().execute(&mut **tx).await?;
-            Ok(res.rows_affected())
-        }
+        qb.push(")");
+        Ok(qb.build().execute(&mut **tx).await?.rows_affected())
     }
 
     /// Bulk "resolve in next release": same semantics as
-    /// [`resolve_in_next_release`], applied to many issues in one project.
-    /// Returns the number of issues updated.
-    ///
-    /// Takes an open transaction — see [`bulk_set_status`] for why.
-    ///
-    /// [`bulk_set_status`]: Self::bulk_set_status
-    pub async fn bulk_resolve_in_next_release(
+    /// [`Self::resolve_in_next_release`], applied to many issues in one project.
+    async fn bulk_resolve_in_next_release(
         tx: &mut sqlx::Transaction<'_, Db>,
         project_id: i32,
         ids: &[Uuid],
+        user_id: Option<i32>,
     ) -> AppResult<u64> {
         let mut updated = 0u64;
         for id in ids {
@@ -1167,6 +901,15 @@ impl IssueService {
             .bind(project_id)
             .execute(&mut **tx)
             .await?;
+            if res.rows_affected() > 0 {
+                IssueSocialService::record_status_change_on(
+                    tx,
+                    *id,
+                    user_id,
+                    RESOLVED_IN_NEXT_RELEASE,
+                )
+                .await?;
+            }
             updated += res.rows_affected();
         }
         Ok(updated)
@@ -1399,43 +1142,22 @@ impl IssueService {
             return Ok(out);
         }
 
-        #[cfg(feature = "postgres")]
-        let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
-            "SELECT issue_id, FLOOR(EXTRACT(EPOCH FROM timestamp))::BIGINT / $3 * $3 AS bucket, \
-             COUNT(*) FROM events WHERE issue_id = ANY($1) AND timestamp >= $2 \
-             AND ($4::TEXT IS NULL OR environment = $4) \
-             GROUP BY issue_id, bucket",
-        )
-        .bind(issue_ids)
-        .bind(first_dt)
-        .bind(interval)
-        .bind(environment)
-        .fetch_all(pool)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let rows: Vec<(Uuid, i64, i64)> = {
-            use sqlx::QueryBuilder;
-            let mut qb =
-                QueryBuilder::new("SELECT issue_id, CAST(strftime('%s', timestamp) AS INTEGER) / ");
-            qb.push_bind(interval);
-            qb.push(" * ");
-            qb.push_bind(interval);
-            qb.push(" AS bucket, COUNT(*) FROM events WHERE issue_id IN (");
-            let mut sep = qb.separated(", ");
-            for id in issue_ids {
-                sep.push_bind(*id);
-            }
-            qb.push(") AND datetime(timestamp) >= datetime(");
-            qb.push_bind(first_dt.naive_utc());
-            qb.push(")");
-            if let Some(env) = environment {
-                qb.push(" AND environment = ");
-                qb.push_bind(env);
-            }
-            qb.push(" GROUP BY issue_id, bucket");
-            qb.build_query_as().fetch_all(pool).await?
-        };
+        let mut qb = QueryBuilder::new(format!(
+            "SELECT issue_id, {} AS bucket, COUNT(*) FROM events WHERE issue_id IN (",
+            bucket("timestamp", interval)
+        ));
+        let mut sep = qb.separated(", ");
+        for id in issue_ids {
+            sep.push_bind(*id);
+        }
+        qb.push(") AND ");
+        push_compare_time(&mut qb, "timestamp", ">=", first_dt);
+        if let Some(env) = environment {
+            qb.push(" AND environment = ");
+            qb.push_bind(env);
+        }
+        qb.push(" GROUP BY issue_id, bucket");
+        let rows: Vec<(Uuid, i64, i64)> = qb.build_query_as().fetch_all(pool).await?;
 
         for (issue_id, bucket, count) in rows {
             let idx = (bucket - first) / interval;
@@ -1459,27 +1181,17 @@ impl IssueService {
         }
         // Only the context, not the whole event: a feedback event is small,
         // but this runs once per page of up to 100.
-        #[cfg(feature = "postgres")]
-        let rows: Vec<(Uuid, Option<serde_json::Value>)> = sqlx::query_as(
-            "SELECT issue_id, data -> 'contexts' -> 'feedback' FROM events WHERE issue_id = ANY($1)",
-        )
-        .bind(issue_ids)
-        .fetch_all(pool)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let rows: Vec<(Uuid, Option<serde_json::Value>)> = {
-            use sqlx::QueryBuilder;
-            let mut qb = QueryBuilder::new(
-                "SELECT issue_id, json_extract(data, '$.contexts.feedback') FROM events WHERE issue_id IN (",
-            );
-            let mut sep = qb.separated(", ");
-            for id in issue_ids {
-                sep.push_bind(*id);
-            }
-            qb.push(")");
-            qb.build_query_as().fetch_all(pool).await?
-        };
+        let mut qb = QueryBuilder::new(format!(
+            "SELECT issue_id, {} FROM events WHERE issue_id IN (",
+            json_member("data", &["contexts", "feedback"])
+        ));
+        let mut sep = qb.separated(", ");
+        for id in issue_ids {
+            sep.push_bind(*id);
+        }
+        qb.push(")");
+        let rows: Vec<(Uuid, Option<serde_json::Value>)> =
+            qb.build_query_as().fetch_all(pool).await?;
 
         Ok(rows
             .into_iter()
@@ -1488,11 +1200,13 @@ impl IssueService {
     }
 
     /// Bulk-computes [`IssueListStats`] (user_count + 24h trend) for the given
-    /// issues in a single time-bounded query (all events across all issues
-    /// within the last 24h) — used by the issue list so it can show per-row
-    /// Users/Trend columns in one request instead of the client firing one
-    /// `aggregates`/`stats` call per visible row, and instead of awaiting one
-    /// query per issue serially.
+    /// issues in two aggregate queries over the last 24h, so the issue list
+    /// shows per-row Users/Trend columns in one request.
+    ///
+    /// Both are answered from `idx_events_issue_ingested` alone: the user is
+    /// counted by its `user_identity` column, never by reading the payload,
+    /// and the buckets are counted in SQL. Reading `data` here cost seconds
+    /// per page on a busy project.
     pub async fn list_stats(
         pool: &DbPool,
         issue_ids: &[Uuid],
@@ -1506,41 +1220,15 @@ impl IssueService {
         let start = now - LIST_TREND_BUCKET_SECS * LIST_TREND_BUCKETS;
         let start_dt = DateTime::<Utc>::from_timestamp(start, 0).unwrap_or_else(Utc::now);
 
-        // Projects only `data->'user'` instead of the full event payload:
-        // this runs on every issue-list page load (up to 100 issues,
-        // uncapped events per issue within the 24h window), and the only
-        // thing read from `data` is the user sub-object — pulling the whole
-        // blob (stacktraces, breadcrumbs, contexts, tags, request) across
-        // every matching event is needless bytes-on-the-wire and JSON
-        // deserialization for a hot path. `aggregates()`/`tag_values()`
-        // still fetch the full row since they also read tags from it.
-        #[cfg(feature = "postgres")]
-        let rows: Vec<(Uuid, Option<serde_json::Value>, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT issue_id, data -> 'user', ingested_at FROM events \
-             WHERE issue_id = ANY($1) AND ingested_at >= $2 \
-             AND ($3::TEXT IS NULL OR environment = $3) \
-             AND ($4::TEXT IS NULL OR release = $4)",
-        )
-        .bind(issue_ids)
-        .bind(start_dt)
-        .bind(scope.environment)
-        .bind(scope.release)
-        .fetch_all(pool)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let rows: Vec<(Uuid, Option<serde_json::Value>, DateTime<Utc>)> = {
-            use sqlx::QueryBuilder;
-            let mut qb = QueryBuilder::new(
-                "SELECT issue_id, json_extract(data, '$.user'), ingested_at FROM events WHERE issue_id IN (",
-            );
+        let scoped = |select: String, group_by: &str| {
+            let mut qb = QueryBuilder::<Db>::new(select);
+            qb.push(" FROM events WHERE issue_id IN (");
             let mut sep = qb.separated(", ");
             for id in issue_ids {
                 sep.push_bind(*id);
             }
-            qb.push(") AND datetime(ingested_at) >= datetime(");
-            qb.push_bind(start_dt.naive_utc());
-            qb.push(")");
+            qb.push(") AND ");
+            push_compare_time(&mut qb, "ingested_at", ">=", start_dt);
             if let Some(env) = scope.environment {
                 qb.push(" AND environment = ");
                 qb.push_bind(env);
@@ -1549,8 +1237,27 @@ impl IssueService {
                 qb.push(" AND release = ");
                 qb.push_bind(release);
             }
-            qb.build_query_as().fetch_all(pool).await?
+            qb.push(group_by);
+            qb
         };
+        // `start` is computed, never request text.
+        let buckets: Vec<(Uuid, i64, i64)> = scoped(
+            format!(
+                "SELECT issue_id, ({} - {start}) / {LIST_TREND_BUCKET_SECS}, COUNT(*)",
+                epoch("ingested_at")
+            ),
+            " GROUP BY 1, 2",
+        )
+        .build_query_as()
+        .fetch_all(pool)
+        .await?;
+        let users: Vec<(Uuid, i64)> = scoped(
+            "SELECT issue_id, COUNT(DISTINCT user_identity)".to_string(),
+            " GROUP BY 1",
+        )
+        .build_query_as()
+        .fetch_all(pool)
+        .await?;
 
         let mut out: HashMap<Uuid, IssueListStats> = issue_ids
             .iter()
@@ -1564,25 +1271,16 @@ impl IssueService {
                 )
             })
             .collect();
-        let mut users: HashMap<Uuid, std::collections::HashSet<String>> = HashMap::new();
-
-        for (issue_id, user, ts) in &rows {
-            let Some(stats) = out.get_mut(issue_id) else {
-                continue;
-            };
-            if let Some(uid) = user.as_ref().and_then(user_identity_from_user_field) {
-                users.entry(*issue_id).or_default().insert(uid);
-            }
-            let raw = (ts.timestamp() - start) / LIST_TREND_BUCKET_SECS;
-            if raw >= 0 {
+        for (issue_id, raw, count) in buckets {
+            if let (Some(stats), true) = (out.get_mut(&issue_id), raw >= 0) {
+                // Fold the exclusive upper edge (ts == now) into the last bucket.
                 let idx = (raw as usize).min(stats.trend.len() - 1);
-                stats.trend[idx] += 1;
+                stats.trend[idx] += count;
             }
         }
-
-        for (issue_id, ids) in users {
+        for (issue_id, count) in users {
             if let Some(stats) = out.get_mut(&issue_id) {
-                stats.user_count = ids.len() as i64;
+                stats.user_count = count;
             }
         }
 
@@ -1611,23 +1309,15 @@ impl IssueService {
         // `ingested_at` needs a dialect-specific comparison — SQLite stores
         // it as TEXT, so `datetime(...)` normalizes both sides before
         // comparing.
-        #[cfg(feature = "postgres")]
-        let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
-            "SELECT ingested_at FROM events WHERE issue_id = $1 AND ingested_at >= $2 ORDER BY ingested_at DESC",
-        )
-        .bind(issue_id)
-        .bind(start_dt)
-        .fetch_all(pool)
-        .await?;
-
-        #[cfg(not(feature = "postgres"))]
-        let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(
-            "SELECT ingested_at FROM events WHERE issue_id = $1 AND datetime(ingested_at) >= datetime($2) ORDER BY ingested_at DESC",
-        )
-        .bind(issue_id)
-        .bind(start_dt.naive_utc())
-        .fetch_all(pool)
-        .await?;
+        let sql = format!(
+            "SELECT ingested_at FROM events WHERE issue_id = $1 AND {} ORDER BY ingested_at DESC",
+            compare_time("ingested_at", ">=", 2)
+        );
+        let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+            .bind(issue_id)
+            .bind(start_dt)
+            .fetch_all(pool)
+            .await?;
 
         let mut series: Vec<(i64, i64)> =
             (0..buckets).map(|i| (start + i * bucket_secs, 0)).collect();
@@ -1758,15 +1448,8 @@ fn narrowing_clause(filters: &IssueFilters, binds: &mut Vec<String>) -> String {
         ("first_seen", filters.first_seen_hours),
         ("last_seen", filters.last_seen_hours),
     ] {
-        if let Some(hours) = hours {
-            #[cfg(feature = "postgres")]
-            clause.push_str(&format!(
-                " AND {column} >= NOW() - INTERVAL '{hours} hours'"
-            ));
-            #[cfg(not(feature = "postgres"))]
-            clause.push_str(&format!(
-                " AND datetime({column}) >= datetime('now', '-{hours} hours')"
-            ));
+        if hours.is_some() {
+            clause.push_str(&format!(" AND {}", since(column, hours)));
         }
     }
 

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::rbac::{Action, Grants, Resource};
+use crate::models::rbac::{Action, Grants, Resource};
 
 /// One `(resource, action)` grant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

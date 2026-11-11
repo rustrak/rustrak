@@ -38,9 +38,10 @@ pub async fn assemble_dif_for_job(
     pool: &DbPool,
     store: &dyn SourceMapStore,
     job: &crate::models::source_file::AssemblyJob,
+    chunks: &[String],
     max_size_bytes: usize,
 ) -> AppResult<()> {
-    let data = join_chunks(pool, job.chunk_list(), max_size_bytes, &job.bundle_checksum).await?;
+    let data = join_chunks(pool, chunks, max_size_bytes, &job.bundle_checksum).await?;
     let name = job.name.as_deref().unwrap_or_default();
 
     let files: Vec<(Uuid, &str, Bytes)> = if let Some(uuid) = proguard_uuid_from_name(name) {
@@ -100,7 +101,7 @@ pub async fn assemble_dif_for_job(
     for (uuid, file_type, bytes) in files {
         store_file(&mut tx, store, job.project_id, uuid, file_type, bytes).await?;
     }
-    finish_job(&mut tx, Some(job.id), job.chunk_list()).await?;
+    finish_job(&mut tx, Some(job.id), chunks).await?;
     if covered {
         // Nothing holds this file's bytes, on purpose: a re-upload must not
         // take it for a replaced one.
@@ -120,8 +121,6 @@ pub const COVERED_BY_DSYM: &str = "covered by its dSYM";
 
 /// Whether a SymCache is stored for `uuid` in the project.
 async fn has_symcache(pool: &DbPool, project_id: i32, uuid: Uuid) -> AppResult<bool> {
-    #[cfg(not(feature = "postgres"))]
-    let uuid = uuid.to_string();
     let row: Option<i32> = sqlx::query_scalar(
         "SELECT 1 FROM source_file_metadata
          WHERE project_id = $1 AND debug_id = $2 AND file_type = $3",
@@ -156,9 +155,9 @@ pub async fn debug_file_holder(
     checksum: &str,
     file_type: Option<&str>,
 ) -> AppResult<Option<Uuid>> {
-    let id: Option<String> = sqlx::query_scalar(
+    Ok(sqlx::query_scalar(
         r#"
-        SELECT CAST(m.debug_id AS TEXT) FROM source_file_metadata m
+        SELECT m.debug_id FROM source_file_metadata m
         JOIN source_file f ON f.id = m.file_id
         WHERE m.project_id = $1 AND ($2 IS NULL OR m.file_type = $2) AND f.checksum = $3
         LIMIT 1
@@ -168,8 +167,7 @@ pub async fn debug_file_holder(
     .bind(file_type)
     .bind(checksum)
     .fetch_optional(pool)
-    .await?;
-    Ok(id.and_then(|id| Uuid::parse_str(&id).ok()))
+    .await?)
 }
 
 /// Records the mapping (and its cache) stored for `from` under `to` as well,
@@ -183,10 +181,6 @@ pub async fn alias_proguard_mapping(
 ) -> AppResult<()> {
     let mut tx = pool.begin().await?;
     for file_type in [PROGUARD_FILE_TYPE, PROGUARD_CACHE_FILE_TYPE] {
-        #[cfg(feature = "postgres")]
-        let (id, to, from) = (Uuid::new_v4(), to, from);
-        #[cfg(not(feature = "postgres"))]
-        let (id, to, from) = (Uuid::new_v4().to_string(), to.to_string(), from.to_string());
         sqlx::query(
             r#"
             INSERT INTO source_file_metadata(id, project_id, debug_id, file_type, file_id)
@@ -195,7 +189,7 @@ pub async fn alias_proguard_mapping(
             ON CONFLICT(project_id, debug_id, file_type) DO UPDATE SET file_id = EXCLUDED.file_id
             "#,
         )
-        .bind(id)
+        .bind(Uuid::new_v4())
         .bind(to)
         .bind(project_id)
         .bind(from)

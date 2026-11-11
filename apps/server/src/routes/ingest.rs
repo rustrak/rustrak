@@ -1,25 +1,15 @@
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{http::header, web, HttpRequest, HttpResponse};
 use bytes::Bytes;
 use chrono::Utc;
-use sha2::{Digest as _, Sha256};
 
 use crate::auth::SentryAuth;
 use crate::config::Config;
 use crate::db::DbPool;
-use crate::digest::processors::ATTACHMENTS_KEY;
-use crate::digest::processors::{
-    is_retryable_write_contention, Digested, Processor, ProcessorCtx, Processors, SessionItem,
-};
+use crate::digest::processors::Processors;
 use crate::error::{AppError, AppResult};
-use crate::ingest::envelope::Attachment;
-use crate::ingest::storage::{is_missing_event_file, list_pending_event_metadata_except};
-use crate::ingest::{
-    decompress_body, detach_payload_if_needed, get_content_encoding, store_event_with_metadata,
-    EnvelopeItemKind, EnvelopeParser, EventMetadata, MAX_ATTACHMENT_SIZE, MAX_COMPRESSED_SIZE,
-};
-use crate::models::monitor::{CheckIn, CheckInStatus, MonitorFailure};
+use crate::ingest::{decompression, pipeline, read_body, MAX_COMPRESSED_SIZE};
+use crate::models::monitor::{CheckIn, CheckInStatus};
 use crate::models::Product;
-use crate::services::monitor::MonitorService;
 use crate::services::RateLimitService;
 
 /// Response for successful ingestion.
@@ -30,28 +20,77 @@ pub struct IngestResponse {
     pub id: Option<String>,
 }
 
-/// Validates an event payload is well-formed JSON without building a
-/// [`serde_json::Value`] tree: [`IgnoredAny`](serde::de::IgnoredAny) walks and
-/// discards every value. The digest re-parses the stored file anyway, so the
-/// tree here would be pure waste and can multiply memory use for large events.
-fn validate_event_json(payload: &[u8]) -> AppResult<()> {
-    serde_json::from_slice::<serde::de::IgnoredAny>(payload)
-        .map_err(|e| AppError::Validation(format!("Invalid event JSON: {}", e)))?;
-    Ok(())
-}
-
-/// POST /api/{project_id}/envelope/
-/// Main ingestion endpoint compatible with Sentry SDK
 pub async fn ingest_envelope(
     pool: web::Data<DbPool>,
     config: web::Data<Config>,
     req: HttpRequest,
     auth: SentryAuth,
-    body: Bytes,
+    payload: web::Payload,
     processors: web::Data<Processors>,
 ) -> AppResult<HttpResponse> {
-    crate::middleware::telemetry::mark_body_received(&req);
-    // 0. Check rate limits (fail fast before processing)
+    ingest(pool, config, req, auth, payload, processors, false).await
+}
+
+/// Relay's legacy store endpoint: a JSON event becomes the one item of an
+/// envelope, and an envelope body is taken as it is.
+pub async fn ingest_store(
+    pool: web::Data<DbPool>,
+    config: web::Data<Config>,
+    req: HttpRequest,
+    auth: SentryAuth,
+    payload: web::Payload,
+    processors: web::Data<Processors>,
+) -> AppResult<HttpResponse> {
+    let is_envelope = req
+        .headers()
+        .get(actix_web::http::header::CONTENT_TYPE)
+        .is_some_and(|v| v.as_bytes().starts_with(b"application/x-sentry-envelope"));
+    ingest(pool, config, req, auth, payload, processors, !is_envelope).await
+}
+
+/// The few fields Relay's `parse_event` reads before building the envelope.
+#[derive(serde::Deserialize)]
+struct MinimalEvent {
+    event_id: Option<String>,
+    #[serde(rename = "type")]
+    ty: Option<String>,
+}
+
+fn event_envelope(event: Bytes) -> AppResult<Bytes> {
+    let minimal: MinimalEvent = serde_json::from_slice(&event)
+        .map_err(|e| AppError::Validation(format!("Invalid event JSON: {e}")))?;
+    let header = match minimal.event_id {
+        Some(id) => serde_json::json!({ "event_id": id }),
+        None => serde_json::json!({}),
+    };
+    let item_type = match minimal.ty.as_deref() {
+        Some("transaction") => "transaction",
+        _ => "event",
+    };
+    let mut envelope = format!(
+        "{header}\n{{\"type\":\"{item_type}\",\"length\":{}}}\n",
+        event.len()
+    )
+    .into_bytes();
+    envelope.extend_from_slice(&event);
+    Ok(Bytes::from(envelope))
+}
+
+async fn ingest(
+    pool: web::Data<DbPool>,
+    config: web::Data<Config>,
+    req: HttpRequest,
+    auth: SentryAuth,
+    payload: web::Payload,
+    processors: web::Data<Processors>,
+    is_event: bool,
+) -> AppResult<HttpResponse> {
+    if !decompression::is_supported(decompression::content_encoding(&req)?.as_deref()) {
+        return Ok(HttpResponse::UnsupportedMediaType()
+            .insert_header((header::ACCEPT_ENCODING, decompression::ACCEPT_ENCODING))
+            .finish());
+    }
+    let body = read_body(&req, payload).await?;
     if let Some(exceeded) =
         RateLimitService::check_quota(pool.get_ref(), &auth.project, &config.rate_limit).await?
     {
@@ -69,686 +108,26 @@ pub async fn ingest_envelope(
             })));
     }
 
+    let body = if is_event {
+        event_envelope(body)?
+    } else {
+        body
+    };
     let ingested_at = Utc::now();
-    // 1. Get client IP
     let remote_addr = req
         .connection_info()
         .realip_remote_addr()
         .map(|s| s.to_string());
-
-    // 2. Decompress if needed
-    let content_encoding = get_content_encoding(&req)?;
-    let decompressed = decompress_body(body, content_encoding.as_deref())?;
-
-    // 3. Parse envelope
-    let mut parser = EnvelopeParser::new(decompressed);
-    let envelope = parser.parse()?;
-
-    // Relay parity for item payloads: a malformed item is dropped and its
-    // siblings continue (relay-server/src/processing/relay.rs run_one — "This
-    // is not a fatal error case ... other items from the same original
-    // envelope must still be processed"). Only infrastructure failures
-    // (database, storage) may fail the envelope: they return 5xx so the SDK
-    // retries, preserving the commit-before-ack durability promise. A 4xx here
-    // would make the SDK drop the sibling data permanently.
-    fn drop_malformed_item(result: AppResult<()>, item_type: &str) -> AppResult<()> {
-        match result {
-            Err(AppError::Validation(message)) => {
-                log::warn!(
-                    "dropping malformed {item_type} item, keeping envelope siblings: {message}"
-                );
-                Ok(())
-            }
-            other => other,
-        }
-    }
-
-    // 4. Typed dispatch — exhaustive, compiler-verified.
-    //    event_id validation is deferred until after the loop — session-only envelopes never need
-    //    one (Relay: Item::requires_event() returns false for Session/Sessions).
-    let mut event_item: Option<Bytes> = None;
-    let mut user_reports: Vec<Bytes> = Vec::new();
-    let mut feedback_item: Option<Bytes> = None;
-    let mut attachments: Vec<Attachment> = Vec::new();
-    let mut transaction_item: Option<Bytes> = None;
-    let mut span_items: Vec<Bytes> = Vec::new();
-    let mut span_v2_items: Vec<Bytes> = Vec::new();
-    let mut requires_event_id = false;
-    let mut check_in_seen = false;
-    let envelope_len = parser.data().len();
-    let delivery_id = stable_delivery_id(envelope.headers.event_id.as_deref(), parser.data());
-    for item_kind in envelope.items {
-        if item_kind.requires_event() {
-            requires_event_id = true;
-        }
-        // A product the project turned off is dropped like filtered data: a
-        // 200 for the envelope, nothing stored, siblings kept.
-        if let Some(product) = product_of(&item_kind) {
-            if !auth.project.keeps(product) {
-                log::debug!(
-                    "dropping {product:?} item: turned off for project {}",
-                    auth.project.id
-                );
-                continue;
-            }
-        }
-        match item_kind {
-            EnvelopeItemKind::Event(p) => {
-                if event_item.is_none() {
-                    event_item = Some(detach_payload_if_needed(p, envelope_len));
-                }
-            }
-            EnvelopeItemKind::Transaction(p) => {
-                if transaction_item.is_none() {
-                    transaction_item = Some(detach_payload_if_needed(p, envelope_len));
-                }
-            }
-            EnvelopeItemKind::Session(s) => {
-                let ctx = direct_store_ctx(
-                    &pool,
-                    auth.project.id,
-                    delivery_id,
-                    ingested_at,
-                    &remote_addr,
-                );
-                drop_malformed_item(
-                    processors
-                        .sessions
-                        .process(SessionItem::Update(s), &ctx)
-                        .await,
-                    "session",
-                )?;
-            }
-            EnvelopeItemKind::Sessions(s) => {
-                let ctx = direct_store_ctx(
-                    &pool,
-                    auth.project.id,
-                    delivery_id,
-                    ingested_at,
-                    &remote_addr,
-                );
-                drop_malformed_item(
-                    processors
-                        .sessions
-                        .process(SessionItem::Aggregates(s), &ctx)
-                        .await,
-                    "sessions",
-                )?;
-            }
-            EnvelopeItemKind::Log(payload) => {
-                // Logs are processed inline (parse container + store): the work is
-                // bounded and storing before responding keeps the batch durable.
-                let ctx = direct_store_ctx(
-                    &pool,
-                    auth.project.id,
-                    delivery_id,
-                    ingested_at,
-                    &remote_addr,
-                );
-                drop_malformed_item(processors.logs.process(payload, &ctx).await, "log")?;
-            }
-            EnvelopeItemKind::Span(payload) => {
-                // Unlike Event/Transaction, an envelope may carry many standalone
-                // span items (Relay: one flat span object per item, no per-envelope
-                // count cap) — collect them all instead of first-wins.
-                span_items.push(detach_payload_if_needed(payload, envelope_len));
-            }
-            EnvelopeItemKind::SpanV2Batch(payload) => {
-                // Each item is already a batch (one container can hold many
-                // spans) — an envelope may still carry more than one such
-                // container item, so collect them all.
-                span_v2_items.push(detach_payload_if_needed(payload, envelope_len));
-            }
-            EnvelopeItemKind::CheckIn(payload) => {
-                // Relay expands only the first check-in of an envelope and
-                // drops the rest as duplicates (check_ins/process.rs).
-                if check_in_seen {
-                    log::debug!("dropping duplicate check_in item");
-                    continue;
-                }
-                check_in_seen = true;
-                let result = process_check_in(
-                    &processors,
-                    &pool,
-                    auth.project.id,
-                    CheckIn::parse(&payload),
-                    ingested_at,
-                )
-                .await;
-                // An unknown monitor drops the item, as Sentry's consumer does.
-                let result = match result {
-                    Err(AppError::NotFound(message)) => Err(AppError::Validation(message)),
-                    other => other,
-                };
-                drop_malformed_item(result, "check_in")?;
-            }
-            EnvelopeItemKind::Feedback(p) => {
-                // Built after the loop: its attachments may come after it.
-                feedback_item.get_or_insert(p);
-            }
-            EnvelopeItemKind::UserReport(p) => user_reports.push(p),
-            EnvelopeItemKind::Attachment(a) => attachments.push(a),
-            EnvelopeItemKind::Other(t, _) => {
-                log::debug!("envelope item '{}' ignored", t);
-            }
-        }
-    }
-    drop(parser);
-
-    // Relay builds the event from the item type, whatever the payload's own
-    // `type` says (`UserReportV2` expansion), with the envelope's attachments
-    // (`send_individual_attachments`). An error event's attachments are not
-    // kept.
-    if let (None, Some(feedback)) = (&event_item, feedback_item) {
-        match feedback_payload(&feedback, &attachments) {
-            Ok(payload) => event_item = Some(payload),
-            Err(e) => drop_malformed_item(Err(e), "feedback")?,
-        }
-    }
-    drop(attachments);
-
-    // 5. Resolve event_id — only required for event-bearing item types.
-    //    If the SDK omitted it, derive it from the durable delivery identity.
-    //    For session-only envelopes, pass through whatever the SDK provided (may be None).
-    let event_id = resolve_event_id(envelope.headers.event_id, delivery_id, requires_event_id);
-    if requires_event_id {
-        if let Some(id) = &event_id {
-            uuid::Uuid::parse_str(id)
-                .map_err(|_| AppError::Validation("event_id must be a valid UUID".to_string()))?;
-        }
-    }
-
-    // Persist direct items before the early return; otherwise 200 could suppress
-    // an SDK retry for data that was never stored.
-    if let Some(txn_payload) = transaction_item {
-        let event_id_txn = event_id
-            .clone()
-            .unwrap_or_else(|| delivery_id.simple().to_string());
-        let parsed_id =
-            uuid::Uuid::parse_str(&event_id_txn).unwrap_or_else(|_| uuid::Uuid::new_v4());
-        let ctx = ProcessorCtx {
-            pool: pool.get_ref().clone(),
-            project_id: auth.project.id,
-            event_id: parsed_id,
-            ingested_at,
-            remote_addr: remote_addr.clone(),
-            keep_ai_spans: auth.project.keeps(Product::Agents),
-        };
-        drop_malformed_item(
-            processors.transactions.process(txn_payload, &ctx).await,
-            "transaction",
-        )?;
-    }
-
-    // Persist standalone spans inline; they have no grouping or issue path.
-    if !span_items.is_empty() {
-        let ctx = ProcessorCtx {
-            pool: pool.get_ref().clone(),
-            project_id: auth.project.id,
-            event_id: uuid::Uuid::nil(),
-            ingested_at,
-            remote_addr: remote_addr.clone(),
-            keep_ai_spans: auth.project.keeps(Product::Agents),
-        };
-        // One transaction for the whole span batch: per-item autocommit
-        // INSERTs would each be their own SQLite transaction.
-        drop_malformed_item(
-            processors.spans.process_batch(span_items, &ctx).await,
-            "span",
-        )?;
-    }
-
-    // Persist v2 span batches inline for the same reason.
-    if !span_v2_items.is_empty() {
-        let ctx = ProcessorCtx {
-            pool: pool.get_ref().clone(),
-            project_id: auth.project.id,
-            event_id: uuid::Uuid::nil(),
-            ingested_at,
-            remote_addr: remote_addr.clone(),
-            keep_ai_spans: auth.project.keeps(Product::Agents),
-        };
-        for batch_payload in span_v2_items {
-            drop_malformed_item(
-                processors.spans_v2.process(batch_payload, &ctx).await,
-                "span container",
-            )?;
-        }
-    }
-
-    // Legacy user reports become feedback events, digested like any other.
-    for report in user_reports {
-        let shimmed = user_report_to_feedback(&report, event_id.as_deref(), "user_report_envelope");
-        match shimmed {
-            Ok(shim) => {
-                enqueue_digest(
-                    &processors,
-                    pool.get_ref(),
-                    EventMetadata {
-                        event_id: shim.feedback_id.simple().to_string(),
-                        project_id: auth.project.id,
-                        ingested_at,
-                        remote_addr: remote_addr.clone(),
-                    },
-                    &shim.payload,
-                )
-                .await?;
-            }
-            Err(e) => drop_malformed_item(Err(e), "user_report")?,
-        }
-    }
-
-    // Return for session-only and other non-event envelopes.
-    let event_item = match event_item {
-        Some(item) => item,
-        None => {
-            log::debug!("No event item in envelope");
-            return Ok(HttpResponse::Ok().json(IngestResponse { id: event_id }));
-        }
-    };
-
-    let event_id = event_id.expect("event_id is Some when event_item is Some");
-    uuid::Uuid::parse_str(&event_id)
-        .map_err(|_| AppError::Validation("event_id must be a valid UUID".to_string()))?;
-
-    // 6. Validate that the payload is valid JSON without building a Value tree;
-    //    the digest re-parses the stored file.
-    validate_event_json(&event_item)?;
-
-    // Store metadata beside the raw event so a failed digest can be recovered.
-    let metadata = EventMetadata {
-        event_id: event_id.clone(),
-        project_id: auth.project.id,
-        ingested_at,
+    let id = pipeline::process_envelope(
+        &processors,
+        pool.get_ref(),
+        &auth.project,
+        body,
         remote_addr,
-    };
-    enqueue_digest(&processors, pool.get_ref(), metadata, &event_item).await?;
-
-    Ok(HttpResponse::Ok().json(IngestResponse { id: Some(event_id) }))
-}
-
-/// Stores an event durably and spawns its digest.
-pub(crate) async fn enqueue_digest(
-    processors: &web::Data<Processors>,
-    pool: &DbPool,
-    metadata: EventMetadata,
-    payload: &[u8],
-) -> AppResult<()> {
-    let event_uuid = uuid::Uuid::parse_str(&metadata.event_id)
-        .map_err(|_| AppError::Validation("event_id must be a valid UUID".to_string()))?;
-    // Claimed before the file exists so the recovery worker never sees a
-    // pending file that no task owns. Released when the spawned digest ends,
-    // or here if the store fails and there is nothing to recover.
-    let in_flight = processors
-        .errors
-        .in_flight()
-        .register(metadata.project_id, event_uuid);
-    store_event_with_metadata(
-        processors.errors.ingest_dir(),
-        &metadata.event_id,
-        payload,
-        &metadata,
+        ingested_at,
     )
     .await?;
-
-    // The digest worker owns grouping, issue creation, and its durable retry path.
-    let processors = processors.clone();
-    let pool_clone = pool.clone();
-    tokio::spawn(async move {
-        // The permit gates the whole digest: the file read, JSON parse and
-        // grouping working set stay bounded to the concurrent cap, not the
-        // burst size.
-        let _permit = processors.processing_slot.acquire().await;
-        // Boxed here, after the permit: the digest's state machine is several
-        // kilobytes, and a burst leaves thousands of tasks waiting on the
-        // permit. Unboxed, each waiter carried the whole thing inline and
-        // the backlog's memory grew with the burst rather than the cap.
-        Box::pin(digest_stored_event(&processors, &pool_clone, &metadata)).await;
-        drop(in_flight);
-    });
-    Ok(())
-}
-
-/// A feedback item's payload with `type` forced to `feedback`, carrying its
-/// attachments to the digest under [`ATTACHMENTS_KEY`], base64-encoded: the
-/// stored event file is the only durable copy until the digest commits.
-fn feedback_payload(payload: &[u8], attachments: &[Attachment]) -> AppResult<Bytes> {
-    use base64::Engine as _;
-    let mut event: serde_json::Value = serde_json::from_slice(payload)
-        .map_err(|e| AppError::Validation(format!("Invalid event JSON: {e}")))?;
-    let object = event
-        .as_object_mut()
-        .ok_or_else(|| AppError::Validation("feedback must be a JSON object".to_string()))?;
-    object.insert("type".to_string(), "feedback".into());
-
-    let kept: Vec<serde_json::Value> = attachments
-        .iter()
-        // Plain attachments only: a minidump or a view hierarchy is not a
-        // screenshot.
-        .filter(|a| {
-            matches!(
-                a.attachment_type.as_deref(),
-                None | Some("event.attachment")
-            )
-        })
-        .filter(|a| {
-            let fits = a.payload.len() <= MAX_ATTACHMENT_SIZE;
-            if !fits {
-                log::warn!("dropping a {} byte feedback attachment", a.payload.len());
-            }
-            fits
-        })
-        .map(|a| {
-            serde_json::json!({
-                "filename": a.filename.as_deref().unwrap_or("attachment"),
-                "content_type": a.content_type.as_deref().unwrap_or("application/octet-stream"),
-                "data": base64::engine::general_purpose::STANDARD.encode(&a.payload),
-            })
-        })
-        .collect();
-    if kept.is_empty() {
-        object.remove(ATTACHMENTS_KEY);
-    } else {
-        object.insert(ATTACHMENTS_KEY.to_string(), kept.into());
-    }
-    Ok(Bytes::from(event.to_string()))
-}
-
-/// Relay's `UserReport` (relay-event-schema/src/protocol/user_report.rs):
-/// a missing or null string is empty.
-#[derive(serde::Deserialize)]
-pub(crate) struct UserReport {
-    event_id: Option<String>,
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub name: String,
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub email: String,
-    #[serde(default, deserialize_with = "null_to_default")]
-    pub comments: String,
-}
-
-/// A user report and the feedback event it became.
-pub(crate) struct ShimmedReport {
-    pub report: UserReport,
-    /// The error event the report is about.
-    pub event_id: uuid::Uuid,
-    pub feedback_id: uuid::Uuid,
-    pub payload: Vec<u8>,
-}
-
-fn null_to_default<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    Ok(<Option<String> as serde::Deserialize>::deserialize(d)?.unwrap_or_default())
-}
-
-/// Sentry's `shim_to_feedback`: a legacy user report as a feedback event about
-/// `event_id`. The feedback's own id derives from that event id and the
-/// report, so a retried report digests into the same feedback rather than a
-/// second one, and a different report about the same event is kept.
-/// `source` is Sentry's `FeedbackCreationSource` for where it came from.
-pub(crate) fn user_report_to_feedback(
-    payload: &[u8],
-    envelope_event_id: Option<&str>,
-    source: &str,
-) -> AppResult<ShimmedReport> {
-    // Relay trims surrounding whitespace first: an SDK sends a trailing `\n`.
-    let report: UserReport = serde_json::from_slice(payload.trim_ascii())
-        .map_err(|e| AppError::Validation(format!("Invalid user report JSON: {e}")))?;
-    let event_id = report
-        .event_id
-        .as_deref()
-        .or(envelope_event_id)
-        .and_then(|id| uuid::Uuid::parse_str(id).ok())
-        .ok_or_else(|| AppError::Validation("user report needs a valid event_id".to_string()))?;
-
-    let digest = Sha256::digest(
-        serde_json::json!([
-            "user_report",
-            event_id.simple().to_string(),
-            report.name,
-            report.email,
-            report.comments,
-        ])
-        .to_string()
-        .as_bytes(),
-    );
-    let mut bytes = [0; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    let feedback_id = uuid::Uuid::from_bytes(bytes);
-
-    let event = serde_json::json!({
-        "type": "feedback",
-        "event_id": feedback_id.simple().to_string(),
-        "timestamp": Utc::now().timestamp_millis() as f64 / 1000.0,
-        "contexts": {
-            "feedback": {
-                "message": report.comments,
-                "contact_email": report.email,
-                "name": report.name,
-                "associated_event_id": event_id.simple().to_string(),
-                "source": source,
-            }
-        }
-    });
-    // The digest's checks, run here so the endpoint can answer 400 instead of
-    // acknowledging a report the digest would drop.
-    crate::digest::processors::Feedback::from_event(&event)?;
-    Ok(ShimmedReport {
-        payload: event.to_string().into_bytes(),
-        report,
-        event_id,
-        feedback_id,
-    })
-}
-
-/// Digests one stored event, retrying transient write contention. Failures
-/// leave the durable file in place for the recovery worker.
-pub async fn digest_stored_event(processors: &Processors, pool: &DbPool, metadata: &EventMetadata) {
-    let ctx = ProcessorCtx {
-        pool: pool.clone(),
-        project_id: metadata.project_id,
-        event_id: uuid::Uuid::parse_str(&metadata.event_id).unwrap_or_else(|_| uuid::Uuid::nil()),
-        ingested_at: metadata.ingested_at,
-        remote_addr: None,
-        keep_ai_spans: true,
-    };
-    for attempt in 0..4 {
-        match processors.errors.process_ref(metadata, &ctx).await {
-            Ok(Digested::Stored) => {
-                processors.counters().digest_ok();
-                break;
-            }
-            Ok(Digested::RateLimited) => {
-                processors.counters().digest_rate_limited();
-                break;
-            }
-            Err(e) if is_retryable_write_contention(&e) && attempt < 3 => {
-                let delay = std::time::Duration::from_millis(250 << attempt);
-                log::warn!(
-                    "Digest {} remains locked; retrying after {:?}: {:?}",
-                    metadata.event_id,
-                    delay,
-                    e
-                );
-                tokio::time::sleep(delay).await;
-            }
-            Err(e) => {
-                processors.counters().digest_failed();
-                if let Some(code) = e.db_code() {
-                    processors.counters().db_error(&code);
-                }
-                log::error!(
-                    "Failed to digest event {}; it remains queued: {:?}",
-                    metadata.event_id,
-                    e
-                );
-                break;
-            }
-        }
-    }
-}
-
-/// Replays event files left by a previous process after a digest failure.
-pub async fn recover_pending_events(
-    pool: DbPool,
-    processors: web::Data<Processors>,
-    ingest_dir: std::path::PathBuf,
-) {
-    let mut previous_delay = None;
-
-    loop {
-        let has_pending = recover_pending_events_once_with_status(
-            pool.clone(),
-            processors.clone(),
-            ingest_dir.clone(),
-        )
-        .await;
-        let delay = next_recovery_delay(previous_delay, has_pending);
-        previous_delay = has_pending.then_some(delay);
-        tokio::time::sleep(delay).await;
-    }
-}
-
-/// Processes the current set of pending event files once.
-pub async fn recover_pending_events_once(
-    pool: DbPool,
-    processors: web::Data<Processors>,
-    ingest_dir: std::path::PathBuf,
-) {
-    let _ = recover_pending_events_once_with_status(pool, processors, ingest_dir).await;
-}
-
-async fn recover_pending_events_once_with_status(
-    pool: DbPool,
-    processors: web::Data<Processors>,
-    ingest_dir: std::path::PathBuf,
-) -> bool {
-    // Files owned by a task in this process (digest in flight, or committed
-    // and awaiting its durability checkpoint) are not leftovers: replaying
-    // one would digest the event twice and race that task for the file.
-    let in_flight = processors.errors.in_flight();
-    let pending = match list_pending_event_metadata_except(&ingest_dir, |project_id, event_id| {
-        in_flight.contains(project_id, event_id)
-    })
-    .await
-    {
-        Ok(pending) => pending,
-        Err(e) => {
-            log::error!("Failed to scan pending event metadata: {:?}", e);
-            return true;
-        }
-    };
-
-    let mut has_pending = false;
-    for metadata in pending {
-        // Re-checked per file: the listing was filtered, but a task can have
-        // claimed a legacy-named file since, or finished one listed earlier.
-        let owned = uuid::Uuid::parse_str(&metadata.event_id)
-            .is_ok_and(|event_id| in_flight.contains(metadata.project_id, event_id));
-        if owned {
-            continue;
-        }
-        let ctx = ProcessorCtx {
-            pool: pool.clone(),
-            project_id: metadata.project_id,
-            event_id: uuid::Uuid::parse_str(&metadata.event_id)
-                .unwrap_or_else(|_| uuid::Uuid::nil()),
-            ingested_at: metadata.ingested_at,
-            remote_addr: None,
-            keep_ai_spans: true,
-        };
-        let result = processors.errors.process_ref(&metadata, &ctx).await;
-        if let Ok(Digested::RateLimited) = result {
-            processors.counters().digest_rate_limited();
-        }
-        if let Err(e) = result {
-            if is_missing_event_file(&e) {
-                // Listed a moment ago, finished and deleted by its owner
-                // since: nothing left to replay.
-                log::debug!(
-                    "Pending digest {} was completed by its owner before replay",
-                    metadata.event_id
-                );
-                continue;
-            }
-            has_pending = true;
-            log::warn!(
-                "Pending digest {} remains queued: {:?}",
-                metadata.event_id,
-                e
-            );
-        }
-    }
-    has_pending
-}
-
-fn next_recovery_delay(
-    previous_delay: Option<std::time::Duration>,
-    has_pending: bool,
-) -> std::time::Duration {
-    const MIN: std::time::Duration = std::time::Duration::from_secs(1);
-    const MAX: std::time::Duration = std::time::Duration::from_secs(30);
-
-    if !has_pending {
-        return MAX;
-    }
-    previous_delay
-        .map(|delay| delay.saturating_mul(2).min(MAX))
-        .unwrap_or(MIN)
-}
-
-/// Builds a [`ProcessorCtx`] for session items, which carry no event id.
-fn direct_store_ctx(
-    pool: &web::Data<DbPool>,
-    project_id: i32,
-    event_id: uuid::Uuid,
-    ingested_at: chrono::DateTime<Utc>,
-    remote_addr: &Option<String>,
-) -> ProcessorCtx {
-    ProcessorCtx {
-        pool: pool.get_ref().clone(),
-        project_id,
-        event_id,
-        ingested_at,
-        remote_addr: remote_addr.clone(),
-        keep_ai_spans: true,
-    }
-}
-
-fn stable_delivery_id(event_id: Option<&str>, envelope: &[u8]) -> uuid::Uuid {
-    event_id
-        .and_then(|id| uuid::Uuid::parse_str(id).ok())
-        .unwrap_or_else(|| {
-            let digest = Sha256::digest(envelope);
-            let mut bytes = [0; 16];
-            bytes.copy_from_slice(&digest[..16]);
-            uuid::Uuid::from_bytes(bytes)
-        })
-}
-
-fn resolve_event_id(
-    event_id: Option<String>,
-    delivery_id: uuid::Uuid,
-    requires_event_id: bool,
-) -> Option<String> {
-    if requires_event_id {
-        Some(event_id.unwrap_or_else(|| delivery_id.simple().to_string()))
-    } else {
-        event_id
-    }
-}
-
-/// POST /api/{project_id}/store/
-/// Legacy endpoint (deprecated)
-pub async fn ingest_store(
-    _pool: web::Data<DbPool>,
-    _config: web::Data<Config>,
-    _req: HttpRequest,
-    _auth: SentryAuth,
-    _body: Bytes,
-) -> AppResult<HttpResponse> {
-    Err(AppError::Validation(
-        "The /store/ endpoint is deprecated. Please use /envelope/ instead.".to_string(),
-    ))
+    Ok(HttpResponse::Ok().json(IngestResponse { id }))
 }
 
 /// OPTIONS for CORS preflight (handled by middleware, but kept for explicit routing)
@@ -756,212 +135,30 @@ pub async fn options() -> HttpResponse {
     HttpResponse::Ok().finish()
 }
 
-/// Configures the ingest routes
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    let options = || web::method(actix_web::http::Method::OPTIONS).to(options);
     cfg.service(
-        web::scope("/api/{project_id}")
-            .app_data(web::PayloadConfig::new(MAX_COMPRESSED_SIZE))
-            .route("/envelope/", web::post().to(ingest_envelope))
-            .route(
-                "/envelope/",
-                web::method(actix_web::http::Method::OPTIONS).to(options),
-            )
-            .route(
-                "/cron/{monitor_slug}/{sentry_key}/",
-                web::route().to(cron_check_in),
-            )
-            .route(
-                "/cron/{monitor_slug}/{sentry_key}",
-                web::route().to(cron_check_in),
-            )
-            .route("/cron/{monitor_slug}/", web::route().to(cron_check_in))
-            .route("/cron/{monitor_slug}", web::route().to(cron_check_in))
-            .route("/store/", web::post().to(ingest_store))
-            .route(
-                "/store/",
-                web::method(actix_web::http::Method::OPTIONS).to(options),
-            ),
+        web::resource("/api/{project_id}/envelope/")
+            .route(web::post().to(ingest_envelope))
+            .route(options()),
+    )
+    .service(
+        web::resource("/api/{project_id}/store/")
+            .route(web::post().to(ingest_store))
+            .route(options()),
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::validate_event_json;
-    use super::{next_recovery_delay, resolve_event_id, stable_delivery_id};
-    use std::time::Duration;
-
-    #[test]
-    fn recovery_backoff_starts_small_and_caps() {
-        assert_eq!(next_recovery_delay(None, true), Duration::from_secs(1));
-        assert_eq!(
-            next_recovery_delay(Some(Duration::from_secs(8)), true),
-            Duration::from_secs(16)
+    let payload = || web::PayloadConfig::new(MAX_COMPRESSED_SIZE);
+    for path in [
+        "/api/{project_id}/cron/{monitor_slug}/{sentry_key}/",
+        "/api/{project_id}/cron/{monitor_slug}/{sentry_key}",
+        "/api/{project_id}/cron/{monitor_slug}/",
+        "/api/{project_id}/cron/{monitor_slug}",
+    ] {
+        cfg.service(
+            web::resource(path)
+                .app_data(payload())
+                .route(web::route().to(cron_check_in)),
         );
-        assert_eq!(
-            next_recovery_delay(Some(Duration::from_secs(30)), true),
-            Duration::from_secs(30)
-        );
-    }
-
-    #[test]
-    fn recovery_backoff_resets_when_idle() {
-        assert_eq!(
-            next_recovery_delay(Some(Duration::from_secs(16)), false),
-            Duration::from_secs(30)
-        );
-    }
-
-    #[test]
-    fn headerless_delivery_id_is_stable_for_retries() {
-        let first = stable_delivery_id(None, b"same envelope");
-        assert_eq!(first, stable_delivery_id(None, b"same envelope"));
-        assert_ne!(first, stable_delivery_id(None, b"different envelope"));
-    }
-
-    #[test]
-    fn valid_event_id_remains_the_delivery_id() {
-        let event_id = uuid::Uuid::new_v4();
-        assert_eq!(
-            stable_delivery_id(Some(&event_id.to_string()), b"ignored"),
-            event_id
-        );
-    }
-
-    #[test]
-    fn invalid_event_id_uses_the_same_fallback_as_a_missing_header() {
-        let fallback = stable_delivery_id(None, b"same envelope");
-        assert_eq!(
-            stable_delivery_id(Some("not-a-uuid"), b"same envelope"),
-            fallback
-        );
-
-        let event_id = uuid::Uuid::new_v4();
-        assert_eq!(
-            stable_delivery_id(Some(&event_id.to_string()), b"different envelope"),
-            event_id
-        );
-    }
-
-    #[test]
-    fn headerless_required_event_uses_delivery_id() {
-        let delivery_id = uuid::Uuid::nil();
-        assert_eq!(
-            resolve_event_id(None, delivery_id, true),
-            Some(delivery_id.simple().to_string())
-        );
-    }
-
-    #[test]
-    fn session_event_id_is_not_synthesized() {
-        assert_eq!(resolve_event_id(None, uuid::Uuid::nil(), false), None);
-        assert_eq!(
-            resolve_event_id(Some("session-id".to_string()), uuid::Uuid::nil(), false),
-            Some("session-id".to_string())
-        );
-    }
-
-    #[test]
-    fn valid_event_json_passes() {
-        let payload = br#"{"event_id":"abc","exception":{"values":[{"type":"Error"}]}}"#;
-        assert!(validate_event_json(payload).is_ok());
-    }
-
-    #[test]
-    fn invalid_event_json_is_rejected() {
-        assert!(validate_event_json(b"{not json").is_err());
-        assert!(validate_event_json(b"").is_err());
-        // Trailing garbage after the value must be rejected too, matching
-        // the previous full-parse semantics.
-        assert!(validate_event_json(br#"{"a":1} garbage"#).is_err());
-    }
-}
-
-/// Records a check-in and reports any failure it causes.
-async fn process_check_in(
-    processors: &Processors,
-    pool: &DbPool,
-    project_id: i32,
-    check_in: AppResult<CheckIn>,
-    received: chrono::DateTime<Utc>,
-) -> AppResult<()> {
-    let check_in = check_in?;
-    // `Sentry.withMonitor` sends a run's in_progress (which carries the
-    // monitor_config) and its result as two concurrent requests, so on a
-    // job's first run the result can arrive before the upsert has created
-    // the monitor. A short wait lets the upsert land instead of losing the
-    // run's outcome.
-    let mut retries = [100, 250, 500].into_iter();
-    let failures = loop {
-        match MonitorService::process_check_in(pool, project_id, check_in.clone(), received).await {
-            Err(AppError::NotFound(_)) if check_in.monitor_config.is_none() => {
-                match retries.next() {
-                    Some(ms) => tokio::time::sleep(std::time::Duration::from_millis(ms)).await,
-                    None => {
-                        return Err(AppError::NotFound(format!(
-                            "Monitor {} does not exist; send a monitor_config to create it",
-                            check_in.monitor_slug
-                        )))
-                    }
-                }
-            }
-            other => break other?,
-        }
-    };
-    report_monitor_failures(processors, pool, failures).await;
-    Ok(())
-}
-
-/// Marks missed and timed-out check-ins as of `now` and reports the
-/// failures. Returns how many were reported.
-pub async fn run_monitor_sweep(
-    processors: &Processors,
-    pool: &DbPool,
-    now: chrono::DateTime<Utc>,
-) -> AppResult<usize> {
-    let failures = MonitorService::sweep(pool, now).await?;
-    let reported = failures.len();
-    report_monitor_failures(processors, pool, failures).await;
-    Ok(reported)
-}
-
-/// Sends each failure through the error digest as a synthetic event, so a
-/// failing monitor gets an issue, regressions and alerts like any error.
-/// The event file is stored first, so a digest that fails here is replayed
-/// by the recovery worker.
-async fn report_monitor_failures(
-    processors: &Processors,
-    pool: &DbPool,
-    failures: Vec<MonitorFailure>,
-) {
-    for failure in failures {
-        let event_id = uuid::Uuid::new_v4();
-        let metadata = EventMetadata {
-            event_id: event_id.simple().to_string(),
-            project_id: failure.project_id,
-            ingested_at: Utc::now(),
-            remote_addr: None,
-        };
-        let payload = failure.to_event(event_id).to_string();
-        let _in_flight = processors
-            .errors
-            .in_flight()
-            .register(failure.project_id, event_id);
-        if let Err(e) = store_event_with_metadata(
-            processors.errors.ingest_dir(),
-            &metadata.event_id,
-            payload.as_bytes(),
-            &metadata,
-        )
-        .await
-        {
-            log::error!(
-                "Failed to store the failure event of monitor {}: {:?}",
-                failure.monitor_slug,
-                e
-            );
-            continue;
-        }
-        digest_stored_event(processors, pool, &metadata).await;
     }
 }
 
@@ -974,8 +171,6 @@ pub struct CronQuery {
     duration: Option<f64>,
 }
 
-/// GET|POST /api/{project_id}/cron/{monitor_slug}/{sentry_key}/
-///
 /// Relay's HTTP check-in endpoint, for jobs that check in with `curl`. A
 /// JSON body is a full check-in (the slug in the path wins); otherwise the
 /// query string carries it and no `monitor_config`. Answers 202 like Relay,
@@ -1023,7 +218,7 @@ pub async fn cron_check_in(
         return Ok(HttpResponse::Accepted().finish());
     }
 
-    process_check_in(
+    pipeline::process_check_in(
         &processors,
         &pool,
         auth.project.id,
@@ -1032,21 +227,4 @@ pub async fn cron_check_in(
     )
     .await?;
     Ok(HttpResponse::Accepted().finish())
-}
-
-/// The product an envelope item belongs to, when it is one a project can turn
-/// off. Error events are not: issues are always kept.
-fn product_of(item: &EnvelopeItemKind) -> Option<Product> {
-    match item {
-        EnvelopeItemKind::Transaction(_)
-        | EnvelopeItemKind::Span(_)
-        | EnvelopeItemKind::SpanV2Batch(_) => Some(Product::Performance),
-        EnvelopeItemKind::Session(_) | EnvelopeItemKind::Sessions(_) => Some(Product::Releases),
-        EnvelopeItemKind::Log(_) => Some(Product::Logs),
-        EnvelopeItemKind::CheckIn(_) => Some(Product::Crons),
-        EnvelopeItemKind::Feedback(_) | EnvelopeItemKind::UserReport(_) => Some(Product::Feedback),
-        EnvelopeItemKind::Event(_)
-        | EnvelopeItemKind::Attachment(_)
-        | EnvelopeItemKind::Other(..) => None,
-    }
 }

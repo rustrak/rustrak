@@ -16,6 +16,7 @@ use std::pin::Pin;
 
 use crate::config::OidcConfig;
 use crate::error::{AppError, AppResult};
+use crate::models::user::OidcIdentity;
 use crate::services::OidcLinkPolicy;
 
 /// The claims this server keeps beyond the registered set.
@@ -108,16 +109,6 @@ pub struct OidcAuthorization {
     pub state: String,
     pub nonce: String,
     pub pkce_verifier: String,
-}
-
-/// Validated identity claims used to resolve a local account.
-pub struct OidcIdentity {
-    pub issuer: String,
-    pub subject: String,
-    pub email: String,
-    pub email_verified: bool,
-    /// Groups the provider asserted for this login, from `OIDC_GROUPS_CLAIM`.
-    pub groups: Vec<String>,
 }
 
 /// OIDC provider metadata and the client used for authorization and token exchange.

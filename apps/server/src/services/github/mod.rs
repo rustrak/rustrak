@@ -1036,8 +1036,8 @@ mod tests {
 
     #[test]
     fn webhook_signature_is_checked() {
-        let secret = crate::auth::token::generate_token();
-        let other = crate::auth::token::generate_token();
+        let secret = crate::models::token::generate_token();
+        let other = crate::models::token::generate_token();
         let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
         mac.update(b"{}");
         let header = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));

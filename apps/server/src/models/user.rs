@@ -65,7 +65,6 @@ pub struct User {
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateUserRequest {
     pub email: String,
     pub password: String,
@@ -86,6 +85,15 @@ pub struct LoginRequest {
 }
 
 impl User {
+    /// Fails for a disabled account, which must not authenticate by any means.
+    pub fn ensure_active(&self) -> Result<(), AppError> {
+        if self.is_active {
+            Ok(())
+        } else {
+            Err(AppError::Unauthorized("Account is disabled".to_string()))
+        }
+    }
+
     /// Canonical form for storage: trimmed, ASCII letters lowercased.
     ///
     /// ASCII-only so it agrees with SQLite's `LOWER()`, which the lookup in
@@ -120,6 +128,16 @@ impl User {
     pub fn is_admin(&self) -> bool {
         matches!(self.role(), UserRole::Admin)
     }
+}
+
+/// Validated identity claims used to resolve a local account.
+pub struct OidcIdentity {
+    pub issuer: String,
+    pub subject: String,
+    pub email: String,
+    pub email_verified: bool,
+    /// Groups the provider asserted for this login, from `OIDC_GROUPS_CLAIM`.
+    pub groups: Vec<String>,
 }
 
 #[cfg(test)]

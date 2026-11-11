@@ -4,6 +4,9 @@ compile_error!("Features \"postgres\" and \"sqlite\" are mutually exclusive. Ena
 #[cfg(not(any(feature = "postgres", feature = "sqlite")))]
 compile_error!("Either feature \"postgres\" or \"sqlite\" must be enabled.");
 
+pub mod dialect;
+pub mod maintenance;
+
 use crate::config::DatabaseConfig;
 
 #[cfg(feature = "postgres")]
@@ -71,7 +74,7 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error>
             .map_err(|e| sqlx::Error::Configuration(e.into()))?
             .create_if_missing(true)
             // INCREMENTAL lets a storage cleanup hand the pages it freed back
-            // to the filesystem (`StorageService::reclaim_free_space`); with
+            // to the filesystem (`maintenance::reclaim_free_space`); with
             // SQLite's default, NONE, the file never shrinks. It only takes
             // effect on a database created with it: an existing file keeps
             // its mode until a one-off `VACUUM`, see
@@ -197,5 +200,16 @@ pub async fn engine_version(pool: &DbPool) -> Result<String, sqlx::Error> {
     let raw: String = sqlx::query_scalar("SELECT sqlite_version()")
         .fetch_one(pool)
         .await?;
-    Ok(crate::telemetry::major_minor(&raw))
+    Ok(major_minor(&raw))
+}
+
+/// `3.46.1` reads as `3.46`, `16.4 (Debian 16.4-1)` as `16.4`.
+pub fn major_minor(raw: &str) -> String {
+    raw.split(|c: char| !c.is_ascii_digit() && c != '.')
+        .next()
+        .unwrap_or("")
+        .split('.')
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(".")
 }

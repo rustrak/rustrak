@@ -149,14 +149,14 @@ pub struct FeedbackResponse {
     pub associated_event_id: Option<String>,
     pub created_at: DateTime<Utc>,
     /// Files sent with it, such as a screenshot.
-    pub attachments: Vec<crate::services::attachment::AttachmentInfo>,
+    pub attachments: Vec<crate::models::AttachmentInfo>,
 }
 
 impl FeedbackResponse {
     pub fn new(
         issue: &Issue,
         context: Option<&serde_json::Value>,
-        attachments: Vec<crate::services::attachment::AttachmentInfo>,
+        attachments: Vec<crate::models::AttachmentInfo>,
     ) -> Self {
         let text = |key: &str| {
             context
@@ -215,11 +215,6 @@ pub struct IssueResponse {
     pub last_release: String,
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub status_details: serde_json::Value,
-    /// Deprecated: derived from `status`. Kept for the legacy client/UI until
-    /// they migrate to `status`. Remove in the client/frontend phases of #165.
-    pub is_resolved: bool,
-    /// Deprecated: derived from `status`. See `is_resolved`.
-    pub is_muted: bool,
     /// Only populated by the single-issue GET endpoint.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_report_count: Option<i64>,
@@ -240,9 +235,7 @@ pub struct IssueResponse {
 
 /// Request to update issue state.
 ///
-/// `status`/`substatus`/`priority`/assignment are the canonical fields.
-/// `is_resolved`/`is_muted` are accepted as a deprecated compatibility shim
-/// and mapped onto `status`.
+/// `status`/`substatus`/`priority`/assignment, as in Sentry.
 #[derive(Debug, Default, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateIssueState {
@@ -257,9 +250,6 @@ pub struct UpdateIssueState {
     pub assigned_to: Option<Option<i32>>,
     #[serde(default, deserialize_with = "deserialize_some")]
     pub assignee_type: Option<Option<String>>,
-    // Deprecated compatibility fields.
-    pub is_resolved: Option<bool>,
-    pub is_muted: Option<bool>,
 }
 
 /// Wraps a field's normal deserialization in `Some`, so a present JSON value
@@ -292,13 +282,16 @@ fn validate_bulk_ids_size(ids: &[Uuid]) -> AppResult<()> {
 }
 
 /// Bulk mutate request: apply a status (and/or priority) to many issues.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BulkUpdateIssues {
+    #[schemars(description = "Issue IDs to update")]
     pub ids: Vec<Uuid>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<IssueStatusUpdate>))]
+    #[schemars(description = "unresolved, resolved, ignored or resolvedInNextRelease")]
     pub status: Option<String>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<IssuePriority>))]
+    #[schemars(description = "low, medium or high")]
     pub priority: Option<String>,
 }
 
@@ -333,48 +326,18 @@ impl BulkDeleteIssues {
 }
 
 impl UpdateIssueState {
-    /// Resolves the requested status, mapping the deprecated booleans when the
-    /// canonical `status` field is absent. `is_resolved` wins over `is_muted`,
-    /// matching the historical PATCH semantics.
-    ///
-    /// A `status` that is present but not one of the recognized literals is a
-    /// client error, not a no-op — callers must reject the request rather
-    /// than silently leaving the issue unchanged.
-    ///
-    /// `current_status` is the issue's status *before* this request is
-    /// applied. It's consulted for both deprecated `false` shims:
-    ///
-    /// - `is_resolved: false` — the old boolean model's `unresolve` only
-    ///   ever cleared the `is_resolved` column and never touched `is_muted`,
-    ///   so unresolving an already-ignored (or already-unresolved) issue was
-    ///   a no-op that left it ignored. Mapping it onto the new unified
-    ///   `status` unconditionally would un-ignore issues that a client
-    ///   "defensively" unresolves — so this arm only fires when the issue is
-    ///   currently `resolved`.
-    /// - `is_muted: false` — the old boolean model's `unmute` only ever
-    ///   cleared the `is_muted` column, leaving `is_resolved` untouched, so
-    ///   unmuting an already-resolved (or already-unresolved) issue was a
-    ///   no-op. Mapping it onto the new unified `status` unconditionally
-    ///   would reopen resolved issues that a client "defensively" unmutes —
-    ///   so this arm only fires when the issue is currently `ignored`.
-    pub fn resolved_status(&self, current_status: &str) -> AppResult<Option<&'static str>> {
-        if let Some(status) = self.status.as_deref() {
-            return match status {
-                STATUS_RESOLVED => Ok(Some(STATUS_RESOLVED)),
-                STATUS_IGNORED => Ok(Some(STATUS_IGNORED)),
-                STATUS_UNRESOLVED => Ok(Some(STATUS_UNRESOLVED)),
+    /// The requested status, if any. A `status` that is present but not one
+    /// of the recognized literals is a client error, not a no-op.
+    pub fn resolved_status(&self) -> AppResult<Option<&'static str>> {
+        self.status
+            .as_deref()
+            .map(|status| match status {
+                STATUS_RESOLVED => Ok(STATUS_RESOLVED),
+                STATUS_IGNORED => Ok(STATUS_IGNORED),
+                STATUS_UNRESOLVED => Ok(STATUS_UNRESOLVED),
                 other => Err(AppError::Validation(format!("Invalid status: {}", other))),
-            };
-        }
-        Ok(match (self.is_resolved, self.is_muted) {
-            (Some(true), _) => Some(STATUS_RESOLVED),
-            (Some(false), _) if current_status == STATUS_RESOLVED => Some(STATUS_UNRESOLVED),
-            (Some(false), _) => None,
-            (None, Some(true)) => Some(STATUS_IGNORED),
-            (None, Some(false)) if current_status == STATUS_IGNORED => Some(STATUS_UNRESOLVED),
-            (None, Some(false)) => None,
-            (None, None) => None,
-        })
+            })
+            .transpose()
     }
 
     /// Validates the requested substatus, if present, against the canonical
@@ -460,8 +423,6 @@ impl Issue {
             first_release: self.first_release.clone(),
             last_release: self.last_release.clone(),
             status_details,
-            is_resolved: self.is_resolved(),
-            is_muted: self.is_muted(),
             user_report_count: None,
             is_bookmarked: None,
             is_subscribed: None,
@@ -536,114 +497,25 @@ mod tests {
         assert!(body.validate_size().is_err());
     }
 
+    /// Sentry's pairings: each substatus belongs to exactly one status, and
+    /// `resolved` takes none.
     #[test]
-    fn test_substatus_valid_for_status_unresolved_pairings() {
-        for s in [
-            SUBSTATUS_NEW,
-            SUBSTATUS_ONGOING,
-            SUBSTATUS_ESCALATING,
-            SUBSTATUS_REGRESSED,
-        ] {
-            assert!(
-                substatus_valid_for_status(STATUS_UNRESOLVED, s),
-                "{} should be valid under unresolved",
-                s
-            );
+    fn test_substatus_valid_for_status() {
+        let unresolved = ["new", "ongoing", "escalating", "regressed"];
+        let ignored = [
+            "archived_until_escalating",
+            "archived_until_condition_met",
+            "archived_forever",
+        ];
+        for s in unresolved {
+            assert!(substatus_valid_for_status("unresolved", s), "{s}");
+            assert!(!substatus_valid_for_status("ignored", s), "{s}");
+            assert!(!substatus_valid_for_status("resolved", s), "{s}");
         }
-    }
-
-    #[test]
-    fn test_substatus_valid_for_status_ignored_pairings() {
-        for s in [
-            SUBSTATUS_ARCHIVED_UNTIL_ESCALATING,
-            SUBSTATUS_ARCHIVED_UNTIL_CONDITION_MET,
-            SUBSTATUS_ARCHIVED_FOREVER,
-        ] {
-            assert!(
-                substatus_valid_for_status(STATUS_IGNORED, s),
-                "{} should be valid under ignored",
-                s
-            );
+        for s in ignored {
+            assert!(substatus_valid_for_status("ignored", s), "{s}");
+            assert!(!substatus_valid_for_status("unresolved", s), "{s}");
+            assert!(!substatus_valid_for_status("resolved", s), "{s}");
         }
-    }
-
-    #[test]
-    fn test_substatus_invalid_for_resolved() {
-        // `resolved` issues never carry a substatus in real Sentry.
-        for s in [
-            SUBSTATUS_NEW,
-            SUBSTATUS_ONGOING,
-            SUBSTATUS_ESCALATING,
-            SUBSTATUS_REGRESSED,
-            SUBSTATUS_ARCHIVED_UNTIL_ESCALATING,
-            SUBSTATUS_ARCHIVED_UNTIL_CONDITION_MET,
-            SUBSTATUS_ARCHIVED_FOREVER,
-        ] {
-            assert!(
-                !substatus_valid_for_status(STATUS_RESOLVED, s),
-                "{} should NOT be valid under resolved",
-                s
-            );
-        }
-    }
-
-    #[test]
-    fn test_substatus_cross_pairings_rejected() {
-        // Unresolved-only substatuses must not be accepted under `ignored`.
-        for s in [
-            SUBSTATUS_NEW,
-            SUBSTATUS_ONGOING,
-            SUBSTATUS_ESCALATING,
-            SUBSTATUS_REGRESSED,
-        ] {
-            assert!(!substatus_valid_for_status(STATUS_IGNORED, s));
-        }
-        // Ignored-only substatuses must not be accepted under `unresolved`.
-        for s in [
-            SUBSTATUS_ARCHIVED_UNTIL_ESCALATING,
-            SUBSTATUS_ARCHIVED_UNTIL_CONDITION_MET,
-            SUBSTATUS_ARCHIVED_FOREVER,
-        ] {
-            assert!(!substatus_valid_for_status(STATUS_UNRESOLVED, s));
-        }
-    }
-
-    #[test]
-    fn test_resolve_shim_is_noop_on_ignored_issue() {
-        // Old boolean model: unresolve() did `SET is_resolved = FALSE`
-        // unconditionally and never touched is_muted. On an already-ignored
-        // issue (is_resolved already FALSE, is_muted = TRUE) that was a true
-        // no-op — the issue stayed ignored. A defensive {"is_resolved":
-        // false} PATCH must not reopen it.
-        let body = UpdateIssueState {
-            is_resolved: Some(false),
-            ..Default::default()
-        };
-        assert_eq!(
-            body.resolved_status(STATUS_IGNORED).unwrap(),
-            None,
-            "is_resolved:false must be a no-op on an ignored issue"
-        );
-    }
-
-    #[test]
-    fn test_resolve_shim_transitions_resolved_issue_to_unresolved() {
-        let body = UpdateIssueState {
-            is_resolved: Some(false),
-            ..Default::default()
-        };
-        assert_eq!(
-            body.resolved_status(STATUS_RESOLVED).unwrap(),
-            Some(STATUS_UNRESOLVED)
-        );
-    }
-
-    #[test]
-    fn test_resolve_shim_is_noop_on_already_unresolved_issue() {
-        let body = UpdateIssueState {
-            is_resolved: Some(false),
-            ..Default::default()
-        };
-        assert_eq!(body.resolved_status(STATUS_UNRESOLVED).unwrap(), None);
     }
 }

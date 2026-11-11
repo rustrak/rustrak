@@ -10,11 +10,11 @@ use crate::pagination::SortOrder;
 /// Whether [`ProjectService::update_inner`] runs the slug availability
 /// pre-check before the UPDATE.
 ///
-/// `Skip` is only ever constructed by the debug-only test seam
+/// `Skip` is only ever constructed by the test seam
 /// [`ProjectService::update_with_raced_slug`], so a release build has no way
 /// to reach it.
 #[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(not(debug_assertions), allow(dead_code))]
+#[cfg_attr(not(feature = "test-seams"), allow(dead_code))]
 enum SlugPrecheck {
     Run,
     Skip,
@@ -23,7 +23,6 @@ enum SlugPrecheck {
 pub struct ProjectService;
 
 impl ProjectService {
-    /// Lists all projects
     pub async fn list(pool: &DbPool) -> AppResult<Vec<Project>> {
         let projects = sqlx::query_as::<_, Project>(
             r#"
@@ -52,12 +51,10 @@ impl ProjectService {
     ) -> AppResult<(Vec<Project>, i64)> {
         let offset = crate::pagination::offset(page, per_page);
 
-        // Get total count
         let total_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM projects")
             .fetch_one(pool)
             .await?;
 
-        // Build ORDER BY clause
         let order_clause = match order {
             SortOrder::Asc => "ORDER BY created_at ASC",
             SortOrder::Desc => "ORDER BY created_at DESC",
@@ -149,7 +146,6 @@ impl ProjectService {
         Ok((projects, total_count.0))
     }
 
-    /// Gets a project by ID
     pub async fn get_by_id(pool: &DbPool, id: i32) -> AppResult<Project> {
         let project = sqlx::query_as::<_, Project>(
             r#"
@@ -171,33 +167,25 @@ impl ProjectService {
         Ok(project)
     }
 
-    /// Gets a project by sentry_key (for authentication)
-    ///
-    /// NOTE: Currently unused but kept for future API token scoping feature
-    /// where tokens can be restricted to specific projects via sentry_key lookup.
-    #[allow(dead_code)]
-    pub async fn get_by_sentry_key(pool: &DbPool, sentry_key: &uuid::Uuid) -> AppResult<Project> {
-        let project = sqlx::query_as::<_, Project>(
-            r#"
-            SELECT id, name, slug, sentry_key, stored_event_count,
-                   digested_event_count, created_at, updated_at, platform,
-                   quota_exceeded_until, quota_exceeded_reason, next_quota_check,
-                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
-                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
-                   disabled_products, product_order
-            FROM projects
-            WHERE sentry_key = $1
-            "#,
-        )
-        .bind(sentry_key)
-        .fetch_optional(pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Project not found".to_string()))?;
-
-        Ok(project)
+    /// The id of the project a sentry-cli style path names: by slug first,
+    /// then by numeric id (sentry-cli may send either).
+    pub async fn id_by_slug_or_id(pool: &DbPool, project_ref: &str) -> AppResult<Option<i32>> {
+        let by_slug: Option<i32> = sqlx::query_scalar("SELECT id FROM projects WHERE slug = $1")
+            .bind(project_ref)
+            .fetch_optional(pool)
+            .await?;
+        if by_slug.is_some() {
+            return Ok(by_slug);
+        }
+        let Ok(numeric_id) = project_ref.parse::<i32>() else {
+            return Ok(None);
+        };
+        Ok(sqlx::query_scalar("SELECT id FROM projects WHERE id = $1")
+            .bind(numeric_id)
+            .fetch_optional(pool)
+            .await?)
     }
 
-    /// Creates a new project
     pub async fn create(pool: &DbPool, input: CreateProject) -> AppResult<Project> {
         // Validate name
         let name = input.name.trim();
@@ -282,7 +270,6 @@ impl ProjectService {
         }
     }
 
-    /// Updates an existing project
     pub async fn update(pool: &DbPool, id: i32, input: UpdateProject) -> AppResult<Project> {
         Self::update_inner(pool, id, input, SlugPrecheck::Run).await
     }
@@ -297,13 +284,9 @@ impl ProjectService {
     /// legitimate variant of `update` while silently skipping the slug
     /// pre-check. It does not exist in the shipped binary.
     ///
-    /// The gate is `debug_assertions` **or** the `test-seams` feature, not
-    /// `debug_assertions` alone. Integration tests are separate crates that
-    /// call this unconditionally, so gating on `debug_assertions` only made
-    /// `cargo test --release` fail to compile. `Cargo.toml` enables the
-    /// feature through a self dev-dependency, which reaches test targets and
-    /// never `cargo build --release`.
-    #[cfg(any(debug_assertions, feature = "test-seams"))]
+    /// `Cargo.toml` enables `test-seams` through a self dev-dependency, which
+    /// reaches test targets and never `cargo build --release`.
+    #[cfg(feature = "test-seams")]
     #[doc(hidden)]
     pub async fn update_with_raced_slug(
         pool: &DbPool,
@@ -319,7 +302,6 @@ impl ProjectService {
         input: UpdateProject,
         slug_precheck: SlugPrecheck,
     ) -> AppResult<Project> {
-        // Verify it exists
         Self::get_by_id(pool, id).await?;
 
         if input
@@ -561,8 +543,8 @@ impl ProjectService {
     /// (possibly stale) slug. Used in integration tests to simulate TOCTOU.
     ///
     /// **Test seam**, gated like [`Self::update_with_raced_slug`]: it is absent
-    /// from the shipped binary but present for tests in either profile.
-    #[cfg(any(debug_assertions, feature = "test-seams"))]
+    /// from the shipped binary.
+    #[cfg(feature = "test-seams")]
     #[doc(hidden)]
     pub async fn create_with_stale_slug(
         pool: &DbPool,
@@ -583,8 +565,8 @@ impl ProjectService {
     /// losing a real TOCTOU race, which no test can lose on purpose.
     ///
     /// **Test seam**, gated like [`Self::update_with_raced_slug`]: it is absent
-    /// from the shipped binary but present for tests in either profile.
-    #[cfg(any(debug_assertions, feature = "test-seams"))]
+    /// from the shipped binary.
+    #[cfg(feature = "test-seams")]
     #[doc(hidden)]
     pub async fn create_with_raced_user_slug(
         pool: &DbPool,

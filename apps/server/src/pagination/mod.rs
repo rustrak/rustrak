@@ -1,11 +1,27 @@
 pub mod cursor;
 
-pub use cursor::{EventCursor, IssueCursor, TransactionCursor};
+pub use cursor::EventCursor;
 
 use serde::{Deserialize, Serialize};
 
-/// Default page size for pagination
+/// The page size of a list that names no other.
 pub const PAGE_SIZE: i64 = 20;
+
+/// The largest page any list serves.
+pub const MAX_PER_PAGE: i64 = 100;
+
+/// A requested page size, refused outside 1..=[`MAX_PER_PAGE`] with Sentry's
+/// own message (`clamp_pagination_per_page`, `utils/pagination_factory.py`):
+/// a page silently smaller than asked for reads as the end of the list.
+pub fn per_page(requested: i64) -> crate::error::AppResult<i64> {
+    if (1..=MAX_PER_PAGE).contains(&requested) {
+        Ok(requested)
+    } else {
+        Err(crate::error::AppError::Validation(format!(
+            "Invalid per_page value. Must be between 1 and {MAX_PER_PAGE}."
+        )))
+    }
+}
 
 /// The rows before a 1-indexed `page`. `page` comes from the query string, so
 /// a page below 1 is the first and one past any offset saturates: an empty
@@ -64,7 +80,7 @@ impl<T> OffsetPaginatedResponse<T> {
 }
 
 /// Sort mode for issues listing
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum IssueSort {
@@ -100,7 +116,7 @@ impl std::fmt::Display for IssueSort {
 }
 
 /// Sort order direction
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum SortOrder {
@@ -116,11 +132,6 @@ impl SortOrder {
             SortOrder::Desc => "desc",
         }
     }
-
-    #[allow(dead_code)] // Utility method for future use
-    pub fn is_desc(&self) -> bool {
-        matches!(self, SortOrder::Desc)
-    }
 }
 
 impl std::fmt::Display for SortOrder {
@@ -129,121 +140,18 @@ impl std::fmt::Display for SortOrder {
     }
 }
 
-/// Query parameters for listing issues (offset-based)
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct ListIssuesQuery {
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-
-    /// Sort mode (default: last_seen)
-    #[serde(default)]
-    pub sort: IssueSort,
-
-    /// Sort order direction (default: desc)
-    #[serde(default)]
-    pub order: SortOrder,
-
-    /// Filter: open (not resolved, not muted), resolved, muted, all
-    #[serde(default)]
-    pub filter: IssueFilter,
-
-    /// Issue category: error (default) or feedback
-    #[serde(default)]
-    pub category: IssueCategory,
-
-    /// Free-text search across type, value, transaction, and culprit.
-    #[serde(default)]
-    pub q: Option<String>,
-
-    /// Only issues seen in this environment, with that environment's first
-    /// and last seen, event count, users and trend.
-    #[serde(default)]
-    pub environment: Option<String>,
-
-    /// Only issues that had an event in this release.
-    #[serde(default)]
-    pub release: Option<String>,
-
-    /// Only these levels, comma-separated: `fatal,error`.
-    #[serde(default)]
-    pub level: Option<String>,
-
-    /// Only these priorities, comma-separated: `high,medium`.
-    #[serde(default)]
-    pub priority: Option<String>,
-
-    /// `none` for unassigned issues, or a user id.
-    #[serde(default)]
-    pub assigned: Option<String>,
-
-    /// Only issues first seen within this window: `24h`, `7d`.
-    #[serde(default)]
-    pub first_seen: Option<String>,
-
-    /// Only issues last seen within this window: `24h`, `7d`.
-    #[serde(default)]
-    pub last_seen: Option<String>,
-
-    /// Only issues with at least this many events.
-    #[serde(default)]
-    pub events_min: Option<i64>,
-
-    /// Only issues with at most this many events.
-    #[serde(default)]
-    pub events_max: Option<i64>,
-}
-
-impl ListIssuesQuery {
-    /// The table's narrowing filters, read out of the query string. A value
-    /// that does not parse narrows nothing rather than failing the list.
-    pub fn issue_filters(&self) -> crate::services::issue::IssueFilters {
-        let list = |raw: &Option<String>| -> Vec<String> {
-            raw.as_deref()
-                .unwrap_or("")
-                .split(',')
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-                .map(str::to_string)
-                .collect()
-        };
-        let period = |raw: &Option<String>| {
-            raw.as_deref()
-                .and_then(|p| crate::routes::period::parse_period_hours(Some(p)))
-        };
-        crate::services::issue::IssueFilters {
-            levels: list(&self.level),
-            priorities: list(&self.priority),
-            assigned: match self.assigned.as_deref() {
-                Some("none") => Some(crate::services::issue::Assignee::Nobody),
-                Some(id) => id.parse().ok().map(crate::services::issue::Assignee::User),
-                None => None,
-            },
-            first_seen_hours: period(&self.first_seen),
-            last_seen_hours: period(&self.last_seen),
-            events_min: self.events_min,
-            events_max: self.events_max,
-        }
-    }
-}
-
-fn default_page() -> i64 {
+/// Serde default of a `page` query field.
+pub fn default_page() -> i64 {
     1
 }
 
-fn default_per_page() -> i64 {
+/// Serde default of a `per_page` query field.
+pub fn default_per_page() -> i64 {
     PAGE_SIZE
 }
 
 /// Filter for issues listing
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum IssueFilter {
@@ -260,7 +168,7 @@ pub enum IssueFilter {
 
 /// Which kind of issue a list shows. Feedback is kept out of the default
 /// list, as Sentry's `FeedbackGroup` is (`in_default_search=False`).
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum IssueCategory {
@@ -279,389 +187,6 @@ impl IssueCategory {
             Self::Feedback => "feedback",
         }
     }
-}
-
-/// Query parameters for listing transactions (offset-based)
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct ListTransactionsQuery {
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-
-    /// Filter by exact transaction name (lists one group's samples).
-    pub name: Option<String>,
-
-    /// Filter by trace operation (contexts.trace.op), e.g. `http.server`.
-    pub op: Option<String>,
-
-    /// Filter by trace status (contexts.trace.status), e.g. `ok`.
-    pub status: Option<String>,
-
-    /// Filter by environment.
-    pub environment: Option<String>,
-
-    /// Filter by release.
-    pub release: Option<String>,
-
-    /// Only this window (`24h`, `7d`, `14d`...); all time if absent.
-    pub period: Option<String>,
-
-    /// `slowest` for the longest first; newest first otherwise.
-    #[cfg_attr(feature = "openapi", param(inline))]
-    pub sort: Option<TransactionListSort>,
-}
-
-/// The order of a transaction list.
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum TransactionListSort {
-    Recent,
-    Slowest,
-}
-
-/// Query parameters for listing logs (offset-based)
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct ListLogsQuery {
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-
-    /// Filter by log level (trace/debug/info/warn/error/fatal).
-    pub level: Option<String>,
-
-    /// Filter by trace id.
-    pub trace_id: Option<String>,
-
-    /// Only the logs whose message contains this, ignoring case.
-    pub query: Option<String>,
-
-    /// Only this window (`24h`, `7d`, `14d`...); all time if absent.
-    pub period: Option<String>,
-}
-
-impl ListLogsQuery {
-    pub fn filters(&self) -> crate::services::log::LogFilters {
-        crate::services::log::LogFilters {
-            level: self.level.clone().filter(|l| !l.is_empty()),
-            trace_id: self.trace_id.clone().filter(|t| !t.is_empty()),
-            query: self.query.clone(),
-            period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
-        }
-    }
-}
-
-/// Query parameters for the log volume: the list's filters, no page.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct LogVolumeQuery {
-    /// Filter by log level (trace/debug/info/warn/error/fatal).
-    pub level: Option<String>,
-
-    /// Filter by trace id.
-    pub trace_id: Option<String>,
-
-    /// Only the logs whose message contains this, ignoring case.
-    pub query: Option<String>,
-
-    /// Only this window (`24h`, `7d`, `14d`...); since the oldest log if absent.
-    pub period: Option<String>,
-}
-
-impl LogVolumeQuery {
-    pub fn filters(&self) -> crate::services::log::LogFilters {
-        crate::services::log::LogFilters {
-            level: self.level.clone().filter(|l| !l.is_empty()),
-            trace_id: self.trace_id.clone().filter(|t| !t.is_empty()),
-            query: self.query.clone(),
-            period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
-        }
-    }
-}
-
-/// Query parameters for listing spans (offset-based)
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct ListSpansQuery {
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-
-    /// Filter by span operation, e.g. `http.client`.
-    pub op: Option<String>,
-
-    /// Filter by span status.
-    pub status: Option<String>,
-
-    /// Filter by trace id — matches spans regardless of origin (standalone
-    /// or extracted from a transaction), since both share this table.
-    pub trace_id: Option<String>,
-
-    /// Filter by gen_ai.operation.type
-    /// (`agent`/`tool`/`handoff`/`ai_client`/`other`).
-    pub operation_type: Option<String>,
-}
-
-/// Query parameters for AI Agent Monitoring time-series widgets (Agent Runs,
-/// Estimated Cost, Duration).
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct AgentTimeseriesQuery {
-    /// Lookback window in hours (default: all time, no filter).
-    pub period_hours: Option<i64>,
-
-    /// Restrict to spans reporting this environment (default: all).
-    pub environment: Option<String>,
-
-    /// Bucket width in hours (default: 1).
-    #[serde(default = "default_interval_hours")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub interval_hours: i64,
-}
-
-fn default_interval_hours() -> i64 {
-    1
-}
-
-/// Query parameters for AI Agent Monitoring breakdown widgets (LLM Calls by
-/// Model, Tokens Used by Model, Tool Calls by Tool).
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct AgentBreakdownQuery {
-    /// Lookback window in hours (default: all time, no filter).
-    pub period_hours: Option<i64>,
-
-    /// Restrict to spans reporting this environment (default: all).
-    pub environment: Option<String>,
-
-    /// Max rows returned (default: 3, matching Sentry's own widget cap).
-    #[serde(default = "default_breakdown_limit")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub limit: i64,
-}
-
-fn default_breakdown_limit() -> i64 {
-    3
-}
-
-/// Query parameters for the agents-dashboard aggregates that return a whole
-/// table rather than a top-N slice: summary, models, tools/stats.
-///
-/// Deliberately not `AgentBreakdownQuery`: that one carries `limit`, which
-/// these endpoints have no way to honour, and reusing it published a
-/// documented parameter they silently ignored.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct AgentWindowQuery {
-    /// Lookback window in hours (default: all time, no filter).
-    pub period_hours: Option<i64>,
-
-    /// Restrict to spans reporting this environment (default: all).
-    pub environment: Option<String>,
-}
-
-/// Query parameters for the AI Agent Monitoring Traces table (offset-based).
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct AgentTracesQuery {
-    /// Lookback window in hours (default: all time, no filter). The dashboard
-    /// applies one window to every widget, and this table is one of them.
-    pub period_hours: Option<i64>,
-
-    /// Restrict to spans reporting this environment (default: all).
-    pub environment: Option<String>,
-
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-
-    /// Only the traces where this agent ran.
-    pub agent: Option<String>,
-
-    /// Only the traces that called this model (response model, else request).
-    pub model: Option<String>,
-
-    /// Only the traces that used this tool.
-    pub tool: Option<String>,
-
-    /// Only the traces with a failing AI span.
-    #[serde(default)]
-    pub errors: bool,
-
-    /// How to rank them; newest first by default.
-    #[serde(default)]
-    #[cfg_attr(feature = "openapi", param(inline))]
-    pub sort: crate::services::span::AgentTraceSort,
-}
-
-impl AgentTracesQuery {
-    pub fn trace_filters(&self) -> crate::services::span::AgentTraceFilters {
-        let set = |v: &Option<String>| v.clone().filter(|s| !s.is_empty());
-        crate::services::span::AgentTraceFilters {
-            agent: set(&self.agent),
-            model: set(&self.model),
-            tool: set(&self.tool),
-            errors: self.errors,
-            sort: self.sort,
-        }
-    }
-}
-
-/// Query parameters for the agent conversations list (offset-based).
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct AgentConversationsQuery {
-    /// Lookback window in hours (default: all time, no filter).
-    pub period_hours: Option<i64>,
-
-    /// Restrict to spans reporting this environment (default: all).
-    pub environment: Option<String>,
-
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-}
-
-/// Query parameters for the transaction stats overview (offset-based)
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct TransactionStatsQuery {
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-
-    /// Only this environment.
-    pub environment: Option<String>,
-
-    /// Only this window (`24h`, `7d`, `14d`...); all time if absent.
-    pub period: Option<String>,
-
-    /// Only the endpoints whose name contains this, ignoring case.
-    pub query: Option<String>,
-
-    /// How to rank them; most time spent in all by default.
-    #[serde(default)]
-    #[cfg_attr(feature = "openapi", param(inline))]
-    pub sort: crate::services::transaction::StatsSort,
-}
-
-impl TransactionStatsQuery {
-    pub fn filter(&self) -> crate::services::transaction::StatsFilter {
-        crate::services::transaction::StatsFilter {
-            environment: self.environment.clone().filter(|e| !e.is_empty()),
-            period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
-            query: self.query.clone(),
-            sort: self.sort,
-        }
-    }
-}
-
-/// Query parameters for a single transaction group's aggregate stats.
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct TransactionStatGroupQuery {
-    /// Exact transaction name of the group.
-    pub name: String,
-    /// Trace operation of the group (omit for groups with no op).
-    pub op: Option<String>,
-    /// Only this environment.
-    pub environment: Option<String>,
-    /// Only this window (`24h`, `7d`, `14d`...); all time if absent.
-    pub period: Option<String>,
-}
-
-impl TransactionStatGroupQuery {
-    pub fn filter(&self) -> crate::services::transaction::StatsFilter {
-        crate::services::transaction::StatsFilter {
-            environment: self.environment.clone().filter(|e| !e.is_empty()),
-            period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
-            ..Default::default()
-        }
-    }
-}
-
-/// Query parameters for listing events
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct ListEventsQuery {
-    /// Sort order direction (default: desc = newest first)
-    #[serde(default)]
-    pub order: SortOrder,
-
-    /// Pagination cursor
-    pub cursor: Option<String>,
-
-    /// Only events in this environment.
-    #[serde(default)]
-    pub environment: Option<String>,
-}
-
-/// Query parameters for listing projects (offset-based)
-#[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-pub struct ListProjectsQuery {
-    /// Page number (1-indexed, default: 1)
-    #[serde(default = "default_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1))]
-    pub page: i64,
-
-    /// Items per page (default: 20, max: 100)
-    #[serde(default = "default_per_page")]
-    #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
-    pub per_page: i64,
-
-    /// Sort order direction (default: desc = newest first)
-    #[serde(default)]
-    pub order: SortOrder,
-
-    /// Window for the per-project stats on each row (e.g. `24h`, `7d`).
-    ///
-    /// Omitted means the caller does not want stats at all, and the extra
-    /// aggregate queries are skipped entirely — this is what keeps the plain
-    /// `GET /api/projects` that SDK tooling and the project picker use as
-    /// cheap as it was before the list table grew a sparkline. Sentry's own
-    /// projects endpoint gates its `stats` field on `?statsPeriod=` the same
-    /// way.
-    #[serde(default)]
-    pub stats_period: Option<String>,
 }
 
 #[cfg(test)]
