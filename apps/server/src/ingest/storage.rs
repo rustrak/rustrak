@@ -150,8 +150,14 @@ fn write_pending_record(
 /// every request behind the disk (~250 events/s for the whole server), for a
 /// guarantee stronger than the database the event is then committed to. On
 /// Linux the two are the same call.
+#[cfg(unix)]
 fn fsync(file: &std::fs::File) -> io::Result<()> {
     nix::unistd::fsync(file).map_err(io::Error::from)
+}
+
+#[cfg(not(unix))]
+fn fsync(file: &std::fs::File) -> io::Result<()> {
+    file.sync_all()
 }
 
 fn publish_pending_file(
