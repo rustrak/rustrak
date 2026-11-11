@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.6
+
+### Patch Changes
+
+- [`892f240`](https://github.com/rustrak/rustrak/commit/892f2406adf9c75f17b701759fb1e9adc3bbeb31) Thanks [@AbianS](https://github.com/AbianS)! - Blog post on the four bottlenecks behind v0.26.0's performance gains.
+
 ## 0.17.5
 
 ### Patch Changes
