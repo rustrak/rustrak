@@ -356,7 +356,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | `environments.list({ path })` | `GET /api/projects/{project_id}/environments` | Lists the environments a project's issues have been seen in, by name. |
 | `feedback.list({ path, query? })` | `GET /api/projects/{project_id}/feedback` | Lists user feedback with what each user submitted. |
 | `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` | Deletes many issues at once, selected by id or by filter. |
-| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` | Updates the status of many issues at once, selected by id or by filter. |
+| `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` | Sets the status or priority of many issues at once, by id. |
 | `issues.createComment({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/comments` | Add a note. |
 | `issues.createUserReport({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/user-reports` | Attach user feedback to an issue. |
 | `issues.delete({ path })` | `DELETE /api/projects/{project_id}/issues/{issue_id}` | Hard-deletes an issue and all associated events |
