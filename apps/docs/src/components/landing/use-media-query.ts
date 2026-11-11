@@ -29,23 +29,6 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-/** The `lg` breakpoint, where the hero's satellites and the rail appear. */
-export const DESKTOP = '(min-width: 1024px)';
-
-/**
- * Below `lg`: a portrait stage rather than a narrow landscape one. Deliberately
- * the exact complement of `DESKTOP` — two independently authored queries is how
- * a width appears that gets neither layout.
- */
-export const COMPACT = '(max-width: 1023px)';
-
-/**
- * A bar-sized screen: where the nav is down to a wordmark and a menu button.
- * `md` rather than `lg` because this is about the nav's own layout, and the nav
- * collapses a breakpoint earlier than the sections do.
- */
-export const HANDHELD = '(max-width: 767px)';
-
 /**
  * A device that points rather than touches. Not a width test: a narrow desktop
  * window is still a mouse, and a wide tablet is still a finger.

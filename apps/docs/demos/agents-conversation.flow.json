@@ -4,11 +4,26 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "tab", "name": "Conversations" } },
-    { "action": "click", "target": { "role": "tab", "name": "Conversations" }, "tooltip": "Runs that share a conversation ID, grouped into chats" },
-    { "action": "wait", "for": { "role": "link", "name": "6 LLM calls 2 tool calls" } },
-    { "action": "click", "target": { "role": "link", "name": "6 LLM calls 2 tool calls" }, "tooltip": "Open one to read it turn by turn: the question, the tools, the reply" },
+    {
+      "action": "click",
+      "target": { "role": "tab", "name": "Conversations" },
+      "tooltip": "Runs that share a conversation ID, grouped into chats"
+    },
+    {
+      "action": "wait",
+      "for": { "role": "link", "name": "6 LLM calls 2 tool calls" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "6 LLM calls 2 tool calls" },
+      "tooltip": "Open one to read it turn by turn: the question, the tools, the reply"
+    },
     { "action": "wait", "for": { "text": "Where is my order LC-48217?" } },
-    { "action": "click", "target": { "role": "link", "name": "Open trace", "nth": 1 }, "tooltip": "Each turn opens its run. Here the assistant hands the order over to the orders agent" },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Open trace", "nth": 1 },
+      "tooltip": "Each turn opens its run. Here the assistant hands the order over to the orders agent"
+    },
     { "action": "wait", "for": { "role": "radio", "name": "Waterfall" } },
     { "action": "wait", "ms": 1000 }
   ]

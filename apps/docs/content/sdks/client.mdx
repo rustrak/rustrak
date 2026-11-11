@@ -129,8 +129,8 @@ if (!result.success) {
 | `gone` | 410 | ❌ | The resource was retired |
 | `payload_too_large` | 413 | ❌ | Envelope ingestion only |
 | `rate_limited` | 429 | ✅ | Rate limit exceeded; carries `retryAfter?: number` |
-| `client_error` | other &lt; 500 | ❌ | Any sub-500 status no other member claims |
-| `server_error` | 500+ | ✅ | Any 5xx; the server's own message is discarded |
+| `client_error` | other &lt; 500 | 408 only | Any sub-500 status no other member claims |
+| `server_error` | 500+ | 500, 502, 503, 504 | Any 5xx; the server's own message is discarded |
 | `invalid_request` | n/a | ❌ | Your input failed a pre-flight check; never sent |
 | `network` | n/a | ✅ | DNS, connection refused, TLS, timeout, abort |
 | `invalid_response` | n/a | ❌ | A 2xx arrived with a body the schema rejects |

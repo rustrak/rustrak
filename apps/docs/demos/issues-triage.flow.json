@@ -3,15 +3,55 @@
   "url": "http://localhost:8090/projects/2/issues",
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
-    { "action": "wait", "for": { "role": "link", "name": "ValidationError: {'email': ['Enter a valid email address.']}" } },
-    { "action": "click", "target": { "role": "link", "name": "ValidationError: {'email': ['Enter a valid email address.']}" }, "hotspot": false },
-    { "action": "wait", "for": { "role": "button", "name": "Resolve", "exact": true } },
-    { "action": "click", "target": { "role": "button", "name": "Medium" }, "tooltip": "Priority comes from the level. Change it and it sticks" },
-    { "action": "click", "target": { "role": "menuitem", "name": "High" }, "hotspot": false },
-    { "action": "click", "target": { "role": "button", "name": "Unassigned" }, "tooltip": "Take it, so the team knows someone is on it" },
-    { "action": "click", "target": { "role": "menuitem", "name": "Assign to me" }, "hotspot": false },
-    { "action": "fill", "target": { "role": "textbox", "name": "Leave a comment..." }, "value": "Newsletter form lets spaces through. Fixing." },
-    { "action": "click", "target": { "role": "button", "name": "Comment" }, "tooltip": "Notes for the team stay in the issue's activity" },
+    {
+      "action": "wait",
+      "for": {
+        "role": "link",
+        "name": "ValidationError: {'email': ['Enter a valid email address.']}"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "ValidationError: {'email': ['Enter a valid email address.']}"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "wait",
+      "for": { "role": "button", "name": "Resolve", "exact": true }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Medium" },
+      "tooltip": "Priority comes from the level. Change it and it sticks"
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitem", "name": "High" },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Unassigned" },
+      "tooltip": "Take it, so the team knows someone is on it"
+    },
+    {
+      "action": "click",
+      "target": { "role": "menuitem", "name": "Assign to me" },
+      "hotspot": false
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Leave a comment..." },
+      "value": "Newsletter form lets spaces through. Fixing."
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Comment" },
+      "tooltip": "Notes for the team stay in the issue's activity"
+    },
     { "action": "wait", "for": { "role": "button", "name": "Comment" } },
     { "action": "wait", "ms": 1500 }
   ]

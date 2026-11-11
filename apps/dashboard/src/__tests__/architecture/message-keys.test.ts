@@ -5,7 +5,7 @@ import es from '../../shared/i18n/messages/es.json';
 import fr from '../../shared/i18n/messages/fr.json';
 import ro from '../../shared/i18n/messages/ro.json';
 import zh from '../../shared/i18n/messages/zh.json';
-import { isTestFile, withoutComments } from './predicates';
+import { isMessages, isTestFile, withoutComments } from './predicates';
 
 /**
  * The message dictionaries can drift apart in three ways, and each one
@@ -61,14 +61,11 @@ function hasKey(obj: Messages, path: string): boolean {
 /**
  * Every translator a file binds, with the namespace it was bound to.
  *
- * Covers the three call shapes in use: `useTranslations('ns')`,
- * `getTranslations('ns')` and the object form
- * `getTranslations({locale, namespace: 'ns'})` that the layouts need. A
- * translator bound with no argument is global, and its namespace is the empty
- * string, which makes each of its keys a full path.
+ * `useTranslations('ns')`; one bound with no argument is global, and its
+ * namespace is the empty string, which makes each of its keys a full path.
  */
 const TRANSLATOR_BINDING =
-  /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:useTranslations|getTranslations)\(\s*(?:'([a-zA-Z]+)'|\{[^}]*namespace:\s*'([a-zA-Z]+)'[^}]*\})?\s*\)/g;
+  /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*useTranslations\(\s*(?:'([a-zA-Z]+)')?\s*\)/g;
 
 /** A call on a named translator: `typesT('newIssue.name')`, `t.rich('x')`. */
 const callsOf = (binding: string) =>
@@ -79,27 +76,10 @@ const callsOf = (binding: string) =>
 
 /**
  * A message key mapped to a sentence, which is what a second dictionary looks
- * like: `'error.headline.network': 'Rustrak is not responding'`.
- *
- * **Both halves are load-bearing, and the first version had neither right.**
- *
- * It required three dotted segments, which found the 21-entry table in
- * `error-copy.ts` and missed three more: `form-errors.ts` and the two Zod
- * schemas in `features/alert/model/` keyed their tables on two segments
- * (`formErrors.required`, `validation.nameRequired`). Loosening it to one dot
- * finds all four.
- *
- * And it matched any quoted key before a colon, which made
- * `t(isEdit ? 'ruleDialog.titleEdit' : 'ruleDialog.titleNew')` a violation:
- * that colon belongs to a ternary. So the value has to be a **string literal**
- * -- a dictionary maps a key to a sentence, a ternary maps it to an
- * identifier or another key.
- *
- * A record whose values are not sentences is untouched by design.
- * `WEBHOOK_FIELD_MAP` maps `'credentials.url'` to `'url'`, which is a field
- * path, not copy; it matches the shape and is not a dictionary, so the rule
- * would fire on it. That is why the value must also *look* like a sentence:
- * more than one word, or ending in punctuation.
+ * like: `'error.headline.network': 'Rustrak is not responding'`. The key has
+ * at least one dot; the value must be a string literal (so a ternary's colon
+ * is not one) that looks like a sentence (more than one word, or ending in
+ * punctuation), so a field map such as `'credentials.url': 'url'` is not.
  */
 const DICTIONARY_ENTRY =
   /'[a-z][a-zA-Z]*(?:\.[a-zA-Z]+)+'\s*:\s*\n?\s*'[^']*(?:\s[^']+|[.!?])'/;
@@ -120,7 +100,7 @@ const OTHER_LOCALES: readonly (readonly [string, Messages])[] = [
 function isJudgeable(path: string): boolean {
   if (isTestFile(path)) return false;
   // The dictionaries themselves hold the keys; they do not call them.
-  return !path.split('\\').join('/').includes('/messages/');
+  return !isMessages(path);
 }
 
 /**
@@ -132,8 +112,7 @@ function isJudgeable(path: string): boolean {
  */
 function* translatedKeys(content: string): Generator<string> {
   for (const binding of content.matchAll(TRANSLATOR_BINDING)) {
-    const [, name, quoted, fromObject] = binding;
-    const namespace = quoted ?? fromObject ?? '';
+    const [, name, namespace = ''] = binding;
 
     for (const call of content.matchAll(callsOf(name))) {
       const key = call[1];
@@ -246,7 +225,7 @@ describe('message dictionaries stay resolvable', () => {
         if (isTestFile(file.path)) return false;
 
         for (const binding of file.content.matchAll(TRANSLATOR_BINDING)) {
-          const namespace = binding[2] ?? binding[3];
+          const namespace = binding[2];
           // A global translator resolves full paths and names no namespace.
           if (!namespace) continue;
           if (!(namespace in (en as Messages))) return true;
@@ -307,7 +286,7 @@ describe('message dictionaries stay resolvable', () => {
       .adhereTo(
         (file) =>
           !isTestFile(file.path) &&
-          !file.path.split('\\').join('/').includes('/messages/') &&
+          !isMessages(file.path) &&
           DICTIONARY_ENTRY.test(withoutComments(file.content)),
         'holds a second copy of the message dictionary: the sentences belong in messages/*.json, and this module should name keys instead',
       );

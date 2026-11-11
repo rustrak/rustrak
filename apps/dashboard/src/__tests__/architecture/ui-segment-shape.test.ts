@@ -1,6 +1,6 @@
 import { projectFiles } from 'archunit';
 import { describe, expect, it } from 'vitest';
-import { isTestFile } from './predicates';
+import { isTestFile, posix } from './predicates';
 
 /**
  * Inside a `ui` segment, a file's **kind** decides its folder.
@@ -31,8 +31,6 @@ import { isTestFile } from './predicates';
  */
 
 const UI_KINDS = ['components', 'hooks', 'utils', 'stores'];
-
-const posix = (path: string) => path.split('\\').join('/');
 
 /** A file directly inside `…/ui/`, in no kind folder. */
 const AT_UI_ROOT = /(^|\/)ui\/[^/]+\.tsx?$/;

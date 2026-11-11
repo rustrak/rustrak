@@ -1993,7 +1993,9 @@
         "showOlderFailed": "无法加载更早的反馈。"
       },
       "sectionAttachments": "附件",
-      "attachmentDownload": "下载"
+      "attachmentDownload": "下载",
+      "attachmentsFailed": "无法加载附件",
+      "userFeedbackFailed": "无法加载用户反馈"
     },
     "feedback": {
       "title": "用户反馈",

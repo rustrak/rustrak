@@ -3,14 +3,45 @@
   "url": "http://localhost:8090/settings/storage",
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
-    { "action": "wait", "for": { "role": "button", "name": "Configure retention" } },
-    { "action": "click", "target": { "role": "button", "name": "Configure retention" }, "tooltip": "What each kind of data weighs and how old it is. Decide how long to keep it" },
-    { "action": "click", "target": { "role": "combobox", "name": "Errors Error events, and the issues left with none" }, "hotspot": false },
-    { "action": "click", "target": { "role": "option", "name": "7 days" }, "hotspot": false },
-    { "action": "wait", "for": { "text": "The next cleanup will delete", "exact": false } },
-    { "action": "click", "target": { "role": "button", "name": "Save", "exact": true }, "tooltip": "Before you save, it says what the next cleanup will delete" },
-    { "action": "wait", "for": { "role": "heading", "name": "Age of the data" } },
-    { "action": "scroll", "target": { "role": "heading", "name": "Age of the data" } },
+    {
+      "action": "wait",
+      "for": { "role": "button", "name": "Configure retention" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Configure retention" },
+      "tooltip": "What each kind of data weighs and how old it is. Decide how long to keep it"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "combobox",
+        "name": "Errors Error events, and the issues left with none"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": { "role": "option", "name": "7 days" },
+      "hotspot": false
+    },
+    {
+      "action": "wait",
+      "for": { "text": "The next cleanup will delete", "exact": false }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Save", "exact": true },
+      "tooltip": "Before you save, it says what the next cleanup will delete"
+    },
+    {
+      "action": "wait",
+      "for": { "role": "heading", "name": "Age of the data" }
+    },
+    {
+      "action": "scroll",
+      "target": { "role": "heading", "name": "Age of the data" }
+    },
     { "action": "wait", "ms": 2000 }
   ]
 }

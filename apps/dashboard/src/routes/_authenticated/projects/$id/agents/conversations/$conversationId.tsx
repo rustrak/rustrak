@@ -19,12 +19,7 @@ export const Route = createFileRoute(
 )({
   loader: ({ context: { queryClient }, params }) => {
     void queryClient
-      .query(
-        agentQueries.conversation(
-          Number.parseInt(params.id, 10),
-          params.conversationId,
-        ),
-      )
+      .query(agentQueries.conversation(params.id, params.conversationId))
       .catch(noop);
   },
   pendingComponent: ConversationLoading,
@@ -38,9 +33,7 @@ function ConversationPage() {
   const { id, conversationId } = Route.useParams();
   const {
     data: { spans },
-  } = useSuspenseQuery(
-    agentQueries.conversation(Number.parseInt(id, 10), conversationId),
-  );
+  } = useSuspenseQuery(agentQueries.conversation(id, conversationId));
   usePageTrail([
     { label: t('title'), href: `/projects/${id}/agents?view=conversations` },
     { label: conversationId, mono: true },
@@ -96,7 +89,7 @@ function ConversationPage() {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-page-gutter pt-6 pb-10">
-          <ConversationTranscript projectId={Number(id)} spans={spans} />
+          <ConversationTranscript projectId={id} spans={spans} />
         </div>
       </div>
     </div>

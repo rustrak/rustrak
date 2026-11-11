@@ -4,11 +4,31 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "combobox", "name": "Timezone" } },
-    { "action": "click", "target": { "role": "combobox", "name": "Timezone" }, "tooltip": "Every date is shown in your time zone. Type a city or an offset" },
-    { "action": "fill", "target": { "role": "combobox", "name": "Timezone" }, "value": "Madrid" },
-    { "action": "click", "target": { "role": "option", "name": "Europe/Madrid" }, "hotspot": false },
-    { "action": "click", "target": { "role": "combobox", "name": "Language" }, "tooltip": "Language, time zone and theme are yours, not the team's" },
-    { "action": "click", "target": { "role": "option", "name": "Español", "exact": false }, "tooltip": "Pick a language. It applies at once" },
+    {
+      "action": "click",
+      "target": { "role": "combobox", "name": "Timezone" },
+      "tooltip": "Every date is shown in your time zone. Type a city or an offset"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "combobox", "name": "Timezone" },
+      "value": "Madrid"
+    },
+    {
+      "action": "click",
+      "target": { "role": "option", "name": "Europe/Madrid" },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": { "role": "combobox", "name": "Language" },
+      "tooltip": "Language, time zone and theme are yours, not the team's"
+    },
+    {
+      "action": "click",
+      "target": { "role": "option", "name": "Español", "exact": false },
+      "tooltip": "Pick a language. It applies at once"
+    },
     { "action": "wait", "for": { "role": "heading", "name": "Preferencias" } },
     { "action": "goto", "url": "http://localhost:8090/projects/1/issues" },
     { "action": "wait", "for": { "role": "tab", "name": "Abiertos" } },

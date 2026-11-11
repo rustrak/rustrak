@@ -1993,7 +1993,9 @@
         "showOlderFailed": "Could not load older feedback."
       },
       "sectionAttachments": "Attachments",
-      "attachmentDownload": "Download"
+      "attachmentDownload": "Download",
+      "attachmentsFailed": "Could not load the attachments",
+      "userFeedbackFailed": "Could not load the user feedback"
     },
     "feedback": {
       "title": "User Feedback",

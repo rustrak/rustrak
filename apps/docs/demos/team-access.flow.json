@@ -3,18 +3,57 @@
   "url": "http://localhost:8090/settings/team",
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
-    { "action": "wait", "for": { "role": "link", "name": "priya@linden.example" } },
-    { "action": "click", "target": { "role": "link", "name": "priya@linden.example" }, "tooltip": "Open a member to see everything they hold" },
+    {
+      "action": "wait",
+      "for": { "role": "link", "name": "priya@linden.example" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "priya@linden.example" },
+      "tooltip": "Open a member to see everything they hold"
+    },
     { "action": "wait", "for": { "role": "button", "name": "Add access" } },
-    { "action": "click", "target": { "role": "button", "name": "Add access" }, "tooltip": "Priya is an Editor on Storefront. Add a second line for another project" },
-    { "action": "click", "target": { "role": "combobox", "name": "Role", "nth": 1 }, "hotspot": false },
-    { "action": "click", "target": { "role": "option", "name": "Viewer" }, "hotspot": false },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Add access" },
+      "tooltip": "Priya is an Editor on Storefront. Add a second line for another project"
+    },
+    {
+      "action": "click",
+      "target": { "role": "combobox", "name": "Role", "nth": 1 },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": { "role": "option", "name": "Viewer" },
+      "hotspot": false
+    },
     { "action": "wait", "ms": 500 },
-    { "action": "click", "target": { "role": "button", "name": "All projects" }, "tooltip": "Scope says where this role applies: all projects, or the ones you choose" },
-    { "action": "click", "target": { "role": "checkbox", "name": "All projects" }, "hotspot": false },
-    { "action": "click", "target": { "role": "checkbox", "name": "Orders API" }, "hotspot": false },
-    { "action": "press", "key": "Escape", "target": { "role": "checkbox", "name": "Orders API" } },
-    { "action": "click", "target": { "role": "button", "name": "Save" }, "tooltip": "Lines add up: Priya is now an Editor on Storefront and a Viewer on Orders API" },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "All projects" },
+      "tooltip": "Scope says where this role applies: all projects, or the ones you choose"
+    },
+    {
+      "action": "click",
+      "target": { "role": "checkbox", "name": "All projects" },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": { "role": "checkbox", "name": "Orders API" },
+      "hotspot": false
+    },
+    {
+      "action": "press",
+      "key": "Escape",
+      "target": { "role": "checkbox", "name": "Orders API" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Save" },
+      "tooltip": "Lines add up: Priya is now an Editor on Storefront and a Viewer on Orders API"
+    },
     { "action": "wait", "for": { "text": "Access updated" } },
     { "action": "wait", "ms": 800 }
   ]

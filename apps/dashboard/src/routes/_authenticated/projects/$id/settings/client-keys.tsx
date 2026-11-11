@@ -21,9 +21,7 @@ function ClientKeysPage() {
   const t = useTranslations('settings');
   const { id } = Route.useParams();
   // Started by the project layout's loader.
-  const { data: project } = useSuspenseQuery(
-    projectQueries.detail(Number.parseInt(id, 10)),
-  );
+  const { data: project } = useSuspenseQuery(projectQueries.detail(id));
   const canRead = usePermissions().can('client-keys', 'read', project.id);
 
   return (

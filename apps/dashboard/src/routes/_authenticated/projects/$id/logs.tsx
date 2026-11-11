@@ -3,7 +3,6 @@ import {
   Button,
   CloseIcon,
   cn,
-  EmptyIcon,
   Page,
   PageHeader,
   Skeleton,
@@ -16,9 +15,8 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { type ReactNode, useDeferredValue } from 'react';
+import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
-import { useShortcuts } from '@/features/issue/ui/components/issue-actions';
 import { logQueries } from '@/features/log/api/queries';
 import { LOG_LEVELS } from '@/features/log/model/log-view';
 import { LogDetail } from '@/features/log/ui/components/log-detail';
@@ -29,19 +27,23 @@ import {
 } from '@/features/log/ui/components/log-search';
 import { LogVolume } from '@/features/log/ui/components/log-volume';
 import { projectQueries } from '@/features/project/api/queries';
+import type { ApiError } from '@/shared/api/query';
 import {
+  apiPeriod,
   DEFAULT_PERIOD,
   PERIOD_CHOICES,
   type PeriodChoice,
-} from '@/features/release/model/session-health';
-import { PeriodFilter } from '@/features/release/ui/components/period-filter';
-import type { ApiError } from '@/shared/api/query';
+  periodParam,
+} from '@/shared/lib/period';
 import {
   searchOneOf,
   searchPage,
   searchString,
 } from '@/shared/lib/search-params';
+import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { PeriodFilter } from '@/shared/ui/components/period-filter';
+import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';
 
 const PAGE_SIZE = 50;
 
@@ -63,7 +65,7 @@ function logReads(projectId: number, search: LogsReadSearch) {
     query: search.q,
     level: search.level,
     trace_id: search.trace,
-    period: period === 'all' ? undefined : period,
+    period: apiPeriod(period),
   };
   return {
     list: logQueries.list(projectId, {
@@ -113,9 +115,8 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
   // The page waits for the project and the lines. The chart is read on its
   // own: a volume that fails leaves the lines readable.
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     const reads = logReads(projectId, deps);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
     void queryClient.query(reads.list).catch(noop);
     void queryClient.query(reads.volume).catch(noop);
   },
@@ -140,8 +141,7 @@ function LogsPage() {
   const search = useDeferredValue(liveDeps);
   const navigate = Route.useNavigate();
   const isPending = search !== liveDeps;
-  const { id } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId } = Route.useParams();
   const period = search.period ?? DEFAULT_PERIOD;
   const page = search.page ?? 1;
   const reads = logReads(projectId, search);
@@ -182,7 +182,7 @@ function LogsPage() {
       />
 
       {logs.total_count === 0 && !filtered && period === 'all' ? (
-        <NoLogsYet title={t('logs.emptyTitle')} hint={howToSend} />
+        <EmptyState title={t('logs.emptyTitle')} description={howToSend} />
       ) : (
         <Page scroll={false}>
           <LogsFilters lineOpen={Boolean(current)} />
@@ -237,14 +237,19 @@ function LogsPage() {
 
 /**
  * The same page while the project and the lines load: the search and the
- * window already work, the chart fills in on its own, and the lines are
- * outlines.
+ * window already work, the chart and the lines are outlines.
  */
 function LogsLoading() {
   const t = useTranslations('projectPages');
   const { id } = Route.useParams();
   const search = Route.useSearch();
-  const volume = useQuery(logReads(Number.parseInt(id, 10), search).volume);
+  // Not subscribed: an observer that unmounts mid-flight cancels the
+  // loader's request, and the page would ask again.
+  const volume = useQuery({
+    ...logReads(id, search).volume,
+    enabled: false,
+    subscribed: false,
+  });
 
   return (
     <PageLoading>
@@ -296,23 +301,8 @@ function LogsFilters({ lineOpen }: { lineOpen: boolean }) {
       />
       <PeriodFilter
         period={search.period ?? DEFAULT_PERIOD}
-        onChange={(next) =>
-          narrow({ period: next === DEFAULT_PERIOD ? undefined : next })
-        }
+        onChange={(next) => narrow({ period: periodParam(next) })}
       />
-    </div>
-  );
-}
-
-/** A project that has never sent a log: how to send the first. */
-function NoLogsYet({ title, hint }: { title: string; hint: ReactNode }) {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 px-page-gutter py-16 text-center">
-      <EmptyIcon size="xl" className="mb-2 text-fg-ghost" />
-      <Text variant="body">{title}</Text>
-      <Text variant="meta" tone="subtle" className="max-w-md">
-        {hint}
-      </Text>
     </div>
   );
 }

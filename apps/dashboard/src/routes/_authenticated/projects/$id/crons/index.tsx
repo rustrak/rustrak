@@ -17,8 +17,10 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { monitorQueries } from '@/features/monitor/api/queries';
+import { newMonitorHref } from '@/features/monitor/lib/href';
 import {
-  type MonitorHealth,
+  filterMonitors,
+  MONITOR_STATES,
   monitorHealth,
 } from '@/features/monitor/lib/status';
 import {
@@ -34,27 +36,7 @@ import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
-const STATES = ['failing', 'ok', 'waiting', 'muted'] as const;
-type MonitorState = (typeof STATES)[number];
 const DEFAULT_PERIOD: TimelinePeriod = '24h';
-
-/** Failing first, then waiting, then the rest; by name inside each. */
-const RANK: Record<MonitorHealth, number> = { failing: 0, waiting: 1, ok: 2 };
-
-function matches(monitor: MonitorResponse, q: string, state?: MonitorState) {
-  const text = q.trim().toLowerCase();
-  if (
-    text &&
-    !monitor.name.toLowerCase().includes(text) &&
-    !monitor.slug.includes(text)
-  ) {
-    return false;
-  }
-  if (!state) return true;
-  return state === 'muted'
-    ? monitor.is_muted
-    : monitorHealth(monitor) === state;
-}
 
 /**
  * Crons: every monitor of the project and how its runs went, Sentry's crons
@@ -64,15 +46,14 @@ function matches(monitor: MonitorResponse, q: string, state?: MonitorState) {
 export const Route = createFileRoute('/_authenticated/projects/$id/crons/')({
   validateSearch: (search: Record<string, unknown>) => ({
     q: searchString(search.q),
-    state: searchOneOf(search.state, STATES),
+    state: searchOneOf(search.state, MONITOR_STATES),
     period: searchOneOf(search.period, TIMELINE_PERIODS),
   }),
   loaderDeps: ({ search }) => ({ period: search.period }),
   // The stats are the strips every row is drawn with, so they are the page
   // as much as the list is.
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    const projectId = params.id;
     void queryClient.query(monitorQueries.list(projectId)).catch(noop);
     void queryClient
       .query(
@@ -94,10 +75,9 @@ const EMPTY_POLL_MS = 5_000;
  * keeps the rows on screen, dimmed, until the next strips are in.
  */
 function CronsPage() {
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const live = Route.useSearch();
   const search = useDeferredValue(live);
-  const projectId = Number.parseInt(id, 10);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   // The snippet creates the monitor on its first run, so an empty list asks
   // again until one appears and the list replaces the setup screen.
@@ -115,13 +95,7 @@ function CronsPage() {
     refetchInterval: (query) =>
       query.state.data?.length === 0 ? EMPTY_POLL_MS : false,
   });
-  const shown = monitors
-    .filter((m) => matches(m, search.q ?? '', search.state))
-    .sort(
-      (a, b) =>
-        RANK[monitorHealth(a)] - RANK[monitorHealth(b)] ||
-        a.name.localeCompare(b.name),
-    );
+  const shown = filterMonitors(monitors, search.q ?? '', search.state);
 
   return (
     <CronsScreen
@@ -134,7 +108,6 @@ function CronsPage() {
   );
 }
 
-/** The same screen, with the project's monitors still to come. */
 function CronsLoading() {
   return (
     <PageLoading>
@@ -158,13 +131,12 @@ function CronsScreen({
   loading: boolean;
 }) {
   const t = useTranslations('crons');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(id, 10);
   const period = search.period ?? DEFAULT_PERIOD;
   const newHref = usePermissionsLater().can('monitors', 'create', projectId)
-    ? `/projects/${projectId}/crons/new`
+    ? newMonitorHref(projectId)
     : undefined;
   const failing =
     monitors?.filter((m) => monitorHealth(m) === 'failing').length ?? 0;
@@ -174,7 +146,7 @@ function CronsScreen({
       label: t('state'),
       variant: 'options',
       multiple: false,
-      options: STATES.map((value) => ({
+      options: MONITOR_STATES.map((value) => ({
         value,
         label: t(`health.${value}`),
       })),
@@ -237,7 +209,7 @@ function CronsScreen({
                     ...prev,
                     q: next.search.trim() || undefined,
                     state: Array.isArray(state)
-                      ? STATES.find((s) => s === state[0])
+                      ? searchOneOf(state[0], MONITOR_STATES)
                       : undefined,
                   }),
                   replace: true,

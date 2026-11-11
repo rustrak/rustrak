@@ -6,7 +6,9 @@
     "dev": "cp ../server/openapi.json public/openapi.json && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-versions.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-llms.mjs && next dev --port 3001",
     "build": "cp ../server/openapi.json public/openapi.json && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-versions.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-llms.mjs && next build && pagefind --site out --output-path out/_pagefind",
     "start": "next start",
-    "test": "node --test src/lib/*.test.ts"
+    "test": "node --test src/lib/*.test.ts",
+    "lint": "biome check .",
+    "format:check": "biome format ."
   },
   "dependencies": {
     "@fontsource-variable/geist-mono": "5.3.0",

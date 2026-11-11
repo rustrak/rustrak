@@ -21,7 +21,7 @@ export const Route = createFileRoute(
   '/_authenticated/projects/$id/alerts/$ruleId/edit',
 )({
   loader: ({ context: { queryClient }, params }) => {
-    const projectId = Number.parseInt(params.id, 10);
+    const projectId = params.id;
     void queryClient
       .query(alertQueries.rule(projectId, Number.parseInt(params.ruleId, 10)))
       .catch(noop);
@@ -44,7 +44,7 @@ export const Route = createFileRoute(
 });
 
 function EditAlertPage() {
-  const projectId = Number.parseInt(Route.useParams().id, 10);
+  const projectId = Route.useParams().id;
   return usePermissions().can('alert-rules', 'update', projectId) ? (
     <EditAlert projectId={projectId} />
   ) : (

@@ -108,7 +108,17 @@ export function tableSearch({
     return write(fromParams(params));
   };
 
-  return { read, write, validate };
+  /**
+   * A table change applied to the address it lands on, for the router's
+   * `search: (prev) => ...`: two changes before a render each read the one
+   * before, rather than both the query that was on screen.
+   */
+  const apply = (
+    updater: (query: DataTableQuery) => DataTableQuery,
+    search: TableSearch,
+  ): TableSearch => write(updater(read(search)));
+
+  return { read, write, validate, apply };
 }
 
 /** One filter's single value: the first of an options filter, or its text. */

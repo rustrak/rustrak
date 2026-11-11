@@ -1,10 +1,10 @@
 import type { RustrakError } from '@rustrak/client';
+import { Wordmark } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
-import { RustrakWordmark } from '@/shared/ui/components/rustrak-wordmark';
 import { AuthScreenLoading } from '../-components/auth-screen-loading';
 import { AcceptInvitationForm } from './-components/accept-invitation-form';
 import { InvitationUnavailable } from './-components/invitation-unavailable';
@@ -56,11 +56,8 @@ function Invite() {
 
   if (result.isPending) return <AuthScreenLoading />;
 
-  // Three outcomes, where there used to be two. A failure alone folded
-  // a transient outage into "this invitation link is invalid ... ask an
-  // administrator to send you a new one" -- false, and the single action that
-  // cannot fix an unreachable API. The invitee would burn an admin's time on a
-  // link that was fine all along.
+  // An outage is not a dead link: "ask an administrator for a new one" is the
+  // one action that cannot fix an unreachable API.
   if (result.isError && !isDeadToken(result.error.error)) {
     return <OutageScreen error={result.error.error} />;
   }
@@ -85,7 +82,7 @@ function Invite() {
     <div className="min-h-screen bg-surface flex items-center justify-center p-8 lg:p-12">
       <div className="w-full max-w-[420px] space-y-10">
         <div className="flex items-center">
-          <RustrakWordmark className="h-[22px] w-auto" />
+          <Wordmark className="h-[22px] w-auto" />
         </div>
 
         <AcceptInvitationForm token={token} email={invitation.email} />

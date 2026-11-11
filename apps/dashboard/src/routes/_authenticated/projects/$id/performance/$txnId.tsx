@@ -1,7 +1,6 @@
 import type { TransactionDetailResponse } from '@rustrak/client';
 import {
   CopyIcon,
-  cn,
   formatSpanDuration,
   Skeleton,
   Tag,
@@ -10,18 +9,21 @@ import {
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { type ReactNode, useState } from 'react';
-import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { transactionQueries } from '@/features/transaction/api/queries';
 import {
   type MeasurementRow,
   readMeasurements,
   readTransactionPayload,
-  type WaterfallRow,
   waterfallSpans,
 } from '@/features/transaction/lib/transaction-payload';
 import { endpointHref } from '@/features/transaction/model/endpoints';
+import type { WaterfallRow } from '@/shared/lib/waterfall';
+import { DetailMain, DetailRail } from '@/shared/ui/components/detail-layout';
+import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { RailBlock } from '@/shared/ui/components/panel';
+import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
 export const Route = createFileRoute(
@@ -30,9 +32,7 @@ export const Route = createFileRoute(
   // The project is the layout's; the transaction is the page.
   loader: ({ context: { queryClient }, params }) => {
     void queryClient
-      .query(
-        transactionQueries.detail(Number.parseInt(params.id, 10), params.txnId),
-      )
+      .query(transactionQueries.detail(params.id, params.txnId))
       .catch(noop);
   },
   pendingComponent: TransactionLoading,
@@ -54,8 +54,7 @@ const RATING_TEXT = {
 function TransactionPage() {
   const t = useTranslations('performance.transaction');
   const tPages = useTranslations('projectPages');
-  const { id, txnId } = Route.useParams();
-  const projectId = Number.parseInt(id, 10);
+  const { id: projectId, txnId } = Route.useParams();
   const { data: txn } = useSuspenseQuery(
     transactionQueries.detail(projectId, txnId),
   );
@@ -88,17 +87,15 @@ function TransactionPage() {
         status={payload.status}
       />
       <div className="flex min-h-0 flex-1 max-lg:flex-col">
-        <main className="min-w-0 flex-1 lg:overflow-y-auto">
-          <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
-            {measurements.length > 0 ? <Vitals rows={measurements} /> : null}
-            <Trace rows={rows} name={name} />
-          </div>
-        </main>
-        <aside className="border-border-divider bg-panel max-lg:border-t lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:border-l xl:w-88">
-          <RailBlock title={t('request')} data={payload.request} />
-          <RailBlock title={t('tags')} data={payload.tags} />
-          <RailBlock title={t('user')} data={payload.user} />
-        </aside>
+        <DetailMain>
+          {measurements.length > 0 ? <Vitals rows={measurements} /> : null}
+          <Trace rows={rows} name={name} />
+        </DetailMain>
+        <DetailRail>
+          <FactsBlock title={t('request')} data={payload.request} />
+          <FactsBlock title={t('tags')} data={payload.tags} />
+          <FactsBlock title={t('user')} data={payload.user} />
+        </DetailRail>
       </div>
     </div>
   );
@@ -120,14 +117,12 @@ function TransactionLoading() {
           </div>
         </header>
         <div className="flex min-h-0 flex-1 max-lg:flex-col">
-          <main className="min-w-0 flex-1 lg:overflow-y-auto">
-            <div className="flex flex-col gap-5 px-page-gutter pt-5 pb-8">
-              <section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border-subtle bg-surface px-5 pt-4 pb-5">
-                <h2 className="text-card-title text-fg">{t('trace')}</h2>
-                <Skeleton className="h-64 w-full" />
-              </section>
-            </div>
-          </main>
+          <DetailMain>
+            <section className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border-subtle bg-surface px-5 pt-4 pb-5">
+              <h2 className="text-card-title text-fg">{t('trace')}</h2>
+              <Skeleton className="h-64 w-full" />
+            </section>
+          </DetailMain>
           <aside className="flex flex-col gap-3 border-border-divider bg-panel px-5 py-4 max-lg:border-t lg:w-80 lg:shrink-0 lg:border-l xl:w-88">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-32 w-full" />
@@ -151,13 +146,10 @@ function TransactionHeader({
   status: string | undefined;
 }) {
   const t = useTranslations('performance.transaction');
+  const { copy } = useCopy();
   const format = useFormatter();
   const failed = status != null && status !== 'ok';
-  const copyId = () =>
-    navigator.clipboard
-      ?.writeText(txn.event_id)
-      .then(() => toast.success(t('idCopied')))
-      .catch(() => {});
+  const copyId = () => copy(txn.event_id, t('idCopied'));
 
   return (
     <header className="shrink-0 border-border-divider border-b px-page-gutter pt-6 pb-5">
@@ -208,26 +200,16 @@ function TransactionHeader({
 function Vitals({ rows }: { rows: MeasurementRow[] }) {
   const t = useTranslations('transactions.measurements');
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border-subtle bg-border-subtle sm:grid-cols-3 xl:grid-cols-6">
+    <FigureStrip className="grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
       {rows.map((row) => (
-        <div
+        <Figure
           key={row.key}
-          className="flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5"
-        >
-          <dt className="truncate text-fg-meta text-meta">
-            {row.vital ? t(row.key.toLowerCase() as 'lcp') : row.key}
-          </dt>
-          <dd
-            className={cn(
-              'text-title tabular-nums',
-              row.rating ? RATING_TEXT[row.rating] : 'text-fg',
-            )}
-          >
-            {measurement(row)}
-          </dd>
-        </div>
+          label={row.vital ? t(row.key.toLowerCase() as 'lcp') : row.key}
+          value={measurement(row)}
+          valueClassName={row.rating ? RATING_TEXT[row.rating] : undefined}
+        />
       ))}
-    </dl>
+    </FigureStrip>
   );
 }
 
@@ -245,6 +227,7 @@ function measurement(row: MeasurementRow): string {
 /** The trace, the selected span's facts opening under its row. */
 function Trace({ rows, name }: { rows: WaterfallRow[]; name: string }) {
   const t = useTranslations('performance.transaction');
+  const tCommon = useTranslations('common');
   const [selected, setSelected] = useState<string | null>(null);
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border border-border-subtle bg-surface">
@@ -256,6 +239,10 @@ function Trace({ rows, name }: { rows: WaterfallRow[]; name: string }) {
       </header>
       {rows.length > 1 ? (
         <Waterfall
+          unfinishedLabel={tCommon('unfinished')}
+          noSpansLabel={tCommon('noSpans')}
+          noSpansHint={tCommon('noSpansHint')}
+          resizeLabel={tCommon('resizeNameColumn')}
           spans={rows}
           selectedId={selected}
           onSelect={(span) => setSelected(span?.id ?? null)}
@@ -265,6 +252,7 @@ function Trace({ rows, name }: { rows: WaterfallRow[]; name: string }) {
             return row ? <SpanFacts span={row} /> : null;
           }}
           showMissingInstrumentation
+          missingInstrumentationLabel={t('missingInstrumentation')}
           label={t('traceOf', { name })}
         />
       ) : (
@@ -279,30 +267,26 @@ function SpanFacts({ span }: { span: WaterfallRow }) {
   const facts: [string, ReactNode][] = [
     [t('op'), span.op],
     [t('description'), span.description],
-    [t('duration'), formatSpanDuration(span.endMs - span.startMs)],
-    [t('selfTime'), formatSpanDuration(span.selfMs)],
+    [
+      t('duration'),
+      span.unfinished ? '—' : formatSpanDuration(span.endMs - span.startMs),
+    ],
+    [t('selfTime'), span.unfinished ? '—' : formatSpanDuration(span.selfMs)],
     [t('start'), `+${formatSpanDuration(span.startMs)}`],
     [t('status'), span.status],
     [t('spanId'), span.id],
   ];
   return (
-    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-meta">
-      {facts
-        .filter(([, value]) => value)
-        .map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-fg-subtle">{label}</dt>
-            <dd className="min-w-0 break-all font-mono text-fg-secondary text-mono-sm">
-              {value}
-            </dd>
-          </div>
-        ))}
-    </dl>
+    <FactList
+      facts={facts.filter(([, value]) => value)}
+      className="gap-y-1.5"
+      valueClassName="break-all font-mono text-fg-secondary text-mono-sm"
+    />
   );
 }
 
 /** A block of the rail: the scalar fields of one part of the payload. */
-function RailBlock({
+function FactsBlock({
   title,
   data,
 }: {
@@ -314,18 +298,12 @@ function RailBlock({
   );
   if (entries.length === 0) return null;
   return (
-    <section className="border-border-divider border-b px-5 py-4 last:border-b-0">
-      <h2 className="mb-3 text-column text-fg-meta">{title}</h2>
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-meta">
-        {entries.map(([key, value]) => (
-          <div key={key} className="contents">
-            <dt className="text-fg-subtle">{key}</dt>
-            <dd className="min-w-0 break-all text-right font-mono text-fg-secondary text-mono-sm">
-              {String(value)}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
+    <RailBlock title={title}>
+      <FactList
+        facts={entries.map(([key, value]) => [key, String(value)] as const)}
+        className="gap-y-2"
+        valueClassName="break-all text-right font-mono text-fg-secondary text-mono-sm"
+      />
+    </RailBlock>
   );
 }

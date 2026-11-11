@@ -1,76 +1,54 @@
 import type { ProjectResponse, ReleasesListResponse } from '@rustrak/client';
-import {
-  type DataTableQuery,
-  EmptyIcon,
-  type FilterVariants,
-  Page,
-  PageHeader,
-  parseTableQuery,
-  Skeleton,
-  serializeTableQuery,
-  Text,
-} from '@rustrak/ui';
+import { type FilterVariants, Page, PageHeader, Skeleton } from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { releaseQueries } from '@/features/release/api/queries';
+import { ReleasesTable } from '@/features/release/ui/components/releases-table';
 import {
+  apiPeriod,
   DEFAULT_PERIOD,
   PERIOD_CHOICES,
   type PeriodChoice,
-} from '@/features/release/model/session-health';
-import { PeriodFilter } from '@/features/release/ui/components/period-filter';
-import { ReleasesTable } from '@/features/release/ui/components/releases-table';
-import { searchOneOf, searchString } from '@/shared/lib/search-params';
+  periodParam,
+} from '@/shared/lib/period';
+import { searchOneOf } from '@/shared/lib/search-params';
+import {
+  filterValue,
+  pageBeyondEnd,
+  type TableSearch,
+  tableSearch,
+} from '@/shared/lib/table-search';
+import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { PeriodFilter } from '@/shared/ui/components/period-filter';
 
 const PAGE_SIZE = 25;
-/** `list_releases`'s own cap on `per_page`. */
-const MAX_PAGE_SIZE = 100;
 
 /** `environment:` is the one key the bar takes; the rest is the version. */
 const VARIANTS: FilterVariants = { environment: 'options' };
 
-/** The search as the table's codecs write it: `q` is the query bar. */
-interface ReleasesSearch {
-  q?: string;
+interface ReleasesSearch extends TableSearch {
   period?: PeriodChoice;
-  page?: string;
-  per?: string;
 }
 
-function tableQuery(search: ReleasesSearch): DataTableQuery {
-  const params = new URLSearchParams();
-  for (const key of ['q', 'page', 'per'] as const) {
-    const value = search[key];
-    if (value) params.set(key, value);
-  }
-  const query = parseTableQuery(params, VARIANTS, PAGE_SIZE);
-  // The API pages at most 100 releases; a larger `?per=` would have the
-  // table expect rows it never receives, and no next page to reach them.
-  query.pagination.pageSize = Math.min(
-    query.pagination.pageSize,
-    MAX_PAGE_SIZE,
-  );
-  return query;
-}
-
-/** The environment the bar picked, if any. */
-function environmentOf(query: DataTableQuery): string | undefined {
-  const value = query.filters.find((f) => f.id === 'environment')?.value;
-  return Array.isArray(value) ? value[0] : undefined;
-}
+const table = tableSearch({
+  variants: VARIANTS,
+  pageSize: PAGE_SIZE,
+  // No column sorts.
+  normalise: (query) => ({ ...query, sorting: [] }),
+});
 
 /** The page of releases a URL shows, the same entry for loader and page. */
 function releasesList(projectId: number, search: ReleasesSearch) {
-  const query = tableQuery(search);
+  const query = table.read(search);
   const period = search.period ?? DEFAULT_PERIOD;
   return releaseQueries.list(projectId, {
-    environment: environmentOf(query),
+    environment: filterValue(query, 'environment'),
     query: query.search || undefined,
-    period: period === 'all' ? undefined : period,
+    period: apiPeriod(period),
     page: query.pagination.pageIndex + 1,
     per_page: query.pagination.pageSize,
   });
@@ -78,15 +56,12 @@ function releasesList(projectId: number, search: ReleasesSearch) {
 
 export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
   validateSearch: (search: Record<string, unknown>): ReleasesSearch => ({
-    q: searchString(search.q),
+    ...table.validate(search),
     period: searchOneOf(search.period, PERIOD_CHOICES),
-    page: searchString(String(search.page ?? '')) || undefined,
-    per: searchString(String(search.per ?? '')) || undefined,
   }),
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, params, deps }) => {
-    const projectId = Number.parseInt(params.id, 10);
-    void queryClient.query(projectQueries.detail(projectId)).catch(noop);
+    const projectId = params.id;
     void queryClient.query(releasesList(projectId, deps)).catch(noop);
     void queryClient.query(projectQueries.environments(projectId)).catch(noop);
   },
@@ -99,28 +74,27 @@ export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
  * rows on screen, dimmed, until the next page is in.
  */
 function ReleasesPage() {
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const live = Route.useSearch();
   const search = useDeferredValue(live);
-  const projectId = Number.parseInt(id, 10);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: page } = useSuspenseQuery(releasesList(projectId, search));
 
   // A stale or shared `?page=` past the end lands on the last page, not on
   // an empty table under a positive count. Only once the rows on screen are
   // the address's: an older answer must not overrule what was since asked.
-  const { total_pages } = page;
-  if (
-    search === live &&
-    tableQuery(search).pagination.pageIndex + 1 > Math.max(total_pages, 1)
-  ) {
+  const last = pageBeyondEnd(
+    table.read(search).pagination.pageIndex + 1,
+    page.total_pages,
+  );
+  if (search === live && last !== false) {
     return (
       <Navigate
         to="/projects/$id/releases"
-        params={{ id }}
+        params={{ id: projectId }}
         search={{
           ...search,
-          page: total_pages > 1 ? String(total_pages) : undefined,
+          page: last,
         }}
         replace
       />
@@ -132,7 +106,6 @@ function ReleasesPage() {
   );
 }
 
-/** The same screen, with the project's name and the rows still to come. */
 function ReleasesLoading() {
   return (
     <PageLoading>
@@ -152,17 +125,22 @@ function ReleasesScreen({
 }) {
   const t = useTranslations('projectPages');
   const tReleases = useTranslations('releases');
-  const { id } = Route.useParams();
+  const { id: projectId } = Route.useParams();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const projectId = Number.parseInt(id, 10);
-  const query = tableQuery(search);
+  const query = table.read(search);
   const period = search.period ?? DEFAULT_PERIOD;
 
   // What the bar can suggest; not the list, so the list does not wait for
   // it, and no suggestions while it loads or when it fails.
+  // The skeleton reads nothing: an observer that unmounts mid-flight cancels
+  // the loader's request, and the page would ask again.
   const environments =
-    useQuery(projectQueries.environments(projectId)).data ?? [];
+    useQuery({
+      ...projectQueries.environments(projectId),
+      enabled: !!project,
+      subscribed: !!project,
+    }).data ?? [];
 
   const filtered = query.search !== '' || query.filters.length > 0;
 
@@ -181,15 +159,12 @@ function ReleasesScreen({
       />
 
       {page && page.total_count === 0 && !filtered && !loading ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-page-gutter py-16 text-center">
-          <EmptyIcon size="xl" className="mb-2 text-fg-ghost" />
-          <Text variant="body">{tReleases('empty.title')}</Text>
-          <Text variant="meta" tone="subtle" className="max-w-md">
-            {tReleases.rich('empty.description', {
-              code: (chunks) => <code className="font-mono">{chunks}</code>,
-            })}
-          </Text>
-        </div>
+        <EmptyState
+          title={tReleases('empty.title')}
+          description={tReleases.rich('empty.description', {
+            code: (chunks) => <code className="font-mono">{chunks}</code>,
+          })}
+        />
       ) : (
         <Page scroll={false}>
           <ReleasesTable
@@ -198,22 +173,15 @@ function ReleasesScreen({
             query={query}
             loading={loading}
             environments={environments}
-            onQueryChange={(updater) => {
-              const params = serializeTableQuery(
-                updater(query),
-                VARIANTS,
-                PAGE_SIZE,
-              );
+            onQueryChange={(updater) =>
               navigate({
-                search: (prev) => ({
-                  ...prev,
-                  q: params.get('q') ?? undefined,
-                  page: params.get('page') ?? undefined,
-                  per: params.get('per') ?? undefined,
-                }),
-              });
+                search: (prev) => ({ ...prev, ...table.apply(updater, prev) }),
+              })
+            }
+            scope={{
+              environment: filterValue(query, 'environment'),
+              period: search.period,
             }}
-            scope={{ environment: environmentOf(query), period: search.period }}
             period={
               <PeriodFilter
                 period={period}
@@ -221,7 +189,7 @@ function ReleasesScreen({
                   navigate({
                     search: (prev) => ({
                       ...prev,
-                      period: next === DEFAULT_PERIOD ? undefined : next,
+                      period: periodParam(next),
                       page: undefined,
                     }),
                   })

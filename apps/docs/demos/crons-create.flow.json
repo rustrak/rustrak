@@ -4,13 +4,40 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "link", "name": "New monitor" } },
-    { "action": "click", "target": { "role": "link", "name": "New monitor" }, "tooltip": "Create a monitor here, or let the job's first check-in create it" },
-    { "action": "fill", "target": { "role": "textbox", "name": "Name" }, "value": "Nightly export" },
-    { "action": "fill", "target": { "role": "textbox", "name": "Crontab" }, "value": "0 3 * * *" },
-    { "action": "click", "target": { "role": "spinbutton", "name": "Grace period" }, "tooltip": "The next runs update as you type the schedule. Now set how late is too late" },
-    { "action": "fill", "target": { "role": "spinbutton", "name": "Grace period" }, "value": "10" },
-    { "action": "click", "target": { "role": "button", "name": "Create monitor" }, "tooltip": "Until the first check-in, its page shows the code to send one" },
-    { "action": "wait", "for": { "role": "heading", "name": "Nightly export" } },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "New monitor" },
+      "tooltip": "Create a monitor here, or let the job's first check-in create it"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Name" },
+      "value": "Nightly export"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "textbox", "name": "Crontab" },
+      "value": "0 3 * * *"
+    },
+    {
+      "action": "click",
+      "target": { "role": "spinbutton", "name": "Grace period" },
+      "tooltip": "The next runs update as you type the schedule. Now set how late is too late"
+    },
+    {
+      "action": "fill",
+      "target": { "role": "spinbutton", "name": "Grace period" },
+      "value": "10"
+    },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "Create monitor" },
+      "tooltip": "Until the first check-in, its page shows the code to send one"
+    },
+    {
+      "action": "wait",
+      "for": { "role": "heading", "name": "Nightly export" }
+    },
     { "action": "wait", "ms": 1000 }
   ]
 }

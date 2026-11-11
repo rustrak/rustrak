@@ -1,12 +1,12 @@
 import { AppShell, Topbar, TopbarMenuButton } from '@rustrak/ui';
 import { noop } from '@tanstack/react-query';
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
+import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { TimeZoneSync } from '@/features/user/ui/components/time-zone-sync';
 import { accessQueries } from '@/shared/api/permissions';
 import { returnPath } from '@/shared/api/return-path';
 import { session } from '@/shared/api/session';
-import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
 import { TableLabels } from '@/shared/ui/components/table-labels';
 import { UpdateBannerSlot } from '@/shared/ui/components/update-banner-slot';
@@ -24,9 +24,8 @@ import {
  * route's own loader and before anything renders. Adding a page means putting
  * the file under `_authenticated/`; it inherits this and needs no check.
  *
- * The path is pathless (`_authenticated`, not `authenticated`), so `/projects`
- * is still `/projects`. It is the same trick Next's `(main)` route group was
- * doing.
+ * The route is pathless (`_authenticated`, not `authenticated`), so
+ * `/projects` is still `/projects`.
  *
  * `anonymous` is the only state that redirects, and it is the branch a careless
  * port turns into a login loop. `unavailable` renders instead, and deliberately
@@ -52,15 +51,14 @@ export const Route = createFileRoute('/_authenticated')({
   // their way before the frame renders; neither waits for it.
   loader: ({ context: { queryClient } }) => {
     void queryClient.query(accessQueries.me()).catch(noop);
-    void queryClient
-      .query(projectQueries.list({ per_page: COMMAND_BAR_PROJECT_LIMIT }))
-      .catch(noop);
+    void queryClient.query(projectQueries.picker()).catch(noop);
   },
   component: AuthenticatedLayout,
 });
 
 function AuthenticatedLayout() {
   const answer = Route.useRouteContext();
+  const tCommon = useTranslations('common');
 
   // Returned bare, with no wrapper: this is the one branch that renders no
   // frame, so the screen owns the whole viewport and brings its own brand.
@@ -79,7 +77,14 @@ function AuthenticatedLayout() {
           here rather than above the router because it needs a session, and
           this is the first place there is guaranteed to be one. */}
       <TimeZoneSync hasTimeZone={Boolean(answer.user.timezone)} />
-      <Topbar menu={<TopbarMenuButton />}>
+      <Topbar
+        menu={
+          <TopbarMenuButton
+            openLabel={tCommon('openNavigation')}
+            closeLabel={tCommon('closeNavigation')}
+          />
+        }
+      >
         <AppBreadcrumbs />
       </Topbar>
       {/* The sheet's only scroller. Screens that own their scrolling fill it

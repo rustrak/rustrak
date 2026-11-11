@@ -9,7 +9,6 @@ import { InviteForm } from '@/features/user/ui/components/invite-form';
 import { PendingInvitations } from '@/features/user/ui/components/pending-invitations';
 import { TeamMembersList } from '@/features/user/ui/components/team-members-list';
 import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
-import { COMMAND_BAR_PROJECT_LIMIT } from '@/shared/config/commands';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import {
   SettingSection,
@@ -79,10 +78,7 @@ function TeamPage() {
     </>
   );
 
-  // Guard: this page is the roster and the invitations. The "we could not ask"
-  // branch that used to sit above this one belongs to `_authenticated` now —
-  // an outage is not a permission verdict, and reporting one as the other is
-  // the bug that branch exists to prevent.
+  // This page is the roster and the invitations.
   if (!canReadUsers && !canSeeInvitations) {
     return (
       <>
@@ -148,7 +144,7 @@ function TeamAccess({
   const roles = useQuery({ ...userQueries.roles(), enabled: canReadRoles });
   const catalog = useQuery({ ...accessQueries.catalog(), enabled: inviting });
   const projects = useQuery({
-    ...projectQueries.list({ per_page: COMMAND_BAR_PROJECT_LIMIT }),
+    ...projectQueries.picker(),
     enabled: inviting,
   });
 

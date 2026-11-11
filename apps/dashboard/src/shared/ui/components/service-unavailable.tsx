@@ -1,5 +1,5 @@
 import type { RustrakError } from '@rustrak/client';
-import { IntegrationsIcon, Text } from '@rustrak/ui';
+import { Button, IntegrationsIcon, RefreshIcon, Text } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
 import {
   describeError,
@@ -26,10 +26,13 @@ import {
 export function ServiceUnavailable({
   error,
   title,
+  onRetry,
 }: {
   error: RustrakError;
   /** Names the read that failed, for a page that does several. */
   title?: string;
+  /** Asks again, for a read that failed without taking the page down. */
+  onRetry?: () => void;
 }) {
   const t = useTranslations();
   const guidance = errorGuidance(error, t);
@@ -58,6 +61,17 @@ export function ServiceUnavailable({
           >
             {guidance}
           </Text>
+        ) : null}
+        {onRetry ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={RefreshIcon}
+            className="mt-5"
+            onClick={onRetry}
+          >
+            {t('errors.tryAgain')}
+          </Button>
         ) : null}
       </div>
     </div>
