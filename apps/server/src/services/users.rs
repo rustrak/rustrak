@@ -604,12 +604,13 @@ impl UsersService {
 
         // Only the hash that was verified may be replaced: an overlapping
         // request that checked the same old password must not win.
+        let mut tx = pool.begin().await?;
         let updated =
             sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3")
                 .bind(password_hash)
                 .bind(user_id)
                 .bind(verified_hash)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
         if updated.rows_affected() == 0 {
             return Err(
@@ -617,8 +618,10 @@ impl UsersService {
                     .with_field("current_password", FieldErrorCode::Incorrect),
             );
         }
-        // Whoever held the old password may hold a session too.
-        crate::services::AuthSessionService::revoke_user_sessions(pool, user_id).await?;
+        // Whoever held the old password may hold a session too; both writes
+        // commit together or neither does.
+        crate::services::AuthSessionService::revoke_user_sessions(&mut *tx, user_id).await?;
+        tx.commit().await?;
         Ok(())
     }
 

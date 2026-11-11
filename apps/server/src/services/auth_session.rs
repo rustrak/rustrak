@@ -50,10 +50,15 @@ pub struct AuthSessionService;
 impl AuthSessionService {
     /// Ends every session `user_id` has, everywhere. The one place a user is
     /// signed out from outside their own browser.
-    pub async fn revoke_user_sessions(pool: &DbPool, user_id: i32) -> AppResult<u64> {
+    /// Takes the pool or a transaction, so a change that must end them (a new
+    /// password) commits with it or not at all.
+    pub async fn revoke_user_sessions<'e, E>(executor: E, user_id: i32) -> AppResult<u64>
+    where
+        E: sqlx::Executor<'e, Database = crate::db::Db>,
+    {
         let done = sqlx::query("DELETE FROM sessions WHERE user_id = $1")
             .bind(user_id)
-            .execute(pool)
+            .execute(executor)
             .await?;
         Ok(done.rows_affected())
     }
