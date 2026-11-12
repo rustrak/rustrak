@@ -13,10 +13,10 @@ use openidconnect::core::{
     CoreResponseType, CoreSubjectIdentifierType, CoreTokenType,
 };
 use openidconnect::{
-    AccessToken, Audience, AuthUrl, EmptyAdditionalProviderMetadata, EmptyExtraTokenFields,
-    EndUserEmail, IdToken, IdTokenClaims, IdTokenFields, IssuerUrl, JsonWebKeyId, JsonWebKeySetUrl,
-    Nonce, PrivateSigningKey, ResponseTypes, StandardClaims, StandardTokenResponse,
-    SubjectIdentifier, TokenUrl,
+    AccessToken, Audience, AuthUrl, ClientId, EmptyAdditionalProviderMetadata,
+    EmptyExtraTokenFields, EndUserEmail, IdToken, IdTokenClaims, IdTokenFields, IssuerUrl,
+    JsonWebKeyId, JsonWebKeySetUrl, Nonce, PrivateSigningKey, ResponseTypes, StandardClaims,
+    StandardTokenResponse, SubjectIdentifier, TokenUrl,
 };
 use rustrak::auth::{OidcService, SsoClaims};
 use rustrak::config::OidcConfig;
@@ -53,6 +53,13 @@ struct ProviderState {
     pending: HashMap<String, PendingCode>,
     /// Signs this nonce instead of the one the client sent.
     forged_nonce: Option<String>,
+    /// Audiences signed into `aud` after the client ID. When any are set,
+    /// `azp` carries the client ID.
+    extra_audiences: Vec<String>,
+    /// Leaves the client ID out of `aud`.
+    omit_client_audience: bool,
+    /// Signs this `azp` instead of the client ID; `Some(None)` signs none.
+    forged_authorized_party: Option<Option<String>>,
 }
 
 struct FakeProvider {
@@ -88,6 +95,9 @@ impl FakeProvider {
             user,
             pending: HashMap::new(),
             forged_nonce: None,
+            extra_audiences: Vec::new(),
+            omit_client_audience: false,
+            forged_authorized_party: None,
         }));
 
         let data = web::Data::from(state.clone());
@@ -119,6 +129,24 @@ impl FakeProvider {
         self.state.lock().unwrap().forged_nonce = Some("not-the-client-nonce".to_string());
     }
 
+    /// Sign `audience` into every later ID token next to the client ID.
+    fn add_audience(&self, audience: &str) {
+        self.state
+            .lock()
+            .unwrap()
+            .extra_audiences
+            .push(audience.to_string());
+    }
+
+    fn omit_client_audience(&self) {
+        self.state.lock().unwrap().omit_client_audience = true;
+    }
+
+    /// Sign `party` as `azp` in every later ID token, or no `azp` for `None`.
+    fn forge_authorized_party(&self, party: Option<&str>) {
+        self.state.lock().unwrap().forged_authorized_party = Some(party.map(str::to_string));
+    }
+
     /// Replace the signing key, as providers do on a schedule.
     fn rotate_key(&self) {
         let mut state = self.state.lock().unwrap();
@@ -140,6 +168,7 @@ impl FakeProvider {
             link_existing_accounts: false,
             groups_claim: "groups".to_string(),
             admin_groups: Vec::new(),
+            additional_trusted_audiences: Vec::new(),
             disable_password_login: false,
         }
     }
@@ -227,9 +256,19 @@ async fn token(
     let nonce = state.forged_nonce.clone().unwrap_or(pending.nonce);
     let mut extra = SsoClaims::default();
     extra.insert("groups", serde_json::json!(state.user.groups));
+    let audiences = (!state.omit_client_audience)
+        .then(|| CLIENT_ID.to_string())
+        .into_iter()
+        .chain(state.extra_audiences.iter().cloned())
+        .map(Audience::new)
+        .collect();
+    let authorized_party = match &state.forged_authorized_party {
+        Some(party) => party.clone().map(ClientId::new),
+        None => (!state.extra_audiences.is_empty()).then(|| ClientId::new(CLIENT_ID.to_string())),
+    };
     let claims = IdTokenClaims::<SsoClaims, CoreGenderClaim>::new(
         IssuerUrl::new(state.issuer.clone()).unwrap(),
-        vec![Audience::new(CLIENT_ID.to_string())],
+        audiences,
         now + chrono::Duration::minutes(5),
         now,
         StandardClaims::new(SubjectIdentifier::new(state.user.subject.clone()))
@@ -237,7 +276,8 @@ async fn token(
             .set_email_verified(Some(state.user.email_verified)),
         extra,
     )
-    .set_nonce(Some(Nonce::new(nonce)));
+    .set_nonce(Some(Nonce::new(nonce)))
+    .set_authorized_party(authorized_party);
     let id_token = IdToken::<
         SsoClaims,
         CoreGenderClaim,
@@ -1040,4 +1080,126 @@ async fn test_sso_config_says_password_login_is_available_by_default() {
     )
     .await;
     assert_eq!(body["password_login_enabled"], true);
+}
+
+#[actix_web::test]
+async fn test_sso_rejects_an_id_token_with_an_audience_it_does_not_trust() {
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    provider.add_audience("trusted-audience");
+    let service = OidcService::discover(provider.config()).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+
+    assert_eq!(location(&resp), "/login?error=sso");
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+#[actix_web::test]
+async fn test_sso_accepts_an_additional_audience_it_is_told_to_trust() {
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    provider.add_audience("trusted-audience");
+    let mut config = provider.config();
+    config.additional_trusted_audiences = vec!["trusted-audience".to_string()];
+    let service = OidcService::discover(config).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+
+    assert_eq!(location(&resp), "/");
+    let cookie = session_cookie(&resp).expect("the callback signs the browser in");
+    let me = current_user(&app, cookie)
+        .await
+        .expect("the new session is authenticated");
+    assert_eq!(me["email"], "owner@example.com");
+}
+
+#[actix_web::test]
+async fn test_sso_trusting_one_audience_does_not_trust_another() {
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    provider.add_audience("trusted-audience");
+    provider.add_audience("untrusted-audience");
+    let mut config = provider.config();
+    config.additional_trusted_audiences = vec!["trusted-audience".to_string()];
+    let service = OidcService::discover(config).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+
+    assert_eq!(location(&resp), "/login?error=sso");
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+#[actix_web::test]
+async fn test_sso_rejects_a_trusted_audience_without_the_client_id() {
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    provider.omit_client_audience();
+    provider.add_audience("trusted-audience");
+    let mut config = provider.config();
+    config.additional_trusted_audiences = vec!["trusted-audience".to_string()];
+    let service = OidcService::discover(config).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+
+    assert_eq!(location(&resp), "/login?error=sso");
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+#[actix_web::test]
+async fn test_sso_rejects_several_audiences_without_an_authorized_party() {
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    provider.add_audience("trusted-audience");
+    provider.forge_authorized_party(None);
+    let mut config = provider.config();
+    config.additional_trusted_audiences = vec!["trusted-audience".to_string()];
+    let service = OidcService::discover(config).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+
+    assert_eq!(location(&resp), "/login?error=sso");
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+#[actix_web::test]
+async fn test_sso_rejects_an_authorized_party_other_than_the_client() {
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    provider.add_audience("trusted-audience");
+    provider.forge_authorized_party(Some("trusted-audience"));
+    let mut config = provider.config();
+    config.additional_trusted_audiences = vec!["trusted-audience".to_string()];
+    let service = OidcService::discover(config).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+
+    assert_eq!(location(&resp), "/login?error=sso");
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+#[actix_web::test]
+async fn test_sso_leaves_azp_alone_when_the_client_is_the_only_audience() {
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    provider.forge_authorized_party(Some("another-client"));
+    let service = OidcService::discover(provider.config()).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+
+    assert_eq!(location(&resp), "/");
 }

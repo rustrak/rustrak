@@ -5,10 +5,11 @@ use openidconnect::core::{
     CoreTokenIntrospectionResponse, CoreTokenType,
 };
 use openidconnect::{
-    AdditionalClaims, AsyncHttpClient, AuthenticationFlow, AuthorizationCode, Client, ClientId,
-    ClientSecret, CsrfToken, EmptyExtraTokenFields, EndpointMaybeSet, EndpointNotSet, EndpointSet,
-    HttpRequest, HttpResponse, IdTokenFields, IssuerUrl, Nonce, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, Scope, StandardErrorResponse, StandardTokenResponse,
+    AdditionalClaims, AsyncHttpClient, AuthenticationFlow, AuthorizationCode,
+    ClaimsVerificationError, Client, ClientId, ClientSecret, CsrfToken, EmptyExtraTokenFields,
+    EndpointMaybeSet, EndpointNotSet, EndpointSet, HttpRequest, HttpResponse, IdTokenFields,
+    IssuerUrl, Nonce, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope,
+    StandardErrorResponse, StandardTokenResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -312,12 +313,41 @@ impl OidcService {
         let id_token = token.extra_fields().id_token().ok_or_else(|| {
             AppError::Unauthorized("OIDC provider did not return an ID token".to_string())
         })?;
+        // `openidconnect` requires the client ID in `aud`. This callback
+        // decides which other audiences it accepts.
+        let trusted = &self.config.additional_trusted_audiences;
+        let verifier = client
+            .id_token_verifier()
+            .set_other_audience_verifier_fn(|aud| trusted.iter().any(|t| t == aud.as_str()));
         let claims = id_token
-            .claims(&client.id_token_verifier(), &Nonce::new(nonce))
+            .claims(&verifier, &Nonce::new(nonce))
             .map_err(|e| {
-                log::warn!("OIDC ID token validation failed: {e}");
+                if matches!(e, ClaimsVerificationError::InvalidAudience(_)) {
+                    log::warn!(
+                        "OIDC ID token validation failed: {e}. If your provider adds this \
+                         audience on purpose, list it in OIDC_ADDITIONAL_TRUSTED_AUDIENCES"
+                    );
+                } else {
+                    log::warn!("OIDC ID token validation failed: {e}");
+                }
                 AppError::Unauthorized("SSO identity token is invalid".to_string())
             })?;
+
+        // `openidconnect` leaves `azp` unchecked. With several audiences it is
+        // what tells a token issued to this client from one issued to another
+        // client that also lists this one, so it must name this client.
+        if claims.audiences().len() > 1
+            && claims.authorized_party().map(|azp| azp.as_str())
+                != Some(self.config.client_id.as_str())
+        {
+            log::warn!(
+                "OIDC ID token validation failed: the token has several audiences, \
+                 so its azp claim must be the client ID"
+            );
+            return Err(AppError::Unauthorized(
+                "SSO identity token is invalid".to_string(),
+            ));
+        }
 
         let email = claims
             .email()

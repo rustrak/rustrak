@@ -129,6 +129,10 @@ pub struct OidcConfig {
     /// roles exactly as they are, which keeps SSO from being a role oracle by
     /// accident.
     pub admin_groups: Vec<String>,
+    /// Audiences an ID token may carry besides the client ID. Empty trusts
+    /// none, as OpenID Connect Core 3.1.3.7 requires: a token naming an
+    /// audience the client does not trust is rejected.
+    pub additional_trusted_audiences: Vec<String>,
     /// Refuse password sign-in so SSO is the only way in. Startup rejects the
     /// switch when SSO is not configured: it would lock everyone out.
     pub disable_password_login: bool,
@@ -151,6 +155,10 @@ impl std::fmt::Debug for OidcConfig {
             .field("link_existing_accounts", &self.link_existing_accounts)
             .field("groups_claim", &self.groups_claim)
             .field("admin_groups", &self.admin_groups)
+            .field(
+                "additional_trusted_audiences",
+                &self.additional_trusted_audiences,
+            )
             .field("disable_password_login", &self.disable_password_login)
             .finish()
     }
@@ -619,6 +627,7 @@ impl OidcConfig {
                 .map(|value| value.trim().to_string())
                 .unwrap_or_else(|| "groups".to_string()),
             admin_groups: list("OIDC_ADMIN_GROUPS"),
+            additional_trusted_audiences: list("OIDC_ADDITIONAL_TRUSTED_AUDIENCES"),
             disable_password_login,
         }))
     }

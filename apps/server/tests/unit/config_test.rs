@@ -443,6 +443,7 @@ fn oidc_env() -> EnvGuard {
         "OIDC_LINK_EXISTING_ACCOUNTS",
         "OIDC_GROUPS_CLAIM",
         "OIDC_ADMIN_GROUPS",
+        "OIDC_ADDITIONAL_TRUSTED_AUDIENCES",
         "OIDC_DISABLE_PASSWORD_LOGIN",
     ] {
         env.remove(name);
@@ -530,6 +531,34 @@ fn test_oidc_group_mapping_defaults_to_the_groups_claim() {
     let config = OidcConfig::from_env().unwrap().unwrap();
     assert_eq!(config.groups_claim, "memberOf");
     assert_eq!(config.admin_groups, ["rustrak-admins", "ops"]);
+}
+
+#[test]
+fn test_oidc_trusts_only_the_client_id_unless_told_otherwise() {
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
+        "OIDC_REDIRECT_URL",
+        "https://rustrak.example.com/auth/sso/callback",
+    );
+
+    let config = OidcConfig::from_env().unwrap().unwrap();
+    assert!(
+        config.additional_trusted_audiences.is_empty(),
+        "unset trusts no audience besides the client ID"
+    );
+
+    env.set(
+        "OIDC_ADDITIONAL_TRUSTED_AUDIENCES",
+        " trusted-audience , api://rustrak ,,",
+    );
+    let config = OidcConfig::from_env().unwrap().unwrap();
+    assert_eq!(
+        config.additional_trusted_audiences,
+        ["trusted-audience", "api://rustrak"]
+    );
 }
 
 #[test]

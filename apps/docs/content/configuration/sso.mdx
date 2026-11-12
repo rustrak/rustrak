@@ -240,6 +240,7 @@ Any provider that supports OpenID Connect discovery works. Register
 | Authentik | `https://auth.example.com/application/o/<application-slug>/` |
 | Keycloak | `https://keycloak.example.com/realms/<realm>` |
 | Google | `https://accounts.google.com` |
+| Zitadel | `https://auth.example.com` (the instance domain) |
 
 The issuer is the address that serves
 `/.well-known/openid-configuration`. Opening that URL in a browser is a quick
@@ -249,6 +250,32 @@ way to check you have the right one: its `issuer` field must match
 Rustrak asks for the `openid email profile` scopes. The provider has to
 return an `email` claim, and an `email_verified` claim set to true unless you
 set `OIDC_REQUIRE_EMAIL_VERIFIED=false`.
+
+### Audiences besides the client ID
+
+Rustrak signs someone in only when the ID token's `aud` claim contains
+`OIDC_CLIENT_ID`. Any other value in `aud` must be listed in
+`OIDC_ADDITIONAL_TRUSTED_AUDIENCES`, so a token meant for another service is
+never enough to sign in. When `aud` holds more than one value, the token must
+also carry an `azp` claim equal to `OIDC_CLIENT_ID`.
+
+```bash
+OIDC_ADDITIONAL_TRUSTED_AUDIENCES=<audience>,<another-audience>
+```
+
+Each value is a string, whatever it looks like: a numeric ID, another
+client ID or a URI such as `api://rustrak`. Values are compared exactly,
+including case, and spaces around each one are ignored. A value that contains
+a comma cannot be listed, because the setting itself is comma-separated.
+
+The values to list are the ones the provider puts into `aud` next to the
+client ID, and the log line for a rejected login names each one. For example:
+
+- **Zitadel** always adds the project ID and the client ID of every other
+  application in the project. A project of its own for Rustrak keeps the list
+  to the project ID.
+- **Keycloak** adds a value when the client has an *Audience* mapper with
+  *Add to ID token* turned on.
 
 ## Configuration reference
 
@@ -266,6 +293,7 @@ set `OIDC_REQUIRE_EMAIL_VERIFIED=false`.
 | `OIDC_ALLOWED_DOMAINS` | *(all)* | Comma-separated email domains allowed to use SSO |
 | `OIDC_GROUPS_CLAIM` | `groups` | Claim carrying the identity's groups |
 | `OIDC_ADMIN_GROUPS` | *(none)* | Comma-separated groups that grant the global `admin` role |
+| `OIDC_ADDITIONAL_TRUSTED_AUDIENCES` | *(none)* | Comma-separated audiences an ID token may carry besides the client ID. See [Audiences besides the client ID](#audiences-besides-the-client-id) |
 | `OIDC_DISABLE_PASSWORD_LOGIN` | `false` | Refuse password sign-in; the first account stays as break-glass |
 
 The booleans accept `true/false`, `1/0`, `yes/no` and `on/off`. An empty value
@@ -292,7 +320,7 @@ line that starts with `SSO browser callback failed:`.
 | `SSO callback state did not match` | The callback belongs to a different login attempt | Start again from the login page |
 | `SSO authorization was denied` | The provider returned an error, for example the person declined consent | Try again, and check the provider's own log |
 | `SSO authentication failed` | The provider refused the code exchange, usually a wrong client secret | Check `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`. A line starting `OIDC code exchange failed` carries the provider's answer |
-| `SSO identity token is invalid` | The ID token failed its checks: wrong audience, issuer or signature | Check `OIDC_CLIENT_ID` and that `OIDC_ISSUER_URL` matches the `issuer` in the discovery document |
+| `SSO identity token is invalid` | The ID token failed its checks: wrong audience, issuer or signature | Check `OIDC_CLIENT_ID` and that `OIDC_ISSUER_URL` matches the `issuer` in the discovery document. A line `OIDC ID token validation failed: Invalid audiences: ... is not a trusted audience` names an audience Rustrak does not trust, and `its azp claim must be the client ID` means a token with several audiences was issued to another client: see [Audiences besides the client ID](#audiences-besides-the-client-id) |
 | `Account is disabled` | The matching Rustrak account is deactivated | Reactivate it in Rustrak |
 | `Password login is disabled; sign in through SSO` | `OIDC_DISABLE_PASSWORD_LOGIN=true` and the account is not the first one | Sign in through the provider; the first account is the break-glass |
 | `OIDC_DISABLE_PASSWORD_LOGIN is on, but SSO is not configured` (at startup) | `OIDC_DISABLE_PASSWORD_LOGIN=true` without `OIDC_ISSUER_URL` | Configure SSO, or turn the switch off |
