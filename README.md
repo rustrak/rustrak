@@ -322,6 +322,13 @@ GitHub Sponsors and [Open Collective](https://opencollective.com/rustrak).
     <sub><b>ZerGo0</b></sub>
   </a>
 </td>
+<td align="center" width="180">
+  <a href="https://wdes.fr/">
+    <img src="https://images.opencollective.com/wdes/7cbd299/logo.png?height=180" width="90" height="90" alt="Wdes" />
+    <br />
+    <sub><b>Wdes</b></sub>
+  </a>
+</td>
 </tr>
 </table>
 
