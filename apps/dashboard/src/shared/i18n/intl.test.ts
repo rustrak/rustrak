@@ -148,6 +148,41 @@ describe('createIntlStore', () => {
   });
 });
 
+describe('overlapping resolves', () => {
+  // A reader signs in with French and out again before the French catalogue
+  // has arrived. The later resolve (anonymous, English) lands first; the
+  // earlier one must not overwrite it when it finally does.
+  it('keeps the latest resolve when an older one finishes after it', async () => {
+    let releaseFrench: (messages: Messages) => void = () => {};
+    const french = new Promise<Messages>((resolve) => {
+      releaseFrench = resolve;
+    });
+    let current: CurrentUser = user({ language: 'fr', clock_24h: true });
+    const store = createIntlStore(
+      deps({
+        readSession: async () => current,
+        loadMessages: (locale) =>
+          locale === 'fr' ? french : Promise.resolve(messages),
+      }),
+    );
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const signedIn = store.reload();
+    current = { state: 'anonymous' };
+    const signedOut = await store.reload();
+    releaseFrench(messages);
+
+    expect(signedOut.locale).toBe('en');
+    expect(await signedIn).toBe(signedOut);
+    expect(store.snapshot().locale).toBe('en');
+    expect(store.snapshot().formats.dateTime?.logLine).not.toHaveProperty(
+      'hourCycle',
+    );
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('reloadOnUserChange', () => {
   // The login page renders before anyone is signed in, so the snapshot holds
   // the browser's language, UTC and the language's clock. Password sign-in
