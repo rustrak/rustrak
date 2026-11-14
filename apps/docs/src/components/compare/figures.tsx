@@ -5,7 +5,7 @@ import { Reveal } from '../home/reveal';
 
 type Row = { label: string; hint?: string; cell: (r: Run) => ReactNode };
 
-export const ROWS: Row[] = [
+const ROWS: Row[] = [
   { label: 'Version', cell: (r) => r.version },
   { label: 'Containers', cell: (r) => r.containers },
   {
@@ -179,17 +179,6 @@ export function Faq({ items }: { items: { q: string; a: string }[] }) {
       ))}
     </dl>
   );
-}
-
-export function faqJsonLd(items: { q: string; a: string }[]) {
-  return {
-    '@type': 'FAQPage',
-    mainEntity: items.map((item) => ({
-      '@type': 'Question',
-      name: item.q,
-      acceptedAnswer: { '@type': 'Answer', text: item.a },
-    })),
-  };
 }
 
 /** A chart or table in a panel, with an optional caption under it. */

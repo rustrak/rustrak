@@ -2,6 +2,8 @@
 
 import { useInView } from 'motion/react';
 import { type ReactNode, useRef } from 'react';
+// Reaches a page only through the next/dynamic boundary in lazy-charts.tsx.
+// react-doctor-disable-next-line react-doctor/prefer-dynamic-import
 import {
   Bar,
   BarChart,
@@ -126,6 +128,9 @@ const shortName = (run: Run) =>
     : run.name;
 
 /** A name at the last measured point of a line. */
+/** Lines that end within a few pixels of each other: one label up, one down. */
+const END_DY: Record<string, number> = { bugsink: -4, 'bugsink-sqlite': 12 };
+
 function endLabel(run: Run, last: number) {
   return (props: {
     x?: number | string;
@@ -137,7 +142,7 @@ function endLabel(run: Run, last: number) {
       <text
         x={Number(props.x) + 8}
         y={Number(props.y)}
-        dy={4}
+        dy={END_DY[run.id] ?? 4}
         fill={run.rustrak ? 'var(--fg)' : 'var(--fg-subtle)'}
         fontSize={11}
       >
@@ -383,7 +388,7 @@ export function MemoryChart({ ids }: { ids: string[] }) {
               tick={TICK}
               tickLine={false}
               axisLine={false}
-              width={52}
+              width={64}
               tickFormatter={(v) => mb(Number(v))}
             />
             <ReferenceLine
@@ -465,7 +470,8 @@ export function RankBars({
       : metric === 'cpu'
         ? `${v} ${unit}`
         : `${num(v)} ${unit}`;
-  const rows = RUNS.filter((r) => !ids || ids.includes(r.id))
+  const wanted = ids ? new Set(ids) : null;
+  const rows = RUNS.filter((r) => !wanted || wanted.has(r.id))
     .map((r) => ({
       name: label(r),
       value: value(r),
@@ -476,60 +482,66 @@ export function RankBars({
     );
 
   return (
-    <OnView height={rows.length * 44 + 16}>
-      <ResponsiveContainer>
-        <BarChart
-          data={rows}
-          layout="vertical"
-          margin={{ top: 0, right: 88, bottom: 0, left: 0 }}
-          barCategoryGap={12}
-        >
-          <XAxis type="number" hide domain={[0, 'dataMax']} />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={190}
-            tick={{ fill: 'var(--fg-subtle)', fontSize: 12 }}
-            tickLine={false}
-            axisLine={false}
-          />
-          <Tooltip
-            cursor={{ fill: 'var(--surface)', opacity: 0.5 }}
-            content={({ active, payload }) => {
-              const row = active ? payload?.[0]?.payload : null;
-              return row ? (
-                <TipRows
-                  title={row.name}
-                  rows={[{ run: row.run, value: format(row.value) }]}
-                />
-              ) : null;
-            }}
-          />
-          <Bar
-            dataKey="value"
-            radius={[0, 4, 4, 0]}
-            minPointSize={3}
-            animationDuration={1400}
-          >
-            {rows.map((row) => (
-              <Cell
-                key={row.run.id}
-                fill={row.run.rustrak ? colorOf(row.run) : OTHER}
+    // On a phone the labels alone would take the width: the bars keep a
+    // readable minimum and the panel scrolls sideways instead.
+    <div className="-mx-1 overflow-x-auto px-1">
+      <div className="min-w-[30rem]">
+        <OnView height={rows.length * 44 + 16}>
+          <ResponsiveContainer>
+            <BarChart
+              data={rows}
+              layout="vertical"
+              margin={{ top: 0, right: 88, bottom: 0, left: 0 }}
+              barCategoryGap={12}
+            >
+              <XAxis type="number" hide domain={[0, 'dataMax']} />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={190}
+                tick={{ fill: 'var(--fg-subtle)', fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
               />
-            ))}
-            <LabelList
-              dataKey="value"
-              position="right"
-              formatter={(v: unknown) => format(Number(v))}
-              style={{
-                fill: 'var(--fg-secondary)',
-                fontSize: 11,
-                fontFamily: 'var(--font-mono, monospace)',
-              }}
-            />
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </OnView>
+              <Tooltip
+                cursor={{ fill: 'var(--surface)', opacity: 0.5 }}
+                content={({ active, payload }) => {
+                  const row = active ? payload?.[0]?.payload : null;
+                  return row ? (
+                    <TipRows
+                      title={row.name}
+                      rows={[{ run: row.run, value: format(row.value) }]}
+                    />
+                  ) : null;
+                }}
+              />
+              <Bar
+                dataKey="value"
+                radius={[0, 4, 4, 0]}
+                minPointSize={3}
+                animationDuration={1400}
+              >
+                {rows.map((row) => (
+                  <Cell
+                    key={row.run.id}
+                    fill={row.run.rustrak ? colorOf(row.run) : OTHER}
+                  />
+                ))}
+                <LabelList
+                  dataKey="value"
+                  position="right"
+                  formatter={(v: unknown) => format(Number(v))}
+                  style={{
+                    fill: 'var(--fg-secondary)',
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono, monospace)',
+                  }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </OnView>
+      </div>
+    </div>
   );
 }

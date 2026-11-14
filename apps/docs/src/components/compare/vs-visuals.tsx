@@ -172,10 +172,14 @@ export function ServerFit({ ids }: { ids: string[] }) {
                             ? 'bg-fg-ghost'
                             : 'bg-[repeating-linear-gradient(135deg,var(--fg-ghost)_0_2px,transparent_2px_6px)]',
                       )}
-                      initial={{ width: 0 }}
-                      whileInView={{
+                      // Drawn at its width and grown from the left: a scale
+                      // animates without relayout.
+                      style={{
                         width: `${Math.max(Math.min(share, 1) * 100, 1.5)}%`,
+                        transformOrigin: 'left',
                       }}
+                      initial={{ scaleX: 0 }}
+                      whileInView={{ scaleX: 1 }}
                       viewport={VIEW}
                       transition={{
                         duration: 1.4,

@@ -5,7 +5,7 @@ import { AnimatePresence } from 'motion/react';
 import * as m from 'motion/react-m';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EASE } from '../landing/motion';
 import { Reveal, Words } from './reveal';
 import { CONTAINER, GITHUB, START } from './site';
@@ -40,15 +40,28 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   // A link in the sheet navigates; the sheet closes with the page it opened on.
   useEffect(() => setOpen(false), [path]);
-  // While the sheet is open the page under it stays put, and Escape closes it.
+  // While the sheet is open the page under it stays put and out of reach of
+  // the keyboard (`inert`), Escape closes it, and so does the window growing
+  // past `md`, where the sheet and its toggle are hidden.
+  const header = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!open) return;
+    const page = [...(header.current?.parentElement?.children ?? [])].filter(
+      (el): el is HTMLElement =>
+        el !== header.current && el instanceof HTMLElement,
+    );
     const close = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const wide = window.matchMedia('(min-width: 48rem)');
+    const grow = () => wide.matches && setOpen(false);
     document.documentElement.style.overflow = 'hidden';
+    for (const el of page) el.inert = true;
     window.addEventListener('keydown', close);
+    wide.addEventListener('change', grow);
     return () => {
       document.documentElement.style.overflow = '';
+      for (const el of page) el.inert = false;
       window.removeEventListener('keydown', close);
+      wide.removeEventListener('change', grow);
     };
   }, [open]);
   useEffect(() => {
@@ -60,6 +73,7 @@ export function Nav() {
 
   return (
     <m.header
+      ref={header}
       initial={{ opacity: 0, y: -16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 1, ease: EASE, delay: 0.1 }}
@@ -131,7 +145,7 @@ export function Nav() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute inset-x-0 top-full flex h-[calc(100dvh-4rem)] flex-col bg-canvas md:hidden"
+            className="absolute inset-x-0 top-full flex h-[calc(100dvh-4rem)] flex-col overflow-y-auto overscroll-contain bg-canvas md:hidden"
           >
             <ul className={cn(CONTAINER, 'flex flex-col pt-6')}>
               {LINKS.map((link, i) => (

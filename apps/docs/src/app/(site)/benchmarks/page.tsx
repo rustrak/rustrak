@@ -1,13 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { MemoryChart, RaceChart, RankBars } from '@/components/compare/charts';
 import {
   Figure,
   Heading,
   ResultsTable,
   Stat,
 } from '@/components/compare/figures';
+import {
+  MemoryChart,
+  RaceChart,
+  RankBars,
+} from '@/components/compare/lazy-charts';
 import { Backdrop, PageIntro } from '@/components/editorial/intro';
 import { Shell } from '@/components/editorial/shell';
 import { Reveal } from '@/components/home/reveal';

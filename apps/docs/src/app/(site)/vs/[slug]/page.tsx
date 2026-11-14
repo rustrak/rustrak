@@ -4,7 +4,6 @@ import { notFound } from 'next/navigation';
 import {
   Faq,
   Figure,
-  faqJsonLd,
   Heading,
   ResultsTable,
   Stat,
@@ -25,6 +24,7 @@ import {
   COMPETITORS,
   FACT_LABELS,
   type FactKey,
+  faqJsonLd,
   RUSTRAK_FACTS,
   type Story,
 } from '@/lib/vs';

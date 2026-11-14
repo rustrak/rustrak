@@ -238,3 +238,15 @@ export const COMPETITORS: Competitor[] = [
     ],
   },
 ];
+
+/** The FAQ as schema.org `FAQPage`, the same pairs the page shows. */
+export function faqJsonLd(items: { q: string; a: string }[]) {
+  return {
+    '@type': 'FAQPage',
+    mainEntity: items.map((item) => ({
+      '@type': 'Question',
+      name: item.q,
+      acceptedAnswer: { '@type': 'Answer', text: item.a },
+    })),
+  };
+}

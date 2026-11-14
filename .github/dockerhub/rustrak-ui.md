@@ -14,9 +14,11 @@ Run the server with `RUSTRAK_DASHBOARD=off`, then:
 docker run -d \
   --name rustrak-ui \
   -p 3000:3000 \
-  -e RUSTRAK_API_URL=http://your-rustrak-server:8080 \
+  -e RUSTRAK_API_URL=https://rustrak.example.com \
   rustrak/rustrak-ui:latest
 ```
+
+Session cookies travel on this connection, so a server on another host is reached over `https://`; nginx verifies its certificate. Plain `http://` is for a server on the same Docker network, as in the default.
 
 | Variable | Default | Description |
 |---|---|---|
