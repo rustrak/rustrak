@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.7
+
+### Patch Changes
+
+- [`4e2099d`](https://github.com/rustrak/rustrak/commit/4e2099d729480c11fc6ec20ea6bd738056cb163c) Thanks [@AbianS](https://github.com/AbianS)! - Saved views and the all-projects Issues page in the usage guides, the load-shedding variables in the environment reference, extra trusted audiences in the SSO guide, and a blog post on the v0.26.0 performance work.
+
 ## 0.17.6
 
 ### Patch Changes
