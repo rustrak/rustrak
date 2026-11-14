@@ -210,7 +210,9 @@ function IssuesScreen({
       <PageHeader
         title={t('issues.title')}
         actions={
-          loading ? undefined : (
+          // Not `loading`: that is also true while a new filter loads, and
+          // unmounting the menu then forgets the view being edited.
+          !project ? undefined : (
             <SavedViews
               projectId={projectId}
               page="issues"
