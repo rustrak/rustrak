@@ -187,11 +187,9 @@ function useOnSearch(): OnSearch {
 function IssuesPage() {
   const live = Route.useSearch();
   const search = useDeferredValue(live);
-  const entry = useEntryView(undefined, 'issues', viewable(live));
+  const entry = useEntryView(undefined, 'issues', live, validateIssuesSearch);
   if (entry) {
-    return (
-      <Navigate to="/issues" search={validateIssuesSearch(entry)} replace />
-    );
+    return <Navigate to="/issues" search={entry} replace />;
   }
   return search.tab === 'feedback' ? (
     <FeedbackTab search={search} loading={search !== live} />

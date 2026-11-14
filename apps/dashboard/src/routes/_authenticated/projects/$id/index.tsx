@@ -97,13 +97,18 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
 function ProjectPage() {
   const { id: projectId } = Route.useParams();
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
-  const entry = useEntryView(projectId, 'overview', Route.useSearch());
+  const entry = useEntryView(
+    projectId,
+    'overview',
+    Route.useSearch(),
+    validateOverviewSearch,
+  );
   if (entry) {
     return (
       <Navigate
         to="/projects/$id"
         params={{ id: projectId }}
-        search={validateOverviewSearch(entry)}
+        search={entry}
         replace
       />
     );

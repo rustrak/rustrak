@@ -25,13 +25,30 @@ export function searchOf(query: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(query));
 }
 
-/** The view whose address is the one on screen. */
+/** An address with nothing set at all: no filter, no page, no open line. */
+export function bareSearch(search: Record<string, unknown>): boolean {
+  return Object.values(search).every(
+    (value) => value === undefined || value === null || value === '',
+  );
+}
+
+/**
+ * The view whose address is the one on screen: `opened` when it still
+ * matches, since two views can hold the same filters, else the first that
+ * does. A query saved through the API is read the way the address writes it.
+ */
 export function activeView(
   views: SavedView[],
   search: Record<string, unknown>,
+  opened?: number,
 ): SavedView | undefined {
   const query = viewQuery(search);
-  return views.find((view) => view.query === query);
+  const matches = (view: SavedView) =>
+    viewQuery(searchOf(view.query)) === query;
+  return (
+    views.find((view) => view.id === opened && matches(view)) ??
+    views.find(matches)
+  );
 }
 
 /** The view the page opens on: the reader's own pick, then the project's. */
@@ -77,7 +94,7 @@ export function viewMenu({
   isAdmin: boolean;
 }): ViewMenu {
   const canEdit = (view: SavedView) => view.created_by === me || isAdmin;
-  const active = activeView(views, search);
+  const active = activeView(views, search, editing);
   if (active) {
     const actions: ViewMenu['actions'] = [{ kind: 'myDefault', view: active }];
     if (isAdmin && active.visibility === 'project') {

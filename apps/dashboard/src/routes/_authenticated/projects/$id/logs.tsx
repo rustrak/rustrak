@@ -181,13 +181,13 @@ function LogsPage() {
 
   // The address less the open line: a view is what is asked for.
   const asked = { ...live, selected: undefined };
-  const entry = useEntryView(projectId, 'logs', asked);
+  const entry = useEntryView(projectId, 'logs', live, validateLogsSearch);
   if (entry) {
     return (
       <Navigate
         to="/projects/$id/logs"
         params={{ id: projectId }}
-        search={validateLogsSearch(entry)}
+        search={entry}
         replace
       />
     );

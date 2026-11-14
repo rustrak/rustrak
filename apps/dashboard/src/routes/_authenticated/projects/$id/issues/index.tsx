@@ -113,7 +113,7 @@ function IssuesPage() {
   const search = useDeferredValue(live);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: page } = useSuspenseQuery(issuesList(projectId, search));
-  const entry = useEntryView(projectId, 'issues', live);
+  const entry = useEntryView(projectId, 'issues', live, validateIssuesSearch);
 
   // A stale or shared `?page=` past the end lands on the last page. Only once
   // the rows on screen are the address's.
@@ -126,7 +126,7 @@ function IssuesPage() {
       <Navigate
         to="/projects/$id/issues"
         params={{ id: projectId }}
-        search={validateIssuesSearch(entry)}
+        search={entry}
         replace
       />
     );

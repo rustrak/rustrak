@@ -2941,6 +2941,7 @@
     "sharedWorkspace": "与所有人共享",
     "shareWorkspace": "与整个工作区共享",
     "setWorkspaceDefault": "设为所有人的默认视图",
-    "unsetWorkspaceDefault": "取消所有人的默认视图"
+    "unsetWorkspaceDefault": "取消所有人的默认视图",
+    "loadFailed": "无法加载视图"
   }
 }

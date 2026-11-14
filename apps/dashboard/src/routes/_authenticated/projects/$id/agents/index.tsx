@@ -213,13 +213,13 @@ function AgentsPage() {
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: summary } = useSuspenseQuery(reads.summary);
   const { data: environments } = useSuspenseQuery(reads.environments);
-  const entry = useEntryView(projectId, 'agents', live);
+  const entry = useEntryView(projectId, 'agents', live, validateAgentsSearch);
   if (entry) {
     return (
       <Navigate
         to="/projects/$id/agents"
         params={{ id: projectId }}
-        search={validateAgentsSearch(entry)}
+        search={entry}
         replace
       />
     );

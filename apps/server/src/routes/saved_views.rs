@@ -22,11 +22,16 @@ use crate::services::saved_view::SavedViewService;
 /// Where views live: a project, or the workspace (`None`).
 type Scope = Option<i32>;
 
-/// Fails unless the actor sees `scope`. Everyone signed in sees the workspace.
+/// Fails unless the actor sees `scope`. The workspace's views belong to the
+/// page of every project's issues, so they need what that page needs:
+/// reading issues somewhere. A token narrowed to nothing gets nothing.
 fn require_sees(actor: &ApiActor, scope: Scope) -> AppResult<()> {
     match scope {
         Some(id) => actor.require(Resource::Project, Action::Read, Some(id)),
-        None => Ok(()),
+        None if actor.access.can_somewhere(Resource::Issues, Action::Read) => Ok(()),
+        None => Err(AppError::Forbidden(
+            "Missing permission issues:read".to_string(),
+        )),
     }
 }
 
@@ -91,8 +96,15 @@ async fn update(
     body: UpdateSavedView,
 ) -> AppResult<HttpResponse> {
     let view = editable(pool, actor, scope, view_id).await?;
-    let merged = view.merge(body)?;
-    let view = SavedViewService::update(pool, view.id, merged).await?;
+    // Validated as the whole view, written as only the fields sent: a
+    // concurrent change to another field is kept, not overwritten.
+    let merged = view.merge(body.clone())?;
+    let changes = UpdateSavedView {
+        name: body.name.map(|_| merged.name),
+        query: body.query.map(|_| merged.query),
+        visibility: body.visibility,
+    };
+    let view = SavedViewService::update(pool, view.id, changes).await?;
     Ok(HttpResponse::Ok().json(view))
 }
 

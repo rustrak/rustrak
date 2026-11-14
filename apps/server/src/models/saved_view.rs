@@ -98,7 +98,7 @@ impl CreateSavedView {
 
 /// Body of `PATCH /api/projects/{project_id}/views/{view_id}`: only the
 /// fields sent change.
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateSavedView {
     pub name: Option<String>,

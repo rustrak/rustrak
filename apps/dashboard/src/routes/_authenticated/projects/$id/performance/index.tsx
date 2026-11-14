@@ -126,13 +126,18 @@ function PerformancePage() {
   const { data: page } = useSuspenseQuery(
     transactionQueries.stats(projectId, statsParams(search)),
   );
-  const entry = useEntryView(projectId, 'performance', live);
+  const entry = useEntryView(
+    projectId,
+    'performance',
+    live,
+    validatePerformanceSearch,
+  );
   if (entry) {
     return (
       <Navigate
         to="/projects/$id/performance"
         params={{ id: projectId }}
-        search={validatePerformanceSearch(entry)}
+        search={entry}
         replace
       />
     );

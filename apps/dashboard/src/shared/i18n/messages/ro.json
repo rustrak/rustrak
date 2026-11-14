@@ -2941,6 +2941,7 @@
     "sharedWorkspace": "Partajată cu toți",
     "shareWorkspace": "Partajează cu tot spațiul de lucru",
     "setWorkspaceDefault": "Fă-o implicită pentru toți",
-    "unsetWorkspaceDefault": "Nu mai este implicită pentru toți"
+    "unsetWorkspaceDefault": "Nu mai este implicită pentru toți",
+    "loadFailed": "Vizualizările nu au putut fi încărcate"
   }
 }

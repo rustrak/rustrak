@@ -68,7 +68,8 @@ export function SavedViews({
   const me = useSessionUser();
   const permissions = usePermissionsLater();
   const toastFailure = useToastFailure();
-  const views = useQuery(savedViewQueries.list(projectId, page)).data;
+  const read = useQuery(savedViewQueries.list(projectId, page));
+  const views = read.data;
   const update = useMutation(savedViewMutations.update(projectId));
   const remove = useMutation(savedViewMutations.remove(projectId));
   const setDefault = useMutation(savedViewMutations.setDefault(projectId));
@@ -78,7 +79,7 @@ export function SavedViews({
   const query = viewQuery(search);
   // The view last on screen stays the one being edited while its filters
   // change: React's way to keep what an earlier render showed.
-  const active = activeView(views ?? [], search);
+  const active = activeView(views ?? [], search, editing);
   if (active && active.id !== editing) setEditing(active.id);
   const menu = viewMenu({
     views: views ?? [],
@@ -92,7 +93,10 @@ export function SavedViews({
   });
   const current = menu.current;
 
-  const open = (view: SavedView) => onApply(searchOf(view.query));
+  const open = (view: SavedView) => {
+    setEditing(view.id);
+    onApply(searchOf(view.query));
+  };
   const failed = (title: string) => ({
     onError: (error: ApiError) => toastFailure(title, error),
   });
@@ -177,7 +181,14 @@ export function SavedViews({
         actions={
           actions.length
             ? actions
-            : [{ id: 'empty', label: t('empty'), disabled: true }]
+            : [
+                {
+                  id: 'empty',
+                  // A failed read must not pass for an empty list.
+                  label: read.isError ? t('loadFailed') : t('empty'),
+                  disabled: true,
+                },
+              ]
         }
       />
       <SaveViewDialog

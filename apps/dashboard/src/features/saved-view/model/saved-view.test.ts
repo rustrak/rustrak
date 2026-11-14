@@ -2,6 +2,7 @@ import type { SavedView } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
 import {
   activeView,
+  bareSearch,
   defaultView,
   searchOf,
   viewMenu,
@@ -53,6 +54,35 @@ describe('activeView', () => {
     ];
     expect(activeView(views, { q: 'b', page: 2 })?.id).toBe(2);
     expect(activeView(views, { q: 'c' })).toBeUndefined();
+  });
+});
+
+describe('activeView, when two views hold the same address', () => {
+  const first = view({ id: 1, query: 'q=a' });
+  const second = view({ id: 2, query: 'q=a' });
+
+  it('is the one the reader opened', () => {
+    expect(activeView([first, second], { q: 'a' }, 2)?.id).toBe(2);
+  });
+
+  it('is the first when the opened one no longer matches', () => {
+    expect(activeView([first, second], { q: 'a' }, 3)?.id).toBe(1);
+  });
+
+  it('reads a query saved by hand the way the address writes it', () => {
+    const byHand = view({ id: 3, query: 'view=all&q=level:fatal' });
+    expect(activeView([byHand], { q: 'level:fatal', view: 'all' })?.id).toBe(3);
+  });
+});
+
+describe('bareSearch', () => {
+  it('is an address with nothing set', () => {
+    expect(bareSearch({ q: undefined, sort: '' })).toBe(true);
+  });
+
+  it('is not one that asks for a page or an open line', () => {
+    expect(bareSearch({ page: 2 })).toBe(false);
+    expect(bareSearch({ selected: 'abc' })).toBe(false);
   });
 });
 

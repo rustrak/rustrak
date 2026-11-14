@@ -2941,6 +2941,7 @@
     "sharedWorkspace": "Compartida con todos",
     "shareWorkspace": "Compartir con todo el workspace",
     "setWorkspaceDefault": "Hacerla la vista por defecto de todos",
-    "unsetWorkspaceDefault": "Quitarla como vista por defecto de todos"
+    "unsetWorkspaceDefault": "Quitarla como vista por defecto de todos",
+    "loadFailed": "No se pudieron cargar las vistas"
   }
 }

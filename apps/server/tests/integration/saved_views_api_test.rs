@@ -438,3 +438,62 @@ async fn a_workspace_default_is_mine_alone() {
     .await;
     assert_eq!(body[0]["is_my_default"], false);
 }
+
+#[actix_web::test]
+async fn a_token_that_reads_no_issues_cannot_touch_workspace_views() {
+    let t = team().await;
+    let alice = rustrak::services::UsersService::get_by_email(&t.db.pool, "alice@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    let narrow = rustrak::services::AuthTokenService::create_for_user(
+        &t.db.pool,
+        rustrak::models::CreateAuthToken {
+            permissions: Some(vec![]),
+            ..Default::default()
+        },
+        Some(alice.id),
+    )
+    .await
+    .unwrap()
+    .token;
+    let (status, _) = ws(
+        &t,
+        &narrow,
+        test::TestRequest::get().uri("/api/views?page=issues"),
+    )
+    .await;
+    assert_eq!(status, 403);
+    let (status, _) = ws(
+        &t,
+        &narrow,
+        test::TestRequest::post()
+            .uri("/api/views")
+            .set_json(json!({"page": "issues", "name": "x", "query": "", "visibility": "project"})),
+    )
+    .await;
+    assert_eq!(status, 403);
+}
+
+#[actix_web::test]
+async fn only_a_shared_view_becomes_the_projects_default() {
+    use rustrak::services::saved_view::SavedViewService;
+    let t = team().await;
+    let (_, mine) = create(
+        &t,
+        &t.alice,
+        json!({"page": "issues", "name": "Mine", "query": ""}),
+    )
+    .await;
+    // The route checks the view is shared; the write must hold on its own
+    // when the view turns personal in between.
+    SavedViewService::set_project_default(
+        &t.db.pool,
+        Some(t.project),
+        "issues",
+        mine["id"].as_i64().map(|id| id as i32),
+    )
+    .await
+    .unwrap();
+    assert_eq!(defaults(&t, &t.alice).await, [row("Mine", false, false)]);
+}

@@ -2941,6 +2941,7 @@
     "sharedWorkspace": "Shared with everyone",
     "shareWorkspace": "Share with everyone in the workspace",
     "setWorkspaceDefault": "Make it everyone’s default",
-    "unsetWorkspaceDefault": "Stop being everyone’s default"
+    "unsetWorkspaceDefault": "Stop being everyone’s default",
+    "loadFailed": "Views could not be loaded"
   }
 }

@@ -92,13 +92,18 @@ function ReleasesPage() {
   const search = useDeferredValue(live);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: page } = useSuspenseQuery(releasesList(projectId, search));
-  const entry = useEntryView(projectId, 'releases', live);
+  const entry = useEntryView(
+    projectId,
+    'releases',
+    live,
+    validateReleasesSearch,
+  );
   if (entry) {
     return (
       <Navigate
         to="/projects/$id/releases"
         params={{ id: projectId }}
-        search={validateReleasesSearch(entry)}
+        search={entry}
         replace
       />
     );

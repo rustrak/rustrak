@@ -2,7 +2,7 @@ use chrono::Utc;
 
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::models::saved_view::{CreateSavedView, SavedView};
+use crate::models::saved_view::{CreateSavedView, SavedView, UpdateSavedView};
 
 pub struct SavedViewService;
 
@@ -74,21 +74,26 @@ impl SavedViewService {
         .ok_or_else(|| AppError::NotFound(format!("View {view_id} not found")))
     }
 
+    /// Writes the fields `changes` holds and keeps the rest as stored.
     pub async fn update(
         pool: &DbPool,
         view_id: i32,
-        view: CreateSavedView,
+        changes: UpdateSavedView,
     ) -> AppResult<SavedView> {
         Ok(sqlx::query_as(
             // A view no longer shared stops being the project's default.
-            "UPDATE saved_views SET name = $2, query = $3, visibility = $4,
-                 is_project_default = is_project_default AND $4 = 'project'
+            "UPDATE saved_views SET
+                 name = COALESCE($2, name),
+                 query = COALESCE($3, query),
+                 visibility = COALESCE($4, visibility),
+                 is_project_default = is_project_default
+                     AND COALESCE($4, visibility) = 'project'
              WHERE id = $1 RETURNING *",
         )
         .bind(view_id)
-        .bind(view.name)
-        .bind(view.query)
-        .bind(view.visibility.as_str())
+        .bind(changes.name)
+        .bind(changes.query)
+        .bind(changes.visibility.map(|v| v.as_str()))
         .fetch_one(pool)
         .await?)
     }
@@ -109,8 +114,15 @@ impl SavedViewService {
         page: &str,
         view_id: Option<i32>,
     ) -> AppResult<()> {
-        // Write-first: a plain `begin`, not `begin_write`.
+        // Write-first: a plain `begin`, not `begin_write`. SQLite already
+        // runs one writer at a time; on PostgreSQL two concurrent picks would
+        // each delete nothing and both insert, so they queue on the user's row.
         let mut tx = pool.begin().await?;
+        #[cfg(feature = "postgres")]
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query(
             "DELETE FROM saved_view_defaults
              WHERE user_id = $1 AND view_id IN (
@@ -141,7 +153,8 @@ impl SavedViewService {
         view_id: Option<i32>,
     ) -> AppResult<()> {
         sqlx::query(
-            "UPDATE saved_views SET is_project_default = COALESCE(id = $3, FALSE)
+            "UPDATE saved_views
+             SET is_project_default = COALESCE(id = $3 AND visibility = 'project', FALSE)
              WHERE project_id IS NOT DISTINCT FROM $1 AND page = $2",
         )
         .bind(project_id)
