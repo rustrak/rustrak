@@ -80,6 +80,12 @@ server {
     # produces a syntax error that names the bundle instead of the deploy.
     location /assets/ {
         add_header Cache-Control "public, max-age=31536000, immutable";
+        # The build writes a `.gz` beside each asset at level 9 (`precompress`
+        # in vite.config.ts); nginx hands it to a browser that accepts gzip,
+        # and compresses nothing itself. Its `.br` twin goes unused: brotli
+        # is not compiled into this image.
+        gzip_static on;
+        gzip_vary on;
         try_files $uri =404;
     }
 
