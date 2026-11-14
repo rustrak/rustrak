@@ -370,10 +370,11 @@ async fn the_issue_list_shows_one_category_at_a_time() {
         .unwrap();
 
     let no_filters = rustrak::services::issue::IssueFilters::default();
+    let project = rustrak::models::rbac::ProjectScope::Only(vec![s.project.id]);
     let list = |category| {
         IssueService::list_offset(
             &s.db.pool,
-            s.project.id,
+            &project,
             IssueSort::LastSeen,
             SortOrder::Desc,
             IssueFilter::All,

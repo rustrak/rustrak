@@ -1,11 +1,10 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use uuid::Uuid;
 
 use crate::auth::ApiActor;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::models::rbac::{Action, Resource};
-#[cfg(feature = "openapi")]
+use crate::models::rbac::{Action, ProjectScope, Resource};
 use crate::models::IssueResponse;
 use crate::models::{BulkDeleteIssues, BulkUpdateIssues, UpdateIssueState};
 use crate::pagination::{
@@ -180,16 +179,82 @@ pub async fn list_issues(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
-
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
+    ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
-    // Verify project exists and get slug for response
-    let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
-
-    // Execute paginated query with offset
-    let (issues, total_count) = IssueService::list_offset(
+    let page = issue_page(
         pool.get_ref(),
-        project_id,
+        &ProjectScope::Only(vec![project_id]),
+        &query,
+    )
+    .await?;
+    Ok(HttpResponse::Ok().json(page))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/issues",
+    operation_id = "issues.listAll",
+    tag = "Issues",
+    params(
+        ("project" = Option<String>, Query, description = "Only these projects, comma-separated ids: `1,2`. Absent: every project the reader can read issues on."),
+        ListIssuesQuery,
+    ),
+    responses(
+        (status = 200, description = "Issues across projects", body = inline(crate::pagination::OffsetPaginatedResponse<IssueResponse>)),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Lists issues across every project the reader can read issues on, in the
+/// same shape and pages as a project's list.
+pub async fn list_all_issues(
+    req: HttpRequest,
+    pool: web::Data<DbPool>,
+    query: web::Query<ListIssuesQuery>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    let projects = actor
+        .projects_where(Resource::Issues, Action::Read)
+        .narrowed(requested_projects(req.query_string()));
+    let page = issue_page(pool.get_ref(), &projects, &query).await?;
+    Ok(HttpResponse::Ok().json(page))
+}
+
+/// The project ids `?project=` names, comma-separated or repeated as Sentry
+/// sends them (`project=1&project=2`). `None` when it names none, or `-1`,
+/// Sentry's "every project"; an id that does not parse is left out.
+pub fn requested_projects(query: &str) -> Option<Vec<i32>> {
+    let mut ids = Vec::new();
+    let mut named = false;
+    for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
+        if key != "project" {
+            continue;
+        }
+        for raw in value.split(',').map(str::trim).filter(|v| !v.is_empty()) {
+            if raw == "-1" {
+                return None;
+            }
+            named = true;
+            ids.extend(raw.parse::<i32>().ok());
+        }
+    }
+    named.then_some(ids)
+}
+
+/// One page of the issues of `projects`, each with its users and trend.
+async fn issue_page(
+    pool: &DbPool,
+    projects: &ProjectScope,
+    query: &ListIssuesQuery,
+) -> AppResult<OffsetPaginatedResponse<IssueResponse>> {
+    let scope = Scope {
+        environment: query.environment.as_deref(),
+        release: query.release.as_deref(),
+    };
+    let (issues, total_count) = IssueService::list_offset(
+        pool,
+        projects,
         query.sort,
         query.order,
         query.filter,
@@ -197,10 +262,7 @@ pub async fn list_issues(
         query.page,
         query.per_page,
         query.q.as_deref(),
-        Scope {
-            environment: query.environment.as_deref(),
-            release: query.release.as_deref(),
-        },
+        scope,
         &query.issue_filters(),
     )
     .await?;
@@ -208,21 +270,14 @@ pub async fn list_issues(
     // Bulk-compute per-issue user_count/trend for this page in one request
     // (avoids the list UI firing one aggregates/stats call per visible row).
     let issue_ids: Vec<Uuid> = issues.iter().map(|i| i.id).collect();
-    let list_stats = IssueService::list_stats(
-        pool.get_ref(),
-        &issue_ids,
-        Scope {
-            environment: query.environment.as_deref(),
-            release: query.release.as_deref(),
-        },
-    )
-    .await?;
+    let list_stats = IssueService::list_stats(pool, &issue_ids, scope).await?;
+    let slugs = ProjectService::slugs(pool).await?;
 
-    // Build responses
     let responses: Vec<_> = issues
         .iter()
         .map(|i| {
-            let mut response = i.to_response(&project.slug);
+            let slug = slugs.get(&i.project_id).map_or("", String::as_str);
+            let mut response = i.to_response(slug);
             if let Some(stats) = list_stats.get(&i.id) {
                 response.user_count = Some(stats.user_count);
                 response.trend = Some(stats.trend.clone());
@@ -231,12 +286,12 @@ pub async fn list_issues(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(OffsetPaginatedResponse::new(
+    Ok(OffsetPaginatedResponse::new(
         responses,
         total_count,
         query.page,
         query.per_page,
-    )))
+    ))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -323,9 +378,53 @@ pub async fn list_feedback(
     actor.require(Resource::Issues, Action::Read, Some(project_id))?;
     ProjectService::get_by_id(pool.get_ref(), project_id).await?;
 
-    let (issues, total_count) = IssueService::list_offset(
+    let page = feedback_page(
         pool.get_ref(),
-        project_id,
+        &ProjectScope::Only(vec![project_id]),
+        &query,
+    )
+    .await?;
+    Ok(HttpResponse::Ok().json(page))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/feedback",
+    operation_id = "feedback.listAll",
+    tag = "Issues",
+    params(
+        ("project" = Option<String>, Query, description = "Only these projects, comma-separated ids: `1,2`. Absent: every project the reader can read issues on."),
+        ListFeedbackQuery,
+    ),
+    responses(
+        (status = 200, description = "User feedback across projects, newest first", body = inline(crate::pagination::OffsetPaginatedResponse<crate::models::FeedbackResponse>)),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Lists user feedback across every project the reader can read issues on.
+pub async fn list_all_feedback(
+    req: HttpRequest,
+    pool: web::Data<DbPool>,
+    query: web::Query<ListFeedbackQuery>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    let projects = actor
+        .projects_where(Resource::Issues, Action::Read)
+        .narrowed(requested_projects(req.query_string()));
+    let page = feedback_page(pool.get_ref(), &projects, &query).await?;
+    Ok(HttpResponse::Ok().json(page))
+}
+
+/// One page of the feedback of `projects`, newest first.
+async fn feedback_page(
+    pool: &DbPool,
+    projects: &ProjectScope,
+    query: &ListFeedbackQuery,
+) -> AppResult<OffsetPaginatedResponse<crate::models::FeedbackResponse>> {
+    let (issues, total_count) = IssueService::list_offset(
+        pool,
+        projects,
         crate::pagination::IssueSort::LastSeen,
         crate::pagination::SortOrder::Desc,
         query.filter,
@@ -338,9 +437,8 @@ pub async fn list_feedback(
     )
     .await?;
     let ids: Vec<Uuid> = issues.iter().map(|i| i.id).collect();
-    let contexts = IssueService::feedback_contexts(pool.get_ref(), &ids).await?;
-    let mut attachments =
-        crate::services::AttachmentService::list_for_issues(pool.get_ref(), &ids).await?;
+    let contexts = IssueService::feedback_contexts(pool, &ids).await?;
+    let mut attachments = crate::services::AttachmentService::list_for_issues(pool, &ids).await?;
     let items: Vec<_> = issues
         .iter()
         .map(|i| {
@@ -352,12 +450,12 @@ pub async fn list_feedback(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(OffsetPaginatedResponse::new(
+    Ok(OffsetPaginatedResponse::new(
         items,
         total_count,
         query.page,
         query.per_page,
-    )))
+    ))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -1083,6 +1181,12 @@ pub mod resp {
     ))
 )]
 pub struct IssuesApi;
+
+/// The issues of every project the reader can read, under `/api`.
+pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.route("/api/issues", web::get().to(list_all_issues))
+        .route("/api/feedback", web::get().to(list_all_feedback));
+}
 
 pub fn configure_project(cfg: &mut web::ServiceConfig) {
     cfg.route("/environments", web::get().to(list_environments))

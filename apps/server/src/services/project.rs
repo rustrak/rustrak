@@ -43,6 +43,15 @@ impl ProjectService {
         Ok(projects)
     }
 
+    /// Every project's slug by id, for a list across projects to name each
+    /// row's project.
+    pub async fn slugs(pool: &DbPool) -> AppResult<std::collections::HashMap<i32, String>> {
+        let rows: Vec<(i32, String)> = sqlx::query_as("SELECT id, slug FROM projects")
+            .fetch_all(pool)
+            .await?;
+        Ok(rows.into_iter().collect())
+    }
+
     /// Lists projects with offset-based pagination
     pub async fn list_offset(
         pool: &DbPool,

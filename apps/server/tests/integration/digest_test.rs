@@ -76,7 +76,7 @@ async fn test_digest_creates_issue_and_event() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -144,7 +144,7 @@ async fn test_error_processor_impl_creates_issue_and_event() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -223,7 +223,7 @@ async fn test_digest_groups_similar_events() {
     // Should have only 1 issue with 2 events
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -296,7 +296,7 @@ async fn test_digest_creates_separate_issues_for_different_errors() {
     // Should have 3 separate issues
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -372,7 +372,7 @@ async fn test_digest_handles_custom_fingerprint() {
     // Should have 1 issue because of custom fingerprint
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -442,7 +442,7 @@ async fn test_digest_empty_fingerprint_does_not_collapse_issues() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -517,7 +517,7 @@ async fn test_digest_handles_default_fingerprint_placeholder() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -573,7 +573,7 @@ async fn test_digest_ignores_duplicate_event_id() {
     // Should only have 1 issue with 1 event
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -686,7 +686,7 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -744,7 +744,7 @@ async fn test_new_event_after_retention_purge_does_not_collide() {
     // event.
     let (issues_after, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -880,7 +880,7 @@ async fn digest(
 async fn only_issue(pool: &rustrak::db::DbPool, project_id: i32) -> rustrak::models::Issue {
     let (issues, _) = IssueService::list_offset(
         pool,
-        project_id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project_id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -1172,7 +1172,7 @@ async fn test_issue_search_finds_the_frame_filename_and_module() {
     for term in ["billing/stripe.rs", "billing::stripe"] {
         let (hits, total) = IssueService::list_offset(
             &db.pool,
-            project.id,
+            &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
             IssueSort::DigestOrder,
             SortOrder::Desc,
             IssueFilter::All,
@@ -1235,7 +1235,7 @@ async fn test_search_follows_the_frame_of_the_latest_event() {
         async move {
             IssueService::list_offset(
                 &pool,
-                project.id,
+                &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
                 IssueSort::DigestOrder,
                 SortOrder::Desc,
                 IssueFilter::All,
@@ -1407,7 +1407,7 @@ async fn test_an_event_finds_its_pre_upgrade_issue() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -1500,7 +1500,7 @@ async fn test_a_genuinely_new_event_still_opens_its_own_issue() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -1562,7 +1562,7 @@ async fn test_digest_message_only_events_get_their_own_issue_and_title() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -1637,7 +1637,7 @@ async fn test_digest_groups_log_messages() {
     // Should have 1 issue grouped by log message
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -1702,7 +1702,7 @@ async fn test_digest_updates_issue_last_seen() {
 
     let (issues_before, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -1760,7 +1760,7 @@ async fn test_digest_updates_issue_last_seen() {
 
     let (issues_after, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -2123,7 +2123,7 @@ async fn test_digest_handles_missing_exception() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -2186,7 +2186,7 @@ async fn test_digest_handles_multiline_error_value() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -2983,7 +2983,7 @@ async fn test_list_offset_search_filters_by_text() {
     // Case-insensitive match on type.
     let (hits, total) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Desc,
         IssueFilter::All,
@@ -3002,7 +3002,7 @@ async fn test_list_offset_search_filters_by_text() {
     // Match on value substring.
     let (hits, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Desc,
         IssueFilter::All,
@@ -3021,7 +3021,7 @@ async fn test_list_offset_search_filters_by_text() {
     // No match.
     let (_, total) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Desc,
         IssueFilter::All,
@@ -3077,7 +3077,7 @@ async fn test_list_offset_search_escapes_like_wildcards() {
 
     let (hits, total) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Desc,
         IssueFilter::All,
@@ -3104,7 +3104,7 @@ async fn test_list_offset_rejects_page_below_one() {
 
     let err = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -3121,7 +3121,7 @@ async fn test_list_offset_rejects_page_below_one() {
 
     let err = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -3144,7 +3144,7 @@ async fn test_list_offset_rejects_per_page_out_of_range() {
 
     let err = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -3161,7 +3161,7 @@ async fn test_list_offset_rejects_per_page_out_of_range() {
 
     let err = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,

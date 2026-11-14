@@ -1093,3 +1093,59 @@ async fn issues_filter_by_environment() {
         assert_eq!(status, 400, "{query}");
     }
 }
+
+/// Sentry's organization issues (`organization_group_index.py`): every
+/// project the reader can read, narrowed by repeated `project=` ids, where
+/// `-1` means all of them.
+#[actix_web::test]
+async fn organization_issues_span_projects_and_filter_by_project() {
+    let db = TestDb::new().await;
+    let token = admin_token(&db.pool).await;
+    let web = project(&db.pool, "Web").await;
+    let api = project(&db.pool, "Api").await;
+    let worker = project(&db.pool, "Worker").await;
+    ingest(&db.pool, web.id, "WebError", "a", Utc::now()).await;
+    ingest(&db.pool, api.id, "ApiError", "b", Utc::now()).await;
+    ingest(&db.pool, worker.id, "WorkerError", "c", Utc::now()).await;
+    let app = crate::common::app_with_config(&db.pool, config()).await;
+    let projects = |body: &Value| {
+        let mut slugs: Vec<String> = body
+            .as_array()
+            .expect("bare list")
+            .iter()
+            .map(|i| i["project"]["slug"].as_str().unwrap().to_string())
+            .collect();
+        slugs.sort();
+        slugs
+    };
+
+    let base = "/api/0/organizations/rustrak/issues/";
+    let (status, all) = get_json(&app, base, &token).await;
+    assert_eq!(status, 200);
+    assert_eq!(projects(&all), ["api", "web", "worker"]);
+
+    let (_, every) = get_json(&app, &format!("{base}?project=-1"), &token).await;
+    assert_eq!(projects(&every), ["api", "web", "worker"]);
+
+    let uri = format!("{base}?project={}&project={}", web.id, worker.id);
+    let (_, two) = get_json(&app, &uri, &token).await;
+    assert_eq!(projects(&two), ["web", "worker"]);
+}
+
+#[actix_web::test]
+async fn organization_issues_leave_out_projects_the_member_cannot_read() {
+    let db = TestDb::new().await;
+    let web = project(&db.pool, "Web").await;
+    let api = project(&db.pool, "Api").await;
+    ingest(&db.pool, web.id, "WebError", "a", Utc::now()).await;
+    ingest(&db.pool, api.id, "ApiError", "b", Utc::now()).await;
+    let token = member_token(&db.pool, web.id, "Viewer").await;
+    let app = crate::common::app_with_config(&db.pool, config()).await;
+
+    let (status, body) = get_json(&app, "/api/0/organizations/rustrak/issues/", &token).await;
+
+    assert_eq!(status, 200);
+    let items = body.as_array().expect("bare list");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["project"]["slug"], "web");
+}

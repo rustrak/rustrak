@@ -948,7 +948,7 @@ async fn issue_list_shows_only_the_issues_seen_in_the_asked_release() {
 
     let (issues, total) = rustrak::services::IssueService::list_offset(
         &db.pool,
-        project_id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project_id]),
         rustrak::pagination::IssueSort::LastSeen,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,

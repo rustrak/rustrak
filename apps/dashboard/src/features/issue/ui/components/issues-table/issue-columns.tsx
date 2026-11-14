@@ -19,6 +19,7 @@ import { SEEN_WINDOWS } from '@/features/issue/model/issue-table';
 import { STATUS_TONE } from '@/features/issue/model/status';
 import { levelMark, levelTone } from '@/shared/config/levels';
 import { Link } from '@/shared/ui/components/link';
+import { ProjectLogo } from '@/shared/ui/components/projects-picker';
 import { RelativeTime } from '@/shared/ui/components/relative-time';
 import type { StableFormatter } from '@/shared/ui/hooks/use-stable-formatter';
 
@@ -41,7 +42,12 @@ const SUBSTATUS_TONE: Record<string, TagTone> = {
 const NEW_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface ColumnContext {
-  projectId: number;
+  /** Across projects, the ones a row can belong to: it shows its own. */
+  projects?: readonly {
+    id: number;
+    name: string;
+    platform?: string | null;
+  }[];
   t: ReturnType<typeof useTranslations<'issues'>>;
   format: StableFormatter;
   members: Assignable[];
@@ -59,7 +65,7 @@ const column = createDataTableColumnHelper<IssueResponse>();
  * you sort or filter by, at a fixed width the reader can drag.
  */
 export function issueColumns({
-  projectId,
+  projects,
   t,
   format,
   members,
@@ -79,12 +85,35 @@ export function issueColumns({
       cell: ({ row }) => (
         <IssueCell
           issue={row.original}
-          href={`/projects/${projectId}/issues/${row.original.id}`}
+          href={`/projects/${row.original.project_id}/issues/${row.original.id}`}
           t={t}
         />
       ),
       meta: { label: t('columns.issue') },
     }),
+    ...(projects
+      ? [
+          column.accessor('project_id', {
+            id: 'projectName',
+            header: t('table.project'),
+            enableSorting: false,
+            cell: ({ getValue }) => {
+              const project = projects.find((p) => p.id === getValue());
+              // ponytail: names the picker's first 100 projects; past that,
+              // the id, until the list sends the project itself.
+              return (
+                <span className="flex min-w-0 items-center gap-2">
+                  <ProjectLogo project={project ?? {}} size={16} />
+                  <Text variant="meta" tone="subtle" truncate>
+                    {project?.name ?? `#${getValue()}`}
+                  </Text>
+                </span>
+              );
+            },
+            meta: { label: t('table.project'), width: 160 },
+          }),
+        ]
+      : []),
     column.accessor('level', {
       id: 'level',
       header: t('columns.level'),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   searchId,
+  searchIds,
   searchOneOf,
   searchPage,
   searchString,
@@ -75,4 +76,21 @@ describe('searchId', () => {
       expect(searchId(value)).toBeUndefined();
     },
   );
+});
+
+describe('searchIds', () => {
+  it('reads comma-separated ids, and a lone one TanStack parsed as a number', () => {
+    expect(searchIds('3,7')).toEqual([3, 7]);
+    expect(searchIds(5)).toEqual([5]);
+  });
+
+  it('drops what is not an id, and repeats', () => {
+    expect(searchIds('3,x,3,0')).toEqual([3]);
+  });
+
+  it('reads nothing usable as absent', () => {
+    expect(searchIds('')).toBeUndefined();
+    expect(searchIds('x')).toBeUndefined();
+    expect(searchIds(undefined)).toBeUndefined();
+  });
 });

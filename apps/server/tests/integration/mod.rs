@@ -22,6 +22,7 @@ mod events_api_test;
 mod feedback_test;
 mod field_errors_test;
 mod github_test;
+mod global_issues_test;
 mod health_test;
 mod ingest_test;
 mod issues_api_test;

@@ -479,6 +479,150 @@
         ]
       }
     },
+    "/api/0/organizations/{org_slug}/issues/": {
+      "get": {
+        "tags": [
+          "Sentry API"
+        ],
+        "summary": "Issues across projects, narrowed by `project`, filtered by `query`,\nsorted by `sort` and paginated by `cursor` (Sentry's\n`OrganizationGroupIndexEndpoint`,\n`issues/endpoints/organization_group_index.py`).",
+        "operationId": "sentry.listOrganizationIssues",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic — accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "description": "Project ids, repeated; `-1` or none for every project the reader can read",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Search: `is:unresolved|resolved|ignored` and free text (default: `is:unresolved`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "`date` (default), `new` or `freq`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, at most 100 (default: 100).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "A cursor from the `Link` header.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "statsPeriod",
+            "in": "query",
+            "description": "`24h` (default), `14d`, or empty for no stats.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only issues seen in this environment, counted there.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Issues; paginated by the `Link` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SentryIssue"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/0/organizations/{org_slug}/repos/": {
       "get": {
         "tags": [
@@ -1339,6 +1483,172 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MyAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/feedback": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Lists user feedback across every project the reader can read issues on.",
+        "operationId": "feedback.listAll",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "description": "Only these projects, comma-separated ids: `1,2`. Absent: every project the reader can read issues on.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-indexed, default: 1)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Items per page (default: 25, max: 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "description": "open (the inbox, default), resolved, muted (spam) or all",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IssueFilter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User feedback across projects, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Offset-based paginated response wrapper",
+                  "required": [
+                    "items",
+                    "total_count",
+                    "page",
+                    "per_page",
+                    "total_pages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "A user feedback: its issue's state and what the user submitted\n(`contexts.feedback`, develop.sentry.dev/sdk/telemetry/feedbacks/).",
+                        "required": [
+                          "id",
+                          "project_id",
+                          "status",
+                          "message",
+                          "name",
+                          "contact_email",
+                          "url",
+                          "associated_event_id",
+                          "created_at",
+                          "attachments"
+                        ],
+                        "properties": {
+                          "associated_event_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The SDK id of the error event it is about."
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/AttachmentInfo"
+                            },
+                            "description": "Files sent with it, such as a screenshot."
+                          },
+                          "contact_email": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "The feedback's issue."
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "project_id": {
+                            "type": "integer",
+                            "format": "int32"
+                          },
+                          "status": {
+                            "$ref": "#/components/schemas/IssueStatus"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "The page it was sent from."
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "per_page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_count": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_pages": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
                 }
               }
             }
@@ -2626,6 +2936,432 @@
           },
           "500": {
             "description": "The email could not be sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/issues": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Lists issues across every project the reader can read issues on, in the\nsame shape and pages as a project's list.",
+        "operationId": "issues.listAll",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "description": "Only these projects, comma-separated ids: `1,2`. Absent: every project the reader can read issues on.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-indexed, default: 1)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Items per page (default: 20, max: 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Sort mode (default: last_seen)",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IssueSort"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "description": "Sort order direction (default: desc)",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "description": "Filter: open (not resolved, not muted), resolved, muted, all",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IssueFilter"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Issue category: error (default) or feedback",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IssueCategory"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Free-text search across type, value, transaction, and culprit.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only issues seen in this environment, with that environment's first\nand last seen, event count, users and trend.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "release",
+            "in": "query",
+            "description": "Only issues that had an event in this release.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "description": "Only these levels, comma-separated: `fatal,error`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "description": "Only these priorities, comma-separated: `high,medium`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "assigned",
+            "in": "query",
+            "description": "`none` for unassigned issues, or a user id.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "first_seen",
+            "in": "query",
+            "description": "Only issues first seen within this window: `24h`, `7d`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "last_seen",
+            "in": "query",
+            "description": "Only issues last seen within this window: `24h`, `7d`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "events_min",
+            "in": "query",
+            "description": "Only issues with at least this many events.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "events_max",
+            "in": "query",
+            "description": "Only issues with at most this many events.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Issues across projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Offset-based paginated response wrapper",
+                  "required": [
+                    "items",
+                    "total_count",
+                    "page",
+                    "per_page",
+                    "total_pages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "Response for API",
+                        "required": [
+                          "id",
+                          "project_id",
+                          "short_id",
+                          "title",
+                          "value",
+                          "culprit",
+                          "logger",
+                          "first_seen",
+                          "last_seen",
+                          "event_count",
+                          "level",
+                          "platform",
+                          "status",
+                          "substatus",
+                          "priority",
+                          "assigned_to",
+                          "assignee_type",
+                          "issue_type",
+                          "issue_category",
+                          "first_release",
+                          "last_release",
+                          "status_details"
+                        ],
+                        "properties": {
+                          "assigned_to": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int32"
+                          },
+                          "assignee_type": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "culprit": {
+                            "type": "string"
+                          },
+                          "event_count": {
+                            "type": "integer",
+                            "format": "int32"
+                          },
+                          "first_release": {
+                            "type": "string"
+                          },
+                          "first_seen": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "has_seen": {
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "is_bookmarked": {
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
+                          },
+                          "is_subscribed": {
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
+                          },
+                          "issue_category": {
+                            "type": "string"
+                          },
+                          "issue_type": {
+                            "type": "string"
+                          },
+                          "last_release": {
+                            "type": "string"
+                          },
+                          "last_seen": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "level": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "logger": {
+                            "type": "string"
+                          },
+                          "platform": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "priority": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/components/schemas/IssuePriority"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "project_id": {
+                            "type": "integer",
+                            "format": "int32"
+                          },
+                          "short_id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "$ref": "#/components/schemas/IssueStatus"
+                          },
+                          "status_details": {
+                            "type": "object"
+                          },
+                          "substatus": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "trend": {
+                            "type": [
+                              "array",
+                              "null"
+                            ],
+                            "items": {
+                              "type": "integer",
+                              "format": "int64"
+                            },
+                            "description": "24 hourly buckets, oldest to newest. Only populated by the issue list\nendpoint."
+                          },
+                          "user_count": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64",
+                            "description": "Only populated by the issue list endpoint (bulk-computed per page)."
+                          },
+                          "user_report_count": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "int64",
+                            "description": "Only populated by the single-issue GET endpoint."
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "per_page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_count": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_pages": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
@@ -5546,6 +6282,7 @@
                         "description": "A user feedback: its issue's state and what the user submitted\n(`contexts.feedback`, develop.sentry.dev/sdk/telemetry/feedbacks/).",
                         "required": [
                           "id",
+                          "project_id",
                           "status",
                           "message",
                           "name",
@@ -5587,6 +6324,10 @@
                           },
                           "name": {
                             "type": "string"
+                          },
+                          "project_id": {
+                            "type": "integer",
+                            "format": "int32"
                           },
                           "status": {
                             "$ref": "#/components/schemas/IssueStatus"
@@ -16533,6 +17274,7 @@
         "description": "A user feedback: its issue's state and what the user submitted\n(`contexts.feedback`, develop.sentry.dev/sdk/telemetry/feedbacks/).",
         "required": [
           "id",
+          "project_id",
           "status",
           "message",
           "name",
@@ -16574,6 +17316,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "project_id": {
+            "type": "integer",
+            "format": "int32"
           },
           "status": {
             "$ref": "#/components/schemas/IssueStatus"
