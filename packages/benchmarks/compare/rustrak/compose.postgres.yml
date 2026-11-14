@@ -1,0 +1,36 @@
+# Rustrak on PostgreSQL, as docker-compose.postgres.yml in the repository runs it.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rustrak
+      POSTGRES_PASSWORD: rustrak
+      POSTGRES_DB: rustrak
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U rustrak
+      interval: 2s
+      retries: 30
+
+  server:
+    image: rustrak/rustrak-server:${RUSTRAK_TAG:-v0.27.0}-postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - data:/data
+    environment:
+      DATABASE_URL: postgres://rustrak:rustrak@postgres:5432/rustrak
+      SESSION_SECRET_KEY: "b3f1c0de5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed"
+      PUBLIC_URL: http://server:8080
+      RUSTRAK_BOOTSTRAP_TOKEN: "1"
+      RUSTRAK_TELEMETRY: "off"
+      MAX_EVENTS_PER_MINUTE: "100000000"
+      MAX_EVENTS_PER_HOUR: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_MINUTE: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_HOUR: "100000000"
+
+volumes:
+  pg:
+  data:

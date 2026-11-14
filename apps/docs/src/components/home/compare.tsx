@@ -2,6 +2,7 @@
 
 import { cn } from '@rustrak/ui';
 import * as m from 'motion/react-m';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { EASE, VIEW } from '../landing/motion';
 import { SectionHead } from './chrome';
@@ -278,7 +279,13 @@ export function Compare() {
         </Reveal>
         <p className="mt-4 text-fg-meta text-meta">
           Sentry figures from its self-hosted documentation, docker-compose.yml
-          and pricing page. Rustrak measured on a 4-core machine with SQLite.
+          and pricing page. Rustrak measured on a 4-core machine with SQLite.{' '}
+          <Link
+            href="/benchmarks"
+            className="text-fg-subtle underline decoration-fg-ghost underline-offset-4 transition-colors hover:text-fg"
+          >
+            Rustrak, Sentry, GlitchTip and Bugsink side by side →
+          </Link>
         </p>
       </div>
     </section>

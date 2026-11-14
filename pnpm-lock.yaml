@@ -373,6 +373,9 @@ importers:
       reading-time:
         specifier: 1.5.0
         version: 1.5.0
+      recharts:
+        specifier: 3.10.1
+        version: 3.10.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@17.0.2)(react@19.3.1)(redux@5.0.1)
       tailwind-merge:
         specifier: 3.7.0
         version: 3.7.0

@@ -449,3 +449,11 @@
      wanted in both cases. */
   margin: 0 auto;
 }
+
+/* Every page in the docs layout belongs to Documentation, but Nextra marks
+   that navbar link current only on the page it points at. Only the docs
+   layout renders Nextra's navbar, so the rule stays inside the docs. */
+.nextra-navbar nav a[href="/getting-started/overview"] {
+  color: var(--fg);
+  font-weight: 500;
+}

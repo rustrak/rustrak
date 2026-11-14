@@ -9,6 +9,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getPost, getPosts } from '../src/lib/blog.ts';
+import {
+  HARNESS,
+  label,
+  MEASURED,
+  mb,
+  num,
+  RUNS,
+  SETUP,
+} from '../src/lib/compare.ts';
 import { DEFINITION, SITE } from '../src/lib/seo.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -147,6 +156,38 @@ for (const post of getPosts()) {
   full.push(`<!-- ${SITE}${url} -->\n\n${page}`);
 }
 index.push('');
+
+// The comparison benchmark: its numbers as a Markdown table at
+// /benchmarks.md, since the page itself draws them in charts.
+const benchmark = [
+  '# Benchmark: Rustrak vs Sentry, GlitchTip and Bugsink',
+  '',
+  `Measured ${MEASURED}. ${SETUP.host}. Each product ran alone from its own Docker Compose file, pinned to the same ${SETUP.cores} cores, and received the same burst of ${num(SETUP.events)} gzipped Sentry envelopes (about ${SETUP.eventKb} KB each, ${SETUP.concurrency} in flight, ${num(SETUP.groups)} distinct issues). Memory is the cgroup \`anon\` counter summed over the stack; CPU is the stack's CPU time from the first request to the last event stored, divided by the events. Every product stored every event. Script: ${HARNESS}`,
+  '',
+  '| Product | Containers | Memory at rest | Memory at peak | Accepted/s | All stored after | CPU per event | Disk after |',
+  '|---|---|---|---|---|---|---|---|',
+  ...RUNS.map(
+    (r) =>
+      `| ${label(r)} ${r.version} | ${r.containers} | ${mb(r.ram.idle)} | ${mb(r.ram.peak)} | ${num(r.acceptPerS)} | ${r.storedSecs} s | ${r.cpuMsPerEvent} ms | ${mb(r.diskMb)} |`,
+  ),
+  '',
+  'Sentry accepts fastest because Relay answers once an event is on Kafka; storing it in ClickHouse is the slow part. One run, in a Docker Desktop VM; only ingestion was measured.',
+].join('\n');
+await writeFile(
+  join(PUBLIC, 'benchmarks.md'),
+  `---\nurl: ${SITE}/benchmarks\n---\n\n${benchmark}\n`,
+);
+full.push(`<!-- ${SITE}/benchmarks -->\n\n${benchmark}`);
+
+index.push(
+  '## Benchmarks and comparisons',
+  '',
+  `- [Benchmark](${SITE}/benchmarks.md): Rustrak, self-hosted Sentry, GlitchTip and Bugsink on the same machine and the same burst of ${num(SETUP.events)} errors: time to store them, memory, CPU per event and disk`,
+  `- [Rustrak vs self-hosted Sentry](${SITE}/vs/sentry): Memory, containers and time to store the burst, and what switching takes`,
+  `- [Rustrak vs GlitchTip](${SITE}/vs/glitchtip): Memory, CPU per event and time to store the burst`,
+  `- [Rustrak vs Bugsink](${SITE}/vs/bugsink): Both on SQLite: time to store the burst, CPU per event and memory`,
+  '',
+);
 
 index.push(
   '## API',
