@@ -44,15 +44,24 @@ export interface IntlStore {
 export function createIntlStore(deps: IntlDependencies): IntlStore {
   let current: IntlSnapshot | undefined;
   let inFlight: Promise<IntlSnapshot> | null = null;
+  // The newest resolve, and its number. Kept apart from `inFlight`, which a
+  // failure clears, so an older resolve always has the newer one to defer to.
+  let generation = 0;
+  let latest: Promise<IntlSnapshot> | null = null;
   const listeners = new Set<() => void>();
 
-  async function resolve(): Promise<IntlSnapshot> {
+  async function resolve(mine: number): Promise<IntlSnapshot> {
     const answer = await deps.readSession();
     const user = answer.state === 'authenticated' ? answer.user : null;
 
     const locale = resolveLocale(user?.language, deps.browserLanguages());
     const timeZone = resolveTimeZone(user?.timezone);
     const messages = await deps.loadMessages(locale);
+
+    // A newer resolve started while this one waited: a sign-out while the
+    // previous reader's catalogue was still loading. It has the newer reader,
+    // so this one publishes nothing and answers with whatever that one does.
+    if (mine !== generation && latest) return latest;
 
     current = {
       locale,
@@ -68,8 +77,10 @@ export function createIntlStore(deps: IntlDependencies): IntlStore {
   }
 
   function start(): Promise<IntlSnapshot> {
-    const request = resolve();
+    generation += 1;
+    const request = resolve(generation);
     inFlight = request;
+    latest = request;
     // A failed resolve must not be remembered: it is almost always the
     // session read, and the next navigation gets to try again.
     void request.catch(() => {
