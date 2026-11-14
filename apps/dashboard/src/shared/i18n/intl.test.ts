@@ -113,6 +113,22 @@ describe('createIntlStore', () => {
     expect(formats.dateTime?.dateTime).toMatchObject({ timeStyle: 'short' });
   });
 
+  it("puts the reader's clock into the formats, and leaves it out when unset", async () => {
+    const chosen = createIntlStore(
+      deps({ readSession: async () => user({ clock_24h: true }) }),
+    );
+    const unset = createIntlStore(
+      deps({ readSession: async () => user({ clock_24h: null }) }),
+    );
+
+    expect((await chosen.ensure()).formats.dateTime?.logLine).toMatchObject({
+      hourCycle: 'h23',
+    });
+    expect((await unset.ensure()).formats.dateTime?.logLine).not.toHaveProperty(
+      'hourCycle',
+    );
+  });
+
   it('has no snapshot before it is resolved, and says so', () => {
     const store = createIntlStore(deps());
 

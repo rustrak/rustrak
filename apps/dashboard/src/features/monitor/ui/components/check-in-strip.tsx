@@ -30,17 +30,7 @@ export function CheckInStrip({
       : 0;
   const daily = width >= 86_400_000;
   const when = (at: number) =>
-    format.dateTime(
-      new Date(at),
-      daily
-        ? { month: 'short', day: 'numeric' }
-        : {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-          },
-    );
+    format.dateTime(new Date(at), daily ? 'axisDay' : 'axisTime');
 
   return (
     <ol
@@ -112,14 +102,7 @@ export function StripAxis({
         className,
       )}
     >
-      <span>
-        {format.dateTime(
-          start,
-          long
-            ? { month: 'short', day: 'numeric' }
-            : { hour: 'numeric', minute: '2-digit' },
-        )}
-      </span>
+      <span>{format.dateTime(start, long ? 'axisDay' : 'clock')}</span>
       <span>{t('timeline.now')}</span>
     </div>
   );

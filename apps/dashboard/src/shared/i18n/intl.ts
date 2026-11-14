@@ -2,12 +2,17 @@ import type { Formats, Messages } from 'use-intl';
 import type { CurrentUser } from '@/shared/api/session';
 import { session } from '@/shared/api/session';
 import type { Locale } from './config';
-import { formatsFor, resolveLocale, resolveTimeZone } from './config';
+import {
+  formatsFor,
+  resolveHourCycle,
+  resolveLocale,
+  resolveTimeZone,
+} from './config';
 
 /**
  * The i18n configuration, resolved once for the reader at boot from
- * `users.language` and `users.timezone`, and republished when the reader
- * changes either.
+ * `users.language`, `users.timezone` and `users.clock_24h`, and republished
+ * when the reader changes any of them.
  */
 export interface IntlSnapshot {
   locale: Locale;
@@ -29,7 +34,7 @@ export interface IntlDependencies {
 export interface IntlStore {
   /** Resolve the configuration. Idempotent: the second call is the first. */
   ensure(): Promise<IntlSnapshot>;
-  /** Re-resolve, after the reader changed their language or their zone. */
+  /** Re-resolve, after the reader changed their language, zone or clock. */
   reload(): Promise<IntlSnapshot>;
   /** The resolved configuration. Throws before `ensure()` has settled. */
   snapshot(): IntlSnapshot;
@@ -53,7 +58,10 @@ export function createIntlStore(deps: IntlDependencies): IntlStore {
       locale,
       timeZone,
       messages,
-      formats: formatsFor(timeZone) as Formats,
+      formats: formatsFor(
+        timeZone,
+        resolveHourCycle(user?.clock_24h),
+      ) as Formats,
     };
     for (const listener of listeners) listener();
     return current;
