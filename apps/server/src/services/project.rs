@@ -3,7 +3,8 @@ use slug::slugify;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{
-    CreateProject, Product, Project, UpdateProject, SELECTABLE_PLATFORMS, VALID_PLATFORMS,
+    CreateProject, Product, Project, QuotaWindows, UpdateProject, SELECTABLE_PLATFORMS,
+    VALID_PLATFORMS,
 };
 use crate::pagination::SortOrder;
 
@@ -165,6 +166,54 @@ impl ProjectService {
         .ok_or_else(|| AppError::NotFound(format!("Project with id {} not found", id)))?;
 
         Ok(project)
+    }
+
+    /// [`Self::get_by_id`] together with the installation's quota windows, in
+    /// one round trip: what ingest and the digest read before an event's
+    /// quota check.
+    pub async fn get_with_installation_quota(
+        pool: &DbPool,
+        id: i32,
+    ) -> AppResult<(Project, QuotaWindows)> {
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            #[sqlx(flatten)]
+            project: Project,
+            installation_minute_window: i64,
+            installation_minute_count: i64,
+            installation_hour_window: i64,
+            installation_hour_count: i64,
+        }
+        let row = sqlx::query_as::<_, Row>(
+            r#"
+            SELECT p.id, p.name, p.slug, p.sentry_key, p.stored_event_count,
+                   p.digested_event_count, p.created_at, p.updated_at, p.platform,
+                   p.quota_exceeded_until, p.quota_exceeded_reason, p.next_quota_check,
+                   p.quota_minute_window, p.quota_minute_count, p.quota_hour_window, p.quota_hour_count,
+                   p.rate_limited_event_count, p.rate_limit_per_minute, p.rate_limit_per_hour,
+                   p.disabled_products, p.product_order,
+                   i.quota_minute_window AS installation_minute_window,
+                   i.quota_minute_count AS installation_minute_count,
+                   i.quota_hour_window AS installation_hour_window,
+                   i.quota_hour_count AS installation_hour_count
+            FROM projects p CROSS JOIN installation i
+            WHERE p.id = $1 AND i.id = 1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Project with id {} not found", id)))?;
+
+        Ok((
+            row.project,
+            QuotaWindows {
+                quota_minute_window: row.installation_minute_window,
+                quota_minute_count: row.installation_minute_count,
+                quota_hour_window: row.installation_hour_window,
+                quota_hour_count: row.installation_hour_count,
+            },
+        ))
     }
 
     /// The id of the project a sentry-cli style path names: by slug first,

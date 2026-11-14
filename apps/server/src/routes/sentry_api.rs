@@ -1285,7 +1285,7 @@ pub async fn submit_user_feedback(
             ingested_at: Utc::now(),
             remote_addr: None,
         },
-        &shim.payload,
+        shim.payload.into(),
     )
     .await?;
 

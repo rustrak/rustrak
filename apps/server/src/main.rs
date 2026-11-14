@@ -11,9 +11,9 @@ use rustrak::telemetry::TelemetryStatus;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
+    rustrak::allocator::tune();
 
     let log_timezone = config::log_timezone();
     let tz = log_timezone.clone().ok().flatten();
@@ -42,6 +42,21 @@ async fn main() -> std::io::Result<()> {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
     })?;
 
+    // Capped so Tokio does not start a thread whenever none is idle, each
+    // holding an allocator heap. Room for the live digest's and recovery's
+    // preps, plus file removal and symbolication.
+    let blocking = 2 * config.digest_prep_workers + 4;
+    actix_web::rt::System::with_tokio_rt(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(blocking)
+            .build()
+            .expect("cannot start the main runtime")
+    })
+    .block_on(serve(config))
+}
+
+async fn serve(config: config::Config) -> std::io::Result<()> {
     log::info!("Starting Rustrak server on {}:{}", config.host, config.port);
     rustrak::services::notification::allow_private_destinations(
         config.alerts_allow_private_networks,
@@ -131,24 +146,80 @@ async fn main() -> std::io::Result<()> {
 
     state.spawn_workers();
 
-    let session_aggregator = state.session_aggregator.clone();
-    let server = HttpServer::new(move || app(&state))
-        .bind((host.as_str(), port))?
-        .shutdown_timeout(30)
-        .run();
+    // On SIGTERM or SIGINT the digests drain first, while the HTTP workers
+    // they run on are still alive; only then does Actix stop, finishing
+    // in-flight requests, and `server.await` return. The rest of the
+    // shutdown runs here, on main, so the runtime cannot exit before it
+    // commits.
+    let server = HttpServer::new({
+        let state = state.clone();
+        move || app(&state)
+    })
+    .shutdown_signal({
+        let state = state.clone();
+        async move {
+            stop_signal().await;
+            log::info!("Shutting down: draining in-flight digests (signal again to stop now)");
+            // With a shutdown future Actix installs no signal handlers, so a
+            // second signal is handled here. What is not digested stays in
+            // the spool for the next start.
+            tokio::spawn({
+                let state = state.clone();
+                async move {
+                    let code = stop_signal().await;
+                    log::warn!(
+                        "Second stop signal: exiting now; undigested events stay in the spool"
+                    );
+                    let flush = state.flush_sessions();
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), flush).await;
+                    std::process::exit(code);
+                }
+            });
+            // 5 s, so the drain, Actix's stop and the final checkpoint fit in
+            // Docker's default 10 s stop grace when the digests are healthy.
+            state.drain(std::time::Duration::from_secs(5)).await;
+        }
+    })
+    // Spool writes and large decodes: without a cap a slow fsync makes each
+    // waiting write start a thread (and an allocator heap), and they all
+    // wait on the same disk anyway.
+    .worker_max_blocking_threads(4)
+    .bind((host.as_str(), port))?
+    .shutdown_timeout(30)
+    .run();
 
-    // Actix stops on SIGINT/SIGTERM by itself, draining in-flight requests,
-    // and only then does `server.await` return. The final flush runs here, on
-    // main, so the runtime cannot exit before it commits: ingest acknowledges
-    // sessions before they reach the database (#390).
     let result = server.await;
-    if let Err(e) = session_aggregator.flush().await {
-        log::error!(
-            "Failed to flush session aggregator during shutdown: {:?}",
-            e
-        );
-    }
+    state.shutdown().await;
     result
+}
+
+/// SIGTERM (what an orchestrator sends) or SIGINT (Ctrl-C), whichever comes
+/// first. The first stops the server gracefully, a second at once. Returns
+/// the conventional exit code for it: 128 + the signal number.
+async fn stop_signal() -> i32 {
+    const SIGINT_EXIT: i32 = 130;
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                tokio::select! {
+                    _ = term.recv() => 143,
+                    _ = tokio::signal::ctrl_c() => SIGINT_EXIT,
+                }
+            }
+            Err(e) => {
+                log::warn!("Cannot listen for SIGTERM ({e}); only Ctrl-C stops the server");
+                let _ = tokio::signal::ctrl_c().await;
+                SIGINT_EXIT
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+        SIGINT_EXIT
+    }
 }
 
 /// Creates a first API token when none exists.

@@ -1277,7 +1277,8 @@ export const zRateLimitsResponse = z.object({
 });
 
 export const zReadinessChecks = z.object({
-    database: z.string()
+    database: z.string(),
+    digest: z.string()
 });
 
 export const zReadinessResponse = z.object({

@@ -644,9 +644,9 @@ async fn test_concurrent_mixed_create_and_update() {
     );
 }
 
-/// The retry bound: a holder that outlasts every attempt's budget must
-/// fail the digest with the busy error (not loop forever) and leave no
-/// partial issue behind.
+/// A holder that outlasts the write lock's budget fails the synchronous
+/// digest, which makes one attempt, with the busy error (not a loop), keeps
+/// the file for a replay and leaves no partial issue behind.
 #[cfg(feature = "sqlite")]
 #[actix_web::test]
 async fn test_digest_fails_after_exhausting_sqlite_write_retries() {
@@ -878,6 +878,231 @@ async fn production_pool(db_path: &std::path::Path, max_connections: u32) -> rus
         .await
         .expect("Failed to run migrations");
     pool
+}
+
+/// `SQLITE_FULL` inside a transaction can roll the whole transaction back by
+/// itself. sqlx's own `ROLLBACK` then fails, its count of open transactions
+/// stays at one, and the connection goes back to the pool looking idle: the
+/// next `BEGIN IMMEDIATE` on it failed with `InvalidSavePointStatement`.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn a_full_disk_does_not_leave_a_pooled_connection_inside_a_transaction() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let pool = production_pool(&temp_dir.path().join("rustrak_full.db"), 1).await;
+    sqlx::query("CREATE TABLE filler (data BLOB)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "PRAGMA max_page_count = {}",
+        pages + 2
+    )))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mut tx = rustrak::db::begin_write(&pool).await.unwrap();
+    let full = sqlx::query("INSERT INTO filler VALUES (zeroblob(1000000))")
+        .execute(&mut *tx)
+        .await
+        .expect_err("the insert must not fit");
+    let code = full
+        .as_database_error()
+        .and_then(|e| e.code())
+        .map(|c| c.into_owned());
+    assert_eq!(
+        code.as_deref(),
+        Some("13"),
+        "expected SQLITE_FULL: {full:?}"
+    );
+    let _ = tx.rollback().await;
+
+    let tx = rustrak::db::begin_write(&pool)
+        .await
+        .expect("the next write transaction must start");
+    tx.rollback().await.unwrap();
+}
+
+/// Pool connections never checkpoint, so no request (a transaction, a log, a
+/// span) runs the whole log's checkpoint, and a reset log is truncated back
+/// to 64 MiB. The digest commits on its own connection: every commit fsyncs
+/// the log (`synchronous=FULL`, so a spool file can go right after it) and
+/// its batches checkpoint late. Everything else is the pool's,
+/// `busy_timeout` included.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn test_only_the_durable_committer_checkpoints() {
+    use sqlx::Connection as _;
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let pool = production_pool(&temp_dir.path().join("rustrak_wal.db"), 2).await;
+    let mut conn = rustrak::db::connect_committer(&pool).await.unwrap();
+    let pragma = |name: &str| sqlx::AssertSqlSafe(format!("PRAGMA {name}"));
+
+    let mut got: Vec<i64> = Vec::new();
+    for name in ["wal_autocheckpoint", "journal_size_limit"] {
+        got.push(
+            sqlx::query_scalar(pragma(name))
+                .fetch_one(&pool)
+                .await
+                .unwrap(),
+        );
+    }
+    for name in ["synchronous", "wal_autocheckpoint", "busy_timeout"] {
+        got.push(
+            sqlx::query_scalar(pragma(name))
+                .fetch_one(&mut conn)
+                .await
+                .unwrap(),
+        );
+    }
+    assert_eq!(got, [0, 64 * 1024 * 1024, 2, 10_000, 5_000]);
+    conn.close().await.unwrap();
+}
+
+/// Writes that never reach the digest (a deployment that only sends
+/// transactions, logs or spans) stay in the log, never checkpointed by the
+/// request that wrote them, until the digest's timer checkpoints them once it
+/// is caught up: then the database holds them and the next write starts the
+/// log over, so it stays bounded.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn test_pool_only_writes_are_checkpointed_by_the_digest() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let path = temp_dir.path().join("rustrak_pool_only.db");
+    let pool = production_pool(&path, 2).await;
+    let spool = TempDir::new().unwrap();
+    let processors = crate::common::processors(&pool, spool.path());
+    sqlx::query("CREATE TABLE filler (b BLOB)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let db_bytes = || std::fs::metadata(&path).unwrap().len();
+    let before = db_bytes();
+
+    // ~2 000 pages, past SQLite's own 1 000-page autocheckpoint.
+    sqlx::query(
+        "INSERT INTO filler SELECT zeroblob(4000) FROM \
+         (WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 2000) \
+          SELECT x FROM n)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(
+        db_bytes() < before + 1024 * 1024,
+        "the pool's write checkpointed itself"
+    );
+
+    processors
+        .errors
+        .checkpoint_when_caught_up(&pool)
+        .await
+        .unwrap();
+    assert!(db_bytes() >= before + 2000 * 4000, "not checkpointed");
+    sqlx::query("INSERT INTO filler VALUES (x'00')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (_, logged, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(PASSIVE)")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(logged < 16, "the log did not start over: {logged} frames");
+}
+
+/// Once the live digest is idle nothing it keeps open pins a read snapshot:
+/// a `TRUNCATE` checkpoint gets the whole log back at once, with the
+/// committer's connection still open.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn test_an_idle_digest_pins_no_snapshot_of_the_log() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let pool = production_pool(&temp_dir.path().join("rustrak_truncate.db"), 4).await;
+    let project = create_test_project(&pool, "Truncate").await;
+    let spool = TempDir::new().unwrap();
+    let processors = Arc::new(crate::common::processors(&pool, spool.path()));
+    for i in 0..64 {
+        let (event_id, event) = create_unique_event_json("TruncateError", &format!("e{}", i % 4));
+        rustrak::ingest::pipeline::enqueue_digest(
+            &processors,
+            &pool,
+            Uuid::parse_str(&event_id).unwrap(),
+            EventMetadata {
+                event_id,
+                project_id: project.id,
+                ingested_at: Utc::now(),
+                remote_addr: None,
+            },
+            serde_json::to_vec(&event).unwrap().into(),
+        )
+        .await
+        .unwrap();
+    }
+    crate::common::eventually(|| async {
+        (!crate::common::has_files(spool.path()) && processors.errors.in_flight().is_empty())
+            .then_some(())
+    })
+    .await;
+
+    let mut conn = pool.acquire().await.unwrap();
+    sqlx::query("PRAGMA busy_timeout = 100")
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    let (busy, log, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
+        .fetch_one(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!((busy, log), (0, 0), "the log stays pinned");
+}
+
+/// A digest that keeps up checkpoints each commit right after it, while the
+/// commit is small, so the next write starts the log over.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn test_a_caught_up_digest_checkpoints_each_commit() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let pool = production_pool(&temp_dir.path().join("rustrak_caught_up.db"), 4).await;
+    let project = create_test_project(&pool, "Caught up").await;
+    let spool = TempDir::new().unwrap();
+    let processors = Arc::new(crate::common::processors(&pool, spool.path()));
+    let (event_id, event) = create_unique_event_json("CaughtUpError", "e");
+    rustrak::ingest::pipeline::enqueue_digest(
+        &processors,
+        &pool,
+        Uuid::parse_str(&event_id).unwrap(),
+        EventMetadata {
+            event_id,
+            project_id: project.id,
+            ingested_at: Utc::now(),
+            remote_addr: None,
+        },
+        serde_json::to_vec(&event).unwrap().into(),
+    )
+    .await
+    .unwrap();
+    crate::common::eventually(|| async {
+        (!crate::common::has_files(spool.path()) && processors.errors.in_flight().is_empty())
+            .then_some(())
+    })
+    .await;
+
+    sqlx::query("CREATE TABLE after_the_digest (x INTEGER)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (_, logged, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(PASSIVE)")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(
+        logged < 16,
+        "the digest's commit stayed in the log: {logged} frames"
+    );
 }
 
 /// The digest retry loop covers the digest only. Every other writer —
@@ -1321,6 +1546,12 @@ async fn test_an_inline_write_waits_its_turn_behind_the_digests() {
         transaction.len()
     );
 
+    // A large body's slot: held through the inline writes that wait their
+    // turn, since the items still borrow the body; given back after.
+    let large: &'static tokio::sync::Semaphore =
+        Box::leak(Box::new(tokio::sync::Semaphore::new(1)));
+    let slot = large.acquire().await.unwrap();
+
     let turn = processors.errors.write_turn().await;
     let ingest = tokio::spawn({
         let (processors, pool, project) = (Arc::clone(&processors), pool.clone(), project.clone());
@@ -1332,6 +1563,7 @@ async fn test_an_inline_write_waits_its_turn_behind_the_digests() {
                 envelope.into(),
                 None,
                 Utc::now(),
+                Some(slot),
             )
             .await
         }
@@ -1341,16 +1573,90 @@ async fn test_an_inline_write_waits_its_turn_behind_the_digests() {
         !ingest.is_finished(),
         "the transaction must wait for the digest holding the write turn"
     );
+    assert_eq!(
+        large.available_permits(),
+        0,
+        "the large-body slot is held while the body waits to be written"
+    );
 
     drop(turn);
     ingest
         .await
         .expect("ingest task panicked")
         .expect("the transaction must be stored once its turn comes");
+    assert_eq!(large.available_permits(), 1, "the slot is given back");
     let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions WHERE project_id = $1")
         .bind(project.id)
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(stored, 1);
+}
+
+/// Postgres: an API write to an issue that commits while a digest of one of
+/// its events waits for the issue's row is what the digest folds into. The
+/// digest reads the issue under the row lock, so a resolve that landed first
+/// is regressed, not overwritten by a stale read.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn an_api_resolve_committed_while_the_digest_waits_is_seen() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Resolve Race").await;
+    let temp_dir = TempDir::new().unwrap();
+    let processors = Arc::new(crate::common::processors(&db.pool, temp_dir.path()));
+    let accept = |message: &'static str| {
+        let dir = temp_dir.path().to_path_buf();
+        async move {
+            let (event_id, event_json) = create_unique_event_json("RaceError", message);
+            crate::common::store_event(
+                &dir,
+                project.id,
+                &event_id,
+                &serde_json::to_vec(&event_json).unwrap(),
+            )
+            .await
+            .unwrap();
+            EventMetadata {
+                event_id,
+                project_id: project.id,
+                ingested_at: Utc::now(),
+                remote_addr: None,
+            }
+        }
+    };
+    let first = accept("same").await;
+    processors.errors.digest(&db.pool, &first).await.unwrap();
+    let issue_id: Uuid = sqlx::query_scalar("SELECT id FROM issues WHERE project_id = $1")
+        .bind(project.id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+
+    let mut resolve = db.pool.begin().await.unwrap();
+    sqlx::query("UPDATE issues SET status = 'resolved' WHERE id = $1")
+        .bind(issue_id)
+        .execute(&mut *resolve)
+        .await
+        .unwrap();
+    let second = accept("same").await;
+    let digest = tokio::spawn({
+        let (processors, pool) = (Arc::clone(&processors), db.pool.clone());
+        async move { processors.errors.digest(&pool, &second).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!digest.is_finished(), "the digest waits for the issue row");
+    resolve.commit().await.unwrap();
+    digest.await.unwrap().unwrap();
+
+    let issue = IssueService::get_by_id(&db.pool, issue_id).await.unwrap();
+    assert_eq!(
+        (issue.status.as_str(), issue.substatus.as_deref()),
+        ("unresolved", Some("regressed"))
+    );
+    let activities = rustrak::services::IssueSocialService::list_activity(&db.pool, issue_id)
+        .await
+        .unwrap();
+    assert!(activities
+        .iter()
+        .any(|a| a.activity_type == "set_regression"));
 }

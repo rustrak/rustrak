@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::db::{Db, DbPool};
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::rbac::{Access, Action, Assignment, Grants, Resource, Scope};
-use crate::models::{Permission, PersonalAccess, Role, RoleAssignment, UserRole};
+use crate::models::{Permission, PersonalAccess, Role, RoleAssignment, User, UserRole};
 
 pub struct RoleService;
 
@@ -402,12 +402,9 @@ impl RoleService {
 
     /// What a user may do: everything for an instance owner
     /// (`users.role = 'admin'`), otherwise the sum of their assigned roles.
-    pub async fn access_for(pool: &DbPool, user_id: i32) -> AppResult<Access> {
-        let role: Option<(String,)> = sqlx::query_as("SELECT role FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
-        if role.is_some_and(|(r,)| UserRole::from_db(&r) == UserRole::Admin) {
+    pub async fn access_for(pool: &DbPool, user: &User) -> AppResult<Access> {
+        let user_id = user.id;
+        if UserRole::from_db(&user.role) == UserRole::Admin {
             return Ok(Access::new(vec![Assignment {
                 project_id: None,
                 grants: Grants::all(),

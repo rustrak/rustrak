@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::db::DbPool;
 use crate::digest::processors::Processors;
 use crate::error::{AppError, AppResult};
-use crate::ingest::{decompression, pipeline, read_body, MAX_COMPRESSED_SIZE};
+use crate::ingest::{decompression, pipeline, read_body};
 use crate::models::monitor::{CheckIn, CheckInStatus};
 use crate::models::Product;
 use crate::services::RateLimitService;
@@ -90,10 +90,23 @@ async fn ingest(
             .insert_header((header::ACCEPT_ENCODING, decompression::ACCEPT_ENCODING))
             .finish());
     }
-    let body = read_body(&req, payload).await?;
-    if let Some(exceeded) =
-        RateLimitService::check_quota(pool.get_ref(), &auth.project, &config.rate_limit).await?
-    {
+    // Shedding needs no body: refuse before reading up to 100 MiB of it.
+    processors.admit(
+        processors
+            .errors
+            .pending()
+            .counts(auth.project.id)
+            .installation,
+    )?;
+    // Held until the envelope is parsed: see `LARGE_BODY_SLOTS`.
+    let (body, large_body) = read_body(&req, payload).await?;
+    let pending = processors.errors.pending().counts(auth.project.id);
+    if let Some(exceeded) = RateLimitService::check_quota(
+        &auth.installation_quota,
+        &auth.project,
+        &config.rate_limit,
+        pending,
+    ) {
         log::warn!(
             "Rate limit exceeded for project {}: retry_after={}s",
             auth.project.id,
@@ -125,6 +138,7 @@ async fn ingest(
         body,
         remote_addr,
         ingested_at,
+        large_body,
     )
     .await?;
     Ok(HttpResponse::Ok().json(IngestResponse { id }))
@@ -147,18 +161,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route(web::post().to(ingest_store))
             .route(options()),
     );
-    let payload = || web::PayloadConfig::new(MAX_COMPRESSED_SIZE);
     for path in [
         "/api/{project_id}/cron/{monitor_slug}/{sentry_key}/",
         "/api/{project_id}/cron/{monitor_slug}/{sentry_key}",
         "/api/{project_id}/cron/{monitor_slug}/",
         "/api/{project_id}/cron/{monitor_slug}",
     ] {
-        cfg.service(
-            web::resource(path)
-                .app_data(payload())
-                .route(web::route().to(cron_check_in)),
-        );
+        cfg.service(web::resource(path).route(web::route().to(cron_check_in)));
     }
 }
 
@@ -181,8 +190,11 @@ pub async fn cron_check_in(
     processors: web::Data<Processors>,
     req: HttpRequest,
     auth: SentryAuth,
-    body: Bytes,
+    payload: web::Payload,
 ) -> AppResult<HttpResponse> {
+    // The envelope endpoint's reader: the same size caps, and a body that
+    // stops arriving is refused instead of holding the request open.
+    let (body, large_body) = read_body(&req, payload).await?;
     let slug = req.match_info().get("monitor_slug").unwrap_or_default();
     let is_json = req
         .headers()
@@ -211,6 +223,8 @@ pub async fn cron_check_in(
             None,
         )?
     };
+    // Parsed: the body's slot is not held through the database write.
+    drop((body, large_body));
 
     // Crons turned off: accepted and not stored, the same answer the envelope
     // path gives, so a monitored job never sees a failure from its monitor.

@@ -499,6 +499,7 @@ pub async fn update_issue(
 /// Hard-deletes an issue and all associated events
 pub async fn delete_issue(
     pool: web::Data<DbPool>,
+    processors: web::Data<crate::digest::processors::Processors>,
     path: web::Path<(i32, Uuid)>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
@@ -508,7 +509,7 @@ pub async fn delete_issue(
 
     IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
-    IssueService::delete(pool.get_ref(), issue_id).await?;
+    IssueService::delete(pool.get_ref(), issue_id, &processors.errors).await?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -659,6 +660,7 @@ pub async fn bulk_update_issues(
 ))]
 pub async fn bulk_delete_issues(
     pool: web::Data<DbPool>,
+    processors: web::Data<crate::digest::processors::Processors>,
     path: web::Path<i32>,
     body: Result<web::Json<BulkDeleteIssues>, actix_web::Error>,
     actor: ApiActor,
@@ -673,13 +675,14 @@ pub async fn bulk_delete_issues(
             )
         }
     });
-    delete_issues(pool, path.into_inner(), body, actor).await
+    delete_issues(pool, processors, path.into_inner(), body, actor).await
 }
 
 /// [`bulk_delete_issues`] past the extractor, whose `actix_web::Error` is not
 /// `Send`: what the MCP tool calls.
 pub async fn delete_issues(
     pool: web::Data<DbPool>,
+    processors: web::Data<crate::digest::processors::Processors>,
     project_id: i32,
     body: AppResult<web::Json<BulkDeleteIssues>>,
     actor: ApiActor,
@@ -691,7 +694,7 @@ pub async fn delete_issues(
 
     let deleted = match &*body {
         BulkDeleteIssues::Ids { ids } => {
-            IssueService::bulk_delete(pool.get_ref(), project_id, ids).await?
+            IssueService::bulk_delete(pool.get_ref(), project_id, ids, &processors.errors).await?
         }
         BulkDeleteIssues::Filter { filter } => {
             IssueService::delete_by_filter(pool.get_ref(), project_id, *filter).await?

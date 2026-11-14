@@ -15,7 +15,7 @@ fn test_rate_limit_config_defaults() {
     env.remove("MAX_EVENTS_PER_PROJECT_PER_MINUTE");
     env.remove("MAX_EVENTS_PER_PROJECT_PER_HOUR");
 
-    let config = RateLimitConfig::from_env();
+    let config = RateLimitConfig::from_env().unwrap();
 
     // A brake for a runaway loop, not a cap on ordinary spikes.
     assert_eq!(config.max_events_per_minute, 60_000);
@@ -46,7 +46,7 @@ fn test_rate_limit_config_custom_values() {
     env.set("MAX_EVENTS_PER_PROJECT_PER_MINUTE", "50");
     env.set("MAX_EVENTS_PER_PROJECT_PER_HOUR", "500");
 
-    let config = RateLimitConfig::from_env();
+    let config = RateLimitConfig::from_env().unwrap();
 
     assert_eq!(config.max_events_per_minute, 100);
     assert_eq!(config.max_events_per_hour, 1000);
@@ -54,17 +54,60 @@ fn test_rate_limit_config_custom_values() {
     assert_eq!(config.max_events_per_project_per_hour, 500);
 }
 
+/// A typo in a number stops startup and names the variable: falling back to
+/// the default silently ran a server the operator did not configure.
 #[test]
-fn test_rate_limit_config_invalid_values_use_defaults() {
-    let mut env = EnvGuard::new();
-    env.set("MAX_EVENTS_PER_MINUTE", "not-a-number");
-    env.set("MAX_EVENTS_PER_HOUR", "abc");
+fn an_unparsable_number_is_refused_and_named() {
+    for name in [
+        "MAX_EVENTS_PER_MINUTE",
+        "DATABASE_MAX_CONNECTIONS",
+        "DATABASE_ACQUIRE_TIMEOUT_SECS",
+        "SOURCEMAP_CACHE_MB",
+        "MAX_CHUNK_SIZE_BYTES",
+        "SESSION_FLUSH_INTERVAL_SECS",
+        "SMTP_PORT",
+        "INGEST_MAX_PENDING_EVENTS",
+        "INGEST_MIN_FREE_DISK_MB",
+    ] {
+        let mut env = EnvGuard::new();
+        env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+            .set(name, "ten");
 
-    let config = RateLimitConfig::from_env();
+        let message = Config::from_env()
+            .expect_err("a value that is not a number must not start the server")
+            .to_string();
+
+        assert!(message.contains(name), "{name}: {message}");
+        assert!(message.contains("\"ten\""), "{name}: {message}");
+    }
+}
+
+/// Unset or blank keeps the default.
+#[test]
+fn a_blank_number_keeps_its_default() {
+    let mut env = EnvGuard::new();
+    env.set("MAX_EVENTS_PER_MINUTE", " ");
+    env.remove("MAX_EVENTS_PER_HOUR");
+
+    let config = RateLimitConfig::from_env().unwrap();
 
     let defaults = RateLimitConfig::default();
     assert_eq!(config.max_events_per_minute, defaults.max_events_per_minute);
     assert_eq!(config.max_events_per_hour, defaults.max_events_per_hour);
+}
+
+/// Load shedding is on by default with limits no ordinary workload meets.
+#[test]
+fn ingest_load_shedding_defaults() {
+    let mut env = EnvGuard::new();
+    env.set("DATABASE_URL", "postgres://test:test@localhost/test");
+    env.remove("INGEST_MAX_PENDING_EVENTS");
+    env.remove("INGEST_MIN_FREE_DISK_MB");
+
+    let config = Config::from_env().unwrap();
+
+    assert_eq!(config.ingest_max_pending_events, 100_000);
+    assert_eq!(config.ingest_min_free_disk_bytes, 64 * 1024 * 1024);
 }
 
 #[test]
@@ -73,7 +116,7 @@ fn test_rate_limit_config_zero_values() {
     env.set("MAX_EVENTS_PER_MINUTE", "0");
     env.set("MAX_EVENTS_PER_HOUR", "0");
 
-    let config = RateLimitConfig::from_env();
+    let config = RateLimitConfig::from_env().unwrap();
 
     // Zero is a valid value (effectively disables rate limiting)
     assert_eq!(config.max_events_per_minute, 0);
@@ -85,7 +128,7 @@ fn test_rate_limit_config_negative_values() {
     let mut env = EnvGuard::new();
     env.set("MAX_EVENTS_PER_MINUTE", "-100");
 
-    let config = RateLimitConfig::from_env();
+    let config = RateLimitConfig::from_env().unwrap();
 
     // Negative values are technically valid i64
     assert_eq!(config.max_events_per_minute, -100);
@@ -395,6 +438,16 @@ fn with_link_env<T>(
         .set_opt("DASHBOARD_URL", dashboard_url)
         .set_opt("PUBLIC_URL", public_url);
     body()
+}
+
+/// An empty `PORT` keeps the default, like every other number.
+#[test]
+fn an_empty_port_keeps_the_default() {
+    let mut env = EnvGuard::new();
+    env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+        .set("PORT", "");
+    let config = Config::from_env().expect("an empty PORT is unset");
+    assert_eq!(config.port, Config::default().port);
 }
 
 /// The server serves the dashboard, so the address SDKs reach is also the one

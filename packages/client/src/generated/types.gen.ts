@@ -1862,6 +1862,12 @@ export type RateLimitsResponse = {
 
 export type ReadinessChecks = {
     database: string;
+    /**
+     * `ok`, or `halted` while every event the digest tries fails on its
+     * own (a broken schema, a missing grant). Readiness stays 200 then: the
+     * dashboard is how an operator finds out.
+     */
+    digest: string;
 };
 
 export type ReadinessResponse = {

@@ -14,7 +14,7 @@ pub mod reporter;
 pub mod resources;
 pub mod volume;
 
-pub use counters::{Counters, Health, Rejection};
+pub use counters::{Counters, Health, Rejection, Shed};
 pub use identity::instance_id;
 pub use report::{ConfigFacts, Report, Sink, SinkError, Volume, SCHEMA};
 pub use reporter::{Context, Reporter, Schedule};

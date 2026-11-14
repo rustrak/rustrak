@@ -156,6 +156,54 @@ async fn test_deleted_token_stops_working() {
     assert_eq!(test::call_service(&app, req).await.status(), 401);
 }
 
+/// Like a session's `last_seen_at`, written at most once a minute: a script
+/// polling the API is not one write per request.
+#[actix_web::test]
+async fn test_token_last_used_at_is_written_at_most_once_a_minute() {
+    use chrono::SubsecRound;
+    let db = TestDb::new().await;
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
+        .await
+        .unwrap();
+    let app = crate::common::app(&db.pool).await;
+    let set_last_used = |at: chrono::DateTime<chrono::Utc>| {
+        sqlx::query("UPDATE auth_tokens SET last_used_at = $1 WHERE id = $2")
+            .bind(at)
+            .bind(token.id)
+            .execute(&db.pool)
+    };
+    let last_used = || async {
+        AuthTokenService::get_by_token(&db.pool, &token.token)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_used_at
+            .unwrap()
+    };
+    let call = || async {
+        let req = test::TestRequest::get()
+            .uri("/api/tokens")
+            .insert_header(("Authorization", format!("Bearer {}", token.token)))
+            .to_request();
+        assert!(test::call_service(&app, req).await.status().is_success());
+    };
+
+    let recent = chrono::Utc::now().trunc_subsecs(0) - chrono::Duration::seconds(10);
+    set_last_used(recent).await.unwrap();
+    call().await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(
+        last_used().await,
+        recent,
+        "used ten seconds ago: not written"
+    );
+
+    let stale = recent - chrono::Duration::minutes(2);
+    set_last_used(stale).await.unwrap();
+    call().await;
+    crate::common::eventually(|| async { (last_used().await > recent).then_some(()) }).await;
+}
+
 #[actix_web::test]
 async fn test_token_last_used_at_updated() {
     let db = TestDb::new().await;

@@ -217,6 +217,328 @@ async fn test_ingest_basic_event() {
     assert_eq!(body["id"], event_id);
 }
 
+/// One error event, posted to `project_id` with `sentry_key`.
+fn event_request(project_id: i32, sentry_key: &str) -> actix_http::Request {
+    let event_id = Uuid::new_v4().simple().to_string();
+    let event_json = json!({
+        "event_id": event_id,
+        "exception": {"values": [{"type": "ValueError", "value": "shed"}]}
+    })
+    .to_string();
+    test::TestRequest::post()
+        .uri(&format!("/api/{}/envelope/", project_id))
+        .insert_header((
+            "X-Sentry-Auth",
+            format!("Sentry sentry_key={}, sentry_version=7", sentry_key),
+        ))
+        .set_payload(create_envelope(&event_id, &event_json))
+        .to_request()
+}
+
+/// While the digest is this far behind, ingest sheds new events with 503 and
+/// `Retry-After` instead of letting the spool grow until the disk fills. The
+/// rejected event is not spooled; the SDK drops it and pauses sending.
+#[actix_web::test]
+async fn ingest_sheds_load_while_the_spool_backlog_is_full() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Backlog").await;
+    let spool = tempfile::tempdir().unwrap();
+    let config = Config {
+        ingest_max_pending_events: 2,
+        ..crate::common::config_with_ingest_dir(spool.path())
+    };
+    let state = crate::common::state(&db.pool, config).await;
+    let pending = state.processors.errors.pending();
+    pending.insert(project_id, Uuid::new_v4());
+    pending.insert(project_id, Uuid::new_v4());
+    let app = crate::common::app_with(&state).await;
+
+    let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+
+    assert_eq!(resp.status(), 503);
+    assert_eq!(
+        resp.headers().get("Retry-After").unwrap(),
+        &rustrak::error::RETRY_AFTER_SECS.to_string()
+    );
+    assert_eq!(pending.counts(project_id).installation, 2);
+}
+
+/// Shedding needs no body, so it comes before the body is read and decoded:
+/// a body that would not even decode is refused with the 503, not a 400.
+#[actix_web::test]
+async fn ingest_sheds_before_reading_the_body() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Shed First").await;
+    let config = Config {
+        ingest_max_pending_events: 1,
+        ..create_test_config()
+    };
+    let state = crate::common::state(&db.pool, config).await;
+    state
+        .processors
+        .errors
+        .pending()
+        .insert(project_id, Uuid::new_v4());
+    let app = crate::common::app_with(&state).await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/{}/envelope/", project_id))
+        .insert_header((
+            "X-Sentry-Auth",
+            format!("Sentry sentry_key={}, sentry_version=7", sentry_key),
+        ))
+        .insert_header(("Content-Encoding", "gzip"))
+        .set_payload("not gzip at all")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 503);
+}
+
+/// Below the free-disk floor on the spool's volume, ingest sheds too. The
+/// free space is sampled on a timer, never read per request.
+#[actix_web::test]
+async fn ingest_sheds_load_below_the_free_disk_floor() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Disk Floor").await;
+    let config = Config {
+        ingest_min_free_disk_bytes: u64::MAX,
+        ..create_test_config()
+    };
+    let state = crate::common::state(&db.pool, config).await;
+    let app = crate::common::app_with(&state).await;
+
+    // Not sampled yet: nothing is known, nothing is shed.
+    let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+    assert_eq!(resp.status(), 200);
+
+    state.processors.errors.sample_free_disk().await;
+    let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+    assert_eq!(resp.status(), 503);
+    assert!(resp.headers().get("Retry-After").is_some());
+}
+
+/// Each shed request is counted by why, so an operator can tell a slow
+/// digest from a filling disk.
+#[actix_web::test]
+async fn shed_requests_are_counted_by_reason() {
+    let db = TestDb::new().await;
+    let spool = tempfile::tempdir().unwrap();
+    let counters: &'static rustrak::telemetry::Counters =
+        Box::leak(Box::new(rustrak::telemetry::Counters::new()));
+    let processors = crate::common::processors_with_config(
+        &db.pool,
+        &Config {
+            ingest_max_pending_events: 1,
+            ingest_min_free_disk_bytes: u64::MAX,
+            ..crate::common::config_with_ingest_dir(spool.path())
+        },
+    )
+    .with_counters(counters);
+
+    assert!(processors.admit(1).is_err(), "the backlog is full");
+    processors.errors.sample_free_disk().await;
+    assert!(processors.admit(0).is_err(), "the disk is under the floor");
+
+    let metrics = counters.render(Default::default(), None);
+    assert!(metrics.contains("rustrak_ingest_shed_total{reason=\"backlog\"} 1"));
+    assert!(metrics.contains("rustrak_ingest_shed_total{reason=\"disk\"} 1"));
+}
+
+/// The digest keeps writing once ingest sheds, and SQLite's write-ahead log
+/// can grow by up to its deferred checkpoint before it is copied back: the
+/// floor leaves that much room on top of `INGEST_MIN_FREE_DISK_MB`, so the
+/// database cannot fill the disk while ingest still accepts events.
+#[cfg(all(feature = "sqlite", unix))]
+#[allow(clippy::useless_conversion)] // the statvfs field types differ per platform
+#[actix_web::test]
+async fn the_free_disk_floor_leaves_room_for_the_write_ahead_log() {
+    let db = TestDb::new().await;
+    let spool = tempfile::tempdir().unwrap();
+    let stat = nix::sys::statvfs::statvfs(spool.path()).unwrap();
+    let free = u64::from(stat.blocks_available()) * u64::from(stat.fragment_size());
+    let wal = u64::from(rustrak::db::COMMITTER_CHECKPOINT_PAGES) * 4096;
+    let processors = crate::common::processors_with_config(
+        &db.pool,
+        &Config {
+            ingest_min_free_disk_bytes: free - wal / 2,
+            ..crate::common::config_with_ingest_dir(spool.path())
+        },
+    );
+
+    processors.errors.sample_free_disk().await;
+
+    assert!(
+        processors.admit(0).is_err(),
+        "less room than the log may still take, and ingest accepts events"
+    );
+}
+
+/// SIGTERM in the middle of a backlog: shutdown waits a bounded time for the
+/// digests, closes the pool, and every event it could not digest is still in
+/// the spool for the next start to recover. Nothing acknowledged is lost.
+#[actix_web::test]
+async fn a_shutdown_mid_digest_leaves_undigested_events_in_the_spool() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Shutdown").await;
+    let spool = tempfile::tempdir().unwrap();
+    let state = crate::common::state(
+        &db.pool,
+        crate::common::config_with_ingest_dir(spool.path()),
+    )
+    .await;
+    // Every digest is stuck waiting for a slot, as in a backlog.
+    let slots = state.processors.processing_slot.available_permits() as u32;
+    state
+        .processors
+        .processing_slot
+        .try_acquire_many(slots)
+        .unwrap()
+        .forget();
+    let app = crate::common::app_with(&state).await;
+    for _ in 0..5 {
+        let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+        assert_eq!(resp.status(), 200);
+    }
+
+    let started = std::time::Instant::now();
+    state.drain(Duration::from_millis(200)).await;
+    // Draining, ingest sheds with a 503 the SDK backs off from.
+    let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+    assert_eq!(resp.status(), 503);
+    state.shutdown().await;
+
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "shutdown is bounded"
+    );
+    assert!(db.pool.is_closed());
+    let spooled = rustrak::ingest::list_pending_event_metadata(spool.path())
+        .await
+        .unwrap();
+    assert_eq!(
+        spooled.len(),
+        5,
+        "every acknowledged event is still spooled"
+    );
+}
+
+/// `docker stop` sends SIGKILL 10 s after SIGTERM. With a backlog, the drain
+/// waits only for the digests already running, not for the queue behind
+/// them, which stays in the spool; and the session counts are written at
+/// its start, not after it, so a SIGKILL cannot take them.
+#[actix_web::test]
+async fn a_drain_with_a_backlog_does_not_wait_for_the_queue_and_flushes_sessions_first() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Drain Backlog").await;
+    let spool = tempfile::tempdir().unwrap();
+    let state = crate::common::state(
+        &db.pool,
+        crate::common::config_with_ingest_dir(spool.path()),
+    )
+    .await;
+    let app = crate::common::app_with(&state).await;
+
+    let session_json = json!({
+        "sid": Uuid::new_v4().to_string(),
+        "init": true,
+        "started": chrono::Utc::now().to_rfc3339(),
+        "status": "ok",
+        "attrs": {"release": "drain@1.0.0"}
+    })
+    .to_string();
+    let envelope = format!(
+        "{{}}\n{{\"type\":\"session\",\"length\":{}}}\n{}\n",
+        session_json.len(),
+        session_json
+    );
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri(&format!("/api/{}/envelope/", project_id))
+            .insert_header((
+                "X-Sentry-Auth",
+                format!("Sentry sentry_key={}, sentry_version=7", sentry_key),
+            ))
+            .set_payload(envelope.into_bytes())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), 200);
+
+    // The running digests hold every slot; five more events queue behind.
+    let slots = state.processors.processing_slot.available_permits() as u32;
+    let running = state
+        .processors
+        .processing_slot
+        .clone()
+        .try_acquire_many_owned(slots)
+        .unwrap();
+    for _ in 0..5 {
+        let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+        assert_eq!(resp.status(), 200);
+    }
+
+    let drain = tokio::spawn({
+        let state = state.clone();
+        async move { state.drain(Duration::from_secs(5)).await }
+    });
+    let sessions = crate::common::eventually(|| async {
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM session_counts")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        (n > 0).then_some(n)
+    })
+    .await;
+    assert_eq!(sessions, 1, "flushed while the drain still waits");
+    assert!(!drain.is_finished(), "the running digests hold their slots");
+
+    let started = std::time::Instant::now();
+    drop(running);
+    drain.await.unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "the queue is not waited for"
+    );
+    let spooled = rustrak::ingest::list_pending_event_metadata(spool.path())
+        .await
+        .unwrap();
+    assert_eq!(spooled.len(), 5, "queued events stay in the spool");
+}
+
+/// With the digests free to run, shutdown waits for them before it closes
+/// the pool, so the spool is drained rather than left for the next start.
+#[actix_web::test]
+async fn a_shutdown_waits_for_in_flight_digests() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Shutdown Drain").await;
+    let spool = tempfile::tempdir().unwrap();
+    let state = crate::common::state(
+        &db.pool,
+        crate::common::config_with_ingest_dir(spool.path()),
+    )
+    .await;
+    let app = crate::common::app_with(&state).await;
+    for _ in 0..5 {
+        let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+        assert_eq!(resp.status(), 200);
+    }
+
+    state.drain(Duration::from_secs(10)).await;
+    state.shutdown().await;
+
+    assert!(db.pool.is_closed());
+    let spooled = rustrak::ingest::list_pending_event_metadata(spool.path())
+        .await
+        .unwrap();
+    assert!(
+        spooled.is_empty(),
+        "{} events left undigested",
+        spooled.len()
+    );
+}
+
 #[actix_web::test]
 async fn test_ingest_event_is_digested_by_the_spawned_task() {
     // The production digest path: the route spawns a detached task that
@@ -288,13 +610,13 @@ async fn test_ingest_event_is_digested_by_the_spawned_task() {
 #[actix_web::test]
 async fn test_transaction_ingest_is_not_blocked_by_a_saturated_digest_queue() {
     // Transactions and spans are persisted inline during the request. The
-    // digest permit bounds the spawned error-digest tasks only: a burst of
+    // commit gate pauses the error digest only: a burst of
     // errors being grouped must never make an SDK wait on its transaction.
     let db = TestDb::new().await;
     let (project_id, sentry_key) = create_ingest_project(&db.pool, "Saturated Digest").await;
     let state = crate::common::state(&db.pool, create_test_config()).await;
     let processors = state.processors.clone();
-    // Consume every digest permit for the lifetime of the test.
+    // Hold the commit gate for the lifetime of the test.
     let slots = processors.processing_slot.available_permits() as u32;
     processors
         .processing_slot
@@ -1077,6 +1399,33 @@ async fn test_ingest_caps_the_compressed_body() {
     assert_eq!(post_envelope(&db.pool, "gzip", body).await, 413);
 }
 
+/// Bodies too large to decode on the worker thread are decoded off it, with
+/// the same result.
+#[actix_web::test]
+async fn test_ingest_decodes_a_large_body_in_every_encoding() {
+    use rustrak::ingest::decompression::INLINE_DECODE_LIMIT;
+    let db = TestDb::new().await;
+    // Random hex compresses about two to one, never below.
+    let noise: String = (0..6_400)
+        .map(|_| Uuid::new_v4().simple().to_string())
+        .collect();
+    let event_id = Uuid::new_v4().simple().to_string();
+    let envelope = create_envelope(
+        &event_id,
+        &json!({"event_id": event_id, "extra": {"noise": noise}}).to_string(),
+    );
+    for coding in ["gzip", "deflate", "br", "zstd"] {
+        let body = encode(coding, &envelope);
+        assert!(body.len() > INLINE_DECODE_LIMIT, "{coding}: {}", body.len());
+        assert_eq!(post_envelope(&db.pool, coding, body).await, 200, "{coding}");
+    }
+    // Corrupt past the limit: the same 400 as a small one.
+    let mut corrupt = encode("gzip", &envelope);
+    let middle = corrupt.len() / 2;
+    corrupt[middle..middle + 64].fill(0xff);
+    assert_eq!(post_envelope(&db.pool, "gzip", corrupt).await, 400);
+}
+
 #[actix_web::test]
 async fn test_ingest_caps_the_decompressed_body() {
     let db = TestDb::new().await;
@@ -1086,5 +1435,99 @@ async fn test_ingest_caps_the_decompressed_body() {
             &vec![0; rustrak::ingest::decompression::MAX_DECOMPRESSED_SIZE + 1],
         );
         assert_eq!(post_envelope(&db.pool, coding, bomb).await, 413, "{coding}");
+    }
+}
+
+/// Batching must not add a wait: with nothing else to do, an event is in the
+/// database a moment after its 200, every time.
+#[actix_web::test]
+async fn an_idle_event_is_visible_within_250_ms_of_its_ack() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Idle Latency").await;
+    let spool = tempfile::tempdir().unwrap();
+    let state = crate::common::state(
+        &db.pool,
+        crate::common::config_with_ingest_dir(spool.path()),
+    )
+    .await;
+    let app = crate::common::app_with(&state).await;
+
+    for n in 1..=20i64 {
+        let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+        assert_eq!(resp.status(), 200);
+        let acked = std::time::Instant::now();
+        loop {
+            let stored: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE project_id = $1")
+                    .bind(project_id)
+                    .fetch_one(&db.pool)
+                    .await
+                    .unwrap();
+            if stored == n {
+                break;
+            }
+            assert!(
+                acked.elapsed() < Duration::from_millis(250),
+                "event {n} not stored 250 ms after its ack"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+}
+
+/// The digest's memory budget bounds the spool bytes it holds, and an event
+/// larger than the whole budget still runs, alone, without starving the
+/// small ones queued around it.
+#[actix_web::test]
+async fn a_large_event_and_a_burst_of_small_ones_make_progress_under_the_budget() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Budget").await;
+    let spool = tempfile::tempdir().unwrap();
+    let state = crate::common::state(
+        &db.pool,
+        Config {
+            digest_memory_bytes: 1024 * 1024,
+            ..crate::common::config_with_ingest_dir(spool.path())
+        },
+    )
+    .await;
+    let app = crate::common::app_with(&state).await;
+
+    let event_id = Uuid::new_v4().simple().to_string();
+    let large = json!({
+        "event_id": event_id,
+        "message": "large",
+        "extra": {"blob": "x".repeat(4 * 1024 * 1024 - 1024)}
+    })
+    .to_string();
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/{}/envelope/", project_id))
+        .insert_header((
+            "X-Sentry-Auth",
+            format!("Sentry sentry_key={}, sentry_version=7", sentry_key),
+        ))
+        .set_payload(create_envelope(&event_id, &large))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 200);
+    for _ in 0..200 {
+        let resp = test::call_service(&app, event_request(project_id, &sentry_key)).await;
+        assert_eq!(resp.status(), 200);
+    }
+
+    let started = std::time::Instant::now();
+    loop {
+        let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE project_id = $1")
+            .bind(project_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        if stored == 201 {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "{stored} of 201 events digested after 30 s"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }

@@ -36,6 +36,12 @@ const CHECKIN_RETENTION_DAYS: i64 = 90;
 const RETENTION_BATCH: i64 = 5_000;
 /// Longest duration stored, in ms (Sentry's `BoundedPositiveIntegerField`).
 const MAX_DURATION_MS: i64 = i32::MAX as i64;
+/// Monitors a check-in may create in one project: Sentry's
+/// `MAX_MONITORS_PER_ORG`, counted per project here.
+pub const MAX_MONITORS_PER_PROJECT: usize = 1_500;
+/// Environments a check-in may create on one monitor: Sentry's
+/// `MAX_ENVIRONMENTS_PER_MONITOR`.
+pub const MAX_ENVIRONMENTS_PER_MONITOR: usize = 1_000;
 
 #[derive(sqlx::FromRow)]
 struct MonitorRow {
@@ -682,6 +688,18 @@ async fn upsert_monitor(
         (Some(monitor), None) => Ok(monitor),
         (None, Some(input)) => {
             let config = input.validate(None)?;
+            // Under the project lock the caller holds, so two new slugs
+            // cannot both take the last place.
+            let (count,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM monitors WHERE project_id = $1")
+                    .bind(project_id)
+                    .fetch_one(&mut **tx)
+                    .await?;
+            if count >= MAX_MONITORS_PER_PROJECT as i64 {
+                return Err(AppError::Validation(format!(
+                    "You may not exceed {MAX_MONITORS_PER_PROJECT} monitors per project"
+                )));
+            }
             Ok(sqlx::query_as::<_, MonitorRow>(
                 r#"
                 INSERT INTO monitors (id, project_id, slug, name, config, is_muted, created_at)
@@ -721,6 +739,16 @@ async fn ensure_environment(
     .await?;
     if let Some(env) = existing {
         return Ok(env);
+    }
+    let (count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM monitor_environments WHERE monitor_id = $1")
+            .bind(monitor_id)
+            .fetch_one(&mut **tx)
+            .await?;
+    if count >= MAX_ENVIRONMENTS_PER_MONITOR as i64 {
+        return Err(AppError::Validation(format!(
+            "You may not exceed {MAX_ENVIRONMENTS_PER_MONITOR} environments per monitor"
+        )));
     }
     Ok(sqlx::query_as::<_, EnvRow>(
         r#"

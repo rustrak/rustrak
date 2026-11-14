@@ -46,6 +46,8 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    # Time to write session counts and finish running digests on stop.
+    stop_grace_period: 30s
 
 volumes:
   postgres_data:

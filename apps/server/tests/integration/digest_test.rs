@@ -2240,8 +2240,7 @@ async fn test_digest_cleans_up_temp_file() {
     .await
     .expect("Failed to process event");
 
-    // Deleted after processing; on SQLite once the durability checkpoint that
-    // follows the commit has run.
+    // Deleted after processing, once its commit is durable.
     crate::common::eventually(|| async { (!file_path.exists()).then_some(()) }).await;
 }
 
@@ -2598,7 +2597,9 @@ async fn test_bulk_set_status_and_delete() {
         "resolved"
     );
 
-    let deleted = IssueService::bulk_delete(&db.pool, project.id, &[i1.id, i2.id])
+    let errors =
+        crate::common::processors_with_config(&db.pool, &rustrak::config::Config::default()).errors;
+    let deleted = IssueService::bulk_delete(&db.pool, project.id, &[i1.id, i2.id], &errors)
         .await
         .unwrap();
     assert_eq!(deleted, 2);
@@ -3387,6 +3388,138 @@ async fn test_issue_stats_timeseries() {
     assert!(series[0].0 < series[23].0, "buckets ascend in time");
 }
 
+/// An event of `issue_id` stored as the digest stores one, with `data` and
+/// `ingested_at` of the test's choosing.
+async fn insert_issue_event(
+    pool: &rustrak::db::DbPool,
+    project_id: i32,
+    issue_id: Uuid,
+    data: serde_json::Value,
+    ingested_at: chrono::DateTime<Utc>,
+) {
+    sqlx::query(
+        "INSERT INTO events (id, event_id, project_id, issue_id, data, timestamp, ingested_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(Uuid::new_v4())
+    .bind(project_id)
+    .bind(issue_id)
+    .bind(sqlx::types::Json(data))
+    .bind(ingested_at)
+    .bind(ingested_at)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[actix_web::test]
+async fn test_issue_stats_buckets_each_event_once() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Stats Buckets").await;
+    let temp_dir = TempDir::new().unwrap();
+    let cfg = crate::common::rate_limit();
+    let e1 = Uuid::new_v4().to_string().replace("-", "");
+    ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
+    let issue_id = only_issue_id(&db.pool, project.id).await;
+
+    // Half an hour off every bucket edge, so the call's own `now` (a little
+    // later than this one) lands each in the bucket counted below.
+    let now = Utc::now();
+    let hours_ago = |h: i64| now - chrono::Duration::minutes(h * 60 + 30);
+    for at in [
+        hours_ago(0),
+        hours_ago(5),
+        hours_ago(23),
+        hours_ago(24),                       // before the window
+        now + chrono::Duration::seconds(10), // past `now`: the last bucket
+    ] {
+        insert_issue_event(&db.pool, project.id, issue_id, json!({}), at).await;
+    }
+
+    let series = IssueService::stats(&db.pool, issue_id, 3600, 24)
+        .await
+        .unwrap();
+    let counts: Vec<i64> = series.iter().map(|(_, c)| *c).collect();
+    let mut expected = vec![0; 24];
+    expected[23] = 3; // the ingested one, half an hour ago, and the future one
+    expected[18] = 1;
+    expected[0] = 1;
+    assert_eq!(counts, expected);
+    let start = series[0].0;
+    assert!(series
+        .iter()
+        .enumerate()
+        .all(|(i, (t, _))| *t == start + i as i64 * 3600));
+}
+
+/// The tag and user aggregates read only `tags` and `user`, whatever else an
+/// event carries, and an event whose `tags` or `user` is not an object is
+/// skipped rather than failing the request.
+#[actix_web::test]
+async fn test_issue_aggregates_read_tags_and_user_of_large_events() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Aggregates Large").await;
+    let temp_dir = TempDir::new().unwrap();
+    let cfg = crate::common::rate_limit();
+    let e1 = Uuid::new_v4().to_string().replace("-", "");
+    ingest_error_event(&db.pool, project.id, temp_dir.path(), &cfg, &e1).await;
+    let issue_id = only_issue_id(&db.pool, project.id).await;
+    sqlx::query("DELETE FROM events WHERE issue_id = $1")
+        .bind(issue_id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let blob = "x".repeat(512 * 1024);
+    let t = |s: i64| Utc::now() - chrono::Duration::seconds(s);
+    for (data, at) in [
+        (
+            json!({"tags": {"browser": "Firefox", "os": "Linux", "n": 3, "b": true},
+                   "user": {"id": "u1", "email": "a@x.com"}, "extra": {"blob": blob}}),
+            t(30),
+        ),
+        (
+            json!({"tags": [["browser", "Chrome"], ["browser", "Edge"], {"key": "os", "value": "Mac"}],
+                   "user": {"email": "b@x.com"}, "breadcrumbs": [blob.clone()]}),
+            t(20),
+        ),
+        (
+            json!({"tags": "not-tags", "user": "not-a-user", "extra": {"blob": blob}}),
+            t(10),
+        ),
+        (
+            json!({"tags": null, "user": {"ip_address": "1.2.3.4"}}),
+            t(5),
+        ),
+    ] {
+        insert_issue_event(&db.pool, project.id, issue_id, data, at).await;
+    }
+
+    let aggregates = IssueService::aggregates(&db.pool, issue_id).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&aggregates).unwrap(),
+        json!({
+            "user_count": 3,
+            "tags": [
+                {"key": "b", "total_values": 1, "top_values": [{"value": "true", "count": 1}]},
+                {"key": "browser", "total_values": 2,
+                 "top_values": [{"value": "Chrome", "count": 1}, {"value": "Firefox", "count": 1}]},
+                {"key": "n", "total_values": 1, "top_values": [{"value": "3", "count": 1}]},
+                {"key": "os", "total_values": 2,
+                 "top_values": [{"value": "Linux", "count": 1}, {"value": "Mac", "count": 1}]},
+            ]
+        })
+    );
+
+    let values = IssueService::tag_values(&db.pool, issue_id, "browser")
+        .await
+        .unwrap();
+    let got: Vec<(String, i64)> = values.iter().map(|v| (v.value.clone(), v.count)).collect();
+    assert_eq!(got, [("Chrome".to_string(), 1), ("Firefox".to_string(), 1)]);
+    assert!(values.iter().all(|v| v.first_seen == v.last_seen));
+}
+
 #[actix_web::test]
 async fn test_resolve_in_next_release_suppresses_same_release_regression() {
     let db = TestDb::new().await;
@@ -3478,4 +3611,550 @@ async fn test_finalize_release_clears_marker() {
     let i = IssueService::get_by_id(&db.pool, issue_id).await.unwrap();
     assert!(!i.status_details.contains("in_next_release"));
     assert_eq!(i.status, "resolved");
+}
+
+/// Stores `event` in the spool as ingest would, at `at`, under `event_id`.
+async fn spool_event(
+    ingest_dir: &std::path::Path,
+    project_id: i32,
+    event_id: Uuid,
+    at: chrono::DateTime<Utc>,
+    mut event: serde_json::Value,
+) {
+    let raw = event_id.simple().to_string();
+    let obj = event.as_object_mut().unwrap();
+    obj.insert("event_id".into(), json!(&raw));
+    obj.insert("timestamp".into(), json!(at.timestamp() as f64));
+    rustrak::ingest::store_event_with_metadata(
+        ingest_dir,
+        &raw,
+        &serde_json::to_vec(&event).unwrap(),
+        &EventMetadata {
+            event_id: raw.clone(),
+            project_id,
+            ingested_at: at,
+            remote_addr: None,
+        },
+    )
+    .await
+    .expect("store event");
+}
+
+/// A spool file of `project_id`, owned for a digest.
+fn spool_ref(
+    processors: &rustrak::digest::processors::Processors,
+    project_id: i32,
+    event_id: Uuid,
+) -> rustrak::digest::processors::SpoolRef {
+    rustrak::digest::processors::SpoolRef {
+        project_id,
+        event_id,
+        size: 0,
+        owner: processors.errors.in_flight().register(project_id, event_id),
+    }
+}
+
+/// Digests `events` of `project_id`, each at its time, as one batch.
+async fn digest_in_order(
+    pool: &rustrak::db::DbPool,
+    ingest_dir: &std::path::Path,
+    project_id: i32,
+    events: Vec<(chrono::DateTime<Utc>, serde_json::Value)>,
+) {
+    let processors = std::sync::Arc::new(crate::common::processors(pool, ingest_dir));
+    let mut refs = Vec::new();
+    for (at, event) in events {
+        let event_id = Uuid::new_v4();
+        spool_event(ingest_dir, project_id, event_id, at, event).await;
+        refs.push(spool_ref(&processors, project_id, event_id));
+    }
+    for result in rustrak::ingest::pipeline::digest_refs(&processors, pool, refs).await {
+        result.expect("digest");
+    }
+}
+
+/// A resolved issue that gets several events at once reopens once: one
+/// `set_regression` activity, and only the first event is the regression.
+#[actix_web::test]
+async fn a_resolved_issue_regresses_once_per_batch() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Regress Once").await;
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let dir = temp_dir.path();
+    let now = Utc::now();
+    let event = json!({ "platform": "rust", "logentry": { "formatted": "boom" } });
+
+    digest(&db.pool, dir, project.id, now, event.clone()).await;
+    let issue = only_issue(&db.pool, project.id).await;
+    IssueService::set_status(&db.pool, issue.id, "resolved", None)
+        .await
+        .expect("resolve");
+    let before = rustrak::services::IssueSocialService::list_activity(&db.pool, issue.id)
+        .await
+        .expect("activity");
+
+    digest_in_order(
+        &db.pool,
+        dir,
+        project.id,
+        (1..=3)
+            .map(|h| (now + chrono::Duration::hours(h), event.clone()))
+            .collect(),
+    )
+    .await;
+
+    let after = rustrak::services::IssueSocialService::list_activity(&db.pool, issue.id)
+        .await
+        .expect("activity");
+    assert_eq!(after.len(), before.len() + 1, "one regression activity");
+    assert_eq!(after[0].activity_type, "set_regression");
+    let alert_types: Vec<Option<rustrak::models::AlertType>> = sqlx::query_scalar(
+        "SELECT alert_type FROM events WHERE issue_id = $1 ORDER BY timestamp, id",
+    )
+    .bind(issue.id)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        alert_types,
+        [
+            Some(rustrak::models::AlertType::NewIssue),
+            Some(rustrak::models::AlertType::Regression),
+            None,
+            None
+        ]
+    );
+    let issue = IssueService::get_by_id(&db.pool, issue.id).await.unwrap();
+    assert_eq!(
+        (issue.status.as_str(), issue.substatus.as_deref()),
+        ("unresolved", Some("regressed"))
+    );
+    assert_eq!(issue.digested_event_count, 4);
+}
+
+/// Two events of one batch with different current keys but the same
+/// pre-upgrade key both land on the pre-upgrade issue, as they would one at
+/// a time.
+#[actix_web::test]
+async fn events_sharing_a_legacy_key_in_one_batch_claim_one_issue() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Legacy Batch").await;
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let dir = temp_dir.path();
+    let chain = |cause: &str| {
+        json!({
+            "platform": "python",
+            "exception": { "values": [
+                { "type": cause, "value": "underlying" },
+                { "type": "RuntimeError", "value": "save failed" }
+            ]}
+        })
+    };
+    let old = digest_as_pre_upgrade(&db.pool, dir, project.id, chain("IOError")).await;
+
+    let now = Utc::now();
+    digest_in_order(
+        &db.pool,
+        dir,
+        project.id,
+        vec![(now, chain("IOError")), (now, chain("KeyError"))],
+    )
+    .await;
+
+    let issue = only_issue(&db.pool, project.id).await;
+    assert_eq!(issue.id, old.id, "the second event opened its own issue");
+    assert_eq!(issue.digested_event_count, 3);
+    let hashes = IssueService::list_hashes(&db.pool, old.id)
+        .await
+        .expect("list hashes");
+    assert_eq!(hashes.len(), 3, "the legacy key and both current keys");
+}
+
+/// The barrier that makes the pool's commits power-safe writes to the
+/// write-ahead log: a commit that changed no page writes nothing, so its
+/// `synchronous=FULL` would sync nothing.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn the_sync_barrier_writes_to_the_wal() {
+    let db = TestDb::new().await;
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    sqlx::query("PRAGMA journal_mode = WAL")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let processors = crate::common::processors(&db.pool, temp_dir.path());
+    // (busy, frames in the WAL, frames checkpointed)
+    let checkpoint = |mode: &'static str| {
+        let pool = db.pool.clone();
+        async move {
+            sqlx::query_as::<_, (i64, i64, i64)>(sqlx::AssertSqlSafe(format!(
+                "PRAGMA wal_checkpoint({mode})"
+            )))
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+        }
+    };
+    assert_eq!(checkpoint("TRUNCATE").await, (0, 0, 0), "the WAL is empty");
+
+    processors
+        .errors
+        .sync_barrier_for_test(&db.pool)
+        .await
+        .unwrap();
+
+    let (_, frames, _) = checkpoint("PASSIVE").await;
+    assert!(frames > 0, "the barrier wrote nothing to the WAL");
+}
+
+/// (installation digested, project stored, project digested)
+async fn digest_counters(pool: &rustrak::db::DbPool, project_id: i32) -> (i64, i64, i64) {
+    let installation: i64 = sqlx::query_scalar(
+        "SELECT CAST(digested_event_count AS BIGINT) FROM installation WHERE id = 1",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    let project = ProjectService::get_by_id(pool, project_id).await.unwrap();
+    (
+        installation,
+        project.stored_event_count as i64,
+        project.digested_event_count as i64,
+    )
+}
+
+/// The same spool file twice in one batch (a ref queued while a replay of it
+/// was too) is one event: one row, counted once, both refs settled as stored.
+#[actix_web::test]
+async fn a_duplicate_inside_one_batch_is_stored_once() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Batch Duplicate").await;
+    let temp_dir = TempDir::new().unwrap();
+    let dir = temp_dir.path();
+    let processors = std::sync::Arc::new(crate::common::processors(&db.pool, dir));
+    let before = digest_counters(&db.pool, project.id).await;
+    let event_id = Uuid::new_v4();
+    spool_event(
+        dir,
+        project.id,
+        event_id,
+        Utc::now(),
+        json!({ "message": "twice" }),
+    )
+    .await;
+    processors.errors.pending().insert(project.id, event_id);
+
+    let results = rustrak::ingest::pipeline::digest_refs(
+        &processors,
+        &db.pool,
+        vec![
+            spool_ref(&processors, project.id, event_id),
+            spool_ref(&processors, project.id, event_id),
+        ],
+    )
+    .await;
+
+    let results: Vec<_> = results.into_iter().map(Result::unwrap).collect();
+    assert_eq!(
+        results,
+        [
+            rustrak::digest::processors::Digested::Stored,
+            rustrak::digest::processors::Digested::Stored
+        ]
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE event_id = $1")
+        .bind(event_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(rows, 1);
+    assert_eq!(
+        only_issue(&db.pool, project.id).await.digested_event_count,
+        1
+    );
+    assert_eq!(
+        digest_counters(&db.pool, project.id).await,
+        (before.0 + 1, before.1 + 1, before.2 + 1)
+    );
+    assert_eq!(
+        processors.errors.pending().counts(project.id).installation,
+        0
+    );
+    crate::common::eventually(|| async {
+        (!crate::common::has_files(dir) && processors.errors.in_flight().is_empty()).then_some(())
+    })
+    .await;
+}
+
+/// Everything an ambiguous-commit replay could get wrong, as rows that do
+/// not depend on random ids: issues are named by their `digest_order`.
+async fn mixed_batch_snapshot(pool: &rustrak::db::DbPool, project_id: i32) -> Vec<String> {
+    use rustrak::models::AlertType;
+    let mut rows = Vec::new();
+    macro_rules! table {
+        ($name:literal, $ty:ty, $sql:literal) => {
+            let found: Vec<$ty> = sqlx::query_as($sql).fetch_all(pool).await.unwrap();
+            rows.extend(found.into_iter().map(|r| format!("{}: {r:?}", $name)));
+        };
+    }
+    table!(
+        "event",
+        (Uuid, i32, Option<AlertType>, Option<i32>, String),
+        "SELECT e.event_id, i.digest_order, e.alert_type, e.issue_event_count, e.environment \
+         FROM events e JOIN issues i ON i.id = e.issue_id ORDER BY i.digest_order, e.event_id"
+    );
+    table!(
+        "issue",
+        (i32, String, Option<String>, i64, i64, String),
+        "SELECT digest_order, status, substatus, CAST(digested_event_count AS BIGINT), \
+         CAST(stored_event_count AS BIGINT), issue_category FROM issues ORDER BY digest_order"
+    );
+    table!(
+        "environment",
+        (i32, String, i64),
+        "SELECT i.digest_order, ie.environment, CAST(ie.event_count AS BIGINT) \
+         FROM issue_environments ie JOIN issues i ON i.id = ie.issue_id ORDER BY 1, 2"
+    );
+    table!(
+        "installation",
+        (i64, i64, i64),
+        "SELECT CAST(digested_event_count AS BIGINT), CAST(quota_minute_count AS BIGINT), \
+         CAST(quota_hour_count AS BIGINT) FROM installation"
+    );
+    table!(
+        "user_report",
+        (Uuid, Option<i32>, Option<i32>),
+        "SELECT ur.event_id, ei.digest_order, fi.digest_order FROM user_reports ur \
+         LEFT JOIN issues ei ON ei.id = ur.issue_id \
+         LEFT JOIN issues fi ON fi.id = ur.feedback_issue_id ORDER BY 1"
+    );
+    table!(
+        "attachment",
+        (Uuid, String, i64),
+        "SELECT e.event_id, a.filename, CAST(a.size AS BIGINT) FROM event_attachments a \
+         JOIN events e ON e.id = a.event_id ORDER BY 1, 2"
+    );
+    table!(
+        "activity",
+        (i32, String),
+        "SELECT i.digest_order, a.type FROM issue_activity a \
+         JOIN issues i ON i.id = a.issue_id ORDER BY 1, 2"
+    );
+    table!(
+        "alert",
+        (String,),
+        "SELECT idempotency_key FROM alert_history ORDER BY 1"
+    );
+    let project: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT CAST(stored_event_count AS BIGINT), CAST(digested_event_count AS BIGINT), \
+         CAST(rate_limited_event_count AS BIGINT), CAST(quota_minute_count AS BIGINT), \
+         CAST(quota_hour_count AS BIGINT) FROM projects WHERE id = $1",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    rows.push(format!("project: {project:?}"));
+    rows
+}
+
+/// One run of the mixed batch, in a database of its own: two issues
+/// digested first (one then resolved), then a batch with a new issue, an
+/// existing one, a regression, an error event and the feedback about it,
+/// two environments, an attachment, under a new-issue rule. An ambiguous
+/// run makes the batch's commit land and its acknowledgement fail.
+async fn run_mixed_batch(ids: &[Uuid], run: MixedRun) -> Vec<String> {
+    use rustrak::models::{
+        AlertRuleChannelInput, AlertType, CreateAlertIntegration, CreateAlertRule, ProviderType,
+    };
+    use rustrak::services::AlertService;
+
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Ambiguous Commit").await;
+    let channel = AlertService::create_channel(
+        &db.pool,
+        &Default::default(),
+        CreateAlertIntegration {
+            name: "Webhook".to_string(),
+            provider_type: ProviderType::Webhook,
+            credentials: json!({ "url": "https://example.com/webhook" }),
+            is_enabled: true,
+        },
+    )
+    .await
+    .unwrap();
+    let rule = AlertService::create_rule(
+        &db.pool,
+        project.id,
+        CreateAlertRule {
+            name: "New issues".to_string(),
+            alert_type: AlertType::NewIssue,
+            channels: vec![AlertRuleChannelInput {
+                integration_id: channel.id,
+                routing_override: json!({}),
+            }],
+            conditions: json!({}),
+            cooldown_minutes: 60,
+        },
+    )
+    .await
+    .unwrap();
+    // In cooldown: recorded, never delivered.
+    sqlx::query("UPDATE alert_rules SET last_triggered_at = $1 WHERE id = $2")
+        .bind(Utc::now())
+        .bind(rule.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+    let dir = temp_dir.path();
+    let processors = std::sync::Arc::new(crate::common::processors(&db.pool, dir));
+    let now = Utc::now();
+    let digest_batch = |events: Vec<(Uuid, serde_json::Value)>| {
+        let (processors, pool) = (std::sync::Arc::clone(&processors), db.pool.clone());
+        async move {
+            let mut refs = Vec::new();
+            for (event_id, event) in events {
+                spool_event(dir, project.id, event_id, now, event).await;
+                processors.errors.pending().insert(project.id, event_id);
+                refs.push(spool_ref(&processors, project.id, event_id));
+            }
+            rustrak::ingest::pipeline::digest_refs(&processors, &pool, refs).await
+        }
+    };
+
+    for result in digest_batch(vec![
+        (ids[0], json!({ "message": "existing" })),
+        (ids[1], json!({ "message": "resolved" })),
+    ])
+    .await
+    {
+        result.unwrap();
+    }
+    let resolved: Uuid = sqlx::query_scalar(
+        "SELECT i.id FROM issues i JOIN events e ON e.issue_id = i.id WHERE e.event_id = $1",
+    )
+    .bind(ids[1])
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    IssueService::resolve(&db.pool, resolved).await.unwrap();
+
+    use base64::Engine as _;
+    if run != MixedRun::Clean {
+        processors.errors.fail_after_commit_once_for_test();
+    }
+    let batch = vec![
+        (
+            ids[2],
+            json!({ "message": "brand new", "environment": "production" }),
+        ),
+        (
+            ids[3],
+            json!({ "message": "existing", "environment": "staging" }),
+        ),
+        (
+            ids[4],
+            json!({ "message": "resolved", "environment": "production" }),
+        ),
+        (
+            ids[5],
+            json!({ "message": "reported", "environment": "production" }),
+        ),
+        (
+            ids[6],
+            json!({
+                "type": "feedback",
+                "contexts": { "feedback": {
+                    "message": "it broke",
+                    "contact_email": "ann@example.com",
+                    "name": "Ann",
+                    "associated_event_id": ids[5].simple().to_string(),
+                }},
+            }),
+        ),
+        (
+            ids[7],
+            json!({
+                "message": "with a file",
+                "_rustrak_attachments": [{
+                    "filename": "log.txt",
+                    "content_type": "text/plain",
+                    "data": base64::engine::general_purpose::STANDARD.encode(b"hello"),
+                }],
+            }),
+        ),
+    ];
+    match run {
+        MixedRun::Clean => {
+            for result in digest_batch(batch).await {
+                result.unwrap();
+            }
+        }
+        // Recovery replays the files.
+        MixedRun::AmbiguousOnce => {
+            let results = digest_batch(batch).await;
+            assert!(results.iter().all(Result::is_err), "{results:?}");
+            assert!(
+                !rustrak::ingest::pipeline::recover_pending_events_once(
+                    db.pool.clone(),
+                    std::sync::Arc::clone(&processors),
+                    dir.to_path_buf(),
+                )
+                .await
+            );
+        }
+        // The live committer retries the batch itself: no recovery runs.
+        MixedRun::AmbiguousLive => {
+            for (event_id, mut event) in batch {
+                let raw = event_id.simple().to_string();
+                let obj = event.as_object_mut().unwrap();
+                obj.insert("event_id".into(), json!(&raw));
+                obj.insert("timestamp".into(), json!(now.timestamp() as f64));
+                rustrak::ingest::pipeline::enqueue_digest(
+                    &processors,
+                    &db.pool,
+                    event_id,
+                    EventMetadata {
+                        event_id: raw,
+                        project_id: project.id,
+                        ingested_at: now,
+                        remote_addr: None,
+                    },
+                    serde_json::to_vec(&event).unwrap().into(),
+                )
+                .await
+                .unwrap();
+            }
+        }
+    }
+    crate::common::eventually(|| async { (!crate::common::has_files(dir)).then_some(()) }).await;
+    assert_eq!(
+        processors.errors.pending().counts(project.id).installation,
+        0
+    );
+    mixed_batch_snapshot(&db.pool, project.id).await
+}
+
+/// A commit that lands while its acknowledgement is lost (the connection
+/// drops during COMMIT) leaves its files; recovery replays them into exactly
+/// the database a clean run leaves: nothing counted, consumed, inserted or
+/// alerted twice. The same in the live digest, which retries the batch whole
+/// on its own.
+#[actix_web::test]
+async fn an_ambiguous_commit_replays_to_an_identical_database() {
+    let ids: Vec<Uuid> = (0..8).map(|_| Uuid::new_v4()).collect();
+    let control = run_mixed_batch(&ids, MixedRun::Clean).await;
+    let replayed = run_mixed_batch(&ids, MixedRun::AmbiguousOnce).await;
+    assert_eq!(replayed, control, "recovery replay");
+    let retried = run_mixed_batch(&ids, MixedRun::AmbiguousLive).await;
+    assert_eq!(retried, control, "live retry");
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum MixedRun {
+    Clean,
+    AmbiguousOnce,
+    AmbiguousLive,
 }

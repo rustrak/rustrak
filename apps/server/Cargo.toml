@@ -164,7 +164,8 @@ croner = "4.0.2"
 
 [target.'cfg(unix)'.dependencies]
 # statvfs: free disk before a SQLite compaction. Already built for `zip`.
-nix = { version = "0.31.3", default-features = false, features = ["fs"] }
+# prctl: transparent huge pages off (`allocator::tune`).
+nix = { version = "0.31.3", default-features = false, features = ["fs", "process"] }
 
 [dev-dependencies]
 # The crate depends on itself so the integration tests, which are separate

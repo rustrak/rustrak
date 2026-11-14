@@ -7,7 +7,7 @@ use crate::common::TestDb;
 use actix_web::test;
 use chrono::{Duration, SubsecRound, Utc};
 use rustrak::config::{Config, RateLimitConfig};
-use rustrak::services::{ProjectService, RateLimitService};
+use rustrak::services::{Pending, ProjectService, QuotaScope, RateLimitService};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -74,15 +74,63 @@ async fn stale_quota_cache_is_refreshed_before_the_next_ingest() {
     // The row as the ingest extractor loads it at the start of the request:
     // `check_quota` reads the project's quota state from this, not from a
     // second lookup.
-    let project = ProjectService::get_by_id(&db.pool, project_id)
+    let (project, installation) = ProjectService::get_with_installation_quota(&db.pool, project_id)
         .await
         .unwrap();
     assert_eq!(project.quota_exceeded_until, Some(stale_until));
 
-    assert!(RateLimitService::check_quota(&db.pool, &project, &config)
+    assert!(
+        RateLimitService::check_quota(&installation, &project, &config, Pending::default())
+            .is_none()
+    );
+}
+
+/// Ingest and digest read the project and the installation's quota in one
+/// round trip: both rows come back as they are stored.
+#[actix_web::test]
+async fn the_project_comes_with_the_installation_quota() {
+    let db = TestDb::new().await;
+    let (project_id, _) = create_ingest_project(&db.pool, "One Round Trip").await;
+    sqlx::query(
+        "UPDATE installation SET quota_minute_window = 7, quota_minute_count = 3, \
+         quota_hour_window = 11, quota_hour_count = 5 WHERE id = 1",
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE projects SET quota_minute_window = 2, quota_minute_count = 1 WHERE id = $1",
+    )
+    .bind(project_id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let (project, installation) = ProjectService::get_with_installation_quota(&db.pool, project_id)
         .await
-        .unwrap()
-        .is_none());
+        .unwrap();
+
+    assert_eq!(project.id, project_id);
+    assert_eq!(
+        (
+            project.quota.quota_minute_window,
+            project.quota.quota_minute_count
+        ),
+        (2, 1)
+    );
+    assert_eq!(
+        (
+            installation.quota_minute_window,
+            installation.quota_minute_count,
+            installation.quota_hour_window,
+            installation.quota_hour_count
+        ),
+        (7, 3, 11, 5)
+    );
+    assert!(matches!(
+        ProjectService::get_with_installation_quota(&db.pool, project_id + 1000).await,
+        Err(rustrak::error::AppError::NotFound(_))
+    ));
 }
 
 /// Creates a minimal valid Sentry envelope
@@ -378,4 +426,80 @@ async fn test_rate_limit_affects_only_specific_project() {
 
     let resp_b = test::call_service(&app, req_b).await;
     assert!(resp_b.status().is_success());
+}
+
+/// Events accepted and not digested yet count against the window they will
+/// be digested in, which is the current one whatever window the stored
+/// counters belong to: a minute that rolled over clears the counters, not
+/// the backlog.
+#[actix_web::test]
+async fn pending_events_count_against_the_current_window_after_a_rollover() {
+    let db = TestDb::new().await;
+    let (project_id, _) = create_ingest_project(&db.pool, "Rollover").await;
+    let config = crate::common::rate_limit();
+    let limit = config.max_events_per_project_per_minute;
+    // Last window full: it is over, so it no longer counts.
+    set_project_quota_exceeded(&db.pool, project_id, Utc::now() - Duration::seconds(1)).await;
+    let (project, installation) = ProjectService::get_with_installation_quota(&db.pool, project_id)
+        .await
+        .unwrap();
+    let pending = |count| Pending {
+        installation: count,
+        project: count,
+    };
+
+    assert!(
+        RateLimitService::check_quota(&installation, &project, &config, pending(limit - 1))
+            .is_none(),
+        "a rolled-over window only holds what is pending"
+    );
+    let exceeded =
+        RateLimitService::check_quota(&installation, &project, &config, pending(limit)).unwrap();
+    assert!(matches!(exceeded.scope, QuotaScope::Project));
+    assert!((1..=60).contains(&exceeded.retry_after));
+}
+
+/// The hour windows count pending events as the minute windows do.
+#[actix_web::test]
+async fn pending_events_count_against_the_hour_windows() {
+    let db = TestDb::new().await;
+    let (project_id, _) = create_ingest_project(&db.pool, "Hour").await;
+    let config = RateLimitConfig {
+        max_events_per_minute: 100,
+        max_events_per_hour: 100,
+        max_events_per_project_per_minute: 100,
+        max_events_per_project_per_hour: 5,
+    };
+    let (project, installation) = ProjectService::get_with_installation_quota(&db.pool, project_id)
+        .await
+        .unwrap();
+
+    let exceeded = RateLimitService::check_quota(
+        &installation,
+        &project,
+        &config,
+        Pending {
+            installation: 5,
+            project: 5,
+        },
+    )
+    .unwrap();
+    assert!(matches!(exceeded.scope, QuotaScope::Project));
+    let to_hour_end = 3600 - Utc::now().timestamp().rem_euclid(3600) as u64;
+    assert!(
+        exceeded.retry_after.abs_diff(to_hour_end) <= 1,
+        "the hour is what is full"
+    );
+
+    let exceeded = RateLimitService::check_quota(
+        &installation,
+        &project,
+        &config,
+        Pending {
+            installation: 100,
+            project: 0,
+        },
+    )
+    .unwrap();
+    assert!(matches!(exceeded.scope, QuotaScope::Installation));
 }

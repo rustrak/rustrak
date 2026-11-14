@@ -48,6 +48,7 @@ const STATUS_CODE_NUMBERS: Record<string, number> = {
   CONFLICT: 409,
   PAYLOAD_TOO_LARGE: 413,
   INTERNAL_SERVER_ERROR: 500,
+  SERVICE_UNAVAILABLE: 503,
 };
 
 /** `#[error("<display>")]` immediately above `VariantName(`. */
@@ -132,12 +133,12 @@ describe.skipIf(source === null)(
     const literals = parseTypeLiterals(rust);
     const statuses = parseStatusCodes(rust);
 
-    it('parses all eight variants out of the Rust enum', () => {
+    it('parses all nine variants out of the Rust enum', () => {
       // If the parse silently matches nothing, every table comparison below
       // would trivially pass, so assert the parse itself first.
-      expect(displays.size).toBe(8);
-      expect(literals.size).toBe(8);
-      expect(statuses.size).toBe(8);
+      expect(displays.size).toBe(9);
+      expect(literals.size).toBe(9);
+      expect(statuses.size).toBe(9);
       expect([...literals.keys()].sort()).toEqual([...displays.keys()].sort());
       expect([...statuses.keys()].sort()).toEqual([...displays.keys()].sort());
     });
@@ -176,7 +177,7 @@ describe.skipIf(source === null)(
 
     it('error_response redacts on the status, not on the variant', () => {
       // Anchored on `is_server_error()` rather than on a variant list: the
-      // rule has to keep holding for a ninth variant nobody has written yet,
+      // rule has to keep holding for a tenth variant nobody has written yet,
       // and a `match` naming `Database` and `Internal` would silently exempt
       // it. `_ = INTERNAL_ERROR_MESSAGE;` somewhere unrelated would satisfy a
       // grep for the constant alone, so both halves are asserted together.

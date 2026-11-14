@@ -23,6 +23,7 @@ use uuid::Uuid;
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
+use crate::digest::processors::Processors;
 use crate::error::{AppError, AppResult, INTERNAL_ERROR_MESSAGE};
 use crate::services::sourcemap_store::SourceMapStore;
 use crate::services::CleanupJob;
@@ -79,6 +80,7 @@ pub struct RustrakMcp {
     actor: Arc<ApiActor>,
     cleanup_job: web::Data<CleanupJob>,
     sourcemap_store: web::Data<Arc<dyn SourceMapStore>>,
+    processors: web::Data<Processors>,
 }
 
 #[tool_handler(router = TOOLS.clone())]
@@ -127,7 +129,15 @@ impl RustrakMcp {
                 .app_data::<web::Data<Arc<dyn SourceMapStore>>>()
                 .cloned()
                 .ok_or_else(|| missing("Source map store"))?,
+            processors: req
+                .app_data::<web::Data<Processors>>()
+                .cloned()
+                .ok_or_else(|| missing("Processors"))?,
         })
+    }
+
+    fn processors(&self) -> web::Data<Processors> {
+        self.processors.clone()
     }
 
     fn pool(&self) -> web::Data<DbPool> {

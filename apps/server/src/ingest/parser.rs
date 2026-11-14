@@ -380,4 +380,127 @@ mod tests {
         assert_eq!(detached, payload);
         assert_ne!(detached.as_ptr(), payload.as_ptr());
     }
+
+    /// Property tests: whatever an SDK (or an attacker) sends, parsing ends in
+    /// `Ok` or `Err`, never a panic. Payloads are slices of the body, so a
+    /// declared length can only be honoured by bytes that are really there.
+    mod properties {
+        use super::*;
+        use proptest::collection::vec;
+        use proptest::prelude::*;
+
+        /// Item types whose payload the parser hands over as it read it.
+        const BYTE_TYPES: [&str; 9] = [
+            "event",
+            "transaction",
+            "log",
+            "check_in",
+            "feedback",
+            "user_report",
+            "attachment",
+            "span",
+            "something_new",
+        ];
+
+        fn payload_len(item: &EnvelopeItemKind) -> Option<usize> {
+            Some(match item {
+                EnvelopeItemKind::Event(p)
+                | EnvelopeItemKind::Transaction(p)
+                | EnvelopeItemKind::Log(p)
+                | EnvelopeItemKind::CheckIn(p)
+                | EnvelopeItemKind::Feedback(p)
+                | EnvelopeItemKind::UserReport(p)
+                | EnvelopeItemKind::Span(p)
+                | EnvelopeItemKind::SpanV2Batch(p)
+                | EnvelopeItemKind::Other(_, p) => p.len(),
+                EnvelopeItemKind::Attachment(a) => a.payload.len(),
+                EnvelopeItemKind::Session(_) | EnvelopeItemKind::Sessions(_) => return None,
+            })
+        }
+
+        /// A payload byte that is never `\`: a `\u0000` escape is stripped
+        /// from JSON items and would change the length on purpose.
+        fn payload_byte() -> impl Strategy<Value = u8> {
+            any::<u8>().prop_filter("no escapes", |b| *b != b'\\')
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(256))]
+
+            #[test]
+            fn arbitrary_bytes_never_panic(data in vec(any::<u8>(), 0..2048)) {
+                let _ = EnvelopeParser::new(Bytes::from(data)).parse();
+            }
+
+            /// Arbitrary lines after a valid header line: item headers that
+            /// are not JSON, not UTF-8, or JSON of the wrong shape.
+            #[test]
+            fn arbitrary_items_never_panic(lines in vec(vec(any::<u8>(), 0..64), 0..8)) {
+                let mut data = b"{}\n".to_vec();
+                for line in lines {
+                    data.extend(line);
+                    data.push(b'\n');
+                }
+                let _ = EnvelopeParser::new(Bytes::from(data)).parse();
+            }
+
+            /// Every well-formed envelope comes back with the same items and
+            /// the same payload lengths, with explicit lengths (any byte, a
+            /// newline included) and without (up to the newline).
+            #[test]
+            fn valid_envelopes_round_trip(
+                items in vec(
+                    (
+                        prop::sample::select(BYTE_TYPES.to_vec()),
+                        vec(payload_byte(), 0..256),
+                        any::<bool>(),
+                    ),
+                    0..12,
+                ),
+                trailing_newline in any::<bool>(),
+            ) {
+                let mut data = br#"{"event_id":"9ec79c33ec9942ab8353589fcb2e04dc"}"#.to_vec();
+                let mut expected = Vec::new();
+                for (ty, mut payload, explicit) in items {
+                    data.push(b'\n');
+                    if explicit {
+                        data.extend(format!(r#"{{"type":"{ty}","length":{}}}"#, payload.len()).bytes());
+                    } else {
+                        payload.retain(|b| *b != b'\n');
+                        data.extend(format!(r#"{{"type":"{ty}"}}"#).bytes());
+                    }
+                    data.push(b'\n');
+                    data.extend(&payload);
+                    expected.push(payload.len());
+                }
+                if trailing_newline {
+                    data.push(b'\n');
+                }
+
+                let parsed = EnvelopeParser::new(Bytes::from(data)).parse().unwrap();
+                let lengths: Vec<_> = parsed.items.iter().map(payload_len).collect();
+                let expected: Vec<_> = expected.into_iter().map(Some).collect();
+                prop_assert_eq!(lengths, expected);
+            }
+
+            /// A declared length the body cannot back, up to the largest any
+            /// item type accepts and far past it, is an error, read from the
+            /// bytes present: nothing is allocated for the declared size.
+            #[test]
+            fn lying_lengths_are_errors(
+                ty in prop::sample::select(BYTE_TYPES.to_vec()),
+                actual in vec(any::<u8>(), 0..128),
+                extra in 1usize..=usize::MAX / 2,
+                newline in any::<bool>(),
+            ) {
+                let declared = actual.len().saturating_add(extra);
+                let mut data = format!("{{}}\n{{\"type\":\"{ty}\",\"length\":{declared}}}").into_bytes();
+                if newline {
+                    data.push(b'\n');
+                }
+                data.extend(&actual);
+                prop_assert!(EnvelopeParser::new(Bytes::from(data)).parse().is_err());
+            }
+        }
+    }
 }
