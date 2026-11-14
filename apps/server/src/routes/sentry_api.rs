@@ -595,7 +595,60 @@ pub async fn list_issues(
     let (_org_slug, project_slug) = path.into_inner();
     let project = project_by_slug(pool.get_ref(), &project_slug).await?;
     actor.require(Resource::Issues, Action::Read, Some(project.id))?;
+    issue_list(
+        &req,
+        &pool,
+        &config,
+        &query,
+        ProjectScope::Only(vec![project.id]),
+    )
+    .await
+}
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/0/organizations/{org_slug}/issues/",
+    operation_id = "sentry.listOrganizationIssues",
+    tag = "Sentry API",
+    params(
+        ("org_slug" = String, Path, description = "Organization slug (synthetic — accepted and ignored)"),
+        ("project" = Option<Vec<String>>, Query, description = "Project ids, repeated; `-1` or none for every project the reader can read"),
+        IssueListQuery
+    ),
+    responses(
+        (status = 200, description = "Issues; paginated by the `Link` header", body = Vec<SentryIssue>),
+        (status = 400, description = "Invalid query parameter", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Issues across projects, narrowed by `project`, filtered by `query`,
+/// sorted by `sort` and paginated by `cursor` (Sentry's
+/// `OrganizationGroupIndexEndpoint`,
+/// `issues/endpoints/organization_group_index.py`).
+pub async fn list_organization_issues(
+    req: HttpRequest,
+    pool: web::Data<DbPool>,
+    config: web::Data<Config>,
+    query: web::Query<IssueListQuery>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    let projects = actor
+        .projects_where(Resource::Issues, Action::Read)
+        .narrowed(crate::routes::issues::requested_projects(
+            req.query_string(),
+        ));
+    issue_list(&req, &pool, &config, &query, projects).await
+}
+
+/// One page of the issues of `projects`, in Sentry's shape.
+async fn issue_list(
+    req: &HttpRequest,
+    pool: &web::Data<DbPool>,
+    config: &Config,
+    query: &IssueListQuery,
+    projects: ProjectScope,
+) -> AppResult<HttpResponse> {
     let search = parse_search(query.query.as_deref())?;
     let order = order_clause(query.sort.as_deref())?;
     let limit = match query.limit.as_deref() {
@@ -613,7 +666,7 @@ pub async fn list_issues(
     let environment = match (query.environment.as_deref(), search.environment.as_deref()) {
         (Some(param), Some(term)) if param != term => {
             return Ok(HttpResponse::Ok()
-                .insert_header(("Link", link_header(&req, &config, &page, false)))
+                .insert_header(("Link", link_header(req, config, &page, false)))
                 .json(Vec::<SentryIssue>::new()));
         }
         (param, term) => param.or(term),
@@ -621,7 +674,7 @@ pub async fn list_issues(
 
     let (issues, total) = IssueService::list_window(
         pool.get_ref(),
-        project.id,
+        &projects,
         order,
         search.filter,
         search.category,
@@ -646,21 +699,28 @@ pub async fn list_issues(
         None => HashMap::new(),
     };
 
+    let projects: HashMap<i32, Project> = ProjectService::list(pool.get_ref())
+        .await?
+        .into_iter()
+        .map(|p| (p.id, p))
+        .collect();
     let body: Vec<SentryIssue> = issues
         .iter()
-        .map(|issue| {
+        .filter_map(|issue| {
+            // A project deleted between the two reads takes its issues along.
+            let project = projects.get(&issue.project_id)?;
             let users = list_stats.get(&issue.id).map_or(0, |s| s.user_count);
-            let mut item = SentryIssue::new(issue, &project, users);
+            let mut item = SentryIssue::new(issue, project, users);
             if let (Some((key, ..)), Some(points)) = (period, series.remove(&issue.id)) {
                 item.stats = Some(HashMap::from([(key.to_string(), points)]));
             }
-            item
+            Some(item)
         })
         .collect();
 
     let has_more = page.start + (issues.len() as i64) < total;
     Ok(HttpResponse::Ok()
-        .insert_header(("Link", link_header(&req, &config, &page, has_more)))
+        .insert_header(("Link", link_header(req, config, &page, has_more)))
         .json(body))
 }
 
@@ -1320,6 +1380,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/api/0/organizations/{org_slug}/repos/",
             web::get().to(list_repos),
+        )
+        .route(
+            "/api/0/organizations/{org_slug}/issues/",
+            web::get().to(list_organization_issues),
         )
         .route(
             "/api/0/projects/{org_slug}/{project_slug}/issues/",

@@ -54,3 +54,16 @@ export function searchId(value: unknown): number | undefined {
   const parsed = Number(id);
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
+
+/**
+ * Some record ids, comma-separated (`3,7`), each read as [`searchId`] reads
+ * one. Absent when none of them is an id.
+ */
+export function searchIds(value: unknown): number[] | undefined {
+  const raw = typeof value === 'number' ? String(value) : value;
+  if (typeof raw !== 'string') return undefined;
+  const ids = [
+    ...new Set(raw.split(',').flatMap((part) => searchId(part.trim()) ?? [])),
+  ];
+  return ids.length > 0 ? ids : undefined;
+}

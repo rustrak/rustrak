@@ -124,7 +124,7 @@ async fn test_sentry_sdk_capture_message() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -173,7 +173,7 @@ async fn test_sentry_sdk_capture_error() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -230,7 +230,7 @@ async fn test_sentry_sdk_with_custom_fingerprint() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -314,7 +314,7 @@ async fn test_sentry_sdk_with_stacktrace() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -363,7 +363,7 @@ async fn test_sentry_sdk_different_levels() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -406,7 +406,7 @@ async fn test_sentry_sdk_with_tags() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -451,7 +451,7 @@ async fn test_sentry_sdk_with_user_context() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -504,7 +504,7 @@ async fn test_sentry_sdk_with_breadcrumbs() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -562,7 +562,7 @@ async fn test_sentry_sdk_groups_similar_errors() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -630,7 +630,7 @@ async fn test_sentry_sdk_separates_different_errors() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -653,7 +653,7 @@ async fn test_sentry_sdk_separates_different_errors() {
 async fn only_issue(pool: &rustrak::db::DbPool, project_id: i32) -> rustrak::models::Issue {
     let (issues, _) = IssueService::list_offset(
         pool,
-        project_id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project_id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -804,7 +804,7 @@ async fn test_sdk_issue_is_searchable_by_frame_filename_and_module() {
     for term in ["billing/stripe.rs", "billing::stripe", "charge_customer"] {
         let (hits, total) = IssueService::list_offset(
             &db.pool,
-            project.id,
+            &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
             IssueSort::DigestOrder,
             SortOrder::Desc,
             IssueFilter::All,
@@ -935,7 +935,7 @@ async fn test_aggregate_exceptions_wrapping_different_errors_get_separate_issues
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,
@@ -1062,7 +1062,7 @@ async fn test_sdk_messages_differing_beyond_an_id_still_split() {
 
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         rustrak::pagination::IssueSort::DigestOrder,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,

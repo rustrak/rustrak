@@ -104,7 +104,7 @@ async fn test_concurrent_different_errors_same_project_creates_sequential_issues
     // Verify we have exactly 10 issues
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -199,7 +199,7 @@ async fn test_concurrent_same_errors_same_project_groups_into_one_issue() {
     // Verify we have exactly 1 issue with 10 events
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -291,7 +291,7 @@ async fn test_concurrent_different_projects_process_in_parallel() {
     for project in &projects {
         let (issues, _) = IssueService::list_offset(
             &db.pool,
-            project.id,
+            &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
             IssueSort::DigestOrder,
             SortOrder::Asc,
             rustrak::pagination::IssueFilter::All,
@@ -384,7 +384,7 @@ async fn test_high_concurrency_stress_test() {
     // Verify we have exactly 50 issues
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -515,7 +515,7 @@ async fn test_concurrent_digests_sqlite_file_mode_no_lock_errors_or_loss() {
     // No event loss: all 50 issues exist with sequential digest_order 1..=50.
     let (issues, _) = IssueService::list_offset(
         &pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -611,7 +611,7 @@ async fn test_concurrent_mixed_create_and_update() {
     // Verify we have exactly 5 issues
     let (issues, _) = IssueService::list_offset(
         &db.pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -732,7 +732,7 @@ async fn test_digest_fails_after_exhausting_sqlite_write_retries() {
     // The rolled-back transaction left no partial issue/grouping behind.
     let (issues, _) = IssueService::list_offset(
         &pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -837,7 +837,7 @@ async fn test_shared_processor_digests_concurrent_events() {
 
     let (issues, _) = IssueService::list_offset(
         &pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -1235,7 +1235,7 @@ async fn test_a_slow_write_does_not_drop_queued_digests() {
 
     let (issues, _) = IssueService::list_offset(
         &pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,
@@ -1303,7 +1303,7 @@ async fn test_a_digest_that_cannot_store_its_event_leaves_no_issue_behind() {
 
     let (issues, _) = IssueService::list_offset(
         &pool,
-        project.id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
         IssueSort::DigestOrder,
         SortOrder::Asc,
         rustrak::pagination::IssueFilter::All,

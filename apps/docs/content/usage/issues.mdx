@@ -1,5 +1,5 @@
 ---
-description: "How Rustrak groups error events into issues, and how to triage them: short IDs, stack traces, resolve, ignore, assign and regressions."
+description: "How Rustrak groups error events into issues, and how to triage them: short IDs, stack traces, resolve, ignore, assign, regressions, and every project's issues on one page."
 ---
 
 # Issues
@@ -17,6 +17,42 @@ The bar above the table searches the error type, message, transaction and culpri
 <InteractiveDemo src="/demos/issues.openshowcase" />
 
 Select rows with the checkboxes to resolve, archive, assign or delete several issues at once. Deleting removes the issue and all its events, and cannot be undone.
+
+## Every project at once
+
+**Issues** in the sidebar, above your projects, lists the open issues of every project in one table. It is the page to check when one product is split across several projects (a web app, its API, a mobile app) and you want to know what broke today without opening each one.
+
+Two tabs split the page:
+
+- **Errors**: the open issues, newest activity first.
+- **Feedback**: the [user feedback](/usage/user-feedback) still in the inbox, with the same reading pane as a project's **User Feedback**.
+
+Each tab shows how many are waiting. The project picker at the top right narrows both tabs to the projects you tick, and keeps them when you switch tab. With nothing ticked, the page covers **All projects**: every project you can read issues on. The picker offers your first 100 projects.
+
+<InteractiveDemo src="/demos/issues-all.openshowcase" />
+
+The table is the project issue list with one more column, **Project**, which shows each issue's project and its platform logo. The search bar and the column filters work the same, except that environment and release suggest no values: type `environment:production` and press Enter. Click a row to open the issue in its project.
+
+Ticked rows can come from different projects: resolving, archiving, setting the priority or deleting them sends one request to each project. Assigning across projects only offers **Assign to me** and **Unassign**, since each project has its own members.
+
+Resolved and archived issues are not listed here, and neither is feedback you resolved or marked as spam. To go through those, open the project.
+
+You only see the projects where you can read issues. A project you have no access to is left out, with no error, so the page never tells you it exists.
+
+### From the API
+
+The same lists are two endpoints. `project` takes comma-separated project IDs. Without it you get every project the token can read:
+
+```bash
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" \
+  "$RUSTRAK_URL/api/issues?project=1,2&filter=open"
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" \
+  "$RUSTRAK_URL/api/feedback?project=3"
+```
+
+Each issue in the response carries its `project_id`. The other parameters are the project list's (`filter`, `q`, `sort`, `page` and so on), listed in the [API reference](/api-reference).
+
+Tools built for Sentry can use Sentry's organization endpoint, `GET /api/0/organizations/{org}/issues/`. It takes `project` repeated, Sentry's way (`?project=1&project=2`), and `project=-1` or no `project` means every project. Rustrak has one organization, so `{org}` can be anything.
 
 ## The issue page
 

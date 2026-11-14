@@ -1,6 +1,6 @@
 import type { DataTableQuery } from '@rustrak/ui';
 import { describe, expect, it } from 'vitest';
-import { issueListParams, withServerQuery } from './issue-table';
+import { byProject, issueListParams, withServerQuery } from './issue-table';
 
 const base: DataTableQuery = {
   sorting: [],
@@ -65,6 +65,23 @@ describe('issueListParams', () => {
         'open',
       ),
     ).toMatchObject({ assigned: 'none' });
+  });
+});
+
+describe('byProject', () => {
+  it('splits a selection into one batch of ids per project', () => {
+    expect(
+      byProject([
+        { id: 'a', project_id: 1 },
+        { id: 'b', project_id: 2 },
+        { id: 'c', project_id: 1 },
+      ]),
+    ).toEqual(
+      new Map([
+        [1, ['a', 'c']],
+        [2, ['b']],
+      ]),
+    );
   });
 });
 

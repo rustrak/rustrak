@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::db::dialect::{bucket, compare_utc, epoch, json_member, push_compare_utc, since};
 use crate::db::{Db, DbPool};
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::ProjectScope;
 use crate::models::{Grouping, Issue};
 use crate::pagination::{IssueCategory, IssueFilter, IssueSort, SortOrder};
 use crate::services::github;
@@ -252,7 +253,7 @@ impl IssueService {
     #[allow(clippy::too_many_arguments)]
     pub async fn list_offset(
         pool: &DbPool,
-        project_id: i32,
+        projects: &ProjectScope,
         sort: IssueSort,
         order: SortOrder,
         filter: IssueFilter,
@@ -293,7 +294,7 @@ impl IssueService {
 
         Self::list_window(
             pool,
-            project_id,
+            projects,
             order_clause,
             filter,
             category,
@@ -306,15 +307,15 @@ impl IssueService {
         .await
     }
 
-    /// One window of a project's issues: `filter`, `category`, `search` and
-    /// `scope` as in [`Self::list_offset`], ordered by a trusted
+    /// One window of the issues of `projects`: `filter`, `category`, `search`
+    /// and `scope` as in [`Self::list_offset`], ordered by a trusted
     /// `order_clause`.
     ///
     /// Returns (issues, total_count) where total_count is the total matching issues.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn list_window(
         pool: &DbPool,
-        project_id: i32,
+        projects: &ProjectScope,
         order_clause: &str,
         filter: IssueFilter,
         category: IssueCategory,
@@ -324,8 +325,8 @@ impl IssueService {
         scope: Scope<'_>,
         filters: &IssueFilters,
     ) -> AppResult<(Vec<Issue>, i64)> {
-        let status_clause = filter_clause(filter, category);
-        // Bound after `$1` (project_id), in order.
+        let status_clause = filter_clause(filter, category, projects);
+        // Bound from `$1`, in order.
         let mut binds: Vec<String> = Vec::new();
 
         // In an environment, only the issues seen there, with that
@@ -334,13 +335,14 @@ impl IssueService {
         // `issues`, so every clause below applies unchanged.
         let env_param = scope.environment.map(|env| {
             binds.push(env.to_string());
-            binds.len() + 1
+            binds.len()
         });
         let source = match env_param {
             Some(n) => format!(
                 "(SELECT {ENV_SCOPED_COLUMNS} FROM issues i \
                  JOIN issue_environments e ON e.issue_id = i.id \
-                 WHERE e.project_id = $1 AND e.environment = ${n}) AS issues"
+                 WHERE {} AND e.environment = ${n}) AS issues",
+                project_clause("e.project_id", projects)
             ),
             None => "issues".to_string(),
         };
@@ -361,7 +363,7 @@ impl IssueService {
         let search_clause = match pattern {
             Some(pattern) => {
                 binds.push(pattern);
-                let n = binds.len() + 1;
+                let n = binds.len();
                 format!(
                     r#"AND (
                 LOWER(calculated_type) LIKE ${n} ESCAPE '\'
@@ -386,8 +388,9 @@ impl IssueService {
                     .unwrap_or_default();
                 format!(
                     "AND id IN (SELECT issue_id FROM events \
-                     WHERE project_id = $1 AND release = ${}{env_clause})",
-                    binds.len() + 1
+                     WHERE {} AND release = ${}{env_clause})",
+                    project_clause("project_id", projects),
+                    binds.len()
                 )
             }
             None => String::new(),
@@ -398,8 +401,7 @@ impl IssueService {
         );
 
         let count_query = format!("SELECT COUNT(*) {from}");
-        let mut count =
-            sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(&*count_query)).bind(project_id);
+        let mut count = sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(&*count_query));
         for b in &binds {
             count = count.bind(b);
         }
@@ -407,11 +409,10 @@ impl IssueService {
 
         let select_query = format!(
             "SELECT * {from} ORDER BY {order_clause} LIMIT ${} OFFSET ${}",
-            binds.len() + 2,
-            binds.len() + 3
+            binds.len() + 1,
+            binds.len() + 2
         );
-        let mut select =
-            sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(&*select_query)).bind(project_id);
+        let mut select = sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(&*select_query));
         for b in &binds {
             select = select.bind(b);
         }
@@ -954,9 +955,13 @@ impl IssueService {
         project_id: i32,
         filter: IssueFilter,
     ) -> AppResult<u64> {
-        // `filter_clause` returns fixed SQL; only the project id is user input.
+        // `filter_clause` returns fixed SQL with the project id written in.
         // Bulk deletes act on the error list, never on feedback.
-        let clause = filter_clause(filter, IssueCategory::Error);
+        let clause = filter_clause(
+            filter,
+            IssueCategory::Error,
+            &ProjectScope::Only(vec![project_id]),
+        );
 
         #[cfg(feature = "postgres")]
         let deleted = {
@@ -996,12 +1001,10 @@ impl IssueService {
                  FROM issues WHERE {clause}"
             );
             let (stored, digested): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(&*totals))
-                .bind(project_id)
                 .fetch_one(&mut *tx)
                 .await?;
             let delete = format!("DELETE FROM issues WHERE {clause}");
             let deleted = sqlx::query(sqlx::AssertSqlSafe(&*delete))
-                .bind(project_id)
                 .execute(&mut *tx)
                 .await?
                 .rows_affected();
@@ -1494,7 +1497,7 @@ fn narrowing_clause(filters: &IssueFilters, binds: &mut Vec<String>) -> String {
             .iter()
             .map(|value| {
                 binds.push(value.clone());
-                format!("${}", binds.len() + 1)
+                format!("${}", binds.len())
             })
             .collect();
         clause.push_str(&format!(" AND {column} IN ({})", placeholders.join(", ")));
@@ -1525,8 +1528,22 @@ fn narrowing_clause(filters: &IssueFilters, binds: &mut Vec<String>) -> String {
     clause
 }
 
-/// WHERE clause for an issue filter; `$1` is the project id.
-fn filter_clause(filter: IssueFilter, category: IssueCategory) -> String {
+/// `column` within `projects`. The ids are written into the SQL, not bound:
+/// they are integers the server resolved from the reader's access, and a
+/// literal keeps the `(project_id, ...)` indexes usable on both backends.
+fn project_clause(column: &str, projects: &ProjectScope) -> String {
+    match projects {
+        ProjectScope::All => "1 = 1".to_string(),
+        ProjectScope::Only(ids) if ids.is_empty() => "1 = 0".to_string(),
+        ProjectScope::Only(ids) => {
+            let ids: Vec<String> = ids.iter().map(i32::to_string).collect();
+            format!("{column} IN ({})", ids.join(", "))
+        }
+    }
+}
+
+/// WHERE clause for an issue filter within `projects`.
+fn filter_clause(filter: IssueFilter, category: IssueCategory, projects: &ProjectScope) -> String {
     let status = match filter {
         IssueFilter::Open => " AND status = 'unresolved'",
         IssueFilter::Resolved => " AND status = 'resolved'",
@@ -1534,7 +1551,8 @@ fn filter_clause(filter: IssueFilter, category: IssueCategory) -> String {
         IssueFilter::All => "",
     };
     format!(
-        "project_id = $1{status} AND issue_category = '{}'",
+        "{}{status} AND issue_category = '{}'",
+        project_clause("project_id", projects),
         category.as_str()
     )
 }

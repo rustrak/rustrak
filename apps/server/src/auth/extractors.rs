@@ -255,6 +255,12 @@ impl ApiActor {
         self.access.visible_projects()
     }
 
+    /// The projects where `action` on `resource` holds, for a list across
+    /// projects.
+    pub fn projects_where(&self, resource: Resource, action: rbac::Action) -> ProjectScope {
+        self.access.projects_where(resource, action)
+    }
+
     /// Holds an instance-wide role with every permission.
     pub fn is_owner(&self) -> bool {
         self.access.is_owner()

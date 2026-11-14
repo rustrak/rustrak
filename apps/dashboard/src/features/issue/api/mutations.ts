@@ -3,18 +3,34 @@
  *
  * A change of status, a delete or a bulk action moves the project's counts
  * (the overview, the stats, the release pages), which live outside this slice:
- * those invalidate the whole `projectScope`.
+ * those invalidate the whole `projectScope`, and a batch that may span
+ * projects every project's.
  */
 import type {
-  BulkDeleteIssues,
   BulkUpdateIssues,
+  Result,
+  RustrakError,
   UpdateIssueState,
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
-import { projectScope } from '@/shared/api/keys';
+import { byProject } from '@/features/issue/model/issue-table';
+import { allProjects, projectScope } from '@/shared/api/keys';
 import { ApiError, orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 import { issueQueries } from './queries';
+
+/** An issue as a write needs it: which one, and whose. */
+type IssueRef = { id: string; project_id: number };
+
+/**
+ * Waits for every request, then throws the first failure: the others went
+ * through, and the refetch has to show them.
+ */
+async function settled(requests: Promise<Result<unknown, RustrakError>>[]) {
+  for (const result of await Promise.all(requests)) {
+    if (!result.success) throw new ApiError(result.error);
+  }
+}
 
 export const issueMutations = {
   /**
@@ -40,51 +56,64 @@ export const issueMutations = {
             body: state,
           }),
         ),
-      meta: { invalidates: [projectScope(projectId)] },
+      meta: {
+        invalidates: [projectScope(projectId), issueQueries.everyProject()],
+      },
     }),
   /**
    * Assigns some issues. The API assigns one issue at a time, so this is one
    * request per issue, all of them settled before the first failure is
    * thrown: the others went through, and the refetch has to show them.
    */
-  assign: (projectId: number) =>
+  assign: () =>
     mutationOptions({
       mutationFn: async ({
-        ids,
+        issues,
         assignedTo,
       }: {
-        ids: string[];
+        issues: IssueRef[];
         assignedTo: number | null;
-      }) => {
-        const results = await Promise.all(
-          ids.map((id) =>
+      }) =>
+        settled(
+          issues.map(({ id, project_id }) =>
             api().issues.update({
-              path: { project_id: projectId, issue_id: id },
+              path: { project_id, issue_id: id },
               body: { assigned_to: assignedTo },
             }),
           ),
-        );
-        for (const result of results) {
-          if (!result.success) throw new ApiError(result.error);
-        }
-      },
-      meta: { invalidates: [projectScope(projectId)] },
-    }),
-  bulkUpdate: (projectId: number) =>
-    mutationOptions({
-      mutationFn: (body: BulkUpdateIssues) =>
-        orThrow(
-          api().issues.bulkUpdate({ path: { project_id: projectId }, body }),
         ),
-      meta: { invalidates: [projectScope(projectId)] },
+      meta: { invalidates: [allProjects()] },
     }),
-  bulkDelete: (projectId: number) =>
+  /**
+   * Sets the status or priority of some issues, of one project or several:
+   * one request per project, all settled before the first failure is thrown.
+   */
+  bulkUpdate: () =>
     mutationOptions({
-      mutationFn: (body: BulkDeleteIssues) =>
-        orThrow(
-          api().issues.bulkDelete({ path: { project_id: projectId }, body }),
+      mutationFn: ({
+        issues,
+        ...change
+      }: Omit<BulkUpdateIssues, 'ids'> & { issues: IssueRef[] }) =>
+        settled(
+          [...byProject(issues)].map(([project_id, ids]) =>
+            api().issues.bulkUpdate({
+              path: { project_id },
+              body: { ids, ...change },
+            }),
+          ),
         ),
-      meta: { invalidates: [projectScope(projectId)] },
+      meta: { invalidates: [allProjects()] },
+    }),
+  /** Deletes some issues, one request per project, as `bulkUpdate`. */
+  bulkDelete: () =>
+    mutationOptions({
+      mutationFn: (issues: IssueRef[]) =>
+        settled(
+          [...byProject(issues)].map(([project_id, ids]) =>
+            api().issues.bulkDelete({ path: { project_id }, body: { ids } }),
+          ),
+        ),
+      meta: { invalidates: [allProjects()] },
     }),
   delete: (projectId: number) =>
     mutationOptions({
@@ -100,7 +129,9 @@ export const issueMutations = {
         client.removeQueries({
           queryKey: issueQueries.one(projectId, issueId),
         }),
-      meta: { invalidates: [projectScope(projectId)] },
+      meta: {
+        invalidates: [projectScope(projectId), issueQueries.everyProject()],
+      },
     }),
   /** A note on the issue's activity log. */
   comment: (projectId: number, issueId: string) =>

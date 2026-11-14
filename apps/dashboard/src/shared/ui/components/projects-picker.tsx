@@ -8,11 +8,18 @@ export type ProjectOption = {
   platform?: string | null;
 };
 
-function ProjectLogo({ project }: { project: ProjectOption }) {
+/** A project's platform logo, the one the projects list shows. */
+export function ProjectLogo({
+  project,
+  size = 18,
+}: {
+  project: Pick<ProjectOption, 'platform'>;
+  size?: 16 | 18;
+}) {
   return (
     <PlatformIcon
       platform={project.platform ?? 'other'}
-      size={18}
+      size={size}
       format="lg"
       className="shrink-0 rounded"
     />
@@ -30,11 +37,14 @@ export function ProjectsPicker({
   readOnly,
   allLabel,
   allHint,
+  compact = false,
 }: {
   projects: ProjectOption[];
   value: number[] | null;
   onChange: (next: number[] | null) => void;
   readOnly: boolean;
+  /** A page's filter rather than a form's field: its own width, smaller. */
+  compact?: boolean;
   /** What "every project" means here, when not all there are. */
   allLabel?: string;
   allHint?: string;
@@ -66,8 +76,8 @@ export function ProjectsPicker({
         <Button
           variant="secondary"
           disabled={readOnly}
-          size="lg"
-          className="w-full"
+          size={compact ? 'md' : 'lg'}
+          className={compact ? 'max-w-64' : 'w-full'}
         >
           <span className="flex w-full min-w-0 items-center gap-2">
             {value !== null && picked.length > 0 ? (

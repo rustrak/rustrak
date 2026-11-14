@@ -355,6 +355,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 |---|---|---|
 | `environments.list({ path })` | `GET /api/projects/{project_id}/environments` | Lists the environments a project's issues have been seen in, by name. |
 | `feedback.list({ path, query? })` | `GET /api/projects/{project_id}/feedback` | Lists user feedback with what each user submitted. |
+| `feedback.listAll({ query? })` | `GET /api/feedback` | Lists user feedback across every project the reader can read issues on. |
 | `issues.bulkDelete({ path, body })` | `DELETE /api/projects/{project_id}/issues` | Deletes many issues at once, selected by id or by filter. |
 | `issues.bulkUpdate({ path, body })` | `PUT /api/projects/{project_id}/issues` | Sets the status or priority of many issues at once, by id. |
 | `issues.createComment({ path, body })` | `POST /api/projects/{project_id}/issues/{issue_id}/comments` | Add a note. |
@@ -367,6 +368,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | `issues.getStats({ path, query? })` | `GET /api/projects/{project_id}/issues/{issue_id}/stats` | Zero-filled event-count timeseries. |
 | `issues.getTagValues({ path })` | `GET /api/projects/{project_id}/issues/{issue_id}/tags/{key}` | Lists the distinct values (with counts) for a tag key across the issue. |
 | `issues.list({ path, query? })` | `GET /api/projects/{project_id}/issues` | Lists issues for a project with offset-based pagination |
+| `issues.listAll({ query? })` | `GET /api/issues` | Lists issues across every project the reader can read issues on, as Sentry's organization issues endpoint. |
 | `issues.listUserReports({ path, query? })` | `GET /api/projects/{project_id}/issues/{issue_id}/user-reports` | List user feedback for an issue. |
 | `issues.markSeen({ path })` | `POST /api/projects/{project_id}/issues/{issue_id}/seen` | Mark the issue as seen by the current user. |
 | `issues.setBookmark({ path, body })` | `PUT /api/projects/{project_id}/issues/{issue_id}/bookmark` | Set/clear the per-user bookmark. |
@@ -445,6 +447,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | `sentry.getIssue({ path })` | `GET /api/0/issues/{issue_id}/` | One issue with its releases and its 24h and 30d series (Sentry's `GroupDetailsEndpoint`). |
 | `sentry.getLatestEvent({ path })` | `GET /api/0/issues/{issue_id}/events/latest/` | The issue's most recent event (Sentry's `GroupEventDetailsEndpoint`, `issues/endpoints/group_event_details.py`). |
 | `sentry.listIssues({ path, query? })` | `GET /api/0/projects/{org_slug}/{project_slug}/issues/` | Issues, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `ProjectGroupIndexEndpoint`, `issues/endpoints/project_group_index.py`). |
+| `sentry.listOrganizationIssues({ path, query? })` | `GET /api/0/organizations/{org_slug}/issues/` | Issues across projects, narrowed by `project`, filtered by `query`, sorted by `sort` and paginated by `cursor` (Sentry's `OrganizationGroupIndexEndpoint`, `issues/endpoints/organization_group_index.py`). |
 | `sentry.listOrganizations()` | `GET /api/0/organizations/` | The organizations the token belongs to (Sentry's `OrganizationIndexEndpoint`): always the one synthetic org. |
 | `sentry.listProjects({ query? })` | `GET /api/0/projects/` | The projects the token can see, newest first (Sentry's `ProjectIndexEndpoint`, `core/endpoints/project_index.py`). |
 | `sentry.listRepos({ path })` | `GET /api/0/organizations/{org_slug}/repos/` | The code repositories connected to the organization (Sentry's `OrganizationRepositoriesEndpoint`). |

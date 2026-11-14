@@ -1,4 +1,4 @@
-import type { IssuesListData } from '@rustrak/client';
+import type { IssuesListAllData } from '@rustrak/client';
 import type { DataTableQuery, FilterVariants } from '@rustrak/ui';
 
 /**
@@ -68,7 +68,8 @@ export function withServerQuery(query: DataTableQuery): DataTableQuery {
   };
 }
 
-type ListQuery = NonNullable<IssuesListData['query']>;
+/** The list's parameters: the instance-wide list's, a project's plus `project`. */
+type ListQuery = NonNullable<IssuesListAllData['query']>;
 
 const STATUS: Record<IssueView, NonNullable<ListQuery['filter']>> = {
   open: 'open',
@@ -130,4 +131,18 @@ export function issueListParams(
   params.per_page = query.pagination.pageSize;
 
   return params;
+}
+
+/**
+ * A selection's ids, one batch per project: a change to issues of several
+ * projects is one request to each project's endpoint.
+ */
+export function byProject(
+  issues: readonly { id: string; project_id: number }[],
+): Map<number, string[]> {
+  const batches = new Map<number, string[]>();
+  for (const { id, project_id } of issues) {
+    batches.set(project_id, [...(batches.get(project_id) ?? []), id]);
+  }
+  return batches;
 }

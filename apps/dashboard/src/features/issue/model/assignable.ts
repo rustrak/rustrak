@@ -19,3 +19,13 @@ export function assignable(
   }
   return list;
 }
+
+/**
+ * The members of several projects as one list, each person once: who a list
+ * across projects can name as an assignee.
+ */
+export function everyone(lists: readonly Assignable[][]): Assignable[] {
+  const byId = new Map<number, Assignable>();
+  for (const person of lists.flat()) byId.set(person.id, person);
+  return [...byId.values()];
+}
