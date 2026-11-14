@@ -4,6 +4,7 @@ import {
   type DataTableQuery,
   Page,
   PageHeader,
+  Separator,
   Skeleton,
   Tab,
   TabList,
@@ -39,6 +40,9 @@ import {
 } from '@/features/issue/ui/components/feedback-mailbox';
 import { IssuesTable } from '@/features/issue/ui/components/issues-table/issues-table';
 import { projectQueries } from '@/features/project/api/queries';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
 import { userQueries } from '@/features/user/api/queries';
 import {
   searchIds,
@@ -76,6 +80,9 @@ interface IssuesSearch extends TableSearch {
   mailbox?: Mailbox;
   selected?: string;
 }
+
+/** The address less the open feedback: a view is what is asked for. */
+const viewable = (search: IssuesSearch) => ({ ...search, selected: undefined });
 
 const table = tableSearch({
   variants: ISSUE_FILTER_VARIANTS,
@@ -119,33 +126,36 @@ const waiting = {
     }),
 };
 
+/** The address as typed search; a saved view's text goes through it too. */
+function validateIssuesSearch(search: Record<string, unknown>): IssuesSearch {
+  const tab = searchOneOf(search.tab, TABS);
+  const project = searchIds(search.project)?.join(',');
+  if (tab === 'feedback') {
+    const mailbox = searchOneOf(search.mailbox, MAILBOXES);
+    const { page } = table.validate(search);
+    return {
+      tab,
+      project,
+      mailbox: mailbox === 'inbox' ? undefined : mailbox,
+      page,
+      selected: searchString(search.selected),
+    };
+  }
+  const view = searchOneOf(search.view, ISSUE_VIEWS);
+  return {
+    project,
+    view: view === 'open' ? undefined : view,
+    ...table.validate(search),
+  };
+}
+
 /**
  * Every project's issues and user feedback, on one page: Sentry's issue
  * stream, with its feedback inbox as the second tab. The projects picked in
  * the header narrow both, and each row names the project it belongs to.
  */
 export const Route = createFileRoute('/_authenticated/issues/')({
-  validateSearch: (search: Record<string, unknown>): IssuesSearch => {
-    const tab = searchOneOf(search.tab, TABS);
-    const project = searchIds(search.project)?.join(',');
-    if (tab === 'feedback') {
-      const mailbox = searchOneOf(search.mailbox, MAILBOXES);
-      const { page } = table.validate(search);
-      return {
-        tab,
-        project,
-        mailbox: mailbox === 'inbox' ? undefined : mailbox,
-        page,
-        selected: searchString(search.selected),
-      };
-    }
-    const view = searchOneOf(search.view, ISSUE_VIEWS);
-    return {
-      project,
-      view: view === 'open' ? undefined : view,
-      ...table.validate(search),
-    };
-  },
+  validateSearch: validateIssuesSearch,
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, deps }) => {
     if (deps.tab === 'feedback') {
@@ -156,6 +166,9 @@ export const Route = createFileRoute('/_authenticated/issues/')({
     void queryClient.query(waiting.errors(deps)).catch(noop);
     void queryClient.query(waiting.feedback(deps)).catch(noop);
     void queryClient.query(projectQueries.picker()).catch(noop);
+    void queryClient
+      .query(savedViewQueries.list(undefined, 'issues'))
+      .catch(noop);
   },
   pendingComponent: IssuesLoading,
   component: IssuesPage,
@@ -174,6 +187,12 @@ function useOnSearch(): OnSearch {
 function IssuesPage() {
   const live = Route.useSearch();
   const search = useDeferredValue(live);
+  const entry = useEntryView(undefined, 'issues', viewable(live));
+  if (entry) {
+    return (
+      <Navigate to="/issues" search={validateIssuesSearch(entry)} replace />
+    );
+  }
   return search.tab === 'feedback' ? (
     <FeedbackTab search={search} loading={search !== live} />
   ) : (
@@ -185,7 +204,7 @@ function IssuesLoading() {
   const tab = Route.useSearch().tab ?? 'errors';
   return (
     <PageLoading>
-      <IssuesFrame summary={null}>
+      <IssuesFrame summary={null} loading>
         {tab === 'feedback' ? (
           <FeedbackMailboxSkeleton />
         ) : (
@@ -323,9 +342,12 @@ function FeedbackTab({
  */
 function IssuesFrame({
   summary,
+  loading = false,
   children,
 }: {
   summary: ReactNode;
+  /** The skeleton: no side reads, so nothing it starts is cancelled. */
+  loading?: boolean;
   children: ReactNode;
 }) {
   const tWorkspace = useTranslations('workspaceIssues');
@@ -361,24 +383,38 @@ function IssuesFrame({
           summary ?? <Skeleton key="summary" className="h-4 w-24" />,
         ]}
         actions={
-          <ProjectsPicker
-            compact
-            projects={projects}
-            value={picked}
-            readOnly={false}
-            allLabel={tWorkspace('allProjects')}
-            allHint={tWorkspace('allProjectsHint')}
-            onChange={(next) =>
-              navigate({
-                search: (prev) => ({
-                  ...prev,
-                  project: next?.length ? next.join(',') : undefined,
-                  page: undefined,
-                  selected: undefined,
-                }),
-              })
-            }
-          />
+          <div className="flex items-center gap-2">
+            <ProjectsPicker
+              compact
+              projects={projects}
+              value={picked}
+              readOnly={false}
+              allLabel={tWorkspace('allProjects')}
+              allHint={tWorkspace('allProjectsHint')}
+              onChange={(next) =>
+                navigate({
+                  search: (prev) => ({
+                    ...prev,
+                    project: next?.length ? next.join(',') : undefined,
+                    page: undefined,
+                    selected: undefined,
+                  }),
+                })
+              }
+            />
+            {loading ? null : (
+              <>
+                <Separator orientation="vertical" className="h-5" />
+                <SavedViews
+                  page="issues"
+                  search={viewable(search)}
+                  onApply={(next) =>
+                    navigate({ search: validateIssuesSearch(next) })
+                  }
+                />
+              </>
+            )}
+          </div>
         }
         tabs={
           <Tabs

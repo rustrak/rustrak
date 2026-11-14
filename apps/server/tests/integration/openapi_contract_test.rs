@@ -234,6 +234,27 @@ async fn seed(db: &TestDb) -> (Seed, String) {
     .await
     .unwrap();
 
+    let view = rustrak::services::saved_view::SavedViewService::create(
+        &db.pool,
+        Some(project.id),
+        admin.id,
+        serde_json::from_value(
+            json!({"page": "issues", "name": "contract", "query": "q=level:error"}),
+        )
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    rustrak::services::saved_view::SavedViewService::set_user_default(
+        &db.pool,
+        admin.id,
+        Some(project.id),
+        "issues",
+        Some(view.id),
+    )
+    .await
+    .unwrap();
+
     let seed = Seed {
         project_id: project.id,
         project_slug: project.slug,
@@ -273,6 +294,7 @@ fn param_value(name: &str, path: &str, schema: &Value, seed: &Seed) -> String {
         "project_slug" => seed.project_slug.clone(),
         "org_slug" => "rustrak".into(),
         "key" => "level".into(),
+        "page" if path.ends_with("/views") => "issues".into(),
         "response_type" => "code".into(),
         "client_id" => CONTRACT_CLIENT.into(),
         "redirect_uri" => CONTRACT_REDIRECT.into(),

@@ -26,6 +26,7 @@ pub mod project;
 pub mod rate_limit;
 pub mod release;
 pub mod role;
+pub mod saved_view;
 pub mod scope;
 pub mod session;
 pub mod source_bundle;

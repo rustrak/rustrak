@@ -1,0 +1,60 @@
+---
+description: "Save a page's filters, search and sort as a named view, share it with the project, and pick the view a page opens on, for you or for everyone."
+---
+
+# Saved views
+
+If you filter a list the same way every morning, save that filter as a view and open it with one click. A view keeps what is on screen: the search, the filters, the sort, the open tab and the time window.
+
+Views work on the issue list of a project and on **Issues** for every project, and on **Logs**, **Performance**, **Releases**, **AI Agents** and a project's overview. The **Views** button sits at the top right of each of those pages.
+
+## Save a view
+
+Set the page up the way you want it, then open **Views** and choose **Save as new view**. Give the view a name and press **Save view**. The button now shows that name.
+
+Tick **Share with everyone on the project** to share the view. Left unticked, the view is yours: nobody else sees it, not even an owner.
+
+A view does not keep which page of results was open, or the log line or feedback you had selected. Each page keeps its own views, so a view saved on **Logs** never shows up on **Performance**.
+
+<InteractiveDemo src="/demos/saved-views.openshowcase" />
+
+## Change a view
+
+Open a view and change a filter: a dot appears on the button, and the view stays the one you are editing. **Views** then offers:
+
+- **Save changes to "…"** writes the new filters into the view, if it is one you may change (see below).
+- **Save as new view** keeps the old view and saves a second one.
+- **Discard changes** goes back to the view as it was saved.
+
+To delete a view, open it and choose **Delete view**. Everyone it is shared with loses it too.
+
+## Open a page on a view
+
+Open a view and choose **Open this page on this view**. From then on, whenever you arrive at that page without filters (from the sidebar, for example), it opens on that view. Only you get it. A star marks it in the menu.
+
+Someone who may change the project's settings can also choose **Make it the project's default** on a shared view. Everyone who has not picked a view of their own then opens the page on it. Your own pick always wins over the project's.
+
+The default applies only when you arrive. If you clear the filters afterwards, the page stays clear. A link that already carries filters opens exactly as the link says.
+
+## Who can change what
+
+| | Personal view | Shared view |
+|---|---|---|
+| Who sees it | Only you | Everyone who can see the project |
+| Who changes or deletes it | You | You, and anyone with the `project` **update** permission |
+| Can be the project's default | No | Yes, set by anyone with that permission |
+
+The permission is **Project settings** in [Roles & permissions](/usage/roles). Owners have it on every project. Making a shared view personal again also stops it being the project's default.
+
+## On every project's issues
+
+**Issues** in the sidebar covers every project, so its views belong to no project. They work the same way, with two differences:
+
+- **Share with everyone in the workspace** shares a view with every signed-in user.
+- Only owners change other people's shared views there, and only owners choose **Make it everyone's default**.
+
+A view on this page keeps the projects ticked in the picker, along with the tab, the search and the filters.
+
+## From the API
+
+Views live under `/api/projects/{project_id}/views` for a project's pages and `/api/views` for the page that covers every project. The `page` field names the page (`issues`, `logs`, `performance`, `releases`, `agents`, `overview`) and `query` holds its search string, the part of the address after `?`. See the [API reference](/api-reference).

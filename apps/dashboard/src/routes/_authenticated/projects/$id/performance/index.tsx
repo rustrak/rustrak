@@ -9,6 +9,9 @@ import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
 import { transactionQueries } from '@/features/transaction/api/queries';
 import { endpointHref } from '@/features/transaction/model/endpoints';
 import { EndpointsTable } from '@/features/transaction/ui/components/endpoints-table';
@@ -81,13 +84,20 @@ function statsParams(
   };
 }
 
+/** The address as typed search; a saved view's text goes through it too. */
+function validatePerformanceSearch(
+  search: Record<string, unknown>,
+): PerformanceSearch {
+  return {
+    ...table.validate(search),
+    period: searchOneOf(search.period, PERIOD_CHOICES),
+  };
+}
+
 export const Route = createFileRoute(
   '/_authenticated/projects/$id/performance/',
 )({
-  validateSearch: (search: Record<string, unknown>): PerformanceSearch => ({
-    ...table.validate(search),
-    period: searchOneOf(search.period, PERIOD_CHOICES),
-  }),
+  validateSearch: validatePerformanceSearch,
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = params.id;
@@ -95,6 +105,9 @@ export const Route = createFileRoute(
       .query(transactionQueries.stats(projectId, statsParams(deps)))
       .catch(noop);
     void queryClient.query(projectQueries.environments(projectId)).catch(noop);
+    void queryClient
+      .query(savedViewQueries.list(projectId, 'performance'))
+      .catch(noop);
   },
   pendingComponent: PerformanceLoading,
   component: PerformancePage,
@@ -113,6 +126,18 @@ function PerformancePage() {
   const { data: page } = useSuspenseQuery(
     transactionQueries.stats(projectId, statsParams(search)),
   );
+  const entry = useEntryView(projectId, 'performance', live);
+  if (entry) {
+    return (
+      <Navigate
+        to="/projects/$id/performance"
+        params={{ id: projectId }}
+        search={validatePerformanceSearch(entry)}
+        replace
+      />
+    );
+  }
+
   const last = pageBeyondEnd(
     table.read(search).pagination.pageIndex + 1,
     page.total_pages,
@@ -189,6 +214,18 @@ function PerformanceScreen({
           project && page
             ? [project.name, t('count', { count: page.total_count })]
             : [<Skeleton key="summary" className="h-4 w-56" />]
+        }
+        actions={
+          project ? (
+            <SavedViews
+              projectId={projectId}
+              page="performance"
+              search={search}
+              onApply={(next) =>
+                navigate({ search: validatePerformanceSearch(next) })
+              }
+            />
+          ) : undefined
         }
       />
 

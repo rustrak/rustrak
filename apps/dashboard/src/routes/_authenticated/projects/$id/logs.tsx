@@ -14,7 +14,7 @@ import {
   useQuery,
   useSuspenseQuery,
 } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { logQueries } from '@/features/log/api/queries';
@@ -27,6 +27,9 @@ import {
 } from '@/features/log/ui/components/log-search';
 import { LogVolume } from '@/features/log/ui/components/log-volume';
 import { projectQueries } from '@/features/project/api/queries';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
 import type { ApiError } from '@/shared/api/query';
 import {
   apiPeriod,
@@ -96,15 +99,20 @@ const narrowed =
  * line opened in a pane beside the list -- j and k to move, Esc to close.
  * Everything is in the URL, so a line can be linked to.
  */
-export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
-  validateSearch: (search: Record<string, unknown>) => ({
+/** The address as typed search; a saved view's text goes through it too. */
+function validateLogsSearch(search: Record<string, unknown>) {
+  return {
     q: searchString(search.q),
     level: searchOneOf(search.level, LOG_LEVELS),
     trace: searchString(search.trace),
     period: searchOneOf(search.period, PERIOD_CHOICES),
     page: searchPage(search.page),
     selected: searchString(search.selected),
-  }),
+  };
+}
+
+export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
+  validateSearch: validateLogsSearch,
   loaderDeps: ({ search }) => ({
     q: search.q,
     level: search.level,
@@ -119,6 +127,9 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
     const reads = logReads(projectId, deps);
     void queryClient.query(reads.list).catch(noop);
     void queryClient.query(reads.volume).catch(noop);
+    void queryClient
+      .query(savedViewQueries.list(projectId, 'logs'))
+      .catch(noop);
   },
   pendingComponent: LogsLoading,
   component: LogsPage,
@@ -168,6 +179,20 @@ function LogsPage() {
     Escape: () => select(undefined),
   });
 
+  // The address less the open line: a view is what is asked for.
+  const asked = { ...live, selected: undefined };
+  const entry = useEntryView(projectId, 'logs', asked);
+  if (entry) {
+    return (
+      <Navigate
+        to="/projects/$id/logs"
+        params={{ id: projectId }}
+        search={validateLogsSearch(entry)}
+        replace
+      />
+    );
+  }
+
   const filtered = Boolean(search.q || search.level || search.trace);
   const howToSend = t.rich('logs.emptyDescription', {
     code: (chunks) => <code className="font-mono">{chunks}</code>,
@@ -179,6 +204,14 @@ function LogsPage() {
       <PageHeader
         title={t('logs.title')}
         summary={[project.name, tLogs('count', { count: logs.total_count })]}
+        actions={
+          <SavedViews
+            projectId={projectId}
+            page="logs"
+            search={asked}
+            onApply={(next) => navigate({ search: validateLogsSearch(next) })}
+          />
+        }
       />
 
       {logs.total_count === 0 && !filtered && period === 'all' ? (

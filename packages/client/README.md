@@ -434,6 +434,21 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | `releases.list({ path, query? })` | `GET /api/projects/{project_id}/releases` | Lists a project's releases, newest first, with the events, new issues, environments and session health of each. |
 | `releases.newIssues({ path, query? })` | `GET /api/projects/{project_id}/releases/{release}/new-issues` | Lists the issues first seen in a release. |
 
+### Saved Views
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `savedViews.create({ path, body })` | `POST /api/projects/{project_id}/views` | Saves a project page's address as a view, personal unless `visibility` is `project`. |
+| `savedViews.delete({ path })` | `DELETE /api/projects/{project_id}/views/{view_id}` | Deletes a project view. |
+| `savedViews.list({ path, query })` | `GET /api/projects/{project_id}/views` | Lists the views of one project page the caller sees: their own and the shared ones. |
+| `savedViews.setDefault({ path, body })` | `PUT /api/projects/{project_id}/views/default` | Sets or clears the view a project page opens on, for the caller or the project. |
+| `savedViews.update({ path, body })` | `PATCH /api/projects/{project_id}/views/{view_id}` | Renames a project view, or changes its address or who sees it. |
+| `workspaceViews.create({ body })` | `POST /api/views` | Saves a workspace page's address as a view, personal unless `visibility` is `project`. |
+| `workspaceViews.delete({ path })` | `DELETE /api/views/{view_id}` | Deletes a workspace view. |
+| `workspaceViews.list({ query })` | `GET /api/views` | Lists the views of one workspace page (one that spans every project). |
+| `workspaceViews.setDefault({ body })` | `PUT /api/views/default` | Sets or clears the view a workspace page opens on, for the caller or everyone. |
+| `workspaceViews.update({ path, body })` | `PATCH /api/views/{view_id}` | Renames a workspace view, or changes its address or who sees it. |
+
 ### Schedules
 
 | Method | Endpoint | Description |

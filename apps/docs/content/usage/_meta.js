@@ -2,6 +2,7 @@
 export default {
   projects: 'Projects',
   issues: 'Issues',
+  'saved-views': 'Saved Views',
   'user-feedback': 'User Feedback',
   releases: 'Releases',
   performance: 'Performance',
