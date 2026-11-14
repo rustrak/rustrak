@@ -782,6 +782,25 @@ export type CreateRelease = {
 };
 
 /**
+ * Body of `POST /api/projects/{project_id}/views`.
+ */
+export type CreateSavedView = {
+    name: string;
+    /**
+     * The dashboard page it belongs to (`issues`, `logs`, …).
+     */
+    page: string;
+    /**
+     * The page's search string, without the leading `?`.
+     */
+    query: string;
+    /**
+     * `owner` (default) or `project`.
+     */
+    visibility?: ViewVisibility;
+};
+
+/**
  * A debug information file as Sentry's `DebugFileSerializer` describes it.
  */
 export type DebugFileResponse = {
@@ -800,6 +819,11 @@ export type DebugFileResponse = {
     symbolType: string;
     uuid: string;
 };
+
+/**
+ * Whose default a [`SetDefaultView`] sets.
+ */
+export type DefaultScope = 'user' | 'project';
 
 /**
  * One file of a debug information file assemble request.
@@ -2057,6 +2081,38 @@ export type RoleRef = {
     name: string;
 };
 
+export type SavedView = {
+    created_at: string;
+    /**
+     * Who saved it; `null` once that account is gone.
+     */
+    created_by: number | null;
+    id: number;
+    /**
+     * The caller picked it as their default for the page; wins over the
+     * project's.
+     */
+    is_my_default: boolean;
+    /**
+     * The page opens on it for whoever has not picked their own default.
+     */
+    is_project_default: boolean;
+    name: string;
+    /**
+     * The dashboard page it belongs to (`issues`, `logs`, …).
+     */
+    page: string;
+    /**
+     * `null` for a workspace view, on a page that spans every project.
+     */
+    project_id: number | null;
+    /**
+     * The page's search string, without the leading `?`.
+     */
+    query: string;
+    visibility: ViewVisibility;
+};
+
 export type Schedule = {
     type: 'crontab';
     value: string;
@@ -2294,6 +2350,21 @@ export type SessionTimeseriesPoint = {
 export type SetAccess = {
     assignments: Array<AssignmentInput>;
     personal?: PersonalAccess | null;
+};
+
+/**
+ * Body of `PUT /api/projects/{project_id}/views/default`.
+ */
+export type SetDefaultView = {
+    /**
+     * The dashboard page (`issues`, `logs`, …).
+     */
+    page: string;
+    scope: DefaultScope;
+    /**
+     * The view to open on; `null` goes back to the page's own default.
+     */
+    view_id?: number | null;
 };
 
 export type SetProjectMember = {
@@ -2830,6 +2901,19 @@ export type UpdateRelease = {
 };
 
 /**
+ * Body of `PATCH /api/projects/{project_id}/views/{view_id}`: only the
+ * fields sent change.
+ */
+export type UpdateSavedView = {
+    name?: string | null;
+    /**
+     * The page's search string, without the leading `?`.
+     */
+    query?: string | null;
+    visibility?: ViewVisibility | null;
+};
+
+/**
  * Request body for changing a user's global role.
  */
 export type UpdateUserRole = {
@@ -2900,6 +2984,12 @@ export type UserRole = 'admin' | 'member';
 export type VersionResponse = {
     version: string;
 };
+
+/**
+ * Who sees a view: its creator only, or everyone who sees the project.
+ * Sentry's `owner` / `organization`, with the project as the organization.
+ */
+export type ViewVisibility = 'owner' | 'project';
 
 export type SentryGetIssueData = {
     body?: never;
@@ -8942,6 +9032,221 @@ export type TransactionsGetSpansResponses = {
 
 export type TransactionsGetSpansResponse = TransactionsGetSpansResponses[keyof TransactionsGetSpansResponses];
 
+export type SavedViewsListData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query: {
+        /**
+         * The dashboard page (`issues`, `logs`, …)
+         */
+        page: string;
+    };
+    url: '/api/projects/{project_id}/views';
+};
+
+export type SavedViewsListErrors = {
+    /**
+     * Invalid query parameter
+     */
+    400: string;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Project not found
+     */
+    404: ErrorResponse;
+};
+
+export type SavedViewsListError = SavedViewsListErrors[keyof SavedViewsListErrors];
+
+export type SavedViewsListResponses = {
+    /**
+     * The page's views
+     */
+    200: Array<SavedView>;
+};
+
+export type SavedViewsListResponse = SavedViewsListResponses[keyof SavedViewsListResponses];
+
+export type SavedViewsCreateData = {
+    body: CreateSavedView;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/views';
+};
+
+export type SavedViewsCreateErrors = {
+    /**
+     * Invalid view
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Needs a user account
+     */
+    403: ErrorResponse;
+    /**
+     * Project not found
+     */
+    404: ErrorResponse;
+};
+
+export type SavedViewsCreateError = SavedViewsCreateErrors[keyof SavedViewsCreateErrors];
+
+export type SavedViewsCreateResponses = {
+    /**
+     * View saved
+     */
+    201: SavedView;
+};
+
+export type SavedViewsCreateResponse = SavedViewsCreateResponses[keyof SavedViewsCreateResponses];
+
+export type SavedViewsSetDefaultData = {
+    body: SetDefaultView;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/views/default';
+};
+
+export type SavedViewsSetDefaultErrors = {
+    /**
+     * Not a view of that page, or a personal view as the project's default
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * The project's default needs project:update
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type SavedViewsSetDefaultError = SavedViewsSetDefaultErrors[keyof SavedViewsSetDefaultErrors];
+
+export type SavedViewsSetDefaultResponses = {
+    /**
+     * Default set
+     */
+    204: void;
+};
+
+export type SavedViewsSetDefaultResponse = SavedViewsSetDefaultResponses[keyof SavedViewsSetDefaultResponses];
+
+export type SavedViewsDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+        /**
+         * Saved view ID
+         */
+        view_id: number;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/views/{view_id}';
+};
+
+export type SavedViewsDeleteErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Someone else's shared view
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type SavedViewsDeleteError = SavedViewsDeleteErrors[keyof SavedViewsDeleteErrors];
+
+export type SavedViewsDeleteResponses = {
+    /**
+     * View deleted
+     */
+    204: void;
+};
+
+export type SavedViewsDeleteResponse = SavedViewsDeleteResponses[keyof SavedViewsDeleteResponses];
+
+export type SavedViewsUpdateData = {
+    body: UpdateSavedView;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+        /**
+         * Saved view ID
+         */
+        view_id: number;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/views/{view_id}';
+};
+
+export type SavedViewsUpdateErrors = {
+    /**
+     * Invalid view
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Someone else's shared view
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type SavedViewsUpdateError = SavedViewsUpdateErrors[keyof SavedViewsUpdateErrors];
+
+export type SavedViewsUpdateResponses = {
+    /**
+     * View updated
+     */
+    200: SavedView;
+};
+
+export type SavedViewsUpdateResponse = SavedViewsUpdateResponses[keyof SavedViewsUpdateResponses];
+
 export type ProjectsGetRateLimitsData = {
     body?: never;
     path?: never;
@@ -9974,6 +10279,190 @@ export type UsersSetAssignmentsResponses = {
 };
 
 export type UsersSetAssignmentsResponse = UsersSetAssignmentsResponses[keyof UsersSetAssignmentsResponses];
+
+export type WorkspaceViewsListData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * The dashboard page (`issues`, …)
+         */
+        page: string;
+    };
+    url: '/api/views';
+};
+
+export type WorkspaceViewsListErrors = {
+    /**
+     * Invalid query parameter
+     */
+    400: string;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type WorkspaceViewsListError = WorkspaceViewsListErrors[keyof WorkspaceViewsListErrors];
+
+export type WorkspaceViewsListResponses = {
+    /**
+     * The page's views
+     */
+    200: Array<SavedView>;
+};
+
+export type WorkspaceViewsListResponse = WorkspaceViewsListResponses[keyof WorkspaceViewsListResponses];
+
+export type WorkspaceViewsCreateData = {
+    body: CreateSavedView;
+    path?: never;
+    query?: never;
+    url: '/api/views';
+};
+
+export type WorkspaceViewsCreateErrors = {
+    /**
+     * Invalid view
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Needs a user account
+     */
+    403: ErrorResponse;
+};
+
+export type WorkspaceViewsCreateError = WorkspaceViewsCreateErrors[keyof WorkspaceViewsCreateErrors];
+
+export type WorkspaceViewsCreateResponses = {
+    /**
+     * View saved
+     */
+    201: SavedView;
+};
+
+export type WorkspaceViewsCreateResponse = WorkspaceViewsCreateResponses[keyof WorkspaceViewsCreateResponses];
+
+export type WorkspaceViewsSetDefaultData = {
+    body: SetDefaultView;
+    path?: never;
+    query?: never;
+    url: '/api/views/default';
+};
+
+export type WorkspaceViewsSetDefaultErrors = {
+    /**
+     * Not a view of that page, or a personal view as everyone's default
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Everyone's default needs an owner
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WorkspaceViewsSetDefaultError = WorkspaceViewsSetDefaultErrors[keyof WorkspaceViewsSetDefaultErrors];
+
+export type WorkspaceViewsSetDefaultResponses = {
+    /**
+     * Default set
+     */
+    204: void;
+};
+
+export type WorkspaceViewsSetDefaultResponse = WorkspaceViewsSetDefaultResponses[keyof WorkspaceViewsSetDefaultResponses];
+
+export type WorkspaceViewsDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Saved view ID
+         */
+        view_id: number;
+    };
+    query?: never;
+    url: '/api/views/{view_id}';
+};
+
+export type WorkspaceViewsDeleteErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Someone else's shared view
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WorkspaceViewsDeleteError = WorkspaceViewsDeleteErrors[keyof WorkspaceViewsDeleteErrors];
+
+export type WorkspaceViewsDeleteResponses = {
+    /**
+     * View deleted
+     */
+    204: void;
+};
+
+export type WorkspaceViewsDeleteResponse = WorkspaceViewsDeleteResponses[keyof WorkspaceViewsDeleteResponses];
+
+export type WorkspaceViewsUpdateData = {
+    body: UpdateSavedView;
+    path: {
+        /**
+         * Saved view ID
+         */
+        view_id: number;
+    };
+    query?: never;
+    url: '/api/views/{view_id}';
+};
+
+export type WorkspaceViewsUpdateErrors = {
+    /**
+     * Invalid view
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Someone else's shared view
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WorkspaceViewsUpdateError = WorkspaceViewsUpdateErrors[keyof WorkspaceViewsUpdateErrors];
+
+export type WorkspaceViewsUpdateResponses = {
+    /**
+     * View updated
+     */
+    200: SavedView;
+};
+
+export type WorkspaceViewsUpdateResponse = WorkspaceViewsUpdateResponses[keyof WorkspaceViewsUpdateResponses];
 
 export type AuthAcceptInvitationData = {
     body: AcceptInvitation;

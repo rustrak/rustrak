@@ -1,0 +1,145 @@
+{
+  "title": "Save a view",
+  "url": "http://localhost:8090/projects/2/issues",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "steps": [
+    {
+      "action": "wait",
+      "for": {
+        "role": "heading",
+        "name": "Issues"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "combobox",
+        "name": "Filter by key:value, or search…"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "option",
+        "name": "Priority priority:"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "option",
+        "name": "High"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "press",
+      "key": "Escape",
+      "target": {
+        "role": "combobox",
+        "name": "Filter by key:value, or search…"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Views"
+      },
+      "tooltip": "Your saved filters for this page live here"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "menuitem",
+        "name": "Save as new view"
+      },
+      "tooltip": "Save the filters on screen"
+    },
+    {
+      "action": "fill",
+      "target": {
+        "label": "Name"
+      },
+      "value": "High priority"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "checkbox",
+        "name": "Share with everyone on the project"
+      },
+      "tooltip": "Share it, or leave it for you alone"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Save view"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "wait",
+      "ms": 300
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Views"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "menuitem",
+        "name": "Open this page on this view"
+      },
+      "tooltip": "Open Issues on this view from now on"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "Performance"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "heading",
+        "name": "Performance"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "Issues"
+      },
+      "tooltip": "Come back to Issues from the sidebar"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "text": "1–2 of 2"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Views"
+      },
+      "tooltip": "It opened on your view, filters and all"
+    }
+  ]
+}

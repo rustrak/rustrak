@@ -74,6 +74,7 @@ pub mod project;
 pub mod rbac;
 pub mod release;
 pub mod role;
+pub mod saved_view;
 pub mod schedule;
 pub mod session;
 pub mod source_file;

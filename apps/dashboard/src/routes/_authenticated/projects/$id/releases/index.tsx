@@ -7,6 +7,9 @@ import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { releaseQueries } from '@/features/release/api/queries';
 import { ReleasesTable } from '@/features/release/ui/components/releases-table';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
 import {
   apiPeriod,
   DEFAULT_PERIOD,
@@ -54,16 +57,26 @@ function releasesList(projectId: number, search: ReleasesSearch) {
   });
 }
 
-export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
-  validateSearch: (search: Record<string, unknown>): ReleasesSearch => ({
+/** The address as typed search; a saved view's text goes through it too. */
+function validateReleasesSearch(
+  search: Record<string, unknown>,
+): ReleasesSearch {
+  return {
     ...table.validate(search),
     period: searchOneOf(search.period, PERIOD_CHOICES),
-  }),
+  };
+}
+
+export const Route = createFileRoute('/_authenticated/projects/$id/releases/')({
+  validateSearch: validateReleasesSearch,
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = params.id;
     void queryClient.query(releasesList(projectId, deps)).catch(noop);
     void queryClient.query(projectQueries.environments(projectId)).catch(noop);
+    void queryClient
+      .query(savedViewQueries.list(projectId, 'releases'))
+      .catch(noop);
   },
   pendingComponent: ReleasesLoading,
   component: ReleasesPage,
@@ -79,6 +92,22 @@ function ReleasesPage() {
   const search = useDeferredValue(live);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: page } = useSuspenseQuery(releasesList(projectId, search));
+  const entry = useEntryView(
+    projectId,
+    'releases',
+    live,
+    validateReleasesSearch,
+  );
+  if (entry) {
+    return (
+      <Navigate
+        to="/projects/$id/releases"
+        params={{ id: projectId }}
+        search={entry}
+        replace
+      />
+    );
+  }
 
   // A stale or shared `?page=` past the end lands on the last page, not on
   // an empty table under a positive count. Only once the rows on screen are
@@ -155,6 +184,18 @@ function ReleasesScreen({
           project && page
             ? [project.name, tReleases('count', { count: page.total_count })]
             : [<Skeleton key="summary" className="h-4 w-48" />]
+        }
+        actions={
+          project ? (
+            <SavedViews
+              projectId={projectId}
+              page="releases"
+              search={search}
+              onApply={(next) =>
+                navigate({ search: validateReleasesSearch(next) })
+              }
+            />
+          ) : undefined
         }
       />
 

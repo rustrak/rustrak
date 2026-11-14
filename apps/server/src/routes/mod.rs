@@ -18,6 +18,7 @@ pub mod period;
 pub mod projects;
 pub mod releases;
 pub mod roles;
+pub mod saved_views;
 pub mod schedules;
 pub mod sentry_api;
 pub mod sessions;
@@ -47,6 +48,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .configure(team::configure)
         .configure(invitations::configure)
         .configure(roles::configure)
+        .configure(saved_views::configure)
         .configure(alerts::configure)
         .configure(github::configure)
         .configure(releases::configure)
@@ -66,6 +68,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .configure(issues::configure_project)
                 .configure(logs::configure_project)
                 .configure(members::configure_project)
+                .configure(saved_views::configure_project)
                 .configure(monitors::configure_project)
                 .configure(releases::configure_project)
                 .configure(sessions::configure_project)

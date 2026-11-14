@@ -15,7 +15,7 @@ import {
   Tabs,
 } from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { type ReactNode, useDeferredValue } from 'react';
 import { useTranslations } from 'use-intl';
 import { agentQueries } from '@/features/agent-trace/api/queries';
@@ -37,6 +37,9 @@ import {
 import { AgentScope } from '@/features/agent-trace/ui/components/agent-scope';
 import { AgentTracesTable } from '@/features/agent-trace/ui/components/agent-traces-table';
 import { projectQueries } from '@/features/project/api/queries';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
 import {
   searchOneOf,
   searchPage,
@@ -142,6 +145,16 @@ function agentReads(projectId: number, search: AgentsSearch) {
   };
 }
 
+/** The address as typed search; a saved view's text goes through it too. */
+function validateAgentsSearch(search: Record<string, unknown>): AgentsSearch {
+  return {
+    view: searchOneOf(search.view, VIEWS),
+    period: searchOneOf(search.period, AGENT_PERIOD_PARAMS),
+    environment: searchString(search.environment),
+    ...withoutPer(table.validate(search)),
+  };
+}
+
 /**
  * Agents: Sentry's AI agents insights. The overview answers how the agents
  * are doing -- runs, calls, tokens, latency, failures, by model and by tool
@@ -149,12 +162,7 @@ function agentReads(projectId: number, search: AgentsSearch) {
  * narrows to the traces that used it.
  */
 export const Route = createFileRoute('/_authenticated/projects/$id/agents/')({
-  validateSearch: (search: Record<string, unknown>): AgentsSearch => ({
-    view: searchOneOf(search.view, VIEWS),
-    period: searchOneOf(search.period, AGENT_PERIOD_PARAMS),
-    environment: searchString(search.environment),
-    ...withoutPer(table.validate(search)),
-  }),
+  validateSearch: validateAgentsSearch,
   loaderDeps: ({ search }) => search,
   // Every read of the open tab is started here and none is waited on. The
   // header and the open tab suspend; the overview's panels land on their
@@ -180,6 +188,9 @@ export const Route = createFileRoute('/_authenticated/projects/$id/agents/')({
     if (view === 'conversations') {
       void queryClient.query(reads.conversations).catch(noop);
     }
+    void queryClient
+      .query(savedViewQueries.list(projectId, 'agents'))
+      .catch(noop);
   },
   pendingComponent: AgentsLoading,
   component: AgentsPage,
@@ -202,6 +213,17 @@ function AgentsPage() {
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: summary } = useSuspenseQuery(reads.summary);
   const { data: environments } = useSuspenseQuery(reads.environments);
+  const entry = useEntryView(projectId, 'agents', live, validateAgentsSearch);
+  if (entry) {
+    return (
+      <Navigate
+        to="/projects/$id/agents"
+        params={{ id: projectId }}
+        search={entry}
+        replace
+      />
+    );
+  }
 
   const scope = (
     <AgentScope
@@ -308,6 +330,7 @@ function AgentsScreen({
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const view = search.view ?? 'overview';
+  const { id: projectId } = Route.useParams();
 
   return (
     <div className="flex h-full flex-col">
@@ -354,6 +377,18 @@ function AgentsScreen({
                 <Tab value="conversations">{t('tabs.conversations')}</Tab>
               </TabList>
             </Tabs>
+          ) : undefined
+        }
+        actions={
+          project ? (
+            <SavedViews
+              projectId={projectId}
+              page="agents"
+              search={search}
+              onApply={(next) =>
+                navigate({ search: validateAgentsSearch(next) })
+              }
+            />
           ) : undefined
         }
       />

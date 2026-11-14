@@ -513,6 +513,11 @@ export const zDebugFileResponse = z.object({
 });
 
 /**
+ * Whose default a [`SetDefaultView`] sets.
+ */
+export const zDefaultScope = z.enum(['user', 'project']);
+
+/**
  * One file of a debug information file assemble request.
  */
 export const zDifAssembleFile = z.object({
@@ -1809,6 +1814,15 @@ export const zSetAccess = z.object({
     personal: zPersonalAccess.nullish()
 });
 
+/**
+ * Body of `PUT /api/projects/{project_id}/views/default`.
+ */
+export const zSetDefaultView = z.object({
+    page: z.string(),
+    scope: zDefaultScope,
+    view_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullish()
+});
+
 export const zSetProjectMember = z.object({
     role_ids: z.array(z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     user_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
@@ -2280,6 +2294,45 @@ export const zAuthResponse = z.object({
 
 export const zVersionResponse = z.object({
     version: z.string()
+});
+
+/**
+ * Who sees a view: its creator only, or everyone who sees the project.
+ * Sentry's `owner` / `organization`, with the project as the organization.
+ */
+export const zViewVisibility = z.enum(['owner', 'project']);
+
+/**
+ * Body of `POST /api/projects/{project_id}/views`.
+ */
+export const zCreateSavedView = z.object({
+    name: z.string(),
+    page: z.string(),
+    query: z.string(),
+    visibility: zViewVisibility.optional()
+});
+
+export const zSavedView = z.object({
+    created_at: z.iso.datetime({ offset: true }),
+    created_by: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
+    id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    is_my_default: z.boolean(),
+    is_project_default: z.boolean(),
+    name: z.string(),
+    page: z.string(),
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
+    query: z.string(),
+    visibility: zViewVisibility
+});
+
+/**
+ * Body of `PATCH /api/projects/{project_id}/views/{view_id}`: only the
+ * fields sent change.
+ */
+export const zUpdateSavedView = z.object({
+    name: z.string().nullish(),
+    query: z.string().nullish(),
+    visibility: zViewVisibility.nullish()
 });
 
 export const zSentryGetIssuePath = z.object({
@@ -4187,6 +4240,63 @@ export const zTransactionsGetSpansResponse = z.array(z.object({
     transaction_id: z.uuid().nullable()
 }));
 
+export const zSavedViewsListPath = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+export const zSavedViewsListQuery = z.object({
+    page: z.string()
+});
+
+/**
+ * The page's views
+ */
+export const zSavedViewsListResponse = z.array(zSavedView);
+
+export const zSavedViewsCreateBody = zCreateSavedView;
+
+export const zSavedViewsCreatePath = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * View saved
+ */
+export const zSavedViewsCreateResponse = zSavedView;
+
+export const zSavedViewsSetDefaultBody = zSetDefaultView;
+
+export const zSavedViewsSetDefaultPath = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * Default set
+ */
+export const zSavedViewsSetDefaultResponse = z.void();
+
+export const zSavedViewsDeletePath = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    view_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * View deleted
+ */
+export const zSavedViewsDeleteResponse = z.void();
+
+export const zSavedViewsUpdateBody = zUpdateSavedView;
+
+export const zSavedViewsUpdatePath = z.object({
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    view_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * View updated
+ */
+export const zSavedViewsUpdateResponse = zSavedView;
+
 /**
  * The server's per-project limits
  */
@@ -4412,6 +4522,49 @@ export const zUsersSetAssignmentsPath = z.object({
  * What the user holds now
  */
 export const zUsersSetAssignmentsResponse = zUserAccess;
+
+export const zWorkspaceViewsListQuery = z.object({
+    page: z.string()
+});
+
+/**
+ * The page's views
+ */
+export const zWorkspaceViewsListResponse = z.array(zSavedView);
+
+export const zWorkspaceViewsCreateBody = zCreateSavedView;
+
+/**
+ * View saved
+ */
+export const zWorkspaceViewsCreateResponse = zSavedView;
+
+export const zWorkspaceViewsSetDefaultBody = zSetDefaultView;
+
+/**
+ * Default set
+ */
+export const zWorkspaceViewsSetDefaultResponse = z.void();
+
+export const zWorkspaceViewsDeletePath = z.object({
+    view_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * View deleted
+ */
+export const zWorkspaceViewsDeleteResponse = z.void();
+
+export const zWorkspaceViewsUpdateBody = zUpdateSavedView;
+
+export const zWorkspaceViewsUpdatePath = z.object({
+    view_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })
+});
+
+/**
+ * View updated
+ */
+export const zWorkspaceViewsUpdateResponse = zSavedView;
 
 export const zAuthAcceptInvitationBody = zAcceptInvitation;
 

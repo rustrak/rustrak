@@ -1,10 +1,13 @@
 import type { ProjectResponse } from '@rustrak/client';
-import { Page, PageHeader, Skeleton, Text } from '@rustrak/ui';
+import { Page, PageHeader, Separator, Skeleton, Text } from '@rustrak/ui';
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { PlatformIcon } from 'platformicons';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
 import {
   apiPeriod,
   DEFAULT_PERIOD,
@@ -49,8 +52,11 @@ function overviewFilters(projectId: number, search: OverviewSearch) {
   return { choice, filters, compare };
 }
 
-export const Route = createFileRoute('/_authenticated/projects/$id/')({
-  validateSearch: (search: Record<string, unknown>): OverviewSearch => ({
+/** The address as typed search; a saved view's text goes through it too. */
+function validateOverviewSearch(
+  search: Record<string, unknown>,
+): OverviewSearch {
+  return {
     // An unrecognized value is dropped rather than passed on: the API ignores
     // what it cannot parse and answers unfiltered, while no control reads as
     // selected. So the URL and the screen always agree.
@@ -58,7 +64,11 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
     environment: searchString(search.environment),
     release: searchString(search.release),
     compare: search.compare === true || search.compare === 'true' || undefined,
-  }),
+  };
+}
+
+export const Route = createFileRoute('/_authenticated/projects/$id/')({
+  validateSearch: validateOverviewSearch,
   loaderDeps: ({ search }) => search,
   // Every read is started here. The page waits only for the project; each
   // panel fills in when its own read lands, failing on its own.
@@ -76,6 +86,9 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
     if (reads.previousEvents)
       void queryClient.query(reads.previousEvents).catch(noop);
     void queryClient.query(reads.issues('recent')).catch(noop);
+    void queryClient
+      .query(savedViewQueries.list(projectId, 'overview'))
+      .catch(noop);
   },
   pendingComponent: ProjectLoading,
   component: ProjectPage,
@@ -84,6 +97,22 @@ export const Route = createFileRoute('/_authenticated/projects/$id/')({
 function ProjectPage() {
   const { id: projectId } = Route.useParams();
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
+  const entry = useEntryView(
+    projectId,
+    'overview',
+    Route.useSearch(),
+    validateOverviewSearch,
+  );
+  if (entry) {
+    return (
+      <Navigate
+        to="/projects/$id"
+        params={{ id: projectId }}
+        search={entry}
+        replace
+      />
+    );
+  }
   return <ProjectScreen project={project} />;
 }
 
@@ -153,16 +182,31 @@ function ProjectScreen({ project }: { project?: ProjectResponse }) {
             : [<Skeleton key="summary" className="h-4 w-56" />]
         }
         actions={
-          <OverviewFilters
-            projectId={projectId}
-            period={choice}
-            environment={search.environment}
-            release={search.release}
-            held={!project}
-            onChange={(change) =>
-              navigate({ search: (prev) => ({ ...prev, ...change }) })
-            }
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <OverviewFilters
+              projectId={projectId}
+              period={choice}
+              environment={search.environment}
+              release={search.release}
+              held={!project}
+              onChange={(change) =>
+                navigate({ search: (prev) => ({ ...prev, ...change }) })
+              }
+            />
+            {project ? (
+              <>
+                <Separator orientation="vertical" className="h-5" />
+                <SavedViews
+                  projectId={projectId}
+                  page="overview"
+                  search={search}
+                  onApply={(next) =>
+                    navigate({ search: validateOverviewSearch(next) })
+                  }
+                />
+              </>
+            ) : null}
+          </div>
         }
       />
 

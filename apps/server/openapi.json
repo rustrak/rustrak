@@ -12553,6 +12553,420 @@
         ]
       }
     },
+    "/api/projects/{project_id}/views": {
+      "get": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Lists the views of one project page the caller sees: their own and the shared ones.",
+        "operationId": "savedViews.list",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "The dashboard page (`issues`, `logs`, …)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page's views",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameter",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Saves a project page's address as a view, personal unless `visibility` is `project`.",
+        "operationId": "savedViews.create",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSavedView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "View saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Needs a user account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/views/default": {
+      "put": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Sets or clears the view a project page opens on, for the caller or the project.",
+        "operationId": "savedViews.setDefault",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Default set"
+          },
+          "400": {
+            "description": "Not a view of that page, or a personal view as the project's default",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The project's default needs project:update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/views/{view_id}": {
+      "delete": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Deletes a project view.",
+        "operationId": "savedViews.delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "view_id",
+            "in": "path",
+            "description": "Saved view ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "View deleted"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Someone else's shared view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Renames a project view, or changes its address or who sees it.",
+        "operationId": "savedViews.update",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "view_id",
+            "in": "path",
+            "description": "Saved view ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSavedView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "View updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Someone else's shared view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/rate-limits": {
       "get": {
         "tags": [
@@ -14361,6 +14775,346 @@
           },
           "404": {
             "description": "No such user or project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/views": {
+      "get": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Lists the views of one workspace page (one that spans every project).",
+        "operationId": "workspaceViews.list",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "The dashboard page (`issues`, …)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page's views",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameter",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Saves a workspace page's address as a view, personal unless `visibility` is `project`.",
+        "operationId": "workspaceViews.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSavedView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "View saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Needs a user account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/views/default": {
+      "put": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Sets or clears the view a workspace page opens on, for the caller or everyone.",
+        "operationId": "workspaceViews.setDefault",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Default set"
+          },
+          "400": {
+            "description": "Not a view of that page, or a personal view as everyone's default",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Everyone's default needs an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/views/{view_id}": {
+      "delete": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Deletes a workspace view.",
+        "operationId": "workspaceViews.delete",
+        "parameters": [
+          {
+            "name": "view_id",
+            "in": "path",
+            "description": "Saved view ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "View deleted"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Someone else's shared view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Saved Views"
+        ],
+        "summary": "Renames a workspace view, or changes its address or who sees it.",
+        "operationId": "workspaceViews.update",
+        "parameters": [
+          {
+            "name": "view_id",
+            "in": "path",
+            "description": "Saved view ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSavedView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "View updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Someone else's shared view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -16955,6 +17709,32 @@
           }
         }
       },
+      "CreateSavedView": {
+        "type": "object",
+        "description": "Body of `POST /api/projects/{project_id}/views`.",
+        "required": [
+          "page",
+          "name",
+          "query"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string",
+            "description": "The dashboard page it belongs to (`issues`, `logs`, …)."
+          },
+          "query": {
+            "type": "string",
+            "description": "The page's search string, without the leading `?`."
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/ViewVisibility",
+            "description": "`owner` (default) or `project`."
+          }
+        }
+      },
       "DebugFileResponse": {
         "type": "object",
         "description": "A debug information file as Sentry's `DebugFileSerializer` describes it.",
@@ -17019,6 +17799,14 @@
             "type": "string"
           }
         }
+      },
+      "DefaultScope": {
+        "type": "string",
+        "description": "Whose default a [`SetDefaultView`] sets.",
+        "enum": [
+          "user",
+          "project"
+        ]
       },
       "DifAssembleFile": {
         "type": "object",
@@ -19959,6 +20747,69 @@
           }
         }
       },
+      "SavedView": {
+        "type": "object",
+        "required": [
+          "id",
+          "project_id",
+          "created_by",
+          "page",
+          "name",
+          "query",
+          "visibility",
+          "is_project_default",
+          "is_my_default",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Who saved it; `null` once that account is gone."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_my_default": {
+            "type": "boolean",
+            "description": "The caller picked it as their default for the page; wins over the\nproject's."
+          },
+          "is_project_default": {
+            "type": "boolean",
+            "description": "The page opens on it for whoever has not picked their own default."
+          },
+          "name": {
+            "type": "string"
+          },
+          "page": {
+            "type": "string",
+            "description": "The dashboard page it belongs to (`issues`, `logs`, …)."
+          },
+          "project_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "`null` for a workspace view, on a page that spans every project."
+          },
+          "query": {
+            "type": "string",
+            "description": "The page's search string, without the leading `?`."
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/ViewVisibility"
+          }
+        }
+      },
       "Schedule": {
         "oneOf": [
           {
@@ -20585,6 +21436,31 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "SetDefaultView": {
+        "type": "object",
+        "description": "Body of `PUT /api/projects/{project_id}/views/default`.",
+        "required": [
+          "page",
+          "scope"
+        ],
+        "properties": {
+          "page": {
+            "type": "string",
+            "description": "The dashboard page (`issues`, `logs`, …)."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DefaultScope"
+          },
+          "view_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The view to open on; `null` goes back to the page's own default."
           }
         }
       },
@@ -21762,6 +22638,35 @@
           }
         }
       },
+      "UpdateSavedView": {
+        "type": "object",
+        "description": "Body of `PATCH /api/projects/{project_id}/views/{view_id}`: only the\nfields sent change.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The page's search string, without the leading `?`."
+          },
+          "visibility": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ViewVisibility"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "UpdateUserRole": {
         "type": "object",
         "description": "Request body for changing a user's global role.",
@@ -21938,6 +22843,14 @@
             "type": "string"
           }
         }
+      },
+      "ViewVisibility": {
+        "type": "string",
+        "description": "Who sees a view: its creator only, or everyone who sees the project.\nSentry's `owner` / `organization`, with the project as the organization.",
+        "enum": [
+          "owner",
+          "project"
+        ]
       }
     },
     "securitySchemes": {

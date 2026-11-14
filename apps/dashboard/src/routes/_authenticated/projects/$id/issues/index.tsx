@@ -23,6 +23,9 @@ import {
 import { IssuesTable } from '@/features/issue/ui/components/issues-table/issues-table';
 import { useAssignable } from '@/features/issue/ui/hooks/use-assignable';
 import { projectQueries } from '@/features/project/api/queries';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
 import { userQueries } from '@/features/user/api/queries';
 import { startIfAllowed } from '@/shared/api/permissions';
 import { searchOneOf } from '@/shared/lib/search-params';
@@ -61,19 +64,22 @@ function toSearch(query: DataTableQuery, view: IssueView): IssuesSearch {
   return { view: view === 'open' ? undefined : view, ...table.write(query) };
 }
 
+/** The address as typed search; a saved view's text goes through it too. */
+function validateIssuesSearch(search: Record<string, unknown>): IssuesSearch {
+  const view =
+    searchOneOf(search.view, ISSUE_VIEWS) ??
+    // What the list's address called it before the redesign: links saved
+    // then still open the view they name.
+    searchOneOf(search.filter, ISSUE_VIEWS) ??
+    'open';
+  return {
+    view: view === 'open' ? undefined : view,
+    ...table.validate(search),
+  };
+}
+
 export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
-  validateSearch: (search: Record<string, unknown>): IssuesSearch => {
-    const view =
-      searchOneOf(search.view, ISSUE_VIEWS) ??
-      // What the list's address called it before the redesign: links saved
-      // then still open the view they name.
-      searchOneOf(search.filter, ISSUE_VIEWS) ??
-      'open';
-    return {
-      view: view === 'open' ? undefined : view,
-      ...table.validate(search),
-    };
-  },
+  validateSearch: validateIssuesSearch,
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, params, deps }) => {
     const projectId = params.id;
@@ -86,6 +92,9 @@ export const Route = createFileRoute('/_authenticated/projects/$id/issues/')({
     void queryClient.query(projectQueries.environments(projectId)).catch(noop);
     void queryClient
       .query(projectQueries.releaseVersions(projectId))
+      .catch(noop);
+    void queryClient
+      .query(savedViewQueries.list(projectId, 'issues'))
       .catch(noop);
   },
   pendingComponent: IssuesLoading,
@@ -104,6 +113,7 @@ function IssuesPage() {
   const search = useDeferredValue(live);
   const { data: project } = useSuspenseQuery(projectQueries.detail(projectId));
   const { data: page } = useSuspenseQuery(issuesList(projectId, search));
+  const entry = useEntryView(projectId, 'issues', live, validateIssuesSearch);
 
   // A stale or shared `?page=` past the end lands on the last page. Only once
   // the rows on screen are the address's.
@@ -111,6 +121,16 @@ function IssuesPage() {
     table.read(search).pagination.pageIndex + 1,
     page.total_pages,
   );
+  if (entry) {
+    return (
+      <Navigate
+        to="/projects/$id/issues"
+        params={{ id: projectId }}
+        search={entry}
+        replace
+      />
+    );
+  }
   if (search === live && last !== false) {
     return (
       <Navigate
@@ -189,6 +209,20 @@ function IssuesScreen({
       ) : null}
       <PageHeader
         title={t('issues.title')}
+        actions={
+          // Not `loading`: that is also true while a new filter loads, and
+          // unmounting the menu then forgets the view being edited.
+          !project ? undefined : (
+            <SavedViews
+              projectId={projectId}
+              page="issues"
+              search={search}
+              onApply={(next) =>
+                navigate({ search: validateIssuesSearch(next) })
+              }
+            />
+          )
+        }
         // What the page is, then how much of it there is.
         summary={
           project && page

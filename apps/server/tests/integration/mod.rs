@@ -42,6 +42,7 @@ mod rbac_enforcement_test;
 mod rbac_service_test;
 mod release_summary_test;
 mod releases_api_test;
+mod saved_views_api_test;
 mod scheduler_test;
 mod schedules_api_test;
 mod sentry_api_test;
