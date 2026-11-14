@@ -414,10 +414,9 @@ async fn run_once(
             .map(|d| d / (drained - load_end).max(0.001)),
     ));
     row.push(("drain_s", Some(drained - load_end)));
-    row.push((
-        "leftover",
-        Some(acked.saturating_sub(last.digested + last.dropped) as f64),
-    ));
+    // Acknowledged and never stored: a dropped digest is a lost event too.
+    row.push(("leftover", Some(acked.saturating_sub(last.digested) as f64)));
+    row.push(("dropped", Some(last.dropped as f64)));
     timeline.memory(&mut row);
     timeline.per_event(&mut row, acked as f64);
     row.push((
@@ -444,6 +443,7 @@ async fn run_once(
         row.push(("read_rps", Some(r.rps)));
         row.push(("read_p50_ms", Some(r.p50_ms)));
         row.push(("read_p99_ms", Some(r.p99_ms)));
+        row.push(("read_errors", Some(r.errors as f64)));
     }
     let mut statuses = stats.statuses.clone();
     if stats.errors > 0 {

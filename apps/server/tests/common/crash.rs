@@ -45,11 +45,23 @@ impl Drop for Server {
     }
 }
 
+/// A port no other crash test in this process was given. The listener is
+/// dropped before the server binds, so the OS can hand the same port to a
+/// test running in parallel; that server would then answer this one's
+/// `/health` while this one dies with `AddrInUse`.
 fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .and_then(|l| l.local_addr())
-        .expect("free port")
-        .port()
+    static GIVEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    let mut given = GIVEN.lock().unwrap();
+    loop {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .and_then(|l| l.local_addr())
+            .expect("free port")
+            .port();
+        if !given.contains(&port) {
+            given.push(port);
+            return port;
+        }
+    }
 }
 
 fn database_url(dir: &Path) -> String {

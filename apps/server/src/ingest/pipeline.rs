@@ -58,11 +58,11 @@ fn drop_malformed_item(result: AppResult<()>, item_type: &str) -> AppResult<()> 
 /// before this returns, an error event is stored and its digest spawned.
 /// Returns the event id to acknowledge, if the envelope carried one.
 ///
-/// `large_body` is given back once the envelope is parsed, so a large body
-/// does not keep its slot while its items wait for the database.
-/// ponytail: the items still borrow the body until they are stored, so up to
-/// 100 MiB per request outlives its slot during those writes; keep the slot
-/// to the end if that memory matters more than large-upload throughput.
+/// `_large_body` is held until this returns: the items borrow the body until
+/// they are stored, so a slot given back after parsing would let large bodies
+/// pile up in memory past [`LARGE_BODY_SLOTS`] while the database is slow.
+///
+/// [`LARGE_BODY_SLOTS`]: crate::ingest::decompression::LARGE_BODY_SLOTS
 pub async fn process_envelope(
     processors: &Arc<Processors>,
     pool: &DbPool,
@@ -70,11 +70,10 @@ pub async fn process_envelope(
     body: Bytes,
     remote_addr: Option<String>,
     ingested_at: chrono::DateTime<Utc>,
-    large_body: crate::ingest::decompression::LargeBodySlot,
+    _large_body: crate::ingest::decompression::LargeBodySlot,
 ) -> AppResult<Option<String>> {
     let mut parser = EnvelopeParser::new(body);
     let envelope = parser.parse()?;
-    drop(large_body);
 
     // event_id validation is deferred until after the loop: session-only
     // envelopes never need one (Relay: Item::requires_event() returns false
@@ -478,7 +477,10 @@ impl DigestPipeline {
                 let r = p.errors.queue().pop().await;
                 // Given up to the drain: its file is the next start's.
                 if !p.errors.is_abandoned() {
-                    return Some((r, p));
+                    // Its budget before it is read; the committer takes each
+                    // event as it is ready, so none waits holding another's.
+                    let budget = p.errors.reserve(r.size).await;
+                    return Some(((r, budget), p));
                 }
             }
         });
@@ -734,42 +736,34 @@ pub async fn digest_refs(
     commit_prepared(processors, pool, prepared).await
 }
 
-/// The first half of [`digest_refs`].
+/// The first half of [`digest_refs`]. The whole chunk's budget is taken in
+/// one wait (`reserve_all`), never held in part while waiting for the rest.
 async fn prep_refs(
     processors: &Arc<Processors>,
     pool: &DbPool,
     refs: Vec<SpoolRef>,
 ) -> Vec<Option<Prepared>> {
     use futures_util::StreamExt as _;
-    prepare_in_order(processors, pool, futures_util::stream::iter(refs))
-        .collect()
-        .await
+    let sizes: Vec<u64> = refs.iter().map(|r| r.size).collect();
+    let budgets = processors.errors.reserve_all(&sizes).await;
+    let refs = futures_util::stream::iter(refs.into_iter().zip(budgets));
+    prepare_in_order(processors, pool, refs).collect().await
 }
 
 /// Each file read and prepared, in order and `prep_workers` at a time, with
-/// its share of the memory budget taken before it is read. `None` when the
-/// preparation panicked.
+/// the share of the memory budget it was given before it is read. `None`
+/// when the preparation panicked.
 fn prepare_in_order<'a>(
     processors: &'a Arc<Processors>,
     pool: &'a DbPool,
-    refs: impl futures_util::Stream<Item = SpoolRef> + 'a,
+    refs: impl futures_util::Stream<Item = (SpoolRef, tokio::sync::OwnedSemaphorePermit)> + 'a,
 ) -> impl futures_util::Stream<Item = Option<Prepared>> + 'a {
     use futures_util::StreamExt as _;
     let runtime = tokio::runtime::Handle::current();
     // ponytail: `block_on` inside a blocking thread is the smallest way to
     // run the async symbolication off the current-thread main runtime; split
     // prep into an async part and a CPU part if profiles show I/O stalls.
-    refs.then({
-        let p = Arc::clone(processors);
-        move |r: SpoolRef| {
-            let p = Arc::clone(&p);
-            async move {
-                let budget = p.errors.reserve(r.size).await;
-                (r, budget)
-            }
-        }
-    })
-    .map(move |(r, budget)| {
+    refs.map(move |(r, budget)| {
         let (processors, pool, runtime) = (Arc::clone(processors), pool.clone(), runtime.clone());
         async move {
             tokio::task::spawn_blocking(move || {

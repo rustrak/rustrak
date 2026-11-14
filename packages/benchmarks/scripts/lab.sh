@@ -47,6 +47,10 @@ done
 
 NCPU=$(docker info --format '{{.NCPU}}')
 SERVER_CPUS=${SERVER_CPUS:-0-3}
+if [ -z "${LOAD_CPUS:-}" ] && [ "$NCPU" -lt 5 ]; then
+    echo "Docker has $NCPU CPUs: the defaults need 5 or more; set SERVER_CPUS and LOAD_CPUS" >&2
+    exit 1
+fi
 LOAD_CPUS=${LOAD_CPUS:-4-$((NCPU - 1))}
 JOBS=${CARGO_BUILD_JOBS:-$NCPU}
 
@@ -107,8 +111,10 @@ TREES="wt"
 [ "$BASELINE" = 1 ] && TREES="main wt"
 build_cmd=""
 for tree in $TREES; do
-    build_cmd+="cd /src/$tree/apps/server && CARGO_TARGET_DIR=/target/$tree cargo build --locked -q $PROFILE_ARGS $FEATURES --bin rustrak \
-        && cp /target/$tree/$PROFILE/rustrak /bins/$tree-$BACKEND-$PROFILE; "
+    # `;` not `&&` before cp: a failed build must end the list so `-e` stops
+    # here instead of leaving last run's binary in /bins to be measured.
+    build_cmd+="cd /src/$tree/apps/server && CARGO_TARGET_DIR=/target/$tree cargo build --locked -q $PROFILE_ARGS $FEATURES --bin rustrak; \
+        cp /target/$tree/$PROFILE/rustrak /bins/$tree-$BACKEND-$PROFILE; "
 done
 build_cmd+="cd /src/tools/packages/benchmarks && CARGO_TARGET_DIR=/target/tools cargo build --locked -q \
     --config 'profile.lab.inherits=\"release\"' --config profile.lab.lto=false --config profile.lab.codegen-units=16 --profile lab"
@@ -154,7 +160,13 @@ if [ "$BACKEND" = postgres ]; then
         docker run -d --name "$PG" --network "$NET" -e POSTGRES_PASSWORD=bench \
             -v rustrak-bench-pgdata:/var/lib/postgresql/data postgres:16 >/dev/null
     fi
-    until docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+    docker start "$PG" >/dev/null # a no-op unless a Docker restart stopped it
+    for _ in $(seq 60); do
+        docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1 && break
+        sleep 1
+    done
+    docker exec "$PG" pg_isready -U postgres >/dev/null 2>&1 ||
+        { docker logs --tail 20 "$PG" >&2; echo "$PG not ready after 60 s" >&2; exit 1; }
     DOCKER_ARGS+=(--network "$NET")
     PG_ARGS=(--postgres "postgres://postgres:bench@$PG:5432")
 fi

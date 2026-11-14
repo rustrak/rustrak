@@ -311,11 +311,18 @@ impl ErrorProcessor {
     /// one permit per KiB, at least one, at most the whole budget, so an
     /// event larger than the budget runs alone.
     pub(crate) async fn reserve(&self, size: u64) -> tokio::sync::OwnedSemaphorePermit {
-        let kib = size.div_ceil(1024).clamp(1, u64::from(self.budget_kib)) as u32;
         Arc::clone(&self.budget)
-            .acquire_many_owned(kib)
+            .acquire_many_owned(budget_share(size, self.budget_kib))
             .await
             .expect("the digest budget is never closed")
+    }
+
+    /// The budget of every file in a recovery chunk, taken in one wait.
+    pub(crate) async fn reserve_all(
+        &self,
+        sizes: &[u64],
+    ) -> Vec<tokio::sync::OwnedSemaphorePermit> {
+        reserve_chunk(&self.budget, self.budget_kib, sizes).await
     }
 
     /// A permit to finish one committed batch.
@@ -1325,7 +1332,7 @@ impl ErrorProcessor {
     }
 
     /// A `PASSIVE` checkpoint on the digest's connection, once the digest is
-    /// caught up with ingest; while it is behind, its batches' own deferred
+    /// caught up with ingest or halted (`timer_checkpoints`); while it is behind, its batches' own deferred
     /// threshold applies (`checkpoint_pages`). Pool connections never
     /// checkpoint, so this is what checkpoints the writes that never reach
     /// the digest (transactions, logs, spans, sessions, alert rows), and the
@@ -1333,11 +1340,11 @@ impl ErrorProcessor {
     /// request; `PASSIVE` waits for no reader and no writer.
     #[cfg(feature = "sqlite")]
     pub async fn checkpoint_when_caught_up(&self, pool: &DbPool) -> AppResult<()> {
-        let pages = checkpoint_pages(
+        if !timer_checkpoints(
             self.pending.counts(0).installation as usize,
             self.batch_max_events,
-        );
-        if pages != crate::db::CAUGHT_UP_CHECKPOINT_PAGES {
+            self.is_halted(),
+        ) {
             return Ok(());
         }
         let mut committer = self.committer.lock().await;
@@ -1795,6 +1802,49 @@ fn checkpoint_pages(pending: usize, batch_max: usize) -> u32 {
     }
 }
 
+/// The permits a spool file of `size` bytes takes: one per KiB, at least one,
+/// at most the whole budget.
+fn budget_share(size: u64, budget_kib: u32) -> u32 {
+    size.div_ceil(1024).clamp(1, u64::from(budget_kib)) as u32
+}
+
+/// Each file's share of `budget`, all taken in one wait (capped at the whole
+/// budget) and then split, in order; once the cap runs out the last files
+/// get what is left. A chunk that held some shares while it queued for the
+/// next would deadlock with a large live event queued in between: Tokio's
+/// semaphore is fair, so neither could go first.
+async fn reserve_chunk(
+    budget: &Arc<tokio::sync::Semaphore>,
+    budget_kib: u32,
+    sizes: &[u64],
+) -> Vec<tokio::sync::OwnedSemaphorePermit> {
+    let shares: Vec<u32> = sizes.iter().map(|&s| budget_share(s, budget_kib)).collect();
+    let total = shares
+        .iter()
+        .map(|&s| u64::from(s))
+        .sum::<u64>()
+        .min(u64::from(budget_kib));
+    let mut all = Arc::clone(budget)
+        .acquire_many_owned(total as u32)
+        .await
+        .expect("the digest budget is never closed");
+    shares
+        .iter()
+        .map(|&share| {
+            let share = (share as usize).min(all.num_permits());
+            all.split(share).expect("never more than is left")
+        })
+        .collect()
+}
+
+/// Whether the timer checkpoints: once the digest is caught up, or while the
+/// breaker halts it, since no commit then checkpoints the pool's writes and
+/// the log would grow until the disk is full.
+#[cfg(feature = "sqlite")]
+fn timer_checkpoints(pending: usize, batch_max: usize, halted: bool) -> bool {
+    halted || checkpoint_pages(pending, batch_max) == crate::db::CAUGHT_UP_CHECKPOINT_PAGES
+}
+
 /// How long the committer rests after a commit that took `took`: as long
 /// again while a burst is still arriving (an event was accepted during the
 /// commit and a full batch waits), so the digest takes at most half the
@@ -2083,6 +2133,30 @@ fn event_facts(event_data: &serde_json::Value) -> crate::services::alert::EventF
 mod tests {
     use super::*;
 
+    /// A recovery chunk takes its whole budget in one wait, then splits it:
+    /// holding part of it while queued for the rest could deadlock with a
+    /// large live event queued in between on the fair semaphore.
+    #[tokio::test]
+    async fn a_chunk_takes_its_budget_in_one_wait() {
+        let budget = Arc::new(tokio::sync::Semaphore::new(4));
+        let shares = |permits: &[tokio::sync::OwnedSemaphorePermit]| {
+            permits.iter().map(|p| p.num_permits()).collect::<Vec<_>>()
+        };
+
+        let chunk = reserve_chunk(&budget, 4, &[1, 2048, 1024]).await;
+        assert_eq!(shares(&chunk), [1, 2, 1]);
+        assert_eq!(budget.available_permits(), 0);
+        // A large live event queues behind the chunk, which already holds
+        // everything it needs.
+        let live = tokio::spawn(Arc::clone(&budget).acquire_many_owned(4));
+        drop(chunk);
+        assert_eq!(live.await.unwrap().unwrap().num_permits(), 4);
+
+        // Past the budget the total is capped and the last files share less.
+        let over = reserve_chunk(&budget, 4, &[3072, 3072]).await;
+        assert_eq!(shares(&over), [3, 1]);
+    }
+
     /// Shedding refuses every request; the log gets a line every few
     /// seconds with how many were refused, not one per request.
     #[test]
@@ -2106,6 +2180,16 @@ mod tests {
         assert_eq!(checkpoint_pages(255, 256), CAUGHT_UP_CHECKPOINT_PAGES);
         assert_eq!(checkpoint_pages(256, 256), COMMITTER_CHECKPOINT_PAGES);
         const { assert!(CAUGHT_UP_CHECKPOINT_PAGES < COMMITTER_CHECKPOINT_PAGES) };
+    }
+
+    /// The timer checkpoints once caught up, and also behind a backlog the
+    /// breaker halted: no commit checkpoints then, while pool writes go on.
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn a_halted_digest_still_checkpoints_on_the_timer() {
+        assert!(timer_checkpoints(255, 256, false));
+        assert!(!timer_checkpoints(256, 256, false));
+        assert!(timer_checkpoints(256, 256, true));
     }
 
     /// Behind a burst still arriving, the committer rests as long as its

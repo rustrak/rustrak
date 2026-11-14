@@ -53,8 +53,9 @@ the quick A/B: the same measurements on a smaller backlog.
 **Columns.** `req_per_s`, `p50/p99/max_ms`, `slow_200ms`, `non_200` are the
 client's. `digest_eps_in` / `digest_eps_after` are digests per second during
 the load and after it, `drain_s` how long the backlog took to clear once the
-load stopped, `leftover` acknowledged events never digested (the harness waits
-until the count stops moving, with a timeout, never for an exact number).
+load stopped, `leftover` acknowledged events never stored (the harness waits
+until the count stops moving, with a timeout, never for an exact number), and
+`dropped` the digests that ended rate-limited or failed, a part of `leftover`.
 `anon_idle/peak/floor_mb` are `/proc/<pid>/smaps_rollup` `Anonymous`: idle is
 the median of the last 3 s before the load, peak the maximum during load and
 drain, floor the median of the last 3 s of the wait after the drain.
@@ -67,7 +68,9 @@ runs a little). `written_kb_per_ev` counts a whole page-cache folio per write,
 so it can overstate; `disk_kb_per_ev` is what reached the disk, from the
 container cgroup's `io.stat` `wbytes`. Backlog adds `backlog_max` and
 `bytes_per_pending`; mixed adds
-`read_rps`, `read_p50_ms`, `read_p99_ms`. A run marked `!` is **stalled**: its
+`read_rps`, `read_p50_ms`, `read_p99_ms` (successful reads, timed to the end of
+the body) and `read_errors`; a run with read errors is not comparable on
+latency. A run marked `!` is **stalled**: its
 slowest request exceeded `--stall-max-ms` (2000) or more than `--stall-slow`
 (50) requests took over 200 ms. Medians leave stalled runs out when there are
 clean ones.
@@ -87,8 +90,9 @@ are for A/B. For the record numbers use idle 30-60 s after start and floor
 **Persistent state.** Docker volumes `rustrak-bench-cargo` (registry),
 `rustrak-bench-src`, `rustrak-bench-target-{main,wt,tools}`,
 `rustrak-bench-bin`, `rustrak-bench-data` (the run directory),
-`rustrak-bench-seed` (mixed's seeded databases, one per migration list, so
-they rebuild only when migrations change) and `rustrak-bench-pgdata`; plus the
+`rustrak-bench-seed` (mixed's seeded databases, one per migration list and
+`--seed-events`/`--event-size`/`--groups`, so they rebuild only when one of
+those changes; a seed that did not store every event is never kept) and `rustrak-bench-pgdata`; plus the
 image. They are meant to survive between sessions. Size:
 `docker system df -v | grep rustrak-bench`. Wipe everything:
 `scripts/lab.sh --wipe`.

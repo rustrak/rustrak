@@ -271,21 +271,28 @@ impl Server {
     ) -> tokio::task::JoinHandle<()> {
         let (pid, started, http, base) =
             (self.pid, self.started, self.http.clone(), self.base.clone());
-        tokio::spawn(async move {
+        // Two loops run side by side, so a slow `/metrics` under load cannot
+        // stall the memory sampler and hide a peak.
+        let memory = async move {
             let mut tick = tokio::time::interval(Duration::from_millis(250));
-            let mut n = 0u64;
             loop {
-                n += 1;
                 tick.tick().await;
                 if let Some(s) = procfs::sample(pid, started.elapsed().as_secs_f64()) {
                     samples.lock().unwrap().push(s);
                 }
-                if n.is_multiple_of(4) {
-                    if let Some(p) = poll(&http, &base, started).await {
-                        polls.lock().unwrap().push(p);
-                    }
+            }
+        };
+        let metrics = async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                tick.tick().await;
+                if let Some(p) = poll(&http, &base, started).await {
+                    polls.lock().unwrap().push(p);
                 }
             }
+        };
+        tokio::spawn(async move {
+            tokio::join!(memory, metrics);
         })
     }
 
@@ -360,10 +367,15 @@ pub async fn start_seeded(
     variant: &Variant,
     template: Arc<Template>,
 ) -> anyhow::Result<Server> {
+    // Keyed by the workload too, so changing it never reuses another's seed.
     let seed = variant
         .seed
         .clone()
-        .with_context(|| format!("mixed needs --seed {}=/dir", variant.name))?;
+        .with_context(|| format!("mixed needs --seed {}=/dir", variant.name))?
+        .join(format!(
+            "e{}-s{}-g{}",
+            args.seed_events, args.event_size, args.groups
+        ));
     let seeded = seed.join("rustrak.db");
     if !seeded.exists() {
         println!(
@@ -384,7 +396,14 @@ pub async fn start_seeded(
         .await;
         let polls = Mutex::new(Vec::new());
         super::wait_drained(&server, &polls, stats.ok(), Duration::from_secs(1800)).await;
+        let digested = server.poll().await.map_or(0, |p| p.digested);
         server.stop().await;
+        // A short seed would be cached and reused by every later run.
+        anyhow::ensure!(
+            digested >= args.seed_events,
+            "seed incomplete: {digested} of {} events stored",
+            args.seed_events
+        );
         std::fs::create_dir_all(&seed)?;
         for suffix in ["", "-wal", "-shm"] {
             let from = args.data_dir.join(format!("rustrak.db{suffix}"));
@@ -410,6 +429,8 @@ pub struct ReadStats {
     pub rps: f64,
     pub p50_ms: f64,
     pub p99_ms: f64,
+    /// Reads that failed (status, transport or body): not in the latencies.
+    pub errors: u64,
 }
 
 /// `readers` workers cycling over the dashboard's issue and event queries.
@@ -420,7 +441,9 @@ pub async fn readers(
     readers: usize,
     duration: Duration,
 ) -> anyhow::Result<ReadStats> {
-    let http = reqwest::Client::new();
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
     let api = format!("{base}/api/projects/{project_id}");
     let auth = format!("Bearer {token}");
     let list: serde_json::Value = http
@@ -447,32 +470,45 @@ pub async fn readers(
             let (http, urls, auth) = (http.clone(), urls.clone(), auth.clone());
             tokio::spawn(async move {
                 let mut h = Histogram::<u64>::new_with_bounds(1, 60_000_000, 3).expect("histogram");
-                let mut i = w;
+                let (mut i, mut errors) = (w, 0u64);
                 while started.elapsed() < duration {
                     let t0 = Instant::now();
-                    let ok = http
+                    // Timed to the last byte of the body, not the headers.
+                    let ok = match http
                         .get(&urls[i % urls.len()])
                         .header("Authorization", &auth)
                         .send()
                         .await
-                        .is_ok_and(|r| r.status().is_success());
+                    {
+                        Ok(r) if r.status().is_success() => r.bytes().await.is_ok(),
+                        _ => false,
+                    };
                     if ok {
                         h.saturating_record(t0.elapsed().as_micros() as u64);
+                    } else {
+                        errors += 1;
                     }
                     i += 1;
                 }
-                h
+                (h, errors)
             })
         })
         .collect();
     let mut total = Histogram::<u64>::new_with_bounds(1, 60_000_000, 3).expect("histogram");
+    let mut errors = 0;
     for w in workers {
-        total.add(&w.await?)?;
+        let (h, e) = w.await?;
+        total.add(&h)?;
+        errors += e;
+    }
+    if errors > 0 {
+        println!("  {errors} reads failed: latencies cover only the successful ones");
     }
     Ok(ReadStats {
         rps: total.len() as f64 / started.elapsed().as_secs_f64(),
         p50_ms: total.value_at_quantile(0.5) as f64 / 1000.0,
         p99_ms: total.value_at_quantile(0.99) as f64 / 1000.0,
+        errors,
     })
 }
 

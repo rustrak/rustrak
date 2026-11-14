@@ -1546,8 +1546,8 @@ async fn test_an_inline_write_waits_its_turn_behind_the_digests() {
         transaction.len()
     );
 
-    // A large body's slot: given back once the envelope is parsed, not held
-    // through the inline writes that wait their turn.
+    // A large body's slot: held through the inline writes that wait their
+    // turn, since the items still borrow the body; given back after.
     let large: &'static tokio::sync::Semaphore =
         Box::leak(Box::new(tokio::sync::Semaphore::new(1)));
     let slot = large.acquire().await.unwrap();
@@ -1575,8 +1575,8 @@ async fn test_an_inline_write_waits_its_turn_behind_the_digests() {
     );
     assert_eq!(
         large.available_permits(),
-        1,
-        "the large-body slot is free while the write waits"
+        0,
+        "the large-body slot is held while the body waits to be written"
     );
 
     drop(turn);
@@ -1584,6 +1584,7 @@ async fn test_an_inline_write_waits_its_turn_behind_the_digests() {
         .await
         .expect("ingest task panicked")
         .expect("the transaction must be stored once its turn comes");
+    assert_eq!(large.available_permits(), 1, "the slot is given back");
     let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions WHERE project_id = $1")
         .bind(project.id)
         .fetch_one(&pool)
