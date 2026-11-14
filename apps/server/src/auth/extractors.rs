@@ -7,7 +7,7 @@ use crate::auth::session::AuthenticatedUser;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::rbac::{self, Access, Assignment, Grants, ProjectScope, Resource};
-use crate::models::{AuthToken, Project, User};
+use crate::models::{AuthToken, Project, QuotaWindows, User};
 use crate::services::{AuthTokenService, ProjectService, RoleService, UsersService};
 
 /// The database pool registered on the app.
@@ -43,14 +43,21 @@ pub(crate) async fn api_token(req: &HttpRequest, pool: &DbPool) -> AppResult<Aut
         return Err(AppError::Unauthorized("Bearer token expired".to_string()));
     }
 
-    // Off the request path: the answer does not wait on this write.
-    let pool = pool.clone();
-    let token_id = token.id;
-    tokio::spawn(async move {
-        if let Err(e) = AuthTokenService::update_last_used(&pool, token_id).await {
-            log::warn!("Could not record the last use of API token {token_id}: {e}");
-        }
-    });
+    // Off the request path: the answer does not wait on this write. At most
+    // once a minute, as a session's `last_seen_at`: on SQLite every write
+    // queues for the one writer.
+    let fresh = token
+        .last_used_at
+        .is_some_and(|at| at > chrono::Utc::now() - chrono::Duration::minutes(1));
+    if !fresh {
+        let pool = pool.clone();
+        let token_id = token.id;
+        tokio::spawn(async move {
+            if let Err(e) = AuthTokenService::update_last_used(&pool, token_id).await {
+                log::warn!("Could not record the last use of API token {token_id}: {e}");
+            }
+        });
+    }
 
     Ok(token)
 }
@@ -59,6 +66,8 @@ pub(crate) async fn api_token(req: &HttpRequest, pool: &DbPool) -> AppResult<Aut
 /// with the DSN's key from the path, the query, `X-Sentry-Auth` or Basic auth.
 pub struct SentryAuth {
     pub project: Project,
+    /// The installation's quota windows, read with the project.
+    pub installation_quota: QuotaWindows,
 }
 
 impl FromRequest for SentryAuth {
@@ -130,7 +139,8 @@ impl FromRequest for SentryAuth {
                 .parse()
                 .map_err(|_| AppError::Unauthorized("Invalid sentry_key format".to_string()))?;
 
-            let project = ProjectService::get_by_id(pool.get_ref(), project_id).await?;
+            let (project, installation_quota) =
+                ProjectService::get_with_installation_quota(pool.get_ref(), project_id).await?;
 
             if project.sentry_key != sentry_key {
                 return Err(AppError::Unauthorized(
@@ -138,7 +148,10 @@ impl FromRequest for SentryAuth {
                 ));
             }
 
-            Ok(SentryAuth { project })
+            Ok(SentryAuth {
+                project,
+                installation_quota,
+            })
         })
     }
 }
@@ -201,7 +214,7 @@ impl ApiActor {
     }
 
     pub async fn for_user(pool: &DbPool, user: User) -> AppResult<Self> {
-        let access = RoleService::access_for(pool, user.id).await?;
+        let access = RoleService::access_for(pool, &user).await?;
         Ok(ApiActor {
             via_session: false,
             user: Some(user),
@@ -240,6 +253,12 @@ impl ApiActor {
 
     pub fn visible_projects(&self) -> ProjectScope {
         self.access.visible_projects()
+    }
+
+    /// The projects where `action` on `resource` holds, for a list across
+    /// projects.
+    pub fn projects_where(&self, resource: Resource, action: rbac::Action) -> ProjectScope {
+        self.access.projects_where(resource, action)
     }
 
     /// Holds an instance-wide role with every permission.

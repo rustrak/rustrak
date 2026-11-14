@@ -4,19 +4,24 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use super::counters::{Counters, Rejection, LATENCY_BOUNDS_MS};
+use super::counters::{Counters, Rejection, Shed, LATENCY_BOUNDS_MS};
 
+/// The spool gauges. `pending` is the in-memory count of events whose digest
+/// is not over; `bytes` and `oldest_seconds` come from a periodic walk of the
+/// directory and are `None` until the first one, or when it failed.
 #[derive(Clone, Copy, Default)]
 pub struct Spool {
     pub pending: u64,
-    pub bytes: u64,
-    pub oldest_seconds: u64,
+    /// The digest's circuit breaker holds it halted.
+    pub digest_halted: bool,
+    pub bytes: Option<u64>,
+    pub oldest_seconds: Option<u64>,
 }
 
 impl Counters {
-    /// `spool` and `db_bytes` come from the endpoint's short-lived reading, not
-    /// the six-hour anonymous telemetry window.
-    pub fn render(&self, spool: Option<Spool>, db_bytes: Option<u64>) -> String {
+    /// `spool` and `db_bytes` come from the endpoint's readings, not the
+    /// six-hour anonymous telemetry window.
+    pub fn render(&self, spool: Spool, db_bytes: Option<u64>) -> String {
         let totals = self.totals();
         let mut out = String::new();
         out.push_str("# HELP rustrak_ingest_accepted_total Accepted ingest requests.\n# TYPE rustrak_ingest_accepted_total counter\n");
@@ -68,6 +73,54 @@ impl Counters {
             writeln!(out, "rustrak_digest_total{{result=\"{result}\"}} {count}").unwrap();
         }
 
+        out.push_str("# HELP rustrak_ingest_shed_total Ingest requests answered 503 by load shedding.\n# TYPE rustrak_ingest_shed_total counter\n");
+        for (reason, label) in Shed::ALL {
+            writeln!(
+                out,
+                "rustrak_ingest_shed_total{{reason=\"{label}\"}} {}",
+                totals.shed[reason as usize]
+            )
+            .unwrap();
+        }
+        for (name, help, value) in [
+            (
+                "rustrak_db_unavailable_total",
+                "Requests answered 503 because the database was briefly unavailable.",
+                totals.db_unavailable,
+            ),
+            (
+                "rustrak_spool_dead_lettered_total",
+                "Spool files moved to dead/ after their digest kept failing.",
+                totals.dead_lettered,
+            ),
+            (
+                "rustrak_digest_post_commit_dropped_total",
+                "Stored events whose alert step failed for good and was skipped.",
+                totals.post_commit_dropped,
+            ),
+            (
+                "rustrak_digest_batches_total",
+                "Digest transactions run, committed or not.",
+                totals.digest_batches,
+            ),
+            (
+                "rustrak_digest_batch_events_total",
+                "Events in those transactions.",
+                totals.digest_batch_events,
+            ),
+            (
+                "rustrak_worker_restarts_total",
+                "Background workers restarted after a panic.",
+                crate::workers::restarts(),
+            ),
+        ] {
+            writeln!(
+                out,
+                "# HELP {name} {help}\n# TYPE {name} counter\n{name} {value}"
+            )
+            .unwrap();
+        }
+
         write_map(
             &mut out,
             "rustrak_http_5xx_total",
@@ -85,18 +138,18 @@ impl Counters {
         for (name, help, value) in [
             (
                 "rustrak_spool_pending",
-                "Pending ingest files.",
-                spool.map(|s| s.pending),
+                "Accepted events waiting for their digest.",
+                Some(spool.pending),
             ),
             (
                 "rustrak_spool_bytes",
-                "Bytes in pending ingest files.",
-                spool.map(|s| s.bytes),
+                "Bytes in pending ingest files, as of the last spool sample.",
+                spool.bytes,
             ),
             (
                 "rustrak_spool_oldest_seconds",
-                "Age of oldest pending ingest file in seconds.",
-                spool.map(|s| s.oldest_seconds),
+                "Age of oldest pending ingest file in seconds, as of the last spool sample.",
+                spool.oldest_seconds,
             ),
         ] {
             writeln!(out, "# HELP {name} {help}\n# TYPE {name} gauge").unwrap();
@@ -104,6 +157,12 @@ impl Counters {
                 writeln!(out, "{name} {value}").unwrap();
             }
         }
+        writeln!(
+            out,
+            "# HELP rustrak_digest_halted 1 while the digest is halted: every event it tried failed on its own.\n# TYPE rustrak_digest_halted gauge\nrustrak_digest_halted {}",
+            u8::from(spool.digest_halted)
+        )
+        .unwrap();
         out.push_str(
             "# HELP rustrak_db_bytes Database size in bytes.\n# TYPE rustrak_db_bytes gauge\n",
         );
@@ -139,11 +198,12 @@ mod tests {
         counters.http_5xx("/api/issues/{id}");
         counters.alert_failed("email");
         let first = counters.render(
-            Some(Spool {
+            Spool {
                 pending: 2,
-                bytes: 512,
-                oldest_seconds: 30,
-            }),
+                bytes: Some(512),
+                oldest_seconds: Some(30),
+                digest_halted: false,
+            },
             Some(1024),
         );
         assert!(first.contains("rustrak_ingest_accepted_total 1"));
@@ -160,7 +220,7 @@ mod tests {
     fn latency_buckets_use_exact_bounds() {
         let counters = Counters::new();
         counters.ingest_accepted(Duration::from_millis(1) + Duration::from_nanos(1));
-        let output = counters.render(Some(Spool::default()), None);
+        let output = counters.render(Spool::default(), None);
         assert!(output.contains("rustrak_ingest_duration_seconds_bucket{le=\"0.001\"} 0"));
         assert!(output.contains("rustrak_ingest_duration_seconds_bucket{le=\"0.002\"} 1"));
     }
@@ -169,18 +229,34 @@ mod tests {
     fn labels_are_escaped_and_missing_db_gauge_is_not_zero() {
         let counters = Counters::new();
         counters.http_5xx("a\"\\\nb");
-        let output = counters.render(Some(Spool::default()), None);
+        let output = counters.render(Spool::default(), None);
         assert!(output.contains("rustrak_http_5xx_total{route=\"a\\\"\\\\\\nb\"} 1"));
         assert!(!output.contains("rustrak_db_bytes 0"));
     }
 
     #[test]
-    fn unreadable_spool_omits_its_gauges_but_keeps_counters() {
+    fn a_halted_digest_shows_in_its_gauge() {
+        let counters = Counters::new();
+        assert!(counters
+            .render(Spool::default(), None)
+            .contains("\nrustrak_digest_halted 0\n"));
+        let halted = Spool {
+            digest_halted: true,
+            ..Spool::default()
+        };
+        assert!(counters
+            .render(halted, None)
+            .contains("\nrustrak_digest_halted 1\n"));
+    }
+
+    #[test]
+    fn unsampled_spool_omits_its_size_but_keeps_the_backlog_and_counters() {
         let counters = Counters::new();
         counters.digest_ok();
-        let output = counters.render(None, Some(1));
+        let output = counters.render(Spool::default(), Some(1));
         assert!(output.contains("rustrak_digest_total{result=\"ok\"} 1"));
-        assert!(!output.contains("rustrak_spool_pending 0"));
+        assert!(output.contains("\nrustrak_spool_pending 0\n"));
+        assert!(!output.contains("\nrustrak_spool_bytes "));
         assert!(output.contains("rustrak_db_bytes 1"));
     }
 }

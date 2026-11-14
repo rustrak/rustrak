@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignable } from './assignable';
+import { assignable, everyone } from './assignable';
 
 describe('assignable', () => {
   it('adds the reader when they are not a member', () => {
@@ -15,5 +15,26 @@ describe('assignable', () => {
         email: 'admin@x.io',
       }),
     ).toHaveLength(1);
+  });
+});
+
+describe('everyone', () => {
+  it('joins several projects members, each person once', () => {
+    expect(
+      everyone([
+        [
+          { id: 1, email: 'a@x' },
+          { id: 2, email: 'b@x' },
+        ],
+        [
+          { id: 2, email: 'b@x' },
+          { id: 3, email: 'c@x' },
+        ],
+      ]),
+    ).toEqual([
+      { id: 1, email: 'a@x' },
+      { id: 2, email: 'b@x' },
+      { id: 3, email: 'c@x' },
+    ]);
   });
 });

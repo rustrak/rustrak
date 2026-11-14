@@ -5,6 +5,7 @@ import {
   type Crumb,
   cn,
   DocsIcon,
+  IssuesIcon,
   Menu,
   type MenuAction,
   NewIcon,
@@ -437,6 +438,16 @@ function WorkspaceNav({
         active={pathname === '/projects'}
         render={<Link href="/projects" />}
       />
+      {/* Every project's issues and feedback on one page: only for who
+          reads issues on one of them. */}
+      {permissions.canAnywhere('issues', 'read') ? (
+        <SidebarItem
+          icon={IssuesIcon}
+          label={t('nav.issues')}
+          active={isUnder(pathname, '/issues')}
+          render={<Link href="/issues" />}
+        />
+      ) : null}
       {canSeeTeam(permissions) ? (
         <SidebarItem
           icon={TeamIcon}
@@ -597,6 +608,8 @@ export function AppBreadcrumbs() {
         ? [{ label: tSettings(`nav.${settingsPage.key}` as 'nav.profile') }]
         : []),
     ];
+  } else if (isUnder(pathname, '/issues')) {
+    items = [{ label: t('nav.issues') }];
   } else if (pathname.startsWith('/projects/new')) {
     items = [
       { label: t('switcher.projects'), render: <Link href="/projects" /> },

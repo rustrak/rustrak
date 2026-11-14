@@ -5,6 +5,7 @@
 mod aggregate;
 mod config;
 mod envelope;
+mod lab;
 mod metrics;
 mod pgstats;
 mod report;
@@ -84,6 +85,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// A/B lab inside a Linux container (run through scripts/lab.sh)
+    Lab(Box<lab::LabArgs>),
+
     /// Run a benchmark scenario
     Run {
         /// Scenario name or path to a scenario TOML
@@ -232,6 +236,9 @@ async fn main() -> anyhow::Result<()> {
     print_banner();
 
     match cli.command.take() {
+        Some(Commands::Lab(args)) => {
+            lab::run(*args).await?;
+        }
         Some(Commands::List) => {
             list_scenarios()?;
         }

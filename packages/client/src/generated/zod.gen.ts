@@ -808,6 +808,7 @@ export const zFeedbackResponse = z.object({
     id: z.uuid(),
     message: z.string(),
     name: z.string(),
+    project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
     status: zIssueStatus,
     url: z.string()
 });
@@ -1277,7 +1278,8 @@ export const zRateLimitsResponse = z.object({
 });
 
 export const zReadinessChecks = z.object({
-    database: z.string()
+    database: z.string(),
+    digest: z.string()
 });
 
 export const zReadinessResponse = z.object({
@@ -2352,6 +2354,25 @@ export const zSourceMapsChunkUploadPath = z.object({
     org_slug: z.string()
 });
 
+export const zSentryListOrganizationIssuesPath = z.object({
+    org_slug: z.string()
+});
+
+export const zSentryListOrganizationIssuesQuery = z.object({
+    project: z.array(z.string()).optional(),
+    query: z.string().nullish(),
+    sort: z.string().nullish(),
+    limit: z.string().nullish(),
+    cursor: z.string().nullish(),
+    statsPeriod: z.string().nullish(),
+    environment: z.string().nullish()
+});
+
+/**
+ * Issues; paginated by the `Link` header
+ */
+export const zSentryListOrganizationIssuesResponse = z.array(zSentryIssue);
+
 export const zSentryListReposPath = z.object({
     org_slug: z.string()
 });
@@ -2473,6 +2494,35 @@ export const zAccessCatalogResponse = zCatalog;
  * What the caller may do
  */
 export const zAccessMeResponse = zMyAccess;
+
+export const zFeedbackListAllQuery = z.object({
+    project: z.string().optional(),
+    page: z.int().optional(),
+    per_page: z.int().optional(),
+    filter: zIssueFilter.optional()
+});
+
+/**
+ * Offset-based paginated response wrapper
+ */
+export const zFeedbackListAllResponse = z.object({
+    items: z.array(z.object({
+        associated_event_id: z.string().nullable(),
+        attachments: z.array(zAttachmentInfo),
+        contact_email: z.string(),
+        created_at: z.iso.datetime({ offset: true }),
+        id: z.uuid(),
+        message: z.string(),
+        name: z.string(),
+        project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+        status: zIssueStatus,
+        url: z.string()
+    })),
+    page: z.int(),
+    per_page: z.int(),
+    total_count: z.int(),
+    total_pages: z.int()
+});
 
 /**
  * GitHub App removed
@@ -2631,6 +2681,66 @@ export const zInvitationsResendPath = z.object({
  * Invitation email sent
  */
 export const zInvitationsResendResponse = zInvitationResponse;
+
+export const zIssuesListAllQuery = z.object({
+    project: z.string().optional(),
+    page: z.int().gte(1).optional(),
+    per_page: z.int().gte(1).lte(100).optional(),
+    sort: zIssueSort.optional(),
+    order: zSortOrder.optional(),
+    filter: zIssueFilter.optional(),
+    category: zIssueCategory.optional(),
+    q: z.string().nullish(),
+    environment: z.string().nullish(),
+    release: z.string().nullish(),
+    level: z.string().nullish(),
+    priority: z.string().nullish(),
+    assigned: z.string().nullish(),
+    first_seen: z.string().nullish(),
+    last_seen: z.string().nullish(),
+    events_min: z.int().nullish(),
+    events_max: z.int().nullish()
+});
+
+/**
+ * Offset-based paginated response wrapper
+ */
+export const zIssuesListAllResponse = z.object({
+    items: z.array(z.object({
+        assigned_to: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).nullable(),
+        assignee_type: z.string().nullable(),
+        culprit: z.string(),
+        event_count: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+        first_release: z.string(),
+        first_seen: z.iso.datetime({ offset: true }),
+        has_seen: z.boolean().nullish(),
+        id: z.uuid(),
+        is_bookmarked: z.boolean().nullish(),
+        is_subscribed: z.boolean().nullish(),
+        issue_category: z.string(),
+        issue_type: z.string(),
+        last_release: z.string(),
+        last_seen: z.iso.datetime({ offset: true }),
+        level: z.string().nullable(),
+        logger: z.string(),
+        platform: z.string().nullable(),
+        priority: zIssuePriority.nullable(),
+        project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+        short_id: z.string(),
+        status: zIssueStatus,
+        status_details: z.record(z.string(), z.unknown()),
+        substatus: z.string().nullable(),
+        title: z.string(),
+        trend: z.array(z.int()).nullish(),
+        user_count: z.int().nullish(),
+        user_report_count: z.int().nullish(),
+        value: z.string()
+    })),
+    page: z.int(),
+    per_page: z.int(),
+    total_count: z.int(),
+    total_pages: z.int()
+});
 
 export const zOauthGetAuthorizationQuery = z.object({
     response_type: z.string(),
@@ -3097,6 +3207,7 @@ export const zFeedbackListResponse = z.object({
         id: z.uuid(),
         message: z.string(),
         name: z.string(),
+        project_id: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
         status: zIssueStatus,
         url: z.string()
     })),

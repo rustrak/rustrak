@@ -5,18 +5,22 @@
  * it refreshes its detail, aggregates, chart, activity and reports together.
  */
 import type {
+  FeedbackListAllData,
   FeedbackListData,
   IssuesGetStatsData,
+  IssuesListAllData,
   IssuesListData,
 } from '@rustrak/client';
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
-import { projectScope } from '@/shared/api/keys';
+import { allProjects, projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 
 type IssuesListQuery = IssuesListData['query'];
 type IssueStatsWindow = NonNullable<IssuesGetStatsData['query']>['window'];
 type FeedbackListQuery = FeedbackListData['query'];
+type IssuesListAllQuery = IssuesListAllData['query'];
+type FeedbackListAllQuery = FeedbackListAllData['query'];
 
 export const issueQueries = {
   all: (projectId: number) => [...projectScope(projectId), 'issues'] as const,
@@ -117,5 +121,24 @@ export const issueQueries = {
             signal,
           }),
         ),
+    }),
+  /**
+   * Issues of every project the reader can read, or of the projects
+   * `query.project` names. Under every project's root, so a write to any
+   * project's issues refreshes it.
+   */
+  /** The lists across projects, which a write to any project's issue moves. */
+  everyProject: () => [...allProjects(), 'issues'] as const,
+  listAll: (query: IssuesListAllQuery = {}) =>
+    queryOptions({
+      queryKey: [...issueQueries.everyProject(), query],
+      queryFn: ({ signal }) => orThrow(api().issues.listAll({ query, signal })),
+    }),
+  /** The feedback of every project the reader can read, as one mailbox. */
+  feedbackAll: (query: FeedbackListAllQuery = {}) =>
+    queryOptions({
+      queryKey: [...issueQueries.everyProject(), 'feedback', query],
+      queryFn: ({ signal }) =>
+        orThrow(api().feedback.listAll({ query, signal })),
     }),
 };

@@ -32,6 +32,7 @@ import { issueMutations } from '@/features/issue/api/mutations';
 import { PRIORITIES } from '@/features/issue/model/actions';
 import type { IssueView } from '@/features/issue/model/issue-table';
 import type { ApiError } from '@/shared/api/query';
+import type { Permissions } from '@/shared/lib/permissions';
 import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
@@ -52,8 +53,20 @@ type Change =
 /** Some issues, read when the menu item is chosen rather than when built. */
 type Pick = () => IssueResponse[];
 
+/** A project the instance-wide list can show and filter on. */
+export interface ListedProject {
+  id: number;
+  name: string;
+  platform?: string | null;
+}
+
 interface IssuesTableProps {
-  projectId: number;
+  /**
+   * The project the list belongs to. Absent, the list spans projects, and
+   * each row names its own out of `projects`.
+   */
+  projectId?: number;
+  projects?: ListedProject[];
   /** Absent while the first page loads: the table draws skeleton rows. */
   page?: IssuesListResponse;
   query: DataTableQuery;
@@ -64,6 +77,11 @@ interface IssuesTableProps {
   /** The next page is on its way: rows stay, dimmed. */
   loading: boolean;
   members: Assignable[];
+  /**
+   * Who the Assignee column can name, when it is more than who can be
+   * assigned: across projects, every listed project's members.
+   */
+  assignees?: Assignable[];
   me: number;
   /** For the query bar's `environment:` and `release:` suggestions. */
   environments: string[];
@@ -77,12 +95,14 @@ interface IssuesTableProps {
  */
 export function IssuesTable({
   projectId,
+  projects,
   page,
   query,
   view,
   onQueryChange,
   loading,
   members,
+  assignees = members,
   me,
   environments,
   releases,
@@ -93,12 +113,21 @@ export function IssuesTable({
   const router = useRouter();
   const [deleting, setDeleting] = useState<IssueResponse[] | null>(null);
   const permissions = usePermissionsLater();
-  const canUpdate = permissions.can('issues', 'update', projectId);
-  const canDelete = permissions.can('issues', 'delete', projectId);
+  // Across projects, a row's own project decides its menu, and the batch
+  // actions show when any listed project allows them: the server refuses
+  // the rest.
+  const reachable =
+    projectId !== undefined ? [projectId] : (projects ?? []).map((p) => p.id);
+  const canUpdate = reachable.some((id) =>
+    permissions.can('issues', 'update', id),
+  );
+  const canDelete = reachable.some((id) =>
+    permissions.can('issues', 'delete', id),
+  );
 
   const columns = useMemo(
-    () => issueColumns({ projectId, t, format, members, me }),
-    [projectId, t, format, members, me],
+    () => issueColumns({ projects, t, format, members: assignees, me }),
+    [projects, t, format, assignees, me],
   );
 
   const fields = useMemo<QueryField[]>(
@@ -129,11 +158,11 @@ export function IssuesTable({
     onError: (error: ApiError) => toastFailure(t('toasts.updateFailed'), error),
   };
   const bulkUpdate = useMutation({
-    ...issueMutations.bulkUpdate(projectId),
+    ...issueMutations.bulkUpdate(),
     ...updated,
   });
   const assign = useMutation({
-    ...issueMutations.assign(projectId),
+    ...issueMutations.assign(),
     ...updated,
   });
   const deleted = {
@@ -150,33 +179,23 @@ export function IssuesTable({
       ),
   };
   // On `mutate`, not here: spread here they would replace the factory's
-  // `onSuccess`, which drops the deleted issue from the cache.
-  const deleteOne = useMutation(issueMutations.delete(projectId));
-  const bulkDelete = useMutation({
-    ...issueMutations.bulkDelete(projectId),
-    ...deleted,
-  });
+  // `onSuccess`, which drops the deleted issues from the cache.
+  const bulkDelete = useMutation(issueMutations.bulkDelete());
   const isPending =
-    bulkUpdate.isPending ||
-    assign.isPending ||
-    deleteOne.isPending ||
-    bulkDelete.isPending;
+    bulkUpdate.isPending || assign.isPending || bulkDelete.isPending;
 
-  // Status and priority go in one request; an assignment is one per issue.
+  // Status and priority go in one request per project; an assignment is one
+  // per issue.
   const apply = (issues: IssueResponse[], change: Change) => {
-    const ids = issues.map((issue) => issue.id);
     if ('assigned_to' in change) {
-      assign.mutate({ ids, assignedTo: change.assigned_to });
+      assign.mutate({ issues, assignedTo: change.assigned_to });
     } else {
-      bulkUpdate.mutate({ ids, ...change });
+      bulkUpdate.mutate({ issues, ...change });
     }
   };
 
   const confirmDelete = () => {
-    if (!deleting) return;
-    const [single] = deleting;
-    if (deleting.length === 1 && single) deleteOne.mutate(single.id, deleted);
-    else bulkDelete.mutate({ ids: deleting.map((issue) => issue.id) });
+    if (deleting) bulkDelete.mutate(deleting, deleted);
   };
 
   const { priorityItems, assignItems, rowMenu } = useIssueMenus({
@@ -184,8 +203,7 @@ export function IssuesTable({
     me,
     apply,
     setDeleting,
-    canUpdate,
-    canDelete,
+    can: permissions.can,
   });
 
   const table = useDataTable({
@@ -230,7 +248,9 @@ export function IssuesTable({
         loading={!page || loading || isPending}
         className="min-h-0 flex-1"
         onRowClick={(row) =>
-          router.push(`/projects/${projectId}/issues/${row.original.id}`)
+          router.push(
+            `/projects/${row.original.project_id}/issues/${row.original.id}`,
+          )
         }
         empty={{
           title: t('empty.title'),
@@ -282,15 +302,14 @@ function useIssueMenus({
   me,
   apply,
   setDeleting,
-  canUpdate,
-  canDelete,
+  can,
 }: {
   members: Assignable[];
   me: number;
   apply: (issues: IssueResponse[], change: Change) => void;
   setDeleting: (issues: IssueResponse[]) => void;
-  canUpdate: boolean;
-  canDelete: boolean;
+  /** Whether the reader may do this to the issues of that project. */
+  can: Permissions['can'];
 }) {
   const t = useTranslations('issues');
   const { copy } = useCopy();
@@ -342,6 +361,8 @@ function useIssueMenus({
     (row: Row<DataTableFeatures, IssueResponse>): MenuAction[] => {
       const issue = row.original;
       const one = () => [issue];
+      const canUpdate = can('issues', 'update', issue.project_id);
+      const canDelete = can('issues', 'delete', issue.project_id);
       const resolved = issue.status === 'resolved';
       const muted = issue.status === 'ignored';
       const triage: MenuAction[] = [
@@ -399,7 +420,7 @@ function useIssueMenus({
           : []),
       ];
     },
-    [t, priorityItems, assignItems, canUpdate, canDelete],
+    [t, priorityItems, assignItems, can],
   );
 
   return { priorityItems, assignItems, rowMenu };

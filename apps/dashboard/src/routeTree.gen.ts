@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login';
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings';
 import { Route as InviteTokenRouteImport } from './routes/invite/$token';
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth/authorize';
+import { Route as AuthenticatedIssuesIndexRouteImport } from './routes/_authenticated/issues/index';
 import { Route as AuthenticatedProjectsIndexRouteImport } from './routes/_authenticated/projects/index';
 import { Route as AuthenticatedProjectsIdRouteImport } from './routes/_authenticated/projects/$id';
 import { Route as AuthenticatedProjectsNewRouteImport } from './routes/_authenticated/projects/new';
@@ -104,6 +105,12 @@ const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
   path: '/oauth/authorize',
   getParentRoute: () => rootRouteImport,
 } as any);
+const AuthenticatedIssuesIndexRoute =
+  AuthenticatedIssuesIndexRouteImport.update({
+    id: '/issues/',
+    path: '/issues/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any);
 const AuthenticatedProjectsIndexRoute =
   AuthenticatedProjectsIndexRouteImport.update({
     id: '/projects/',
@@ -440,6 +447,7 @@ export interface FileRoutesByFullPath {
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute;
   '/settings/storage': typeof AuthenticatedSettingsStorageRoute;
   '/settings/tokens': typeof AuthenticatedSettingsTokensRoute;
+  '/issues/': typeof AuthenticatedIssuesIndexRoute;
   '/projects/': typeof AuthenticatedProjectsIndexRoute;
   '/settings/': typeof AuthenticatedSettingsIndexRoute;
   '/projects/$id/logs': typeof AuthenticatedProjectsIdLogsRoute;
@@ -499,6 +507,7 @@ export interface FileRoutesByTo {
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute;
   '/settings/storage': typeof AuthenticatedSettingsStorageRoute;
   '/settings/tokens': typeof AuthenticatedSettingsTokensRoute;
+  '/issues': typeof AuthenticatedIssuesIndexRoute;
   '/projects': typeof AuthenticatedProjectsIndexRoute;
   '/settings': typeof AuthenticatedSettingsIndexRoute;
   '/projects/$id/logs': typeof AuthenticatedProjectsIdLogsRoute;
@@ -561,6 +570,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute;
   '/_authenticated/settings/storage': typeof AuthenticatedSettingsStorageRoute;
   '/_authenticated/settings/tokens': typeof AuthenticatedSettingsTokensRoute;
+  '/_authenticated/issues/': typeof AuthenticatedIssuesIndexRoute;
   '/_authenticated/projects/': typeof AuthenticatedProjectsIndexRoute;
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute;
   '/_authenticated/projects/$id/logs': typeof AuthenticatedProjectsIdLogsRoute;
@@ -624,6 +634,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/storage'
     | '/settings/tokens'
+    | '/issues/'
     | '/projects/'
     | '/settings/'
     | '/projects/$id/logs'
@@ -683,6 +694,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/storage'
     | '/settings/tokens'
+    | '/issues'
     | '/projects'
     | '/settings'
     | '/projects/$id/logs'
@@ -744,6 +756,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/storage'
     | '/_authenticated/settings/tokens'
+    | '/_authenticated/issues/'
     | '/_authenticated/projects/'
     | '/_authenticated/settings/'
     | '/_authenticated/projects/$id/logs'
@@ -847,6 +860,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/oauth/authorize';
       preLoaderRoute: typeof OauthAuthorizeRouteImport;
       parentRoute: typeof rootRouteImport;
+    };
+    '/_authenticated/issues/': {
+      id: '/_authenticated/issues/';
+      path: '/issues';
+      fullPath: '/issues/';
+      preLoaderRoute: typeof AuthenticatedIssuesIndexRouteImport;
+      parentRoute: typeof AuthenticatedRoute;
     };
     '/_authenticated/projects/': {
       id: '/_authenticated/projects/';
@@ -1394,6 +1414,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren;
   AuthenticatedProjectsIdRoute: typeof AuthenticatedProjectsIdRouteWithChildren;
   AuthenticatedProjectsNewRoute: typeof AuthenticatedProjectsNewRoute;
+  AuthenticatedIssuesIndexRoute: typeof AuthenticatedIssuesIndexRoute;
   AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute;
 }
 
@@ -1401,6 +1422,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
   AuthenticatedProjectsIdRoute: AuthenticatedProjectsIdRouteWithChildren,
   AuthenticatedProjectsNewRoute: AuthenticatedProjectsNewRoute,
+  AuthenticatedIssuesIndexRoute: AuthenticatedIssuesIndexRoute,
   AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,
 };
 

@@ -8,6 +8,7 @@ pub mod dialect;
 pub mod maintenance;
 
 use crate::config::DatabaseConfig;
+use sqlx::Connection as _;
 
 #[cfg(feature = "postgres")]
 use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -57,6 +58,7 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error>
             .acquire_timeout(config.acquire_timeout)
             .idle_timeout(Some(config.idle_timeout))
             .max_lifetime(Some(config.max_lifetime))
+            .before_acquire(|conn, _meta| Box::pin(async move { Ok(!conn.is_in_transaction()) }))
             .after_connect(|conn, _meta| {
                 Box::pin(async move {
                     sqlx::query("SET timezone = 'UTC'").execute(conn).await?;
@@ -88,6 +90,12 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error>
             // apps/docs/content/configuration/database.mdx.
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
+            // Pool connections never checkpoint, so no request pays for the
+            // whole log's checkpoint. The digest's connection owns checkpointing
+            // (`connect_committer`, `ErrorProcessor::checkpoint_when_caught_up`).
+            // The size limit truncates a reset log back to 64 MiB.
+            .pragma("wal_autocheckpoint", "0")
+            .pragma("journal_size_limit", "67108864")
             .busy_timeout(SQLITE_BUSY_TIMEOUT);
         let max_connections = if is_in_memory {
             1
@@ -105,6 +113,11 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error>
             .acquire_timeout(config.acquire_timeout)
             .idle_timeout(Some(config.idle_timeout))
             .max_lifetime(Some(config.max_lifetime))
+            // A connection sqlx still counts inside a transaction is closed,
+            // never handed out: after `SQLITE_FULL` SQLite rolls back by
+            // itself, sqlx's `ROLLBACK` fails and its depth stays at one, so
+            // the next `BEGIN IMMEDIATE` would be refused.
+            .before_acquire(|conn, _meta| Box::pin(async move { Ok(!conn.is_in_transaction()) }))
             .connect_with(opts)
             .await?
     };
@@ -145,6 +158,86 @@ pub async fn begin_write(pool: &DbPool) -> Result<sqlx::Transaction<'_, Db>, sql
     }
 }
 
+/// The committer's automatic checkpoint, in pages of write-ahead log (~40
+/// MiB at 4 KiB pages), while it is behind ingest: batches write megabytes,
+/// and at 1 000 pages nearly every commit also checkpointed. Ingest's
+/// free-disk floor counts this much log (`free_disk_floor`).
+#[cfg(feature = "sqlite")]
+pub const COMMITTER_CHECKPOINT_PAGES: u32 = 10_000;
+
+/// The committer's automatic checkpoint once it has caught up with ingest:
+/// none, each commit is checkpointed right after it instead
+/// ([`checkpoint_caught_up`]).
+#[cfg(feature = "sqlite")]
+pub const CAUGHT_UP_CHECKPOINT_PAGES: u32 = 0;
+
+/// How long [`checkpoint_caught_up`] waits for a reader on an older snapshot,
+/// or for another writer, before it settles for what it could copy.
+#[cfg(feature = "sqlite")]
+const CAUGHT_UP_CHECKPOINT_WAIT: Duration = Duration::from_millis(5);
+
+/// A `FULL` checkpoint on the digest's connection, right after a commit made
+/// while the digest keeps up. A checkpoint ends in an fsync of the database
+/// file that the spool fsyncs of arriving requests wait behind. A `PASSIVE`
+/// one gives up on frames a busy reader still sees, so pages pile up into
+/// rare, long syncs; waiting a few milliseconds for the readers syncs each
+/// commit's few pages instead.
+///
+/// `FULL` takes the write lock while it copies, as an automatic checkpoint
+/// at `COMMIT` does; it gives up after [`CAUGHT_UP_CHECKPOINT_WAIT`] on a
+/// reader or another writer and leaves the rest to the next one. It changes
+/// nothing about durability: the log is synced before the copy and the
+/// database after it.
+#[cfg(feature = "sqlite")]
+pub async fn checkpoint_caught_up(conn: &mut sqlx::SqliteConnection) -> Result<(), sqlx::Error> {
+    let busy_timeout = |wait: Duration| {
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "PRAGMA busy_timeout = {}",
+            wait.as_millis()
+        )))
+    };
+    busy_timeout(CAUGHT_UP_CHECKPOINT_WAIT)
+        .execute(&mut *conn)
+        .await?;
+    let checkpoint = sqlx::query("PRAGMA wal_checkpoint(FULL)")
+        .execute(&mut *conn)
+        .await;
+    busy_timeout(SQLITE_BUSY_TIMEOUT)
+        .execute(&mut *conn)
+        .await?;
+    checkpoint.map(drop)
+}
+
+/// The digest's own connection, outside the pool and with every option of
+/// the pool's, except that each commit on it is durable: SQLite
+/// `synchronous=FULL` (a commit fsyncs the write-ahead log, which also covers
+/// the `NORMAL` commits before it), Postgres `synchronous_commit=on`
+/// whatever the server's default. The digest deletes an event's spool file
+/// right after the commit that stored it, so that commit has to survive a
+/// power loss.
+pub async fn connect_committer(
+    pool: &DbPool,
+) -> Result<<Db as sqlx::Database>::Connection, sqlx::Error> {
+    #[cfg(feature = "sqlite")]
+    let options = pool
+        .connect_options()
+        .as_ref()
+        .clone()
+        .synchronous(SqliteSynchronous::Full)
+        // The only connection that checkpoints (the pool's never do, see
+        // `create_pool`); each batch sets its own threshold
+        // (`checkpoint_pages`), and a timer checkpoints once the digest is
+        // caught up, which covers the writes that never reach it.
+        .pragma("wal_autocheckpoint", COMMITTER_CHECKPOINT_PAGES.to_string());
+    #[cfg(feature = "postgres")]
+    let options = pool
+        .connect_options()
+        .as_ref()
+        .clone()
+        .options([("synchronous_commit", "on"), ("timezone", "UTC")]);
+    sqlx::ConnectOptions::connect(&options).await
+}
+
 /// Runs all pending database migrations
 pub async fn run_migrations(pool: &DbPool) -> Result<(), sqlx::migrate::MigrateError> {
     log::info!("Running database migrations...");
@@ -167,9 +260,7 @@ pub async fn health_check(pool: &DbPool) -> bool {
 /// Runs a full SQLite WAL checkpoint and reports whether it completed.
 ///
 /// A commit is durably in the main database file once any `FULL` checkpoint
-/// that *started* after the commit completes; the digest's durability queue
-/// (`digest::processors::event`) batches its callers behind one checkpoint
-/// on that rule.
+/// that *started* after the commit completes. Shutdown runs one last.
 #[cfg(feature = "sqlite")]
 pub async fn checkpoint_full(pool: &DbPool) -> Result<bool, sqlx::Error> {
     let busy: i64 = sqlx::query_scalar("PRAGMA wal_checkpoint(FULL)")

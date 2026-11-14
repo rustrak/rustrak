@@ -8,7 +8,7 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 # Web framework (HTTP/2 is disabled until Actix moves to h2 0.4.)
-actix-web = { version = "4.18.1", default-features = false, features = [
+actix-web = { version = "4.19.0", default-features = false, features = [
     "macros",
     "compress-brotli",
     "compress-gzip",
@@ -20,7 +20,7 @@ actix-rt = "2.15.0"
 
 # Static file serving for the compiled dashboard. Optional at runtime: the
 # server mounts it only when a build is actually present on disk.
-actix-files = "0.7.2"
+actix-files = "0.7.4"
 
 # Session management
 actix-session = "0.11"
@@ -39,7 +39,7 @@ serde_json = "1.0.154"
 
 # Logging
 env_logger = "0.11.11"
-log = "0.4.34"
+log = "0.4.35"
 
 # Environment
 dotenvy = "0.15.7"
@@ -60,7 +60,7 @@ sqlx = { version = "0.9.0", features = [
 ] }
 
 # UUID generation
-uuid = { version = "1.29.0", features = ["v4", "serde"] }
+uuid = { version = "1.29.2", features = ["v4", "serde"] }
 
 # Slug generation
 slug = "0.1.6"
@@ -75,11 +75,11 @@ rand = "0.10.3"
 hex = "0.4.3"
 
 # Compression (for decompressing gzip/deflate/brotli/zstd payloads)
-flate2 = "1.1.10"
+flate2 = "1.1.11"
 # brotli and zstd held at the versions actix-http 3.18 depends on; going past
 # them compiles a second copy of each. Bump together with actix-http.
 brotli = "9.1.1"
-zstd = "0.14.3"
+zstd = "0.14.4"
 
 # Async utilities
 futures-util = "0.3.34"
@@ -110,7 +110,7 @@ base64 = "0.23.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
 
 # Generic OpenID Connect SSO (authorization code flow, discovery, PKCE, ID token validation)
-openidconnect = { version = "4.0.1", default-features = false }
+openidconnect = { version = "4.1.0", default-features = false }
 
 # GitHub App JWTs (RS256). Already in the tree through openidconnect.
 rsa = { version = "0.9", features = ["sha2"] }
@@ -128,15 +128,15 @@ url = "2.5.8"
 async-trait = "0.1.92"
 
 # MCP server at /mcp (stateless Streamable HTTP, protocol 2026-07-28)
-rmcp = { version = "3.8.0", features = ["transport-streamable-http-server"] }
+rmcp = { version = "3.10.0", features = ["transport-streamable-http-server"] }
 # The tools' argument schemas, derived on the handlers' own request types.
-schemars = { version = "1.2.2", features = ["uuid1"] }
+schemars = { version = "1.2.3", features = ["uuid1"] }
 http = "1.5.0"
 http-body-util = "0.1.5"
 
 # Source map processing
 sourcemap = "9"
-zip = { version = "9.1", default-features = false, features = ["deflate-flate2"] }  # CVE-2025-29787 fixed in 2.3+; DO NOT lower below 2.3; no zstd (non-SPDX license)
+zip = { version = "9.5", default-features = false, features = ["deflate-flate2"] }  # CVE-2025-29787 fixed in 2.3+; DO NOT lower below 2.3; no zstd (non-SPDX license)
 # JVM deobfuscation: the crate Symbolicator remaps Android frames with
 proguard = "5.10"
 # Native (Apple) symbolication: the crates Symbolicator symbolicates with.
@@ -160,11 +160,12 @@ mimalloc = "0.1.52"
 # OpenAPI spec generation (optional, behind `openapi` feature flag)
 utoipa = { version = "6.0.0", features = ["actix_extras", "uuid", "chrono"], optional = true }
 utoipa-scalar = { version = "0.4.0", features = ["actix-web"], optional = true }
-croner = "4.0.2"
+croner = "4.0.3"
 
 [target.'cfg(unix)'.dependencies]
 # statvfs: free disk before a SQLite compaction. Already built for `zip`.
-nix = { version = "0.31.3", default-features = false, features = ["fs"] }
+# prctl: transparent huge pages off (`allocator::tune`).
+nix = { version = "0.31.3", default-features = false, features = ["fs", "process"] }
 
 [dev-dependencies]
 # The crate depends on itself so the integration tests, which are separate
@@ -173,7 +174,7 @@ nix = { version = "0.31.3", default-features = false, features = ["fs"] }
 rustrak = { path = ".", default-features = false, features = ["test-seams"] }
 
 # Names the request type for helpers that drive an `init_service` app
-actix-http = "3.20.0"
+actix-http = "3.21.0"
 
 # Test framework & fixtures
 rstest = "0.28.0"
@@ -187,7 +188,7 @@ rstest = "0.28.0"
 testcontainers = "0.27.3"
 testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
 # atexit: the one Postgres container a test binary shares is removed when it exits.
-libc = "0.2.189"
+libc = "0.2.191"
 
 # Sentry SDK for E2E tests
 sentry = { version = "0.49.5", features = ["test"] }
@@ -199,7 +200,7 @@ proptest = "1.12.0"
 pretty_assertions = "1.4.1"
 
 # Validates real responses against openapi.json (openapi_contract_test)
-jsonschema = "0.60.2"
+jsonschema = "0.61.2"
 
 # tempfile moved to [dependencies] (needed at runtime for assembly)
 

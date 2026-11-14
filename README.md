@@ -306,15 +306,6 @@ are a reasonable place to start.
 Rustrak has no paid tier and no hosted plan. Development is funded through
 GitHub Sponsors and [Open Collective](https://opencollective.com/rustrak).
 
-<div align="center">
-
-<a href="https://opencollective.com/rustrak/tiers/gold-sponsor"><img src="https://opencollective.com/rustrak/tiers/gold-sponsor.svg?avatarHeight=120&width=890" alt="Gold Sponsors" /></a>
-<a href="https://opencollective.com/rustrak/tiers/sponsors"><img src="https://opencollective.com/rustrak/tiers/sponsors.svg?avatarHeight=80&width=890" alt="Sponsors" /></a>
-<a href="https://opencollective.com/rustrak/tiers/supporter"><img src="https://opencollective.com/rustrak/tiers/supporter.svg?avatarHeight=48&width=890" alt="Supporters" /></a>
-<a href="https://opencollective.com/rustrak/tiers/backers"><img src="https://opencollective.com/rustrak/tiers/backers.svg?avatarHeight=36&width=890" alt="Backers" /></a>
-
-</div>
-
 <table align="center">
 <tr>
 <td align="center" width="180">
@@ -322,6 +313,20 @@ GitHub Sponsors and [Open Collective](https://opencollective.com/rustrak).
     <img src="https://avatars.githubusercontent.com/u/135209230?s=180&v=4" width="90" height="90" alt="Scorewarrior" />
     <br />
     <sub><b>Scorewarrior</b></sub>
+  </a>
+</td>
+<td align="center" width="180">
+  <a href="https://github.com/ZerGo0">
+    <img src="https://avatars.githubusercontent.com/u/18653821?s=180&v=4" width="90" height="90" alt="ZerGo0" />
+    <br />
+    <sub><b>ZerGo0</b></sub>
+  </a>
+</td>
+<td align="center" width="180">
+  <a href="https://wdes.fr/">
+    <img src="https://images.opencollective.com/wdes/7cbd299/logo.png?height=180" width="90" height="90" alt="Wdes" />
+    <br />
+    <sub><b>Wdes</b></sub>
   </a>
 </td>
 </tr>

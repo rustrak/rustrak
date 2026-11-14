@@ -20,7 +20,8 @@ use crate::common::TestDb;
 
 // ── seed helpers ─────────────────────────────────────────────────────────────
 
-/// Insert one row into `events`, `hours_ago` and a half old.
+/// Insert one row into `events`, `hours_ago` and a half old, its times in
+/// the RFC 3339 form sqlx writes a `DateTime<Utc>` in.
 ///
 /// The half hour keeps a seed off the edge of the hourly sparkline bars,
 /// which are anchored to `now`: a whole number of hours lands on a bar's edge,
@@ -63,8 +64,8 @@ async fn seed_event(
             (event_id, project_id, issue_id, data, timestamp, ingested_at, level, event_type)
         VALUES (
             ?1, ?2, ?3, '{}',
-            datetime('now', '-' || ?4 || ' hours', '-30 minutes'),
-            datetime('now', '-' || ?4 || ' hours', '-30 minutes'),
+            strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', '-' || ?4 || ' hours', '-30 minutes'),
+            strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', '-' || ?4 || ' hours', '-30 minutes'),
             ?5, ?6
         )
         "#,
@@ -446,8 +447,8 @@ async fn seed_event_minutes_ago(pool: &DbPool, project_id: i32, minutes_ago: i64
             (event_id, project_id, data, timestamp, ingested_at, level, event_type)
         VALUES (
             ?1, ?2, '{}',
-            datetime('now', '-' || ?3 || ' minutes'),
-            datetime('now', '-' || ?3 || ' minutes'),
+            strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', '-' || ?3 || ' minutes'),
+            strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', '-' || ?3 || ' minutes'),
             'error', 'error'
         )
         "#,
@@ -947,7 +948,7 @@ async fn issue_list_shows_only_the_issues_seen_in_the_asked_release() {
 
     let (issues, total) = rustrak::services::IssueService::list_offset(
         &db.pool,
-        project_id,
+        &rustrak::models::rbac::ProjectScope::Only(vec![project_id]),
         rustrak::pagination::IssueSort::LastSeen,
         rustrak::pagination::SortOrder::Desc,
         rustrak::pagination::IssueFilter::All,

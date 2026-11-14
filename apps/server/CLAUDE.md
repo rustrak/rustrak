@@ -197,6 +197,12 @@ drives real HTTP. Shared fixtures live in `tests/common`; a test server is
 piece), the same `app::app` main serves. Server changes are written
 test-first.
 
+**Crash tests** (`tests/e2e/crash_test.rs`) run with the rest: they start the
+real binary, abort it at a `failpoint!("name")` (`RUSTRAK_FAILPOINT=name`),
+restart it and assert every 200'd event is stored exactly once. The macro only
+exists in test builds (`test-seams`). A new crash-safety boundary gets a
+`failpoint!` and one test there.
+
 ## Conventions
 
 - `rustfmt` and `clippy` both clean before a commit.

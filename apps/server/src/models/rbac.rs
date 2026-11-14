@@ -204,6 +204,21 @@ pub enum ProjectScope {
     Only(Vec<i32>),
 }
 
+impl ProjectScope {
+    /// These projects, narrowed to `requested` when a list names some: what
+    /// is asked for and not reachable is left out, never an error, so a list
+    /// does not tell which projects exist.
+    pub fn narrowed(self, requested: Option<Vec<i32>>) -> ProjectScope {
+        match (self, requested) {
+            (scope, None) => scope,
+            (ProjectScope::All, Some(ids)) => ProjectScope::Only(ids),
+            (ProjectScope::Only(held), Some(ids)) => {
+                ProjectScope::Only(ids.into_iter().filter(|id| held.contains(id)).collect())
+            }
+        }
+    }
+}
+
 /// What an API token was limited to when it was created.
 #[derive(Debug, Clone)]
 pub struct TokenScope {
@@ -427,6 +442,22 @@ impl Access {
             })
             .filter(|(_, pairs)| !pairs.is_empty())
             .collect()
+    }
+
+    /// The projects where `action` on `resource` holds: what a list across
+    /// projects may read from.
+    pub fn projects_where(&self, resource: Resource, action: Action) -> ProjectScope {
+        let pair = (resource, action);
+        if self.instance_pairs().contains(&pair) {
+            return ProjectScope::All;
+        }
+        ProjectScope::Only(
+            self.project_pairs()
+                .into_iter()
+                .filter(|(_, pairs)| pairs.contains(&pair))
+                .map(|(id, _)| id)
+                .collect(),
+        )
     }
 
     /// Whether this holds on the workspace or on at least one project.

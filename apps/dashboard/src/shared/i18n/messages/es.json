@@ -415,7 +415,8 @@
         "resolved": "Resueltos",
         "muted": "Archivados",
         "all": "Todos"
-      }
+      },
+      "project": "Proyecto"
     },
     "detail": {
       "linkCopied": "Enlace copiado",
@@ -2902,5 +2903,13 @@
       "project-members": "Miembros del proyecto y sus roles. Editar permite asignar y retirar roles en este proyecto.",
       "project-github": "El repositorio de GitHub enlazado a este proyecto."
     }
+  },
+  "workspaceIssues": {
+    "title": "Problemas",
+    "subtitle": "Todos los proyectos",
+    "allProjects": "Todos los proyectos",
+    "errors": "Errores",
+    "feedback": "Feedback",
+    "allProjectsHint": "Todos los proyectos a los que tienes acceso"
   }
 }

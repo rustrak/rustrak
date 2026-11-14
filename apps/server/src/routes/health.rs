@@ -24,6 +24,10 @@ pub struct ReadinessResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReadinessChecks {
     database: &'static str,
+    /// `ok`, or `halted` while every event the digest tries fails on its
+    /// own (a broken schema, a missing grant). Readiness stays 200 then: the
+    /// dashboard is how an operator finds out.
+    digest: &'static str,
 }
 
 #[derive(Serialize)]
@@ -92,7 +96,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 ))]
 /// Readiness check - is the service ready to handle requests?
 /// Returns 200 if all dependencies are available, 503 otherwise.
-pub async fn readiness(pool: web::Data<DbPool>) -> HttpResponse {
+pub async fn readiness(
+    pool: web::Data<DbPool>,
+    processors: web::Data<crate::digest::processors::Processors>,
+) -> HttpResponse {
     let db_healthy = db::health_check(pool.get_ref()).await;
 
     let (status, db_status, http_status) = if db_healthy {
@@ -105,6 +112,11 @@ pub async fn readiness(pool: web::Data<DbPool>) -> HttpResponse {
         status,
         checks: ReadinessChecks {
             database: db_status,
+            digest: if processors.errors.is_halted() {
+                "halted"
+            } else {
+                "ok"
+            },
         },
     };
 

@@ -457,3 +457,5 @@ pub fn call_tool(
     }
     req
 }
+#[cfg(all(feature = "sqlite", unix))]
+pub mod crash;

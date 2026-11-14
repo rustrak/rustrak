@@ -32,6 +32,62 @@ pub struct EventFacts<'a> {
 
 pub struct AlertService;
 
+/// The alert types each project has an enabled rule for, so a digest skips
+/// the rules query for a project with none. The rows themselves are still
+/// read fresh whenever one exists. One process per database, so the API
+/// handlers that write rules keep it current with [`Self::invalidate`].
+/// Deleting a project needs nothing: a stale entry there only costs a query.
+#[derive(Default)]
+pub struct AlertRuleCache {
+    /// (generation, project id → enabled types). The generation keeps a read
+    /// that raced an invalidation from storing what it read.
+    inner: std::sync::Mutex<(u64, std::collections::HashMap<i32, Vec<String>>)>,
+}
+
+impl AlertRuleCache {
+    fn lock(
+        &self,
+    ) -> std::sync::MutexGuard<'_, (u64, std::collections::HashMap<i32, Vec<String>>)> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Whether `project_id` has an enabled rule for `alert_type`.
+    pub async fn has_enabled(
+        &self,
+        pool: &DbPool,
+        project_id: i32,
+        alert_type: AlertType,
+    ) -> AppResult<bool> {
+        let alert_type = alert_type.to_string();
+        let generation = {
+            let inner = self.lock();
+            if let Some(types) = inner.1.get(&project_id) {
+                return Ok(types.contains(&alert_type));
+            }
+            inner.0
+        };
+        let types: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT alert_type FROM alert_rules WHERE project_id = $1 AND is_enabled = TRUE",
+        )
+        .bind(project_id)
+        .fetch_all(pool)
+        .await?;
+        let found = types.contains(&alert_type);
+        let mut inner = self.lock();
+        if inner.0 == generation {
+            inner.1.insert(project_id, types);
+        }
+        Ok(found)
+    }
+
+    /// Forgets what `project_id` has, after one of its rules was written.
+    pub fn invalidate(&self, project_id: i32) {
+        let mut inner = self.lock();
+        inner.0 += 1;
+        inner.1.remove(&project_id);
+    }
+}
+
 pub const MAX_ALERT_RETRIES: i32 = 5;
 
 /// How long a claimed pending row stays invisible to other claimers. Must

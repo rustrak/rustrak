@@ -1843,6 +1843,45 @@ async fn an_issue_that_comes_back_reopens_its_github_issue() {
     assert_eq!(call.body["state"], "open");
 }
 
+/// A regression whose first digest stopped after the commit (here: GitHub was
+/// not reachable as a target) reopens the GitHub issue when it is replayed.
+#[actix_web::test]
+async fn a_replayed_regression_reopens_its_github_issue() {
+    let db = TestDb::new().await;
+    let github = FakeGitHub::start().await;
+    let project = project(&db).await;
+    connect(&db, &github, project.id).await;
+    digest(&db, project.id, "production").await;
+    let (issue_id,): (uuid::Uuid,) = sqlx::query_as("SELECT id FROM issues")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    link_12(&db, issue_id).await;
+    IssueService::resolve(&db.pool, issue_id).await.unwrap();
+    GitHubService::update_remote(&db.pool, "acme/web", 12, "Login is broken", "closed")
+        .await
+        .unwrap();
+
+    // The regression commits while there is nothing to mirror to.
+    GitHubService::delete_project_repository(&db.pool, project.id)
+        .await
+        .unwrap();
+    let regression = uuid::Uuid::new_v4().simple().to_string();
+    digest_id(&db, project.id, "production", &regression).await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    connect(&db, &github, project.id).await;
+    assert!(
+        !github.calls().iter().any(|c| c.method == "PATCH"),
+        "{:?}",
+        github.calls().iter().map(|c| &c.path).collect::<Vec<_>>()
+    );
+
+    digest_id(&db, project.id, "production", &regression).await;
+
+    let call = github.wait_for("PATCH", "/repos/acme/web/issues/12").await;
+    assert_eq!(call.body["state"], "open");
+}
+
 #[actix_web::test]
 async fn assigning_one_linked_github_issue_assigns_the_others() {
     let db = TestDb::new().await;

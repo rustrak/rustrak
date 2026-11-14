@@ -137,6 +137,7 @@ pub struct Issue {
 pub struct FeedbackResponse {
     /// The feedback's issue.
     pub id: Uuid,
+    pub project_id: i32,
     #[cfg_attr(feature = "openapi", schema(value_type = IssueStatus))]
     pub status: String,
     pub message: String,
@@ -168,6 +169,7 @@ impl FeedbackResponse {
         let associated = text("associated_event_id");
         Self {
             id: issue.id,
+            project_id: issue.project_id,
             status: issue.status.clone(),
             message: issue.calculated_value.clone(),
             name: text("name"),

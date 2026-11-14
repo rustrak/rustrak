@@ -941,6 +941,7 @@ export type FeedbackResponse = {
     id: string;
     message: string;
     name: string;
+    project_id: number;
     status: IssueStatus;
     /**
      * The page it was sent from.
@@ -1862,6 +1863,12 @@ export type RateLimitsResponse = {
 
 export type ReadinessChecks = {
     database: string;
+    /**
+     * `ok`, or `halted` while every event the digest tries fails on its
+     * own (a broken schema, a missing grant). Readiness stays 200 then: the
+     * dashboard is how an operator finds out.
+     */
+    digest: string;
 };
 
 export type ReadinessResponse = {
@@ -3157,6 +3164,69 @@ export type SourceMapsChunkUploadResponses = {
     200: unknown;
 };
 
+export type SentryListOrganizationIssuesData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic — accepted and ignored)
+         */
+        org_slug: string;
+    };
+    query?: {
+        /**
+         * Project ids, repeated; `-1` or none for every project the reader can read
+         */
+        project?: Array<string>;
+        /**
+         * Search: `is:unresolved|resolved|ignored` and free text (default: `is:unresolved`).
+         */
+        query?: string | null;
+        /**
+         * `date` (default), `new` or `freq`.
+         */
+        sort?: string | null;
+        /**
+         * Page size, at most 100 (default: 100).
+         */
+        limit?: string | null;
+        /**
+         * A cursor from the `Link` header.
+         */
+        cursor?: string | null;
+        /**
+         * `24h` (default), `14d`, or empty for no stats.
+         */
+        statsPeriod?: string | null;
+        /**
+         * Only issues seen in this environment, counted there.
+         */
+        environment?: string | null;
+    };
+    url: '/api/0/organizations/{org_slug}/issues/';
+};
+
+export type SentryListOrganizationIssuesErrors = {
+    /**
+     * Invalid query parameter
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type SentryListOrganizationIssuesError = SentryListOrganizationIssuesErrors[keyof SentryListOrganizationIssuesErrors];
+
+export type SentryListOrganizationIssuesResponses = {
+    /**
+     * Issues; paginated by the `Link` header
+     */
+    200: Array<SentryIssue>;
+};
+
+export type SentryListOrganizationIssuesResponse = SentryListOrganizationIssuesResponses[keyof SentryListOrganizationIssuesResponses];
+
 export type SentryListReposData = {
     body?: never;
     path: {
@@ -3606,6 +3676,77 @@ export type AccessMeResponses = {
 };
 
 export type AccessMeResponse = AccessMeResponses[keyof AccessMeResponses];
+
+export type FeedbackListAllData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Only these projects, comma-separated ids: `1,2`. Absent: every project the reader can read issues on.
+         */
+        project?: string;
+        /**
+         * Page number (1-indexed, default: 1)
+         */
+        page?: number;
+        /**
+         * Items per page (default: 25, max: 100)
+         */
+        per_page?: number;
+        /**
+         * open (the inbox, default), resolved, muted (spam) or all
+         */
+        filter?: IssueFilter;
+    };
+    url: '/api/feedback';
+};
+
+export type FeedbackListAllErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type FeedbackListAllError = FeedbackListAllErrors[keyof FeedbackListAllErrors];
+
+export type FeedbackListAllResponses = {
+    /**
+     * Offset-based paginated response wrapper
+     */
+    200: {
+        items: Array<{
+            /**
+             * The SDK id of the error event it is about.
+             */
+            associated_event_id: string | null;
+            /**
+             * Files sent with it, such as a screenshot.
+             */
+            attachments: Array<AttachmentInfo>;
+            contact_email: string;
+            created_at: string;
+            /**
+             * The feedback's issue.
+             */
+            id: string;
+            message: string;
+            name: string;
+            project_id: number;
+            status: IssueStatus;
+            /**
+             * The page it was sent from.
+             */
+            url: string;
+        }>;
+        page: number;
+        per_page: number;
+        total_count: number;
+        total_pages: number;
+    };
+};
+
+export type FeedbackListAllResponse = FeedbackListAllResponses[keyof FeedbackListAllResponses];
 
 export type GithubDisconnectData = {
     body?: never;
@@ -4324,6 +4465,148 @@ export type InvitationsResendResponses = {
 };
 
 export type InvitationsResendResponse = InvitationsResendResponses[keyof InvitationsResendResponses];
+
+export type IssuesListAllData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Only these projects, comma-separated ids: `1,2`. Absent: every project the reader can read issues on.
+         */
+        project?: string;
+        /**
+         * Page number (1-indexed, default: 1)
+         */
+        page?: number;
+        /**
+         * Items per page (default: 20, max: 100)
+         */
+        per_page?: number;
+        /**
+         * Sort mode (default: last_seen)
+         */
+        sort?: IssueSort;
+        /**
+         * Sort order direction (default: desc)
+         */
+        order?: SortOrder;
+        /**
+         * Filter: open (not resolved, not muted), resolved, muted, all
+         */
+        filter?: IssueFilter;
+        /**
+         * Issue category: error (default) or feedback
+         */
+        category?: IssueCategory;
+        /**
+         * Free-text search across type, value, transaction, and culprit.
+         */
+        q?: string | null;
+        /**
+         * Only issues seen in this environment, with that environment's first
+         * and last seen, event count, users and trend.
+         */
+        environment?: string | null;
+        /**
+         * Only issues that had an event in this release.
+         */
+        release?: string | null;
+        /**
+         * Only these levels, comma-separated: `fatal,error`.
+         */
+        level?: string | null;
+        /**
+         * Only these priorities, comma-separated: `high,medium`.
+         */
+        priority?: string | null;
+        /**
+         * `none` for unassigned issues, or a user id.
+         */
+        assigned?: string | null;
+        /**
+         * Only issues first seen within this window: `24h`, `7d`.
+         */
+        first_seen?: string | null;
+        /**
+         * Only issues last seen within this window: `24h`, `7d`.
+         */
+        last_seen?: string | null;
+        /**
+         * Only issues with at least this many events.
+         */
+        events_min?: number | null;
+        /**
+         * Only issues with at most this many events.
+         */
+        events_max?: number | null;
+    };
+    url: '/api/issues';
+};
+
+export type IssuesListAllErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type IssuesListAllError = IssuesListAllErrors[keyof IssuesListAllErrors];
+
+export type IssuesListAllResponses = {
+    /**
+     * Offset-based paginated response wrapper
+     */
+    200: {
+        items: Array<{
+            assigned_to: number | null;
+            assignee_type: string | null;
+            culprit: string;
+            event_count: number;
+            first_release: string;
+            first_seen: string;
+            has_seen?: boolean | null;
+            id: string;
+            is_bookmarked?: boolean | null;
+            is_subscribed?: boolean | null;
+            issue_category: string;
+            issue_type: string;
+            last_release: string;
+            last_seen: string;
+            level: string | null;
+            logger: string;
+            platform: string | null;
+            priority: IssuePriority | null;
+            project_id: number;
+            short_id: string;
+            status: IssueStatus;
+            status_details: {
+                [key: string]: unknown;
+            };
+            substatus: string | null;
+            title: string;
+            /**
+             * 24 hourly buckets, oldest to newest. Only populated by the issue list
+             * endpoint.
+             */
+            trend?: Array<number> | null;
+            /**
+             * Only populated by the issue list endpoint (bulk-computed per page).
+             */
+            user_count?: number | null;
+            /**
+             * Only populated by the single-issue GET endpoint.
+             */
+            user_report_count?: number | null;
+            value: string;
+        }>;
+        page: number;
+        per_page: number;
+        total_count: number;
+        total_pages: number;
+    };
+};
+
+export type IssuesListAllResponse = IssuesListAllResponses[keyof IssuesListAllResponses];
 
 export type OauthGetAuthorizationData = {
     body?: never;
@@ -5798,6 +6081,7 @@ export type FeedbackListResponses = {
             id: string;
             message: string;
             name: string;
+            project_id: number;
             status: IssueStatus;
             /**
              * The page it was sent from.

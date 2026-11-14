@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::auth::ApiActor;
 use crate::config::Config;
 use crate::db::DbPool;
+use crate::digest::processors::Processors;
 use crate::error::{AppError, AppResult};
 use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
@@ -507,6 +508,7 @@ pub async fn list_rules(
 ))]
 pub async fn create_rule(
     pool: web::Data<DbPool>,
+    processors: web::Data<Processors>,
     actor: ApiActor,
     path: web::Path<i32>,
     body: web::Json<CreateAlertRule>,
@@ -530,6 +532,7 @@ pub async fn create_rule(
     }
 
     let rule = AlertService::create_rule(pool.get_ref(), project_id, body).await?;
+    processors.errors.alert_rules().invalidate(project_id);
 
     Ok(HttpResponse::Created().json(AlertService::rule_response(pool.get_ref(), rule).await?))
 }
@@ -594,6 +597,7 @@ pub async fn get_rule(
 ))]
 pub async fn update_rule(
     pool: web::Data<DbPool>,
+    processors: web::Data<Processors>,
     actor: ApiActor,
     path: web::Path<RulePath>,
     body: web::Json<UpdateAlertRule>,
@@ -625,6 +629,10 @@ pub async fn update_rule(
     }
 
     let rule = AlertService::update_rule(pool.get_ref(), params.rule_id, body).await?;
+    processors
+        .errors
+        .alert_rules()
+        .invalidate(params.project_id);
 
     Ok(HttpResponse::Ok().json(AlertService::rule_response(pool.get_ref(), rule).await?))
 }
@@ -648,6 +656,7 @@ pub async fn update_rule(
 ))]
 pub async fn delete_rule(
     pool: web::Data<DbPool>,
+    processors: web::Data<Processors>,
     actor: ApiActor,
     path: web::Path<RulePath>,
 ) -> AppResult<HttpResponse> {
@@ -664,6 +673,10 @@ pub async fn delete_rule(
     AlertService::get_rule_in_project(pool.get_ref(), params.project_id, params.rule_id).await?;
 
     AlertService::delete_rule(pool.get_ref(), params.rule_id).await?;
+    processors
+        .errors
+        .alert_rules()
+        .invalidate(params.project_id);
 
     Ok(HttpResponse::NoContent().finish())
 }

@@ -24,6 +24,7 @@ use crate::services::sourcemap_store::{LocalSourceMapStore, SourceMapStore};
 use crate::services::{AlertService, CleanupJob};
 use crate::telemetry::{self, Counters, Reporter, TelemetryStatus};
 use crate::workers::sourcemap_assembly::{AssemblyQueue, AssemblyWorker};
+use crate::workers::supervise;
 
 /// The session cookie's name. The OpenAPI spec documents it too.
 pub const SESSION_COOKIE: &str = "rustrak_session";
@@ -101,6 +102,19 @@ impl AppState {
             Arc::clone(&sourcemap_provider),
             session_aggregator.clone(),
         );
+        // A backlog a previous process left in the spool is pending from the
+        // first request on; the recovery worker digests it later. Only file
+        // names are read: the filter sees each event's identity before its
+        // file is opened, and declining every one lists nothing.
+        crate::ingest::storage::list_pending_event_metadata_except(
+            &config.ingest_dir,
+            |project_id, event_id| {
+                processors.errors.pending().insert(project_id, event_id);
+                true
+            },
+        )
+        .await
+        .map_err(|e| std::io::Error::other(format!("Ingest directory error: {e}")))?;
 
         let dashboard = Dashboard::from_config(&config.dashboard);
         let telemetry_status =
@@ -166,24 +180,26 @@ impl AppState {
     /// Starts the source map assembly worker, which first assembles what a
     /// previous run left queued.
     pub fn spawn_assembly_worker(&self) {
-        tokio::spawn(
-            AssemblyWorker::new(
-                self.pool.get_ref().clone(),
-                Arc::clone(&self.sourcemap_store),
-                self.config.max_bundle_size_bytes(),
-            )
-            .run(self.assembly_queue.clone().into_inner()),
-        );
+        let pool = self.pool.get_ref().clone();
+        let store = Arc::clone(&self.sourcemap_store);
+        let max_bundle = self.config.max_bundle_size_bytes();
+        let queue = self.assembly_queue.clone().into_inner();
+        supervise("source map assembly", move || {
+            AssemblyWorker::new(pool.clone(), Arc::clone(&store), max_bundle).run(queue.clone())
+        });
     }
 
     /// Starts every background task: source map assembly, session flushes,
     /// digest recovery, the scheduler, alert retries and, when it is on, the
-    /// telemetry reporter.
+    /// telemetry reporter. Each long-lived one is [`supervise`]d.
     pub fn spawn_workers(&self) {
         let pool = self.pool.get_ref().clone();
 
         self.spawn_assembly_worker();
-        tokio::spawn(Arc::clone(&self.session_aggregator).run());
+        supervise("session flusher", {
+            let sessions = Arc::clone(&self.session_aggregator);
+            move || Arc::clone(&sessions).run()
+        });
 
         tokio::spawn({
             let job = self.cleanup_job.clone();
@@ -193,56 +209,190 @@ impl AppState {
 
         // A large backlog or a database that is down for a while must not
         // keep the HTTP listener from binding.
-        tokio::spawn(crate::ingest::pipeline::recover_pending_events(
-            pool.clone(),
-            self.processors.clone().into_inner(),
-            self.config.ingest_dir.clone(),
-        ));
+        supervise("digest recovery", {
+            let pool = pool.clone();
+            let processors = self.processors.clone().into_inner();
+            let ingest_dir = self.config.ingest_dir.clone();
+            move || {
+                crate::ingest::pipeline::recover_pending_events(
+                    pool.clone(),
+                    Arc::clone(&processors),
+                    ingest_dir.clone(),
+                )
+            }
+        });
 
         // One tick a minute, the granularity of every schedule.
-        let scheduler = Scheduler::new(vec![
+        let scheduler = Arc::new(Scheduler::new(vec![
             Arc::new(MonitorSweepJob::new(self.processors.clone().into_inner())),
             Arc::new(SessionPurgeJob),
             Arc::new(StorageCleanupJob::new(
                 self.cleanup_job.clone().into_inner(),
                 Arc::clone(&self.sourcemap_store),
             )),
-        ]);
-        tokio::spawn({
+        ]));
+        supervise("scheduler", {
             let pool = pool.clone();
-            async move {
-                let mut tick = tokio::time::interval(Duration::from_secs(60));
-                tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                loop {
-                    tick.tick().await;
-                    if let Err(e) = scheduler.tick(&pool, chrono::Utc::now()).await {
-                        log::error!("Scheduler tick failed: {:?}", e);
+            move || {
+                let pool = pool.clone();
+                let scheduler = Arc::clone(&scheduler);
+                async move {
+                    let mut tick = tokio::time::interval(Duration::from_secs(60));
+                    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                    loop {
+                        tick.tick().await;
+                        if let Err(e) = scheduler.tick(&pool, chrono::Utc::now()).await {
+                            log::error!("Scheduler tick failed: {:?}", e);
+                        }
                     }
                 }
             }
         });
 
-        tokio::spawn({
+        supervise("alert retries", {
             let pool = pool.clone();
             let smtp = self.config.smtp.clone();
-            async move {
-                loop {
-                    if let Err(e) = AlertService::process_retry_queue(
-                        &pool,
-                        &smtp,
-                        crate::services::alert::MAX_ALERT_RETRIES,
-                    )
-                    .await
-                    {
-                        log::error!("Alert retry worker error: {:?}", e);
+            move || {
+                let pool = pool.clone();
+                let smtp = smtp.clone();
+                async move {
+                    loop {
+                        if let Err(e) = AlertService::process_retry_queue(
+                            &pool,
+                            &smtp,
+                            crate::services::alert::MAX_ALERT_RETRIES,
+                        )
+                        .await
+                        {
+                            log::error!("Alert retry worker error: {:?}", e);
+                        }
+                        tokio::time::sleep(Duration::from_secs(30)).await;
                     }
-                    tokio::time::sleep(Duration::from_secs(30)).await;
                 }
             }
         });
 
+        // Ingest reads the spool volume's free space from here, never per
+        // request.
+        supervise("spool disk sampler", {
+            let processors = self.processors.clone().into_inner();
+            move || {
+                let processors = Arc::clone(&processors);
+                async move {
+                    loop {
+                        processors.errors.sample_free_disk().await;
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
+            }
+        });
+
+        // SQLite's checkpoints outside the digest's own batches: pool
+        // connections never run one, so this keeps the log bounded when
+        // only transactions, logs or spans arrive. Every second keeps each
+        // checkpoint small enough not to stall ingest's fsyncs.
+        #[cfg(feature = "sqlite")]
+        supervise("wal checkpointer", {
+            let pool = pool.clone();
+            let processors = self.processors.clone().into_inner();
+            move || {
+                let pool = pool.clone();
+                let processors = Arc::clone(&processors);
+                async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        if let Err(e) = processors.errors.checkpoint_when_caught_up(&pool).await {
+                            if !processors.errors.is_draining() {
+                                log::warn!("WAL checkpoint failed: {e:?}");
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // The spool size gauges, read on a timer so a scrape never walks the
+        // spool.
+        if self.metrics.enabled() {
+            let metrics = self.metrics.clone().into_inner();
+            supervise("spool metrics sampler", move || {
+                let metrics = Arc::clone(&metrics);
+                async move {
+                    loop {
+                        metrics.sample_spool().await;
+                        tokio::time::sleep(crate::routes::metrics::SPOOL_SAMPLE_INTERVAL).await;
+                    }
+                }
+            });
+        }
+
         if let TelemetryStatus::Enabled { .. } = **self.telemetry_status {
-            tokio::spawn(Arc::clone(self.telemetry_reporter.get_ref()).run());
+            let reporter = Arc::clone(self.telemetry_reporter.get_ref());
+            supervise("telemetry reporter", move || Arc::clone(&reporter).run());
+        }
+    }
+
+    /// The first step of a shutdown, while the HTTP workers still run: the
+    /// session counts are written first (only memory holds them, and an
+    /// orchestrator's SIGKILL can land before [`Self::shutdown`]), ingest
+    /// answers 503 from here on, and the digests already running get up to
+    /// `grace` to finish. Those still waiting for a slot do not start: their
+    /// events stay in the spool. It has to come before the server stops,
+    /// because a digest runs on the HTTP worker that accepted its event, and
+    /// a stopped worker drops its tasks. A digest still running at the
+    /// deadline keeps its spool file, which the next start recovers: the
+    /// spool, not this wait, is what keeps an acknowledged event safe.
+    pub async fn drain(&self, grace: Duration) {
+        self.flush_sessions().await;
+        self.processors.errors.start_draining();
+        let in_flight = self.processors.errors.in_flight();
+        let deadline = tokio::time::Instant::now() + grace;
+        while !in_flight.is_empty() && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        if !in_flight.is_empty() {
+            log::warn!(
+                "{} digests did not finish before shutdown; their events stay in the spool for the next start",
+                in_flight.len()
+            );
+        }
+    }
+
+    /// Writes the session counts held in memory. Ingest acknowledges
+    /// sessions before they reach the database (#390). Idempotent.
+    pub async fn flush_sessions(&self) {
+        if let Err(e) = self.session_aggregator.flush().await {
+            log::error!("Failed to flush session counts during shutdown: {e:?}");
+        }
+    }
+
+    /// The last step, once the HTTP server has stopped: flush the session
+    /// counts, checkpoint SQLite and close the pool.
+    pub async fn shutdown(&self) {
+        // Again: sessions acknowledged during the drain.
+        self.flush_sessions().await;
+        let pool = self.pool.get_ref();
+        // After the batch it may be committing; bounded like `close` below.
+        if tokio::time::timeout(
+            Duration::from_secs(5),
+            self.processors.errors.close_committer(),
+        )
+        .await
+        .is_err()
+        {
+            log::warn!("The digest's connection was still busy at shutdown");
+        }
+        #[cfg(feature = "sqlite")]
+        if let Err(e) = crate::db::checkpoint_full(pool).await {
+            log::warn!("Final SQLite checkpoint failed: {e}");
+        }
+        // Bounded: `close` waits for every connection to come back, and a
+        // stuck query must not keep the process from exiting.
+        if tokio::time::timeout(Duration::from_secs(5), pool.close())
+            .await
+            .is_err()
+        {
+            log::warn!("Database connections were still busy at shutdown");
         }
     }
 }

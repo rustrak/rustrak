@@ -370,10 +370,11 @@ async fn the_issue_list_shows_one_category_at_a_time() {
         .unwrap();
 
     let no_filters = rustrak::services::issue::IssueFilters::default();
+    let project = rustrak::models::rbac::ProjectScope::Only(vec![s.project.id]);
     let list = |category| {
         IssueService::list_offset(
             &s.db.pool,
-            s.project.id,
+            &project,
             IssueSort::LastSeen,
             SortOrder::Desc,
             IssueFilter::All,
@@ -1092,7 +1093,9 @@ async fn deleting_a_feedback_deletes_its_screenshot() {
     assert_eq!(attachment_count(&s.db.pool, s.project.id).await, 1);
 
     let issue = issues(&s.db.pool, s.project.id).await.remove(0);
-    IssueService::delete(&s.db.pool, issue.id).await.unwrap();
+    IssueService::delete(&s.db.pool, issue.id, &errors(&s.db.pool))
+        .await
+        .unwrap();
     assert_eq!(attachment_count(&s.db.pool, s.project.id).await, 0);
 }
 
@@ -1158,11 +1161,16 @@ async fn error_with_feedback(s: &Setup) -> (Uuid, Uuid) {
     (id("error"), id("feedback"))
 }
 
+/// A digest processor whose write turn a delete takes.
+fn errors(pool: &DbPool) -> rustrak::digest::processors::ErrorProcessor {
+    crate::common::processors_with_config(pool, &Config::default()).errors
+}
+
 #[actix_web::test]
 async fn deleting_a_feedback_removes_it_from_its_error() {
     let s = setup().await;
     let (error_issue, feedback_issue) = error_with_feedback(&s).await;
-    IssueService::delete(&s.db.pool, feedback_issue)
+    IssueService::delete(&s.db.pool, feedback_issue, &errors(&s.db.pool))
         .await
         .unwrap();
 
@@ -1177,7 +1185,9 @@ async fn deleting_a_feedback_removes_it_from_its_error() {
 async fn deleting_an_error_deletes_the_reports_about_it() {
     let s = setup().await;
     let (error_issue, _) = error_with_feedback(&s).await;
-    IssueService::delete(&s.db.pool, error_issue).await.unwrap();
+    IssueService::delete(&s.db.pool, error_issue, &errors(&s.db.pool))
+        .await
+        .unwrap();
     // Not left behind with no issue, where nothing would ever show or clean it.
     assert_eq!(user_report_count(&s.db.pool, s.project.id).await, 0);
 }

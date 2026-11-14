@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::db::dialect::{bucket, compare_time, epoch, json_member, push_compare_time, since};
+use crate::db::dialect::{bucket, compare_utc, epoch, json_member, push_compare_utc, since};
 use crate::db::{Db, DbPool};
 use crate::error::{AppError, AppResult};
+use crate::models::rbac::ProjectScope;
 use crate::models::{Grouping, Issue};
 use crate::pagination::{IssueCategory, IssueFilter, IssueSort, SortOrder};
 use crate::services::github;
@@ -80,6 +81,10 @@ pub struct IssueListStats {
     pub trend: Vec<i64>,
 }
 
+/// Events deleted per transaction when an issue is deleted on SQLite.
+#[cfg(feature = "sqlite")]
+const ISSUE_DELETE_BATCH: i64 = 1_000;
+
 /// Hourly buckets in the issue-list trend column (Sentry's default "24h" window).
 const LIST_TREND_BUCKETS: i64 = 24;
 const LIST_TREND_BUCKET_SECS: i64 = 3600;
@@ -131,17 +136,15 @@ pub(crate) fn derive_priority(level: Option<&str>) -> &'static str {
 /// Each key once, the first occurrence kept: Relay deduplicates an event's
 /// tags the same way (`normalize_event_tags`), so a key sent twice counts as
 /// one event carrying it, not two.
-fn extract_tags(data: &serde_json::Value) -> Vec<(String, String)> {
+fn extract_tags(tags: Option<&serde_json::Value>) -> Vec<(String, String)> {
     let mut seen = std::collections::HashSet::new();
-    let mut tags = extract_raw_tags(data);
+    let mut tags = tags.map(extract_raw_tags).unwrap_or_default();
     tags.retain(|(key, _)| seen.insert(key.clone()));
     tags
 }
 
-fn extract_raw_tags(data: &serde_json::Value) -> Vec<(String, String)> {
-    let Some(tags) = data.get("tags") else {
-        return Vec::new();
-    };
+/// The pairs of an event's `tags` member.
+fn extract_raw_tags(tags: &serde_json::Value) -> Vec<(String, String)> {
     let mut out = Vec::new();
     match tags {
         serde_json::Value::Object(map) => {
@@ -186,12 +189,6 @@ fn value_to_tag_string(v: &serde_json::Value) -> Option<String> {
 
 fn value_to_tag_string_opt(v: &serde_json::Value) -> Option<String> {
     value_to_tag_string(v)
-}
-
-/// The identity a user is counted by, as Sentry's `EventUser.tag_value`:
-/// the first non-empty of id, username, email and ip_address.
-fn extract_user_identity(data: &serde_json::Value) -> Option<String> {
-    user_identity_from_user_field(data.get("user")?)
 }
 
 /// Extracts a stable user identity string from an already-extracted `user`
@@ -256,7 +253,7 @@ impl IssueService {
     #[allow(clippy::too_many_arguments)]
     pub async fn list_offset(
         pool: &DbPool,
-        project_id: i32,
+        projects: &ProjectScope,
         sort: IssueSort,
         order: SortOrder,
         filter: IssueFilter,
@@ -277,8 +274,8 @@ impl IssueService {
         let offset = crate::pagination::offset(page, per_page);
 
         let order_clause = match (sort, order) {
-            (IssueSort::DigestOrder, SortOrder::Desc) => "digest_order DESC",
-            (IssueSort::DigestOrder, SortOrder::Asc) => "digest_order ASC",
+            (IssueSort::DigestOrder, SortOrder::Desc) => "digest_order DESC, id DESC",
+            (IssueSort::DigestOrder, SortOrder::Asc) => "digest_order ASC, id ASC",
             (IssueSort::LastSeen, SortOrder::Desc) => "last_seen DESC, id DESC",
             (IssueSort::LastSeen, SortOrder::Asc) => "last_seen ASC, id ASC",
             (IssueSort::EventCount, SortOrder::Desc) => "digested_event_count DESC, id DESC",
@@ -297,7 +294,7 @@ impl IssueService {
 
         Self::list_window(
             pool,
-            project_id,
+            projects,
             order_clause,
             filter,
             category,
@@ -310,15 +307,15 @@ impl IssueService {
         .await
     }
 
-    /// One window of a project's issues: `filter`, `category`, `search` and
-    /// `scope` as in [`Self::list_offset`], ordered by a trusted
+    /// One window of the issues of `projects`: `filter`, `category`, `search`
+    /// and `scope` as in [`Self::list_offset`], ordered by a trusted
     /// `order_clause`.
     ///
     /// Returns (issues, total_count) where total_count is the total matching issues.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn list_window(
         pool: &DbPool,
-        project_id: i32,
+        projects: &ProjectScope,
         order_clause: &str,
         filter: IssueFilter,
         category: IssueCategory,
@@ -328,8 +325,8 @@ impl IssueService {
         scope: Scope<'_>,
         filters: &IssueFilters,
     ) -> AppResult<(Vec<Issue>, i64)> {
-        let status_clause = filter_clause(filter, category);
-        // Bound after `$1` (project_id), in order.
+        let status_clause = filter_clause(filter, category, projects);
+        // Bound from `$1`, in order.
         let mut binds: Vec<String> = Vec::new();
 
         // In an environment, only the issues seen there, with that
@@ -338,13 +335,14 @@ impl IssueService {
         // `issues`, so every clause below applies unchanged.
         let env_param = scope.environment.map(|env| {
             binds.push(env.to_string());
-            binds.len() + 1
+            binds.len()
         });
         let source = match env_param {
             Some(n) => format!(
                 "(SELECT {ENV_SCOPED_COLUMNS} FROM issues i \
                  JOIN issue_environments e ON e.issue_id = i.id \
-                 WHERE e.project_id = $1 AND e.environment = ${n}) AS issues"
+                 WHERE {} AND e.environment = ${n}) AS issues",
+                project_clause("e.project_id", projects)
             ),
             None => "issues".to_string(),
         };
@@ -365,7 +363,7 @@ impl IssueService {
         let search_clause = match pattern {
             Some(pattern) => {
                 binds.push(pattern);
-                let n = binds.len() + 1;
+                let n = binds.len();
                 format!(
                     r#"AND (
                 LOWER(calculated_type) LIKE ${n} ESCAPE '\'
@@ -390,8 +388,9 @@ impl IssueService {
                     .unwrap_or_default();
                 format!(
                     "AND id IN (SELECT issue_id FROM events \
-                     WHERE project_id = $1 AND release = ${}{env_clause})",
-                    binds.len() + 1
+                     WHERE {} AND release = ${}{env_clause})",
+                    project_clause("project_id", projects),
+                    binds.len()
                 )
             }
             None => String::new(),
@@ -402,8 +401,7 @@ impl IssueService {
         );
 
         let count_query = format!("SELECT COUNT(*) {from}");
-        let mut count =
-            sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(&*count_query)).bind(project_id);
+        let mut count = sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(&*count_query));
         for b in &binds {
             count = count.bind(b);
         }
@@ -411,11 +409,10 @@ impl IssueService {
 
         let select_query = format!(
             "SELECT * {from} ORDER BY {order_clause} LIMIT ${} OFFSET ${}",
-            binds.len() + 2,
-            binds.len() + 3
+            binds.len() + 1,
+            binds.len() + 2
         );
-        let mut select =
-            sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(&*select_query)).bind(project_id);
+        let mut select = sqlx::query_as::<_, Issue>(sqlx::AssertSqlSafe(&*select_query));
         for b in &binds {
             select = select.bind(b);
         }
@@ -927,7 +924,12 @@ impl IssueService {
     /// in one transaction isn't safe to do generically here). If a delete
     /// fails partway through, the ids processed so far are already gone and
     /// the caller only learns the count actually deleted, not which ones.
-    pub async fn bulk_delete(pool: &DbPool, project_id: i32, ids: &[Uuid]) -> AppResult<u64> {
+    pub async fn bulk_delete(
+        pool: &DbPool,
+        project_id: i32,
+        ids: &[Uuid],
+        errors: &crate::digest::processors::ErrorProcessor,
+    ) -> AppResult<u64> {
         let mut deleted = 0u64;
         for id in ids {
             // Reuse the single-issue delete so project counters stay consistent.
@@ -940,7 +942,7 @@ impl IssueService {
             if belongs.map(|(p,)| p) != Some(project_id) {
                 continue;
             }
-            Self::delete(pool, *id).await?;
+            Self::delete(pool, *id, errors).await?;
             deleted += 1;
         }
         Ok(deleted)
@@ -953,9 +955,13 @@ impl IssueService {
         project_id: i32,
         filter: IssueFilter,
     ) -> AppResult<u64> {
-        // `filter_clause` returns fixed SQL; only the project id is user input.
+        // `filter_clause` returns fixed SQL with the project id written in.
         // Bulk deletes act on the error list, never on feedback.
-        let clause = filter_clause(filter, IssueCategory::Error);
+        let clause = filter_clause(
+            filter,
+            IssueCategory::Error,
+            &ProjectScope::Only(vec![project_id]),
+        );
 
         #[cfg(feature = "postgres")]
         let deleted = {
@@ -995,12 +1001,10 @@ impl IssueService {
                  FROM issues WHERE {clause}"
             );
             let (stored, digested): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(&*totals))
-                .bind(project_id)
                 .fetch_one(&mut *tx)
                 .await?;
             let delete = format!("DELETE FROM issues WHERE {clause}");
             let deleted = sqlx::query(sqlx::AssertSqlSafe(&*delete))
-                .bind(project_id)
                 .execute(&mut *tx)
                 .await?
                 .rows_affected();
@@ -1023,19 +1027,24 @@ impl IssueService {
     }
 
     /// Aggregates the distinct values (with counts) for a single tag key across
-    /// an issue's recent events. Dialect-safe: scans event JSON in Rust.
+    /// an issue's recent events. Dialect-safe: reads each event's `tags` and
+    /// counts them in Rust.
     pub async fn tag_values(
         pool: &DbPool,
         issue_id: Uuid,
         key: &str,
     ) -> AppResult<Vec<IssueTagValue>> {
-        let rows: Vec<(serde_json::Value, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT data, timestamp FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
-        )
-        .bind(issue_id)
-        .bind(AGGREGATE_SCAN_CAP)
-        .fetch_all(pool)
-        .await?;
+        // Only the member, never the whole payload: an event can be megabytes.
+        let sql = format!(
+            "SELECT {}, timestamp FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
+            json_member("data", &["tags"])
+        );
+        let rows: Vec<(Option<serde_json::Value>, DateTime<Utc>)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(sql))
+                .bind(issue_id)
+                .bind(AGGREGATE_SCAN_CAP)
+                .fetch_all(pool)
+                .await?;
 
         struct Acc {
             count: i64,
@@ -1043,8 +1052,8 @@ impl IssueService {
             last_seen: DateTime<Utc>,
         }
         let mut acc: HashMap<String, Acc> = HashMap::new();
-        for (data, timestamp) in &rows {
-            for (k, v) in extract_tags(data) {
+        for (tags, timestamp) in &rows {
+            for (k, v) in extract_tags(tags.as_ref()) {
                 if k != key {
                     continue;
                 }
@@ -1079,23 +1088,30 @@ impl IssueService {
 
     /// Computes per-issue aggregates (unique user count + top tags) from a
     /// capped scan of recent events. Dialect-safe.
+    ///
+    /// The user comes from `data.user`, not `user_identity`: that column is
+    /// only filled for events digested since it was added.
     pub async fn aggregates(pool: &DbPool, issue_id: Uuid) -> AppResult<IssueAggregates> {
-        let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
-            "SELECT data FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
-        )
-        .bind(issue_id)
-        .bind(AGGREGATE_SCAN_CAP)
-        .fetch_all(pool)
-        .await?;
+        let sql = format!(
+            "SELECT {}, {} FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
+            json_member("data", &["tags"]),
+            json_member("data", &["user"])
+        );
+        type Row = (Option<serde_json::Value>, Option<serde_json::Value>);
+        let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+            .bind(issue_id)
+            .bind(AGGREGATE_SCAN_CAP)
+            .fetch_all(pool)
+            .await?;
 
         let mut tag_counts: HashMap<String, HashMap<String, i64>> = HashMap::new();
         let mut users: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        for (data,) in &rows {
-            for (k, v) in extract_tags(data) {
+        for (tags, user) in &rows {
+            for (k, v) in extract_tags(tags.as_ref()) {
                 *tag_counts.entry(k).or_default().entry(v).or_insert(0) += 1;
             }
-            if let Some(id) = extract_user_identity(data) {
+            if let Some(id) = user.as_ref().and_then(user_identity_from_user_field) {
                 users.insert(id);
             }
         }
@@ -1156,7 +1172,7 @@ impl IssueService {
             sep.push_bind(*id);
         }
         qb.push(") AND ");
-        push_compare_time(&mut qb, "timestamp", ">=", first_dt);
+        push_compare_utc(&mut qb, "timestamp", ">=", first_dt);
         if let Some(env) = environment {
             qb.push(" AND environment = ");
             qb.push_bind(env);
@@ -1233,7 +1249,7 @@ impl IssueService {
                 sep.push_bind(*id);
             }
             qb.push(") AND ");
-            push_compare_time(&mut qb, "ingested_at", ">=", start_dt);
+            push_compare_utc(&mut qb, "ingested_at", ">=", start_dt);
             if let Some(env) = scope.environment {
                 qb.push(" AND environment = ");
                 qb.push_bind(env);
@@ -1295,7 +1311,9 @@ impl IssueService {
     /// Computes a zero-filled event-count timeseries for an issue.
     ///
     /// Returns `buckets` points of `(bucket_start_unix, count)` covering
-    /// `[now - bucket_secs*buckets, now]`. Bucketed in Rust for dialect safety.
+    /// `[now - bucket_secs*buckets, now]`, counted in SQL from
+    /// `idx_events_issue_ingested` alone, as [`Self::list_stats`] does. The
+    /// whole window, not a row cap: this is an exact series.
     pub async fn stats(
         pool: &DbPool,
         issue_id: Uuid,
@@ -1306,19 +1324,14 @@ impl IssueService {
         let start = now - bucket_secs * buckets;
         let start_dt = DateTime::<Utc>::from_timestamp(start, 0).unwrap_or_else(Utc::now);
 
-        // Bucket entirely in Rust (dialect-safe), but scope the fetch to the
-        // requested window in SQL rather than capping by row count: this is
-        // an exact timeseries, not the approximate tag/user aggregates
-        // AGGREGATE_SCAN_CAP was designed for, so a row cap would silently
-        // truncate older buckets to zero for high-volume issues. Filtering by
-        // `ingested_at` needs a dialect-specific comparison — SQLite stores
-        // it as TEXT, so `datetime(...)` normalizes both sides before
-        // comparing.
+        // `start` and `bucket_secs` are computed integers, never request text.
         let sql = format!(
-            "SELECT ingested_at FROM events WHERE issue_id = $1 AND {} ORDER BY ingested_at DESC",
-            compare_time("ingested_at", ">=", 2)
+            "SELECT ({} - {start}) / {bucket_secs}, COUNT(*) FROM events \
+             WHERE issue_id = $1 AND {} GROUP BY 1",
+            epoch("ingested_at"),
+            compare_utc("ingested_at", ">=", 2)
         );
-        let rows: Vec<(DateTime<Utc>,)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
+        let rows: Vec<(i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
             .bind(issue_id)
             .bind(start_dt)
             .fetch_all(pool)
@@ -1326,21 +1339,26 @@ impl IssueService {
 
         let mut series: Vec<(i64, i64)> =
             (0..buckets).map(|i| (start + i * bucket_secs, 0)).collect();
-
-        for (ts,) in rows {
-            let raw = (ts.timestamp() - start) / bucket_secs;
+        for (raw, count) in rows {
             if raw < 0 {
                 continue; // before the window
             }
             // Fold the exclusive upper edge (ts == now) into the last bucket.
             let idx = (raw as usize).min(series.len() - 1);
-            series[idx].1 += 1;
+            series[idx].1 += count;
         }
         Ok(series)
     }
 
-    /// Hard-deletes an issue and all associated events and groupings (via CASCADE)
-    pub async fn delete(pool: &DbPool, id: Uuid) -> AppResult<()> {
+    /// Hard-deletes an issue and all associated events and groupings (via
+    /// CASCADE). On SQLite each write takes `errors`' write turn, the queue
+    /// the digests wait in for the one writer.
+    #[cfg_attr(feature = "postgres", allow(unused_variables))]
+    pub async fn delete(
+        pool: &DbPool,
+        id: Uuid,
+        errors: &crate::digest::processors::ErrorProcessor,
+    ) -> AppResult<()> {
         #[cfg(feature = "postgres")]
         {
             let result = sqlx::query(
@@ -1365,6 +1383,48 @@ impl IssueService {
 
         #[cfg(feature = "sqlite")]
         {
+            // The events first, a batch per transaction, so a large issue
+            // never holds the one write lock long enough to stall the digest.
+            // Each batch takes the digests' write turn and takes its rows off
+            // the stored counts in the same transaction, so a delete that
+            // stops part-way leaves counts matching the rows left.
+            loop {
+                let turn = errors.write_turn().await;
+                let mut tx = crate::db::begin_write(pool).await?;
+                let deleted = sqlx::query(
+                    "DELETE FROM events WHERE rowid IN \
+                     (SELECT rowid FROM events WHERE issue_id = $1 LIMIT $2)",
+                )
+                .bind(id)
+                .bind(ISSUE_DELETE_BATCH)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected() as i64;
+                sqlx::query(
+                    "UPDATE issues SET stored_event_count = MAX(0, stored_event_count - $1) \
+                     WHERE id = $2",
+                )
+                .bind(deleted)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+                sqlx::query(
+                    "UPDATE projects SET stored_event_count = MAX(0, stored_event_count - $1) \
+                     WHERE id = (SELECT project_id FROM issues WHERE id = $2)",
+                )
+                .bind(deleted)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                drop(turn);
+                if deleted < ISSUE_DELETE_BATCH {
+                    break;
+                }
+                crate::db::maintenance::yield_to_writers().await;
+            }
+
+            let _turn = errors.write_turn().await;
             // BEGIN IMMEDIATE: this tx reads counters before it writes, so a
             // deferred BEGIN could hit SQLITE_BUSY_SNAPSHOT on the upgrade.
             let mut tx = crate::db::begin_write(pool).await?;
@@ -1437,7 +1497,7 @@ fn narrowing_clause(filters: &IssueFilters, binds: &mut Vec<String>) -> String {
             .iter()
             .map(|value| {
                 binds.push(value.clone());
-                format!("${}", binds.len() + 1)
+                format!("${}", binds.len())
             })
             .collect();
         clause.push_str(&format!(" AND {column} IN ({})", placeholders.join(", ")));
@@ -1468,8 +1528,22 @@ fn narrowing_clause(filters: &IssueFilters, binds: &mut Vec<String>) -> String {
     clause
 }
 
-/// WHERE clause for an issue filter; `$1` is the project id.
-fn filter_clause(filter: IssueFilter, category: IssueCategory) -> String {
+/// `column` within `projects`. The ids are written into the SQL, not bound:
+/// they are integers the server resolved from the reader's access, and a
+/// literal keeps the `(project_id, ...)` indexes usable on both backends.
+fn project_clause(column: &str, projects: &ProjectScope) -> String {
+    match projects {
+        ProjectScope::All => "1 = 1".to_string(),
+        ProjectScope::Only(ids) if ids.is_empty() => "1 = 0".to_string(),
+        ProjectScope::Only(ids) => {
+            let ids: Vec<String> = ids.iter().map(i32::to_string).collect();
+            format!("{column} IN ({})", ids.join(", "))
+        }
+    }
+}
+
+/// WHERE clause for an issue filter within `projects`.
+fn filter_clause(filter: IssueFilter, category: IssueCategory, projects: &ProjectScope) -> String {
     let status = match filter {
         IssueFilter::Open => " AND status = 'unresolved'",
         IssueFilter::Resolved => " AND status = 'resolved'",
@@ -1477,7 +1551,8 @@ fn filter_clause(filter: IssueFilter, category: IssueCategory) -> String {
         IssueFilter::All => "",
     };
     format!(
-        "project_id = $1{status} AND issue_category = '{}'",
+        "{}{status} AND issue_category = '{}'",
+        project_clause("project_id", projects),
         category.as_str()
     )
 }
@@ -1572,17 +1647,5 @@ mod tests {
     fn test_user_identity_from_user_field_none_when_no_recognized_field() {
         let user = serde_json::json!({"segment": "beta"});
         assert_eq!(user_identity_from_user_field(&user), None);
-    }
-
-    #[test]
-    fn test_extract_user_identity_still_reads_from_full_event_data() {
-        // `extract_user_identity` (used by `aggregates()`, which needs the
-        // full event blob anyway for tags) must keep unwrapping `data.user`
-        // itself — only `list_stats`'s SQL-level projection changes.
-        let data = serde_json::json!({
-            "user": {"id": "u1"},
-            "exception": {"values": [{"type": "TypeError"}]},
-        });
-        assert_eq!(extract_user_identity(&data), Some("id:u1".to_string()));
     }
 }

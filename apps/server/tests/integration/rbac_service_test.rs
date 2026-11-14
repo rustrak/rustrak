@@ -6,6 +6,12 @@ use rustrak::models::rbac::{Action, ProjectScope, Resource};
 use rustrak::models::{CreateProject, CreateUserRequest, User, UserRole};
 use rustrak::services::{ProjectService, RoleService, UsersService};
 
+/// What user `id` may do, as the dashboard loads it.
+async fn access_of(pool: &DbPool, id: i32) -> rustrak::models::rbac::Access {
+    let user = UsersService::get_by_id(pool, id).await.unwrap().unwrap();
+    RoleService::access_for(pool, &user).await.unwrap()
+}
+
 async fn user(pool: &DbPool, email: &str) -> User {
     let req = CreateUserRequest {
         email: email.into(),
@@ -45,7 +51,7 @@ async fn a_new_user_can_do_nothing() {
     let db = TestDb::new().await;
     let u = user(&db.pool, "new@example.com").await;
     let p = project(&db.pool, "p").await;
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(!access.can(Resource::Issues, Action::Read, Some(p)));
     assert_eq!(access.visible_projects(), ProjectScope::Only(vec![]));
 }
@@ -61,7 +67,7 @@ async fn a_role_on_one_project_grants_exactly_its_permissions_there() {
         .await
         .unwrap();
 
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(access.can(Resource::Issues, Action::Read, Some(p1)));
     assert!(!access.can(Resource::Issues, Action::Update, Some(p1)));
     assert!(!access.can(Resource::Issues, Action::Read, Some(p2)));
@@ -90,7 +96,7 @@ async fn assigning_the_same_role_twice_is_idempotent_and_unassign_removes_it() {
     RoleService::set_assignments(&db.pool, u.id, &[], None)
         .await
         .unwrap();
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(!access.can(Resource::Issues, Action::Read, Some(1)));
 }
 
@@ -104,7 +110,7 @@ async fn an_instance_owner_can_do_everything() {
     let u = UsersService::create_user(&db.pool, &req, UserRole::Admin)
         .await
         .unwrap();
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(access.is_owner());
     assert!(access.can(Resource::Storage, Action::Delete, None));
 }
@@ -161,9 +167,9 @@ async fn the_migration_carries_over_existing_admins_and_memberships() {
 
     all.run(&pool).await.unwrap();
 
-    let admin = RoleService::access_for(&pool, 1).await.unwrap();
+    let admin = access_of(&pool, 1).await;
     assert!(admin.is_owner());
-    let member = RoleService::access_for(&pool, 2).await.unwrap();
+    let member = access_of(&pool, 2).await;
     assert!(member.can(Resource::Issues, Action::Update, Some(p)));
     assert!(!member.can(Resource::Project, Action::Delete, Some(p)));
     assert!(!member.can(Resource::Users, Action::Read, None));

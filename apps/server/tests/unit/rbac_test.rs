@@ -355,3 +355,33 @@ fn a_token_cannot_hand_out_what_it_was_not_given() {
     assert!(!token.covers(&grants(&[(Resource::Logs, Action::Read)]), Some(1)));
     assert!(!token.covers(&Grants::all(), None));
 }
+
+/// The projects a cross-project list reads from: every one when the grant is
+/// instance-wide, otherwise only those it holds on, narrowed by a token.
+#[test]
+fn projects_where_a_grant_holds() {
+    let everywhere = Access::new(vec![instance(grants(&[(Resource::Issues, Action::Read)]))]);
+    assert_eq!(
+        everywhere.projects_where(Resource::Issues, Action::Read),
+        ProjectScope::All
+    );
+
+    let mixed = Access::new(vec![
+        on_project(1, grants(&[(Resource::Issues, Action::Read)])),
+        on_project(2, grants(&[(Resource::Logs, Action::Read)])),
+        on_project(3, grants(&[(Resource::Issues, Action::Update)])),
+    ]);
+    assert_eq!(
+        mixed.projects_where(Resource::Issues, Action::Read),
+        ProjectScope::Only(vec![1, 3])
+    );
+
+    let token = everywhere.capped(TokenScope {
+        grants: grants(&[(Resource::Issues, Action::Read)]),
+        projects: Some(vec![5]),
+    });
+    assert_eq!(
+        token.projects_where(Resource::Issues, Action::Read),
+        ProjectScope::Only(vec![5])
+    );
+}

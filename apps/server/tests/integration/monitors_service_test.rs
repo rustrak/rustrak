@@ -100,6 +100,119 @@ async fn check_in_for_unknown_monitor_without_config_is_dropped() {
         .is_empty());
 }
 
+/// Copies of `backup` under other slugs until the project has `count`
+/// monitors, written directly: a check-in each would take minutes.
+async fn fill_monitors(pool: &DbPool, project_id: i32, count: usize) {
+    let mut tx = pool.begin().await.unwrap();
+    for i in 1..count {
+        sqlx::query(
+            "INSERT INTO monitors (id, project_id, slug, name, config, is_muted, created_at) \
+             SELECT $1, project_id, $3, $3, config, is_muted, created_at FROM monitors \
+             WHERE project_id = $2 AND slug = 'backup'",
+        )
+        .bind(Uuid::new_v4())
+        .bind(project_id)
+        .bind(format!("filler-{i}"))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+}
+
+/// `backup` in `count` environments, `production` included.
+async fn fill_environments(pool: &DbPool, project_id: i32, count: usize) {
+    let mut tx = pool.begin().await.unwrap();
+    for i in 1..count {
+        sqlx::query(
+            "INSERT INTO monitor_environments (id, monitor_id, environment, status, created_at) \
+             SELECT $1, id, $3, 'active', created_at FROM monitors \
+             WHERE project_id = $2 AND slug = 'backup'",
+        )
+        .bind(Uuid::new_v4())
+        .bind(project_id)
+        .bind(format!("filler-{i}"))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
+    tx.commit().await.unwrap();
+}
+
+fn check_in_to(slug: &str, environment: Option<&str>) -> CheckIn {
+    CheckIn::new(
+        Uuid::new_v4(),
+        slug,
+        CheckInStatus::Ok,
+        environment.map(str::to_string),
+        None,
+        Some(hourly(1)),
+        None,
+    )
+    .unwrap()
+}
+
+/// Sentry's `MAX_MONITORS_PER_ORG` (1500), per project here: an SDK sending a new slug on every run
+/// would otherwise create monitors without end. At the cap a check-in for a
+/// new slug is dropped; the monitors already there keep checking in.
+#[actix_web::test]
+async fn a_check_in_cannot_create_a_monitor_past_the_cap() {
+    use rustrak::services::monitor::MAX_MONITORS_PER_PROJECT;
+    let db = TestDb::new().await;
+    let pid = project(&db.pool).await;
+    upsert(&db.pool, pid, 1, Utc::now()).await;
+    fill_monitors(&db.pool, pid, MAX_MONITORS_PER_PROJECT).await;
+
+    let refused =
+        MonitorService::process_check_in(&db.pool, pid, check_in_to("one-more", None), Utc::now())
+            .await;
+    assert!(
+        matches!(refused, Err(rustrak::error::AppError::Validation(_))),
+        "{refused:?}"
+    );
+    assert_eq!(
+        MonitorService::list(&db.pool, pid).await.unwrap().len(),
+        MAX_MONITORS_PER_PROJECT
+    );
+    MonitorService::process_check_in(&db.pool, pid, check_in_to("backup", None), Utc::now())
+        .await
+        .unwrap();
+}
+
+/// Sentry's `MAX_ENVIRONMENTS_PER_MONITOR`, the same way.
+#[actix_web::test]
+async fn a_check_in_cannot_add_an_environment_past_the_cap() {
+    use rustrak::services::monitor::MAX_ENVIRONMENTS_PER_MONITOR;
+    let db = TestDb::new().await;
+    let pid = project(&db.pool).await;
+    upsert(&db.pool, pid, 1, Utc::now()).await;
+    fill_environments(&db.pool, pid, MAX_ENVIRONMENTS_PER_MONITOR).await;
+
+    let refused = MonitorService::process_check_in(
+        &db.pool,
+        pid,
+        check_in_to("backup", Some("one-more")),
+        Utc::now(),
+    )
+    .await;
+    assert!(
+        matches!(refused, Err(rustrak::error::AppError::Validation(_))),
+        "{refused:?}"
+    );
+    let monitor = MonitorService::get_by_slug(&db.pool, pid, "backup")
+        .await
+        .unwrap();
+    assert_eq!(monitor.environments.len(), MAX_ENVIRONMENTS_PER_MONITOR);
+    MonitorService::process_check_in(
+        &db.pool,
+        pid,
+        check_in_to("backup", Some("production")),
+        Utc::now(),
+    )
+    .await
+    .unwrap();
+}
+
 #[actix_web::test]
 async fn in_progress_then_ok_with_the_same_id_is_one_check_in() {
     let db = TestDb::new().await;

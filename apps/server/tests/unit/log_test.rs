@@ -100,6 +100,60 @@ mod level2 {
         assert_eq!(trace0, "5b8efff798038103d269b633813fc60c");
     }
 
+    /// A container larger than one INSERT holds is stored whole, once, with
+    /// every item's own fields.
+    #[tokio::test]
+    async fn test_a_large_container_is_stored_whole_and_once() {
+        let db = TestDb::new().await;
+        let project = ProjectService::create(
+            &db.pool,
+            CreateProject {
+                name: "logs-large".to_string(),
+                slug: None,
+                platform: None,
+            },
+        )
+        .await
+        .unwrap();
+        let items: Vec<_> = (0..600)
+            .map(|i| {
+                serde_json::json!({
+                    "timestamp": 1704801600.0 + i as f64,
+                    "level": if i % 2 == 0 { "error" } else { "" },
+                    "body": format!("line {i}"),
+                    "attributes": { "i": { "value": i, "type": "integer" } },
+                })
+            })
+            .collect();
+        let body =
+            bytes::Bytes::from(serde_json::to_vec(&serde_json::json!({ "items": items })).unwrap());
+        let ctx = ProcessorCtx {
+            pool: db.pool.clone(),
+            project_id: project.id,
+            event_id: Uuid::new_v4(),
+            ingested_at: Utc::now(),
+            remote_addr: None,
+            keep_ai_spans: true,
+        };
+
+        LogsProcessor.process(body.clone(), &ctx).await.unwrap();
+        LogsProcessor.process(body, &ctx).await.unwrap();
+
+        let rows: Vec<(String, String, Option<i16>, serde_json::Value)> = sqlx::query_as(
+            "SELECT body, level, severity_number, attributes FROM logs WHERE project_id = $1 ORDER BY timestamp",
+        )
+        .bind(project.id)
+        .fetch_all(&db.pool)
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 600, "stored whole, and a replay adds nothing");
+        assert_eq!(rows[0].0, "line 0");
+        assert_eq!((rows[0].1.as_str(), rows[0].2), ("error", Some(17)));
+        assert_eq!((rows[599].1.as_str(), rows[599].2), ("info", Some(9)));
+        assert_eq!(rows[599].0, "line 599");
+        assert_eq!(rows[599].3["i"]["value"], 599);
+    }
+
     #[tokio::test]
     async fn test_non_object_attributes_coerced_to_empty_object() {
         // A non-conforming SDK may send `attributes` as an array/primitive.

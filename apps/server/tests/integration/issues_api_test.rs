@@ -1152,6 +1152,10 @@ async fn test_bulk_delete_issues_preserves_payload_limit() {
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db.pool.clone()))
+            .app_data(web::Data::new(crate::common::processors_with_config(
+                &db.pool,
+                &rustrak::config::Config::default(),
+            )))
             .app_data(web::JsonConfig::default().limit(32))
             .service(
                 web::scope("/api/projects/{project_id}")

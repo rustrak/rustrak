@@ -16,10 +16,13 @@ const ORPHANED_TEMPORARY_FILE_GRACE: Duration = Duration::from_secs(300);
 const BASE64_WRITE_CHUNK_SIZE: usize = 48 * 1024;
 
 #[derive(Debug, Deserialize, Serialize)]
-struct PendingEventRecord {
+struct PendingEventRecord<'a> {
     version: u8,
     metadata: EventMetadata,
-    event_data: String,
+    /// Borrowed from the bytes read: base64 has no escapes, so the payload
+    /// is not copied a second time before it is decoded.
+    #[serde(borrow)]
+    event_data: std::borrow::Cow<'a, str>,
 }
 
 /// Where an accepted event waits for its digest. Only this layout was ever
@@ -56,7 +59,7 @@ fn validate_pending_record(
         ));
     }
     STANDARD
-        .decode(record.event_data)
+        .decode(record.event_data.as_bytes())
         .map_err(|e| AppError::Internal(format!("Invalid pending event payload: {}", e)))
 }
 
@@ -239,10 +242,7 @@ fn publish_pending_file(
         }
         Err(e) => {
             let _ = std::fs::remove_file(temporary_path);
-            return Err(AppError::Internal(format!(
-                "Failed to publish ingest file: {}",
-                e
-            )));
+            return Err(AppError::from_io("Failed to publish ingest file", e));
         }
     }
 
@@ -271,20 +271,21 @@ fn write_pending_record_atomically(
         Ok(file) => file,
         Err(e) => {
             let _ = std::fs::remove_file(&temporary_path);
-            return Err(AppError::Internal(format!(
-                "Failed to write temporary ingest file: {}",
-                e
-            )));
+            return Err(AppError::from_io(
+                "Failed to write temporary ingest file",
+                e,
+            ));
         }
     };
     if let Err(e) = write_pending_record(&mut temporary_file, metadata, event_data) {
         let _ = std::fs::remove_file(&temporary_path);
-        return Err(AppError::Internal(format!(
-            "Failed to write temporary ingest file: {}",
-            e
-        )));
+        return Err(AppError::from_io(
+            "Failed to write temporary ingest file",
+            e,
+        ));
     }
     drop(temporary_file);
+    crate::failpoint!("ingest.after_fsync_before_link");
     publish_pending_file(path, &temporary_path, event_id, project_id)
 }
 
@@ -312,6 +313,24 @@ pub async fn store_event_with_metadata(
     event_data: &[u8],
     metadata: &EventMetadata,
 ) -> AppResult<PathBuf> {
+    store_event_bytes(
+        base_dir,
+        event_id,
+        bytes::Bytes::copy_from_slice(event_data),
+        metadata,
+    )
+    .await
+}
+
+/// [`store_event_with_metadata`] for a payload already in a [`bytes::Bytes`]
+/// (the request body): handed to the blocking thread by reference count,
+/// never copied.
+pub async fn store_event_bytes(
+    base_dir: &Path,
+    event_id: &str,
+    event_data: bytes::Bytes,
+    metadata: &EventMetadata,
+) -> AppResult<PathBuf> {
     if !same_event_id(&metadata.event_id, event_id) {
         return Err(AppError::Validation(
             "Event metadata does not match event_id".to_string(),
@@ -322,7 +341,6 @@ pub async fn store_event_with_metadata(
     let base_dir = base_dir.to_path_buf();
     let event_id = event_id.to_string();
     let metadata = metadata.clone();
-    let event_data = event_data.to_vec();
     on_blocking_pool("event store", move || {
         // The directory was created at startup (`prepare_ingest_dir`); the
         // retry below covers it disappearing since. Creating it again on
@@ -375,6 +393,48 @@ pub async fn read_event(
         .transpose()
 }
 
+/// What reading a pending event's file found.
+pub(crate) enum PendingRead {
+    /// No file: its digest finished and deleted it.
+    Missing,
+    /// The record, and the metadata it was stored with.
+    Event(EventMetadata, Vec<u8>),
+    /// The read failed (permissions, a directory, I/O): kept, retried.
+    CannotOpen(String),
+    /// A record of a version this release does not read: kept for one that does.
+    OtherVersion,
+    /// Not a readable record of this event. Records are published by an
+    /// atomic rename, so it never becomes readable later.
+    Unreadable(String),
+}
+
+/// Reads and classifies a pending event's file, blocking: the digest calls
+/// it from its prep threads, which a hop to the blocking pool would double.
+pub(crate) fn read_pending(base_dir: &Path, project_id: i32, event_id: Uuid) -> PendingRead {
+    let event_id = event_id.simple().to_string();
+    let path = match pending_event_path(base_dir, project_id, &event_id) {
+        Ok(path) => path,
+        Err(e) => return PendingRead::Unreadable(e.to_string()),
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return PendingRead::Missing,
+        Err(e) => return PendingRead::CannotOpen(e.to_string()),
+    };
+    match serde_json::from_slice::<PendingEventRecord>(&bytes) {
+        // Written by another release (a later one, before a downgrade).
+        Ok(record) if record.version != PENDING_EVENT_VERSION => PendingRead::OtherVersion,
+        Ok(record) => {
+            let metadata = record.metadata.clone();
+            match validate_pending_record(record, &event_id, project_id) {
+                Ok(payload) => PendingRead::Event(metadata, payload),
+                Err(e) => PendingRead::Unreadable(e.to_string()),
+            }
+        }
+        Err(e) => PendingRead::Unreadable(e.to_string()),
+    }
+}
+
 /// Deletes a pending event; one already gone is not an error.
 pub async fn delete_event(base_dir: &Path, project_id: i32, event_id: &str) -> AppResult<()> {
     delete_paths(vec![pending_event_path(base_dir, project_id, event_id)?]).await
@@ -408,45 +468,47 @@ async fn cleanup_orphaned_temporary_files_with_grace(
     base_dir: &Path,
     grace: Duration,
 ) -> AppResult<()> {
-    let mut entries = match fs::read_dir(base_dir).await {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => {
-            return Err(AppError::Internal(format!(
-                "Failed to read ingest directory: {}",
-                e
-            )))
-        }
-    };
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to read ingest entry: {}", e)))?
-    {
-        let path = entry.path();
-        let is_expired = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(is_orphaned_temporary_file)
-            && fs::metadata(&path)
-                .await
-                .ok()
-                .and_then(|metadata| metadata.modified().ok())
-                .and_then(|modified| modified.elapsed().ok())
-                .is_some_and(|age| age >= grace);
-        if is_expired {
-            match fs::remove_file(&path).await {
-                Ok(()) => log::debug!("Removed orphaned ingest temp file {:?}", path),
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => log::warn!(
-                    "Failed to remove orphaned ingest temp file {:?}: {}",
-                    path,
+    // One blocking hop for the whole walk, like `list_pending_names`.
+    let dir = base_dir.to_path_buf();
+    on_blocking_pool("spool cleanup", move || {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => {
+                return Err(AppError::Internal(format!(
+                    "Failed to read ingest directory: {}",
                     e
-                ),
+                )))
+            }
+        };
+        for entry in entries {
+            let entry = entry
+                .map_err(|e| AppError::Internal(format!("Failed to read ingest entry: {}", e)))?;
+            let path = entry.path();
+            let is_expired = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_orphaned_temporary_file)
+                && std::fs::metadata(&path)
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok())
+                    .and_then(|modified| modified.elapsed().ok())
+                    .is_some_and(|age| age >= grace);
+            if is_expired {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => log::debug!("Removed orphaned ingest temp file {:?}", path),
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                    Err(e) => log::warn!(
+                        "Failed to remove orphaned ingest temp file {:?}: {}",
+                        path,
+                        e
+                    ),
+                }
             }
         }
-    }
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 fn parse_project_pending_filename(file_name: &str) -> Option<(i32, Uuid)> {
@@ -454,6 +516,31 @@ fn parse_project_pending_filename(file_name: &str) -> Option<(i32, Uuid)> {
     let stem = stem.strip_prefix("project-")?;
     let (project_id, event_id) = stem.rsplit_once('-')?;
     Some((project_id.parse().ok()?, Uuid::parse_str(event_id).ok()?))
+}
+
+/// The subdirectory of the spool a file goes to when its digest keeps
+/// failing, or when it cannot be read as a pending record at all. Nothing
+/// reads it: the startup scan, the recovery listing and the metrics only
+/// look at the spool's own entries. An operator inspects a file there and
+/// moves it back to the spool to replay it.
+pub const DEAD_LETTER_DIR: &str = "dead";
+
+/// Moves a pending event's file into [`DEAD_LETTER_DIR`]. Renamed, never
+/// deleted: the file is the only copy of an acknowledged event.
+pub async fn dead_letter_event(
+    base_dir: &Path,
+    project_id: i32,
+    event_id: &str,
+) -> AppResult<PathBuf> {
+    let from = pending_event_path(base_dir, project_id, event_id)?;
+    let dead = base_dir.join(DEAD_LETTER_DIR);
+    let to = dead.join(from.file_name().unwrap_or_default());
+    on_blocking_pool("dead letter", move || {
+        std::fs::create_dir_all(&dead).map_err(|e| AppError::from_io("dead letter", e))?;
+        std::fs::rename(&from, &to).map_err(|e| AppError::from_io("dead letter", e))?;
+        Ok(to)
+    })
+    .await
 }
 
 /// Reads pending event metadata left by an interrupted or exhausted digest.
@@ -528,6 +615,50 @@ pub(crate) async fn list_pending_event_metadata_except(
     Ok(pending)
 }
 
+/// The pending events in the spool, by file name alone: `(project, event,
+/// file size)`, skipping every file the caller says it owns. Nothing is
+/// opened; reading and classifying a file is the digest's.
+pub(crate) async fn list_pending_names(
+    base_dir: &Path,
+    owned: impl Fn(i32, Uuid) -> bool,
+) -> AppResult<Vec<(i32, Uuid, u64)>> {
+    cleanup_orphaned_temporary_files(base_dir).await?;
+    // One blocking hop for the whole walk, not one per entry (`tokio::fs`).
+    let dir = base_dir.to_path_buf();
+    let names = on_blocking_pool("spool listing", move || {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => {
+                return Err(AppError::Internal(format!(
+                    "Failed to read ingest directory: {}",
+                    e
+                )))
+            }
+        };
+        let mut names = Vec::new();
+        for entry in entries {
+            let entry = entry
+                .map_err(|e| AppError::Internal(format!("Failed to read ingest entry: {}", e)))?;
+            let Some((project_id, event_id)) = entry
+                .file_name()
+                .to_str()
+                .and_then(parse_project_pending_filename)
+            else {
+                continue;
+            };
+            let size = entry.metadata().map_or(0, |m| m.len());
+            names.push((project_id, event_id, size));
+        }
+        Ok(names)
+    })
+    .await?;
+    Ok(names
+        .into_iter()
+        .filter(|&(project_id, event_id, _)| !owned(project_id, event_id))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,6 +671,27 @@ mod tests {
             ingested_at: chrono::Utc::now(),
             remote_addr: None,
         }
+    }
+
+    /// The digest holds the record's bytes and the decoded payload, never a
+    /// second copy of the base64 text.
+    #[test]
+    fn a_pending_record_borrows_its_payload_from_the_bytes_read() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "version": PENDING_EVENT_VERSION,
+            "metadata": metadata("9ec79c33ec9942ab8353589fcb2e04dc", 7),
+            "event_data": "e30=",
+        }))
+        .unwrap();
+        let record: PendingEventRecord = serde_json::from_slice(&bytes).unwrap();
+        assert!(matches!(
+            record.event_data,
+            std::borrow::Cow::Borrowed("e30=")
+        ));
+        assert_eq!(
+            decode_pending_record(&bytes, "9ec79c33ec9942ab8353589fcb2e04dc", 7).unwrap(),
+            b"{}"
+        );
     }
 
     #[test]
@@ -661,11 +813,11 @@ mod tests {
                 .unwrap();
 
             let pending_path = pending_event_path(dir.path(), 7, &event_id).unwrap();
-            let record: PendingEventRecord =
-                serde_json::from_slice(&fs::read(&pending_path).await.unwrap()).unwrap();
+            let bytes = fs::read(&pending_path).await.unwrap();
+            let record: PendingEventRecord = serde_json::from_slice(&bytes).unwrap();
             assert_eq!(record.version, PENDING_EVENT_VERSION);
             assert_eq!(record.metadata.event_id, event_id);
-            let stored_payload = STANDARD.decode(record.event_data).unwrap();
+            let stored_payload = STANDARD.decode(record.event_data.as_bytes()).unwrap();
             assert_eq!(stored_payload, payload);
             assert_eq!(
                 read_event(dir.path(), 7, &event_id).await.unwrap().unwrap(),
@@ -684,7 +836,7 @@ mod tests {
         let record = PendingEventRecord {
             version: 2,
             metadata: metadata(event_id, 7),
-            event_data: STANDARD.encode(b"{}"),
+            event_data: STANDARD.encode(b"{}").into(),
         };
         fs::create_dir_all(dir.path()).await.unwrap();
         fs::write(&pending_path, serde_json::to_vec(&record).unwrap())
@@ -711,6 +863,34 @@ mod tests {
             .await
             .unwrap();
         assert!(dir.is_dir());
+    }
+
+    #[tokio::test]
+    async fn names_are_listed_with_their_size_skipping_owned_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let (kept, owned) = (Uuid::new_v4(), Uuid::new_v4());
+        for id in [kept, owned] {
+            let id = id.simple().to_string();
+            store_event_bytes(
+                dir.path(),
+                &id,
+                bytes::Bytes::from_static(b"{}"),
+                &metadata(&id, 7),
+            )
+            .await
+            .unwrap();
+        }
+        std::fs::write(dir.path().join("unrelated.txt"), b"x").unwrap();
+
+        let names = list_pending_names(dir.path(), |_, id| id == owned)
+            .await
+            .unwrap();
+
+        assert_eq!(names.len(), 1);
+        let (project_id, event_id, size) = names[0];
+        assert_eq!((project_id, event_id), (7, kept));
+        let path = pending_event_path(dir.path(), 7, &kept.simple().to_string()).unwrap();
+        assert_eq!(size, std::fs::metadata(path).unwrap().len());
     }
 
     #[tokio::test]
@@ -869,7 +1049,7 @@ mod tests {
         let malformed = PendingEventRecord {
             version: PENDING_EVENT_VERSION,
             metadata: metadata(event_id, 7),
-            event_data: "not-base64".to_string(),
+            event_data: "not-base64".into(),
         };
         fs::write(&pending_path, serde_json::to_vec(&malformed).unwrap())
             .await
@@ -921,7 +1101,7 @@ mod tests {
         let old_record = PendingEventRecord {
             version: PENDING_EVENT_VERSION,
             metadata: metadata(event_id, 7),
-            event_data: STANDARD.encode(br#"{"outside":true}"#),
+            event_data: STANDARD.encode(br#"{"outside":true}"#).into(),
         };
         let old_bytes = serde_json::to_vec(&old_record).unwrap();
 

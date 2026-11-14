@@ -56,7 +56,7 @@ pub use issue_social::IssueSocialService;
 pub use log::{LogFilters, LogService};
 pub use notification::{create_dispatcher, NotificationDispatcher, NotificationResult};
 pub use project::ProjectService;
-pub use rate_limit::RateLimitService;
+pub use rate_limit::{Pending, PendingQuota, QuotaScope, RateLimitService};
 pub use release::ReleaseService;
 pub use role::RoleService;
 pub use sourcemap::{rewrite_frames, DbSourceMapProvider, SourceMapEntry, SourceMapProvider};

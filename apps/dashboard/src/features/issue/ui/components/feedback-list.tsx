@@ -28,6 +28,7 @@ export function FeedbackList({
   selectedId,
   page,
   isPending,
+  projectNames,
   onSelect,
   onPageChange,
 }: {
@@ -35,6 +36,8 @@ export function FeedbackList({
   selectedId: string | undefined;
   page: number;
   isPending: boolean;
+  /** Across projects, each row names the project it came from. */
+  projectNames?: ReadonlyMap<number, string>;
   onSelect: (id: string) => void;
   onPageChange: (page: number) => void;
 }) {
@@ -54,6 +57,7 @@ export function FeedbackList({
             key={item.id}
             item={item}
             selected={item.id === selectedId}
+            project={projectNames?.get(item.project_id)}
             onSelect={() => onSelect(item.id)}
           />
         ))}
@@ -91,10 +95,12 @@ export function FeedbackList({
 function FeedbackRow({
   item,
   selected,
+  project,
   onSelect,
 }: {
   item: FeedbackResponse;
   selected: boolean;
+  project?: string;
   onSelect: () => void;
 }) {
   const t = useTranslations('projectPages.feedback');
@@ -128,6 +134,11 @@ function FeedbackRow({
             <span className="min-w-0 flex-1 truncate font-medium text-body text-fg">
               {sender}
             </span>
+            {project ? (
+              <span className="max-w-32 shrink-0 truncate text-fg-subtle text-meta">
+                {project}
+              </span>
+            ) : null}
             <time
               dateTime={item.created_at}
               className="shrink-0 text-fg-subtle text-meta tabular-nums"

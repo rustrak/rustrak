@@ -51,16 +51,7 @@ export function EventSections({
   sourceUrl?: FrameSourceUrl;
 }) {
   const t = useTranslations('projectPages');
-  const {
-    exception,
-    breadcrumbs,
-    threads,
-    contexts,
-    modules,
-    user,
-    tags: safeTags,
-    has,
-  } = payload;
+  const { breadcrumbs, contexts, modules, user, tags: safeTags, has } = payload;
   const feedback = readFeedback(eventData);
   const attachmentHref = (attachment: AttachmentInfo) =>
     `/api/projects/${projectId}/attachments/${attachment.id}`;
@@ -111,43 +102,11 @@ export function EventSections({
       </Section>
 
       {has.stackTrace && (
-        <Section
-          id="stacktrace"
-          title={t('event.sectionStackTrace')}
-          actions={
-            // ThreadsSection owns its own copy control: the active
-            // thread/exception pairing is its state.
-            has.threads ? undefined : (
-              <CopyAsDropdown
-                formats={[
-                  {
-                    label: t('event.formatPlainText'),
-                    value: formatStackTraceAsText(exception, event.platform),
-                  },
-                  {
-                    label: t('event.formatJson'),
-                    value: JSON.stringify(exception, null, 2),
-                  },
-                ]}
-              />
-            )
-          }
-        >
-          {has.threads ? (
-            <ThreadsSection
-              threads={threads}
-              exception={exception}
-              platform={event.platform}
-              sourceUrl={sourceUrl}
-            />
-          ) : (
-            <StackTrace
-              exception={exception}
-              platform={event.platform}
-              sourceUrl={sourceUrl}
-            />
-          )}
-        </Section>
+        <StackTraceSection
+          payload={payload}
+          platform={event.platform}
+          sourceUrl={sourceUrl}
+        />
       )}
 
       {has.breadcrumbs && (
@@ -205,6 +164,58 @@ export function EventSections({
         <RawJson data={eventData} />
       </Section>
     </div>
+  );
+}
+
+/** The stack trace: per thread when the event has threads, else flat. */
+function StackTraceSection({
+  payload: { exception, threads, has },
+  platform,
+  sourceUrl,
+}: {
+  payload: EventPayload;
+  platform: EventDetailResponse['platform'];
+  sourceUrl?: FrameSourceUrl;
+}) {
+  const t = useTranslations('projectPages');
+  return (
+    <Section
+      id="stacktrace"
+      title={t('event.sectionStackTrace')}
+      actions={
+        // ThreadsSection owns its own copy control: the active
+        // thread/exception pairing is its state.
+        has.threads ? undefined : (
+          <CopyAsDropdown
+            formats={[
+              {
+                label: t('event.formatPlainText'),
+                value: formatStackTraceAsText(exception, platform),
+              },
+              {
+                label: t('event.formatJson'),
+                value: JSON.stringify(exception, null, 2),
+              },
+            ]}
+          />
+        )
+      }
+    >
+      {has.threads ? (
+        <ThreadsSection
+          threads={threads}
+          exception={exception}
+          platform={platform}
+          sourceUrl={sourceUrl}
+        />
+      ) : (
+        <StackTrace
+          exception={exception}
+          platform={platform}
+          sourceUrl={sourceUrl}
+        />
+      )}
+    </Section>
   );
 }
 

@@ -154,20 +154,11 @@ impl EventService {
             .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))
     }
 
-    /// Creates a new event and returns its primary key.
-    ///
-    /// Takes an executor rather than the pool so the digest can insert the
-    /// event inside the same transaction that creates the issue and bumps its
-    /// counters: those counters claim this row, so they have to commit or roll
-    /// back together.
-    ///
-    /// Returns only the id: `RETURNING *` would hand the whole `data` blob
-    /// back to be parsed into a second `serde_json::Value` tree that the
-    /// digest then drops, doubling the payload's JSON work and peak memory.
-    /// Callers that need the row load it with [`Self::get_by_id`].
+    /// Creates a new event and returns its primary key: one
+    /// [`EventRow::insert_all`] of one row. The digest builds its rows itself.
     #[allow(clippy::too_many_arguments)]
-    pub async fn create<'e, E>(
-        executor: E,
+    pub async fn create(
+        pool: &DbPool,
         event_id: Uuid,
         project_id: i32,
         issue_id: Uuid,
@@ -178,105 +169,46 @@ impl EventService {
         remote_addr: Option<&str>,
         alert_type: Option<AlertType>,
         issue_event_count: Option<i32>,
-    ) -> AppResult<Uuid>
-    where
-        E: sqlx::Executor<'e, Database = crate::db::Db>,
-    {
-        // Extract fields from event_data
-        let timestamp = extract_timestamp(event_data, "timestamp").unwrap_or(ingested_at);
-
-        // Each cut to its VARCHAR column, which Postgres enforces; Relay's
-        // own limits are 200 for `release` and 64 for `environment`.
-        let field = |value: Option<&serde_json::Value>, default: &str, max_chars: usize| {
-            clamp(value.and_then(|v| v.as_str()).unwrap_or(default), max_chars)
-        };
-        let sdk = event_data.get("sdk");
-        let level = event_data
-            .get("level")
-            .and_then(|v| v.as_str())
-            .and_then(relay_level)
-            .unwrap_or("error");
-        let platform = field(event_data.get("platform"), "", 64);
-        let release = field(event_data.get("release"), "", 200);
-        let environment = field(event_data.get("environment"), "", 64);
-        let server_name = field(event_data.get("server_name"), "", 255);
-        let sdk_name = field(sdk.and_then(|s| s.get("name")), "", 255);
-        let sdk_version = field(sdk.and_then(|s| s.get("version")), "", 255);
-
-        // A feedback is stored apart from errors so the event counts and
-        // charts, which read `event_type = 'error'`, leave it out.
-        let event_type = match event_data.get("type").and_then(|v| v.as_str()) {
-            Some("feedback") => "feedback",
-            _ => "error",
-        };
-
-        // Store remote_addr as string
-        let remote_addr_str: Option<String> = remote_addr.map(|s| s.to_string());
-
-        // Generate primary key UUID in application for cross-DB compatibility
+    ) -> AppResult<Uuid> {
+        let row = EventRow::new(
+            event_data,
+            ingested_at,
+            denormalized,
+            remote_addr,
+            event_id,
+            project_id,
+        );
         let id = Uuid::new_v4();
-
-        sqlx::query(
-            r#"
-            INSERT INTO events (
-                id, event_id, project_id, issue_id, grouping_id, data,
-                timestamp, ingested_at,
-                calculated_type, calculated_value, "transaction",
-                last_frame_filename, last_frame_module, last_frame_function,
-                level, platform, release, environment, server_name,
-                sdk_name, sdk_version, remote_addr, alert_type, issue_event_count, event_type,
-                user_identity
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
-            "#,
-        )
-        .bind(id)
-        .bind(event_id)
-        .bind(project_id)
-        .bind(issue_id)
-        .bind(grouping_id)
-        .bind(event_data)
-        .bind(timestamp)
-        .bind(ingested_at)
-        .bind(&denormalized.calculated_type)
-        .bind(&denormalized.calculated_value)
-        .bind(&denormalized.transaction)
-        .bind(&denormalized.last_frame_filename)
-        .bind(&denormalized.last_frame_module)
-        .bind(&denormalized.last_frame_function)
-        .bind(level)
-        .bind(platform)
-        .bind(release)
-        .bind(environment)
-        .bind(server_name)
-        .bind(sdk_name)
-        .bind(sdk_version)
-        .bind(remote_addr_str)
-        .bind(alert_type)
-        .bind(issue_event_count)
-        .bind(event_type)
-        .bind(
-            event_data
-                .get("user")
-                .and_then(crate::services::issue::user_identity_from_user_field),
-        )
-        .execute(executor)
-        .await?;
-
+        let link = EventLink {
+            id,
+            issue_id,
+            grouping_id,
+            alert_type,
+            issue_event_count,
+        };
+        let mut conn = pool.acquire().await?;
+        if EventRow::insert_all(&mut conn, [(&row, &link)])
+            .await?
+            .is_empty()
+        {
+            return Err(AppError::Conflict(format!(
+                "Event {event_id} already exists"
+            )));
+        }
         Ok(id)
     }
 
     /// Checks if an event with this event_id already exists in the project
     pub async fn exists(pool: &DbPool, project_id: i32, event_id: Uuid) -> AppResult<bool> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM events WHERE project_id = $1 AND event_id = $2",
+        let found: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM events WHERE project_id = $1 AND event_id = $2 LIMIT 1",
         )
         .bind(project_id)
         .bind(event_id)
-        .fetch_one(pool)
+        .fetch_optional(pool)
         .await?;
 
-        Ok(count > 0)
+        Ok(found.is_some())
     }
 
     /// Finds the issue for an already-digested event during durable retry.
@@ -294,5 +226,160 @@ impl EventService {
         .await
         .map(|issue_id| issue_id.flatten())
         .map_err(AppError::Database)
+    }
+}
+
+/// Every `events` column an event's own payload decides, built once from
+/// the parsed event so the tree can be dropped before the write. `data` is
+/// the payload serialised once: bound as text (SQLite stores JSON as text,
+/// Postgres casts it to JSONB).
+pub struct EventRow {
+    pub event_id: Uuid,
+    pub project_id: i32,
+    pub data: String,
+    pub timestamp: DateTime<Utc>,
+    pub ingested_at: DateTime<Utc>,
+    pub calculated_type: String,
+    pub calculated_value: String,
+    pub transaction: String,
+    pub last_frame_filename: String,
+    pub last_frame_module: String,
+    pub last_frame_function: String,
+    pub level: &'static str,
+    pub platform: String,
+    pub release: String,
+    pub environment: String,
+    pub server_name: String,
+    pub sdk_name: String,
+    pub sdk_version: String,
+    pub remote_addr: Option<String>,
+    pub event_type: &'static str,
+    pub user_identity: Option<String>,
+}
+
+/// The `events` columns the digest decides: the row's id and where it groups.
+pub struct EventLink {
+    pub id: Uuid,
+    pub issue_id: Uuid,
+    pub grouping_id: i32,
+    pub alert_type: Option<AlertType>,
+    pub issue_event_count: Option<i32>,
+}
+
+impl EventRow {
+    pub fn new(
+        event_data: &serde_json::Value,
+        ingested_at: DateTime<Utc>,
+        denormalized: &DenormalizedFields,
+        remote_addr: Option<&str>,
+        event_id: Uuid,
+        project_id: i32,
+    ) -> Self {
+        // Each cut to its VARCHAR column, which Postgres enforces; Relay's
+        // own limits are 200 for `release` and 64 for `environment`.
+        let field = |value: Option<&serde_json::Value>, max_chars: usize| {
+            clamp(value.and_then(|v| v.as_str()).unwrap_or(""), max_chars)
+        };
+        let sdk = event_data.get("sdk");
+        Self {
+            event_id,
+            project_id,
+            data: event_data.to_string(),
+            timestamp: extract_timestamp(event_data, "timestamp").unwrap_or(ingested_at),
+            ingested_at,
+            calculated_type: denormalized.calculated_type.clone(),
+            calculated_value: denormalized.calculated_value.clone(),
+            transaction: denormalized.transaction.clone(),
+            last_frame_filename: denormalized.last_frame_filename.clone(),
+            last_frame_module: denormalized.last_frame_module.clone(),
+            last_frame_function: denormalized.last_frame_function.clone(),
+            level: event_data
+                .get("level")
+                .and_then(|v| v.as_str())
+                .and_then(relay_level)
+                .unwrap_or("error"),
+            platform: field(event_data.get("platform"), 64),
+            release: field(event_data.get("release"), 200),
+            environment: field(event_data.get("environment"), 64),
+            server_name: field(event_data.get("server_name"), 255),
+            sdk_name: field(sdk.and_then(|s| s.get("name")), 255),
+            sdk_version: field(sdk.and_then(|s| s.get("version")), 255),
+            remote_addr: remote_addr.map(str::to_string),
+            // A feedback is stored apart from errors so the event counts and
+            // charts, which read `event_type = 'error'`, leave it out.
+            event_type: match event_data.get("type").and_then(|v| v.as_str()) {
+                Some("feedback") => "feedback",
+                _ => "error",
+            },
+            user_identity: event_data
+                .get("user")
+                .and_then(crate::services::issue::user_identity_from_user_field),
+        }
+    }
+
+    /// Inserts the rows in one statement, skipping any whose
+    /// `(project_id, event_id)` is already stored, and returns the identities
+    /// it did insert.
+    ///
+    /// Returns only those: `RETURNING *` would hand every `data` blob back.
+    pub async fn insert_all<'r>(
+        conn: &mut <crate::db::Db as sqlx::Database>::Connection,
+        rows: impl IntoIterator<Item = (&'r EventRow, &'r EventLink)>,
+    ) -> AppResult<Vec<(i32, Uuid)>> {
+        let mut insert = sqlx::QueryBuilder::<crate::db::Db>::new(
+            r#"INSERT INTO events (
+                id, event_id, project_id, issue_id, grouping_id, data,
+                timestamp, ingested_at,
+                calculated_type, calculated_value, "transaction",
+                last_frame_filename, last_frame_module, last_frame_function,
+                level, platform, release, environment, server_name,
+                sdk_name, sdk_version, remote_addr, alert_type, issue_event_count, event_type,
+                user_identity
+            ) "#,
+        );
+        insert.push_values(rows, |mut b, (row, link)| {
+            b.push_bind(link.id)
+                .push_bind(row.event_id)
+                .push_bind(row.project_id)
+                .push_bind(link.issue_id)
+                .push_bind(link.grouping_id);
+            #[cfg(feature = "postgres")]
+            b.push("CAST(")
+                .push_bind_unseparated(&row.data)
+                .push_unseparated(" AS JSONB)");
+            #[cfg(feature = "sqlite")]
+            b.push_bind(&row.data);
+            b.push_bind(row.timestamp)
+                .push_bind(row.ingested_at)
+                .push_bind(&row.calculated_type)
+                .push_bind(&row.calculated_value)
+                .push_bind(&row.transaction)
+                .push_bind(&row.last_frame_filename)
+                .push_bind(&row.last_frame_module)
+                .push_bind(&row.last_frame_function)
+                .push_bind(row.level)
+                .push_bind(&row.platform)
+                .push_bind(&row.release)
+                .push_bind(&row.environment)
+                .push_bind(&row.server_name)
+                .push_bind(&row.sdk_name)
+                .push_bind(&row.sdk_version)
+                .push_bind(&row.remote_addr)
+                .push_bind(link.alert_type)
+                .push_bind(link.issue_event_count)
+                .push_bind(row.event_type)
+                .push_bind(&row.user_identity);
+        });
+        insert
+            .push(" ON CONFLICT (project_id, event_id) DO NOTHING RETURNING project_id, event_id");
+        // Not cached: each batch size is its own statement, and a cached
+        // SQLite statement keeps a copy of its last bound values (sqlx
+        // clears them only when it runs it again), so up to 100 of them per
+        // connection would each keep a batch's payloads alive.
+        Ok(insert
+            .build_query_as::<(i32, Uuid)>()
+            .persistent(false)
+            .fetch_all(&mut *conn)
+            .await?)
     }
 }

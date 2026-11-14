@@ -30,6 +30,21 @@ impl Rejection {
     ];
 }
 
+/// Why ingest turned a request away with 503 before reading it into the
+/// spool (`ErrorProcessor::admit`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shed {
+    /// `INGEST_MAX_PENDING_EVENTS` events already wait for the digest.
+    Backlog,
+    /// Free space on the spool's volume is under `INGEST_MIN_FREE_DISK_MB`.
+    Disk,
+}
+
+impl Shed {
+    pub(crate) const ALL: [(Shed, &'static str); 2] =
+        [(Shed::Backlog, "backlog"), (Shed::Disk, "disk")];
+}
+
 /// Upper bounds, in milliseconds, of the latency buckets. One more bucket
 /// past the last holds everything slower.
 pub(crate) const LATENCY_BOUNDS_MS: [u64; 13] =
@@ -46,6 +61,12 @@ pub(crate) struct Totals {
     pub digest_ok: u64,
     pub digest_failed: u64,
     pub digest_rate_limited: u64,
+    pub shed: [u64; 2],
+    pub db_unavailable: u64,
+    pub dead_lettered: u64,
+    pub post_commit_dropped: u64,
+    pub digest_batches: u64,
+    pub digest_batch_events: u64,
     pub http_5xx_by_route: BTreeMap<String, u64>,
     pub alerts_failed_by_provider: BTreeMap<String, u64>,
     pub panics: BTreeMap<String, u64>,
@@ -61,6 +82,12 @@ impl Totals {
         digest_ok: 0,
         digest_failed: 0,
         digest_rate_limited: 0,
+        shed: [0; 2],
+        db_unavailable: 0,
+        dead_lettered: 0,
+        post_commit_dropped: 0,
+        digest_batches: 0,
+        digest_batch_events: 0,
         http_5xx_by_route: BTreeMap::new(),
         alerts_failed_by_provider: BTreeMap::new(),
         panics: BTreeMap::new(),
@@ -76,6 +103,12 @@ pub struct Counters {
     digest_ok: AtomicU64,
     digest_failed: AtomicU64,
     digest_rate_limited: AtomicU64,
+    shed: [AtomicU64; 2],
+    db_unavailable: AtomicU64,
+    dead_lettered: AtomicU64,
+    post_commit_dropped: AtomicU64,
+    digest_batches: AtomicU64,
+    digest_batch_events: AtomicU64,
     http_5xx_by_route: Mutex<BTreeMap<String, u64>>,
     alerts_failed_by_provider: Mutex<BTreeMap<String, u64>>,
     panics: Mutex<BTreeMap<String, u64>>,
@@ -100,6 +133,12 @@ impl Counters {
             digest_ok: AtomicU64::new(0),
             digest_failed: AtomicU64::new(0),
             digest_rate_limited: AtomicU64::new(0),
+            shed: [const { AtomicU64::new(0) }; 2],
+            db_unavailable: AtomicU64::new(0),
+            dead_lettered: AtomicU64::new(0),
+            post_commit_dropped: AtomicU64::new(0),
+            digest_batches: AtomicU64::new(0),
+            digest_batch_events: AtomicU64::new(0),
             http_5xx_by_route: Mutex::new(BTreeMap::new()),
             alerts_failed_by_provider: Mutex::new(BTreeMap::new()),
             panics: Mutex::new(BTreeMap::new()),
@@ -144,6 +183,35 @@ impl Counters {
         self.digest_rate_limited.fetch_add(1, Relaxed);
     }
 
+    /// An ingest request answered 503 by load shedding.
+    pub fn ingest_shed(&self, reason: Shed) {
+        self.shed[reason as usize].fetch_add(1, Relaxed);
+    }
+
+    /// A request answered 503 because the database was briefly unavailable
+    /// (pool timeout, busy, full, out of connections).
+    pub fn db_unavailable(&self) {
+        self.db_unavailable.fetch_add(1, Relaxed);
+    }
+
+    /// A spool file moved to `dead/` after its digest kept failing.
+    pub fn dead_lettered(&self) {
+        self.dead_lettered.fetch_add(1, Relaxed);
+    }
+
+    /// A stored event whose step after the commit (its alerts) failed for
+    /// good and was given up.
+    pub fn post_commit_dropped(&self) {
+        self.post_commit_dropped.fetch_add(1, Relaxed);
+    }
+
+    /// One digest transaction run over `events` events, whether it committed
+    /// or not.
+    pub fn digest_batch(&self, events: usize) {
+        self.digest_batches.fetch_add(1, Relaxed);
+        self.digest_batch_events.fetch_add(events as u64, Relaxed);
+    }
+
     /// `route` is the matched pattern (`/api/issues/{id}`), never the path.
     pub fn http_5xx(&self, route: &str) {
         bump(&self.http_5xx_by_route, route);
@@ -177,6 +245,12 @@ impl Counters {
             digest_ok: load(&self.digest_ok),
             digest_failed: load(&self.digest_failed),
             digest_rate_limited: load(&self.digest_rate_limited),
+            shed: self.shed.each_ref().map(load),
+            db_unavailable: load(&self.db_unavailable),
+            dead_lettered: load(&self.dead_lettered),
+            post_commit_dropped: load(&self.post_commit_dropped),
+            digest_batches: load(&self.digest_batches),
+            digest_batch_events: load(&self.digest_batch_events),
             http_5xx_by_route: map(&self.http_5xx_by_route),
             alerts_failed_by_provider: map(&self.alerts_failed_by_provider),
             panics: map(&self.panics),

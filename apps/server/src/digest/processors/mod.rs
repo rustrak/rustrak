@@ -1,3 +1,4 @@
+mod batch;
 pub mod event;
 mod feedback;
 pub mod logs;
@@ -5,7 +6,8 @@ pub mod span;
 pub mod span_v2;
 pub mod transaction;
 
-pub use event::{Digested, ErrorProcessor};
+pub(crate) use event::{CommitMode, Prepared};
+pub use event::{Digested, ErrorProcessor, SpoolRef};
 pub(crate) use feedback::{Feedback, ATTACHMENTS_KEY};
 pub use logs::LogsProcessor;
 pub use span::SpanProcessor;
@@ -21,9 +23,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-/// The error digests this process currently owns: spawned by the ingest route
-/// and not finished yet, or committed and waiting for the durability
-/// checkpoint that lets their file be deleted.
+/// The error digests this process currently owns: queued by the ingest route
+/// or taken by recovery and not finished yet, or committed and waiting for
+/// their alerts and the removal of their file.
 ///
 /// The recovery worker consults it so a backlog is never replayed on top of
 /// the tasks already working through it. Before this existed, every scan
@@ -80,17 +82,14 @@ impl Drop for InFlightGuard {
             *count -= 1;
             if *count == 0 {
                 entries.remove(&self.key);
+                // A drained backlog gives its table back; amortised.
+                if entries.len() < entries.capacity() / 4 {
+                    entries.shrink_to_fit();
+                }
             }
         }
     }
 }
-
-/// Cap on concurrently running spawned digest tasks. Each holds a full
-/// payload plus its parsed JSON working set, so an unbounded spawn turns a
-/// burst of events into an unbounded memory spike; queued tasks wait holding
-/// only their metadata. The HTTP request path never waits on this gate:
-/// transactions and spans are persisted inline regardless of the backlog.
-pub(crate) const MAX_CONCURRENT_PROCESSING: usize = 16;
 
 /// What the ingest pipeline hands envelope items to, built once at startup and
 /// shared as application state. Each processor owns the dependencies it
@@ -103,10 +102,9 @@ pub struct Processors {
     pub logs: LogsProcessor,
     pub spans: SpanProcessor,
     pub spans_v2: SpanV2Processor,
-    /// One gate for the spawned digest tasks — bounds peak memory
-    /// under bursts (see [`MAX_CONCURRENT_PROCESSING`]). Lives here,
-    /// not in a static, so every app instance (each test server) gets
-    /// its own budget.
+    /// The commit gate: one permit, which every digest transaction takes
+    /// for its batch. Taking it pauses the digest. Lives here, not in a
+    /// static, so every app instance (each test server) gets its own.
     pub processing_slot: Arc<tokio::sync::Semaphore>,
     /// Where digest outcomes are counted for the anonymous telemetry. The
     /// process-wide set unless a test hands in its own.
@@ -119,25 +117,32 @@ impl Processors {
         sourcemap_provider: Arc<dyn SourceMapProvider>,
         session_aggregator: Arc<SessionAggregator>,
     ) -> Self {
+        let errors = ErrorProcessor::new(config, sourcemap_provider);
         Self {
-            errors: ErrorProcessor::new(config, sourcemap_provider),
+            processing_slot: Arc::clone(errors.commit_gate()),
+            errors,
             transactions: TransactionProcessor,
             sessions: session_aggregator,
             logs: LogsProcessor,
             spans: SpanProcessor,
             spans_v2: SpanV2Processor,
-            processing_slot: Arc::new(tokio::sync::Semaphore::const_new(MAX_CONCURRENT_PROCESSING)),
             counters: crate::telemetry::Counters::global(),
         }
     }
 
     pub fn with_counters(mut self, counters: &'static crate::telemetry::Counters) -> Self {
         self.counters = counters;
+        self.errors.counters = counters;
         self
     }
 
     pub fn counters(&self) -> &'static crate::telemetry::Counters {
         self.counters
+    }
+
+    /// [`ErrorProcessor::admit`], counting what it sheds.
+    pub fn admit(&self, pending: i64) -> crate::error::AppResult<()> {
+        self.errors.admit(pending, self.counters)
     }
 }
 
@@ -171,6 +176,16 @@ mod in_flight_tests {
         drop(guard);
         assert!(!registry.contains(1, id));
         assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn a_drained_backlog_shrinks_the_registry() {
+        let registry = Arc::new(InFlightDigests::default());
+        let guards: Vec<_> = (0..10_000)
+            .map(|_| registry.register(1, Uuid::new_v4()))
+            .collect();
+        drop(guards);
+        assert!(registry.entries.lock().unwrap().capacity() < 100);
     }
 
     #[test]

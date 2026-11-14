@@ -14,54 +14,54 @@ use uuid::Uuid;
 /// Rustrak is the terminal store, not a forwarding Relay.
 pub struct LogsProcessor;
 
+/// Rows per INSERT: 11 binds each, far under SQLite's 32766 and Postgres's
+/// 65535 bind limits; the same batch size spans use.
+const LOG_ROWS_PER_INSERT: usize = 256;
+
 impl LogsProcessor {
     pub async fn process(&self, work: Bytes, ctx: &ProcessorCtx) -> AppResult<()> {
         // Reject a malformed container instead of silently dropping the batch.
         let logs = LogContainer::parse(&work)?;
 
         // Batch the whole container in one DB transaction: a partially-stored
-        // batch is harder to reason about than an all-or-nothing one, and the
-        // SDK will resend on failure.
+        // batch is harder to reason about than an all-or-nothing one. On
+        // failure the envelope gets a 5xx and the SDK drops it.
         let mut tx = ctx.pool.begin().await?;
         let container_hash = hex::encode(Sha1::digest(&work));
 
-        for (index, log) in logs.into_iter().enumerate() {
-            let id = Uuid::new_v4();
-            let dedupe_key = dedupe_key(&container_hash, index, ctx.event_id);
-            let timestamp = log.timestamp.unwrap_or(ctx.ingested_at);
-            let level = normalize_level(&log.level);
-            let severity_number = severity_number(&level);
-
-            sqlx::query(
-                r#"
-                INSERT INTO logs (
+        let mut logs = logs.into_iter().enumerate().peekable();
+        while logs.peek().is_some() {
+            let mut query = sqlx::QueryBuilder::new(
+                "INSERT INTO logs (
                     id, project_id, dedupe_key,
                     trace_id, span_id,
                     level, severity_number, body, attributes,
                     timestamp, ingested_at
-                ) VALUES (
-                    $1, $2, $3,
-                    $4, $5,
-                    $6, $7, $8, $9,
-                    $10, $11
-                )
-                ON CONFLICT (project_id, dedupe_key)
-                    WHERE dedupe_key IS NOT NULL DO NOTHING
-                "#,
-            )
-            .bind(id)
-            .bind(ctx.project_id)
-            .bind(dedupe_key)
-            .bind(clamp_opt(empty_to_none(&log.trace_id), 64))
-            .bind(clamp_opt(log.span_id.clone(), 32))
-            .bind(&level)
-            .bind(severity_number)
-            .bind(&log.body)
-            .bind(attributes_json(&log))
-            .bind(timestamp)
-            .bind(ctx.ingested_at)
-            .execute(&mut *tx)
-            .await?;
+                ) ",
+            );
+            query.push_values(
+                logs.by_ref().take(LOG_ROWS_PER_INSERT),
+                |mut row, (index, log)| {
+                    let level = normalize_level(&log.level);
+                    let severity_number = severity_number(&level);
+                    let attributes = attributes_json(&log);
+                    row.push_bind(Uuid::new_v4())
+                        .push_bind(ctx.project_id)
+                        .push_bind(dedupe_key(&container_hash, index, ctx.event_id))
+                        .push_bind(clamp_opt(empty_to_none(&log.trace_id), 64))
+                        .push_bind(clamp_opt(log.span_id, 32))
+                        .push_bind(level)
+                        .push_bind(severity_number)
+                        .push_bind(log.body)
+                        .push_bind(attributes)
+                        .push_bind(log.timestamp.unwrap_or(ctx.ingested_at))
+                        .push_bind(ctx.ingested_at);
+                },
+            );
+            query.push(
+                " ON CONFLICT (project_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING",
+            );
+            query.build().execute(&mut *tx).await?;
         }
 
         tx.commit().await?;

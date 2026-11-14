@@ -42,6 +42,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .configure(oauth::configure)
         .configure(auth::configure)
         .configure(projects::configure)
+        .configure(issues::configure)
         .configure(tokens::configure)
         .configure(team::configure)
         .configure(invitations::configure)

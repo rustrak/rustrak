@@ -1,25 +1,128 @@
+use super::batch::{commit_batch_once, try_batch, BatchOutcome, DbConn, EventOutcome};
 use super::feedback::{self, Feedback, NewAttachment};
-use super::InFlightDigests;
+use super::{InFlightDigests, InFlightGuard};
 use crate::config::SmtpSettings;
 use crate::config::{Config, RateLimitConfig};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::ingest::storage::{delete_event, read_event};
-#[cfg(feature = "sqlite")]
-use crate::ingest::storage::{delete_paths, pending_event_path};
+use crate::ingest::storage::{
+    delete_event, delete_paths, pending_event_path, read_pending, PendingRead,
+};
 use crate::ingest::EventMetadata;
-use crate::models::{AlertType, Grouping, Issue, Product};
+use crate::models::{AlertType, Issue, Product};
 use crate::protocol::{clamp, is_stale, relay_level};
-use crate::services::rate_limit::QuotaScope;
+use crate::services::alert::AlertRuleCache;
+use crate::services::event::EventRow;
 use crate::services::sourcemap::SourceMapProvider;
 use crate::services::{
     calculate_grouping_key, get_denormalized_fields, hash_grouping_key, AlertService,
-    DenormalizedFields, EventService, IssueService, ProjectService, RateLimitService,
+    DenormalizedFields, EventService, IssueService, PendingQuota, ProjectService, RateLimitService,
 };
-use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// One spool file a digest owns: its identity and the in-flight guard that
+/// keeps the recovery worker off it until the digest is over.
+pub struct SpoolRef {
+    pub project_id: i32,
+    pub event_id: Uuid,
+    /// The file's size, as listed.
+    pub size: u64,
+    pub owner: InFlightGuard,
+}
+
+/// An event ready for the write: everything [`ErrorProcessor::prepare`]
+/// computed from its file, the parsed tree already dropped.
+pub(crate) struct PreparedEvent {
+    pub r: SpoolRef,
+    /// Its share of `Config::digest_memory_bytes`, held until the event is finished.
+    #[allow(dead_code)] // held, never read
+    pub budget: tokio::sync::OwnedSemaphorePermit,
+    pub metadata: EventMetadata,
+    /// Loaded in prep: its quota limits, products, platform and alerts.
+    pub project: crate::models::Project,
+    pub grouping_key: String,
+    pub grouping_key_hash: String,
+    /// The key this event would have had before the grouping changes, so an
+    /// issue created by an older release still claims its own events.
+    pub legacy_grouping_key_hash: String,
+    pub denormalized: DenormalizedFields,
+    pub level: Option<&'static str>,
+    /// Cut to its column, for a new issue.
+    pub platform: Option<String>,
+    pub row: EventRow,
+    /// Cut to its column, for `issue_environments`.
+    pub environment: String,
+    pub facts_environment: Option<String>,
+    /// The raw `platform`, for the project's platform inference.
+    pub event_platform: Option<String>,
+    pub feedback: Option<Feedback>,
+    pub attachments: Vec<NewAttachment>,
+    /// Bytes of `data` plus attachments.
+    pub data_bytes: usize,
+}
+
+impl PreparedEvent {
+    /// The fields an alert rule's filters read.
+    fn facts(&self) -> crate::services::alert::EventFacts<'_> {
+        crate::services::alert::EventFacts {
+            level: self.level,
+            environment: self.facts_environment.as_deref(),
+        }
+    }
+}
+
+/// What [`ErrorProcessor::prepare`] made of a spool file.
+pub(crate) enum Prepared {
+    Ready(Box<PreparedEvent>),
+    /// Over before the write: missing, or dropped by the cached quota.
+    Done(SpoolRef, Digested),
+    /// Failed before the write.
+    Kept(SpoolRef, AppError),
+    /// A file this release cannot digest, left where it is.
+    Skipped(SpoolRef, Skip),
+}
+
+/// Why a spool file was left in place.
+#[derive(Debug)]
+pub(crate) enum Skip {
+    /// A record of a version this release does not read.
+    OtherVersion,
+    /// The read failed (permissions, a directory, I/O).
+    CannotOpen(String),
+    /// Not a readable record of its event.
+    Unreadable(String),
+}
+
+impl Skip {
+    /// The skip as a digest failure: transient, so the file is kept.
+    fn into_error(self) -> AppError {
+        AppError::Internal(match self {
+            Skip::OtherVersion => "Invalid pending event record identity".to_string(),
+            Skip::CannotOpen(why) => format!("Failed to read event file: {why}"),
+            Skip::Unreadable(why) => format!("Invalid pending event record: {why}"),
+        })
+    }
+}
+
+/// How [`ErrorProcessor::commit`] answers a database that failed.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommitMode {
+    /// The live committer: keep the batch and retry it whole, with a
+    /// backoff, until the database is back or the process drains.
+    Live,
+    /// One attempt; the files stay for a replay.
+    Once,
+}
+
+/// An event of a batch after its commit, for [`ErrorProcessor::finish`].
+pub(crate) struct Committed {
+    pub e: PreparedEvent,
+    pub outcome: AppResult<EventOutcome>,
+    /// The issue as this event left it, when it was inserted.
+    pub issue: Option<Issue>,
+}
 
 /// Processes error/exception events: source-map rewrite → grouping → issue → store.
 ///
@@ -32,10 +135,35 @@ pub struct ErrorProcessor {
     rate_limit_config: RateLimitConfig,
     sourcemap_provider: Arc<dyn SourceMapProvider>,
     in_flight: Arc<InFlightDigests>,
+    /// Accepted events whose digest is not over, for the ingest quota check.
+    pending: PendingQuota,
+    /// `INGEST_MAX_PENDING_EVENTS`, 0 for no limit.
+    max_pending_events: i64,
+    /// `INGEST_MIN_FREE_DISK_MB`, in bytes.
+    min_free_disk_bytes: u64,
+    /// Free bytes on the spool's volume at the last sample; `u64::MAX`
+    /// until the first one, so nothing is shed on a guess.
+    free_disk_bytes: std::sync::atomic::AtomicU64,
+    /// Set by [`Self::start_draining`] at shutdown.
+    draining: std::sync::atomic::AtomicBool,
+    /// Set by [`Self::abandon`].
+    abandoned: std::sync::atomic::AtomicBool,
+    /// Keeps shedding to a log line every few seconds.
+    shed_log: ShedLog,
+    /// Failed digest attempts per spool file that only a retry could fix,
+    /// for dead-lettering. In memory: a restart resets them, which only
+    /// buys a file [`MAX_DIGEST_ATTEMPTS`] more tries.
+    failed_attempts: std::sync::Mutex<std::collections::HashMap<(i32, Uuid), u32>>,
+    /// Spool files recovery skips (unreadable, another version) that were
+    /// already logged. ponytail: never pruned, one entry per such file on
+    /// disk; prune on removal if those ever number in the thousands.
+    reported_skips: std::sync::Mutex<std::collections::HashSet<(i32, Uuid)>>,
     /// The base of the issue links in alert notifications.
     dashboard_url: String,
     /// The SMTP fallback of email alert integrations.
     smtp: SmtpSettings,
+    /// Which projects have alert rules, so most digests skip that query.
+    alert_rules: Arc<AlertRuleCache>,
     /// SQLite has one writer at a time. Digests queue for it here, in process,
     /// rather than in SQLite's busy handler: that handler polls with sleeps
     /// that grow to 100ms, so with several digests waiting the lock sat idle
@@ -43,31 +171,422 @@ pub struct ErrorProcessor {
     /// connection thread sleeping.
     #[cfg(feature = "sqlite")]
     write_slot: Arc<tokio::sync::Mutex<()>>,
-    /// Batches the durability checkpoints that gate file deletion.
-    #[cfg(feature = "sqlite")]
-    durability: Arc<DurabilityQueue>,
+    /// The digest's own durable connection (`db::connect_committer`),
+    /// opened on first use and again after it failed. Lock order: commit
+    /// gate, then this, then `write_slot`.
+    committer: tokio::sync::Mutex<Option<DbConn>>,
+    /// Set by [`Self::close_committer`]: never opened again.
+    committer_closed: std::sync::atomic::AtomicBool,
+    /// `Config::digest_batch_max_events`.
+    batch_max_events: usize,
+    /// `Config::digest_prep_workers`.
+    prep_workers: usize,
+    /// The circuit breaker: see [`Breaker`].
+    breaker: Breaker,
+    /// One permit: every digest transaction (live, recovery, `digest()`)
+    /// takes it for its batch. `Processors::processing_slot` is this.
+    commit_gate: Arc<tokio::sync::Semaphore>,
+    /// `Config::digest_memory_bytes` in KiB: the spool bytes being read, waiting for
+    /// their commit or inside one.
+    budget: Arc<tokio::sync::Semaphore>,
+    budget_kib: u32,
+    /// The events ingest accepted, waiting for the live digest.
+    queue: crate::ingest::pipeline::DigestQueue,
+    /// Wakes the recovery worker: the queue overflowed, or the pipeline
+    /// dropped what it held.
+    recovery_wake: tokio::sync::Notify,
+    /// Batches being finished (alerts, file removal) at once.
+    finishers: Arc<tokio::sync::Semaphore>,
+    /// The runtime the digest pipeline runs on: the one that built the
+    /// processor, which in the server is main's. Spawned from a request it
+    /// would land on that request's HTTP worker runtime, which Actix
+    /// replaces when its thread dies while the process lives on.
+    runtime: Option<tokio::runtime::Handle>,
+    /// Where digest transactions are counted.
+    pub(crate) counters: &'static crate::telemetry::Counters,
+    /// Set by [`Self::fail_after_commit_once_for_test`].
+    #[cfg(feature = "test-seams")]
+    fail_after_commit: std::sync::atomic::AtomicBool,
 }
+
+/// Events that failed alone, distinct, since a commit last stored a row. A
+/// handful of them asks whether the database refuses everything (a broken
+/// schema, a missing grant) or they are poison: when it refuses a blank copy
+/// of one too (same issue, environment, release and level, no payload), the
+/// digest halts instead of dead-lettering the backlog one event at a time.
+#[derive(Default)]
+struct Breaker {
+    streak: std::sync::Mutex<std::collections::HashSet<(i32, Uuid)>>,
+    halted: std::sync::atomic::AtomicBool,
+    /// When a halted digest may next try one event.
+    probe_at: std::sync::Mutex<Option<std::time::Instant>>,
+}
+
+/// Distinct events failing alone, with no row stored in between, that halt
+/// the digest.
+const BREAKER_EVENTS: usize = 5;
+
+/// How often a halted digest tries one event.
+const BREAKER_PROBE_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
 impl ErrorProcessor {
     pub fn new(config: &Config, sourcemap_provider: Arc<dyn SourceMapProvider>) -> Self {
         let ingest_dir = config.ingest_dir.clone();
+        let budget_kib = (config.digest_memory_bytes / 1024).clamp(1, u32::MAX as u64 / 2) as u32;
         #[cfg(feature = "sqlite")]
         let write_slot = Arc::new(tokio::sync::Mutex::new(()));
         Self {
-            #[cfg(feature = "sqlite")]
-            durability: Arc::new(DurabilityQueue::new(
-                ingest_dir.clone(),
-                Arc::clone(&write_slot),
-            )),
+            committer: tokio::sync::Mutex::new(None),
+            committer_closed: Default::default(),
             ingest_dir,
             rate_limit_config: config.rate_limit.clone(),
             sourcemap_provider,
             in_flight: Arc::new(InFlightDigests::default()),
+            pending: PendingQuota::default(),
+            max_pending_events: config.ingest_max_pending_events,
+            min_free_disk_bytes: free_disk_floor(config.ingest_min_free_disk_bytes),
+            free_disk_bytes: std::sync::atomic::AtomicU64::new(u64::MAX),
+            draining: std::sync::atomic::AtomicBool::new(false),
+            abandoned: std::sync::atomic::AtomicBool::new(false),
+            shed_log: ShedLog::default(),
+            failed_attempts: Default::default(),
+            reported_skips: Default::default(),
             dashboard_url: config.dashboard_url(),
             smtp: config.smtp.clone(),
+            alert_rules: Arc::default(),
             #[cfg(feature = "sqlite")]
             write_slot,
+            batch_max_events: config.digest_batch_max_events,
+            prep_workers: config.digest_prep_workers,
+            breaker: Breaker::default(),
+            commit_gate: Arc::new(tokio::sync::Semaphore::new(1)),
+            budget: Arc::new(tokio::sync::Semaphore::new(budget_kib as usize)),
+            budget_kib,
+            queue: Default::default(),
+            recovery_wake: tokio::sync::Notify::new(),
+            finishers: Arc::new(tokio::sync::Semaphore::new(FINISHERS)),
+            runtime: tokio::runtime::Handle::try_current().ok(),
+            counters: crate::telemetry::Counters::global(),
+            #[cfg(feature = "test-seams")]
+            fail_after_commit: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    /// `Config::digest_batch_max_events`.
+    pub(crate) fn batch_max_events(&self) -> usize {
+        self.batch_max_events
+    }
+
+    /// `Config::digest_prep_workers`.
+    pub(crate) fn prep_workers(&self) -> usize {
+        self.prep_workers
+    }
+
+    /// The commit gate; see `Processors::processing_slot`.
+    pub(crate) fn commit_gate(&self) -> &Arc<tokio::sync::Semaphore> {
+        &self.commit_gate
+    }
+
+    /// The live digest's queue.
+    pub(crate) fn queue(&self) -> &crate::ingest::pipeline::DigestQueue {
+        &self.queue
+    }
+
+    /// What wakes the recovery worker before its timer.
+    pub(crate) fn recovery_wake(&self) -> &tokio::sync::Notify {
+        &self.recovery_wake
+    }
+
+    /// Where the live digest pipeline runs.
+    pub(crate) fn runtime(&self) -> Option<&tokio::runtime::Handle> {
+        self.runtime.as_ref()
+    }
+
+    /// `Config::digest_memory_bytes`, in bytes: what a recovery chunk keeps under half of.
+    pub(crate) fn budget_bytes(&self) -> u64 {
+        u64::from(self.budget_kib) * 1024
+    }
+
+    /// The budget a spool file of `size` bytes takes before it is read:
+    /// one permit per KiB, at least one, at most the whole budget, so an
+    /// event larger than the budget runs alone.
+    pub(crate) async fn reserve(&self, size: u64) -> tokio::sync::OwnedSemaphorePermit {
+        Arc::clone(&self.budget)
+            .acquire_many_owned(budget_share(size, self.budget_kib))
+            .await
+            .expect("the digest budget is never closed")
+    }
+
+    /// The budget of every file in a recovery chunk, taken in one wait.
+    pub(crate) async fn reserve_all(
+        &self,
+        sizes: &[u64],
+    ) -> Vec<tokio::sync::OwnedSemaphorePermit> {
+        reserve_chunk(&self.budget, self.budget_kib, sizes).await
+    }
+
+    /// A permit to finish one committed batch.
+    pub(crate) async fn finisher(&self) -> tokio::sync::OwnedSemaphorePermit {
+        Arc::clone(&self.finishers)
+            .acquire_owned()
+            .await
+            .expect("the finisher slots are never closed")
+    }
+
+    /// The live committer gave a batch up to the drain: from here on it
+    /// lets go of everything else too, and the files are the next start's.
+    fn abandon(&self) {
+        self.abandoned
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether [`Self::abandon`] ran.
+    pub(crate) fn is_abandoned(&self) -> bool {
+        self.abandoned.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// While the breaker holds the digest halted, waits until it may try
+    /// one event. `false` when the process started draining meanwhile.
+    pub(crate) async fn wait_for_probe(&self) -> bool {
+        loop {
+            if self.is_draining() {
+                return false;
+            }
+            if !self.is_halted() || self.take_probe() {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    }
+
+    /// Whether the circuit breaker stopped the digest: distinct events kept
+    /// failing alone with nothing stored in between.
+    pub fn is_halted(&self) -> bool {
+        self.breaker
+            .halted
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Whether a halted digest may try one event now; if so the next try is
+    /// a probe interval away. Logs that it is halted, once per interval.
+    pub(crate) fn take_probe(&self) -> bool {
+        let now = std::time::Instant::now();
+        let mut probe_at = self
+            .breaker
+            .probe_at
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if probe_at.is_some_and(|at| now < at) {
+            return false;
+        }
+        *probe_at = Some(now + BREAKER_PROBE_EVERY);
+        log::error!("The digest is halted: every event it tried failed alone; trying one again");
+        true
+    }
+
+    /// An event that failed on its own, outside an outage. When enough
+    /// distinct ones did, asks the database whether it stores a blank copy
+    /// of `e`: then they are poison; if it refuses that too, the digest halts.
+    async fn note_isolated_failure(&self, pool: &DbPool, e: &PreparedEvent) {
+        let suspect = {
+            let mut streak = self
+                .breaker
+                .streak
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            streak.insert((e.r.project_id, e.r.event_id));
+            streak.len() >= BREAKER_EVENTS
+        };
+        if !suspect {
+            return;
+        }
+        match self.stores_a_blank_event(pool, e).await {
+            Some(true) => self.note_stored(),
+            // The probe proved nothing; the next isolated failure asks again.
+            None => {}
+            Some(false) => self.halt(),
+        }
+    }
+
+    /// Stops the digest: see [`Breaker`].
+    fn halt(&self) {
+        if !self
+            .breaker
+            .halted
+            .swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            *self
+                .breaker
+                .probe_at
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) =
+                Some(std::time::Instant::now() + BREAKER_PROBE_EVERY);
+            log::error!(
+                "The digest is halted: {BREAKER_EVENTS} distinct events failed alone and the database \
+                 refuses a blank copy of the last one too. Nothing is dead-lettered; one event is tried every {}s",
+                BREAKER_PROBE_EVERY.as_secs()
+            );
+        }
+    }
+
+    /// Whether the database stores, in a transaction it rolls back, an event
+    /// that goes where `like` goes (its project, issue, environment, release
+    /// and level, so the same rows are written) with nothing else in it.
+    /// `None` when that says nothing: the database failed as in an outage,
+    /// or the event ended before its row.
+    async fn stores_a_blank_event(&self, pool: &DbPool, like: &PreparedEvent) -> Option<bool> {
+        let (project_id, event_id) = (like.r.project_id, Uuid::new_v4());
+        let mut blank = serde_json::json!({
+            "release": like.denormalized.release,
+            "environment": like.environment,
+        });
+        if let Some(level) = like.level {
+            blank["level"] = level.into();
+        }
+        let denormalized = get_denormalized_fields(&blank);
+        let canary = PreparedEvent {
+            r: SpoolRef {
+                project_id,
+                event_id,
+                size: 0,
+                owner: self.in_flight.register(project_id, event_id),
+            },
+            // Its own permit: the digest budget may be all taken.
+            budget: Arc::new(tokio::sync::Semaphore::new(1))
+                .try_acquire_owned()
+                .expect("a new semaphore has its permit"),
+            metadata: EventMetadata {
+                event_id: event_id.simple().to_string(),
+                ..like.metadata.clone()
+            },
+            project: like.project.clone(),
+            legacy_grouping_key_hash: like.legacy_grouping_key_hash.clone(),
+            grouping_key_hash: like.grouping_key_hash.clone(),
+            grouping_key: like.grouping_key.clone(),
+            row: EventRow::new(
+                &blank,
+                like.metadata.ingested_at,
+                &denormalized,
+                None,
+                event_id,
+                project_id,
+            ),
+            denormalized,
+            level: like.level,
+            platform: None,
+            environment: like.environment.clone(),
+            facts_environment: None,
+            event_platform: None,
+            feedback: None,
+            attachments: Vec::new(),
+            data_bytes: 0,
+        };
+        let mut committer = self.committer.lock().await;
+        let result = match self.committer_conn(pool, &mut committer).await {
+            Ok(conn) => {
+                #[cfg(feature = "sqlite")]
+                let _turn = self.write_slot.lock().await;
+                try_batch(conn, std::slice::from_ref(&canary), &self.rate_limit_config).await
+            }
+            Err(e) => Err(e),
+        };
+        if let Err(e) = &result {
+            drop_if_broken(&mut committer, e);
+        }
+        probe_verdict(&result)
+    }
+
+    /// A commit stored a row: whatever failed before was the events'.
+    fn note_stored(&self) {
+        self.breaker
+            .streak
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clear();
+        if self
+            .breaker
+            .halted
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            log::info!("The digest stores events again");
+        }
+    }
+
+    /// The next recovery pass probes at once instead of after the interval.
+    #[cfg(feature = "test-seams")]
+    #[doc(hidden)]
+    pub fn probe_now_for_test(&self) {
+        *self.breaker.probe_at.lock().unwrap() = None;
+    }
+
+    /// The failed attempts counted toward dead-lettering this spool file.
+    #[cfg(feature = "test-seams")]
+    #[doc(hidden)]
+    pub fn failed_attempts_for_test(&self, project_id: i32, event_id: Uuid) -> u32 {
+        self.failed_attempts
+            .lock()
+            .unwrap()
+            .get(&(project_id, event_id))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The next commit lands and then reports a lost connection, as when
+    /// the connection drops during `COMMIT` after the database applied it.
+    #[cfg(feature = "test-seams")]
+    #[doc(hidden)]
+    pub fn fail_after_commit_once_for_test(&self) {
+        self.fail_after_commit
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// [`Self::sync_barrier`].
+    #[cfg(all(feature = "test-seams", feature = "sqlite"))]
+    #[doc(hidden)]
+    pub async fn sync_barrier_for_test(&self, pool: &DbPool) -> AppResult<()> {
+        self.sync_barrier(pool).await
+    }
+
+    /// What the alert-rule handlers invalidate when they write a rule.
+    pub fn alert_rules(&self) -> &AlertRuleCache {
+        &self.alert_rules
+    }
+
+    /// [`AlertService::trigger_event_alert`], skipped when the project has
+    /// no enabled rule for `alert_type`.
+    #[allow(clippy::too_many_arguments)]
+    async fn trigger_event_alert(
+        &self,
+        pool: &DbPool,
+        project: &crate::models::Project,
+        issue: &Issue,
+        alert_type: AlertType,
+        event_id: Uuid,
+        facts: crate::services::alert::EventFacts<'_>,
+        ctx: &mut FinishCtx,
+    ) -> AppResult<()> {
+        if !self
+            .alert_rules
+            .has_enabled(pool, project.id, alert_type)
+            .await?
+        {
+            return Ok(());
+        }
+        ctx.alerted = true;
+        // Its writes go through the pool: in turn with the committer's.
+        #[cfg(feature = "sqlite")]
+        let _turn = self.write_turn().await;
+        AlertService::trigger_event_alert(
+            pool,
+            project,
+            issue,
+            alert_type,
+            event_id,
+            facts,
+            &self.dashboard_url,
+            &self.smtp,
+        )
+        .await
     }
 
     pub(crate) fn ingest_dir(&self) -> &Path {
@@ -88,64 +607,346 @@ impl ErrorProcessor {
         &self.in_flight
     }
 
-    /// Digests one stored event. A failure worth replaying keeps its file
-    /// for the recovery worker; any other drops it.
-    pub async fn digest(&self, pool: &DbPool, metadata: &EventMetadata) -> AppResult<Digested> {
-        let result = self.process_impl(pool, metadata).await;
-        if let Err(e) = &result {
-            if should_retain_event(e) {
-                return result;
-            }
-            if let Err(e) =
-                delete_event(&self.ingest_dir, metadata.project_id, &metadata.event_id).await
-            {
+    /// The accepted events whose digest is not over.
+    pub fn pending(&self) -> &PendingQuota {
+        &self.pending
+    }
+
+    /// Whether ingest may spool another event, given `pending` events already
+    /// waiting: 503 while the digest is too far behind or the spool's disk
+    /// is nearly full, so an SDK backs off rather than the disk filling.
+    /// Two loads, no I/O: the free space is sampled on a timer.
+    pub fn admit(&self, pending: i64, counters: &crate::telemetry::Counters) -> AppResult<()> {
+        use crate::telemetry::Shed;
+        use std::sync::atomic::Ordering;
+        if self.draining.load(Ordering::Relaxed) {
+            return Err(AppError::Unavailable(
+                "the server is shutting down; retry later".to_string(),
+            ));
+        }
+        if self.max_pending_events > 0 && pending >= self.max_pending_events {
+            counters.ingest_shed(Shed::Backlog);
+            if let Some(shed) = self.shed_log.note(std::time::Instant::now()) {
                 log::warn!(
-                    "Failed to clean up orphaned event file {}: {:?}",
-                    metadata.event_id,
-                    e
+                    "Shedding ingest: {pending} events wait for the digest ({shed} requests refused since the last line)"
                 );
             }
+            return Err(AppError::Unavailable(
+                "the digest is behind; retry later".to_string(),
+            ));
         }
+        let free = self.free_disk_bytes.load(Ordering::Relaxed);
+        if free < self.min_free_disk_bytes {
+            counters.ingest_shed(Shed::Disk);
+            if let Some(shed) = self.shed_log.note(std::time::Instant::now()) {
+                log::warn!(
+                    "Shedding ingest: {} MiB free on the spool's volume ({shed} requests refused since the last line)",
+                    free / (1024 * 1024)
+                );
+            }
+            return Err(AppError::Unavailable(
+                "the disk is nearly full; retry later".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// From now on [`Self::admit`] refuses everything: the process is
+    /// shutting down and new events would only add to what it must finish.
+    /// The live digest goes on with what it already queued while the
+    /// commit gate is free; once a batch had to wait for the gate, it lets
+    /// go of the rest (see [`Self::abandon`]).
+    pub fn start_draining(&self) {
+        self.draining
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// `true` the first time recovery skips this spool file, so it is
+    /// logged once rather than on every pass.
+    pub fn first_skip(&self, project_id: i32, event_id: Uuid) -> bool {
+        self.reported_skips
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert((project_id, event_id))
+    }
+
+    /// Whether [`Self::start_draining`] ran: a digest still waiting for its
+    /// slot then leaves its event in the spool for the next start.
+    pub fn is_draining(&self) -> bool {
+        self.draining.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Reads the free space on the spool's volume for [`Self::admit`]. A
+    /// failed read keeps the last value.
+    pub async fn sample_free_disk(&self) {
+        let dir = self.ingest_dir.clone();
+        match tokio::task::spawn_blocking(move || free_bytes(&dir)).await {
+            Ok(Ok(free)) => {
+                let first = self
+                    .free_disk_bytes
+                    .swap(free, std::sync::atomic::Ordering::Relaxed)
+                    == u64::MAX;
+                if first && free < self.min_free_disk_bytes {
+                    log::warn!(
+                        "The spool's volume has {} MiB free, under the {} MiB floor (INGEST_MIN_FREE_DISK_MB, plus room for SQLite's log): ingest refuses events until there is more",
+                        free / (1024 * 1024),
+                        self.min_free_disk_bytes / (1024 * 1024)
+                    );
+                }
+            }
+            Ok(Err(e)) => log::warn!("Could not read the spool volume's free space: {e}"),
+            Err(e) => log::warn!("Could not read the spool volume's free space: {e}"),
+        }
+    }
+
+    /// Digests one stored event: [`Self::prepare`], [`Self::commit`] and
+    /// [`Self::finish`], inline. A failure worth replaying keeps its file
+    /// for the recovery worker; any other drops it.
+    ///
+    /// A kept file whose digest fails the same way [`MAX_DIGEST_ATTEMPTS`]
+    /// times is moved to the spool's `dead/` and reported as
+    /// [`Digested::DeadLettered`]. Transient failures never count.
+    pub async fn digest(&self, pool: &DbPool, metadata: &EventMetadata) -> AppResult<Digested> {
+        let Ok(event_id) = Uuid::parse_str(&metadata.event_id) else {
+            // No file can hold it: an invalid event, dropped.
+            return Err(AppError::Validation("Invalid event_id format".to_string()));
+        };
+        let r = SpoolRef {
+            project_id: metadata.project_id,
+            event_id,
+            size: 0,
+            owner: self.in_flight.register(metadata.project_id, event_id),
+        };
+        let budget = self.reserve(0).await;
+        // ponytail: reads the file on the async thread. Only monitor
+        // failures (a small file just written) come this way; give it a
+        // blocking thread if a large event ever does.
+        let prepared = self.prepare(pool, r, budget, Some(metadata)).await;
+        self.run_prepared(pool, prepared).await
+    }
+
+    /// Commits and finishes a prepared event on its own, or settles one
+    /// that ended before its write.
+    pub(crate) async fn run_prepared(
+        &self,
+        pool: &DbPool,
+        prepared: Prepared,
+    ) -> AppResult<Digested> {
+        match prepared {
+            Prepared::Ready(e) => {
+                let committed = self.commit(pool, vec![*e], CommitMode::Once).await;
+                self.finish(pool, committed)
+                    .await
+                    .pop()
+                    .unwrap_or_else(|| Err(AppError::Internal("no digest result".to_string())))
+            }
+            Prepared::Done(r, digested) => {
+                self.settle(r.project_id, r.event_id, Ok(digested)).await
+            }
+            Prepared::Kept(r, e) => self.settle(r.project_id, r.event_id, Err(e)).await,
+            Prepared::Skipped(r, skip) => {
+                self.settle(r.project_id, r.event_id, Err(skip.into_error()))
+                    .await
+            }
+        }
+    }
+
+    /// What recovery does with a file it cannot digest: one of another
+    /// version or that cannot be opened stays where it is and stops being
+    /// pending (counted, it could keep ingest shedding for as long as it
+    /// sits there), logged once; one that is not a readable record goes to
+    /// `dead/`.
+    pub(crate) async fn settle_skipped(&self, r: SpoolRef, skip: Skip) -> AppResult<Digested> {
+        let result = self.settle_skipped_inner(r, skip).await;
+        self.count(&result);
         result
     }
 
-    /// Runs the digest pipeline; retryable contention leaves the durable event queued.
-    async fn process_impl(&self, pool: &DbPool, metadata: &EventMetadata) -> AppResult<Digested> {
-        // Read the event before quota checks so cleanup can target the exact
-        // project-scoped file that was read. The project row loaded here is
-        // the one the quota check and the platform inference read too.
-        let project = ProjectService::get_by_id(pool, metadata.project_id).await?;
-        let Some(event_bytes) =
-            read_event(&self.ingest_dir, metadata.project_id, &metadata.event_id).await?
-        else {
-            return Ok(Digested::Missing);
+    async fn settle_skipped_inner(&self, r: SpoolRef, skip: Skip) -> AppResult<Digested> {
+        let (project_id, event_id) = (r.project_id, r.event_id);
+        match skip {
+            Skip::Unreadable(why) => {
+                log::warn!("Malformed pending event {event_id} of project {project_id}: {why}");
+                let raw_event_id = event_id.simple().to_string();
+                if self
+                    .dead_letter(project_id, &raw_event_id, &"not a readable pending record")
+                    .await
+                {
+                    return Ok(Digested::DeadLettered);
+                }
+            }
+            Skip::OtherVersion => {
+                self.pending.remove(project_id, event_id);
+                if self.first_skip(project_id, event_id) {
+                    log::warn!(
+                        "Spool file of event {event_id} (project {project_id}) holds a record version this release does not read; left in place"
+                    );
+                }
+            }
+            Skip::CannotOpen(why) => {
+                self.pending.remove(project_id, event_id);
+                if self.first_skip(project_id, event_id) {
+                    log::warn!(
+                        "Spool file of event {event_id} (project {project_id}) cannot be read ({why}); left in place"
+                    );
+                }
+            }
+        }
+        Ok(Digested::Skipped)
+    }
+
+    /// Where every digest outcome ends: a failure worth replaying keeps the
+    /// file, counted toward dead-lettering when only a retry could fix it;
+    /// any other failure drops the file; whatever is over stops being
+    /// pending.
+    async fn settle(
+        &self,
+        project_id: i32,
+        event_id: Uuid,
+        result: AppResult<Digested>,
+    ) -> AppResult<Digested> {
+        let result = self.settle_inner(project_id, event_id, result).await;
+        self.count(&result);
+        result
+    }
+
+    /// Every digest outcome is counted here, whichever path settled it.
+    fn count(&self, result: &AppResult<Digested>) {
+        let counters = self.counters;
+        match result {
+            Ok(Digested::Stored) => counters.digest_ok(),
+            Ok(Digested::RateLimited) => counters.digest_rate_limited(),
+            Ok(Digested::DeadLettered) => {
+                counters.digest_failed();
+                counters.dead_lettered();
+            }
+            Ok(Digested::Skipped) => {}
+            Ok(Digested::Missing) => counters.digest_failed(),
+            Err(e) => {
+                counters.digest_failed();
+                if let Some(code) = e.db_code() {
+                    counters.db_error(&code);
+                }
+            }
+        }
+    }
+
+    async fn settle_inner(
+        &self,
+        project_id: i32,
+        event_id: Uuid,
+        result: AppResult<Digested>,
+    ) -> AppResult<Digested> {
+        let key = (project_id, event_id);
+        // Owned until settled: recovery must not take a file being moved
+        // to `dead/` or deleted.
+        debug_assert!(
+            self.in_flight.contains(project_id, event_id),
+            "event {event_id} settled without its owner"
+        );
+        let raw_event_id = event_id.simple().to_string();
+        if let Err(e) = &result {
+            if should_retain_event(e) {
+                // Still queued, so still pending: the replay ends it. While
+                // the breaker holds the digest halted nothing is counted:
+                // the database refuses every event, not this one.
+                if e.is_transient() || self.is_halted() {
+                    return result;
+                }
+                let attempts = {
+                    let mut failed = self
+                        .failed_attempts
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner());
+                    let attempts = failed.entry(key).or_default();
+                    *attempts += 1;
+                    *attempts
+                };
+                if attempts < MAX_DIGEST_ATTEMPTS
+                    || !self.dead_letter(project_id, &raw_event_id, e).await
+                {
+                    return result;
+                }
+                return Ok(Digested::DeadLettered);
+            }
+            if let Err(e) = delete_event(&self.ingest_dir, project_id, &raw_event_id).await {
+                log::warn!("Failed to clean up orphaned event file {raw_event_id}: {e:?}");
+            }
+        }
+        self.failed_attempts
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&key);
+        self.pending.remove(project_id, event_id);
+        result
+    }
+
+    /// Everything a digest does before its write: the project row, the
+    /// event read and decoded, its frames processed, its grouping keys and
+    /// the `events` row it will become. The parsed tree is dropped here.
+    ///
+    /// `given` is the metadata the caller already holds (the live path, a
+    /// test digesting at a set time); without it, the file's own is read.
+    ///
+    /// It reads the spool file blocking, so the pipeline runs it on a
+    /// blocking thread.
+    pub(crate) async fn prepare(
+        &self,
+        pool: &DbPool,
+        r: SpoolRef,
+        budget: tokio::sync::OwnedSemaphorePermit,
+        given: Option<&EventMetadata>,
+    ) -> Prepared {
+        macro_rules! check {
+            ($result:expr) => {
+                match $result {
+                    Ok(value) => value,
+                    Err(e) => return Prepared::Kept(r, e),
+                }
+            };
+        }
+        let (project_id, event_id) = (r.project_id, r.event_id);
+        // The project row loaded here is the one the quota check and the
+        // platform inference read too.
+        let (project, installation_quota) =
+            check!(ProjectService::get_with_installation_quota(pool, project_id).await);
+        let (stored, event_bytes) = match read_pending(&self.ingest_dir, project_id, event_id) {
+            PendingRead::Event(stored, bytes) => (stored, bytes),
+            PendingRead::Missing => return Prepared::Done(r, Digested::Missing),
+            PendingRead::OtherVersion => return Prepared::Skipped(r, Skip::OtherVersion),
+            PendingRead::CannotOpen(why) => return Prepared::Skipped(r, Skip::CannotOpen(why)),
+            PendingRead::Unreadable(why) => return Prepared::Skipped(r, Skip::Unreadable(why)),
         };
+        let metadata = given.cloned().unwrap_or(stored);
 
         // Parse event from filesystem. Ingest strips NUL escapes already;
         // this covers files queued by a release that did not.
-        let mut event_data: serde_json::Value =
-            serde_json::from_slice(&crate::ingest::parser::strip_nul_escapes(&event_bytes))
-                .map_err(|e| AppError::Validation(format!("Invalid event JSON: {e}")))?;
+        let mut event_data: serde_json::Value = check!(serde_json::from_slice(
+            &crate::ingest::parser::strip_nul_escapes(&event_bytes)
+        )
+        .map_err(|e| AppError::Validation(format!("Invalid event JSON: {e}"))));
 
         // Relay's `TimestampProcessor`: an event from before 1970 is invalid,
         // and so is each breadcrumb from before 1970.
         if is_stale(&event_data, "timestamp") || is_stale(&event_data, "start_timestamp") {
-            return Err(AppError::Validation(
-                "event timestamp is before 1970".to_string(),
-            ));
+            return Prepared::Kept(
+                r,
+                AppError::Validation("event timestamp is before 1970".to_string()),
+            );
         }
         drop_stale_breadcrumbs(&mut event_data);
         // Taken out of every event so they are never stored in its data.
         let attachments = feedback::take_attachments(&mut event_data);
         // A feedback Sentry would filter is dropped here, like an invalid event.
-        let feedback = Feedback::from_event(&event_data)?;
+        let feedback = check!(Feedback::from_event(&event_data));
         // Checked here and not at ingest: a feedback also arrives as an event
         // of type `feedback` and from the user-report endpoint, and every one
         // of them is digested through this line.
         if feedback.is_some() && !project.keeps(Product::Feedback) {
-            return Err(AppError::Validation(
-                "feedback dropped: turned off for this project".to_string(),
-            ));
+            return Prepared::Kept(
+                r,
+                AppError::Validation("feedback dropped: turned off for this project".to_string()),
+            );
         }
         // A feedback occurrence defaults to `info`, and the event, its issue
         // and its alert rules all read that level from here.
@@ -161,7 +962,7 @@ impl ErrorProcessor {
         // Rewrite stack frames using source maps (non-fatal)
         if let Err(e) = crate::services::sourcemap::rewrite_frames(
             self.sourcemap_provider.as_ref(),
-            metadata.project_id,
+            project_id,
             &mut event_data,
         )
         .await
@@ -176,14 +977,14 @@ impl ErrorProcessor {
         // bundles, before grouping as Sentry does (non-fatal).
         crate::services::jvm::process_event(
             self.sourcemap_provider.as_ref(),
-            metadata.project_id,
+            project_id,
             &mut event_data,
         )
         .await;
         // Symbolicate native (Apple) frames with dSYMs, likewise.
         crate::services::native::process_event(
             self.sourcemap_provider.as_ref(),
-            metadata.project_id,
+            project_id,
             &mut event_data,
         )
         .await;
@@ -207,70 +1008,25 @@ impl ErrorProcessor {
         // DB writes do not carry a second copy of the payload in memory.
         drop(event_bytes);
 
-        let event_id = Uuid::parse_str(&metadata.event_id)
-            .map_err(|_| AppError::Validation("Invalid event_id".to_string()))?;
-
-        if EventService::exists(pool, metadata.project_id, event_id).await? {
-            log::warn!("Duplicate event_id: {}", metadata.event_id);
-            let existing =
-                EventService::get_by_event_id(pool, metadata.project_id, event_id).await?;
-            if let Some(issue_id) = existing.issue_id {
-                let mut issue = IssueService::get_by_id(pool, issue_id).await?;
-                let facts = event_facts(&event_data);
-                // Rules match the count this event brought the issue to, not
-                // today's. A row without that count (from before it was kept,
-                // or digested while muted) replays its lifecycle alert only,
-                // and a new issue's came from its first event.
-                let types = match existing.issue_event_count {
-                    Some(count) => {
-                        issue.digested_event_count = count;
-                        event_alert_types(
-                            existing.alert_type,
-                            issue.is_muted(),
-                            issue.issue_category == feedback::CATEGORY,
-                        )
-                    }
-                    None => {
-                        if existing.alert_type == Some(AlertType::NewIssue) {
-                            issue.digested_event_count = 1;
-                        }
-                        existing.alert_type.into_iter().collect()
-                    }
-                };
-                // Each rule skips what it already recorded for this event.
-                for &alert_type in &types {
-                    AlertService::trigger_event_alert(
-                        pool,
-                        &project,
-                        &issue,
-                        alert_type,
-                        event_id,
-                        facts,
-                        &self.dashboard_url,
-                        &self.smtp,
-                    )
-                    .await?;
-                }
-                // Opens nothing when the first run already linked one.
-                if types.contains(&AlertType::NewIssue) {
-                    self.spawn_auto_create(pool, &project, &issue, facts);
-                }
-            }
-            self.delete_after_success(pool, metadata.project_id, event_id, &metadata.event_id)
-                .await?;
-            return Ok(Digested::Stored);
-        }
-
         // The cached check, as Relay's `CombinedRateLimiter` runs first: the
         // counters this project row was loaded with already show whether the
         // window is full. Dropping here skips the write lock and the rows a
-        // rollback would undo; `try_consume` in the transaction stays the one
-        // that decides a race.
-        if RateLimitService::check_quota(pool, &project, &self.rate_limit_config)
-            .await?
-            .is_some()
+        // rollback would undo; the quota in the transaction stays the one
+        // that decides a race. An event already stored is a replay, not a
+        // new event: it goes on to the transaction, which finds it.
+        if RateLimitService::check_quota(
+            &installation_quota,
+            &project,
+            &self.rate_limit_config,
+            Default::default(),
+        )
+        .is_some()
+            && !check!(EventService::exists(pool, project_id, event_id).await)
         {
-            return self.drop_rate_limited(pool, metadata).await;
+            return match self.drop_rate_limited(pool, project_id, event_id).await {
+                Ok(digested) => Prepared::Done(r, digested),
+                Err(e) => Prepared::Kept(r, e),
+            };
         }
 
         // Calculate grouping key and hash. Every feedback is its own issue:
@@ -293,98 +1049,557 @@ impl ErrorProcessor {
             denormalized.calculated_value = feedback.message.clone();
             denormalized.culprit = "user".to_string();
         }
-        // Cut to the VARCHAR(20) and VARCHAR(64) columns, which Postgres enforces.
-        let str_field = |key: &str, max_chars: usize| {
-            event_data
-                .get(key)
-                .and_then(|v| v.as_str())
-                .map(|s| clamp(s, max_chars))
-        };
         let facts = event_facts(&event_data);
         let level = event_data
             .get("level")
             .and_then(|v| v.as_str())
             .and_then(relay_level);
-        let platform = str_field("platform", 64);
+        let row = EventRow::new(
+            &event_data,
+            metadata.ingested_at,
+            &denormalized,
+            metadata.remote_addr.as_deref(),
+            event_id,
+            project_id,
+        );
+        let data_bytes = row.data.len() + attachments.iter().map(|a| a.data.len()).sum::<usize>();
+        Prepared::Ready(Box::new(PreparedEvent {
+            budget,
+            metadata,
+            project,
+            grouping_key,
+            grouping_key_hash,
+            legacy_grouping_key_hash,
+            level,
+            // Cut to the VARCHAR(64) column, which Postgres enforces.
+            platform: event_data
+                .get("platform")
+                .and_then(|v| v.as_str())
+                .map(|s| clamp(s, 64)),
+            environment: clamp(
+                event_data
+                    .get("environment")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
+                64,
+            ),
+            facts_environment: facts.environment.map(str::to_string),
+            event_platform: event_data
+                .get("platform")
+                .and_then(|p| p.as_str())
+                .map(str::to_string),
+            denormalized,
+            row,
+            feedback,
+            attachments,
+            data_bytes,
+            r,
+        }))
+    }
 
-        // Write the digest: grouping, issue, the event itself and the
-        // project's stored-event counter, in one transaction, retried as a
-        // whole when SQLite reports the database busy. On SQLite the digests
-        // take turns at the write here, in process (see `write_slot`).
-        #[cfg(feature = "sqlite")]
-        let write_slot = self.write_slot.lock().await;
-        let landed = write_digest(
-            pool,
-            &DigestWrite {
-                event_id,
-                raw_event_id: &metadata.event_id,
-                project_id: metadata.project_id,
-                grouping_key: &grouping_key,
-                grouping_key_hash: &grouping_key_hash,
-                legacy_grouping_key_hash: &legacy_grouping_key_hash,
-                timestamp: metadata.ingested_at,
-                denormalized: &denormalized,
-                level,
-                platform: platform.as_deref(),
-                event_data: &event_data,
-                remote_addr: metadata.remote_addr.as_deref(),
-                rate_limit_config: &self.rate_limit_config,
-                project: &project,
-                feedback: feedback.as_ref(),
-                attachments: &attachments,
-            },
-        )
-        .await?;
-        #[cfg(feature = "sqlite")]
-        drop(write_slot);
-        let (issue, issue_created, regressed) = match landed {
-            DigestOutcome::Written(issue, created, regressed) => (*issue, created, regressed),
-            DigestOutcome::RateLimited(_) => {
-                return self.drop_rate_limited(pool, metadata).await;
+    /// Writes `batch`, as one transaction when it can. A failure of the
+    /// database itself (an outage, a busy SQLite) fails every event, kept
+    /// for a replay. Any other failure splits the batch in halves, order
+    /// kept, until the event that fails is alone: its neighbours are stored,
+    /// and it fails on its own, toward the circuit breaker.
+    ///
+    /// Each attempt holds the commit gate. In [`CommitMode::Live`] the events
+    /// a failed database left are retried whole, with a backoff, for as long
+    /// as it takes; a drain drops them before their next attempt, and their
+    /// files are the next start's.
+    pub(crate) async fn commit(
+        &self,
+        pool: &DbPool,
+        batch: Vec<PreparedEvent>,
+        mode: CommitMode,
+    ) -> Vec<Committed> {
+        let mut done = Vec::with_capacity(batch.len());
+        let mut todo = batch;
+        for attempt in 0.. {
+            // Once the process drains, a batch that had to wait for the
+            // gate is dropped; its files are the next start's.
+            let gate = match self.commit_gate.try_acquire() {
+                Ok(gate) => gate,
+                Err(_) => {
+                    let gate = self
+                        .commit_gate
+                        .acquire()
+                        .await
+                        .expect("the commit gate is never closed");
+                    if mode == CommitMode::Live && self.is_draining() {
+                        self.abandon();
+                        return done;
+                    }
+                    gate
+                }
+            };
+            let from = done.len();
+            self.commit_split(pool, todo, &mut done).await;
+            drop(gate);
+            if mode == CommitMode::Once {
+                break;
             }
-        };
+            let mut retry = Vec::new();
+            for c in done.split_off(from) {
+                match &c.outcome {
+                    Err(e) if is_outage(e) => {
+                        if retry.is_empty() && attempt % 20 == 0 {
+                            log::warn!("The database failed a digest batch; retrying it: {e:?}");
+                        }
+                        retry.push(c.e);
+                    }
+                    _ => done.push(c),
+                }
+            }
+            if retry.is_empty() {
+                break;
+            }
+            if self.is_draining() {
+                self.abandon();
+                break;
+            }
+            todo = retry;
+            tokio::time::sleep(outage_backoff(attempt)).await;
+        }
+        done
+    }
 
+    fn commit_split<'a>(
+        &'a self,
+        pool: &'a DbPool,
+        mut batch: Vec<PreparedEvent>,
+        done: &'a mut Vec<Committed>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+        Box::pin(async move {
+            match self.commit_once(pool, &batch).await {
+                Ok(BatchOutcome { events, issues }) => {
+                    if events
+                        .iter()
+                        .any(|o| matches!(o, EventOutcome::Inserted { .. }))
+                    {
+                        self.note_stored();
+                    }
+                    // The quota's stored counters hold these from here on:
+                    // still pending, the ingest check would count them twice.
+                    for e in &batch {
+                        self.pending.remove(e.r.project_id, e.r.event_id);
+                    }
+                    done.extend(batch.into_iter().zip(events).map(|(e, outcome)| {
+                        // The issue as this event left it: its own count.
+                        let issue = match &outcome {
+                            EventOutcome::Inserted {
+                                issue_id,
+                                issue_event_count,
+                                ..
+                            } => issues.get(issue_id).cloned().map(|mut issue| {
+                                if let Some(count) = issue_event_count {
+                                    issue.digested_event_count = *count;
+                                }
+                                issue
+                            }),
+                            _ => None,
+                        };
+                        Committed {
+                            e,
+                            outcome: Ok(outcome),
+                            issue,
+                        }
+                    }));
+                }
+                Err(error) if batch.len() > 1 && !is_outage(&error) => {
+                    // No savepoints: hundreds of them overflow Postgres's
+                    // subtransaction cache. 2·⌈log₂ n⌉ + 1 transactions at most.
+                    let right = batch.split_off(batch.len() / 2);
+                    self.commit_split(pool, batch, done).await;
+                    self.commit_split(pool, right, done).await;
+                }
+                Err(error) => {
+                    if !is_outage(&error) {
+                        if let Some(e) = batch.first() {
+                            self.note_isolated_failure(pool, e).await;
+                        }
+                    }
+                    let mut error = Some(error);
+                    done.extend(batch.into_iter().map(|e| Committed {
+                        e,
+                        outcome: Err(error.take().unwrap_or_else(|| {
+                            AppError::Unavailable("the database failed the batch".to_string())
+                        })),
+                        issue: None,
+                    }));
+                }
+            }
+        })
+    }
+
+    /// One transaction for `batch`. On SQLite the digests take turns at the
+    /// write here, in process (see `write_slot`). One attempt: a busy
+    /// database fails the batch, which a replay retries.
+    async fn commit_once(&self, pool: &DbPool, batch: &[PreparedEvent]) -> AppResult<BatchOutcome> {
+        self.counters.digest_batch(batch.len());
+        #[cfg(feature = "sqlite")]
+        let (started, pushes) = (std::time::Instant::now(), self.queue.pushes());
+        let mut committer = self.committer.lock().await;
+        let conn = self.committer_conn(pool, &mut committer).await?;
+        #[cfg(feature = "sqlite")]
+        let pages = checkpoint_pages(
+            self.pending.counts(0).installation as usize,
+            self.batch_max_events,
+        );
+        let result = async {
+            #[cfg(feature = "sqlite")]
+            {
+                sqlx::query(sqlx::AssertSqlSafe(format!(
+                    "PRAGMA wal_autocheckpoint = {pages}"
+                )))
+                .execute(&mut *conn)
+                .await?;
+            }
+            #[cfg(feature = "sqlite")]
+            let _turn = self.write_slot.lock().await;
+            commit_batch_once(conn, batch, &self.rate_limit_config).await
+        }
+        .await;
+        if let Err(e) = &result {
+            drop_if_broken(&mut committer, e);
+        }
+        // Outside the write turn: the checkpoint waits on SQLite's own lock.
+        #[cfg(feature = "sqlite")]
+        if result.is_ok() && pages == crate::db::CAUGHT_UP_CHECKPOINT_PAGES {
+            if let Some(conn) = committer.as_mut() {
+                if let Err(e) = crate::db::checkpoint_caught_up(conn).await {
+                    log::warn!("The digest's checkpoint failed; it opens a new connection: {e:?}");
+                    *committer = None;
+                }
+            }
+        }
+        #[cfg(feature = "test-seams")]
+        if result.is_ok()
+            && self
+                .fail_after_commit
+                .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            *committer = None;
+            return Err(AppError::Database(sqlx::Error::Io(std::io::Error::other(
+                "injected: the connection dropped during COMMIT",
+            ))));
+        }
+        #[cfg(feature = "sqlite")]
+        {
+            let rest = yield_to_ingest(
+                started.elapsed(),
+                self.queue.pushes() != pushes,
+                self.queue.len(),
+                self.batch_max_events,
+            );
+            drop(committer);
+            if !rest.is_zero() && !self.is_draining() {
+                tokio::time::sleep(rest).await;
+            }
+        }
+        result
+    }
+
+    /// Makes every commit before it, and the pool's own writes, survive a
+    /// power loss: one commit on the `synchronous=FULL` connection fsyncs
+    /// the write-ahead log, which holds them all. Alert rows commit through
+    /// the pool (`NORMAL`), so a batch whose alerts ran calls this before
+    /// its files go.
+    #[cfg(feature = "sqlite")]
+    async fn sync_barrier(&self, pool: &DbPool) -> AppResult<()> {
+        let mut committer = self.committer.lock().await;
+        let conn = self.committer_conn(pool, &mut committer).await?;
+        let result: AppResult<()> = async {
+            let _turn = self.write_slot.lock().await;
+            let mut tx = sqlx::Connection::begin_with(&mut *conn, "BEGIN IMMEDIATE").await?;
+            // A commit that changed no page writes no frame and syncs
+            // nothing (SQLite skips an update that leaves the bytes as they
+            // were), so the page is changed and changed back.
+            for step in [
+                "UPDATE installation SET digested_event_count = digested_event_count + 1 WHERE id = 1",
+                "UPDATE installation SET digested_event_count = digested_event_count - 1 WHERE id = 1",
+            ] {
+                sqlx::query(step).execute(&mut *tx).await?;
+            }
+            tx.commit().await?;
+            Ok(())
+        }
+        .await;
+        if let Err(e) = &result {
+            drop_if_broken(&mut committer, e);
+        }
+        result
+    }
+
+    /// A `PASSIVE` checkpoint on the digest's connection, once the digest is
+    /// caught up with ingest or halted (`timer_checkpoints`); while it is behind, its batches' own deferred
+    /// threshold applies (`checkpoint_pages`). Pool connections never
+    /// checkpoint, so this is what checkpoints the writes that never reach
+    /// the digest (transactions, logs, spans, sessions, alert rows), and the
+    /// log a burst deferred, right after the burst. On a timer, never in a
+    /// request; `PASSIVE` waits for no reader and no writer.
+    #[cfg(feature = "sqlite")]
+    pub async fn checkpoint_when_caught_up(&self, pool: &DbPool) -> AppResult<()> {
+        if !timer_checkpoints(
+            self.pending.counts(0).installation as usize,
+            self.batch_max_events,
+            self.is_halted(),
+        ) {
+            return Ok(());
+        }
+        let mut committer = self.committer.lock().await;
+        let conn = self.committer_conn(pool, &mut committer).await?;
+        let result = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
+            .execute(&mut *conn)
+            .await
+            .map(drop)
+            .map_err(AppError::from);
+        if let Err(e) = &result {
+            drop_if_broken(&mut committer, e);
+        }
+        result
+    }
+
+    /// The digest's own connection (held in `slot`, the locked `committer`),
+    /// opened when there is none. Fails as an outage once it was closed for
+    /// shutdown, when the pool is closed or a new connection does not answer.
+    async fn committer_conn<'a>(
+        &self,
+        pool: &DbPool,
+        slot: &'a mut Option<DbConn>,
+    ) -> AppResult<&'a mut DbConn> {
+        if pool.is_closed()
+            || self
+                .committer_closed
+                .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return Err(AppError::Unavailable("the database is closing".to_string()));
+        }
+        if slot.is_none() {
+            let mut conn = crate::db::connect_committer(pool).await.map_err(|e| {
+                AppError::Unavailable(format!("cannot open the digest's connection: {e}"))
+            })?;
+            sqlx::query("SELECT 1")
+                .execute(&mut conn)
+                .await
+                .map_err(|e| {
+                    AppError::Unavailable(format!("the digest's connection does not answer: {e}"))
+                })?;
+            *slot = Some(conn);
+        }
+        Ok(slot.as_mut().expect("opened above"))
+    }
+
+    /// Closes the digest's own connection for good, after the batch on it,
+    /// if any: shutdown checkpoints and closes the pool next, and a digest
+    /// after this leaves its file for the next start.
+    pub async fn close_committer(&self) {
+        // Before the lock: shutdown gives up waiting for a batch that holds
+        // it, and the connection must stay closed all the same.
+        self.committer_closed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let mut committer = self.committer.lock().await;
+        if let Some(conn) = committer.take() {
+            if let Err(e) = sqlx::Connection::close(conn).await {
+                log::warn!("Failed to close the digest's connection: {e:?}");
+            }
+        }
+    }
+
+    /// What follows a commit, per event in batch order: alerts, the replay
+    /// of an event already stored; then, for the whole batch, the removal of
+    /// the files whose digest is over and the bookkeeping.
+    pub(crate) async fn finish(
+        &self,
+        pool: &DbPool,
+        done: Vec<Committed>,
+    ) -> Vec<AppResult<Digested>> {
+        let mut ctx = FinishCtx::default();
+        let mut steps = Vec::with_capacity(done.len());
+        let mut seen = std::collections::HashSet::new();
+        for committed in done {
+            let key = (committed.e.r.project_id, committed.e.r.event_id);
+            // A split can part two copies, each then first in its half.
+            if !seen.insert(key) || matches!(committed.outcome, Ok(EventOutcome::DuplicateInBatch))
+            {
+                // Its file is the first copy's; its guard goes now.
+                steps.push(Step::Copy(key));
+                continue;
+            }
+            let (result, r) = self.finish_one(pool, committed, &mut ctx).await;
+            steps.push(Step::Over(key, result, r));
+        }
+        crate::failpoint!("digest.after_alerts_before_delete");
+
+        // Alert rows are pool commits: on SQLite they become power-safe only
+        // with a commit on the durable connection, before their file goes.
+        #[cfg(feature = "sqlite")]
+        if ctx.alerted && steps.iter().any(|s| matches!(s, Step::Over(_, Ok(_), _))) {
+            if let Err(e) = self.sync_barrier(pool).await {
+                log::warn!("The digest could not make its alerts durable; their files stay: {e:?}");
+                let why = e.to_string();
+                for step in &mut steps {
+                    if let Step::Over(_, result @ Ok(_), _) = step {
+                        *result = Err(AppError::Unavailable(why.clone()));
+                    }
+                }
+            }
+        }
+        let paths: Vec<_> = steps
+            .iter()
+            .filter_map(|s| match s {
+                Step::Over(_, Ok(_), r) => pending_event_path(
+                    &self.ingest_dir,
+                    r.project_id,
+                    &r.event_id.simple().to_string(),
+                )
+                .ok(),
+                _ => None,
+            })
+            .collect();
+        if let Err(e) = delete_paths(paths).await {
+            let why = e.to_string();
+            for step in &mut steps {
+                if let Step::Over(_, result @ Ok(_), _) = step {
+                    *result = Err(AppError::Internal(format!(
+                        "Failed to delete event files: {why}"
+                    )));
+                }
+            }
+        }
+
+        let mut results = Vec::with_capacity(steps.len());
+        // What each event's first copy came to, for the copies after it.
+        let mut firsts: std::collections::HashMap<(i32, Uuid), Option<Digested>> =
+            std::collections::HashMap::new();
+        for step in steps {
+            match step {
+                Step::Over((project_id, event_id), result, r) => {
+                    // The guard goes after the file, once settled.
+                    let result = self.settle(project_id, event_id, result).await;
+                    drop(r);
+                    firsts.insert((project_id, event_id), result.as_ref().ok().copied());
+                    results.push(result);
+                }
+                Step::Copy(key) => {
+                    // Counted like any delivery when its first copy is over;
+                    // a failed first copy was counted once, for both.
+                    let result = match firsts.get(&key) {
+                        Some(Some(digested)) => Ok(*digested),
+                        _ => Err(AppError::Internal(
+                            "a copy of an event whose digest failed".to_string(),
+                        )),
+                    };
+                    if result.is_ok() {
+                        self.count(&result);
+                    }
+                    results.push(result);
+                }
+            }
+        }
+        results
+    }
+
+    /// One event's alerts and side effects. With its result, its spool file,
+    /// deleted when the result is `Ok`.
+    async fn finish_one(
+        &self,
+        pool: &DbPool,
+        committed: Committed,
+        ctx: &mut FinishCtx,
+    ) -> (AppResult<Digested>, SpoolRef) {
+        let Committed { e, outcome, issue } = committed;
+        let raw_event_id = e.r.event_id.simple().to_string();
+        let result = match outcome {
+            Err(error) => Err(error),
+            Ok(EventOutcome::RateLimited(scope)) => {
+                // Counted on its project in the transaction that dropped it.
+                log::debug!("Event {raw_event_id} dropped: the {scope:?} quota is full");
+                Ok(Digested::RateLimited)
+            }
+            Ok(EventOutcome::DuplicateInBatch) => Ok(Digested::Stored),
+            Ok(EventOutcome::AlreadyStored {
+                issue_id,
+                alert_type,
+                issue_event_count,
+            }) => {
+                log::warn!("Duplicate event_id: {raw_event_id}");
+                let replayed = self
+                    .replay(pool, &e, issue_id, alert_type, issue_event_count, ctx)
+                    .await;
+                after_commit(replayed, &raw_event_id).map(|()| Digested::Stored)
+            }
+            Ok(EventOutcome::Inserted {
+                lifecycle,
+                muted,
+                regressed,
+                ..
+            }) => match issue {
+                Some(issue) => self
+                    .after_insert(pool, &e, issue, lifecycle, muted, regressed, ctx)
+                    .await
+                    .map(|()| Digested::Stored),
+                None => Err(AppError::Internal(
+                    "a stored event without its issue".to_string(),
+                )),
+            },
+        };
+        (result, e.r)
+    }
+
+    /// An inserted event's alerts and side effects.
+    #[allow(clippy::too_many_arguments)]
+    async fn after_insert(
+        &self,
+        pool: &DbPool,
+        e: &PreparedEvent,
+        issue: Issue,
+        lifecycle: Option<AlertType>,
+        muted: bool,
+        regressed: bool,
+        ctx: &mut FinishCtx,
+    ) -> AppResult<()> {
+        let (project_id, event_id) = (e.r.project_id, e.r.event_id);
+        let raw_event_id = event_id.simple().to_string();
         // Sentry-parity platform auto-detection (set once, never overwritten).
         // Best-effort: the digest transaction already committed the event, so
         // ancillary project metadata must not make the durable event fail.
         // Skipped once the project has a platform: the UPDATE would match no
-        // row, but on SQLite it still takes the write lock on every event.
-        if project.platform.is_none() {
-            if let Some(event_platform) = event_data.get("platform").and_then(|p| p.as_str()) {
-                if let Err(e) = ProjectService::infer_platform_from_event(
-                    pool,
-                    metadata.project_id,
-                    event_platform,
-                )
-                .await
-                {
-                    log::warn!(
-                        "platform inference failed for project {} (best-effort; a later event can self-heal): {:?}",
-                        metadata.project_id,
-                        e
-                    );
+        // row, but on SQLite it still takes the write lock. Once per project
+        // per batch.
+        if e.project.platform.is_none() {
+            if let Some(event_platform) = &e.event_platform {
+                if ctx.inferred.insert(project_id) {
+                    #[cfg(feature = "sqlite")]
+                    let _turn = self.write_turn().await;
+                    if let Err(err) =
+                        ProjectService::infer_platform_from_event(pool, project_id, event_platform)
+                            .await
+                    {
+                        log::warn!(
+                            "platform inference failed for project {project_id} (best-effort; a later event can self-heal): {err:?}"
+                        );
+                    }
                 }
             }
         }
 
         // Persist alert history before deleting the only durable source.
-        let lifecycle = alert_type_for_lifecycle(issue_created, regressed, feedback.is_some());
-        let types = event_alert_types(lifecycle, issue.is_muted(), feedback.is_some());
-        for &alert_type in &types {
-            AlertService::trigger_event_alert(
-                pool,
-                &project,
-                &issue,
-                alert_type,
-                event_id,
-                facts,
-                &self.dashboard_url,
-                &self.smtp,
-            )
-            .await?;
+        let facts = e.facts();
+        let types = event_alert_types(lifecycle, muted, e.feedback.is_some());
+        let alerted: AppResult<()> = async {
+            for &alert_type in &types {
+                self.trigger_event_alert(
+                    pool, &e.project, &issue, alert_type, event_id, facts, ctx,
+                )
+                .await?;
+            }
+            Ok(())
         }
+        .await;
+        after_commit(alerted, &raw_event_id)?;
         if types.contains(&AlertType::NewIssue) {
-            self.spawn_auto_create(pool, &project, &issue, facts);
+            self.spawn_auto_create(pool, &e.project, &issue, facts);
         }
         // A regression reopens the linked GitHub issues too.
         if regressed {
@@ -393,20 +1608,116 @@ impl ErrorProcessor {
                 crate::services::github::sync::mirror_status(pool.clone(), issue.id),
             );
         }
-
-        // Delete after the event and alert writes complete; SQLite also
-        // requires a successful durability checkpoint.
-        self.delete_after_success(pool, metadata.project_id, event_id, &metadata.event_id)
-            .await?;
-
-        log::info!(
-            "Digested event {} -> issue {} ({})",
-            metadata.event_id,
+        log::debug!(
+            "Digested event {raw_event_id} -> issue {} ({})",
             issue.id,
-            if issue_created { "new" } else { "existing" }
+            if matches!(
+                lifecycle,
+                Some(AlertType::NewIssue | AlertType::NewFeedback)
+            ) {
+                "new"
+            } else {
+                "existing"
+            }
         );
+        Ok(())
+    }
 
-        Ok(Digested::Stored)
+    /// The alerts of an event that was already stored, run again: each rule
+    /// skips what it already recorded for this event.
+    async fn replay(
+        &self,
+        pool: &DbPool,
+        e: &PreparedEvent,
+        issue_id: Option<Uuid>,
+        alert_type: Option<AlertType>,
+        issue_event_count: Option<i32>,
+        ctx: &mut FinishCtx,
+    ) -> AppResult<()> {
+        let Some(issue_id) = issue_id else {
+            return Ok(());
+        };
+        let mut issue = IssueService::get_by_id(pool, issue_id).await?;
+        let facts = e.facts();
+        // Rules match the count this event brought the issue to, not
+        // today's. A row without that count (from before it was kept,
+        // or digested while muted) replays its lifecycle alert only,
+        // and a new issue's came from its first event.
+        let types = match issue_event_count {
+            Some(count) => {
+                issue.digested_event_count = count;
+                event_alert_types(
+                    alert_type,
+                    issue.is_muted(),
+                    issue.issue_category == feedback::CATEGORY,
+                )
+            }
+            None => {
+                if alert_type == Some(AlertType::NewIssue) {
+                    issue.digested_event_count = 1;
+                }
+                alert_type.into_iter().collect()
+            }
+        };
+        // Each rule skips what it already recorded for this event.
+        for &alert_type in &types {
+            self.trigger_event_alert(
+                pool,
+                &e.project,
+                &issue,
+                alert_type,
+                e.r.event_id,
+                facts,
+                ctx,
+            )
+            .await?;
+        }
+        // Opens nothing when the first run already linked one.
+        if types.contains(&AlertType::NewIssue) {
+            self.spawn_auto_create(pool, &e.project, &issue, facts);
+        }
+        // Mirrors the issue's current status, so a no-op when the
+        // first run already did.
+        if alert_type == Some(AlertType::Regression) {
+            crate::services::github::sync::spawn(
+                "status sync",
+                crate::services::github::sync::mirror_status(pool.clone(), issue.id),
+            );
+        }
+        Ok(())
+    }
+
+    /// Moves a spool file that will never digest to `dead/` and stops
+    /// counting it as pending. `false` when the move failed: the file stays
+    /// queued, as before.
+    pub async fn dead_letter(
+        &self,
+        project_id: i32,
+        event_id: &str,
+        why: &(dyn std::fmt::Display + Sync),
+    ) -> bool {
+        match crate::ingest::storage::dead_letter_event(&self.ingest_dir, project_id, event_id)
+            .await
+        {
+            Ok(path) => {
+                log::error!(
+                    "Event {event_id} of project {project_id} cannot be digested ({why}); moved to {}",
+                    path.display()
+                );
+                if let Ok(event_id) = Uuid::parse_str(event_id) {
+                    self.failed_attempts
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .remove(&(project_id, event_id));
+                    self.pending.remove(project_id, event_id);
+                }
+                true
+            }
+            Err(e) => {
+                log::error!("Failed to dead-letter event {event_id}: {e:?}");
+                false
+            }
+        }
     }
 
     /// Opens the GitHub issue for a new-issue event, when the project's
@@ -431,214 +1742,234 @@ impl ErrorProcessor {
         );
     }
 
-    /// Drops an accepted event the quota has no room for: counted on its
-    /// project, then its durable copy removed.
+    /// Drops an accepted event the quota has no room for: its durable copy
+    /// removed, then counted on its project. In that order, so a failed
+    /// removal replays without having counted it, and it is counted at most
+    /// once (a failed count after the removal loses one count, not an event).
     async fn drop_rate_limited(
-        &self,
-        pool: &DbPool,
-        metadata: &EventMetadata,
-    ) -> AppResult<Digested> {
-        log::debug!("Event {} dropped: quota exceeded", metadata.event_id);
-        RateLimitService::record_rate_limited(pool, metadata.project_id).await?;
-        delete_event(&self.ingest_dir, metadata.project_id, &metadata.event_id).await?;
-        Ok(Digested::RateLimited)
-    }
-
-    /// Removes the durable copy of an event whose digest has committed.
-    ///
-    /// The file is what a restart replays, so on SQLite it waits for a
-    /// durability checkpoint first: the commit is in the write-ahead log, and with
-    /// `synchronous=NORMAL` only a completed `FULL` checkpoint puts it in the
-    /// database file. The wait happens on the [`DurabilityQueue`], not here,
-    /// so the digest (and the processing slot it holds) is released as soon
-    /// as the commit lands.
-    #[cfg(feature = "sqlite")]
-    async fn delete_after_success(
         &self,
         pool: &DbPool,
         project_id: i32,
         event_id: Uuid,
-        raw_event_id: &str,
-    ) -> AppResult<()> {
-        self.durability.enqueue(
-            pool,
-            PendingDelete {
-                project_id,
-                event_id: raw_event_id.to_string(),
-                attempts: 0,
-                _owner: self.in_flight.register(project_id, event_id),
-            },
-        );
-        Ok(())
-    }
-
-    #[cfg(feature = "postgres")]
-    async fn delete_after_success(
-        &self,
-        _pool: &DbPool,
-        project_id: i32,
-        _event_id: Uuid,
-        raw_event_id: &str,
-    ) -> AppResult<()> {
-        delete_event(&self.ingest_dir, project_id, raw_event_id).await
+    ) -> AppResult<Digested> {
+        log::debug!("Event {event_id} dropped: quota exceeded");
+        delete_event(&self.ingest_dir, project_id, &event_id.simple().to_string()).await?;
+        if let Err(e) = RateLimitService::record_rate_limited(pool, project_id).await {
+            log::warn!("Event {event_id} dropped over quota, but not counted: {e:?}");
+        }
+        Ok(Digested::RateLimited)
     }
 }
 
-/// How long the durability worker lets commits accumulate before it runs a
-/// checkpoint. A `FULL` checkpoint syncs the write-ahead log and the database
-/// file, so one per event cost two fsyncs and a page copy each; one per pacing
-/// window covers every digest that committed in it for the same price.
-#[cfg(feature = "sqlite")]
-const CHECKPOINT_PACING: std::time::Duration = std::time::Duration::from_millis(25);
-
-/// Checkpoint attempts before a queued file is retained for recovery: a busy
-/// checkpoint means a writer or reader would not yield, and a restart replays
-/// the file into a duplicate check rather than losing anything.
-#[cfg(feature = "sqlite")]
-const MAX_CHECKPOINT_ATTEMPTS: u32 = 3;
-
-/// A committed digest whose file waits for the next completed checkpoint.
-#[cfg(feature = "sqlite")]
-struct PendingDelete {
-    project_id: i32,
-    event_id: String,
-    attempts: u32,
-    /// Keeps the event registered as in flight, so the recovery worker does
-    /// not replay a file that only awaits its deletion.
-    _owner: super::InFlightGuard,
-}
-
-/// Batches durability checkpoints across digests.
-///
-/// A commit is durably in the database file once any `FULL` checkpoint that
-/// *started* after it completes. The worker takes every queued entry before it
-/// starts a checkpoint, so one checkpoint covers all of them, and entries
-/// queued while it runs wait for the next one. It runs only while something
-/// is queued: the first enqueue after an idle period spawns it and it exits
-/// when the queue drains.
-#[cfg(feature = "sqlite")]
-struct DurabilityQueue {
-    ingest_dir: PathBuf,
-    /// The digests' write turn-taking. A `FULL` checkpoint needs the writers
-    /// out of the way, so it takes its turn in the same queue rather than
-    /// polling SQLite's busy handler against a stream of commits.
-    write_slot: Arc<tokio::sync::Mutex<()>>,
-    state: std::sync::Mutex<DurabilityState>,
-}
-
-#[cfg(feature = "sqlite")]
+/// What [`ErrorProcessor::finish`] carries from one event to the next.
 #[derive(Default)]
-struct DurabilityState {
-    pending: Vec<PendingDelete>,
-    worker_running: bool,
+struct FinishCtx {
+    /// An alert rule ran: its rows are pool commits.
+    #[cfg_attr(feature = "postgres", allow(dead_code))]
+    alerted: bool,
+    /// Projects whose platform inference this batch already ran.
+    inferred: std::collections::HashSet<i32>,
 }
 
+/// An event of a finished batch, before its file goes.
+enum Step {
+    /// Its result, and its file, deleted when the result is `Ok`.
+    Over((i32, Uuid), AppResult<Digested>, SpoolRef),
+    /// A copy of an event earlier in the batch.
+    Copy((i32, Uuid)),
+}
+
+/// What a probe of the breaker says: the database stored the blank event
+/// (`Some(true)`) or refused it (`Some(false)`). `None` when it failed as in
+/// an outage (busy, unreachable, a rollback that did not end) or the event
+/// ended before its row (the quota dropped it): that says nothing either way.
+fn probe_verdict(result: &AppResult<BatchOutcome>) -> Option<bool> {
+    match result {
+        Ok(o) => matches!(o.events.as_slice(), [EventOutcome::Inserted { .. }]).then_some(true),
+        Err(e) if is_outage(e) => None,
+        Err(_) => Some(false),
+    }
+}
+
+/// The committer's automatic checkpoint for its next commit, from the events
+/// not digested yet.
 #[cfg(feature = "sqlite")]
-impl DurabilityQueue {
-    fn new(ingest_dir: PathBuf, write_slot: Arc<tokio::sync::Mutex<()>>) -> Self {
-        Self {
-            ingest_dir,
-            write_slot,
-            state: std::sync::Mutex::new(DurabilityState::default()),
-        }
-    }
-
-    fn enqueue(self: &Arc<Self>, pool: &DbPool, entry: PendingDelete) {
-        let start_worker = {
-            let mut state = self.state.lock().unwrap();
-            state.pending.push(entry);
-            !std::mem::replace(&mut state.worker_running, true)
-        };
-        if start_worker {
-            tokio::spawn(Arc::clone(self).run(pool.clone()));
-        }
-    }
-
-    async fn run(self: Arc<Self>, pool: DbPool) {
-        let mut delay = CHECKPOINT_PACING;
-        loop {
-            tokio::time::sleep(delay).await;
-            let batch = {
-                let mut state = self.state.lock().unwrap();
-                if state.pending.is_empty() {
-                    state.worker_running = false;
-                    return;
-                }
-                std::mem::take(&mut state.pending)
-            };
-
-            let completed = {
-                let _turn = self.write_slot.lock().await;
-                match crate::db::checkpoint_full(&pool).await {
-                    Ok(completed) => completed,
-                    Err(e) => {
-                        log::warn!("SQLite durability checkpoint failed: {:?}", e);
-                        false
-                    }
-                }
-            };
-
-            delay = CHECKPOINT_PACING;
-            if completed {
-                // One round trip to the blocking pool for the whole batch.
-                let mut paths = Vec::with_capacity(batch.len());
-                for entry in &batch {
-                    match pending_event_path(&self.ingest_dir, entry.project_id, &entry.event_id) {
-                        Ok(path) => paths.push(path),
-                        Err(e) => log::warn!(
-                            "Failed to resolve digested event file {}: {:?}",
-                            entry.event_id,
-                            e
-                        ),
-                    }
-                }
-                if let Err(e) = delete_paths(paths).await {
-                    log::warn!("Failed to delete digested event files: {:?}", e);
-                }
-                // The batch's in-flight guards drop here, after the files.
-                drop(batch);
-                continue;
-            }
-
-            let mut retry = Vec::with_capacity(batch.len());
-            for mut entry in batch {
-                entry.attempts += 1;
-                if entry.attempts >= MAX_CHECKPOINT_ATTEMPTS {
-                    log::warn!(
-                        "SQLite durability checkpoint busy; retaining event file {}",
-                        entry.event_id
-                    );
-                } else {
-                    delay = delay.max(sqlite_retry_delay(entry.attempts as usize - 1));
-                    retry.push(entry);
-                }
-            }
-            if !retry.is_empty() {
-                self.state.lock().unwrap().pending.extend(retry);
-            }
-        }
+fn checkpoint_pages(pending: usize, batch_max: usize) -> u32 {
+    if pending >= batch_max {
+        crate::db::COMMITTER_CHECKPOINT_PAGES
+    } else {
+        crate::db::CAUGHT_UP_CHECKPOINT_PAGES
     }
 }
 
-/// Database and internal failures keep the file for a replay: an unknown
-/// transient failure must not silently become data loss. Anything else (an
-/// invalid event) is dropped with its file.
+/// The permits a spool file of `size` bytes takes: one per KiB, at least one,
+/// at most the whole budget.
+fn budget_share(size: u64, budget_kib: u32) -> u32 {
+    size.div_ceil(1024).clamp(1, u64::from(budget_kib)) as u32
+}
+
+/// Each file's share of `budget`, all taken in one wait (capped at the whole
+/// budget) and then split, in order; once the cap runs out the last files
+/// get what is left. A chunk that held some shares while it queued for the
+/// next would deadlock with a large live event queued in between: Tokio's
+/// semaphore is fair, so neither could go first.
+async fn reserve_chunk(
+    budget: &Arc<tokio::sync::Semaphore>,
+    budget_kib: u32,
+    sizes: &[u64],
+) -> Vec<tokio::sync::OwnedSemaphorePermit> {
+    let shares: Vec<u32> = sizes.iter().map(|&s| budget_share(s, budget_kib)).collect();
+    let total = shares
+        .iter()
+        .map(|&s| u64::from(s))
+        .sum::<u64>()
+        .min(u64::from(budget_kib));
+    let mut all = Arc::clone(budget)
+        .acquire_many_owned(total as u32)
+        .await
+        .expect("the digest budget is never closed");
+    shares
+        .iter()
+        .map(|&share| {
+            let share = (share as usize).min(all.num_permits());
+            all.split(share).expect("never more than is left")
+        })
+        .collect()
+}
+
+/// Whether the timer checkpoints: once the digest is caught up, or while the
+/// breaker halts it, since no commit then checkpoints the pool's writes and
+/// the log would grow until the disk is full.
+#[cfg(feature = "sqlite")]
+fn timer_checkpoints(pending: usize, batch_max: usize, halted: bool) -> bool {
+    halted || checkpoint_pages(pending, batch_max) == crate::db::CAUGHT_UP_CHECKPOINT_PAGES
+}
+
+/// How long the committer rests after a commit that took `took`: as long
+/// again while a burst is still arriving (an event was accepted during the
+/// commit and a full batch waits), so the digest takes at most half the
+/// disk from ingest; otherwise not at all, so a backlog drains at full speed
+/// once the burst is over. Each accepted event waits on the spool's fsyncs,
+/// which the digest's log writes and checkpoints slow down.
+#[cfg(feature = "sqlite")]
+fn yield_to_ingest(
+    took: std::time::Duration,
+    pushed_meanwhile: bool,
+    queued: usize,
+    batch_max: usize,
+) -> std::time::Duration {
+    if pushed_meanwhile && queued >= batch_max {
+        took
+    } else {
+        std::time::Duration::ZERO
+    }
+}
+
+/// Drops the digest's connection after a failure that may have broken it
+/// (lost, or left inside a transaction the rollback could not end); the next
+/// batch opens a new one. A busy SQLite leaves it as it is.
+fn drop_if_broken(slot: &mut Option<DbConn>, e: &AppError) {
+    let broken = is_outage(e) && !is_retryable_write_contention(e);
+    if broken
+        || slot
+            .as_ref()
+            .is_some_and(sqlx::Connection::is_in_transaction)
+    {
+        *slot = None;
+    }
+}
+
+/// Shortest gap between two shedding log lines.
+const SHED_LOG_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Shed requests since the last log line, and when that line was written.
+/// Under load shedding every request is refused, so a line per request
+/// would be thousands a second; the counter metric has the exact figure.
+#[derive(Default)]
+struct ShedLog(std::sync::Mutex<(Option<std::time::Instant>, u64)>);
+
+impl ShedLog {
+    /// Counts one shed request. `Some(n)` when a line is due, `n` being the
+    /// requests shed since the last one, this one included.
+    fn note(&self, now: std::time::Instant) -> Option<u64> {
+        let mut state = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        let (last, shed) = &mut *state;
+        *shed += 1;
+        if last.is_some_and(|at| now.saturating_duration_since(at) < SHED_LOG_EVERY) {
+            return None;
+        }
+        *last = Some(now);
+        Some(std::mem::take(shed))
+    }
+}
+
+/// Where ingest starts shedding on free disk: `INGEST_MIN_FREE_DISK_MB`
+/// plus, on SQLite, what the write-ahead log can still grow by before the
+/// digest's deferred checkpoint (`db::COMMITTER_CHECKPOINT_PAGES`, 4 KiB
+/// pages). The digest goes on writing while ingest sheds, so the database
+/// gets that room before the disk fills. 0 keeps the check off.
+fn free_disk_floor(configured: u64) -> u64 {
+    #[cfg(feature = "sqlite")]
+    if configured > 0 {
+        return configured.saturating_add(u64::from(crate::db::COMMITTER_CHECKPOINT_PAGES) * 4096);
+    }
+    configured
+}
+
+/// Bytes an unprivileged process can still write on `dir`'s volume.
+#[cfg(unix)]
+#[allow(clippy::useless_conversion)] // the field types differ per platform
+fn free_bytes(dir: &Path) -> std::io::Result<u64> {
+    let stat = nix::sys::statvfs::statvfs(dir)?;
+    Ok(u64::from(stat.blocks_available()).saturating_mul(u64::from(stat.fragment_size())))
+}
+
+/// No portable reading: never shed on disk space.
+#[cfg(not(unix))]
+fn free_bytes(_dir: &Path) -> std::io::Result<u64> {
+    Ok(u64::MAX)
+}
+
+/// Database, internal and unavailable failures keep the file for a replay:
+/// an unknown transient failure must not silently become data loss.
+/// Anything else (an invalid event) is dropped with its file.
 fn should_retain_event(err: &AppError) -> bool {
-    matches!(err.kind(), AppError::Database(_) | AppError::Internal(_))
+    matches!(
+        err.kind(),
+        AppError::Database(_) | AppError::Internal(_) | AppError::Unavailable(_)
+    )
 }
 
-/// Write attempts per digest on SQLite. Bounded: sustained contention
-/// fails fast instead of piling up more waiters.
-const MAX_SQLITE_WRITE_ATTEMPTS: usize = 3;
-
-/// Backoff before retry `attempt` (0-based): 50ms, then 100ms — brief,
-/// so writers that timed out together don't retry in lockstep.
-fn sqlite_retry_delay(attempt: usize) -> std::time::Duration {
-    std::time::Duration::from_millis(50 << attempt)
+/// The result of a step after the event row committed (its alerts). A
+/// transient failure is returned, so the file stays and a replay runs the
+/// step again (each rule skips what it already recorded). Any other (data
+/// the database rejects) is logged, counted in
+/// `rustrak_digest_post_commit_dropped_total` and given up: the event is
+/// stored, so its file still leaves the
+/// spool through the durable delete, never through `dead/`, and never stays
+/// in the spool for ever.
+fn after_commit(result: AppResult<()>, event_id: &str) -> AppResult<()> {
+    match result {
+        Err(e) if !e.is_transient() => {
+            log::error!("Event {event_id} is stored, but a step after it failed for good: {e:?}");
+            crate::telemetry::Counters::global().post_commit_dropped();
+            Ok(())
+        }
+        other => other,
+    }
 }
+
+/// How long the live committer waits before retrying a batch the database
+/// failed: 50 ms, doubling, at most 5 s.
+fn outage_backoff(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_millis(50u64 << attempt.min(7)).min(std::time::Duration::from_secs(5))
+}
+
+/// Batches finished at once; the committer waits for a slot.
+const FINISHERS: usize = 2;
 
 /// True for transient SQLite write contention: the busy family (codes 5,
-/// 261, 517, 773). Always false on Postgres, whose SQLSTATEs never collide
+/// 261, 517, 773) and the locked one (6, 262). Always false on Postgres, whose SQLSTATEs never collide
 /// with these. Pool exhaustion is deliberately excluded: it is a capacity
 /// signal, and retrying it only lengthens the queue that caused it.
 pub(crate) fn is_retryable_write_contention(err: &AppError) -> bool {
@@ -650,36 +1981,76 @@ pub(crate) fn is_retryable_write_contention(err: &AppError) -> bool {
     }
 }
 
-/// Whether a SQLite extended result code string means "database is locked".
-fn is_sqlite_busy_code(code: &str) -> bool {
-    matches!(code, "5" | "261" | "517" | "773")
+/// The database failed, not the batch: down, unreachable, out of
+/// connections, or busy. Retrying the same batch later is the answer;
+/// splitting it is not.
+fn is_outage(err: &AppError) -> bool {
+    use sqlx::Error as E;
+    if let AppError::Database(E::Database(db)) = err.kind() {
+        if db
+            .code()
+            .as_deref()
+            .is_some_and(|code| is_conflict_code(code) || is_unavailable_code(code))
+        {
+            return true;
+        }
+    }
+    is_retryable_write_contention(err)
+        || matches!(
+            err.kind(),
+            AppError::Unavailable(_)
+                | AppError::Database(
+                    E::Io(_) | E::Protocol(_) | E::PoolTimedOut | E::PoolClosed | E::WorkerCrashed
+                )
+        )
 }
 
-/// Everything one digest writes, gathered so the retried transaction takes a
-/// single argument instead of a dozen positional ones.
-struct DigestWrite<'a> {
-    event_id: Uuid,
-    /// The event id as it arrived, for log lines. Not the primary key.
-    raw_event_id: &'a str,
-    project_id: i32,
-    grouping_key: &'a str,
-    grouping_key_hash: &'a str,
-    /// The key this event would have had before the grouping changes, so an
-    /// issue created by an older release still claims its own events.
-    legacy_grouping_key_hash: &'a str,
-    timestamp: chrono::DateTime<Utc>,
-    denormalized: &'a DenormalizedFields,
-    level: Option<&'a str>,
-    platform: Option<&'a str>,
-    event_data: &'a serde_json::Value,
-    remote_addr: Option<&'a str>,
-    rate_limit_config: &'a RateLimitConfig,
-    /// The row loaded at the start of the digest, for its own quota limits.
-    project: &'a crate::models::Project,
-    /// Set when the event is a user feedback.
-    feedback: Option<&'a Feedback>,
-    /// The event's attachments, stored with it.
-    attachments: &'a [NewAttachment],
+/// A Postgres deadlock (`40P01`) or serialization failure (`40001`): the
+/// batch met another writer, and the same batch succeeds when retried.
+fn is_conflict_code(code: &str) -> bool {
+    matches!(code, "40P01" | "40001")
+}
+
+/// The database cannot take any write right now, whatever the batch. On
+/// Postgres (SQLSTATE, appendix A): class 08 connection exception, class 53
+/// insufficient resources but `out_of_memory` and
+/// `configuration_limit_exceeded`, the 57P01-05 shutdowns, dropped database
+/// and idle-session timeout, 25006 read-only transaction, 58030 I/O error,
+/// XX001-002 corrupted data or index. On SQLite (extended codes, by their
+/// primary code, rescode.html): READONLY 8, IOERR 10, CORRUPT 11, FULL 13,
+/// CANTOPEN 14, PROTOCOL 15.
+///
+/// Out of memory (Postgres 53200, SQLite NOMEM 7) is left out: one huge
+/// event can cause it alone, and retried whole the batch would fail for
+/// ever. Split like any failure, it fails alone and its neighbours store;
+/// a database out of memory for every event refuses the breaker's probe too
+/// and halts the digest.
+fn is_unavailable_code(code: &str) -> bool {
+    if code.len() == 5 {
+        return code.starts_with("08")
+            || (code.starts_with("53") && !matches!(code, "53200" | "53400"))
+            || matches!(
+                code,
+                "57P01"
+                    | "57P02"
+                    | "57P03"
+                    | "57P04"
+                    | "57P05"
+                    | "25006"
+                    | "58030"
+                    | "XX001"
+                    | "XX002"
+            );
+    }
+    code.parse::<u32>()
+        .is_ok_and(|extended| matches!(extended & 0xff, 8 | 10 | 11 | 13 | 14 | 15))
+}
+
+/// Whether a SQLite extended result code string means "database is locked":
+/// BUSY and its extended codes, and LOCKED and LOCKED_SHAREDCACHE, which a
+/// shared cache (`sqlite::memory:`, pool and committer) returns instead.
+fn is_sqlite_busy_code(code: &str) -> bool {
+    matches!(code, "5" | "261" | "517" | "773" | "6" | "262")
 }
 
 /// How an accepted event left the digest.
@@ -691,465 +2062,17 @@ pub enum Digested {
     RateLimited,
     /// No file held the event: its digest already finished and deleted it.
     Missing,
+    /// Failed the same way too often: its file was moved to `dead/`.
+    DeadLettered,
+    /// Recovery left the file in place (another version, unreadable for
+    /// now): no longer pending.
+    Skipped,
 }
 
-/// What one digest attempt left behind.
-enum DigestOutcome {
-    Written(Box<Issue>, bool, bool),
-    /// Nothing was written: the quota had no room for this event.
-    RateLimited(QuotaScope),
-}
-
-/// Writes the digest, retrying the whole transaction when the database is
-/// busy. Only a whole-tx restart is safe: a `BUSY_SNAPSHOT` snapshot can never
-/// be resumed, and `busy_timeout` does not retry the read→write upgrade that
-/// produces it. Each attempt waits on the write lock itself, so a slow holder
-/// delays a digest instead of dropping it. On Postgres the retry never
-/// triggers: a per-project advisory lock serializes issue creation and no busy
-/// code is ever reported.
-///
-/// Returns the issue and its lifecycle flags, or that the quota had no room.
-async fn write_digest(pool: &DbPool, write: &DigestWrite<'_>) -> AppResult<DigestOutcome> {
-    let mut attempt = 0usize;
-    let event_id = write.raw_event_id;
-    loop {
-        let result = write_digest_once(pool, write).await;
-
-        match result {
-            Err(e)
-                if is_retryable_write_contention(&e) && attempt + 1 < MAX_SQLITE_WRITE_ATTEMPTS =>
-            {
-                // Expected under load — one debug line per failed attempt;
-                // the healed episode itself is reported once at info below.
-                log::debug!(
-                    "SQLite write lock busy for event {event_id}; attempt {}/{} failed, retrying",
-                    attempt + 1,
-                    MAX_SQLITE_WRITE_ATTEMPTS
-                );
-                tokio::time::sleep(sqlite_retry_delay(attempt)).await;
-                attempt += 1;
-            }
-            result => {
-                if attempt > 0 && result.is_ok() {
-                    log::info!(
-                        "SQLite write lock busy for event {event_id}; healed after {attempt} retries"
-                    );
-                }
-                return result;
-            }
-        }
-    }
-}
-
-/// One attempt at the digest's writes.
-///
-/// Runs in a write transaction: `BEGIN IMMEDIATE` on SQLite (write lock
-/// up front, so `busy_timeout` can wait on it), plus a per-project
-/// advisory lock on Postgres.
-async fn write_digest_once(pool: &DbPool, write: &DigestWrite<'_>) -> AppResult<DigestOutcome> {
-    // Start a write transaction. On SQLite this is `BEGIN IMMEDIATE` so the
-    // read-then-write below (SELECT MAX(digest_order) → INSERT) takes the write
-    // lock up front instead of failing with "database is locked" on upgrade.
-    let mut tx = crate::db::begin_write(pool).await?;
-
-    // Acquire advisory lock for this project (Postgres only).
-    // SQLite serializes all writes, so no advisory lock needed.
-    #[cfg(feature = "postgres")]
-    sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(write.project_id as i64)
-        .execute(&mut *tx)
-        .await?;
-
-    let result = write_digest_rows(&mut tx, write).await;
-
-    match result {
-        Ok(DigestOutcome::RateLimited(scope)) => {
-            tx.rollback().await?;
-            Ok(DigestOutcome::RateLimited(scope))
-        }
-        Ok(landed) => {
-            // Commit the transaction (releases the advisory lock)
-            tx.commit().await?;
-            Ok(landed)
-        }
-        Err(e) => {
-            // Rollback on error (also releases the advisory lock)
-            tx.rollback().await?;
-            Err(e)
-        }
-    }
-}
-
-/// The digest's writes, all inside the caller's transaction.
-///
-/// The issue counters (`digested_event_count`, `stored_event_count`) and the
-/// project's `stored_event_count` claim the event row inserted here, so all of
-/// it commits together or none of it does. Deliberately kept to inserts and
-/// counter bumps: quota state counts rows over time windows, and running those
-/// scans here would hold the write lock across a full table scan, which is the
-/// pathological holder the retry loop exists to survive.
-async fn write_digest_rows(
-    tx: &mut sqlx::Transaction<'_, DbBackend>,
-    write: &DigestWrite<'_>,
-) -> AppResult<DigestOutcome> {
-    let (issue, grouping, created, regressed) = find_or_create_issue_and_grouping_inner(
-        tx,
-        write.project_id,
-        write.grouping_key,
-        write.grouping_key_hash,
-        write.legacy_grouping_key_hash,
-        write.timestamp,
-        write.denormalized,
-        write.level,
-        write.platform,
-        match write.feedback {
-            Some(_) => feedback::CATEGORY,
-            None => "error",
-        },
-    )
-    .await?;
-
-    if regressed {
-        crate::services::IssueSocialService::add_activity_on(
-            tx,
-            issue.id,
-            None,
-            "set_regression",
-            &serde_json::json!({ "status": crate::models::STATUS_UNRESOLVED }).to_string(),
-        )
-        .await?;
-    }
-
-    // No digest_order to compute: events order within an issue by
-    // (timestamp, id) (see idx_events_issue_timestamp), which needs no
-    // per-issue counter to derive or keep in sync.
-    let event_row_id = EventService::create(
-        &mut **tx,
-        write.event_id,
-        write.project_id,
-        issue.id,
-        grouping.id,
-        write.event_data,
-        write.timestamp,
-        write.denormalized,
-        write.remote_addr,
-        alert_type_for_lifecycle(created, regressed, write.feedback.is_some()),
-        // Kept only when the event could fire new-issue rules: a muted one
-        // replays its lifecycle alert alone, whatever the issue is by then.
-        (!issue.is_muted()).then_some(issue.digested_event_count),
-    )
-    .await?;
-
-    // Where the issue has been seen, as Sentry's `GroupEnvironment`
-    // (`event_manager.py`, `_get_or_create_group_environment`), with the
-    // numbers Sentry reads from Snuba for it.
-    let environment = clamp(
-        write
-            .event_data
-            .get("environment")
-            .and_then(|v| v.as_str())
-            .unwrap_or(""),
-        64,
-    );
-    if !environment.is_empty() {
-        sqlx::query(
-            // `first_release` as the issue's own: the first one sent, kept,
-            // so a release's new issues there outlive its events.
-            "INSERT INTO issue_environments (issue_id, project_id, environment, first_seen, last_seen, first_release) \
-             VALUES ($1, $2, $3, $4, $4, $5) \
-             ON CONFLICT (issue_id, environment) DO UPDATE \
-             SET first_seen = CASE WHEN excluded.first_seen < issue_environments.first_seen \
-                                   THEN excluded.first_seen ELSE issue_environments.first_seen END, \
-                 last_seen = CASE WHEN excluded.last_seen > issue_environments.last_seen \
-                                  THEN excluded.last_seen ELSE issue_environments.last_seen END, \
-                 event_count = issue_environments.event_count + 1, \
-                 first_release = CASE WHEN issue_environments.first_release = '' \
-                                      THEN excluded.first_release ELSE issue_environments.first_release END",
-        )
-        .bind(issue.id)
-        .bind(write.project_id)
-        .bind(environment)
-        .bind(write.timestamp)
-        .bind(&write.denormalized.release)
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    link_user_report(tx, write, issue.id).await?;
-    for attachment in write.attachments {
-        sqlx::query(
-            "INSERT INTO event_attachments (id, project_id, event_id, filename, content_type, size, data, created_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        )
-        .bind(Uuid::new_v4())
-        .bind(write.project_id)
-        .bind(event_row_id)
-        .bind(&attachment.filename)
-        .bind(&attachment.content_type)
-        .bind(attachment.data.len() as i32)
-        .bind(&attachment.data)
-        .bind(write.timestamp)
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    // Last, so the installation row every digest shares is locked only from
-    // here to the commit, as its counter bump always was. A full quota rolls
-    // back everything above with it.
-    if let Some(scope) =
-        RateLimitService::try_consume(tx, write.project, write.rate_limit_config, Utc::now())
-            .await?
-    {
-        return Ok(DigestOutcome::RateLimited(scope));
-    }
-    RateLimitService::increment_event_counters(tx, write.project_id).await?;
-
-    Ok(DigestOutcome::Written(Box::new(issue), created, regressed))
-}
-
-/// Keeps `user_reports` (what an error issue shows as its feedback) in step
-/// with the digest, as Sentry's `save_event_feedback` and post-process
-/// `link_event_to_user_report` do: a feedback about an event records itself
-/// against that event's issue, and an event claims the feedback that
-/// arrived before it.
-async fn link_user_report(
-    tx: &mut sqlx::Transaction<'_, DbBackend>,
-    write: &DigestWrite<'_>,
-    issue_id: Uuid,
-) -> AppResult<()> {
-    let Some(feedback) = write.feedback else {
-        sqlx::query(
-            "UPDATE user_reports SET issue_id = $1 \
-             WHERE project_id = $2 AND event_id = $3 AND issue_id IS NULL",
-        )
-        .bind(issue_id)
-        .bind(write.project_id)
-        .bind(write.event_id)
-        .execute(&mut **tx)
-        .await?;
-        return Ok(());
-    };
-    let Some(event_id) = feedback.associated_event_id else {
-        return Ok(());
-    };
-    let error_issue: Option<Option<Uuid>> =
-        sqlx::query_scalar("SELECT issue_id FROM events WHERE project_id = $1 AND event_id = $2")
-            .bind(write.project_id)
-            .bind(event_id)
-            .fetch_optional(&mut **tx)
-            .await?;
-    sqlx::query(
-        "INSERT INTO user_reports (id, project_id, issue_id, feedback_issue_id, event_id, name, email, comments, created_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-    )
-    .bind(Uuid::new_v4())
-    .bind(write.project_id)
-    .bind(error_issue.flatten())
-    // Deleting the feedback deletes this copy of it.
-    .bind(issue_id)
-    .bind(event_id)
-    // Cut to the VARCHAR(255) columns, which Postgres enforces.
-    .bind(clamp(&feedback.name, 255))
-    .bind(clamp(&feedback.contact_email, 255))
-    .bind(&feedback.message)
-    .bind(write.timestamp)
-    .execute(&mut **tx)
-    .await?;
-    Ok(())
-}
-
-/// Inner function that performs the actual find-or-create logic within a transaction
-#[cfg(feature = "postgres")]
-type DbBackend = sqlx::Postgres;
-#[cfg(feature = "sqlite")]
-type DbBackend = sqlx::Sqlite;
-
-#[allow(clippy::too_many_arguments)]
-async fn find_or_create_issue_and_grouping_inner(
-    tx: &mut sqlx::Transaction<'_, DbBackend>,
-    project_id: i32,
-    grouping_key: &str,
-    grouping_key_hash: &str,
-    legacy_grouping_key_hash: &str,
-    timestamp: chrono::DateTime<Utc>,
-    denormalized: &DenormalizedFields,
-    level: Option<&str>,
-    platform: Option<&str>,
-    category: &str,
-) -> AppResult<(Issue, Grouping, bool, bool)> {
-    // The grouping and the issue columns the update path reads, in one round
-    // trip: on SQLite every statement is a hand-off to the connection's
-    // worker thread, and this one runs under the write lock.
-    let find = |hash: String| async move {
-        sqlx::query_as::<_, GroupingWithIssue>(
-            r#"
-            SELECT g.id, g.project_id, g.issue_id, g.grouping_key, g.grouping_key_hash,
-                   g.created_at,
-                   i.status, i.status_details, i.last_release, i.calculated_type,
-                   i.calculated_value, i.first_seen, i.last_seen, i.last_frame_filename,
-                   i.last_frame_module, i.last_frame_function, i.level
-            FROM groupings g
-            JOIN issues i ON i.id = g.issue_id
-            WHERE g.project_id = $1 AND g.grouping_key_hash = $2
-            "#,
-        )
-        .bind(project_id)
-        .bind(hash)
-    };
-
-    let mut existing: Option<GroupingWithIssue> = find(grouping_key_hash.to_string())
-        .await
-        .fetch_optional(&mut **tx)
-        .await?;
-
-    // Nothing under the current key: the issue may predate a change to how the
-    // key is built. Claim it under the key that release would have produced,
-    // and record the current one so later events resolve directly.
-    if existing.is_none() && legacy_grouping_key_hash != grouping_key_hash {
-        if let Some(legacy) = find(legacy_grouping_key_hash.to_string())
-            .await
-            .fetch_optional(&mut **tx)
-            .await?
-        {
-            let grouping: Grouping = sqlx::query_as(
-                r#"
-                INSERT INTO groupings (project_id, issue_id, grouping_key, grouping_key_hash)
-                VALUES ($1, $2, $3, $4)
-                RETURNING *
-                "#,
-            )
-            .bind(project_id)
-            .bind(legacy.grouping.issue_id)
-            .bind(grouping_key)
-            .bind(grouping_key_hash)
-            .fetch_one(&mut **tx)
-            .await?;
-            existing = Some(GroupingWithIssue {
-                grouping,
-                issue: legacy.issue,
-            });
-        }
-    }
-
-    if let Some(GroupingWithIssue {
-        grouping,
-        issue: prev,
-    }) = existing
-    {
-        // Detect regression: a new event for an already-resolved issue must
-        // reopen it as `regressed` (mirrors Sentry's lifecycle) — unless the
-        // issue was "resolved in next release" and this event is still from the
-        // same release (no new deploy yet), in which case it stays resolved.
-        let in_next_release = serde_json::from_str::<serde_json::Value>(&prev.status_details)
-            .ok()
-            .and_then(|v| v.get("in_next_release").and_then(|b| b.as_bool()))
-            .unwrap_or(false);
-        // An event with no release metadata can't prove it's from a newer
-        // release, so treat it as the same release rather than triggering a
-        // spurious regression reopen.
-        let same_release =
-            denormalized.release.is_empty() || denormalized.release == prev.last_release;
-        let suppress = in_next_release && same_release;
-        let regressed = prev.status == crate::models::STATUS_RESOLVED && !suppress;
-
-        let (calculated_type, calculated_value) = updated_title(
-            (&prev.calculated_type, &prev.calculated_value),
-            (
-                &denormalized.calculated_type,
-                &denormalized.calculated_value,
-            ),
-        );
-        // Sentry merges the incoming metadata over the existing bag, so a field
-        // the new event does not carry keeps the value it had.
-        fn keep_if_blank<'a>(incoming: &'a str, existing: &'a str) -> &'a str {
-            if incoming.is_empty() {
-                existing
-            } else {
-                incoming
-            }
-        }
-        // An event can arrive older than the issue (clock skew across hosts, a
-        // replayed envelope), so each bound moves only in its own direction.
-        let first_seen = prev.first_seen.min(timestamp);
-        let last_seen = prev.last_seen.max(timestamp);
-        // SDKs omit `level` when it is their default, so an absent one keeps
-        // whatever the issue already had rather than clearing it.
-        let level = level.or(prev.level.as_deref());
-        let frame_filename =
-            keep_if_blank(&denormalized.last_frame_filename, &prev.last_frame_filename);
-        let frame_module = keep_if_blank(&denormalized.last_frame_module, &prev.last_frame_module);
-        let frame_function =
-            keep_if_blank(&denormalized.last_frame_function, &prev.last_frame_function);
-
-        // A regression reopens the issue.
-        let issue: Issue = sqlx::query_as(
-            r#"
-            UPDATE issues
-            SET first_seen = $8,
-                last_seen = $2,
-                digested_event_count = digested_event_count + 1,
-                stored_event_count = stored_event_count + 1,
-                calculated_type = $4,
-                calculated_value = $5,
-                level = $6,
-                culprit = $7,
-                last_frame_filename = $9,
-                last_frame_module = $10,
-                last_frame_function = $11,
-                status = CASE WHEN $12 THEN 'unresolved' ELSE status END,
-                substatus = CASE WHEN $12 THEN 'regressed' ELSE substatus END,
-                status_details = CASE WHEN $12 THEN '{}' ELSE status_details END,
-                last_release = CASE WHEN $3 <> '' THEN $3 ELSE last_release END,
-                first_release = CASE WHEN first_release = '' THEN $3 ELSE first_release END
-            WHERE id = $1
-            RETURNING *
-            "#,
-        )
-        .bind(grouping.issue_id)
-        .bind(last_seen)
-        .bind(&denormalized.release)
-        .bind(calculated_type)
-        .bind(calculated_value)
-        .bind(level)
-        .bind(&denormalized.culprit)
-        .bind(first_seen)
-        .bind(frame_filename)
-        .bind(frame_module)
-        .bind(frame_function)
-        .bind(regressed)
-        .fetch_one(&mut **tx)
-        .await?;
-
-        return Ok((issue, grouping, false, regressed));
-    }
-
-    let issue = IssueService::create_in(
-        tx,
-        project_id,
-        timestamp,
-        denormalized,
-        level,
-        platform,
-        category,
-    )
-    .await?;
-
-    let grouping: Grouping = sqlx::query_as(
-        r#"
-        INSERT INTO groupings (project_id, issue_id, grouping_key, grouping_key_hash)
-        VALUES ($1, $2, $3, $4)
-        RETURNING *
-        "#,
-    )
-    .bind(project_id)
-    .bind(issue.id)
-    .bind(grouping_key)
-    .bind(grouping_key_hash)
-    .fetch_one(&mut **tx)
-    .await?;
-
-    Ok((issue, grouping, true, false))
-}
+/// Failed attempts after which a spool file whose digest keeps failing the
+/// same way is dead-lettered. The first is the digest ingest spawned, the
+/// rest are replays a backoff of seconds apart.
+pub const MAX_DIGEST_ATTEMPTS: u32 = 5;
 
 /// The alerts an event fires: its lifecycle's, and a new-issue rule's, since
 /// any unmuted event, a regression too, can be the one that brings the issue
@@ -1163,7 +2086,11 @@ fn event_alert_types(lifecycle: Option<AlertType>, muted: bool, feedback: bool) 
     types
 }
 
-fn alert_type_for_lifecycle(created: bool, regressed: bool, feedback: bool) -> Option<AlertType> {
+pub(crate) fn alert_type_for_lifecycle(
+    created: bool,
+    regressed: bool,
+    feedback: bool,
+) -> Option<AlertType> {
     if created && feedback {
         Some(AlertType::NewFeedback)
     } else if created {
@@ -1191,9 +2118,91 @@ fn drop_stale_breadcrumbs(event_data: &mut serde_json::Value) {
     }
 }
 
+/// The fields an alert rule's filters read, straight from the event.
+fn event_facts(event_data: &serde_json::Value) -> crate::services::alert::EventFacts<'_> {
+    crate::services::alert::EventFacts {
+        level: event_data
+            .get("level")
+            .and_then(|v| v.as_str())
+            .and_then(relay_level),
+        environment: event_data.get("environment").and_then(|v| v.as_str()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A recovery chunk takes its whole budget in one wait, then splits it:
+    /// holding part of it while queued for the rest could deadlock with a
+    /// large live event queued in between on the fair semaphore.
+    #[tokio::test]
+    async fn a_chunk_takes_its_budget_in_one_wait() {
+        let budget = Arc::new(tokio::sync::Semaphore::new(4));
+        let shares = |permits: &[tokio::sync::OwnedSemaphorePermit]| {
+            permits.iter().map(|p| p.num_permits()).collect::<Vec<_>>()
+        };
+
+        let chunk = reserve_chunk(&budget, 4, &[1, 2048, 1024]).await;
+        assert_eq!(shares(&chunk), [1, 2, 1]);
+        assert_eq!(budget.available_permits(), 0);
+        // A large live event queues behind the chunk, which already holds
+        // everything it needs.
+        let live = tokio::spawn(Arc::clone(&budget).acquire_many_owned(4));
+        drop(chunk);
+        assert_eq!(live.await.unwrap().unwrap().num_permits(), 4);
+
+        // Past the budget the total is capped and the last files share less.
+        let over = reserve_chunk(&budget, 4, &[3072, 3072]).await;
+        assert_eq!(shares(&over), [3, 1]);
+    }
+
+    /// Shedding refuses every request; the log gets a line every few
+    /// seconds with how many were refused, not one per request.
+    #[test]
+    fn shedding_is_logged_at_most_once_per_window() {
+        let log = ShedLog::default();
+        let start = std::time::Instant::now();
+
+        assert_eq!(log.note(start), Some(1), "the first is logged");
+        for _ in 0..99 {
+            assert_eq!(log.note(start + std::time::Duration::from_secs(1)), None);
+        }
+        assert_eq!(log.note(start + SHED_LOG_EVERY), Some(100));
+    }
+
+    /// Caught up, the committer checkpoints after each commit; behind by a
+    /// batch or more, it lets the log grow between checkpoints.
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn checkpoints_grow_with_the_backlog() {
+        use crate::db::{CAUGHT_UP_CHECKPOINT_PAGES, COMMITTER_CHECKPOINT_PAGES};
+        assert_eq!(checkpoint_pages(255, 256), CAUGHT_UP_CHECKPOINT_PAGES);
+        assert_eq!(checkpoint_pages(256, 256), COMMITTER_CHECKPOINT_PAGES);
+        const { assert!(CAUGHT_UP_CHECKPOINT_PAGES < COMMITTER_CHECKPOINT_PAGES) };
+    }
+
+    /// The timer checkpoints once caught up, and also behind a backlog the
+    /// breaker halted: no commit checkpoints then, while pool writes go on.
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn a_halted_digest_still_checkpoints_on_the_timer() {
+        assert!(timer_checkpoints(255, 256, false));
+        assert!(!timer_checkpoints(256, 256, false));
+        assert!(timer_checkpoints(256, 256, true));
+    }
+
+    /// Behind a burst still arriving, the committer rests as long as its
+    /// commit took; caught up, or draining once the burst is over, never.
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn the_digest_yields_the_disk_only_to_a_burst_still_arriving() {
+        use std::time::Duration;
+        let took = Duration::from_millis(40);
+        assert_eq!(yield_to_ingest(took, true, 256, 256), took);
+        assert_eq!(yield_to_ingest(took, false, 4096, 256), Duration::ZERO);
+        assert_eq!(yield_to_ingest(took, true, 255, 256), Duration::ZERO);
+    }
 
     #[test]
     fn stale_breadcrumbs_are_dropped_in_both_forms() {
@@ -1209,46 +2218,11 @@ mod tests {
         assert_eq!(bare["breadcrumbs"], kept);
     }
 
-    #[test]
-    fn a_real_incoming_title_always_wins() {
-        assert_eq!(
-            updated_title(("Log Message", "old"), ("TypeError", "boom")),
-            ("TypeError", "boom")
-        );
-        assert_eq!(
-            updated_title(("Unknown", ""), ("TypeError", "boom")),
-            ("TypeError", "boom")
-        );
-    }
-
-    #[test]
-    fn a_placeholder_incoming_title_loses_to_a_real_one() {
-        assert_eq!(
-            updated_title(("TypeError", "boom"), ("Unknown", "")),
-            ("TypeError", "boom")
-        );
-        assert_eq!(
-            updated_title(("TypeError", "boom"), ("Error", "")),
-            ("TypeError", "boom")
-        );
-    }
-
-    #[test]
-    fn a_placeholder_replaces_another_placeholder() {
-        assert_eq!(updated_title(("Unknown", ""), ("Error", "")), ("Error", ""));
-    }
-
-    #[test]
-    fn an_error_carrying_a_value_is_a_real_title() {
-        assert_eq!(
-            updated_title(("TypeError", "boom"), ("Error", "connection reset")),
-            ("Error", "connection reset")
-        );
-    }
-
+    /// LOCKED (6) and LOCKED_SHAREDCACHE (262) are the busy of a shared
+    /// cache (`sqlite::memory:`), where `busy_timeout` does not wait.
     #[test]
     fn busy_codes_are_recognized_and_others_are_not() {
-        for code in ["5", "261", "517", "773"] {
+        for code in ["5", "261", "517", "773", "6", "262"] {
             assert!(is_sqlite_busy_code(code), "{code} must classify as busy");
         }
         assert!(
@@ -1287,9 +2261,98 @@ mod tests {
     }
 
     #[test]
-    fn retries_back_off_exponentially_from_50ms() {
-        assert_eq!(sqlite_retry_delay(0), std::time::Duration::from_millis(50));
-        assert_eq!(sqlite_retry_delay(1), std::time::Duration::from_millis(100));
+    fn the_live_committer_backs_off_from_50ms_to_5s() {
+        assert_eq!(outage_backoff(0), std::time::Duration::from_millis(50));
+        assert_eq!(outage_backoff(1), std::time::Duration::from_millis(100));
+        assert_eq!(outage_backoff(40), std::time::Duration::from_secs(5));
+    }
+
+    /// An outage is retried whole; anything else splits the batch down to
+    /// the event that fails.
+    #[test]
+    fn only_a_database_that_failed_is_an_outage() {
+        for outage in [
+            AppError::Database(sqlx::Error::PoolTimedOut),
+            AppError::Database(sqlx::Error::PoolClosed),
+            AppError::Database(sqlx::Error::Io(std::io::Error::other("reset"))),
+            AppError::Unavailable("the disk is full".to_string()),
+        ] {
+            assert!(is_outage(&outage), "{outage:?}");
+        }
+        for batch in [
+            AppError::Database(sqlx::Error::RowNotFound),
+            AppError::Internal("events present that the dedupe did not see".to_string()),
+        ] {
+            assert!(!is_outage(&batch), "{batch:?}");
+        }
+    }
+
+    /// A database that is full, read-only, unreachable or in a Postgres
+    /// deadlock or serialization failure fails every batch alike: retried
+    /// whole, never split toward the breaker. A limit one statement hits
+    /// (Postgres 54000) still splits.
+    #[test]
+    fn a_full_or_read_only_database_is_an_outage() {
+        use crate::error::tests::db_error;
+        for code in [
+            "40P01", "40001",
+            // SQLite: NOMEM, READONLY (and READONLY_DBMOVED), IOERR (and
+            // IOERR_FSYNC), FULL, CANTOPEN, PROTOCOL.
+            "8", "1032", "10", "1034", "13", "14", "15", "11", "267",
+            // Postgres: connection exceptions, insufficient resources,
+            // shutdowns, a dropped database, an idle session ended, a
+            // read-only transaction, an I/O error, corrupted data or index.
+            "08006", "08001", "53100", "53300", "57P01", "57P02", "57P03", "57P04", "57P05",
+            "25006", "58030", "XX001", "XX002",
+        ] {
+            assert!(is_outage(&db_error(code)), "{code}");
+        }
+        // Constraint, too big, SQL error, a statement too complex, and out
+        // of memory (SQLite NOMEM, Postgres 53200), which one huge event
+        // can cause alone: split, so it fails alone and its neighbours store.
+        for code in [
+            "19", "2067", "18", "1", "23505", "22001", "42P01", "54000", "57014", "7", "53200",
+        ] {
+            assert!(!is_outage(&db_error(code)), "{code}");
+        }
+    }
+
+    /// A probe that stored its event clears the breaker, one the database
+    /// refused halts it, and one that failed as in an outage, or ended
+    /// before its row, decides nothing.
+    #[test]
+    fn only_a_probe_that_reached_its_row_decides() {
+        use crate::error::tests::db_error;
+        let outcome = |events| -> AppResult<BatchOutcome> {
+            Ok(BatchOutcome {
+                events,
+                issues: Default::default(),
+            })
+        };
+        let inserted = EventOutcome::Inserted {
+            issue_id: Uuid::nil(),
+            lifecycle: None,
+            muted: false,
+            issue_event_count: Some(1),
+            regressed: false,
+        };
+        assert_eq!(probe_verdict(&outcome(vec![inserted])), Some(true));
+        assert_eq!(probe_verdict(&Err(db_error("2067"))), Some(false));
+        assert_eq!(probe_verdict(&Err(db_error("42P01"))), Some(false));
+        for (i, undecided) in [
+            Err(db_error("5")),
+            Err(db_error("40P01")),
+            Err(AppError::Unavailable("the database is closing".into())),
+            Err(AppError::Database(sqlx::Error::PoolTimedOut)),
+            outcome(vec![EventOutcome::RateLimited(
+                crate::services::rate_limit::QuotaScope::Project,
+            )]),
+        ]
+        .iter()
+        .enumerate()
+        {
+            assert_eq!(probe_verdict(undecided), None, "case {i}");
+        }
     }
 
     #[test]
@@ -1324,63 +2387,5 @@ mod tests {
         assert!(!should_retain_event(&AppError::Validation(
             "Invalid event JSON: trailing data".to_string(),
         )));
-    }
-}
-
-/// A title that says nothing about the event. Mirrors Sentry's
-/// `PLACEHOLDER_EVENT_TITLES` in Rustrak's vocabulary: "Unknown" is what an
-/// event with neither exception nor message produces, "Error" an exception
-/// carrying neither type nor value.
-fn is_placeholder_title(calculated_type: &str, calculated_value: &str) -> bool {
-    calculated_value.trim().is_empty() && matches!(calculated_type, "Unknown" | "Error")
-}
-
-/// Picks the type and value an issue should carry after a new event. The
-/// incoming pair wins unless it is a placeholder about to replace a real title.
-fn updated_title<'a>(
-    existing: (&'a str, &'a str),
-    incoming: (&'a str, &'a str),
-) -> (&'a str, &'a str) {
-    if is_placeholder_title(incoming.0, incoming.1) && !is_placeholder_title(existing.0, existing.1)
-    {
-        existing
-    } else {
-        incoming
-    }
-}
-
-/// A grouping joined to the issue columns the update path reads.
-#[derive(sqlx::FromRow)]
-struct GroupingWithIssue {
-    #[sqlx(flatten)]
-    grouping: Grouping,
-    #[sqlx(flatten)]
-    issue: PrevIssue,
-}
-
-/// The issue columns the update path reads before deciding what to write.
-#[derive(sqlx::FromRow)]
-struct PrevIssue {
-    status: String,
-    status_details: String,
-    last_release: String,
-    calculated_type: String,
-    calculated_value: String,
-    first_seen: chrono::DateTime<Utc>,
-    last_seen: chrono::DateTime<Utc>,
-    last_frame_filename: String,
-    last_frame_module: String,
-    last_frame_function: String,
-    level: Option<String>,
-}
-
-/// The fields an alert rule's filters read, straight from the event.
-fn event_facts(event_data: &serde_json::Value) -> crate::services::alert::EventFacts<'_> {
-    crate::services::alert::EventFacts {
-        level: event_data
-            .get("level")
-            .and_then(|v| v.as_str())
-            .and_then(relay_level),
-        environment: event_data.get("environment").and_then(|v| v.as_str()),
     }
 }
