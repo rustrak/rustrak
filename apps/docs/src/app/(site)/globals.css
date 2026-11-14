@@ -129,6 +129,31 @@
   margin-top: 0.5rem;
 }
 
+/* Block + overflow so a wide table scrolls inside the card instead of pushing
+   the column sideways on a phone. */
+.changelog-prose table {
+  display: block;
+  overflow-x: auto;
+  margin-top: 0.9rem;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.changelog-prose th,
+.changelog-prose td {
+  padding: 0.45rem 0.9rem 0.45rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: top;
+  color: color-mix(in oklab, var(--fg) 80%, var(--surface-canvas));
+}
+
+.changelog-prose th {
+  font-weight: 500;
+  color: var(--fg);
+}
+
 .changelog-prose strong {
   font-weight: 500;
   color: var(--fg);
