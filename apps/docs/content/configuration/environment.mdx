@@ -201,6 +201,67 @@ exact: once a window is full, ingest answers `429` with `Retry-After` and
 was already accepted when its window filled is dropped rather than stored, and
 counted in the project's `rate_limited_event_count`.
 
+## Load shedding
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INGEST_MAX_PENDING_EVENTS` | `100000` | Events waiting in `INGEST_DIR` for the digest before ingest refuses new ones. `0` turns the check off |
+| `INGEST_MIN_FREE_DISK_MB` | `64` | Free space on the volume holding `INGEST_DIR` below which ingest refuses new events. On SQLite the server adds the ~40 MiB its write-ahead log can still grow by, so ingest stops before the database fills the disk. `0` turns the check off |
+
+Ingest stores each event in `INGEST_DIR` and answers before the digest groups
+it. When the digest falls far behind, or the disk is nearly full, ingest
+answers `503` instead, as Sentry's Relay does when its own buffer is full.
+**The SDK drops that event**: Sentry SDKs do not send an envelope again once
+the server has answered it. The response carries `Retry-After` and
+`X-Sentry-Rate-Limits` for 10 seconds, so the SDK stops sending (and drops
+what it would have sent) for that long instead of adding to the load. Free
+space is read every five seconds, not on each request, and a volume already
+under the floor at startup is reported in the log. The same `503` is the
+answer while the server is shutting down, when too many large uploads (over
+1 MiB) are already being read and no slot frees up within 30 seconds of
+waiting, and when the database is down, read-only, busy or out of connections.
+
+## Digest
+
+The digest takes whatever accepted events are ready and writes them as one
+transaction (up to 256 events), so a single event is stored a moment after
+its `200` and a burst is stored in batches. Each event's file in `INGEST_DIR` is deleted only
+after the transaction that stored it is durable on disk (on PostgreSQL the
+digest's own connection commits with `synchronous_commit=on`); alert rows
+written through other connections are covered the same way before the file
+goes. If the server is set to `synchronous_commit=off`, an alert evaluation
+can be lost on a power cut after its event's file is gone.
+
+If every event fails on its own, with nothing stored in between (a broken
+schema, a missing grant), the digest halts instead of moving the backlog to
+`INGEST_DIR/dead/` one event at a time: `GET /health/ready` adds
+`"digest": "halted"` and still answers `200`, so the dashboard stays up,
+`rustrak_digest_halted` is `1`, and one event is tried again every minute.
+The first one that is stored resumes the digest.
+
+A number that does not parse, in any of the variables on this page, stops the
+server at startup with a message that names the variable. Unset or empty keeps
+the default.
+
+### Stopping the server
+
+On `SIGTERM` or `SIGINT` the server writes its release health counts, refuses
+new events with `503`, gives the digests already running up to 5 seconds to
+finish, then stops. Events still waiting for a digest stay in `INGEST_DIR`
+and are digested on the next start, so nothing acknowledged is lost. A second
+signal exits at once (after one more try, of at most a second, at the session
+counts). That fits in Docker's default 10 second stop grace; give it 30
+seconds anyway, so a slow final write is not cut off:
+
+```yaml
+services:
+  server:
+    stop_grace_period: 30s
+```
+
+With `docker run`, the same is `--stop-timeout 30`; in Kubernetes,
+`terminationGracePeriodSeconds: 30`.
+
 ## Storage
 
 | Variable | Default | Description |
@@ -211,6 +272,28 @@ counted in the project's `rate_limited_event_count`.
 | `MAX_CHUNK_SIZE_BYTES` | `10485760` (10 MiB) | Largest single chunk a source map or debug file upload may send |
 | `SESSION_FLUSH_INTERVAL_SECS` | `30` | How often release health counts are written to the database |
 | `SESSION_CARDINALITY_CAP` | `10000` | Release and environment pairs tracked per project; more are counted together as `<overflow>` |
+
+### INGEST_DIR
+
+Each accepted event waits here as one file until its digest stores it. An
+event whose digest fails is retried. If it fails the same way five times in a
+row, or its file cannot be read as an event at all, the file is moved to
+`INGEST_DIR/dead/` and an error is logged. Nothing reads `dead/`: inspect a
+file there, and move it back to `INGEST_DIR` to try it again. Only a failure
+caused by the event's own data counts toward the five: the database rejecting
+it (a constraint, a value out of range, a value too big). Anything else (a
+busy, unreachable or read-only database, a full disk, a file that cannot be
+read right now, a missing table or permission) is retried for as long as it
+takes, so neither an outage nor a broken upgrade moves the backlog. A file
+whose record was written by another Rustrak version, or that the server is
+not allowed to open, is left where it is, logged once and no longer counted
+as waiting. The count is kept in memory, so a
+restart gives each file five more tries.
+
+Not every event that leaves `INGEST_DIR` is stored or moved to `dead/`. An
+event the digest finds invalid (not JSON, a timestamp before 1970, a feedback
+the project turned off) is deleted and logged, as Sentry drops it; so is an
+event over the rate limit, counted in the project's `rate_limited_event_count`.
 
 ### SOURCEMAP_STORAGE_PATH
 
@@ -266,7 +349,7 @@ Only creates the user if the database has no users yet. After that it is ignored
 
 `RUSTRAK_METRICS=on` enables `GET /metrics` on the server's existing port. It is off by default (the route returns 404); only `on` and `off` are accepted. This is independent of anonymous telemetry and does not send data anywhere.
 
-The scrape reports ingest totals and latency, digest outcomes, 5xx responses by matched route, and failed alerts by provider. It also reports the pending spool (count, bytes and oldest-file age) and database size, read at most once every 15 seconds. Counters reset on restart, not when anonymous telemetry sends a report. Labels never contain project IDs, user details or event contents.
+The scrape reports ingest totals and latency, digest outcomes, 5xx responses by matched route, and failed alerts by provider. For incidents it adds requests shed by load shedding by reason (`rustrak_ingest_shed_total{reason="backlog"|"disk"}`), `503`s from a briefly unavailable database (`rustrak_db_unavailable_total`), files moved to `INGEST_DIR/dead/` (`rustrak_spool_dead_lettered_total`), stored events whose alert step failed for good and was skipped (`rustrak_digest_post_commit_dropped_total`) and background workers restarted after a panic (`rustrak_worker_restarts_total`). `rustrak_spool_pending` is the number of events waiting for their digest, kept in memory and always current. The spool's bytes and oldest-file age come from a walk of `INGEST_DIR` once a minute, so they can be a minute old and are missing until the first walk. The database size is read at most once every 15 seconds. Counters reset on restart, not when anonymous telemetry sends a report. Labels never contain project IDs, user details or event contents.
 
 `/metrics` has no application authentication. Keep it on a trusted network or restrict it at the reverse proxy. The standalone dashboard image does not forward it, so point Prometheus at the server.
 

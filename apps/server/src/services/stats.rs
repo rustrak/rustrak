@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
 
-use crate::db::dialect::{bucket, bucket_time, compare_time, epoch, since};
+use crate::db::dialect::{bucket, bucket_time, compare_time, compare_utc, epoch, since_utc};
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::models::stats::{
@@ -237,7 +237,7 @@ async fn query_list_volume(
         GROUP BY 1, 2
         "#,
         ingested = epoch("ingested_at"),
-        since_first = compare_time("ingested_at", ">=", 1),
+        since_first = compare_utc("ingested_at", ">=", 1),
     );
     Ok(sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
         .bind(bucket_time(first)?)
@@ -371,7 +371,7 @@ async fn query_event_timeseries(
         ORDER BY 1 ASC
         "#,
         bucket = bucket("ingested_at", interval_secs),
-        window = since("ingested_at", period_hours),
+        window = since_utc("ingested_at", period_hours),
     );
     let rows: Vec<(i64, i64, i64, i64, i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
         .bind(project_id)
@@ -436,9 +436,9 @@ async fn count_events(
           AND event_type = 'error'
           AND {window}
         "#,
-        current = compare_time("ingested_at", ">=", 4),
-        previous = compare_time("ingested_at", "<", 4),
-        window = compare_time("ingested_at", ">=", 5),
+        current = compare_utc("ingested_at", ">=", 4),
+        previous = compare_utc("ingested_at", "<", 4),
+        window = compare_utc("ingested_at", ">=", 5),
     );
     let (current, previous): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
         .bind(project_id)

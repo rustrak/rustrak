@@ -9,11 +9,14 @@ use chrono::Utc;
 use sha2::{Digest as _, Sha256};
 
 use crate::db::DbPool;
+use crate::digest::processors::event::PreparedEvent;
 use crate::digest::processors::ATTACHMENTS_KEY;
-use crate::digest::processors::{Digested, ProcessorCtx, Processors};
+use crate::digest::processors::{
+    CommitMode, Digested, Prepared, ProcessorCtx, Processors, SpoolRef,
+};
 use crate::error::{AppError, AppResult};
 use crate::ingest::envelope::Attachment;
-use crate::ingest::storage::list_pending_event_metadata_except;
+use crate::ingest::storage::list_pending_names;
 use crate::ingest::{
     detach_payload_if_needed, store_event_with_metadata, EnvelopeItemKind, EnvelopeParser,
     EventMetadata, MAX_ATTACHMENT_SIZE,
@@ -36,10 +39,10 @@ fn validate_event_json(payload: &[u8]) -> AppResult<()> {
 /// siblings continue (relay-server/src/processing/relay.rs run_one — "This is
 /// not a fatal error case ... other items from the same original envelope must
 /// still be processed"). Only infrastructure failures (database, storage) may
-/// fail the envelope: they return 5xx so the SDK retries, preserving the
-/// commit-before-ack durability promise. A 4xx here would make the SDK drop
-/// the sibling data permanently, so an annotated `Validation` is matched by
-/// [`AppError::kind`] too.
+/// fail the envelope: they return 5xx, so nothing is acknowledged that was
+/// not stored (the SDK drops that envelope; it never resends one that got a
+/// response). A 4xx for one bad item would drop its valid siblings with it,
+/// so an annotated `Validation` is matched by [`AppError::kind`] too.
 fn drop_malformed_item(result: AppResult<()>, item_type: &str) -> AppResult<()> {
     let Err(error) = result else {
         return Ok(());
@@ -54,6 +57,12 @@ fn drop_malformed_item(result: AppResult<()>, item_type: &str) -> AppResult<()> 
 /// Processes one envelope for `project`: items stored inline are committed
 /// before this returns, an error event is stored and its digest spawned.
 /// Returns the event id to acknowledge, if the envelope carried one.
+///
+/// `large_body` is given back once the envelope is parsed, so a large body
+/// does not keep its slot while its items wait for the database.
+/// ponytail: the items still borrow the body until they are stored, so up to
+/// 100 MiB per request outlives its slot during those writes; keep the slot
+/// to the end if that memory matters more than large-upload throughput.
 pub async fn process_envelope(
     processors: &Arc<Processors>,
     pool: &DbPool,
@@ -61,9 +70,11 @@ pub async fn process_envelope(
     body: Bytes,
     remote_addr: Option<String>,
     ingested_at: chrono::DateTime<Utc>,
+    large_body: crate::ingest::decompression::LargeBodySlot,
 ) -> AppResult<Option<String>> {
     let mut parser = EnvelopeParser::new(body);
     let envelope = parser.parse()?;
+    drop(large_body);
 
     // event_id validation is deferred until after the loop: session-only
     // envelopes never need one (Relay: Item::requires_event() returns false
@@ -264,7 +275,7 @@ pub async fn process_envelope(
                         ingested_at,
                         remote_addr: remote_addr.clone(),
                     },
-                    &shim.payload,
+                    shim.payload.into(),
                 )
                 .await?;
             }
@@ -289,50 +300,254 @@ pub async fn process_envelope(
         ingested_at,
         remote_addr,
     };
-    enqueue_digest(processors, pool, event_uuid, metadata, &event_item).await?;
+    enqueue_digest(processors, pool, event_uuid, metadata, event_item).await?;
 
     Ok(Some(event_id))
 }
 
-/// Stores an event durably and spawns its digest.
-pub(crate) async fn enqueue_digest(
+/// Stores an event durably and queues it for the live digest.
+pub async fn enqueue_digest(
     processors: &Arc<Processors>,
     pool: &DbPool,
     event_uuid: uuid::Uuid,
     metadata: EventMetadata,
-    payload: &[u8],
+    payload: Bytes,
 ) -> AppResult<()> {
     // Claimed before the file exists so the recovery worker never sees a
-    // pending file that no task owns. Released when the spawned digest ends,
-    // or here if the store fails and there is nothing to recover.
-    let in_flight = processors
+    // pending file that no task owns. Released when its digest is over, or
+    // here if the store fails and there is nothing to recover.
+    let owner = processors
         .errors
         .in_flight()
         .register(metadata.project_id, event_uuid);
-    store_event_with_metadata(
+    let size = payload.len() as u64;
+    crate::ingest::storage::store_event_bytes(
         processors.errors.ingest_dir(),
         &metadata.event_id,
         payload,
         &metadata,
     )
     .await?;
-
-    // The digest worker owns grouping, issue creation, and its durable retry path.
-    let processors = Arc::clone(processors);
-    let pool_clone = pool.clone();
-    tokio::spawn(async move {
-        // The permit gates the whole digest: the file read, JSON parse and
-        // grouping working set stay bounded to the concurrent cap, not the
-        // burst size.
-        let _permit = processors.processing_slot.acquire().await;
-        // Boxed here, after the permit: the digest's state machine is several
-        // kilobytes, and a burst leaves thousands of tasks waiting on the
-        // permit. Unboxed, each waiter carried the whole thing inline and
-        // the backlog's memory grew with the burst rather than the cap.
-        Box::pin(digest_stored_event(&processors, &pool_clone, &metadata)).await;
-        drop(in_flight);
-    });
+    crate::failpoint!("ingest.after_link_before_ack");
+    // Counted against the quota from here until its digest is over, so the
+    // ingest check sees it before the digest counts it in the database.
+    processors
+        .errors
+        .pending()
+        .insert(metadata.project_id, event_uuid);
+    DigestPipeline::push(
+        processors,
+        pool,
+        SpoolRef {
+            project_id: metadata.project_id,
+            event_id: event_uuid,
+            size,
+            owner,
+        },
+    );
     Ok(())
+}
+
+/// Spool files waiting for the live digest, at most this many. Past it a
+/// file is left unowned and the recovery worker takes it from the spool.
+pub(crate) const DIGEST_QUEUE_CAPACITY: usize = 4096;
+
+/// A batch closes at this many bytes of `data` and attachments.
+const DIGEST_BATCH_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+/// The accepted events waiting for the live digest, in acceptance order.
+#[derive(Default)]
+pub(crate) struct DigestQueue {
+    refs: std::sync::Mutex<std::collections::VecDeque<SpoolRef>>,
+    ready: tokio::sync::Notify,
+    started: std::sync::atomic::AtomicBool,
+    /// Events offered so far, queued or not: the digest rests while it
+    /// changes (`yield_to_ingest`).
+    pushes: std::sync::atomic::AtomicU64,
+}
+
+impl DigestQueue {
+    /// Queues `r`, or hands it back when the queue is full.
+    fn try_push(&self, r: SpoolRef) -> Result<(), SpoolRef> {
+        self.pushes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mut refs = self.refs.lock().unwrap_or_else(|p| p.into_inner());
+        if refs.len() >= DIGEST_QUEUE_CAPACITY {
+            return Err(r);
+        }
+        refs.push_back(r);
+        drop(refs);
+        self.ready.notify_one();
+        Ok(())
+    }
+
+    /// Events waiting for the live digest.
+    #[cfg(feature = "sqlite")]
+    pub(crate) fn len(&self) -> usize {
+        self.refs.lock().unwrap_or_else(|p| p.into_inner()).len()
+    }
+
+    /// Events offered to the live digest since the start, a full queue's
+    /// included.
+    #[cfg(feature = "sqlite")]
+    pub(crate) fn pushes(&self) -> u64 {
+        self.pushes.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    async fn pop(&self) -> SpoolRef {
+        loop {
+            let next = self
+                .refs
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .pop_front();
+            if let Some(r) = next {
+                return r;
+            }
+            self.ready.notified().await;
+        }
+    }
+}
+
+/// The live digest: one task reads and prepares queued events,
+/// `Config::digest_prep_workers` at a time off the async runtime and in order, and
+/// one committer writes whatever is ready as one transaction, so batches
+/// grow with the load and an idle event commits as soon as it is read.
+/// Finishing a batch (alerts, file removal) runs beside the next commit.
+struct DigestPipeline;
+
+impl DigestPipeline {
+    /// Queues `r` for the live digest, starting the pipeline the first
+    /// time. A full queue leaves the file to the recovery worker.
+    fn push(processors: &Arc<Processors>, pool: &DbPool, r: SpoolRef) {
+        let errors = &processors.errors;
+        if errors.is_draining() {
+            // Its file is the next start's.
+            return;
+        }
+        if errors.queue().try_push(r).is_err() {
+            errors.recovery_wake().notify_one();
+            return;
+        }
+        if !errors
+            .queue()
+            .started
+            .swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            Self::start(Arc::clone(processors), pool.clone());
+        }
+    }
+
+    /// On the runtime the processor was built on, supervised: a panic
+    /// drops what was in flight (its guards release, the files stay), the
+    /// recovery worker is woken to replay them, and the pipeline starts
+    /// again on the queue.
+    fn start(processors: Arc<Processors>, pool: DbPool) {
+        let _on = processors.errors.runtime().map(|runtime| runtime.enter());
+        let mut runs = 0u64;
+        crate::workers::supervise("digest pipeline", move || {
+            runs += 1;
+            if runs > 1 {
+                processors.errors.recovery_wake().notify_one();
+            }
+            Self::run(Arc::clone(&processors), pool.clone())
+        });
+    }
+
+    async fn run(processors: Arc<Processors>, pool: DbPool) {
+        let (tx, rx) = tokio::sync::mpsc::channel(2 * processors.errors.batch_max_events());
+        futures_util::join!(
+            Self::prep(&processors, &pool, tx),
+            Self::commit(&processors, &pool, rx)
+        );
+    }
+
+    /// Takes queued events in order, each with its share of the memory
+    /// budget before its file is read, and sends the prepared ones on.
+    async fn prep(
+        processors: &Arc<Processors>,
+        pool: &DbPool,
+        tx: tokio::sync::mpsc::Sender<Box<PreparedEvent>>,
+    ) {
+        use futures_util::StreamExt as _;
+        let errors = &processors.errors;
+        // Owned, not borrowed: futures the supervisor spawns must not hold
+        // a borrow a closure returns.
+        let refs = futures_util::stream::unfold(Arc::clone(processors), |p| async move {
+            loop {
+                let r = p.errors.queue().pop().await;
+                // Given up to the drain: its file is the next start's.
+                if !p.errors.is_abandoned() {
+                    return Some((r, p));
+                }
+            }
+        });
+        let mut prepared = std::pin::pin!(prepare_in_order(processors, pool, refs));
+        while let Some(prepared) = prepared.next().await {
+            match prepared {
+                // A panic dropped the event; recovery replays its file.
+                None => errors.recovery_wake().notify_one(),
+                Some(Prepared::Ready(e)) => {
+                    if tx.send(e).await.is_err() {
+                        return;
+                    }
+                }
+                Some(other) => {
+                    if let Err(e) = errors.run_prepared(pool, other).await {
+                        log::error!("Failed to digest an event; it remains queued: {e:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Commits whatever is ready as one batch, then hands it to a finisher.
+    async fn commit(
+        processors: &Arc<Processors>,
+        pool: &DbPool,
+        mut rx: tokio::sync::mpsc::Receiver<Box<PreparedEvent>>,
+    ) {
+        let errors = &processors.errors;
+        let max = errors.batch_max_events();
+        while let Some(first) = rx.recv().await {
+            if errors.is_abandoned() {
+                continue;
+            }
+            let mut bytes = first.data_bytes;
+            let mut batch = vec![*first];
+            if errors.is_halted() {
+                // The breaker takes no batches: one event at a time, a
+                // probe interval apart.
+                if !errors.wait_for_probe().await {
+                    continue;
+                }
+            } else {
+                while batch.len() < max && bytes < DIGEST_BATCH_MAX_BYTES {
+                    match rx.try_recv() {
+                        Ok(e) => {
+                            bytes += e.data_bytes;
+                            batch.push(*e);
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            let committed = errors.commit(pool, batch, CommitMode::Live).await;
+            if committed.is_empty() {
+                continue;
+            }
+            let finisher = errors.finisher().await;
+            let (processors, pool) = (Arc::clone(processors), pool.clone());
+            tokio::spawn(async move {
+                for result in processors.errors.finish(&pool, committed).await {
+                    if let Err(e) = result {
+                        log::error!("Failed to digest an event; it remains queued: {e:?}");
+                    }
+                }
+                drop(finisher);
+            });
+        }
+    }
 }
 
 /// A feedback item's payload with `type` forced to `feedback`, carrying its
@@ -484,27 +699,18 @@ pub(crate) fn user_report_to_feedback(
     })
 }
 
-/// Digests one stored event, retrying transient write contention. Failures
-/// leave the durable file in place for the recovery worker.
+/// Digests one stored event, inline. Failures leave the durable file in
+/// place for the recovery worker. The digest counts its own outcome.
 pub async fn digest_stored_event(processors: &Processors, pool: &DbPool, metadata: &EventMetadata) {
-    // The digest retries lock contention itself (a whole transaction per
-    // attempt); past that, the file stays queued and the recovery worker
-    // replays it.
     match processors.errors.digest(pool, metadata).await {
-        Ok(Digested::Stored) => processors.counters().digest_ok(),
-        Ok(Digested::RateLimited) => processors.counters().digest_rate_limited(),
         Ok(Digested::Missing) => {
-            processors.counters().digest_failed();
             log::error!(
                 "Failed to digest event {}: no file holds it",
                 metadata.event_id
             );
         }
+        Ok(_) => {}
         Err(e) => {
-            processors.counters().digest_failed();
-            if let Some(code) = e.db_code() {
-                processors.counters().db_error(&code);
-            }
             log::error!(
                 "Failed to digest event {}; it remains queued: {:?}",
                 metadata.event_id,
@@ -512,6 +718,109 @@ pub async fn digest_stored_event(processors: &Processors, pool: &DbPool, metadat
             );
         }
     }
+}
+
+/// Digests the spool files `refs` names as one batch, with the metadata each
+/// was stored with: read and parsed `Config::digest_prep_workers` at a time off the
+/// async runtime, committed together, finished in order. One result per
+/// ref, in the same order. A file this release cannot read is settled the
+/// way recovery settles it.
+pub async fn digest_refs(
+    processors: &Arc<Processors>,
+    pool: &DbPool,
+    refs: Vec<crate::digest::processors::SpoolRef>,
+) -> Vec<AppResult<Digested>> {
+    let prepared = prep_refs(processors, pool, refs).await;
+    commit_prepared(processors, pool, prepared).await
+}
+
+/// The first half of [`digest_refs`].
+async fn prep_refs(
+    processors: &Arc<Processors>,
+    pool: &DbPool,
+    refs: Vec<SpoolRef>,
+) -> Vec<Option<Prepared>> {
+    use futures_util::StreamExt as _;
+    prepare_in_order(processors, pool, futures_util::stream::iter(refs))
+        .collect()
+        .await
+}
+
+/// Each file read and prepared, in order and `prep_workers` at a time, with
+/// its share of the memory budget taken before it is read. `None` when the
+/// preparation panicked.
+fn prepare_in_order<'a>(
+    processors: &'a Arc<Processors>,
+    pool: &'a DbPool,
+    refs: impl futures_util::Stream<Item = SpoolRef> + 'a,
+) -> impl futures_util::Stream<Item = Option<Prepared>> + 'a {
+    use futures_util::StreamExt as _;
+    let runtime = tokio::runtime::Handle::current();
+    // ponytail: `block_on` inside a blocking thread is the smallest way to
+    // run the async symbolication off the current-thread main runtime; split
+    // prep into an async part and a CPU part if profiles show I/O stalls.
+    refs.then({
+        let p = Arc::clone(processors);
+        move |r: SpoolRef| {
+            let p = Arc::clone(&p);
+            async move {
+                let budget = p.errors.reserve(r.size).await;
+                (r, budget)
+            }
+        }
+    })
+    .map(move |(r, budget)| {
+        let (processors, pool, runtime) = (Arc::clone(processors), pool.clone(), runtime.clone());
+        async move {
+            tokio::task::spawn_blocking(move || {
+                runtime.block_on(processors.errors.prepare(&pool, r, budget, None))
+            })
+            .await
+            .ok()
+        }
+    })
+    .buffered(processors.errors.prep_workers())
+}
+
+/// The second half of [`digest_refs`]: one commit, then the finish.
+async fn commit_prepared(
+    processors: &Arc<Processors>,
+    pool: &DbPool,
+    prepared: Vec<Option<Prepared>>,
+) -> Vec<AppResult<Digested>> {
+    let errors = &processors.errors;
+    let mut results: Vec<Option<AppResult<Digested>>> = std::iter::repeat_with(|| None)
+        .take(prepared.len())
+        .collect();
+    let (mut ready, mut ready_at) = (Vec::new(), Vec::new());
+    for (i, prepared) in prepared.into_iter().enumerate() {
+        results[i] = match prepared {
+            // Its file stays; a later pass reads it again.
+            None => Some(Err(AppError::Internal(
+                "preparing the event panicked".to_string(),
+            ))),
+            Some(Prepared::Ready(e)) => {
+                ready.push(*e);
+                ready_at.push(i);
+                None
+            }
+            Some(Prepared::Skipped(r, skip)) => Some(errors.settle_skipped(r, skip).await),
+            Some(other) => Some(errors.run_prepared(pool, other).await),
+        };
+    }
+    if !ready.is_empty() {
+        let committed = errors.commit(pool, ready, CommitMode::Once).await;
+        for (i, result) in ready_at
+            .into_iter()
+            .zip(errors.finish(pool, committed).await)
+        {
+            results[i] = Some(result);
+        }
+    }
+    results
+        .into_iter()
+        .map(|r| r.unwrap_or_else(|| Err(AppError::Internal("no digest result".to_string()))))
+        .collect()
 }
 
 /// Replays event files left by a previous process after a digest failure.
@@ -527,62 +836,152 @@ pub async fn recover_pending_events(
             recover_pending_events_once(pool.clone(), processors.clone(), ingest_dir.clone()).await;
         let delay = next_recovery_delay(previous_delay, has_pending);
         previous_delay = has_pending.then_some(delay);
-        tokio::time::sleep(delay).await;
+        // The live queue overflowing (or its pipeline restarting) wakes
+        // the worker early: those files have no owner now.
+        tokio::select! {
+            () = tokio::time::sleep(delay) => {}
+            () = processors.errors.recovery_wake().notified() => {}
+        }
     }
 }
 
-/// Processes the current set of pending event files once. `true` when some
-/// are still waiting.
+/// Processes the current set of pending event files once, in batches of
+/// `Config::digest_batch_max_events` and at most half of `Config::digest_memory_bytes`, so the
+/// live digest always has the other half. `true` when some are still
+/// waiting.
+///
+/// While the circuit breaker holds the digest halted a pass does nothing,
+/// except once a probe interval, when it tries one event.
 pub async fn recover_pending_events_once(
     pool: DbPool,
     processors: Arc<Processors>,
     ingest_dir: std::path::PathBuf,
 ) -> bool {
+    let errors = &processors.errors;
+    let probe = errors.is_halted();
+    if probe && !errors.take_probe() {
+        return true;
+    }
     // Files owned by a task in this process (digest in flight, or committed
-    // and awaiting its durability checkpoint) are not leftovers: replaying
+    // and awaiting its alerts and file removal) are not leftovers: replaying
     // one would digest the event twice and race that task for the file.
-    let in_flight = processors.errors.in_flight();
-    let pending = match list_pending_event_metadata_except(&ingest_dir, |project_id, event_id| {
+    let in_flight = errors.in_flight();
+    let listing = match list_pending_names(&ingest_dir, |project_id, event_id| {
         in_flight.contains(project_id, event_id)
     })
     .await
     {
-        Ok(pending) => pending,
+        Ok(listing) => listing,
         Err(e) => {
-            log::error!("Failed to scan pending event metadata: {:?}", e);
+            log::error!("Failed to scan pending event files: {:?}", e);
             return true;
         }
     };
 
+    let max_events = if probe { 1 } else { errors.batch_max_events() };
+    let max_bytes = errors.budget_bytes() / 2;
+    let mut chunks: Vec<&[(i32, uuid::Uuid, u64)]> = Vec::new();
+    let mut rest = &listing[..];
+    while !rest.is_empty() {
+        let mut bytes = 0;
+        let n = rest
+            .iter()
+            .take(max_events)
+            .take_while(|(_, _, size)| {
+                bytes += size;
+                bytes <= max_bytes
+            })
+            .count()
+            .max(1);
+        let (chunk, tail) = rest.split_at(n);
+        chunks.push(chunk);
+        rest = tail;
+    }
     let mut has_pending = false;
-    for metadata in pending {
-        // Re-checked per file: the listing was filtered, but a task can have
-        // claimed a legacy-named file since, or finished one listed earlier.
-        let owned = uuid::Uuid::parse_str(&metadata.event_id)
-            .is_ok_and(|event_id| in_flight.contains(metadata.project_id, event_id));
-        if owned {
-            continue;
+    // Re-checked per file as each chunk is taken: a task can have claimed
+    // one since the listing, or finished one listed earlier.
+    let mut refs = chunks.into_iter().filter_map(|names| {
+        let refs: Vec<_> = names
+            .iter()
+            .filter(|(project_id, event_id, _)| !in_flight.contains(*project_id, *event_id))
+            .map(|&(project_id, event_id, size)| SpoolRef {
+                project_id,
+                event_id,
+                size,
+                owner: in_flight.register(project_id, event_id),
+            })
+            .collect();
+        (!refs.is_empty()).then_some(refs)
+    });
+    let prep = |refs: Vec<SpoolRef>| {
+        let ids: Vec<uuid::Uuid> = refs.iter().map(|r| r.event_id).collect();
+        let (processors, pool) = (&processors, &pool);
+        async move { (ids, prep_refs(processors, pool, refs).await) }
+    };
+    let mut next = match refs.next() {
+        Some(first) => Some(prep(first).await),
+        None => None,
+    };
+    while let Some((ids, prepared)) = next.take() {
+        if errors.is_draining() {
+            release(&processors, &pool, prepared).await;
+            return true;
         }
-        match processors.errors.digest(&pool, &metadata).await {
-            Ok(Digested::Stored) => {}
-            Ok(Digested::RateLimited) => processors.counters().digest_rate_limited(),
-            // Listed a moment ago, finished and deleted by its owner since:
-            // nothing left to replay.
-            Ok(Digested::Missing) => log::debug!(
-                "Pending digest {} was completed by its owner before replay",
-                metadata.event_id
-            ),
-            Err(e) => {
-                has_pending = true;
-                log::warn!(
-                    "Pending digest {} remains queued: {:?}",
-                    metadata.event_id,
-                    e
-                );
+        // The next chunk is read while this one commits: each is at most
+        // half the budget, so the two fit. Its commit takes the same gate
+        // as the live digest's, so the two interleave by batch.
+        let (results, following) =
+            futures_util::join!(commit_prepared(&processors, &pool, prepared), async {
+                match refs.next() {
+                    Some(chunk) => Some(prep(chunk).await),
+                    None => None,
+                }
+            });
+        next = following;
+        for (event_id, digested) in ids.into_iter().zip(results) {
+            match digested {
+                Ok(Digested::Stored)
+                | Ok(Digested::Skipped)
+                | Ok(Digested::RateLimited)
+                | Ok(Digested::DeadLettered) => {}
+                // Listed a moment ago, finished and deleted by its owner since:
+                // nothing left to replay.
+                Ok(Digested::Missing) => log::debug!(
+                    "Pending digest {event_id} was completed by its owner before replay"
+                ),
+                Err(e) => {
+                    has_pending = true;
+                    log::warn!("Pending digest {event_id} remains queued: {e:?}");
+                }
             }
+        }
+        // Halted (or still halted after a probe): the rest waits.
+        if probe || errors.is_halted() {
+            if let Some((_, prepared)) = next {
+                release(&processors, &pool, prepared).await;
+            }
+            return true;
         }
     }
     has_pending
+}
+
+/// Lets prepared events go uncommitted. Those already over before their
+/// write (dropped by the quota, invalid, unreadable) are settled, so none
+/// stays counted as pending; the others' files stay for a later pass.
+async fn release(processors: &Arc<Processors>, pool: &DbPool, prepared: Vec<Option<Prepared>>) {
+    let errors = &processors.errors;
+    for p in prepared.into_iter().flatten() {
+        match p {
+            Prepared::Ready(_) => {}
+            Prepared::Skipped(r, skip) => {
+                let _ = errors.settle_skipped(r, skip).await;
+            }
+            other => {
+                let _ = errors.run_prepared(pool, other).await;
+            }
+        }
+    }
 }
 
 fn next_recovery_delay(

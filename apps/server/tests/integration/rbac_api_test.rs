@@ -32,6 +32,12 @@ struct Who {
     token: String,
 }
 
+/// What user `id` may do, as the dashboard loads it.
+async fn access_of(pool: &DbPool, id: i32) -> rustrak::models::rbac::Access {
+    let user = UsersService::get_by_id(pool, id).await.unwrap().unwrap();
+    RoleService::access_for(pool, &user).await.unwrap()
+}
+
 async fn who(pool: &DbPool, email: &str, owner: bool) -> Who {
     let user = UsersService::create_user(
         pool,
@@ -250,7 +256,7 @@ async fn a_mixed_role_on_a_project_holds_its_workspace_part_everywhere() {
         json!({ "assignments": [{ "role_id": support, "project_id": p }] })
     );
     assert_eq!(status, 200, "{body}");
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(access.can(Resource::Storage, Action::Read, None));
     assert!(access.can(Resource::Issues, Action::Read, Some(p)));
     assert!(!access.can(Resource::Issues, Action::Read, Some(p + 1)));
@@ -301,7 +307,7 @@ async fn personal_permissions_belong_to_one_person_and_stay_out_of_the_roles_lis
     assert_eq!(body["personal_permissions"].as_array().unwrap().len(), 2);
     let personal = body["assignments"][0]["role_id"].as_i64().unwrap();
 
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(access.can(Resource::Logs, Action::Read, Some(p)));
     assert!(!access.can(Resource::Logs, Action::Read, Some(p + 1)));
     assert!(access.can(Resource::Storage, Action::Read, None));
@@ -332,7 +338,7 @@ async fn personal_permissions_belong_to_one_person_and_stay_out_of_the_roles_lis
     let (status, body) = call!(app, put, uri, owner.token, json!({ "assignments": [] }));
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["personal_permissions"], json!([]));
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(!access.can(Resource::Storage, Action::Read, None));
 }
 
@@ -434,7 +440,7 @@ async fn whoever_creates_a_project_holds_their_own_roles_on_it() {
     );
     assert_eq!(status, 201, "{body}");
     let mine = body["id"].as_i64().unwrap() as i32;
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(access.can(Resource::Issues, Action::Read, Some(mine)));
     assert!(!access.can(Resource::Issues, Action::Delete, Some(mine)));
 }
@@ -461,7 +467,7 @@ async fn a_user_can_hold_a_workspace_role_all_projects_and_exceptions() {
         ] })
     );
     assert_eq!(status, 200, "{body}");
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(access.can(Resource::Users, Action::Update, None));
     assert!(access.can(Resource::Issues, Action::Read, Some(p + 1)));
     assert!(!access.can(Resource::Issues, Action::Update, Some(p + 1)));
@@ -497,7 +503,7 @@ async fn an_owner_sets_a_users_assignments_on_the_instance_and_on_projects() {
     assert_eq!(status, 200);
     assert_eq!(body["assignments"].as_array().unwrap().len(), 2);
 
-    let access = RoleService::access_for(&db.pool, u.id).await.unwrap();
+    let access = access_of(&db.pool, u.id).await;
     assert!(access.can(Resource::Issues, Action::Update, Some(p)));
     assert!(!access.can(Resource::Issues, Action::Update, Some(p + 1)));
 }
@@ -763,7 +769,7 @@ async fn an_invitation_can_carry_a_role_on_a_project() {
     let user = rustrak::services::InvitationService::accept(&db.pool, token, "pw")
         .await
         .unwrap();
-    let access = RoleService::access_for(&db.pool, user.id).await.unwrap();
+    let access = RoleService::access_for(&db.pool, &user).await.unwrap();
     assert!(access.can(Resource::Issues, Action::Update, Some(p)));
     assert!(!access.can(Resource::Issues, Action::Update, Some(p + 1)));
 }

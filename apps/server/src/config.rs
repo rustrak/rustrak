@@ -16,6 +16,21 @@ pub struct Config {
     pub security: SecurityConfig,
     /// Where events wait for the digest.
     pub ingest_dir: PathBuf,
+    /// `INGEST_MAX_PENDING_EVENTS`: ingest answers 503 while this many events
+    /// wait in the spool for the digest. 0 turns the check off.
+    pub ingest_max_pending_events: i64,
+    /// `INGEST_MIN_FREE_DISK_MB`: ingest answers 503 while the spool's
+    /// volume has less free space than this. 0 turns the check off.
+    pub ingest_min_free_disk_bytes: u64,
+    /// The most events one digest transaction writes. Not read from the
+    /// environment; at most 1000 (a batch's insert binds 26 values per event).
+    pub digest_batch_max_events: usize,
+    /// Events read and parsed at once for a batch. Not read from the
+    /// environment.
+    pub digest_prep_workers: usize,
+    /// The spool bytes the digest holds at once, being read, waiting for
+    /// their commit or inside one. Not read from the environment.
+    pub digest_memory_bytes: u64,
     /// Public-facing URL used to build DSN strings shown to users. Includes
     /// the scheme; trailing slashes are stripped at load time.
     pub public_url: Option<String>,
@@ -176,6 +191,13 @@ impl Default for Config {
             rate_limit: RateLimitConfig::default(),
             security: SecurityConfig::default(),
             ingest_dir: PathBuf::from("/tmp/rustrak/ingest"),
+            ingest_max_pending_events: 100_000,
+            ingest_min_free_disk_bytes: 64 * 1024 * 1024,
+            digest_batch_max_events: 256,
+            digest_prep_workers: std::thread::available_parallelism()
+                .map_or(1, |n| n.get() / 2)
+                .clamp(1, 4),
+            digest_memory_bytes: 16 * 1024 * 1024,
             public_url: None,
             sourcemap_storage_path: "/data/sourcemaps".to_string(),
             sourcemap_cache_bytes: DEFAULT_SOURCEMAP_CACHE_BYTES,
@@ -207,33 +229,48 @@ impl Config {
         let defaults = Self::default();
         Ok(Self {
             host: env::var("HOST").unwrap_or(defaults.host),
-            port: match env::var("PORT") {
-                Ok(port) => port.parse().map_err(|_| ConfigError::InvalidPort)?,
-                Err(_) => defaults.port,
+            port: match non_empty("PORT") {
+                Some(port) => port.trim().parse().map_err(|_| ConfigError::InvalidPort)?,
+                None => defaults.port,
             },
             database: DatabaseConfig::from_env()?,
-            rate_limit: RateLimitConfig::from_env(),
+            rate_limit: RateLimitConfig::from_env()?,
             security: SecurityConfig::from_env()?,
             ingest_dir: non_empty("INGEST_DIR")
                 .map(PathBuf::from)
                 .unwrap_or(defaults.ingest_dir),
+            ingest_max_pending_events: env_number(
+                "INGEST_MAX_PENDING_EVENTS",
+                defaults.ingest_max_pending_events,
+            )?,
+            ingest_min_free_disk_bytes: env_number(
+                "INGEST_MIN_FREE_DISK_MB",
+                defaults.ingest_min_free_disk_bytes / (1024 * 1024),
+            )?
+            .saturating_mul(1024 * 1024),
+            digest_batch_max_events: defaults.digest_batch_max_events,
+            digest_prep_workers: defaults.digest_prep_workers,
+            digest_memory_bytes: defaults.digest_memory_bytes,
             sourcemap_storage_path: env::var("SOURCEMAP_STORAGE_PATH")
                 .unwrap_or(defaults.sourcemap_storage_path),
-            sourcemap_cache_bytes: env::var("SOURCEMAP_CACHE_MB")
-                .ok()
-                .and_then(|mb| mb.parse::<usize>().ok())
-                .and_then(|mb| mb.checked_mul(1024 * 1024))
-                .unwrap_or(defaults.sourcemap_cache_bytes),
-            max_chunk_size_bytes: env_number("MAX_CHUNK_SIZE_BYTES", defaults.max_chunk_size_bytes),
+            sourcemap_cache_bytes: env_number(
+                "SOURCEMAP_CACHE_MB",
+                defaults.sourcemap_cache_bytes / (1024 * 1024),
+            )?
+            .saturating_mul(1024 * 1024),
+            max_chunk_size_bytes: env_number(
+                "MAX_CHUNK_SIZE_BYTES",
+                defaults.max_chunk_size_bytes,
+            )?,
             public_url: url_from_env("PUBLIC_URL"),
             session_flush_interval_secs: env_number(
                 "SESSION_FLUSH_INTERVAL_SECS",
                 defaults.session_flush_interval_secs,
-            ),
+            )?,
             session_cardinality_cap: env_number(
                 "SESSION_CARDINALITY_CAP",
                 defaults.session_cardinality_cap,
-            ),
+            )?,
             dashboard: DashboardConfig::from_env()?,
             telemetry: TelemetryConfig::from_env()?,
             metrics_enabled: env_bool("RUSTRAK_METRICS", false)?,
@@ -241,7 +278,7 @@ impl Config {
                 "RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS",
                 false,
             )?,
-            smtp: SmtpSettings::from_env(),
+            smtp: SmtpSettings::from_env()?,
             oidc: OidcConfig::from_env()?,
             bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").is_ok(),
             create_superuser: env::var("CREATE_SUPERUSER").ok(),
@@ -317,23 +354,23 @@ impl Default for RateLimitConfig {
 }
 
 impl RateLimitConfig {
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Result<Self, ConfigError> {
         let defaults = Self::default();
-        Self {
+        Ok(Self {
             max_events_per_minute: env_number(
                 "MAX_EVENTS_PER_MINUTE",
                 defaults.max_events_per_minute,
-            ),
-            max_events_per_hour: env_number("MAX_EVENTS_PER_HOUR", defaults.max_events_per_hour),
+            )?,
+            max_events_per_hour: env_number("MAX_EVENTS_PER_HOUR", defaults.max_events_per_hour)?,
             max_events_per_project_per_minute: env_number(
                 "MAX_EVENTS_PER_PROJECT_PER_MINUTE",
                 defaults.max_events_per_project_per_minute,
-            ),
+            )?,
             max_events_per_project_per_hour: env_number(
                 "MAX_EVENTS_PER_PROJECT_PER_HOUR",
                 defaults.max_events_per_project_per_hour,
-            ),
-        }
+            )?,
+        })
     }
 
     pub fn is_customized(&self) -> bool {
@@ -362,16 +399,16 @@ impl DatabaseConfig {
         #[cfg(not(feature = "sqlite"))]
         let url = env::var("DATABASE_URL").map_err(|_| ConfigError::MissingDatabaseUrl)?;
         let secs = |name: &str, default: Duration| {
-            Duration::from_secs(env_number(name, default.as_secs()))
+            env_number(name, default.as_secs()).map(Duration::from_secs)
         };
 
         Ok(Self {
             url,
-            max_connections: env_number("DATABASE_MAX_CONNECTIONS", defaults.max_connections),
-            min_connections: env_number("DATABASE_MIN_CONNECTIONS", defaults.min_connections),
-            acquire_timeout: secs("DATABASE_ACQUIRE_TIMEOUT_SECS", defaults.acquire_timeout),
-            idle_timeout: secs("DATABASE_IDLE_TIMEOUT_SECS", defaults.idle_timeout),
-            max_lifetime: secs("DATABASE_MAX_LIFETIME_SECS", defaults.max_lifetime),
+            max_connections: env_number("DATABASE_MAX_CONNECTIONS", defaults.max_connections)?,
+            min_connections: env_number("DATABASE_MIN_CONNECTIONS", defaults.min_connections)?,
+            acquire_timeout: secs("DATABASE_ACQUIRE_TIMEOUT_SECS", defaults.acquire_timeout)?,
+            idle_timeout: secs("DATABASE_IDLE_TIMEOUT_SECS", defaults.idle_timeout)?,
+            max_lifetime: secs("DATABASE_MAX_LIFETIME_SECS", defaults.max_lifetime)?,
         })
     }
 }
@@ -448,11 +485,11 @@ impl Default for SmtpSettings {
 }
 
 impl SmtpSettings {
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Result<Self, ConfigError> {
         let defaults = Self::default();
-        Self {
+        Ok(Self {
             host: non_empty("SMTP_HOST"),
-            port: env_number("SMTP_PORT", defaults.port),
+            port: env_number("SMTP_PORT", defaults.port)?,
             tls: env::var("SMTP_TLS").ok().and_then(|value| {
                 let tls = SmtpTls::parse(&value);
                 if tls.is_none() {
@@ -463,7 +500,7 @@ impl SmtpSettings {
             username: env::var("SMTP_USERNAME").ok(),
             password: env::var("SMTP_PASSWORD").ok(),
             from_address: env::var("SMTP_FROM").unwrap_or(defaults.from_address),
-        }
+        })
     }
 }
 
@@ -472,12 +509,20 @@ fn non_empty(name: &str) -> Option<String> {
     env::var(name).ok().filter(|s| !s.trim().is_empty())
 }
 
-/// A number from the environment; unset or unparsable reads as `default`.
-fn env_number<T: FromStr>(name: &str, default: T) -> T {
-    env::var(name)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(default)
+/// A number from the environment; unset or blank reads as `default`. A value
+/// that does not parse stops startup, like [`env_bool`]: falling back would
+/// run a server the operator did not configure.
+fn env_number<T: FromStr>(name: &str, default: T) -> Result<T, ConfigError> {
+    match non_empty(name) {
+        None => Ok(default),
+        Some(value) => value
+            .trim()
+            .parse()
+            .map_err(|_| ConfigError::InvalidNumber {
+                name: name.to_string(),
+                value: value.trim().to_string(),
+            }),
+    }
 }
 
 /// An address from the environment: unset or blank is `None`, surrounding
@@ -502,6 +547,7 @@ pub enum ConfigError {
     SessionSecretTooShort { len: usize },
     IncompleteOidcConfig(String),
     InvalidBoolean { name: String, value: String },
+    InvalidNumber { name: String, value: String },
     PasswordLoginDisabledWithoutSso,
 }
 
@@ -533,6 +579,9 @@ impl std::fmt::Display for ConfigError {
                 f,
                 "{name} must be on or off (also accepted: true/false, 1/0, yes/no), got \"{value}\""
             ),
+            ConfigError::InvalidNumber { name, value } => {
+                write!(f, "{name} must be a number, got \"{value}\"")
+            }
             ConfigError::PasswordLoginDisabledWithoutSso => write!(
                 f,
                 "OIDC_DISABLE_PASSWORD_LOGIN is on, but SSO is not configured (OIDC_ISSUER_URL is unset). \

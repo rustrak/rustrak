@@ -1619,3 +1619,177 @@ async fn test_legacy_event_keys_still_block_a_replay() {
         .expect("history count must succeed");
     assert_eq!(rows, 1);
 }
+
+mod rule_cache {
+    use super::create_test_project;
+    use crate::common::{self, TestDb};
+    use actix_web::test;
+    use rustrak::db::DbPool;
+    use rustrak::ingest::EventMetadata;
+    use serde_json::{json, Value};
+
+    struct Setup {
+        db: TestDb,
+        state: rustrak::app::AppState,
+        ingest: tempfile::TempDir,
+        project_id: i32,
+        token: String,
+    }
+
+    async fn setup() -> Setup {
+        let db = TestDb::new().await;
+        let ingest = tempfile::tempdir().unwrap();
+        let state = common::state(&db.pool, common::config_with_ingest_dir(ingest.path())).await;
+        let project_id = create_test_project(&db.pool).await;
+        let token = common::create_test_token(&db.pool).await;
+        Setup {
+            db,
+            state,
+            ingest,
+            project_id,
+            token,
+        }
+    }
+
+    /// Digests a new error with the app's own processor, as ingest would.
+    async fn digest_new_error(s: &Setup) {
+        let event_id = uuid::Uuid::new_v4().simple().to_string();
+        // Letters only: grouping would read digits as one parameter.
+        let message: String = event_id
+            .chars()
+            .map(|c| (b'a' + c.to_digit(16).unwrap() as u8) as char)
+            .collect();
+        let event = json!({ "event_id": event_id, "level": "error", "message": message });
+        common::store_event(
+            s.ingest.path(),
+            s.project_id,
+            &event_id,
+            &serde_json::to_vec(&event).unwrap(),
+        )
+        .await
+        .unwrap();
+        let metadata = EventMetadata {
+            event_id,
+            project_id: s.project_id,
+            ingested_at: chrono::Utc::now(),
+            remote_addr: None,
+        };
+        let digested = s
+            .state
+            .processors
+            .errors
+            .digest(&s.db.pool, &metadata)
+            .await
+            .unwrap();
+        assert!(
+            matches!(digested, rustrak::digest::processors::Digested::Stored),
+            "{digested:?}"
+        );
+    }
+
+    async fn fired(pool: &DbPool, project_id: i32) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM alert_history WHERE project_id = $1")
+            .bind(project_id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    async fn send(s: &Setup, req: test::TestRequest) -> Value {
+        let app = common::app_with(&s.state).await;
+        let resp = test::call_service(
+            &app,
+            req.insert_header(("Authorization", format!("Bearer {}", s.token)))
+                .to_request(),
+        )
+        .await;
+        assert!(resp.status().is_success(), "{}", resp.status());
+        let body = test::read_body(resp).await;
+        serde_json::from_slice(&body).unwrap_or(Value::Null)
+    }
+
+    async fn create_rule(s: &Setup) -> i64 {
+        let channel = rustrak::services::AlertService::create_channel(
+            &s.db.pool,
+            &Default::default(),
+            rustrak::models::CreateAlertIntegration {
+                name: "sink".into(),
+                provider_type: rustrak::models::ProviderType::Webhook,
+                credentials: json!({ "url": "http://127.0.0.1:9/unused" }),
+                is_enabled: true,
+            },
+        )
+        .await
+        .unwrap();
+        let rule = send(
+            s,
+            test::TestRequest::post()
+                .uri(&format!("/api/projects/{}/alert-rules", s.project_id))
+                .set_json(json!({
+                    "name": "Every new issue",
+                    "alert_type": "new_issue",
+                    "conditions": {},
+                    "cooldown_minutes": 0,
+                    "channels": [{ "integration_id": channel.id, "routing_override": {} }],
+                })),
+        )
+        .await;
+        rule["id"].as_i64().unwrap()
+    }
+
+    fn rule_uri(s: &Setup, rule_id: i64) -> String {
+        format!("/api/projects/{}/alert-rules/{rule_id}", s.project_id)
+    }
+
+    /// The digest remembers a project has no rules; creating, disabling,
+    /// enabling and deleting one through the API must reach it at once.
+    #[actix_web::test]
+    async fn rule_changes_reach_the_next_digest() {
+        let s = setup().await;
+        digest_new_error(&s).await; // warms the cache: no rules
+        assert_eq!(fired(&s.db.pool, s.project_id).await, 0);
+
+        let rule_id = create_rule(&s).await;
+        digest_new_error(&s).await;
+        assert_eq!(fired(&s.db.pool, s.project_id).await, 1, "created");
+
+        send(
+            &s,
+            test::TestRequest::patch()
+                .uri(&rule_uri(&s, rule_id))
+                .set_json(json!({ "is_enabled": false })),
+        )
+        .await;
+        digest_new_error(&s).await;
+        assert_eq!(fired(&s.db.pool, s.project_id).await, 1, "disabled");
+
+        send(
+            &s,
+            test::TestRequest::patch()
+                .uri(&rule_uri(&s, rule_id))
+                .set_json(json!({ "is_enabled": true })),
+        )
+        .await;
+        digest_new_error(&s).await;
+        assert_eq!(fired(&s.db.pool, s.project_id).await, 2, "enabled again");
+
+        send(&s, test::TestRequest::delete().uri(&rule_uri(&s, rule_id))).await;
+        digest_new_error(&s).await;
+        assert_eq!(fired(&s.db.pool, s.project_id).await, 2, "deleted");
+    }
+
+    /// Once the digest knows a project has no rules, it stops asking.
+    #[actix_web::test]
+    async fn a_project_without_rules_never_reads_them_again() {
+        let s = setup().await;
+        digest_new_error(&s).await;
+
+        // Any read of the table from here on fails the digest.
+        sqlx::query("ALTER TABLE alert_rules RENAME TO alert_rules_hidden")
+            .execute(&s.db.pool)
+            .await
+            .unwrap();
+        digest_new_error(&s).await;
+        digest_new_error(&s).await;
+    }
+}

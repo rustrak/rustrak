@@ -646,3 +646,107 @@ async fn test_event_list_response_format() {
     assert!(event.get("level").is_some());
     assert!(event.get("platform").is_some());
 }
+
+#[cfg(feature = "sqlite")]
+fn processors(
+    pool: &rustrak::db::DbPool,
+) -> std::sync::Arc<rustrak::digest::processors::Processors> {
+    std::sync::Arc::new(crate::common::processors_with_config(
+        pool,
+        &rustrak::config::Config::default(),
+    ))
+}
+
+/// An issue with `total` events whose counters (issue and project) say so.
+#[cfg(feature = "sqlite")]
+async fn issue_with_events(db: &TestDb, total: i64) -> (i32, Uuid) {
+    let project = create_test_project(&db.pool, "Counted Delete").await;
+    let issue = create_test_issue(&db.pool, project.id, "TypeError", "Error").await;
+    let grouping = create_test_grouping(&db.pool, project.id, issue.id).await;
+    for _ in 0..total {
+        create_test_event(
+            &db.pool,
+            project.id,
+            issue.id,
+            grouping.id,
+            &create_event_data(),
+            Utc::now(),
+        )
+        .await;
+    }
+    sqlx::query("UPDATE issues SET stored_event_count = $1 WHERE id = $2")
+        .bind(total)
+        .bind(issue.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE projects SET stored_event_count = $1 WHERE id = $2")
+        .bind(total)
+        .bind(project.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    (project.id, issue.id)
+}
+
+/// Each batch waits for the write turn: while a digest holds it, nothing is
+/// deleted.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn deleting_an_issue_waits_for_the_write_turn() {
+    let db = TestDb::new().await;
+    let (_, issue_id) = issue_with_events(&db, 10).await;
+    let processors = processors(&db.pool);
+    let turn = processors.errors.write_turn().await;
+
+    let delete = tokio::spawn({
+        let (pool, processors) = (db.pool.clone(), processors.clone());
+        async move { IssueService::delete(&pool, issue_id, &processors.errors).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM events WHERE issue_id = $1")
+        .bind(issue_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(rows, 10, "deleted while a digest held the turn");
+
+    drop(turn);
+    delete.await.unwrap().unwrap();
+}
+
+/// A delete that fails between batches leaves the issue in place with its
+/// counters equal to the events it still has, so quota and retention never
+/// count rows that are gone.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn a_delete_failing_between_batches_leaves_counters_right() {
+    let db = TestDb::new().await;
+    let (project_id, issue_id) = issue_with_events(&db, 1_100).await;
+    // The second batch fails part-way, as a busy database would.
+    sqlx::query(
+        "CREATE TRIGGER fail_second_batch BEFORE DELETE ON events \
+         WHEN (SELECT COUNT(*) FROM events WHERE issue_id = OLD.issue_id) <= 50 \
+         BEGIN SELECT RAISE(ABORT, 'interrupted'); END",
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let result = IssueService::delete(&db.pool, issue_id, &processors(&db.pool).errors).await;
+    assert!(result.is_err());
+
+    let (rows, issue_count, project_count): (i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM events WHERE issue_id = $1), \
+                (SELECT stored_event_count FROM issues WHERE id = $1), \
+                (SELECT stored_event_count FROM projects WHERE id = $2)",
+    )
+    .bind(issue_id)
+    .bind(project_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(rows, 100, "the first batch committed");
+    assert_eq!(issue_count, rows);
+    assert_eq!(project_count, rows);
+}

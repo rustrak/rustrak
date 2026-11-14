@@ -1108,6 +1108,12 @@ async fn a_cleanup_gives_the_space_it_freed_back_to_the_filesystem() {
     let project = create_test_project(&pool, "reclaim").await.id;
     // About 8 MiB of logs, all older than the window.
     seed_old_logs(&pool, project, 10, 2_000, 4_096).await;
+    // Pool connections never checkpoint; the digest's timer would have
+    // copied the seeded logs into the file by now.
+    sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
+        .execute(&pool)
+        .await
+        .unwrap();
     let (before, _) = pages(&pool).await;
     let file_before = std::fs::metadata(&path).unwrap().len();
 

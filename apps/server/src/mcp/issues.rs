@@ -179,7 +179,9 @@ impl RustrakMcp {
     )]
     async fn delete_issue(&self, Parameters(a): Parameters<IssueArgs>) -> CallToolResult {
         done(
-            async { issues::delete_issue(self.pool(), a.path()?, self.actor()).await },
+            async {
+                issues::delete_issue(self.pool(), self.processors(), a.path()?, self.actor()).await
+            },
             format!("Issue {} deleted successfully.", a.issue_id),
         )
         .await
@@ -249,8 +251,14 @@ impl RustrakMcp {
             _ => return super::refuse("Specify exactly one of ids or filter."),
         };
         reply(async {
-            issues::delete_issues(self.pool(), a.project_id, Ok(web::Json(body)), self.actor())
-                .await
+            issues::delete_issues(
+                self.pool(),
+                self.processors(),
+                a.project_id,
+                Ok(web::Json(body)),
+                self.actor(),
+            )
+            .await
         })
         .await
     }

@@ -9,6 +9,89 @@ A comprehensive benchmarking suite for the Rustrak error tracking server. Measur
 - **Docker Metrics**: Collects memory and CPU usage from Docker containers
 - **JSON Output**: Results saved with timestamps for version comparison
 - **Latency Histograms**: HDR histograms for accurate P50/P95/P99 measurements
+- **Linux A/B lab** (`scripts/lab.sh`): `main` against the working tree on
+  Linux, memory from `/proc`, the harness every server performance change is
+  judged by. Start there.
+
+## Linux A/B lab
+
+One command, from `packages/benchmarks` on a machine with Docker:
+
+```bash
+scripts/lab.sh                                   # ingest, SQLite, 3 rounds main vs working tree
+scripts/lab.sh --scenario backlog --runs 1       # memory per pending event
+scripts/lab.sh --scenario large --runs 1         # 4 MiB events + one ~64 MiB envelope
+scripts/lab.sh --scenario mixed                  # 500 req/s ingest + 4 readers on a 50k-event DB
+scripts/lab.sh --postgres                        # ingest against a postgres:16 container
+scripts/lab.sh --no-baseline --also arena:MALLOC_ARENA_MAX=2   # env A/B on the candidate
+scripts/lab.sh --release                         # shipped profile (fat LTO) for final numbers
+scripts/lab.sh --tmpfs                           # data on tmpfs: CPU-only control, not a headline
+scripts/lab.sh -- --duration 30 --strace         # anything after -- goes to `rustrak-bench lab`
+scripts/lab.sh --build-only                      # just (re)build
+```
+
+What it does:
+
+1. Builds `rustrak-bench-toolchain:<channel>` (the `rust:<channel>-slim-bookworm`
+   image of `rust-toolchain.toml`, plus `strace`) once.
+2. Copies `main` (`git archive`, only when `main` moved) and the working tree
+   (as it is at that moment, so a run measures a fixed snapshot) into a volume,
+   and builds both the same way, incrementally. The default profile is a fast
+   release (no LTO, 16 codegen units, incremental): a one-line change rebuilds
+   in about a minute. `--release` uses the repo's real profile.
+3. Runs `rustrak-bench lab` in a container. It starts each build as a child
+   process on a wiped data directory **on a Docker volume** (the VM's ext4,
+   never a macOS bind mount), pinned to CPUs 0-3 (`SERVER_CPUS`); the load
+   generator runs on the others (`LOAD_CPUS`). Builds alternate run by run
+   (A B, B A, A B), so drift and the Docker VM's random disk stalls hit both.
+4. Prints every run, then per build the median and spread ((max-min)/median),
+   and writes a JSON summary to `results/lab/` (git-ignored).
+
+Most of an A/B's time is the drain after each burst. `-- --duration 5` is
+the quick A/B: the same measurements on a smaller backlog.
+
+**Columns.** `req_per_s`, `p50/p99/max_ms`, `slow_200ms`, `non_200` are the
+client's. `digest_eps_in` / `digest_eps_after` are digests per second during
+the load and after it, `drain_s` how long the backlog took to clear once the
+load stopped, `leftover` acknowledged events never digested (the harness waits
+until the count stops moving, with a timeout, never for an exact number).
+`anon_idle/peak/floor_mb` are `/proc/<pid>/smaps_rollup` `Anonymous`: idle is
+the median of the last 3 s before the load, peak the maximum during load and
+drain, floor the median of the last 3 s of the wait after the drain.
+`file_peak_mb` is mapped file pages, `hwm_mb` `VmHWM`, `threads_max` the thread
+count. `cgroup_incl_cache_peak_mb` is the container's `memory.current` (page
+cache and the load generator included): never quote it as the server's RAM.
+`written_kb_per_ev` and `cpu_ms_per_ev` come from `/proc/<pid>/io` and
+`/proc/<pid>/stat`; `fsync_per_ev` only with `--strace` (it slows fsync-heavy
+runs a little). `written_kb_per_ev` counts a whole page-cache folio per write,
+so it can overstate; `disk_kb_per_ev` is what reached the disk, from the
+container cgroup's `io.stat` `wbytes`. Backlog adds `backlog_max` and
+`bytes_per_pending`; mixed adds
+`read_rps`, `read_p50_ms`, `read_p99_ms`. A run marked `!` is **stalled**: its
+slowest request exceeded `--stall-max-ms` (2000) or more than `--stall-slow`
+(50) requests took over 200 ms. Medians leave stalled runs out when there are
+clean ones.
+
+**Load.** 16 keep-alive connections, closed loop (`-- --rate N` for open
+loop: a fixed offered rate, latency measured from the scheduled send time).
+Each request is one ~20 KB Python-SDK-shaped error event (`--event-size`): 26
+frames with context and vars, 30 breadcrumbs, tags, user, contexts, request;
+10 releases, 2 environments, 2000 issues (`--groups`) with 30% of the events on
+10 hot ones. The envelope is built once and patched per request, so the
+generator costs a memcpy.
+
+**Memory protocol.** The quick defaults (`--idle-secs 5 --floor-secs 10`)
+are for A/B. For the record numbers use idle 30-60 s after start and floor
+60-120 s after the drain: `-- --idle-secs 45 --floor-secs 90`.
+
+**Persistent state.** Docker volumes `rustrak-bench-cargo` (registry),
+`rustrak-bench-src`, `rustrak-bench-target-{main,wt,tools}`,
+`rustrak-bench-bin`, `rustrak-bench-data` (the run directory),
+`rustrak-bench-seed` (mixed's seeded databases, one per migration list, so
+they rebuild only when migrations change) and `rustrak-bench-pgdata`; plus the
+image. They are meant to survive between sessions. Size:
+`docker system df -v | grep rustrak-bench`. Wipe everything:
+`scripts/lab.sh --wipe`.
 
 ## Quick Start
 
@@ -311,9 +394,13 @@ The benchmark tool uses the Docker API (via `bollard`) to poll container stats e
 - Measured using HDR histograms
 
 ### Memory (with --container)
-- Idle memory (before test starts)
-- Peak memory usage
-- Average memory usage
+- **Anonymous memory** idle and peak (`memory.stat` `anon` on cgroup v2,
+  `rss` on v1): heap and stacks, what the server really holds
+- Page cache peak and peak task (thread) count
+- "cgroup incl. page cache" idle / peak / average: Docker's
+  `memory_stats.usage`, the cgroup's `memory.current`. It counts the spool
+  files, the database and its WAL in page cache, so it overstates the
+  server's memory several times over; kept only for comparison with old runs
 - Memory limit (if set)
 
 ### CPU (with --container)

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use sqlx::{QueryBuilder, Row};
 
-use crate::db::dialect::{bucket, bucket_time, since_stored};
+use crate::db::dialect::{bucket, bucket_time, since_utc};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{
@@ -1105,7 +1105,7 @@ const TRACE_INDEX: &str = "INDEXED BY idx_spans_gen_ai_trace_cover";
 
 /// `AND start_timestamp >= ...` time filter for a `spans` query.
 fn span_time_filter(period_hours: Option<i64>) -> String {
-    format!("AND {}", since_stored("start_timestamp", period_hours))
+    format!("AND {}", since_utc("start_timestamp", period_hours))
 }
 
 /// Time-bucketed `COUNT(*)` of spans matching `operation_type`.
@@ -1231,4 +1231,38 @@ async fn breakdown_query(
         .into_iter()
         .map(|(label, value)| GenAiBreakdownRow { label, value })
         .collect())
+}
+
+#[cfg(all(test, not(feature = "postgres")))]
+mod tests {
+    use super::*;
+
+    /// `start_timestamp` is stored as RFC 3339 (`T`-separated), so a bound
+    /// in `datetime()`'s space-separated form let in the whole calendar day
+    /// before the window.
+    #[tokio::test]
+    async fn span_time_filter_leaves_out_spans_before_the_window() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE spans (start_timestamp TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let start = |minutes: i64| Utc::now() - chrono::Duration::minutes(minutes);
+        for minutes in [24 * 60 + 1, 24 * 60 - 1] {
+            sqlx::query("INSERT INTO spans VALUES ($1)")
+                .bind(start(minutes))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        let sql = format!(
+            "SELECT COUNT(*) FROM spans WHERE 1 = 1 {}",
+            span_time_filter(Some(24))
+        );
+        let (n,): (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "only the span inside the last 24 hours");
+    }
 }

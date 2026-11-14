@@ -325,13 +325,12 @@ async fn pending_event_recovery_skips_events_owned_by_this_process() {
     assert_eq!(count, 1);
 }
 
-/// On SQLite a scoped file is deleted only after a durability checkpoint that
-/// started after its commit. That checkpoint runs on a background queue, so
-/// the digest returns first and the file follows shortly after; the event
+/// A scoped file is deleted once the commit that stored its event is
+/// durable (the digest's own `synchronous=FULL` connection), and the event
 /// stays registered as in flight until then.
 #[cfg(feature = "sqlite")]
 #[actix_web::test]
-async fn scoped_event_file_is_deleted_after_the_durability_checkpoint() {
+async fn scoped_event_file_is_deleted_after_its_commit() {
     let db = TestDb::new().await;
     let (project, _) = create_ingest_project(&db.pool, "Durability Queue").await;
     let temp_dir = TempDir::new().unwrap();
@@ -366,6 +365,65 @@ async fn scoped_event_file_is_deleted_after_the_durability_checkpoint() {
     // task can be polled between the two, so wait for both together.
     crate::common::eventually(|| async {
         (pending_files(temp_dir.path()) == 0 && processors.errors.in_flight().is_empty())
+            .then_some(())
+    })
+    .await;
+}
+
+/// A process killed after a digest committed but before its file was deleted
+/// leaves the file behind. The next process replays it into the event
+/// already stored, not a second one, and then removes the file.
+#[actix_web::test]
+async fn an_event_committed_before_a_crash_replays_into_the_same_row() {
+    let db = TestDb::new().await;
+    let (project, _) = create_ingest_project(&db.pool, "Crash Replay").await;
+    let temp_dir = TempDir::new().unwrap();
+    let config = create_test_config();
+    let processors = || {
+        std::sync::Arc::new(crate::common::processors_with_config(
+            &db.pool,
+            &rustrak::config::Config {
+                ingest_dir: temp_dir.path().to_path_buf(),
+                rate_limit: config.rate_limit.clone(),
+                ..crate::common::config()
+            },
+        ))
+    };
+
+    // The first process commits the digest; the copy of the file below is
+    // what the kill left behind.
+    let metadata = store_scoped_event(temp_dir.path(), project).await;
+    let path = std::fs::read_dir(temp_dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.to_string_lossy().ends_with(".pending.json"))
+        .unwrap();
+    let left_behind = std::fs::read(&path).unwrap();
+    processors()
+        .errors
+        .digest(&db.pool, &metadata)
+        .await
+        .expect("digest must succeed");
+    crate::common::eventually(|| async { (!path.exists()).then_some(()) }).await;
+    std::fs::write(&path, left_behind).unwrap();
+
+    // The restarted process.
+    let restarted = processors();
+    rustrak::ingest::pipeline::recover_pending_events_once(
+        db.pool.clone(),
+        restarted.clone(),
+        temp_dir.path().to_path_buf(),
+    )
+    .await;
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE project_id = $1")
+        .bind(project)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "the replay must not store the event twice");
+    crate::common::eventually(|| async {
+        (pending_files(temp_dir.path()) == 0 && restarted.errors.in_flight().is_empty())
             .then_some(())
     })
     .await;

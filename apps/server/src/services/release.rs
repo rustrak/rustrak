@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use chrono::{DateTime, Utc};
 
-use crate::db::dialect::{since, since_day};
+use crate::db::dialect::{since, since_day, since_utc};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::session::crash_free_rate;
@@ -177,7 +177,7 @@ impl ReleaseService {
              FROM events \
              WHERE project_id = $1 AND release <> '' \
              GROUP BY release",
-            since("ingested_at", hours)
+            since_utc("ingested_at", hours)
         );
         let events: Vec<EventRow> = sqlx::query_as(sqlx::AssertSqlSafe(&*events_sql))
             .bind(project_id)
