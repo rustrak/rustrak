@@ -565,6 +565,39 @@ async fn test_patch_me_sets_and_clears_the_24_hour_clock() {
     let body: Value = test::call_and_read_body_json(&app, patch).await;
     assert_eq!(body["clock_24h"], true);
 
+    // Read back, not only from the PATCH response: it has to be stored.
+    let me = test::TestRequest::get()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, me).await;
+    assert_eq!(body["clock_24h"], true);
+
+    // `false` is a choice of its own, not the same as unset.
+    let patch = test::TestRequest::patch()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .set_json(json!({ "clock_24h": false }))
+        .to_request();
+    let resp = test::call_service(&app, patch).await;
+    assert_eq!(resp.status(), 200);
+
+    // A PATCH that does not name the clock leaves it alone.
+    let patch = test::TestRequest::patch()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .set_json(json!({ "timezone": "Europe/Prague" }))
+        .to_request();
+    let resp = test::call_service(&app, patch).await;
+    assert_eq!(resp.status(), 200);
+
+    let me = test::TestRequest::get()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, me).await;
+    assert_eq!(body["clock_24h"], false);
+
     // Naming only the clock leaves the zone alone, and `null` clears it.
     let patch = test::TestRequest::patch()
         .uri("/auth/me")
