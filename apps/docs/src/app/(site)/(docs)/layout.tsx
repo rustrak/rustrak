@@ -35,11 +35,13 @@ export default async function DocsLayout({
   // renders the whole page map into every docs page (mobile menu included),
   // so they were the first thing in each page's HTML, ahead of its content.
   // The changelog has its own index and needs none of them.
-  const pageMap = (await getPageMap()).map((item) =>
-    'children' in item && item.name === 'changelog'
-      ? { name: item.name, route: item.route }
-      : item,
-  );
+  // Everything but the children stays, the title included: without it the
+  // navbar link renders empty.
+  const pageMap = (await getPageMap()).map((item) => {
+    if (!('children' in item) || item.name !== 'changelog') return item;
+    const { children: _, ...folder } = item;
+    return folder;
+  });
 
   return (
     <Layout
