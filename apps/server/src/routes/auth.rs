@@ -44,6 +44,10 @@ struct UserResponse {
     /// Chosen IANA timezone, or `null` when the user never chose one.
     #[cfg_attr(feature = "openapi", schema(required))]
     timezone: Option<String>,
+    /// Whether the user wants a 24-hour clock, or `null` when they never
+    /// chose, which leaves the clock to their language.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    clock_24h: Option<bool>,
 }
 
 const OIDC_STATE_KEY: &str = "oidc_state";
@@ -119,6 +123,7 @@ impl From<User> for UserResponse {
             is_admin,
             language: user.language,
             timezone: user.timezone,
+            clock_24h: user.clock_24h,
         }
     }
 }
@@ -612,14 +617,17 @@ pub struct UpdatePreferencesRequest {
     pub language: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub timezone: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub clock_24h: Option<Option<bool>>,
 }
 
-fn deserialize_optional_field<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+fn deserialize_optional_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
 {
     use serde::Deserialize as _;
-    Ok(Some(Option::<String>::deserialize(deserializer)?))
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
 }
 
 /// Whether `value` is shaped like a BCP-47 language tag.
@@ -687,8 +695,14 @@ pub async fn update_current_user(
         }
     }
 
-    UsersService::update_preferences(pool.get_ref(), user.0.id, body.language, body.timezone)
-        .await?;
+    UsersService::update_preferences(
+        pool.get_ref(),
+        user.0.id,
+        body.language,
+        body.timezone,
+        body.clock_24h,
+    )
+    .await?;
 
     let updated = UsersService::get_by_id(pool.get_ref(), user.0.id)
         .await?

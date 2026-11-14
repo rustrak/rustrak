@@ -22489,6 +22489,12 @@
         "type": "object",
         "description": "What a reader may change about how the dashboard is presented to them.\n\nEvery field is doubly optional, and both levels are used: absent means\n\"leave it\", `null` means \"clear it\". `#[serde(default)]` with\n`deserialize_with` is what keeps those distinguishable, because plain\n`Option<Option<T>>` collapses a missing key and an explicit null.",
         "properties": {
+          "clock_24h": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "language": {
             "type": [
               "string",
@@ -22792,9 +22798,17 @@
           "role",
           "is_admin",
           "language",
-          "timezone"
+          "timezone",
+          "clock_24h"
         ],
         "properties": {
+          "clock_24h": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the user wants a 24-hour clock, or `null` when they never\nchose, which leaves the clock to their language."
+          },
           "email": {
             "type": "string"
           },

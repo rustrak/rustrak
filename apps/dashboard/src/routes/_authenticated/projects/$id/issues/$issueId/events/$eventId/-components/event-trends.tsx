@@ -50,12 +50,7 @@ export function EventTrends({ stats }: { stats: IssueStatsResponse | null }) {
             xKey="t"
             integer
             height={140}
-            formatX={(value) =>
-              format.dateTime(new Date(value), {
-                month: 'short',
-                day: 'numeric',
-              })
-            }
+            formatX={(value) => format.dateTime(new Date(value), 'axisDay')}
             formatY={(value) => format.number(value, 'compact')}
             label={t('detail.activity30d')}
           />
