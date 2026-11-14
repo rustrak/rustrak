@@ -1,8 +1,48 @@
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import tailwindcss from '@tailwindcss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import viteReact from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+
+/**
+ * Writes `.br` and `.gz` beside every text asset, at the highest levels.
+ *
+ * The server's `Files` mount picks them by `Accept-Encoding`
+ * (`try_compressed` in `routes/dashboard.rs`), so it never compresses an
+ * asset itself: brotli 11 is smaller than the quality-3 brotli the `Compress`
+ * middleware can afford per request, and costs the server no CPU at all.
+ * Done once here, at build time, where the time is free.
+ */
+function precompress(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'rustrak:precompress',
+    apply: 'build',
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    closeBundle() {
+      const assets = join(outDir, 'assets');
+      for (const name of readdirSync(assets)) {
+        if (!/\.(js|css|svg|json)$/.test(name)) continue;
+        const path = join(assets, name);
+        const bytes = readFileSync(path);
+        // Below a packet, the encoding header costs more than it saves.
+        if (bytes.length < 1024) continue;
+        writeFileSync(
+          `${path}.br`,
+          brotliCompressSync(bytes, {
+            params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
+          }),
+        );
+        writeFileSync(`${path}.gz`, gzipSync(bytes, { level: 9 }));
+      }
+    },
+  };
+}
 
 /**
  * The dashboard is a pure SPA. It is compiled to static files and the Rust
@@ -77,8 +117,25 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       tailwindcss(),
-      tanstackRouter({ target: 'react', autoCodeSplitting: true }),
+      tanstackRouter({
+        target: 'react',
+        autoCodeSplitting: true,
+        codeSplittingOptions: {
+          // The plugin's default splits `component` but leaves
+          // `pendingComponent` in the route file, and every route's skeleton
+          // is its page rendered without data. So every page, and everything
+          // it imports (recharts included), sat in the entry chunk. One chunk
+          // for both: the router already waits for `component`'s chunk before
+          // it renders, so the skeleton arrives with it and costs no wait.
+          defaultBehavior: [
+            ['component', 'pendingComponent'],
+            ['errorComponent'],
+            ['notFoundComponent'],
+          ],
+        },
+      }),
       viteReact(),
+      precompress(),
     ],
     server: {
       port: 3000,
@@ -94,6 +151,11 @@ export default defineConfig(({ mode }) => {
       // Vite fingerprints everything under `assets/`, which is what lets the
       // server mark that one directory `immutable` and nothing else.
       assetsDir: 'assets',
+      // Never inline an SVG. Vite would turn every platform logo under 4 KB
+      // into a base64 string, and `platformicons` names ~400 of them: 600 KB
+      // of JS on the first load for the handful a page actually shows. As
+      // files they are fetched one by one, only when drawn, and cached forever.
+      assetsInlineLimit: (file) => (file.endsWith('.svg') ? false : undefined),
     },
   };
 });

@@ -14,6 +14,7 @@ import {
   refreshNowOnData,
 } from '@/shared/api/query';
 import { session } from '@/shared/api/session';
+import { clock } from '@/shared/i18n/clock';
 import { intl } from '@/shared/i18n/intl';
 import { Messages } from '@/shared/i18n/provider';
 import { DialogHost } from '@/shared/ui/components/dialog-host';
@@ -23,7 +24,7 @@ import { createAppRouter } from './router';
 const queryClient = createQueryClient();
 // Both subscriptions last as long as the app, so nothing unsubscribes them.
 clearOnUserChange(queryClient, session);
-refreshNowOnData(queryClient, intl);
+refreshNowOnData(queryClient, clock);
 const router = createAppRouter(queryClient);
 
 /**

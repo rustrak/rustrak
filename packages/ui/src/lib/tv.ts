@@ -1,5 +1,5 @@
-import { createTV } from 'tailwind-variants/config';
-import { twMergeConfig } from './tw-merge';
+import { createTV } from 'tailwind-variants/lite';
+import { twMerge } from './tw-merge';
 
 /**
  * `tv` is the only way to describe what a component looks like. Each recipe
@@ -14,6 +14,8 @@ import { twMergeConfig } from './tw-merge';
  *     by hand;
  *   - focus always goes through the system's `focusRing`.
  */
-export const tv = createTV({ twMergeConfig });
+// The lite entry with `cn`'s own merger. The default entry ships a second,
+// bundled copy of tailwind-merge (~77 KB): the same engine, loaded twice.
+export const tv = createTV({ twMerge });
 
 export type { VariantProps } from 'tailwind-variants';

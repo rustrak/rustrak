@@ -27,7 +27,6 @@ export function Messages({ children }: { children: React.ReactNode }) {
       messages={snapshot.messages}
       timeZone={snapshot.timeZone}
       formats={snapshot.formats}
-      now={snapshot.now}
     >
       {children}
     </IntlProvider>

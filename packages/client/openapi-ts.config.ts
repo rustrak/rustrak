@@ -21,7 +21,10 @@ export default defineConfig({
   plugins: [
     '@hey-api/client-fetch',
     '@hey-api/typescript',
-    { name: 'zod', dates: { offset: true } },
+    // Zod Mini: the same validation through functions instead of methods, so
+    // a bundle carries only the checks the schemas use. Classic zod hangs
+    // every method on every schema and cannot be tree-shaken.
+    { name: 'zod', compatibilityVersion: 'mini', dates: { offset: true } },
     {
       name: '@hey-api/sdk',
       validator: 'zod',

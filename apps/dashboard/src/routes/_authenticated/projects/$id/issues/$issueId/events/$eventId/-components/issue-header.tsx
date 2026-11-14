@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { STATUS_TONE, statusDisplay } from '@/features/issue/model/status';
 import { IssueActionBar } from '@/features/issue/ui/components/issue-actions';
 import { levelMark } from '@/shared/config/levels';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { DetailHeader } from '@/shared/ui/components/detail-layout';
 import { useCopy } from '@/shared/ui/hooks/use-copy';
 
@@ -34,6 +35,7 @@ export function IssueHeader({
   const t = useTranslations('issues');
   const { copy } = useCopy();
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const status = statusDisplay(issue);
 
   const copyId = () => copy(issue.short_id, t('table.copied'));
@@ -95,14 +97,14 @@ export function IssueHeader({
               title={format.dateTime(new Date(issue.first_seen), 'dateTime')}
             >
               {t('detail.firstSeen', {
-                when: format.relativeTime(new Date(issue.first_seen)),
+                when: relativeTime(new Date(issue.first_seen)),
               })}
             </span>
             <span
               title={format.dateTime(new Date(issue.last_seen), 'dateTime')}
             >
               {t('detail.lastSeen', {
-                when: format.relativeTime(new Date(issue.last_seen)),
+                when: relativeTime(new Date(issue.last_seen)),
               })}
             </span>
           </p>

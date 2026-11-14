@@ -12,6 +12,7 @@ import { type ReactNode, useEffect, useRef } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { matchParts } from '@/features/log/model/log-view';
 import { levelMark, levelTone } from '@/shared/config/levels';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 
 /**
  * The log lines, newest first, one line each: a stripe and a word for the
@@ -116,6 +117,7 @@ function LogLine({
 }) {
   const t = useTranslations('logs');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const ref = useRef<HTMLButtonElement>(null);
   const at = new Date(log.timestamp);
 
@@ -146,7 +148,7 @@ function LogLine({
         />
         <time
           dateTime={log.timestamp}
-          title={format.relativeTime(at)}
+          title={relativeTime(at)}
           className="hidden shrink-0 text-fg-subtle tabular-nums sm:block"
         >
           {format.dateTime(at, 'logLine')}

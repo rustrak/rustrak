@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
-type HighlighterComponent = typeof import('react-syntax-highlighter').Prism;
+type HighlighterComponent =
+  typeof import('@/shared/ui/components/syntax-highlighter').PrismLight;
 
 export interface SyntaxHighlighter {
   /** `null` until the chunk arrives, and forever if it never does. */
@@ -25,9 +26,9 @@ export function useSyntaxHighlighter(): SyntaxHighlighter {
   useEffect(() => {
     let cancelled = false;
 
-    import('react-syntax-highlighter')
+    import('@/shared/ui/components/syntax-highlighter')
       .then((mod) => {
-        if (!cancelled) setHighlighter(() => mod.Prism);
+        if (!cancelled) setHighlighter(() => mod.PrismLight);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);

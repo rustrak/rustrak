@@ -15,11 +15,12 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { z } from 'zod';
 import { githubMutations } from '@/features/github/api/mutations';
 import { unreachableFromGitHub } from '@/features/github/lib/webhook-url';
 import { IssueTemplateFields } from '@/features/github/ui/components/issue-template-fields';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
 import { cn } from '@/shared/lib/utils';
 import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
@@ -349,7 +350,7 @@ function Connected({
   login?: ReactNode;
 }) {
   const t = useTranslations('github');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const { installations, webhook_url } = status;
   // Only rendered once the app exists.
   const app = status.app as NonNullable<GitHubStatus['app']>;
@@ -376,7 +377,7 @@ function Connected({
             <span className="inline-flex items-center gap-2 text-meta text-fg-meta">
               <span className="size-2 rounded-pill bg-success" />
               {t('connection.lastWebhook', {
-                when: format.relativeTime(new Date(app.last_webhook_at)),
+                when: relativeTime(new Date(app.last_webhook_at)),
               })}
             </span>
           ) : (

@@ -21,6 +21,7 @@ import {
   isWebUrl,
 } from '@/features/issue/model/feedback-mailbox';
 import { STATUS_TONE } from '@/features/issue/model/status';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { isInlineImage } from '@/shared/lib/utils';
 import { Link } from '@/shared/ui/components/link';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
@@ -48,6 +49,7 @@ export function FeedbackDetail({
 }) {
   const t = useTranslations('projectPages.feedback');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const sender = feedbackSender(feedback);
   const resolved = feedback.status === 'resolved';
   const spam = feedback.status === 'ignored';
@@ -93,7 +95,7 @@ export function FeedbackDetail({
                 dateTime={feedback.created_at}
                 title={format.dateTime(received, 'dateTime')}
               >
-                {format.relativeTime(received)}
+                {relativeTime(received)}
               </time>
             </p>
           </div>

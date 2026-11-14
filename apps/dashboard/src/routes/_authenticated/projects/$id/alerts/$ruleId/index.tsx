@@ -31,6 +31,7 @@ import { AlertTypeIcon } from '@/features/alert/ui/components/alert-type-icon';
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
 import { useFrequency } from '@/features/alert/ui/components/rule-list';
 import { RuleSentence } from '@/features/alert/ui/components/rule-sentence';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import {
   DetailBody,
   DetailHeader,
@@ -83,6 +84,7 @@ function AlertPage() {
   const t = useTranslations('alerts');
   const toastFailure = useToastFailure();
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const frequency = useFrequency();
   const params = Route.useParams();
   const router = useRouter();
@@ -141,7 +143,7 @@ function AlertPage() {
     [
       t('history.lastTriggered'),
       rule.last_triggered_at
-        ? format.relativeTime(new Date(rule.last_triggered_at))
+        ? relativeTime(new Date(rule.last_triggered_at))
         : '—',
     ],
     [t('history.status.sent'), figure(count('sent'))],
@@ -197,7 +199,7 @@ function AlertPage() {
         key="created"
         title={format.dateTime(new Date(rule.created_at), 'dateTime')}
       >
-        {format.relativeTime(new Date(rule.created_at))}
+        {relativeTime(new Date(rule.created_at))}
       </span>,
     ],
   ];

@@ -18,6 +18,7 @@ import {
   conversationHref,
   conversationTurns,
 } from '@/features/agent-trace/model/conversation';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { Link } from '@/shared/ui/components/link';
 
 /**
@@ -114,6 +115,7 @@ function ConversationRow({
 }) {
   const t = useTranslations('agents.conversations');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   // No time when none of its spans carried one.
   const last = conversation.last_seen ? new Date(conversation.last_seen) : null;
 
@@ -153,7 +155,7 @@ function ConversationRow({
               className="text-fg-subtle"
               title={format.dateTime(last, 'dateTime')}
             >
-              {format.relativeTime(last)}
+              {relativeTime(last)}
             </span>
           ) : null}
         </span>

@@ -15,10 +15,10 @@ export type StableFormatter = Omit<
 >;
 
 /**
- * `useFormatter()` changes with `now`, after every read, and new `cell`
- * functions remount every table cell. Numbers and dates do not read `now`, so
- * this one changes only with the locale and the zone. Render relative times
- * with `RelativeTime`.
+ * What a table's columns close over: new `cell` functions remount every
+ * cell, so it changes only with the locale and the zone. It has no
+ * `relativeTime`, whose `now` moves after every read: render relative times
+ * with `RelativeTime`, which re-renders on its own.
  */
 export function useStableFormatter(): StableFormatter {
   const locale = useLocale();

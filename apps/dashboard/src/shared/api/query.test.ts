@@ -1,9 +1,9 @@
 import type { RustrakError, UserResponse } from '@rustrak/client';
 import { Err, Ok } from '@rustrak/client';
 import { notifyManager, QueryObserver } from '@tanstack/react-query';
-import { createFormatter, type Messages } from 'use-intl';
+import { createFormatter } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
-import { createIntlStore } from '@/shared/i18n/intl';
+import { createClock } from '@/shared/i18n/clock';
 import {
   ApiError,
   clearOnUserChange,
@@ -190,14 +190,9 @@ describe('refreshNowOnData', () => {
     let unsubscribe = () => {};
     try {
       vi.setSystemTime(new Date('2026-01-01T06:00:00Z'));
-      const intl = createIntlStore({
-        readSession: async () => ({ state: 'anonymous' }),
-        browserLanguages: () => ['en'],
-        loadMessages: async () => ({}) as Messages,
-      });
-      await intl.ensure();
+      const clock = createClock();
       const client = createQueryClient();
-      refreshNowOnData(client, intl);
+      refreshNowOnData(client, clock);
 
       vi.setSystemTime(new Date('2026-01-01T06:34:00Z'));
       const observer = new QueryObserver(client, {
@@ -209,9 +204,10 @@ describe('refreshNowOnData', () => {
           // Wrapped as `useQuery` wraps its listener.
           notifyManager.batchCalls((result) => {
             if (!result.data) return;
-            const { now } = intl.snapshot();
-            const format = createFormatter({ locale: 'en', now });
-            resolve(format.relativeTime(new Date(result.data)));
+            const format = createFormatter({ locale: 'en' });
+            resolve(
+              format.relativeTime(new Date(result.data), { now: clock.now() }),
+            );
           }),
         );
       });

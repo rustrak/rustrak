@@ -173,7 +173,11 @@ function IssuesScreen({
   // The skeleton reads none of the loader's side reads: an observer that
   // unmounts mid-flight cancels the request, and the page would ask again.
   // A disabled observer still counts, so the skeleton does not subscribe.
-  const idle = { enabled: !loading, subscribed: !loading };
+  // The skeleton is "no project", not `loading`: that is also true for a
+  // render while a navigation's deferred search catches up, and toggling
+  // `subscribed` then dropped the last observer of every read in flight,
+  // which cancelled them and asked again.
+  const idle = { enabled: !!project, subscribed: !!project };
   const { me, members } = useAssignable(projectId, {
     ...userQueries.members(projectId),
     ...idle,

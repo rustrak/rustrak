@@ -166,7 +166,10 @@ impl Dashboard {
                         CacheDirective::MaxAge(ONE_YEAR),
                         CacheDirective::Extension("immutable".to_owned(), None),
                     ])))
-                    .service(Files::new("", &assets).prefer_utf8(true)),
+                    // The build writes `.br` and `.gz` beside each asset at
+                    // the highest levels: served as they are, smaller than
+                    // `Compress` makes them and with no CPU spent per request.
+                    .service(Files::new("", &assets).prefer_utf8(true).try_compressed()),
             );
 
             // The root, claimed before the catch-all.

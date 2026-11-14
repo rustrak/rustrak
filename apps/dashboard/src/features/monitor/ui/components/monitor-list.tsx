@@ -1,6 +1,6 @@
 import type { MonitorEnvironmentStats, MonitorResponse } from '@rustrak/client';
 import { cn, focusRingInset, MuteIcon, Skeleton, Text } from '@rustrak/ui';
-import { useFormatter, useNow, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { formatRunDuration } from '@/features/monitor/lib/duration';
 import { monitorHref } from '@/features/monitor/lib/href';
 import {
@@ -13,6 +13,7 @@ import {
   nextCheckInState,
 } from '@/features/monitor/lib/status';
 import { ScheduleText } from '@/features/monitor/ui/components/schedule-text';
+import { useNow, useRelativeTime } from '@/shared/i18n/use-now';
 import { Link } from '@/shared/ui/components/link';
 import { CheckInStrip, StripAxis } from './check-in-strip';
 
@@ -123,7 +124,7 @@ function MonitorRow({
   stats: MonitorEnvironmentStats[];
 }) {
   const t = useTranslations('crons');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const now = useNow().getTime();
   const last = lastCheckIn(monitor);
   const next = nextCheckIn(monitor);
@@ -132,7 +133,7 @@ function MonitorRow({
   const nextText = {
     missed: t('status.missed'),
     late: t('late'),
-    due: next ? format.relativeTime(new Date(next)) : '—',
+    due: next ? relativeTime(new Date(next)) : '—',
     none: '—',
   }[state];
 
@@ -181,7 +182,7 @@ function MonitorRow({
           </span>
           {/* Narrow, the last check-in rides on the name's line. */}
           <span className="shrink-0 text-fg-subtle text-meta tabular-nums md:hidden">
-            {last ? format.relativeTime(new Date(last)) : t('never')}
+            {last ? relativeTime(new Date(last)) : t('never')}
           </span>
         </span>
 
@@ -219,7 +220,7 @@ function MonitorRow({
 
         <span className="hidden flex-col items-end gap-0.5 text-meta tabular-nums md:flex">
           <span className="truncate text-fg-secondary">
-            {last ? format.relativeTime(new Date(last)) : t('never')}
+            {last ? relativeTime(new Date(last)) : t('never')}
           </span>
           {lastRun?.duration_ms != null ? (
             <span className="text-fg-subtle">

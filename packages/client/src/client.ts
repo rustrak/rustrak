@@ -1,4 +1,5 @@
-import { ZodError } from 'zod';
+// The core class: what Zod Mini throws, and what classic `ZodError` extends.
+import { $ZodError as ZodError } from 'zod/v4/core';
 import type { ClientConfig } from './config.js';
 import type { RustrakError } from './errors.js';
 import { BINARY } from './generated/binary.gen.js';

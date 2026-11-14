@@ -1,6 +1,7 @@
 import type { AlertHistory, AlertHistoryDay } from '@rustrak/client';
 import { BarsChart, cn, Tag, type TagTone, Text } from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { Link } from '@/shared/ui/components/link';
 import { ProviderIcon } from './provider-icon';
 
@@ -116,6 +117,7 @@ function HistoryRow({
 }) {
   const t = useTranslations('alerts.history');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const cell = CELL;
   const at = new Date(row.created_at);
   const rule = row.alert_rule_id;
@@ -173,7 +175,7 @@ function HistoryRow({
       </td>
       <td className={cn(cell, 'text-right text-fg-subtle tabular-nums')}>
         <time dateTime={row.created_at} title={format.dateTime(at, 'precise')}>
-          {format.relativeTime(at)}
+          {relativeTime(at)}
         </time>
       </td>
     </tr>

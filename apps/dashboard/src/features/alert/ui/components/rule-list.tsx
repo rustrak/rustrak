@@ -4,13 +4,14 @@ import type {
   AlertType,
 } from '@rustrak/client';
 import { cn, focusRingInset, Skeleton, Switch, Text } from '@rustrak/ui';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import {
   alertHref,
   cooldownUnit,
   newAlertHref,
   ruleShape,
 } from '@/features/alert/model/rule-summary';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { Link } from '@/shared/ui/components/link';
 import { AlertTypeIcon } from './alert-type-icon';
 import { ProviderIcon } from './provider-icon';
@@ -66,7 +67,7 @@ export function RulesTable({
   onToggle: (rule: AlertRuleResponse, enabled: boolean) => void;
 }) {
   const t = useTranslations('alerts');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const frequency = useFrequency();
   const conditions = useConditionLabels();
 
@@ -147,7 +148,7 @@ export function RulesTable({
                 </span>
                 <span className="text-fg-subtle text-meta tabular-nums lg:text-right">
                   {rule.last_triggered_at
-                    ? format.relativeTime(new Date(rule.last_triggered_at))
+                    ? relativeTime(new Date(rule.last_triggered_at))
                     : t('list.neverTriggered')}
                 </span>
               </Link>

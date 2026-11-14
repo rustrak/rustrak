@@ -598,6 +598,26 @@ describe('Error Handling', () => {
       expect(isRetryable(error)).toBe(false);
     });
 
+    it('should report invalid_request, without a request, on a body that breaks the schema', async () => {
+      let requested = false;
+      server.use(
+        http.post('http://localhost:8080/api/projects', () => {
+          requested = true;
+          return HttpResponse.json({});
+        }),
+      );
+
+      const error = expectErr(
+        await client.projects.create({
+          // A caller without types: `name` must be a string.
+          body: { name: 42 } as unknown as { name: string },
+        }),
+      );
+
+      expect(error.kind).toBe('invalid_request');
+      expect(requested).toBe(false);
+    });
+
     // Successor to "should throw ValidationError with details". The old
     // `getValidationDetails()` echoed the offending field back; the union
     // deliberately drops the Zod issues because they embed response data, so

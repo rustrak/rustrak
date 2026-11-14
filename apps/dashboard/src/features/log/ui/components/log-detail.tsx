@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { levelTone } from '@/shared/config/levels';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 
 /**
  * One log line in full, beside the list: the message unwrapped, when it
@@ -28,6 +29,7 @@ export function LogDetail({
 }) {
   const t = useTranslations('logs');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const at = new Date(log.timestamp);
   const attributes = Object.entries(
     (log.attributes ?? {}) as Record<string, unknown>,
@@ -75,7 +77,7 @@ export function LogDetail({
               {format.dateTime(at, 'precise')}
               <span className="text-fg-subtle">
                 {' · '}
-                {format.relativeTime(at)}
+                {relativeTime(at)}
               </span>
             </span>
           </Fact>

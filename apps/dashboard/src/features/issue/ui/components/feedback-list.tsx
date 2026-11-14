@@ -12,11 +12,12 @@ import {
   Text,
 } from '@rustrak/ui';
 import { useEffect, useRef } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import {
   feedbackSender,
   shortUrl,
 } from '@/features/issue/model/feedback-mailbox';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 
 /**
  * The inbox's left column: who wrote, when, and the start of what they said,
@@ -104,7 +105,7 @@ function FeedbackRow({
   onSelect: () => void;
 }) {
   const t = useTranslations('projectPages.feedback');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const ref = useRef<HTMLButtonElement>(null);
   const sender = feedbackSender(item) || t('anonymous');
 
@@ -143,7 +144,7 @@ function FeedbackRow({
               dateTime={item.created_at}
               className="shrink-0 text-fg-subtle text-meta tabular-nums"
             >
-              {format.relativeTime(new Date(item.created_at))}
+              {relativeTime(new Date(item.created_at))}
             </time>
           </div>
           <p className="line-clamp-2 break-words text-body text-fg-secondary">

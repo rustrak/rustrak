@@ -1,7 +1,7 @@
 import type { MonitorEnvironmentStats, MonitorResponse } from '@rustrak/client';
 import { cn, TimeSeriesChart } from '@rustrak/ui';
 import type { ReactNode } from 'react';
-import { useFormatter, useNow, useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { checkInFill } from '@/features/monitor/lib/check-in-fill';
 import { formatRunDuration } from '@/features/monitor/lib/duration';
 import {
@@ -13,6 +13,7 @@ import {
 } from '@/features/monitor/lib/status';
 import { successRate, windowDuration } from '@/features/monitor/lib/timeline';
 import { ScheduleText } from '@/features/monitor/ui/components/schedule-text';
+import { useNow, useRelativeTime } from '@/shared/i18n/use-now';
 import { isDaily } from '@/shared/lib/chart-format';
 import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
@@ -32,6 +33,7 @@ export function MonitorFigures({
 }) {
   const t = useTranslations('crons');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const now = useNow().getTime();
   const buckets = stats.flatMap((env) => env.buckets);
   const last = lastCheckIn(monitor);
@@ -40,7 +42,7 @@ export function MonitorFigures({
   const nextText = {
     missed: t('status.missed'),
     late: t('detail.late'),
-    due: next ? format.relativeTime(new Date(next)) : '—',
+    due: next ? relativeTime(new Date(next)) : '—',
     none: '—',
   }[state];
   const lastRun = newestRun(monitor);
@@ -51,7 +53,7 @@ export function MonitorFigures({
   const figures: [string, ReactNode, ReactNode][] = [
     [
       t('detail.lastCheckIn'),
-      last ? format.relativeTime(new Date(last)) : '—',
+      last ? relativeTime(new Date(last)) : '—',
       lastRun?.duration_ms != null
         ? t('detail.took', { duration: formatRunDuration(lastRun.duration_ms) })
         : null,
@@ -195,6 +197,7 @@ export function DurationChart({ stats }: { stats: MonitorEnvironmentStats[] }) {
 export function MonitorFacts({ monitor }: { monitor: MonitorResponse }) {
   const t = useTranslations('crons');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const { config } = monitor;
   const facts: [string, ReactNode][] = [
     [
@@ -225,7 +228,7 @@ export function MonitorFacts({ monitor }: { monitor: MonitorResponse }) {
     [
       t('detail.created'),
       <span title={format.dateTime(new Date(monitor.created_at), 'dateTime')}>
-        {format.relativeTime(new Date(monitor.created_at))}
+        {relativeTime(new Date(monitor.created_at))}
       </span>,
     ],
   ];

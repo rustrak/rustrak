@@ -18,6 +18,7 @@ import {
   waterfallSpans,
 } from '@/features/transaction/lib/transaction-payload';
 import { endpointHref } from '@/features/transaction/model/endpoints';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import type { WaterfallRow } from '@/shared/lib/waterfall';
 import { DetailMain, DetailRail } from '@/shared/ui/components/detail-layout';
 import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
@@ -148,6 +149,7 @@ function TransactionHeader({
   const t = useTranslations('performance.transaction');
   const { copy } = useCopy();
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const failed = status != null && status !== 'ok';
   const copyId = () => copy(txn.event_id, t('idCopied'));
 
@@ -183,7 +185,7 @@ function TransactionHeader({
               : formatSpanDuration(txn.duration_ms)}
           </span>
           <span title={format.dateTime(new Date(txn.timestamp), 'precise')}>
-            {format.relativeTime(new Date(txn.timestamp))}
+            {relativeTime(new Date(txn.timestamp))}
           </span>
           {txn.environment ? <span>{txn.environment}</span> : null}
           {txn.release ? (

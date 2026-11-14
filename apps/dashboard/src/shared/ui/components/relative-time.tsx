@@ -1,8 +1,9 @@
-import { useFormatter } from 'use-intl';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 
 /**
- * "3 minutes ago", read against the provider's `now`, in a `<time>` element
- * that carries the exact instant for machines and assistive technology.
+ * "3 minutes ago", read against the shared `now` (`shared/i18n/clock.ts`), in
+ * a `<time>` element that carries the exact instant for machines and
+ * assistive technology.
  *
  * A component rather than a call inside a table's `cell`, so the cell
  * function can stay the same when `now` moves: this re-renders with the new
@@ -22,9 +23,9 @@ export function RelativeTime({
    */
   style?: Intl.RelativeTimeFormatStyle;
 }) {
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const date = new Date(at);
-  const text = format.relativeTime(date, { style });
+  const text = relativeTime(date, style);
   // `toISOString()` throws on an invalid date; the text alone is still right.
   if (Number.isNaN(date.getTime())) return <>{text}</>;
   return <time dateTime={date.toISOString()}>{text}</time>;
