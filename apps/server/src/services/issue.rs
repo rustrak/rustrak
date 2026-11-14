@@ -274,8 +274,8 @@ impl IssueService {
         let offset = crate::pagination::offset(page, per_page);
 
         let order_clause = match (sort, order) {
-            (IssueSort::DigestOrder, SortOrder::Desc) => "digest_order DESC",
-            (IssueSort::DigestOrder, SortOrder::Asc) => "digest_order ASC",
+            (IssueSort::DigestOrder, SortOrder::Desc) => "digest_order DESC, id DESC",
+            (IssueSort::DigestOrder, SortOrder::Asc) => "digest_order ASC, id ASC",
             (IssueSort::LastSeen, SortOrder::Desc) => "last_seen DESC, id DESC",
             (IssueSort::LastSeen, SortOrder::Asc) => "last_seen ASC, id ASC",
             (IssueSort::EventCount, SortOrder::Desc) => "digested_event_count DESC, id DESC",

@@ -2957,7 +2957,7 @@
         "tags": [
           "Issues"
         ],
-        "summary": "Lists issues across every project the reader can read issues on, as\nSentry's organization issues endpoint.",
+        "summary": "Lists issues across every project the reader can read issues on, in the\nsame shape and pages as a project's list.",
         "operationId": "issues.listAll",
         "parameters": [
           {

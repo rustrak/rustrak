@@ -440,7 +440,7 @@ function WorkspaceNav({
       />
       {/* Every project's issues and feedback on one page: only for who
           reads issues on one of them. */}
-      {projects.some((p) => permissions.can('issues', 'read', p.id)) ? (
+      {permissions.canAnywhere('issues', 'read') ? (
         <SidebarItem
           icon={IssuesIcon}
           label={t('nav.issues')}

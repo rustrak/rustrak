@@ -206,8 +206,8 @@ pub async fn list_issues(
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Lists issues across every project the reader can read issues on, as
-/// Sentry's organization issues endpoint.
+/// Lists issues across every project the reader can read issues on, in the
+/// same shape and pages as a project's list.
 pub async fn list_all_issues(
     req: HttpRequest,
     pool: web::Data<DbPool>,

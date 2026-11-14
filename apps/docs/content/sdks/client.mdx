@@ -421,7 +421,7 @@ Every method, grouped as it hangs off the client.
 | `issues.getStats({ path, query? })` | `GET /api/projects/{project_id}/issues/{issue_id}/stats` | Zero-filled event-count timeseries. |
 | `issues.getTagValues({ path })` | `GET /api/projects/{project_id}/issues/{issue_id}/tags/{key}` | Lists the distinct values (with counts) for a tag key across the issue. |
 | `issues.list({ path, query? })` | `GET /api/projects/{project_id}/issues` | Lists issues for a project with offset-based pagination |
-| `issues.listAll({ query? })` | `GET /api/issues` | Lists issues across every project the reader can read issues on, as Sentry's organization issues endpoint. |
+| `issues.listAll({ query? })` | `GET /api/issues` | Lists issues across every project the reader can read issues on, in the same shape and pages as a project's list. |
 | `issues.listUserReports({ path, query? })` | `GET /api/projects/{project_id}/issues/{issue_id}/user-reports` | List user feedback for an issue. |
 | `issues.markSeen({ path })` | `POST /api/projects/{project_id}/issues/{issue_id}/seen` | Mark the issue as seen by the current user. |
 | `issues.setBookmark({ path, body })` | `PUT /api/projects/{project_id}/issues/{issue_id}/bookmark` | Set/clear the per-user bookmark. |

@@ -21,6 +21,8 @@ export interface MailboxSearch {
   mailbox?: Mailbox;
   page?: number;
   selected?: string;
+  /** The projects a list across projects covers, `1,2`. */
+  project?: string;
 }
 
 /** Writes the address: what changes, from what it is when it lands. */
@@ -81,12 +83,14 @@ export function FeedbackMailbox({
     // time the row leaves the list.
     onSuccess: (_data, _variables, acted) =>
       onSearch(
-        // A reader who opened another row, page or mailbox while this saved
+        // A reader who opened another row, page, mailbox or projects while
+        // this saved
         // keeps it.
         (prev) =>
           prev.selected !== acted.search.selected ||
           prev.mailbox !== acted.search.mailbox ||
-          prev.page !== acted.search.page
+          prev.page !== acted.search.page ||
+          prev.project !== acted.search.project
             ? prev
             : {
                 ...prev,

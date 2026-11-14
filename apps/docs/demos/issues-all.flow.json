@@ -4,14 +4,33 @@
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
     { "action": "wait", "for": { "role": "link", "name": "Issues" } },
-    { "action": "click", "target": { "role": "link", "name": "Issues" }, "tooltip": "Every project's open issues, in one list" },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Issues" },
+      "tooltip": "Every project's open issues, in one list"
+    },
     { "action": "wait", "for": { "role": "tab", "name": "Feedback 3" } },
-    { "action": "click", "target": { "role": "button", "name": "All projects" }, "tooltip": "Narrow it to the projects of one product" },
-    { "action": "wait", "for": { "role": "checkbox", "name": "Billing worker" } },
-    { "action": "click", "target": { "role": "checkbox", "name": "Billing worker" }, "tooltip": "Leave out the projects you don't need" },
+    {
+      "action": "click",
+      "target": { "role": "button", "name": "All projects" },
+      "tooltip": "Narrow it to the projects of one product"
+    },
+    {
+      "action": "wait",
+      "for": { "role": "checkbox", "name": "Billing worker" }
+    },
+    {
+      "action": "click",
+      "target": { "role": "checkbox", "name": "Billing worker" },
+      "tooltip": "Leave out the projects you don't need"
+    },
     { "action": "press", "key": "Escape", "target": { "role": "dialog" } },
     { "action": "wait", "for": { "role": "tab", "name": "Errors 6" } },
-    { "action": "click", "target": { "role": "tab", "name": "Feedback 3" }, "tooltip": "The same projects' user feedback, one tab over" },
+    {
+      "action": "click",
+      "target": { "role": "tab", "name": "Feedback 3" },
+      "tooltip": "The same projects' user feedback, one tab over"
+    },
     { "action": "wait", "for": { "text": "The page went blank", "nth": 0 } }
   ]
 }

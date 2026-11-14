@@ -178,10 +178,9 @@ export function IssuesTable({
         error,
       ),
   };
-  const bulkDelete = useMutation({
-    ...issueMutations.bulkDelete(),
-    ...deleted,
-  });
+  // On `mutate`, not here: spread here they would replace the factory's
+  // `onSuccess`, which drops the deleted issues from the cache.
+  const bulkDelete = useMutation(issueMutations.bulkDelete());
   const isPending =
     bulkUpdate.isPending || assign.isPending || bulkDelete.isPending;
 
@@ -196,7 +195,7 @@ export function IssuesTable({
   };
 
   const confirmDelete = () => {
-    if (deleting) bulkDelete.mutate(deleting);
+    if (deleting) bulkDelete.mutate(deleting, deleted);
   };
 
   const { priorityItems, assignItems, rowMenu } = useIssueMenus({

@@ -113,6 +113,13 @@ export const issueMutations = {
             api().issues.bulkDelete({ path: { project_id }, body: { ids } }),
           ),
         ),
+      // Dropped before the lists refetch, as `delete`: asking again for a
+      // deleted issue can only answer 404.
+      onSuccess: (_data, issues, _result, { client }) => {
+        for (const { id, project_id } of issues) {
+          client.removeQueries({ queryKey: issueQueries.one(project_id, id) });
+        }
+      },
       meta: { invalidates: [allProjects()] },
     }),
   delete: (projectId: number) =>

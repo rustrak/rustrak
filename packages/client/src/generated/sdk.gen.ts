@@ -1179,8 +1179,8 @@ export class Invitations extends HeyApiClient {
 
 export class Issues extends HeyApiClient {
     /**
-     * Lists issues across every project the reader can read issues on, as
-     * Sentry's organization issues endpoint.
+     * Lists issues across every project the reader can read issues on, in the
+     * same shape and pages as a project's list.
      */
     public listAll<ThrowOnError extends boolean = false>(options?: Options<IssuesListAllData, ThrowOnError>): RequestResult<IssuesListAllResponses, IssuesListAllErrors, ThrowOnError> {
         return (options?.client ?? this.client).get<IssuesListAllResponses, IssuesListAllErrors, ThrowOnError>({
