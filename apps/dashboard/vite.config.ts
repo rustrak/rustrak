@@ -117,7 +117,23 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       tailwindcss(),
-      tanstackRouter({ target: 'react', autoCodeSplitting: true }),
+      tanstackRouter({
+        target: 'react',
+        autoCodeSplitting: true,
+        codeSplittingOptions: {
+          // The plugin's default splits `component` but leaves
+          // `pendingComponent` in the route file, and every route's skeleton
+          // is its page rendered without data. So every page, and everything
+          // it imports (recharts included), sat in the entry chunk. One chunk
+          // for both: the router already waits for `component`'s chunk before
+          // it renders, so the skeleton arrives with it and costs no wait.
+          defaultBehavior: [
+            ['component', 'pendingComponent'],
+            ['errorComponent'],
+            ['notFoundComponent'],
+          ],
+        },
+      }),
       viteReact(),
       precompress(),
     ],
