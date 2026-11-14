@@ -5,6 +5,7 @@
 #   compare/run.sh rustrak            # one product
 #   compare/run.sh rustrak bugsink glitchtip rustrak-pg sentry
 #   EVENTS=20000 IDLE=60 FLOOR=60 compare/run.sh bugsink
+#   SENTRY_FRESH=1 compare/run.sh sentry-errors   # deletes this host's sentry-* volumes
 #
 # Products: rustrak (SQLite), rustrak-pg, bugsink (PostgreSQL), bugsink-sqlite,
 # glitchtip, sentry,
@@ -36,6 +37,16 @@ SAMPLER=cmp-sampler
 mkdir -p "$OUT"
 
 log() { printf '\033[36m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
+
+# An interrupted or failed run leaves nothing running: the next product would
+# otherwise share SERVER_CPUS with this one.
+ACTIVE=
+cleanup() {
+    docker rm -f "$SAMPLER" >/dev/null 2>&1 || true
+    [ -z "$ACTIVE" ] || compose "$ACTIVE" down -v --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 # ── Load generator: rustrak-bench, built once into a volume ────────────────
 build_bench() {
@@ -153,9 +164,14 @@ start_sampler() { # <product>
         while :; do
             t=$(date +%s); anon=0; cpu=0; n=0
             for id in $IDS; do
-                [ -r /h/docker/$id/memory.stat ] || continue
-                a=$(awk "/^anon /{print \$2}" /h/docker/$id/memory.stat)
-                c=$(awk "/^usage_usec /{print \$2}" /h/docker/$id/cpu.stat)
+                # cgroupfs driver (Docker Desktop) or systemd driver (most Linux).
+                d=
+                for x in /h/docker/$id /h/system.slice/docker-$id.scope; do
+                    [ -r $x/memory.stat ] && d=$x && break
+                done
+                [ -n "$d" ] || continue
+                a=$(awk "/^anon /{print \$2}" $d/memory.stat)
+                c=$(awk "/^usage_usec /{print \$2}" $d/cpu.stat)
                 anon=$((anon + a)); cpu=$((cpu + c)); n=$((n + 1))
             done
             echo "$t,$anon,$cpu,$n" >> /out/$P-mem.csv
@@ -165,22 +181,34 @@ start_sampler() { # <product>
 mark() { echo "$(date +%s),$2" >>"$OUT/$1-phases.csv"; }
 
 measure() { # <product>
-    local p=$1 id key accepted stored last same t0
+    local p=$1 id key accepted stored last same t0 n
     log "$p: fresh stack"
+    ACTIVE=$p
     # A rerun into the same RUN starts clean: the CSVs below are appended to.
-    rm -rf "$OUT/$p"-* "$OUT/$p.json"
+    # Named one by one: a glob on "$p-" would also take rustrak-pg's for rustrak.
+    rm -rf "$OUT/$p.json" "$OUT/$p"-{mem,phases,stored}.csv "$OUT/$p"-{load,load.log,up.log,install.log} \
+        "$OUT/$p"-{df.json,images.txt,containers,ready-secs,scenario.toml}
     compose "$p" down -v --remove-orphans >/dev/null 2>&1 || true
     case "$p" in sentry*)
-        # Sentry keeps its data in external volumes that `down -v` leaves;
-        # the installer recreates them empty.
-        docker volume ls -q | grep '^sentry-' | xargs -r docker volume rm >/dev/null
+        # Sentry keeps its data in external volumes that `down -v` leaves, and
+        # the installer recreates them empty. They are named sentry-*, like any
+        # other self-hosted Sentry's on this host, so deleting them is opt-in.
+        local old
+        old=$(docker volume ls -q | { grep '^sentry-' || true; })
+        if [ -n "$old" ]; then
+            [ "${SENTRY_FRESH:-}" = 1 ] || {
+                log "$p: sentry-* volumes exist ($(echo $old)); SENTRY_FRESH=1 deletes them"
+                return 1
+            }
+            echo "$old" | xargs docker volume rm >/dev/null
+        fi
         install_sentry "$p" ;;
     esac
     t0=$(date +%s)
     compose "$p" up -d --quiet-pull >"$OUT/$p-up.log" 2>&1
     local ready=0
     for _ in $(seq 300); do
-        if [ "$(on_net "$p" -s -o /dev/null -w '%{http_code}' "$(base_url "$p")$(health_path "$p")" 2>/dev/null)" = 200 ]; then
+        if [ "$(on_net "$p" -s -m 5 -o /dev/null -w '%{http_code}' "$(base_url "$p")$(health_path "$p")" 2>/dev/null)" = 200 ]; then
             ready=1; break
         fi
         sleep 2
@@ -230,12 +258,14 @@ EOF
     log "$p: load sent, waiting for the stored count to settle"
     last=-1 same=0
     for _ in $(seq $((DRAIN_TIMEOUT / 2))); do
-        stored=$({ stored_events "$p" || true; } | tr -dc 0-9)
-        stored=$((${stored:-0} - ${base:-0}))
-        echo "$(date +%s),${stored:-0}" >>"$OUT/$p-stored.csv"
-        if [ "${stored:-0}" = "$last" ]; then same=$((same + 1)); else same=0; fi
+        n=$({ stored_events "$p" || true; } | tr -dc 0-9)
+        # A failed count is no reading, not zero events.
+        [ -n "$n" ] || { sleep 2; continue; }
+        stored=$((n - ${base:-0}))
+        echo "$(date +%s),$stored" >>"$OUT/$p-stored.csv"
+        if [ "$stored" = "$last" ]; then same=$((same + 1)); else same=0; fi
         [ "$same" -ge 15 ] && break # 30 s without a new stored event
-        last=${stored:-0}
+        last=$stored
         sleep 2
     done
     mark "$p" floor
@@ -249,6 +279,7 @@ EOF
     containers_of "$p" | wc -l | tr -d ' ' >"$OUT/$p-containers"
     python3 -I "$HERE/summarize.py" "$OUT" "$p"
     compose "$p" down -v --remove-orphans >/dev/null 2>&1 || true
+    ACTIVE=
 }
 
 build_bench

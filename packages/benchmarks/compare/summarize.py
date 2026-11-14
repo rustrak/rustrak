@@ -15,7 +15,13 @@ import sys
 out, product = sys.argv[1], sys.argv[2]
 p = f"{out}/{product}"
 
-mem = [(int(t), int(a), int(c)) for t, a, c, _ in csv.reader(open(f"{p}-mem.csv"))]
+mem = [(int(t), int(a), int(c), int(n)) for t, a, c, n in csv.reader(open(f"{p}-mem.csv"))]
+containers = int(open(f"{p}-containers").read())
+# A second that read fewer containers than the stack has is not a measurement
+# of the stack (an unreadable cgroup path reads as zero).
+short = [s for s in mem if s[3] < containers]
+if short:
+    sys.exit(f"{product}: {len(short)} of {len(mem)} samples missed containers; cgroup path not found?")
 phases = {name: int(t) for t, name in csv.reader(open(f"{p}-phases.csv"))}
 stored = [(int(t), int(n)) for t, n in csv.reader(open(f"{p}-stored.csv"))]
 load = json.load(open(sorted(glob.glob(f"{p}-load/*.json"))[-1]))["results"]
@@ -67,7 +73,7 @@ for image in df.get("Images", []):
 
 result = {
     "product": product,
-    "containers": int(open(f"{p}-containers").read()),
+    "containers": containers,
     "images": images,
     "image_mb": round(image_bytes / 1e6),
     "ready_secs": int(open(f"{p}-ready-secs").read()),
@@ -85,6 +91,8 @@ result = {
         "errors": load.get("errors"),
     },
     "stored": final,
+    # False when the count settled below what the endpoint accepted.
+    "complete": final >= load["throughput"]["successful"],
     "processing_secs": processing_secs,
     "stored_per_s": round(final / processing_secs, 1),
     "cpu_ms_per_event": round((cpu_end - cpu_start) / 1000 / max(final, 1), 2),
@@ -97,4 +105,5 @@ print(
     f'accepted {result["load"]["accepted"]}/{result["load"]["sent"]} at {result["load"]["accept_per_s"]}/s, '
     f'stored {final} in {processing_secs} s ({result["stored_per_s"]}/s), '
     f'{result["cpu_ms_per_event"]} CPU ms/event, disk {result["disk_mb"]} MB'
+    + ("" if result["complete"] else " (INCOMPLETE)")
 )

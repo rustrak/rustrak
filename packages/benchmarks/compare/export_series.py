@@ -18,11 +18,15 @@ for summary in sorted(glob.glob(f"{run_dir}/*-phases.csv")):
     product = os.path.basename(summary)[: -len("-phases.csv")]
     if not os.path.exists(f"{run_dir}/{product}.json"):
         continue
+    # run.sh already subtracts the pre-burst baseline; a run that settled
+    # short of what was accepted is not drawn as finished.
+    if not json.load(open(f"{run_dir}/{product}.json")).get("complete", True):
+        print(f"skipping {product}: incomplete run")
+        continue
     p = f"{run_dir}/{product}"
     phases = {name: int(t) for t, name in csv.reader(open(f"{p}-phases.csv"))}
     t0 = phases["load"]
     stored = [(int(t) - t0, int(n)) for t, n in csv.reader(open(f"{p}-stored.csv"))]
-    base = stored[0][1] if stored and stored[0][0] <= 0 else 0
     final = max(n for _, n in stored)
     done = next(t for t, n in stored if n == final)
     end = done + 20
@@ -32,7 +36,7 @@ for summary in sorted(glob.glob(f"{run_dir}/*-phases.csv")):
         if -20 <= int(t) - t0 <= end
     ]
     series[product] = {
-        "stored": [[0, 0]] + [[t, n - base] for t, n in stored if 0 < t <= end],
+        "stored": [[0, 0]] + [[t, n] for t, n in stored if 0 < t <= end],
         "memory": mem,
     }
 json.dump(series, open(out, "w"), separators=(",", ":"))
