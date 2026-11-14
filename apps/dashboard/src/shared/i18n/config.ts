@@ -86,6 +86,27 @@ export function resolveTimeZone(stored: string | null | undefined): string {
 }
 
 /**
+ * The two clocks a reader can ask for. `h23` rather than `hour12: false`,
+ * which some engines read as `h24` and render midnight as "24:05".
+ */
+export type HourCycle = 'h12' | 'h23';
+
+/**
+ * The reader's clock, or `undefined` to keep the one their language uses.
+ *
+ * `users.clock_24h` is three states, and the third is the point: a reader who
+ * never opened the setting keeps the 24-hour clock in French and the 12-hour
+ * one in English, which is what the language's own formats already do.
+ */
+export function resolveHourCycle(
+  clock24h: boolean | null | undefined,
+): HourCycle | undefined {
+  if (clock24h === true) return 'h23';
+  if (clock24h === false) return 'h12';
+  return undefined;
+}
+
+/**
  * The option sets, named once.
  *
  * These replace 8 distinct `date-fns` pattern strings ('PPpp', 'MMM d',
@@ -103,9 +124,15 @@ export function resolveTimeZone(stored: string | null | undefined): string {
  *
  * Here UTC means one of two things, and both want the label: the reader has
  * not told us their zone yet, or they genuinely run on UTC.
+ *
+ * `hourCycle` is the reader's clock (`users.clock_24h`), spread into every
+ * format that shows an hour and left out when they never chose one, so the
+ * language decides. Only here: a call site that writes its own options
+ * instead of naming one of these ignores the setting.
  */
-export function formatsFor(timeZone: string) {
+export function formatsFor(timeZone: string, hourCycle?: HourCycle) {
   const showZone = timeZone === FALLBACK_TIME_ZONE;
+  const clock = hourCycle ? { hourCycle } : {};
 
   return {
     dateTime: {
@@ -121,11 +148,13 @@ export function formatsFor(timeZone: string) {
       dateTime: {
         dateStyle: 'medium',
         timeStyle: showZone ? 'long' : 'short',
+        ...clock,
       },
       /** With seconds, for log lines and event ingestion stamps. */
       precise: {
         dateStyle: 'medium',
         timeStyle: showZone ? 'long' : 'medium',
+        ...clock,
       },
       /** A log line's clock: to the millisecond, since lines come in bursts. */
       logLine: {
@@ -135,6 +164,7 @@ export function formatsFor(timeZone: string) {
         minute: '2-digit',
         second: '2-digit',
         fractionalSecondDigits: 3,
+        ...clock,
       },
       /** Time only, for a breadcrumb inside one event. */
       time: {
@@ -142,19 +172,46 @@ export function formatsFor(timeZone: string) {
         minute: '2-digit',
         second: '2-digit',
         ...(showZone ? { timeZoneName: 'short' as const } : {}),
+        ...clock,
       },
       /** A chart tick where the bucket is a day or wider. */
       axisDay: { month: 'short', day: 'numeric' },
       /** A tick for a bucket that is a UTC day, read as that day anywhere. */
       axisDayUtc: { month: 'short', day: 'numeric', timeZone: 'UTC' },
-      /** A chart's hourly bucket: the day and the hour. */
-      axisHour: { month: 'short', day: 'numeric', hour: 'numeric' },
+      /**
+       * A chart's hourly bucket: the day and the hour. With the minutes,
+       * though they are always `:00`: on a 24-hour clock the hour alone
+       * reads "Nov 14, 22", a bare number.
+       */
+      axisHour: {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        ...clock,
+      },
       /** A chart tick where the bucket is narrower than a day. */
       axisTime: {
         month: 'short',
         day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        ...clock,
+      },
+      /** The hour and minute alone, for the start of a short timeline. */
+      clock: { hour: 'numeric', minute: '2-digit', ...clock },
+      /**
+       * A scheduled run: which weekday, then when. The call site passes the
+       * monitor's own `timeZone`, since a schedule is read in the zone it
+       * runs in.
+       */
+      scheduledRun: {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        ...clock,
       },
     },
     number: {

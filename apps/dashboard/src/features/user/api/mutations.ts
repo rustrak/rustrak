@@ -118,6 +118,7 @@ export const userMutations = {
       mutationFn: async (preferences: {
         language?: string | null;
         timezone?: string | null;
+        clock_24h?: boolean | null;
       }) => {
         const user = await orThrow(
           api().auth.updateCurrentUser({ body: preferences }),

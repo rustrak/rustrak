@@ -301,7 +301,12 @@ no control shows as selected.
 `shared/i18n/intl.ts` resolves the locale, the timezone and the named formats
 **once per reader** and republishes when they change either: the language comes
 from `users.language`, then the browser, then English; the zone from
-`users.timezone`, then UTC.
+`users.timezone`, then UTC; the clock from `users.clock_24h`, then the
+language's own.
+
+- The clock reaches a date only through a named format: `formatsFor` spreads
+  `hourCycle` into each one that shows an hour. Inline options at a call site
+  ignore the reader's setting, so name a new option set instead.
 
 - No date or number formatting library. Everything goes through `use-intl`'s
   `useFormatter`, and the option sets are named once in `shared/i18n/config.ts`.

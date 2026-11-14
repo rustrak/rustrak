@@ -109,7 +109,7 @@ impl UsersService {
             r#"
             INSERT INTO users (email, password_hash, role)
             VALUES ($1, $2, $3)
-            RETURNING id, email, password_hash, is_active, role, created_at, last_login, language, timezone
+            RETURNING id, email, password_hash, is_active, role, created_at, last_login, language, timezone, clock_24h
             "#,
         )
         .bind(&email)
@@ -133,7 +133,7 @@ impl UsersService {
     pub async fn get_by_email(pool: &DbPool, email: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone
+            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone, clock_24h
             FROM users
             WHERE LOWER(email) = LOWER($1)
             ORDER BY (email = $1) DESC, id ASC
@@ -211,7 +211,7 @@ impl UsersService {
 
         let candidates = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone
+            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone, clock_24h
             FROM users
             WHERE LOWER(email) = LOWER($1)
             ORDER BY (email = $2) DESC, id ASC
@@ -376,7 +376,7 @@ impl UsersService {
         let user = sqlx::query_as::<_, User>(
             r#"
             SELECT u.id, u.email, u.password_hash, u.is_active, u.role,
-                   u.created_at, u.last_login, u.language, u.timezone
+                   u.created_at, u.last_login, u.language, u.timezone, u.clock_24h
             FROM users u
             INNER JOIN oidc_identities oi ON oi.user_id = u.id
             WHERE oi.issuer = $1 AND oi.subject = $2
@@ -453,7 +453,7 @@ impl UsersService {
     pub async fn get_by_id(pool: &DbPool, user_id: i32) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone
+            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone, clock_24h
             FROM users
             WHERE id = $1
             "#,
@@ -469,7 +469,7 @@ impl UsersService {
     pub async fn list(pool: &DbPool) -> AppResult<Vec<User>> {
         let users = sqlx::query_as::<_, User>(
             r#"
-            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone
+            SELECT id, email, password_hash, is_active, role, created_at, last_login, language, timezone, clock_24h
             FROM users
             ORDER BY created_at DESC
             "#,
@@ -545,7 +545,7 @@ impl UsersService {
 
     /// Writes the reader's dashboard preferences.
     ///
-    /// Both are `Option<Option<String>>` shaped by the caller: the outer level
+    /// Each is `Option<Option<T>>` shaped by the caller: the outer level
     /// is "was this field in the request", the inner is "what was it set to".
     /// A `PATCH` that names only `language` must leave `timezone` alone, and a
     /// `PATCH` that sets a field to `null` must clear it -- one `Option` cannot
@@ -555,6 +555,7 @@ impl UsersService {
         user_id: i32,
         language: Option<Option<String>>,
         timezone: Option<Option<String>>,
+        clock_24h: Option<Option<bool>>,
     ) -> AppResult<()> {
         if let Some(language) = language {
             sqlx::query("UPDATE users SET language = $1 WHERE id = $2")
@@ -566,6 +567,13 @@ impl UsersService {
         if let Some(timezone) = timezone {
             sqlx::query("UPDATE users SET timezone = $1 WHERE id = $2")
                 .bind(timezone)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+        }
+        if let Some(clock_24h) = clock_24h {
+            sqlx::query("UPDATE users SET clock_24h = $1 WHERE id = $2")
+                .bind(clock_24h)
                 .bind(user_id)
                 .execute(pool)
                 .await?;

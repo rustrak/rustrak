@@ -12,7 +12,10 @@
     "timeZonePlaceholder": "Search timezones...",
     "timeZoneNoResults": "No timezone found.",
     "timeZoneHint": "Every date and time is shown in this zone. Pick UTC to read them the way events record them.",
-    "timeZoneSaveFailed": "Could not save your timezone."
+    "timeZoneSaveFailed": "Could not save your timezone.",
+    "clockLabel": "24-hour clock",
+    "clockHint": "Show times as 14:30 rather than 2:30 PM.",
+    "clockSaveFailed": "Could not save your clock."
   },
   "app": {
     "title": "Rustrak - Error Tracking System",

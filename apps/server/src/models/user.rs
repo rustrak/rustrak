@@ -62,6 +62,10 @@ pub struct User {
     pub language: Option<String>,
     /// The IANA timezone this user chose, or `None` if they never have.
     pub timezone: Option<String>,
+    /// Whether this user wants a 24-hour clock, or `None` if they never chose.
+    ///
+    /// `None` is not "12-hour": it leaves the clock to the reader's language.
+    pub clock_24h: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -191,6 +195,7 @@ mod tests {
             last_login: None,
             language: None,
             timezone: None,
+            clock_24h: None,
         }
     }
 

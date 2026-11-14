@@ -520,6 +520,78 @@ async fn test_patch_me_persists_language_and_timezone() {
     assert_eq!(body["timezone"], "Asia/Tokyo");
 }
 
+/// The clock preference starts unset, is stored when chosen and is cleared by
+/// an explicit `null`, without touching the other preferences.
+///
+/// Unset is its own state rather than `false`: it lets the dashboard keep the
+/// language's own clock (24-hour in French, 12-hour in English) for a reader
+/// who never opened the setting.
+#[actix_web::test]
+async fn test_patch_me_sets_and_clears_the_24_hour_clock() {
+    let db = TestDb::new().await;
+    let config = crate::common::config();
+
+    create_test_user(&db.pool, "clock@example.com", "password123", false).await;
+
+    let app = crate::common::app_with_config(&db.pool, config).await;
+
+    let login = test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(json!({ "email": "clock@example.com", "password": "password123" }))
+        .to_request();
+    let resp = test::call_service(&app, login).await;
+    let cookie = resp.response().cookies().next().unwrap().into_owned();
+
+    let me = test::TestRequest::get()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, me).await;
+    assert!(
+        body.get("clock_24h").is_some(),
+        "response carries no `clock_24h` field: {body}"
+    );
+    assert_eq!(
+        body["clock_24h"],
+        Value::Null,
+        "the clock should start unset"
+    );
+
+    let patch = test::TestRequest::patch()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .set_json(json!({ "timezone": "Europe/Prague", "clock_24h": true }))
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, patch).await;
+    assert_eq!(body["clock_24h"], true);
+
+    // Naming only the clock leaves the zone alone, and `null` clears it.
+    let patch = test::TestRequest::patch()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .set_json(json!({ "clock_24h": null }))
+        .to_request();
+    let resp = test::call_service(&app, patch).await;
+    assert_eq!(resp.status(), 200);
+
+    let me = test::TestRequest::get()
+        .uri("/auth/me")
+        .cookie(cookie.clone())
+        .to_request();
+    let body: Value = test::call_and_read_body_json(&app, me).await;
+    assert_eq!(body["clock_24h"], Value::Null);
+    assert_eq!(body["timezone"], "Europe/Prague");
+
+    // A clock is a boolean, not a string that looks like one.
+    let patch = test::TestRequest::patch()
+        .uri("/auth/me")
+        .cookie(cookie)
+        .set_json(json!({ "clock_24h": "yes" }))
+        .to_request();
+    let resp = test::call_service(&app, patch).await;
+    assert_eq!(resp.status(), 400);
+}
+
 /// The server validates the shape of a preference, not its membership.
 ///
 /// It deliberately does not know which languages the dashboard ships: the

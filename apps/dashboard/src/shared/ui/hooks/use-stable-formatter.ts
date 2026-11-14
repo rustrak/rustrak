@@ -1,12 +1,6 @@
-import { useMemo } from 'react';
-import {
-  createFormatter,
-  type Formats,
-  type useFormatter,
-  useLocale,
-  useTimeZone,
-} from 'use-intl';
-import { FALLBACK_TIME_ZONE, formatsFor } from '@/shared/i18n/config';
+import { useMemo, useSyncExternalStore } from 'react';
+import { createFormatter, type useFormatter } from 'use-intl';
+import { intl } from '@/shared/i18n/intl';
 
 /** `useFormatter()` without `relativeTime`: what a table's columns may close over. */
 export type StableFormatter = Omit<
@@ -16,19 +10,27 @@ export type StableFormatter = Omit<
 
 /**
  * What a table's columns close over: new `cell` functions remount every
- * cell, so it changes only with the locale and the zone. It has no
- * `relativeTime`, whose `now` moves after every read: render relative times
- * with `RelativeTime`, which re-renders on its own.
+ * cell, so it changes only when the reader's language, zone or clock does.
+ * It has no `relativeTime`, whose `now` moves after every read: render
+ * relative times with `RelativeTime`, which re-renders on its own.
+ *
+ * Built from the same snapshot `IntlProvider` renders from, formats included,
+ * so a table cannot read a date differently from the page around it. Keyed on
+ * the snapshot, which only `intl.reload()` replaces, after the reader saved a
+ * preference.
  */
 export function useStableFormatter(): StableFormatter {
-  const locale = useLocale();
-  const timeZone = useTimeZone();
+  const snapshot = useSyncExternalStore(
+    intl.subscribe,
+    intl.snapshot,
+    intl.snapshot,
+  );
   return useMemo(() => {
     const { relativeTime: _, ...rest } = createFormatter({
-      locale,
-      timeZone,
-      formats: formatsFor(timeZone ?? FALLBACK_TIME_ZONE) as Formats,
+      locale: snapshot.locale,
+      timeZone: snapshot.timeZone,
+      formats: snapshot.formats,
     });
     return rest;
-  }, [locale, timeZone]);
+  }, [snapshot]);
 }

@@ -1,10 +1,10 @@
 ---
-description: "Set the Rustrak dashboard language (English, Spanish, French, Romanian, Chinese), time zone and theme per user."
+description: "Set the Rustrak dashboard language (English, Spanish, French, Romanian, Chinese), time zone, 24-hour clock and theme per user."
 ---
 
 # Language & Region
 
-The dashboard speaks English, Spanish (Español), French (Français), Romanian (Română) and Simplified Chinese (简体中文). Language, time zone and theme are personal: each person picks their own in **Settings → Preferences**, and language and time zone are saved on their account, so they follow them to any browser.
+The dashboard speaks English, Spanish (Español), French (Français), Romanian (Română) and Simplified Chinese (简体中文). Language, time zone, clock and theme are personal: each person picks their own in **Settings → Preferences**, and everything but the theme is saved on their account, so it follows them to any browser.
 
 ## Language
 
@@ -24,13 +24,19 @@ Event and issue times are always stored in UTC. The server's own log lines are i
 
 <InteractiveDemo src="/demos/language.openshowcase" />
 
+## 24-hour clock
+
+**24-hour clock** shows times as `14:30` rather than `2:30 PM`, everywhere a date has a time on it: log lines, event and issue timestamps, chart axes and the check-in timeline.
+
+Until someone flips it, times follow their language's clock: 12-hour in English, 24-hour in the others. Once flipped, the choice holds whatever language they switch to.
+
 ## Theme
 
 **Display** offers **Light**, **Dark** or **System**, which follows your operating system.
 
 ## Over the API
 
-`PATCH /auth/me` sets the language and time zone. It takes your dashboard session, not an API token:
+`PATCH /auth/me` sets the language, the time zone and the clock. It takes your dashboard session, not an API token:
 
 ```bash
 curl -X PATCH -b cookies.txt -H "Content-Type: application/json" \
@@ -42,6 +48,7 @@ curl -X PATCH -b cookies.txt -H "Content-Type: application/json" \
 |---|---|
 | `{"language": "zh"}` | Sets the language, leaves the time zone alone |
 | `{"language": null}` | Clears it: back to following the browser |
+| `{"clock_24h": true}` | 24-hour clock; `false` for 12-hour, `null` to follow the language again |
 | `{}` | Changes nothing |
 
 Any well-formed language tag and any real time zone name is accepted. A language the dashboard has no translation for falls back like the browser's would.

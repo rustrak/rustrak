@@ -12,7 +12,10 @@
     "timeZonePlaceholder": "Rechercher un fuseau horaire...",
     "timeZoneNoResults": "Aucun fuseau horaire trouvé.",
     "timeZoneHint": "Toutes les dates et heures sont affichées dans ce fuseau. Choisissez UTC pour les lire telles que les événements les enregistrent.",
-    "timeZoneSaveFailed": "Impossible d’enregistrer votre fuseau horaire."
+    "timeZoneSaveFailed": "Impossible d’enregistrer votre fuseau horaire.",
+    "clockLabel": "Horloge sur 24 heures",
+    "clockHint": "Afficher l’heure sous la forme 14:30 plutôt que 2:30 PM.",
+    "clockSaveFailed": "Impossible d’enregistrer le format de l’heure."
   },
   "app": {
     "title": "Rustrak - Système de suivi d’erreurs",

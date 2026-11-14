@@ -12,7 +12,10 @@
     "timeZonePlaceholder": "Buscar zonas horarias...",
     "timeZoneNoResults": "No se encontró ninguna zona horaria.",
     "timeZoneHint": "Todas las fechas y horas se muestran en esta zona. Elige UTC para leerlas tal como las registran los eventos.",
-    "timeZoneSaveFailed": "No se pudo guardar tu zona horaria."
+    "timeZoneSaveFailed": "No se pudo guardar tu zona horaria.",
+    "clockLabel": "Reloj de 24 horas",
+    "clockHint": "Mostrar las horas como 14:30 en lugar de 2:30 p. m.",
+    "clockSaveFailed": "No se pudo guardar el formato de hora."
   },
   "app": {
     "title": "Rustrak - Sistema de seguimiento de errores",
