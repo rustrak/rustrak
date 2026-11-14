@@ -37,7 +37,8 @@ const ink = (r: Run) => (r.rustrak ? 'text-fg' : 'text-fg-subtle');
  * 20,000 events a query could find at that second. Starts when it scrolls in.
  */
 export function Replay({ ids, speed = 1 }: { ids: string[]; speed?: number }) {
-  const runs = RUNS.filter((r) => ids.includes(r.id));
+  // A product whose run was incomplete has no series: it is left out.
+  const runs = RUNS.filter((r) => ids.includes(r.id) && series[r.id]);
   const lines = Object.fromEntries(runs.map((r) => [r.id, lineOf(r.id)]));
   const end = Math.max(...runs.map((r) => r.storedSecs));
 

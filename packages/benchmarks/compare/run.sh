@@ -142,12 +142,12 @@ print("DSN", 1, ProjectKey.objects.filter(project_id=1).first().public_key)' 2>/
 stored_events() {
     case "$1" in
         rustrak) docker run --rm -v cmp-rustrak_data:/d:ro keinos/sqlite3 \
-            sqlite3 -readonly /d/rustrak.db 'select count(*) from events' 2>/dev/null || echo 0 ;;
+            sqlite3 -readonly /d/rustrak.db 'select count(*) from events' 2>/dev/null ;;
         rustrak-pg) docker exec cmp-rustrak-pg-postgres-1 psql -U rustrak -tAc 'select count(*) from events' ;;
         # WAL, and the files belong to Bugsink's user: a reader needs root and a
         # writable mount for the -shm file.
         bugsink-sqlite) docker run --rm --user 0 -v cmp-bugsink-sqlite_data:/d keinos/sqlite3 \
-            sqlite3 /d/db.sqlite3 'select count(*) from events_event' 2>/dev/null || echo 0 ;;
+            sqlite3 /d/db.sqlite3 'select count(*) from events_event' 2>/dev/null ;;
         bugsink) docker exec cmp-bugsink-db-1 psql -U bugsinkuser -d bugsink -tAc 'select count(*) from events_event' ;;
         glitchtip) docker exec cmp-glitchtip-postgres-1 psql -U postgres -tAc 'select count(*) from issue_events_issueevent' ;;
         sentry*) compose "$1" exec -T clickhouse clickhouse-client -q 'select count() from errors_local' ;;
@@ -246,8 +246,14 @@ include_extra = true
 distinct_groups = 2000
 EOF
     # Count only what this run stores (a product's own bootstrap may add events).
-    local base
-    base=$({ stored_events "$p" || true; } | tr -dc 0-9)
+    # Without a baseline, events already there would count as burst events.
+    local base=
+    for _ in 1 2 3 4 5; do
+        base=$({ stored_events "$p" || true; } | tr -dc 0-9)
+        [ -n "$base" ] && break
+        sleep 2
+    done
+    [ -n "$base" ] || { log "$p: could not count stored events before the burst"; return 1; }
     mark "$p" load
     docker run --rm --network "$(network_of "$p")" --cpuset-cpus "$LOAD_CPUS" \
         -v rustrak-bench-cmp-target:/target:ro -v "$OUT:/out" "$TOOLCHAIN" \
@@ -261,7 +267,7 @@ EOF
         n=$({ stored_events "$p" || true; } | tr -dc 0-9)
         # A failed count is no reading, not zero events.
         [ -n "$n" ] || { sleep 2; continue; }
-        stored=$((n - ${base:-0}))
+        stored=$((n - base))
         echo "$(date +%s),$stored" >>"$OUT/$p-stored.csv"
         if [ "$stored" = "$last" ]; then same=$((same + 1)); else same=0; fi
         [ "$same" -ge 15 ] && break # 30 s without a new stored event
