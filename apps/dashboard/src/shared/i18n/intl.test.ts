@@ -2,7 +2,8 @@ import type { UserResponse } from '@rustrak/client';
 import type { Messages } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import type { CurrentUser } from '@/shared/api/session';
-import { createIntlStore } from './intl';
+import { createSessionStore } from '@/shared/api/session';
+import { createIntlStore, reloadOnUserChange } from './intl';
 
 /**
  * What `getRequestConfig` used to decide per request, decided once per reader.
@@ -144,5 +145,57 @@ describe('createIntlStore', () => {
 
     await expect(store.ensure()).rejects.toThrow('offline');
     expect((await store.ensure()).locale).toBe('es');
+  });
+});
+
+describe('reloadOnUserChange', () => {
+  // The login page renders before anyone is signed in, so the snapshot holds
+  // the browser's language, UTC and the language's clock. Password sign-in
+  // stays inside the SPA, so without this the reader's saved language, zone
+  // and clock wait for a full reload.
+  it('re-resolves for the reader who just signed in', async () => {
+    const session = createSessionStore(async () => ({ state: 'anonymous' }));
+    const store = createIntlStore(
+      deps({ readSession: () => session.ensure() }),
+    );
+    reloadOnUserChange(store, session);
+
+    await store.ensure();
+    expect(store.snapshot().formats.dateTime?.logLine).not.toHaveProperty(
+      'hourCycle',
+    );
+
+    session.set(user({ clock_24h: true }));
+    await vi.waitFor(() =>
+      expect(store.snapshot().formats.dateTime?.logLine).toMatchObject({
+        hourCycle: 'h23',
+      }),
+    );
+  });
+
+  // The first answer is the one `ensure()` is already resolving: reloading
+  // for it would resolve the same reader twice on every page load.
+  it('leaves the first answer to ensure()', async () => {
+    const session = createSessionStore(async () => user());
+    const readSession = vi.fn(() => session.ensure());
+    const store = createIntlStore(deps({ readSession }));
+    reloadOnUserChange(store, session);
+
+    await store.ensure();
+
+    expect(readSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-resolve when the same reader is published again', async () => {
+    const session = createSessionStore(async () => user());
+    const readSession = vi.fn(() => session.ensure());
+    const store = createIntlStore(deps({ readSession }));
+    reloadOnUserChange(store, session);
+    await store.ensure();
+
+    // A saved preference publishes the same reader; its control reloads.
+    session.set(user({ language: 'fr' }));
+
+    expect(readSession).toHaveBeenCalledTimes(1);
   });
 });
