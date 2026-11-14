@@ -1,6 +1,7 @@
 import type { IssueGitHub } from '@rustrak/client';
 import { CommitIcon } from '@rustrak/ui';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
 
@@ -23,7 +24,7 @@ export function IssueCodeBlock({
   connected: boolean | null;
 }) {
   const t = useTranslations('github');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
 
   if (connected === false) {
     return (
@@ -67,7 +68,7 @@ export function IssueCodeBlock({
                   {' · '}
                   {commit.author_login ?? commit.author_name}
                   {' · '}
-                  {format.relativeTime(new Date(commit.committed_at))}
+                  {relativeTime(new Date(commit.committed_at))}
                 </p>
               </div>
             </a>

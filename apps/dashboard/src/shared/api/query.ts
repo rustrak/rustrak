@@ -120,8 +120,7 @@ export function clearOnUserChange(
  * on screen too, and it is read against the same clock.
  *
  * Returns the unsubscribe. `main.tsx` keeps it for the life of the app.
- *
- * ponytail: each move re-renders every intl consumer; give `now` its own store if that shows in a profile.
+ * The clock is `shared/i18n/clock.ts`, so a move re-renders only what reads it.
  */
 export function refreshNowOnData(
   queryClient: QueryClient,

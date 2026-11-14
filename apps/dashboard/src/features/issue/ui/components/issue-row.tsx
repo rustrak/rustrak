@@ -2,6 +2,7 @@ import type { IssueResponse } from '@rustrak/client';
 import { cn, Sparkline } from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
 import { levelMark } from '@/shared/config/levels';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { Link } from '@/shared/ui/components/link';
 
 /** One issue in a panel's short list, linked to its page. */
@@ -14,6 +15,7 @@ export function IssueRow({
 }) {
   const t = useTranslations('projectPages.overview');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   return (
     <li>
       <Link
@@ -48,7 +50,7 @@ export function IssueRow({
             {format.number(issue.event_count, 'compact')}
           </span>
           <span className="truncate text-hint text-fg-meta">
-            {format.relativeTime(new Date(issue.last_seen))}
+            {relativeTime(new Date(issue.last_seen))}
           </span>
         </span>
       </Link>

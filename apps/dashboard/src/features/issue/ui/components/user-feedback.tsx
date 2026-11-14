@@ -1,7 +1,8 @@
 import { Button } from '@rustrak/ui';
 import { useSuspenseInfiniteQuery } from '@tanstack/react-query';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { issueQueries } from '@/features/issue/api/queries';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 
 /**
  * The feedback users sent about an error issue, newest first: the first page
@@ -15,7 +16,7 @@ export function UserFeedback({
   issueId: string;
 }) {
   const t = useTranslations('projectPages.event.feedback');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const {
     data: { pages },
     hasNextPage,
@@ -47,7 +48,7 @@ export function UserFeedback({
                 </a>
               )}
               <span className="ml-auto shrink-0 text-meta text-fg-meta">
-                {format.relativeTime(new Date(report.created_at))}
+                {relativeTime(new Date(report.created_at))}
               </span>
             </div>
             <p className="mt-1 whitespace-pre-wrap break-words text-body text-fg-secondary">

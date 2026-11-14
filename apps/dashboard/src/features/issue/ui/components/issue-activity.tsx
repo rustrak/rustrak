@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
@@ -101,6 +102,7 @@ export function IssueActivity({
   activity,
 }: IssueActivityProps) {
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const t = useTranslations('issues');
   const toastFailure = useToastFailure();
   // Commenting is `issues:update` on the server.
@@ -205,7 +207,7 @@ export function IssueActivity({
                     )}
                     className="text-hint text-fg-meta"
                   >
-                    {format.relativeTime(new Date(entry.created_at))}
+                    {relativeTime(new Date(entry.created_at))}
                   </time>
                 </div>
               </li>

@@ -17,12 +17,13 @@ import {
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
 import { githubQueries } from '@/features/github/api/queries';
 import { savableMappings } from '@/features/github/lib/code-mappings';
 import { IssueTemplateFields } from '@/features/github/ui/components/issue-template-fields';
 import type { ApiError } from '@/shared/api/query';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { describeError } from '@/shared/lib/error-copy';
 import {
   conditionsFromForm,
@@ -74,15 +75,13 @@ function withChanges(
 
 function CodeownersStatus({ repository }: { repository: ProjectRepository }) {
   const t = useTranslations('github');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   return (
     <span className="text-hint text-fg-meta">
       {repository.codeowners_synced_at
         ? t('repository.codeownersStatus', {
             count: repository.codeowners_rules ?? 0,
-            when: format.relativeTime(
-              new Date(repository.codeowners_synced_at),
-            ),
+            when: relativeTime(new Date(repository.codeowners_synced_at)),
           })
         : t('repository.codeownersNever')}
     </span>

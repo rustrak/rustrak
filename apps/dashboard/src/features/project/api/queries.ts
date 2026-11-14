@@ -87,13 +87,20 @@ export const projectQueries = {
         return page.items.map((release) => release.version);
       },
     }),
-  /** The environments a project's issues have been seen in, by name. */
+  /**
+   * The environments a project's issues have been seen in, by name.
+   *
+   * No `signal`, unlike every other read: most pages filter by environment,
+   * so the page being left and the page being opened both observe this. A
+   * read that consumed its signal is cancelled when its last observer goes,
+   * and the old page unmounts after the new one's loader has started it, so
+   * every navigation between two such pages asked twice. A short list is not
+   * worth cancelling.
+   */
   environments: (projectId: number) =>
     queryOptions({
       queryKey: [...projectScope(projectId), 'environments'],
-      queryFn: ({ signal }) =>
-        orThrow(
-          api().environments.list({ path: { project_id: projectId }, signal }),
-        ),
+      queryFn: () =>
+        orThrow(api().environments.list({ path: { project_id: projectId } })),
     }),
 };

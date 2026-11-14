@@ -12,12 +12,13 @@ import {
   Text,
   TimeIcon,
 } from '@rustrak/ui';
-import { useNow, type useTranslations } from 'use-intl';
+import type { useTranslations } from 'use-intl';
 import { PRIORITIES } from '@/features/issue/model/actions';
 import type { Assignable } from '@/features/issue/model/assignable';
 import { SEEN_WINDOWS } from '@/features/issue/model/issue-table';
 import { STATUS_TONE } from '@/features/issue/model/status';
 import { levelMark, levelTone } from '@/shared/config/levels';
+import { useNow } from '@/shared/i18n/use-now';
 import { Link } from '@/shared/ui/components/link';
 import { ProjectLogo } from '@/shared/ui/components/projects-picker';
 import { RelativeTime } from '@/shared/ui/components/relative-time';

@@ -24,6 +24,7 @@ import {
   HealthRate,
 } from '@/features/release/ui/components/release-figures';
 import type { ApiError } from '@/shared/api/query';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { DetailHeader } from '@/shared/ui/components/detail-layout';
 import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { Link } from '@/shared/ui/components/link';
@@ -69,6 +70,7 @@ function ReleaseTitle({ release }: { release: ReleaseSummary }) {
   const { copy } = useCopy();
   const tReleases = useTranslations('releases');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const parts = splitVersion(release.version);
   const created = new Date(release.date_created);
 
@@ -102,7 +104,7 @@ function ReleaseTitle({ release }: { release: ReleaseSummary }) {
       </div>
       <p className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-0.5 text-fg-subtle text-meta">
         <span title={format.dateTime(created, 'dateTime')}>
-          {t('created', { when: format.relativeTime(created) })}
+          {t('created', { when: relativeTime(created) })}
         </span>
         {release.date_released ? (
           <span>
@@ -184,6 +186,7 @@ export function ReleaseKpis({
 }) {
   const t = useTranslations('releases.detail');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const percent = (rate: number | null | undefined) =>
     rate == null
       ? null
@@ -247,7 +250,7 @@ export function ReleaseKpis({
         footnote={
           release.last_event
             ? t('lastEvent', {
-                when: format.relativeTime(new Date(release.last_event)),
+                when: relativeTime(new Date(release.last_event)),
               })
             : null
         }

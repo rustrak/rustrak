@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { PRIORITIES } from '@/features/issue/model/actions';
 import type { Assignable } from '@/features/issue/model/assignable';
 import { priorityDisplay, statusDisplay } from '@/features/issue/model/status';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { useIssueChange } from './issue-actions';
 
 export type { Assignable } from '@/features/issue/model/assignable';
@@ -38,6 +39,7 @@ export function IssueProperties({
 }) {
   const t = useTranslations('issues');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const { isPending, update, canUpdate } = useIssueChange(projectId, issue);
   const status = statusDisplay(issue);
   const priority = priorityDisplay(issue.priority);
@@ -83,7 +85,7 @@ export function IssueProperties({
 
   const seen = (iso: string) => (
     <span title={format.dateTime(new Date(iso), 'dateTime')}>
-      {format.relativeTime(new Date(iso))}
+      {relativeTime(new Date(iso))}
     </span>
   );
 

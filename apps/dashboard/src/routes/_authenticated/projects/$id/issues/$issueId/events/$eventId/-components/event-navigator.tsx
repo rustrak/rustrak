@@ -16,6 +16,7 @@ import {
   type EventJumpTarget,
   sectionInView,
 } from '@/features/event/lib/event-jumps';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';
@@ -46,6 +47,7 @@ export function EventNavigator({
   const { copy } = useCopy();
   const tEvents = useTranslations('events');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const router = useRouter();
   const {
     currentIndex,
@@ -221,7 +223,7 @@ export function EventNavigator({
             tone="subtle"
             title={format.dateTime(new Date(event.timestamp), 'dateTime')}
           >
-            {format.relativeTime(new Date(event.timestamp))}
+            {relativeTime(new Date(event.timestamp))}
           </Text>
           {event.environment ? (
             <Tag variant="soft" verbatim>

@@ -17,6 +17,7 @@ import {
   failureTone,
   perMinute,
 } from '@/features/transaction/model/endpoints';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { axisDuration, isDaily } from '@/shared/lib/chart-format';
 import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { Link } from '@/shared/ui/components/link';
@@ -99,6 +100,7 @@ export function EndpointFacts({
 }) {
   const t = useTranslations('performance.detail');
   const format = useFormatter();
+  const relativeTime = useRelativeTime();
   const last = new Date(group.last_seen);
   const facts: [string, ReactNode][] = [
     [t('operation'), op && <span className="font-mono">{op}</span>],
@@ -110,7 +112,7 @@ export function EndpointFacts({
     [
       t('lastSeen'),
       <span title={format.dateTime(last, 'dateTime')}>
-        {format.relativeTime(last)}
+        {relativeTime(last)}
       </span>,
     ],
   ];
@@ -191,7 +193,7 @@ export function SlowestSamples({
   rows: TransactionResponse[];
 }) {
   const t = useTranslations('performance.detail');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
   if (rows.length === 0) {
     return <p className="px-5 text-fg-subtle text-meta">{t('noSamples')}</p>;
   }
@@ -260,7 +262,7 @@ export function SlowestSamples({
                 )}
               </td>
               <td className="px-5 py-2.5 text-right text-fg-subtle">
-                {format.relativeTime(new Date(row.timestamp))}
+                {relativeTime(new Date(row.timestamp))}
               </td>
             </tr>
           );

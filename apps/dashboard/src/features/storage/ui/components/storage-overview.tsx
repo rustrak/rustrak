@@ -6,6 +6,7 @@ import {
   removedParts,
   type Summary,
 } from '@/features/storage/model/retention';
+import { useRelativeTime } from '@/shared/i18n/use-now';
 import { formatBytes } from '@/shared/lib/utils';
 
 /** Fixed categorical slots, in order: the colour follows the kind. */
@@ -92,7 +93,7 @@ export function CleanupLine({
   job: CleanupStatus | null;
 }) {
   const t = useTranslations('storage');
-  const format = useFormatter();
+  const relativeTime = useRelativeTime();
 
   if (job?.state === 'running' && job.kind === 'compaction') {
     return (
@@ -135,7 +136,7 @@ export function CleanupLine({
       <p>
         {retention.next_run_at
           ? t('overview.next', {
-              when: format.relativeTime(new Date(retention.next_run_at)),
+              when: relativeTime(new Date(retention.next_run_at)),
               size: formatBytes(summary.frees),
             })
           : t('overview.scheduling')}
@@ -144,9 +145,7 @@ export function CleanupLine({
         <p className="text-meta text-danger-fg">
           {t('status.lastRunFailed', {
             error: last.error ?? '',
-            when: format.relativeTime(
-              new Date(last.finished_at ?? last.started_at),
-            ),
+            when: relativeTime(new Date(last.finished_at ?? last.started_at)),
           })}
         </p>
       )}
