@@ -21,14 +21,14 @@
     "version-packages": "changeset version && bash scripts/sync-version.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.4",
+    "@biomejs/biome": "2.6.7",
     "@changesets/changelog-github": "1.0.1",
     "@changesets/cli": "3.0.3",
-    "react-doctor": "0.9.18",
-    "turbo": "2.11.10",
+    "react-doctor": "0.9.23",
+    "turbo": "2.11.11",
     "typescript": "6.0.3"
   },
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=22.18"
   }

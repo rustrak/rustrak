@@ -17,12 +17,12 @@
     "format:check": "biome format ."
   },
   "dependencies": {
-    "@sentry/node": "11.10.0"
+    "@sentry/node": "11.12.0"
   },
   "devDependencies": {
-    "@sentry/esbuild-plugin": "11.10.0",
+    "@sentry/esbuild-plugin": "11.12.0",
     "@types/node": "26.6.6",
-    "ai": "7.0.157",
+    "ai": "7.0.173",
     "esbuild": "0.28.2",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
