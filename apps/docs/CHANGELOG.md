@@ -1,5 +1,11 @@
 # docs
 
+## 0.17.8
+
+### Patch Changes
+
+- [`39330f4`](https://github.com/rustrak/rustrak/commit/39330f491ec9acd099ccc7f4cbb984e115deb2ea) Thanks [@AbianS](https://github.com/AbianS)! - Style tables in the changelog, and make links to `/llms.txt`, `/llms-full.txt`, `/openapi.json` and `.md` pages open the file instead of a 404.
+
 ## 0.17.7
 
 ### Patch Changes
