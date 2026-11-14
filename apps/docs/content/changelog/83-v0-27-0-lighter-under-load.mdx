@@ -1,0 +1,45 @@
+---
+version: v0.27.0
+title: Lighter Under Load
+description: A third of the memory at rest, a backlog that drains in less than half the time, and a server that says "retry later" instead of falling over. The first start after upgrading builds new indexes and takes longer on a large database
+date: 2026-11-14
+tags: [performance, memory, ingest, views, breaking]
+---
+
+> **Before you upgrade.** This release adds indexes to the `events` table, and each one is built by reading the whole table. Migrations run before the server opens its port, so the first start after the upgrade takes longer on a large database: seconds for a few GB in the page cache, a minute or two on a slow disk, longer on a big PostgreSQL. While it runs, SDKs get *connection refused* and retry or drop the event, as they would during any restart. Don't stop or restart the container midway, and give a health check or liveness probe enough time. On PostgreSQL, run `VACUUM (ANALYZE) events;` afterwards. A numeric environment variable that doesn't parse now stops startup instead of falling back to its default.
+
+## Less memory, faster digest
+
+Measured against v0.26.0 on Linux, SQLite, the same load:
+
+| | v0.26.0 | v0.27.0 |
+|---|---|---|
+| Memory at rest | 74 MB | 24 MB (−68%) |
+| Memory at peak, ingest burst | 177 MB | 98 MB (−45%) |
+| Digest after an ingest burst | 1,025 ev/s | 2,212 ev/s (2.2×) |
+| Time to drain the backlog | 98 s | 39 s |
+| Disk written per event, burst | 214 KB | 131 KB (−39%) |
+| Ingest p99 under mixed load | 13.7 ms | 9.2 ms |
+| Dashboard read p99 under mixed load | 22.8 ms | 12.2 ms |
+
+- The digest commits up to 256 events per transaction through one writer connection, instead of one transaction per event
+- Freed memory goes back to the system at once, and fewer copies of each payload are kept
+- The dashboard's event queries (releases, project stats, deleting an issue) get the indexes they need, read from the index alone
+- Seven redundant indexes are gone, so every write does less work
+
+## Holds up under pressure
+
+- Ingest answers 503 with `Retry-After` while the database is unavailable, too many events are waiting (`INGEST_MAX_PENDING_EVENTS`) or the disk is nearly full (`INGEST_MIN_FREE_DISK_MB`)
+- Shutdown finishes the running digests first; the compose files give it 30 seconds
+- An event that keeps failing to store moves to `dead/` instead of blocking the queue, and a database outage never sends events there
+- Events accepted but not yet digested count against quotas
+
+## Saved views and every project's issues
+
+- Save a page's filters, search and sort as a named view, personal or shared, and pick the view a page opens on. The Views menu is on Issues, Logs, Performance, Releases, AI Agents and the project overview
+- Issues in the workspace sidebar lists the open issues and user feedback of every project you can read, with a projects picker. Also served as Sentry's `GET /api/0/organizations/{org}/issues/`
+
+## Improvements
+
+- `OIDC_ADDITIONAL_TRUSTED_AUDIENCES` lets Zitadel and Keycloak logins through when their ID token carries extra audiences ([@lutek](https://github.com/lutek))
+- Dependencies updated to their latest versions
