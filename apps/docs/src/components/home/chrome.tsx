@@ -13,6 +13,7 @@ const LINKS = [
   { href: '/roadmap', label: 'Roadmap' },
   { href: '/changelog', label: 'Changelog' },
   { href: '/blog', label: 'Blog' },
+  { href: '/benchmarks', label: 'Benchmarks' },
 ];
 
 export function Nav() {
@@ -145,7 +146,11 @@ export function Footer() {
           </p>
         </div>
         <ul className="flex flex-wrap gap-6">
-          {[...LINKS, { href: GITHUB, label: 'GitHub' }].map((link) => (
+          {[
+            ...LINKS,
+            { href: '/vs/sentry', label: 'vs Sentry' },
+            { href: GITHUB, label: 'GitHub' },
+          ].map((link) => (
             <li key={link.href}>
               <a
                 href={link.href}

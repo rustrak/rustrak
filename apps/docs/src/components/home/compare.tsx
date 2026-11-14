@@ -278,7 +278,13 @@ export function Compare() {
         </Reveal>
         <p className="mt-4 text-fg-meta text-meta">
           Sentry figures from its self-hosted documentation, docker-compose.yml
-          and pricing page. Rustrak measured on a 4-core machine with SQLite.
+          and pricing page. Rustrak measured on a 4-core machine with SQLite.{' '}
+          <a
+            href="/benchmarks"
+            className="text-fg-subtle underline decoration-fg-ghost underline-offset-4 transition-colors hover:text-fg"
+          >
+            Rustrak, Sentry, GlitchTip and Bugsink side by side →
+          </a>
         </p>
       </div>
     </section>
