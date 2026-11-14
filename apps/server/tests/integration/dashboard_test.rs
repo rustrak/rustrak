@@ -165,6 +165,62 @@ async fn a_hashed_asset_is_immutable() {
     );
 }
 
+/// The build writes `.br` and `.gz` beside each asset at the highest levels,
+/// so the server hands those out instead of compressing per request.
+#[actix_web::test]
+async fn a_precompressed_asset_is_served_as_is() {
+    let dir = build_output();
+    fs::write(
+        dir.path().join("assets/main-a1b2c3d4.js.br"),
+        b"brotli bytes",
+    )
+    .unwrap();
+    fs::write(dir.path().join("assets/main-a1b2c3d4.js.gz"), b"gzip bytes").unwrap();
+    let app = test::init_service(App::new().configure(dashboard(dir.path()).configure())).await;
+
+    for (accept, encoding, body) in [
+        ("br, gzip", "br", "brotli bytes"),
+        ("gzip", "gzip", "gzip bytes"),
+    ] {
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/assets/main-a1b2c3d4.js")
+                .insert_header(("accept-encoding", accept))
+                .to_request(),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 200);
+        let header = |name: &str| {
+            resp.headers()
+                .get(name)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(header("content-encoding"), encoding, "for {accept}");
+        assert!(
+            header("content-type").contains("javascript"),
+            "keeps the original type"
+        );
+        assert!(header("cache-control").contains("immutable"));
+        assert_eq!(test::read_body(resp).await, body);
+    }
+
+    // A client that accepts neither still gets the plain file.
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::get()
+            .uri("/assets/main-a1b2c3d4.js")
+            .to_request(),
+    )
+    .await;
+    assert!(resp.headers().get("content-encoding").is_none());
+    assert_eq!(test::read_body(resp).await, "console.log('rustrak')");
+}
+
 /// A missing asset is a missing asset. Answering it with the shell hands the
 /// browser HTML under a `.js` URL, and the parse error that follows says
 /// nothing about the deploy that dropped the file.

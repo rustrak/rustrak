@@ -1,6 +1,5 @@
 import { ChevronDownIcon, ChevronRightIcon, TrendUpIcon } from '@rustrak/ui';
 import { useState } from 'react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { useTranslations } from 'use-intl';
 import {
   buildFrameContextLines,
@@ -9,6 +8,10 @@ import {
 } from '@/features/event/lib/format-stack-trace';
 import { cn } from '@/shared/lib/utils';
 import { codeTheme } from '@/shared/ui/components/code-theme';
+import {
+  type SyntaxHighlighter,
+  useSyntaxHighlighter,
+} from '@/shared/ui/hooks/use-syntax-highlighter';
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   js: 'javascript',
@@ -167,6 +170,7 @@ function FrameSource({
   lines: FrameContextLine[];
   language: string;
 }) {
+  const { Highlighter } = useSyntaxHighlighter();
   return (
     // The code's own ground (`bg-code`): sunk into the frame card in dark,
     // paper inside the grey card in light. The highlighter's colours are
@@ -185,6 +189,7 @@ function FrameSource({
           lineNumber={line.lineNumber}
           code={line.code}
           language={language}
+          Highlighter={Highlighter}
           isHighlighted={line.isHighlighted}
         />
       ))}
@@ -215,11 +220,14 @@ function CodeLine({
   lineNumber,
   code,
   language,
+  Highlighter,
   isHighlighted,
 }: {
   lineNumber: number;
   code: string;
   language: string;
+  /** `null` while the chunk loads (or if it failed): the line reads as plain text. */
+  Highlighter: SyntaxHighlighter['Highlighter'];
   isHighlighted: boolean;
 }) {
   return (
@@ -247,25 +255,29 @@ function CodeLine({
 
       {/* Code with syntax highlighting */}
       <div className="flex-1 py-0.5 pr-4 overflow-x-auto">
-        <SyntaxHighlighter
-          language={language}
-          style={codeTheme}
-          customStyle={{
-            margin: 0,
-            padding: 0,
-            background: 'transparent',
-            fontSize: 'inherit',
-            lineHeight: 'inherit',
-          }}
-          codeTagProps={{
-            style: {
-              fontFamily: 'inherit',
-              whiteSpace: 'pre',
-            },
-          }}
-        >
-          {code || ' '}
-        </SyntaxHighlighter>
+        {Highlighter ? (
+          <Highlighter
+            language={language}
+            style={codeTheme}
+            customStyle={{
+              margin: 0,
+              padding: 0,
+              background: 'transparent',
+              fontSize: 'inherit',
+              lineHeight: 'inherit',
+            }}
+            codeTagProps={{
+              style: {
+                fontFamily: 'inherit',
+                whiteSpace: 'pre',
+              },
+            }}
+          >
+            {code || ' '}
+          </Highlighter>
+        ) : (
+          <pre className="whitespace-pre">{code || ' '}</pre>
+        )}
       </div>
     </div>
   );
