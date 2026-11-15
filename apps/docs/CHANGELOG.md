@@ -1,5 +1,11 @@
 # docs
 
+## 0.18.0
+
+### Minor Changes
+
+- [`8e814f5`](https://github.com/rustrak/rustrak/commit/8e814f5b83ed0c18d83aa0700f3048a5a8d1f896) Thanks [@AbianS](https://github.com/AbianS)! - A benchmark page that runs Rustrak, self-hosted Sentry, GlitchTip and Bugsink on the same machine under the same burst of 20,000 errors, and comparison pages against each of them. Benchmarks joins the navbar, the current section is marked, the mobile menu opens as a full-height sheet, and the docs navbar's Changelog link has its title back.
+
 ## 0.17.8
 
 ### Patch Changes
