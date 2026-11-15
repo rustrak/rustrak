@@ -1,5 +1,11 @@
 # docs
 
+## 0.18.1
+
+### Patch Changes
+
+- [`8d452c8`](https://github.com/rustrak/rustrak/commit/8d452c85be2ff86f60ebf3d79d90a9a900c235c2) Thanks [@AbianS](https://github.com/AbianS)! - Document the 24-hour clock setting on the language and region page.
+
 ## 0.18.0
 
 ### Minor Changes
