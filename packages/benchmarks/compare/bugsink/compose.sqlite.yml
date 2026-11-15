@@ -1,0 +1,24 @@
+# Bugsink's default install: one container on SQLite (bugsink.com/docs/installation),
+# with a volume so the database survives restarts. Same changes as compose.yml:
+# rate limits raised, no published port, BASE_URL on the network.
+services:
+  web:
+    image: bugsink/bugsink:${BUGSINK_TAG:-2.6.3}
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: bench-secret-key-bench-secret-key-bench-secret-key-0000
+      CREATE_SUPERUSER: admin@example.org:admin
+      PORT: 8000
+      BEHIND_HTTPS_PROXY: "false"
+      BASE_URL: http://web:8000
+      MAX_EVENTS_PER_PROJECT_PER_5_MINUTES: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_HOUR: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_MONTH: "100000000"
+      MAX_EVENTS_PER_5_MINUTES: "100000000"
+      MAX_EVENTS_PER_HOUR: "100000000"
+      MAX_EVENTS_PER_MONTH: "100000000"
+    volumes:
+      - data:/data
+
+volumes:
+  data:

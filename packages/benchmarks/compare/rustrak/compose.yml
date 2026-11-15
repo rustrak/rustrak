@@ -1,0 +1,20 @@
+# Rustrak as its installation guide runs it: one container, SQLite on a volume.
+# `rustrak-pg` is the same image on PostgreSQL (compose.postgres.yml).
+# Rate limits are raised so no product drops events to a quota.
+services:
+  server:
+    image: rustrak/rustrak-server:${RUSTRAK_TAG:-v0.27.0}
+    volumes:
+      - data:/data
+    environment:
+      SESSION_SECRET_KEY: "b3f1c0de5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed"
+      PUBLIC_URL: http://server:8080
+      RUSTRAK_BOOTSTRAP_TOKEN: "1"
+      RUSTRAK_TELEMETRY: "off"
+      MAX_EVENTS_PER_MINUTE: "100000000"
+      MAX_EVENTS_PER_HOUR: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_MINUTE: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_HOUR: "100000000"
+
+volumes:
+  data:

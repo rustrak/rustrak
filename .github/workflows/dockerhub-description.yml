@@ -1,0 +1,36 @@
+name: Docker Hub Description
+
+# The Docker Hub pages are copied by aggregators and read by LLMs, so they are
+# kept in the repository and pushed on every change instead of edited by hand.
+# Short descriptions are capped at 100 bytes by Docker Hub.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/dockerhub/**
+      - .github/workflows/dockerhub-description.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  description:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: rustrak-server
+            short: "Self-hosted Sentry alternative in Rust. Sentry SDK compatible, one container, <60 MB RAM."
+          - name: rustrak-ui
+            short: "Rustrak dashboard on its own host (nginx). Optional: rustrak-server already serves it."
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The token needs read/write/delete scope and the user Admin on the repository.
+      - uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: rustrak/${{ matrix.name }}
+          short-description: ${{ matrix.short }}
+          readme-filepath: .github/dockerhub/${{ matrix.name }}.md

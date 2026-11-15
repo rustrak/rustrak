@@ -1,0 +1,42 @@
+# GlitchTip's compose.sample.yml (glitchtip.com/assets/compose.sample.yml),
+# pinned to the current major (the sample still names 6). Changes: no
+# published port; GLITCHTIP_DOMAIN on the network.
+x-environment: &default-environment
+  DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
+  VALKEY_URL: redis://valkey:6379
+  SECRET_KEY: bench-secret-key-bench-secret-key-0000
+  EMAIL_URL: consolemail://
+  GLITCHTIP_DOMAIN: http://web:8000
+  DEFAULT_FROM_EMAIL: email@example.com
+  ENABLE_ADMIN: "False"
+  ENABLE_OPENAPI: "False"
+  GLITCHTIP_ENABLE_MCP: "False"
+  GLITCHTIP_ENABLE_DUCKDB: "False"
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    command: -c max_locks_per_transaction=512
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    volumes:
+      - pg-data:/var/lib/postgresql
+  valkey:
+    image: valkey/valkey:9
+    restart: unless-stopped
+  web:
+    image: glitchtip/glitchtip:${GLITCHTIP_TAG:-7.0.0}
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - valkey
+    environment:
+      <<: *default-environment
+      SERVER_ROLE: all_in_one
+    volumes:
+      - uploads:/code/uploads
+
+volumes:
+  pg-data:
+  uploads:

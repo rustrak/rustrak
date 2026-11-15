@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { MetadataRoute } from 'next';
 import { getPosts } from '@/lib/blog';
 import { SITE } from '@/lib/seo';
+import { COMPETITORS } from '@/lib/vs';
 
 export const dynamic = 'force-static';
 
@@ -32,7 +33,15 @@ function docsPaths(dir = ''): string[] {
  * to trust. Posts carry their real publication date.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const pages = ['/', '/blog', '/changelog', '/roadmap', '/api-reference'];
+  const pages = [
+    '/',
+    '/blog',
+    '/changelog',
+    '/roadmap',
+    '/api-reference',
+    '/benchmarks',
+    ...COMPETITORS.map((c) => `/vs/${c.slug}`),
+  ];
   return [
     ...pages.map((p) => ({ url: `${SITE}${p === '/' ? '' : p}` })),
     ...docsPaths()

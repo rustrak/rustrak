@@ -1,0 +1,47 @@
+# Bugsink's docker-compose-sample.yaml (github.com/bugsink/bugsink), pinned.
+# Changes: rate limits raised (defaults are 1,000 events per 5 minutes) so no
+# product drops events to a quota; no published port; BASE_URL on the network.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bugsinkuser
+      POSTGRES_PASSWORD: bench
+      POSTGRES_DB: bugsink
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -h db
+      retries: 5
+      start_period: 10s
+      interval: 5s
+      timeout: 5s
+
+  web:
+    image: bugsink/bugsink:${BUGSINK_TAG:-2.6.3}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SECRET_KEY: bench-secret-key-bench-secret-key-bench-secret-key-0000
+      CREATE_SUPERUSER: admin@example.org:admin
+      PORT: 8000
+      DATABASE_URL: postgresql://bugsinkuser:bench@db:5432/bugsink
+      BEHIND_HTTPS_PROXY: "false"
+      BASE_URL: http://web:8000
+      MAX_EVENTS_PER_PROJECT_PER_5_MINUTES: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_HOUR: "100000000"
+      MAX_EVENTS_PER_PROJECT_PER_MONTH: "100000000"
+      MAX_EVENTS_PER_5_MINUTES: "100000000"
+      MAX_EVENTS_PER_HOUR: "100000000"
+      MAX_EVENTS_PER_MONTH: "100000000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import requests; requests.get(\"http://localhost:8000/health/ready\").raise_for_status()'"]
+      interval: 5s
+      timeout: 20s
+      retries: 10
+
+volumes:
+  db-data:

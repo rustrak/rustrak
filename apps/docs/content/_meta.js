@@ -51,6 +51,13 @@ export default {
       pagination: false,
     },
   },
+  // `app/benchmarks`, a standalone route like the roadmap, listed so the docs
+  // navbar links to it. `app/vs/[slug]` needs no entry: Nextra leaves dynamic
+  // routes out of the page map.
+  benchmarks: {
+    title: 'Benchmarks',
+    type: 'page',
+  },
   'getting-started': 'Getting Started',
   configuration: 'Configuration',
   upgrading: 'Upgrading',
