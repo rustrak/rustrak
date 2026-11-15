@@ -90,7 +90,12 @@ const dataTable = tv({
      * side unmounts, the incoming one rises 2 px into place, and the row
      * itself never moves.
      */
-    bulk: ['flex h-full items-center gap-1.5', swapAnimation],
+    // A phone wraps the actions onto a second line rather than pushing the
+    // last of them, and Clear, off the edge of the screen.
+    bulk: [
+      'flex h-full items-center gap-1.5 max-md:flex-wrap max-md:py-1.5',
+      swapAnimation,
+    ],
     headerSwap: ['h-full', swapAnimation],
     bulkCount: 'me-2 font-medium text-control text-fg',
     empty: [
