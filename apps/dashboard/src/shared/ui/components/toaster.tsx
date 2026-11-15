@@ -10,6 +10,9 @@ export function Toaster() {
     <Sonner
       theme={resolvedTheme as 'light' | 'dark' | 'system'}
       position="bottom-right"
+      // Above the phone's tab bar, not on it (`--toast-bottom`, styles.css).
+      offset={{ bottom: 'var(--toast-bottom)', right: '24px' }}
+      mobileOffset={{ bottom: 'var(--toast-bottom)' }}
       containerAriaLabel={t('notifications')}
       toastOptions={{
         classNames: {

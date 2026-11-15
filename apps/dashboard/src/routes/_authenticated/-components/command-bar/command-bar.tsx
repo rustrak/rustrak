@@ -4,6 +4,15 @@ import { CommandBarDialog } from './dialog/command-bar-dialog';
 
 const IS_MAC = /mac|iphone|ipad|ipod/i.test(navigator.userAgent);
 
+const OPEN_EVENT = 'rustrak:command-bar';
+
+/**
+ * Opens the bar from outside the sidebar: the phone's tab bar, which has no
+ * keyboard to press the shortcut with. One bar, mounted once with the sidebar,
+ * so the shortcut is never bound twice.
+ */
+export const openCommandBar = () => window.dispatchEvent(new Event(OPEN_EVENT));
+
 interface CommandBarProps {
   projects: CommandProject[];
   /**
@@ -45,7 +54,11 @@ export function CommandBar({ projects, trigger }: CommandBarProps) {
     };
 
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener(OPEN_EVENT, openBar);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(OPEN_EVENT, openBar);
+    };
   }, [open]);
 
   const shortcut = IS_MAC ? '⌘K' : 'Ctrl K';

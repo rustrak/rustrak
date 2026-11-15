@@ -19,6 +19,9 @@ import { useSidebar } from './sidebar-context';
 const topbar = tv({
   base: [
     'flex h-topbar w-full shrink-0 items-center gap-2',
+    // Under the notch on a phone: the bar grows by the inset and keeps its
+    // own 48 px below it, so the status bar sits on the bar's colour.
+    'box-content pt-safe-top',
     'border-b border-border-divider ps-5 pe-3 text-fg-subtle',
     'max-md:ps-3',
   ],

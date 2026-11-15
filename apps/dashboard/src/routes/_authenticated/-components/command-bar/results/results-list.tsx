@@ -177,7 +177,7 @@ export function ResultsList({
                 // Advertises the shortcut on the row it applies to, which is
                 // the only place anyone would look for it.
                 trailing={
-                  <Kbd className="opacity-0 group-data-[selected=true]/command-item:opacity-100">
+                  <Kbd className="opacity-0 group-data-[selected=true]/command-item:opacity-100 max-md:hidden">
                     ⇥
                   </Kbd>
                 }

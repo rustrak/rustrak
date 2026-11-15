@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { interactiveTransition, swapAnimation } from '../../lib/motion';
 import { tv } from '../../lib/tv';
+import { useMobileBreakpoint } from '../../lib/use-mobile';
 import { Button } from '../button/button';
 import { EmptyIcon } from '../icon/icon-catalog';
 import { Text } from '../text/text';
@@ -38,8 +39,17 @@ const dataTable = tv({
     card: [
       'flex min-h-0 flex-col overflow-hidden',
       'rounded-xl border border-border-subtle bg-panel',
+      /*
+       * On a phone the list runs edge to edge, the way every native list
+       * does: a card inset by the gutter on a 390 px screen spends 32 px of
+       * the title's width on a frame.
+       */
+      'max-md:-mx-page-gutter max-md:rounded-none max-md:border-x-0',
+      // And it is part of the page's scroll, not a box scrolling inside it
+      // (`Page`): the column head sticks under the top bar instead.
+      'max-md:flex-none max-md:overflow-visible',
     ],
-    scroller: 'min-h-0 flex-1 overflow-auto',
+    scroller: 'min-h-0 flex-1 overflow-auto max-md:overflow-visible',
     // Fixed layout: the widths in the colgroup are the widths, so dragging
     // one column moves only the flexible one, never the rest.
     table: 'w-full table-fixed border-separate border-spacing-0',
@@ -122,6 +132,9 @@ const dataTable = tv({
 /** The flexible column never gets narrower than this while others grow. */
 const FLEX_MIN_WIDTH = 320;
 
+/** The same, on a phone (`true`) and on anything wider. */
+const FLEX_MIN_WIDTHS = { true: 180, false: FLEX_MIN_WIDTH } as const;
+
 /** No column is dragged narrower than this. */
 const MIN_WIDTH = 48;
 
@@ -154,6 +167,28 @@ export interface DataTableProps<TData extends RowData> {
   className?: string;
 }
 
+/**
+ * What a phone does not draw: the ticks, and every fixed-width column that
+ * does not say `mobile`. What is left is a list -- the flexible column and
+ * the row's actions.
+ */
+function droppedOnPhone(
+  columns: readonly {
+    id: string;
+    columnDef: { meta?: { width?: number; mobile?: boolean } };
+  }[],
+  mobile: boolean,
+): string[] {
+  if (!mobile) return [];
+  return columns
+    .filter(
+      ({ id, columnDef: { meta } }) =>
+        id === 'select' ||
+        (id !== 'actions' && meta?.width !== undefined && !meta.mobile),
+    )
+    .map(({ id }) => id);
+}
+
 function cellAttributes<TData extends RowData>(
   cell: Cell<DataTableFeatures, TData, unknown>,
 ) {
@@ -173,6 +208,14 @@ export function DataTable<TData extends RowData>({
   className,
 }: DataTableProps<TData>) {
   const labels = useDataTableLabels();
+  /*
+   * A phone has no room for the ticks, and no keyboard to work a selection
+   * with: the select column is not drawn there, and the flexible column
+   * gives up its desktop minimum, so the title gets the width the screen has
+   * instead of scrolling sideways past the edge.
+   */
+  const { mobile } = useMobileBreakpoint();
+  const flexMinWidth = FLEX_MIN_WIDTHS[String(mobile) as 'true' | 'false'];
   const rows = table.getRowModel().rows;
   const visible = table.getVisibleLeafColumns();
   const sizing = table.state.columnSizing;
@@ -195,7 +238,7 @@ export function DataTable<TData extends RowData>({
           : undefined
         : sizedWidth(column);
   const drawnWidth = (column: (typeof visible)[number]) =>
-    widthOf(column) ?? (column.id === 'actions' ? 48 : FLEX_MIN_WIDTH);
+    widthOf(column) ?? (column.id === 'actions' ? 48 : flexMinWidth);
   // The card's width, measured: optional columns (`meta.drop`) step aside
   // when the rest would not fit, before the table scrolls under the pinned
   // actions column.
@@ -219,6 +262,7 @@ export function DataTable<TData extends RowData>({
     })),
     available,
   );
+  for (const id of droppedOnPhone(visible, mobile)) dropped.add(id);
   const columns = visible.filter((column) => !dropped.has(column.id));
   const shown = <T extends { column: { id: string } }>(items: T[]) =>
     items.filter((item) => !dropped.has(item.column.id));

@@ -5,6 +5,7 @@ import {
   cn,
   createDataTableColumnHelper,
   type DataTableColumnDef,
+  ErrorIcon,
   type FilterOption,
   Sparkline,
   Tag,
@@ -88,6 +89,7 @@ export function issueColumns({
           issue={row.original}
           href={`/projects/${row.original.project_id}/issues/${row.original.id}`}
           t={t}
+          format={format}
         />
       ),
       meta: { label: t('columns.issue') },
@@ -308,25 +310,27 @@ function IssueCell({
   issue,
   href,
   t,
+  format,
 }: {
   issue: IssueResponse;
   /** The title is a real link, so it opens in a new tab like any other. */
   href: string;
   t: ColumnContext['t'];
+  format: ColumnContext['format'];
 }) {
   const now = useNow().getTime();
   const badge = issueBadge(issue, now);
 
   return (
-    <span className="flex min-w-0 items-center gap-3 py-2">
+    <span className="flex min-w-0 items-center gap-3 py-2 max-md:items-stretch max-md:py-3">
       <span
         aria-hidden="true"
         className={cn(
-          'h-8 w-0.75 shrink-0 rounded-pill',
+          'h-8 w-0.75 shrink-0 rounded-pill max-md:h-auto',
           levelMark(issue.level),
         )}
       />
-      <span className="flex min-w-0 flex-col gap-0.5">
+      <span className="flex min-w-0 flex-col gap-0.5 max-md:gap-1">
         <span className="flex min-w-0 items-center gap-2">
           {/* An issue the reader has not opened yet reads brighter. */}
           {/* The row opens the issue on a click anywhere; the title is also
@@ -336,13 +340,20 @@ function IssueCell({
             href={href}
             className={cn(
               'min-w-0 truncate text-value font-medium hover:underline',
+              // Two lines on a phone: the title is the row, and an error's
+              // message is told apart by its end as often as its start.
+              'max-md:line-clamp-2 max-md:whitespace-normal max-md:break-words',
               issue.has_seen === false ? 'text-fg' : 'text-fg-secondary',
             )}
           >
             {issue.title}
           </Link>
           {badge ? (
-            <Tag variant="soft" tone={badge.tone} className="shrink-0">
+            <Tag
+              variant="soft"
+              tone={badge.tone}
+              className="shrink-0 max-md:hidden"
+            >
               {t(`issueStatus.${badge.key}`)}
             </Tag>
           ) : null}
@@ -351,6 +362,25 @@ function IssueCell({
           {issue.short_id}
           {issue.culprit ? ` · ${issue.culprit}` : ''}
         </Text>
+        {/* On a phone the figure columns step aside (`DataTable`), so the
+            two the row is read for come along under the title. */}
+        <span className="flex items-center gap-3 text-meta text-fg-subtle md:hidden">
+          {/* Beside a two-line title the tag floats; down here it reads as
+              one more fact about the row. */}
+          {badge ? (
+            <Tag variant="soft" tone={badge.tone} className="shrink-0">
+              {t(`issueStatus.${badge.key}`)}
+            </Tag>
+          ) : null}
+          <span className="flex items-center gap-1" data-numeric="">
+            <ErrorIcon size="md" />
+            {format.number(issue.event_count, 'compact')}
+          </span>
+          <span className="flex items-center gap-1">
+            <TimeIcon size="md" />
+            <RelativeTime at={issue.last_seen} style="short" />
+          </span>
+        </span>
       </span>
     </span>
   );

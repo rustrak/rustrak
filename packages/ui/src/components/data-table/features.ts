@@ -107,6 +107,13 @@ export interface DataTableColumnMeta {
    */
   drop?: number;
   /**
+   * Kept on a phone. Below `md` a table is a list: the flexible column, the
+   * row's actions, and only the fixed-width columns that say `mobile` --
+   * a figure the row is unreadable without. Everything else steps aside, and
+   * the flexible column's cell is expected to carry the essentials itself.
+   */
+  mobile?: boolean;
+  /**
    * The sort menu's wording, said in the data's own terms. "Most events
    * first" reads; "Descending" makes the reader translate. Defaults to
    * A→Z / Z→A wording for text and high/low wording for numeric columns.

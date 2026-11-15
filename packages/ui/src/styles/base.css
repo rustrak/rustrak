@@ -91,6 +91,16 @@
     cursor: not-allowed;
   }
 
+  /*
+   * A phone is a document that never bounces as a whole: the shell is
+   * exactly the screen and only its content scrolls, so the rubber band and
+   * Chrome's pull-to-refresh on the page itself are the browser showing
+   * through. Scroll areas inside keep their own overscroll.
+   */
+  :where(html, body) {
+    overscroll-behavior: none;
+  }
+
   /* Whoever asked for less motion did not ask only about decoration: they
      meant scrolling and transitions too. */
   @media (prefers-reduced-motion: reduce) {
@@ -100,5 +110,26 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+/*
+ * What is typed into is 16 px on a phone.
+ *
+ * Below that iOS Safari zooms the whole page in on focus and leaves it zoomed
+ * after the keyboard closes. 16 px is the threshold, and it beats the 13-14 px
+ * the fields carry on a desktop only here.
+ *
+ * Unlayered on purpose: the fields set their size with a utility, and a rule
+ * in `@layer base` loses to every utility whatever its specificity.
+ */
+@media (width < 48rem) {
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"]),
+    textarea,
+    select,
+    [contenteditable="true"]
+  ) {
+    font-size: max(1rem, 1em);
   }
 }

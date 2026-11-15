@@ -223,6 +223,8 @@ export function Button({
                     ? 'on-brand'
                     : 'default'
                 }
+                // A key to press, on a phone with no keyboard: not drawn.
+                className="max-md:hidden"
               >
                 {shortcut}
               </Kbd>

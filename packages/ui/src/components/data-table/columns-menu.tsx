@@ -53,6 +53,9 @@ export function DataTableColumnsButton<TData extends RowData>({
           variant="secondary"
           icon={ColumnsIcon}
           aria-label={labels.chooseColumns}
+          // A phone draws the list, not the columns (`DataTable`), so there
+          // is nothing here for it to choose.
+          className="max-md:hidden"
         />
       }
     >

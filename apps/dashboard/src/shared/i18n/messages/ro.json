@@ -2946,5 +2946,23 @@
     "setWorkspaceDefault": "Fă-o implicită pentru toți",
     "unsetWorkspaceDefault": "Nu mai este implicită pentru toți",
     "loadFailed": "Vizualizările nu au putut fi încărcate"
+  },
+  "mobile": {
+    "tabs": "File",
+    "search": "Caută",
+    "more": "Mai mult",
+    "projects": "Proiecte",
+    "back": "Înapoi",
+    "switchProject": "Schimbă proiectul, curent: {name}",
+    "switchProjectHint": "Schimbă proiectul",
+    "chooseProject": "Alege un proiect",
+    "workspace": "Spațiu de lucru",
+    "allIssues": "Issues din toate proiectele",
+    "install": "Instalează aplicația",
+    "installHint": "Deschide Rustrak de pe ecranul principal, pe tot ecranul",
+    "installIntro": "Safari instalează aplicațiile web din meniul de partajare. Durează trei atingeri.",
+    "installStep1": "Atinge Partajează <share></share> în bara Safari",
+    "installStep2": "Alege Adaugă pe ecranul principal",
+    "installStep3": "Atinge Adaugă"
   }
 }

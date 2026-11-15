@@ -63,7 +63,7 @@ export function EventSections({
   const userReports = userReportsRead.data;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface max-md:-mx-page-gutter max-md:rounded-none max-md:border-x-0">
       {feedback && (
         <Section id="feedback" title={t('event.sectionFeedback')}>
           <FeedbackSection

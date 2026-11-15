@@ -18,6 +18,7 @@ import { clock } from '@/shared/i18n/clock';
 import { intl, reloadOnUserChange } from '@/shared/i18n/intl';
 import { Messages } from '@/shared/i18n/provider';
 import { DialogHost } from '@/shared/ui/components/dialog-host';
+import { ThemeColor } from '@/shared/ui/components/theme-color';
 import { Toaster } from '@/shared/ui/components/toaster';
 import { createAppRouter } from './router';
 
@@ -54,6 +55,7 @@ async function bootstrap() {
         enableSystem
         disableTransitionOnChange
       >
+        <ThemeColor />
         {/* Above the router, like the toaster: the cache must outlive every
             navigation, or going back would refetch what was just on screen. */}
         <QueryClientProvider client={queryClient}>
@@ -72,3 +74,20 @@ async function bootstrap() {
 }
 
 void bootstrap();
+
+/**
+ * The service worker (`public/sw.js`): what makes the dashboard installable.
+ * Production only, since in `vite dev` there is no `/assets` to cache and a
+ * worker would only get in the way of hot reload.
+ *
+ * `?v=` names its cache after this build: the entry chunk's path carries
+ * Vite's content hash, so a new release is a new worker that drops the old
+ * assets. Not the version number, which is told to signed-in readers only
+ * and the registration URL is not.
+ */
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  const build = new URL(import.meta.url).pathname;
+  void navigator.serviceWorker
+    .register(`/sw.js?v=${encodeURIComponent(build)}`, { scope: '/' })
+    .catch((error: unknown) => console.error(error));
+}

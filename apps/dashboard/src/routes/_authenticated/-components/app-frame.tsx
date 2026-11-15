@@ -38,6 +38,7 @@ import {
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { CommandBar } from './command-bar/command-bar';
+import { MobileHeading } from './mobile-nav';
 import {
   ACCOUNT_SETTINGS,
   allowed,
@@ -68,12 +69,12 @@ import {
  * Moving between them is a `SidebarScope` change, so it slides.
  */
 
-const DOCS_URL = 'https://rustrak.dev';
+export const DOCS_URL = 'https://rustrak.dev';
 
 /** How many projects the workspace sidebar lists under its heading. */
 const SIDEBAR_PROJECTS = 5;
 
-type FrameProject = Pick<
+export type FrameProject = Pick<
   ProjectResponse,
   'id' | 'name' | 'slug' | 'platform' | 'disabled_products' | 'product_order'
 >;
@@ -81,11 +82,14 @@ type FrameProject = Pick<
 type ProjectOption = Pick<ProjectResponse, 'id' | 'name' | 'platform'>;
 
 /** The path without the query, so `?page=2` does not re-render the frame. */
-const usePathname = () =>
+export const usePathname = () =>
   useLocation({ select: (location) => location.pathname });
 
 /** The page the URL is in. Overview only on its exact path. */
-function activePage(pathname: string, base: string): NavPage | undefined {
+export function activePage(
+  pathname: string,
+  base: string,
+): NavPage | undefined {
   return PROJECT_PAGES.find((page) =>
     page.href === ''
       ? pathname === base || pathname === `${base}/`
@@ -94,7 +98,7 @@ function activePage(pathname: string, base: string): NavPage | undefined {
 }
 
 /** The project the URL is in, as the project layout's loader cached it. */
-function useCurrentProject(): FrameProject | null {
+export function useCurrentProject(): FrameProject | null {
   const t = useTranslations('projects');
   const match = useMatch({
     from: '/_authenticated/projects/$id',
@@ -136,7 +140,7 @@ function sidebarScope(pathname: string, project: FrameProject | null) {
 }
 
 /** The project's platform logo, the same one the projects list shows. */
-function ProjectLogo({
+export function ProjectLogo({
   project,
   size,
 }: {
@@ -619,5 +623,72 @@ export function AppBreadcrumbs() {
     items = [{ label: t('switcher.projects') }];
   }
 
-  return <Breadcrumbs items={items} label={tCommon('breadcrumb')} />;
+  return (
+    <>
+      <div className="flex min-w-0 flex-1 items-center max-md:hidden">
+        <Breadcrumbs items={items} label={tCommon('breadcrumb')} />
+      </div>
+      <div
+        data-heading-transition=""
+        className="flex min-w-0 flex-1 items-center md:hidden"
+      >
+        <MobileHeading back={useMobileBack(settingsPage)} />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Where the phone's back button goes, if anywhere: the crumb before the page,
+ * below a section only. At a section's root the heading is the scope instead.
+ */
+function useMobileBack(
+  settingsPage: NavPage | undefined,
+): { label: string; href: string } | undefined {
+  const t = useTranslations('projects');
+  const tSettings = useTranslations('settings');
+  const pathname = usePathname();
+  const project = useCurrentProject();
+  const trail = usePageTrailCrumbs();
+  const base = project ? `/projects/${project.id}` : '';
+
+  if (settingsPage && isSettingsPath(pathname)) {
+    return trail.length === 0
+      ? undefined
+      : backFrom(
+          trail,
+          tSettings(`nav.${settingsPage.key}` as 'nav.profile'),
+          settingsPage.href,
+        );
+  }
+  if (project) {
+    const page = activePage(pathname, base);
+    const section = page?.href ? `${base}${page.href}` : null;
+    return page && section && pathname.length > section.length + 1
+      ? backFrom(trail, t(`nav.${page.key}` as 'nav.issues'), section)
+      : undefined;
+  }
+  if (pathname.startsWith('/projects/new')) {
+    return { label: t('switcher.projects'), href: '/projects' };
+  }
+  return undefined;
+}
+
+/**
+ * The phone's way back from a page below its section: to the deepest crumb
+ * the page itself named with a link (a release from one of its events), else
+ * to the section.
+ */
+function backFrom(
+  trail: TrailCrumb[],
+  sectionLabel: string,
+  sectionHref: string,
+): { label: string; href: string } {
+  const linked = trail
+    .slice(0, -1)
+    .reverse()
+    .find((crumb) => crumb.href);
+  return linked?.href
+    ? { label: linked.label, href: linked.href }
+    : { label: sectionLabel, href: sectionHref };
 }

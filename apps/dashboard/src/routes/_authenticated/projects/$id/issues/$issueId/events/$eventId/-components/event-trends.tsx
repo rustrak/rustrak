@@ -24,7 +24,7 @@ export function EventTrends({ stats }: { stats: IssueStatsResponse | null }) {
   }));
 
   return (
-    <section className="rounded-xl border border-border-subtle bg-surface">
+    <section className="rounded-xl border border-border-subtle bg-surface max-md:-mx-page-gutter max-md:rounded-none max-md:border-x-0">
       <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-4">
         <div>
           <h2 className="text-card-title text-fg">{t('detail.activity30d')}</h2>

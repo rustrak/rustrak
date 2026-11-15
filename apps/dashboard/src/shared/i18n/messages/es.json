@@ -2946,5 +2946,23 @@
     "setWorkspaceDefault": "Hacerla la vista por defecto de todos",
     "unsetWorkspaceDefault": "Quitarla como vista por defecto de todos",
     "loadFailed": "No se pudieron cargar las vistas"
+  },
+  "mobile": {
+    "tabs": "Pestañas",
+    "search": "Buscar",
+    "more": "Más",
+    "projects": "Proyectos",
+    "back": "Atrás",
+    "switchProject": "Cambiar de proyecto, actual: {name}",
+    "switchProjectHint": "Cambiar de proyecto",
+    "chooseProject": "Elegir un proyecto",
+    "workspace": "Espacio de trabajo",
+    "allIssues": "Issues de todos los proyectos",
+    "install": "Instalar app",
+    "installHint": "Abre Rustrak desde tu pantalla de inicio, a pantalla completa",
+    "installIntro": "Safari instala las web apps desde su menú de compartir. Son tres toques.",
+    "installStep1": "Toca Compartir <share></share> en la barra de Safari",
+    "installStep2": "Elige Añadir a pantalla de inicio",
+    "installStep3": "Toca Añadir"
   }
 }

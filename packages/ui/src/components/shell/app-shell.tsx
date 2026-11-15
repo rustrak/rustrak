@@ -13,6 +13,12 @@ import {
 export interface AppShellProps
   extends Omit<SidebarProviderProps, 'children' | 'shortcutKey'> {
   sidebar: ReactNode;
+  /**
+   * The phone's navigation (`TabBar`). Given one, below `md` the sidebar is
+   * not drawn at all and the bar sits under the sheet instead; without one
+   * the sidebar becomes a drawer behind a menu button, as before.
+   */
+  tabBar?: ReactNode;
   children: ReactNode;
   className?: string;
   /** The shortcut that collapses the sidebar. `false` turns it off. */
@@ -46,6 +52,7 @@ export interface AppShellProps
  */
 export function AppShell({
   sidebar,
+  tabBar,
   children,
   className,
   collapseShortcut = 'b',
@@ -57,11 +64,18 @@ export function AppShell({
         <div
           className={cn(
             'relative flex h-dvh overflow-hidden bg-canvas text-fg',
+            tabBar ? 'max-md:flex-col' : undefined,
             className,
           )}
         >
-          {sidebar}
-          <DrawerScrim />
+          {tabBar ? (
+            <div className="contents max-md:hidden">{sidebar}</div>
+          ) : (
+            <>
+              {sidebar}
+              <DrawerScrim />
+            </>
+          )}
 
           <main
             className={cn(
@@ -72,6 +86,7 @@ export function AppShell({
           >
             {children}
           </main>
+          {tabBar ? <div className="contents md:hidden">{tabBar}</div> : null}
         </div>
       </SidebarProvider>
     </TooltipProvider>
@@ -149,6 +164,13 @@ export function Page({ children, className, scroll = true }: PageProps) {
       className={cn(
         'flex min-h-0 flex-1 flex-col gap-4 p-page-gutter outline-none',
         scroll ? 'overflow-y-auto' : 'overflow-hidden',
+        /*
+         * On a phone nothing scrolls inside the page: the shell's content
+         * area scrolls it all, header included. A header that stays put
+         * while a list scrolls under it costs a third of a 390 px screen for
+         * the whole read; scrolled away, it is one flick back up.
+         */
+        'max-md:flex-none max-md:overflow-visible',
         className,
       )}
     >
@@ -165,9 +187,13 @@ Page.displayName = 'Page';
  * one and not the other.
  */
 const pageHeader = tv({
-  base: 'shrink-0 px-page-gutter pt-7',
+  // Tighter on a phone, where the header is the fold's first third.
+  base: 'shrink-0 px-page-gutter pt-7 max-md:pt-4',
   variants: {
-    tabs: { true: '', false: 'border-b border-border-divider pb-6' },
+    tabs: {
+      true: '',
+      false: 'border-b border-border-divider pb-6 max-md:pb-4',
+    },
   },
 });
 
@@ -215,7 +241,7 @@ export function PageHeader({
     <div className={pageHeader({ tabs: Boolean(tabs), className })}>
       {/* Wraps instead of squeezing: on a phone the actions -- a page's
           filters, say -- drop under the title rather than crushing it. */}
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4 max-md:gap-y-3">
         <div className="min-w-0 max-w-full">
           <h1 className="truncate text-page-title text-fg">{title}</h1>
           {facts.length > 0 ? (
@@ -241,7 +267,20 @@ export function PageHeader({
           ) : null}
         </div>
         {actions ? (
-          <div className="flex min-w-0 max-w-full grow flex-wrap items-center justify-end gap-2">
+          <div
+            className={cn(
+              'flex min-w-0 max-w-full grow flex-wrap items-center justify-end gap-2',
+              /*
+               * On a phone the actions are one row of chips under the title,
+               * scrolled sideways when there are more than fit -- the iOS
+               * and Android filter row. Wrapped, four filters take three
+               * lines of the screen before the first result.
+               */
+              'max-md:-mx-page-gutter max-md:w-[calc(100%+2*var(--spacing-page-gutter))] max-md:max-w-none',
+              'max-md:flex-nowrap max-md:justify-start max-md:overflow-x-auto max-md:px-page-gutter',
+              'max-md:-my-1 max-md:py-1 max-md:[scrollbar-width:none] max-md:*:shrink-0 max-md:*:flex-nowrap',
+            )}
+          >
             {actions}
           </div>
         ) : null}
@@ -249,7 +288,7 @@ export function PageHeader({
       {/* Out to the page's edges, so the rule runs as wide as a border would;
           the gutter moves inside the strip. */}
       {tabs ? (
-        <div className="-mx-page-gutter mt-5 [&_[data-slot=tab-frame]]:before:bg-border-divider [&_[data-slot=tab-strip]]:px-page-gutter">
+        <div className="-mx-page-gutter mt-5 max-md:mt-3 [&_[data-slot=tab-frame]]:before:bg-border-divider [&_[data-slot=tab-strip]]:px-page-gutter">
           {tabs}
         </div>
       ) : null}

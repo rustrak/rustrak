@@ -20,6 +20,7 @@ export const iconVariants = tv({
       lg: 'size-icon-lg',
       xl: 'size-icon-xl',
       '2xl': 'size-icon-2xl',
+      '3xl': 'size-icon-3xl',
     },
   },
   defaultVariants: { size: 'lg' },

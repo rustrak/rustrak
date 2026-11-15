@@ -1,0 +1,79 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import {
+  Cover,
+  DocPage,
+  Guarantee,
+  Guarantees,
+  Place,
+  Rule,
+  Section,
+  Stage,
+  UsedIn,
+} from '../../docs/blocks';
+import { IssuesIcon, LogsIcon, SettingsIcon, SignOutIcon } from '../icon/icon-catalog';
+import { SheetRow, SheetSection } from './sheet';
+import * as SheetStories from './sheet.stories';
+
+<Meta of={SheetStories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="Sheet"
+  lede="The bottom sheet: what a phone opens where a desktop opens a menu."
+  note="Base UI's Drawer underneath: swiped down to close, focus trapped and given back."
+/>
+
+<Section
+  n="01"
+  title="Rows on a card"
+  intro="Inside, the inset grouped list of iOS Settings: a label above, rows on one rounded card, hairlines between them."
+>
+
+<Stage label="sections and rows">
+  <div className="w-[358px]">
+    <SheetSection label="Monitor">
+      <SheetRow icon={IssuesIcon} label="Issues" active />
+      <SheetRow icon={LogsIcon} label="Logs" />
+    </SheetSection>
+    <SheetSection>
+      <SheetRow icon={SettingsIcon} label="Settings" detail="Account, workspace and projects" chevron />
+      <SheetRow icon={SignOutIcon} label="Sign out" danger />
+    </SheetSection>
+  </div>
+</Stage>
+
+<Rule>
+  A chevron means the row drills in, inside the sheet. A row without one goes
+  somewhere and closes it.
+</Rule>
+
+</Section>
+
+<Section n="02" title="Where it is used">
+
+<UsedIn>
+  <Place at="Dashboard, More">Every page the tab bar does not hold, the project list, the settings pages, installing the app.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="03" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="KeyboardPath">It opens as a dialog named by its title, and Escape returns focus to what opened it.</Guarantee>
+  <Guarantee>It never covers the top bar: its height stops at the safe area plus the bar.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="04" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

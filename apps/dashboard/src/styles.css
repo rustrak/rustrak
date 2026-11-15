@@ -98,3 +98,123 @@
     animation-delay: 480ms;
   }
 }
+
+/*
+ * Page transitions on a phone (`router.tsx` picks the type).
+ *
+ * Only the content moves: the top bar and the tab bar are the frame, and a
+ * frame that slid with every page would look like the whole app was being
+ * replaced. So the content area is its own transition group (`page`), and the
+ * root, which holds everything else, does not animate at all.
+ *
+ * The timing is the system's: `slow` (240 ms) on the entrance curve for a
+ * slide, the same step the sidebar slides at; `fast` for the cross-fade, which
+ * is a change of place, not a journey.
+ */
+@media (width < 48rem) {
+  [data-page-transition] {
+    view-transition-name: page;
+  }
+  /* The top bar's heading cross-fades from one page's to the next's ("‹
+     Issues" in, the project out), while the bar itself stays put. */
+  [data-heading-transition] {
+    view-transition-name: heading;
+  }
+}
+
+::view-transition-group(heading),
+::view-transition-old(heading),
+::view-transition-new(heading) {
+  animation-duration: var(--transition-duration-moderate);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+html:active-view-transition-type(slide-forward) {
+  &::view-transition-old(page) {
+    animation: page-out-start var(--transition-duration-slow)
+      var(--ease-standard) both;
+  }
+  &::view-transition-new(page) {
+    animation: page-in-end var(--transition-duration-slow) var(--ease-entrance)
+      both;
+  }
+}
+
+html:active-view-transition-type(slide-back) {
+  /* Going back the page you leave is the one on top, sliding off the edge to
+     uncover the one underneath. */
+  &::view-transition-old(page) {
+    z-index: 1;
+    animation: page-out-end var(--transition-duration-slow) var(--ease-standard)
+      both;
+  }
+  &::view-transition-new(page) {
+    animation: page-in-start var(--transition-duration-slow)
+      var(--ease-entrance) both;
+  }
+}
+
+html:active-view-transition-type(fade) {
+  &::view-transition-old(page) {
+    animation: page-fade-out var(--transition-duration-fast) var(--ease-exit)
+      both;
+  }
+  &::view-transition-new(page) {
+    animation: page-fade-in var(--transition-duration-fast) var(--ease-entrance)
+      both;
+  }
+}
+
+/* The page left behind drifts a third of the way and dims, as iOS does; the
+   one arriving covers it from the edge. */
+@keyframes page-in-end {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes page-out-start {
+  to {
+    transform: translateX(-30%);
+    opacity: 0.4;
+  }
+}
+@keyframes page-in-start {
+  from {
+    transform: translateX(-30%);
+    opacity: 0.4;
+  }
+}
+@keyframes page-out-end {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes page-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Where a toast sits: its usual 24 px from the bottom, and on a phone above
+   the tab bar and the home indicator, so it never covers the navigation. */
+:root {
+  --toast-bottom: 24px;
+}
+@media (width < 48rem) {
+  :root {
+    --toast-bottom: calc(
+      var(--spacing-tab-bar) +
+      var(--spacing-safe-bottom) +
+      12px
+    );
+  }
+}

@@ -156,7 +156,7 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
       <form.Form
         // Bottom padding clears the fixed mobile bar, which would otherwise
         // cover the last field.
-        className="grid gap-6 pb-24 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:pb-0"
+        className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start"
       >
         <form.Field name="platform">
           {(field) => {
@@ -244,7 +244,9 @@ export function CreateProjectForm({ existingNames }: CreateProjectFormProps) {
             below it is off-screen for most of the time the user spends on this
             page. Pinning it also keeps the current selection visible while
             scrolling the list. */}
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border-divider bg-panel px-4 py-3 lg:hidden">
+        {/* Sticky to the bottom of the scrolling page rather than fixed to the
+            window: on a phone the window's bottom is the tab bar's. */}
+        <div className="sticky bottom-0 z-40 -mx-page-gutter -mb-page-gutter border-t border-border-divider bg-panel px-4 py-3 lg:hidden">
           <div className="mx-auto flex max-w-6xl items-center gap-3">
             {platform ? (
               <>

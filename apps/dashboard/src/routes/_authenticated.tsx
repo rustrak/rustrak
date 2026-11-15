@@ -1,19 +1,20 @@
-import { AppShell, Topbar, TopbarMenuButton } from '@rustrak/ui';
+import { AppShell, Topbar } from '@rustrak/ui';
 import { noop } from '@tanstack/react-query';
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
-import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { TimeZoneSync } from '@/features/user/ui/components/time-zone-sync';
 import { accessQueries } from '@/shared/api/permissions';
 import { returnPath } from '@/shared/api/return-path';
 import { session } from '@/shared/api/session';
 import { OutageScreen } from '@/shared/ui/components/outage-screen';
+import { PullToRefresh } from '@/shared/ui/components/pull-to-refresh';
 import { TableLabels } from '@/shared/ui/components/table-labels';
 import { UpdateBannerSlot } from '@/shared/ui/components/update-banner-slot';
 import {
   AppBreadcrumbs,
   AppSidebar,
 } from './_authenticated/-components/app-frame';
+import { AppTabBar, MobileNav } from './_authenticated/-components/mobile-nav';
 
 /**
  * The authenticated dashboard: one gate, and the chrome every screen under it
@@ -58,7 +59,6 @@ export const Route = createFileRoute('/_authenticated')({
 
 function AuthenticatedLayout() {
   const answer = Route.useRouteContext();
-  const tCommon = useTranslations('common');
 
   // Returned bare, with no wrapper: this is the one branch that renders no
   // frame, so the screen owns the whole viewport and brings its own brand.
@@ -66,37 +66,39 @@ function AuthenticatedLayout() {
     return <OutageScreen error={answer.error} />;
   }
 
+  // On a phone the tab bar replaces the sidebar, and the "More" sheet behind
+  // it holds everything the tabs do not; `MobileNav` owns that sheet.
   return (
-    <AppShell
-      sidebar={<AppSidebar user={answer.user} />}
-      defaultCollapsed={sidebarWasCollapsed()}
-      onCollapsedChange={rememberSidebar}
-    >
-      {/* Renders nothing. Adopts the browser's timezone onto the account the
+    <MobileNav user={answer.user}>
+      <AppShell
+        sidebar={<AppSidebar user={answer.user} />}
+        tabBar={<AppTabBar />}
+        defaultCollapsed={sidebarWasCollapsed()}
+        onCollapsedChange={rememberSidebar}
+      >
+        {/* Renders nothing. Adopts the browser's timezone onto the account the
           first time a reader arrives without one; see the component. It sits
           here rather than above the router because it needs a session, and
           this is the first place there is guaranteed to be one. */}
-      <TimeZoneSync hasTimeZone={Boolean(answer.user.timezone)} />
-      <Topbar
-        menu={
-          <TopbarMenuButton
-            openLabel={tCommon('openNavigation')}
-            closeLabel={tCommon('closeNavigation')}
-          />
-        }
-      >
-        <AppBreadcrumbs />
-      </Topbar>
-      {/* The sheet's only scroller. Screens that own their scrolling fill it
-          with `h-full` and scroll inside. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <TableLabels>
-          <Outlet />
-        </TableLabels>
-      </div>
-      {/* Fixed-positioned, so arriving late shifts nothing. */}
-      <UpdateBannerSlot />
-    </AppShell>
+        <TimeZoneSync hasTimeZone={Boolean(answer.user.timezone)} />
+        <Topbar>
+          <AppBreadcrumbs />
+        </Topbar>
+        {/* The sheet's only scroller. Screens that own their scrolling fill it
+          with `h-full` and scroll inside -- except on a phone, where the
+          screen grows to its content and this scrolls it whole (`Page`). */}
+        <PullToRefresh
+          data-page-transition=""
+          className="min-h-0 flex-1 overflow-y-auto bg-panel max-md:[&>:not([aria-hidden])]:h-auto max-md:[&>:not([aria-hidden])]:min-h-full"
+        >
+          <TableLabels>
+            <Outlet />
+          </TableLabels>
+        </PullToRefresh>
+        {/* Fixed-positioned, so arriving late shifts nothing. */}
+        <UpdateBannerSlot />
+      </AppShell>
+    </MobileNav>
   );
 }
 
