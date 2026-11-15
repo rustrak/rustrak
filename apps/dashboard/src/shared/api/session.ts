@@ -84,7 +84,11 @@ export function createSessionStore(
     ensure() {
       if (inFlight) return inFlight;
 
-      const request = read().then(publish);
+      // A `set()` or `clear()` while this was out is newer than its answer:
+      // a sign-in that lands before the sign-out's 401 must not be undone.
+      const request: Promise<CurrentUser> = read().then((answer) =>
+        inFlight === request ? publish(answer) : (settled ?? answer),
+      );
       inFlight = request;
 
       const forget = () => {
