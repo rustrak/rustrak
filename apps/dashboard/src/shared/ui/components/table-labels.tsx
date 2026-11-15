@@ -39,6 +39,7 @@ export function TableLabels({ children }: { children: ReactNode }) {
       highestFirst: t('highestFirst'),
       aToZ: t('aToZ'),
       zToA: t('zToA'),
+      sortBy: t('sortBy'),
       clearFilter: t('clearFilter'),
       hideColumn: t('hideColumn'),
       range: (first, last, total) => t('range', { first, last, total }),

@@ -2,6 +2,24 @@ import { cn, RefreshIcon } from '@rustrak/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { type ComponentProps, useEffect, useRef, useState } from 'react';
 
+/**
+ * Whether every box between the touch and the scroller is scrolled to its top.
+ * A screen that scrolls inside its own box (a table on a tablet) leaves the
+ * outer scroller at 0 however far down it is, and a pull there is a scroll back
+ * up that list, not a refresh.
+ */
+function atTop(target: EventTarget | null, scroller: HTMLElement): boolean {
+  for (
+    let element = target instanceof Element ? target : null;
+    element;
+    element = element.parentElement
+  ) {
+    if (element.scrollTop > 0) return false;
+    if (element === scroller) return true;
+  }
+  return scroller.scrollTop <= 0;
+}
+
 /** How far the finger travels, after resistance, before a release refreshes. */
 const THRESHOLD = 64;
 /** Pulling moves the indicator at this fraction of the finger: it resists. */
@@ -40,7 +58,7 @@ export function PullToRefresh({
 
     const onStart = (event: TouchEvent) => {
       start =
-        node.scrollTop <= 0 && event.touches.length === 1
+        atTop(event.target, node) && event.touches.length === 1
           ? (event.touches[0]?.clientY ?? null)
           : null;
     };

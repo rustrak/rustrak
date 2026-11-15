@@ -21,6 +21,7 @@ import type { DataTableFeatures } from './features';
 import { droppedToFit } from './fit';
 import { useDataTableLabels } from './labels';
 import { DataTablePagination } from './pagination';
+import { DataTablePhoneHead } from './phone-head';
 import type { DataTableInstance } from './use-data-table';
 
 /**
@@ -344,8 +345,15 @@ export function DataTable<TData extends RowData>({
           </colgroup>
 
           <thead>
+            {/* A phone has no figure columns to head, so no sort in them:
+                its head is the list's name and one sort menu. */}
+            <DataTablePhoneHead
+              table={table}
+              columns={columns}
+              className={styles.th()}
+            />
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
+              <tr key={headerGroup.id} className="max-md:hidden">
                 {bulkMode && headerGroup.headers[0]?.column.id === 'select' ? (
                   <>
                     {/* The box stays: it is how the selection is grown to the

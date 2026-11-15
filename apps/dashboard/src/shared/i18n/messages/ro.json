@@ -125,6 +125,7 @@
     "highestFirst": "Cel mai mare întâi",
     "aToZ": "A la Z",
     "zToA": "Z la A",
+    "sortBy": "Sortează",
     "clearFilter": "Șterge filtrul",
     "hideColumn": "Ascunde coloana",
     "range": "{first}–{last} din {total}",

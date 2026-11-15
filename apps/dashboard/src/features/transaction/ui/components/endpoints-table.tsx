@@ -134,6 +134,9 @@ export function EndpointsTable({
         meta: {
           label: t('columns.calls'),
           width: 96,
+          // Kept on a phone, with p95: how much and how slow are what an
+          // endpoint is compared by.
+          mobile: true,
           sortLabels: desc,
           ...figure,
         },
@@ -162,7 +165,7 @@ export function EndpointsTable({
         header: 'p95',
         enableSorting: false,
         cell: ({ getValue }) => duration(getValue()),
-        meta: { label: 'p95', width: 88, ...figure },
+        meta: { label: 'p95', width: 88, mobile: true, ...figure },
       }),
       column.accessor('failure_rate', {
         id: 'failure_rate',

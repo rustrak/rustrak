@@ -93,7 +93,7 @@ const columnHeader = tv({
 const styles = columnHeader();
 
 /** The wording a sort offers when the column has not chosen its own. */
-function sortWording(
+export function sortWording(
   meta: DataTableColumnMeta | undefined,
   labels: DataTableLabels,
 ): { asc: string; desc: string } {

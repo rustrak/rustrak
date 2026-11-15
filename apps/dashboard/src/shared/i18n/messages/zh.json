@@ -125,6 +125,7 @@
     "highestFirst": "从高到低",
     "aToZ": "A 到 Z",
     "zToA": "Z 到 A",
+    "sortBy": "排序",
     "clearFilter": "清除筛选",
     "hideColumn": "隐藏列",
     "range": "第 {first}–{last} 项，共 {total} 项",

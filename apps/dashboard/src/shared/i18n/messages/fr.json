@@ -125,6 +125,7 @@
     "highestFirst": "Le plus haut d’abord",
     "aToZ": "A à Z",
     "zToA": "Z à A",
+    "sortBy": "Trier",
     "clearFilter": "Effacer le filtre",
     "hideColumn": "Masquer la colonne",
     "range": "{first}–{last} sur {total}",
