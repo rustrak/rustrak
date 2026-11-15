@@ -40,7 +40,7 @@ export function Replay({ ids, speed = 1 }: { ids: string[]; speed?: number }) {
   // A product whose run was incomplete has no series: it is left out.
   const runs = RUNS.filter((r) => ids.includes(r.id) && series[r.id]);
   const lines = Object.fromEntries(runs.map((r) => [r.id, lineOf(r.id)]));
-  const end = Math.max(...runs.map((r) => r.storedSecs));
+  const end = Math.max(0, ...runs.map((r) => r.storedSecs));
 
   const ref = useRef<HTMLDivElement>(null);
   const seen = useInView(ref, { once: true, margin: '-20% 0px' });
@@ -59,6 +59,9 @@ export function Replay({ ids, speed = 1 }: { ids: string[]; speed?: number }) {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [seen, round, speed, end]);
+
+  // Every run incomplete: nothing to replay. After the hooks, which must run.
+  if (runs.length === 0) return null;
 
   return (
     <div ref={ref} className="flex flex-col gap-8">
