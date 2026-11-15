@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FALLBACK_TIME_ZONE,
   formatsFor,
+  resolveHourCycle,
   resolveLocale,
   resolveTimeZone,
 } from './config';
@@ -90,5 +91,54 @@ describe('formatsFor', () => {
   // invites the reader to wonder which day it is for them.
   it('never labels a calendar day', () => {
     expect(formatsFor('UTC').dateTime.date).not.toHaveProperty('timeZoneName');
+  });
+});
+
+describe('resolveHourCycle', () => {
+  it('maps the choice and leaves an unset one to the language', () => {
+    expect(resolveHourCycle(true)).toBe('h23');
+    expect(resolveHourCycle(false)).toBe('h12');
+    expect(resolveHourCycle(null)).toBeUndefined();
+    expect(resolveHourCycle(undefined)).toBeUndefined();
+  });
+});
+
+describe('the hour cycle in the formats', () => {
+  const at = new Date('2026-11-14T21:03:40.440Z');
+  const read = (locale: string, name: 'logLine' | 'precise' | 'time') => {
+    const options = formatsFor('Europe/Prague', 'h23').dateTime[name];
+    return new Intl.DateTimeFormat(locale, {
+      ...options,
+      timeZone: 'Europe/Prague',
+    }).format(at);
+  };
+
+  // The case this setting exists for: an English reader who wants the log
+  // line on the same clock as their server's own logs.
+  it('turns an English log line to the 24-hour clock', () => {
+    expect(read('en', 'logLine')).toContain('22:03:40.440');
+    expect(read('en', 'logLine')).not.toMatch(/PM/);
+    expect(read('en', 'precise')).toContain('22:03:40');
+    expect(read('en', 'time')).toContain('22:03:40');
+  });
+
+  it('turns a French clock to 12 hours when asked', () => {
+    const options = formatsFor('Europe/Prague', 'h12').dateTime.logLine;
+    const text = new Intl.DateTimeFormat('fr', {
+      ...options,
+      timeZone: 'Europe/Prague',
+    }).format(at);
+    expect(text).toMatch(/10:03:40,440/);
+  });
+
+  it('puts the clock into every format that shows an hour, and no other', () => {
+    const { dateTime } = formatsFor('Europe/Prague', 'h23');
+    for (const [name, options] of Object.entries(dateTime)) {
+      const showsHour = 'hour' in options || 'timeStyle' in options;
+      expect(
+        'hourCycle' in options,
+        `${name} ${showsHour ? 'shows an hour' : 'shows no hour'}`,
+      ).toBe(showsHour);
+    }
   });
 });

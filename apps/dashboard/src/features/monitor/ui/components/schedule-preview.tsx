@@ -59,12 +59,7 @@ export function SchedulePreview({
                       : 'size-1.5 rounded-full bg-fg-subtle/40'
                   }
                 />
-                {format.dateTime(new Date(run), {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
+                {format.dateTime(new Date(run), 'scheduledRun', {
                   timeZone: timezone,
                 })}
               </li>

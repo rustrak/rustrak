@@ -2821,6 +2821,7 @@ export type UpdateMonitor = {
  * `Option<Option<T>>` collapses a missing key and an explicit null.
  */
 export type UpdatePreferencesRequest = {
+    clock_24h?: boolean | null;
     language?: string | null;
     timezone?: string | null;
 };
@@ -2956,6 +2957,11 @@ export type UserReportRequest = {
 };
 
 export type UserResponse = {
+    /**
+     * Whether the user wants a 24-hour clock, or `null` when they never
+     * chose, which leaves the clock to their language.
+     */
+    clock_24h: boolean | null;
     email: string;
     id: number;
     /**

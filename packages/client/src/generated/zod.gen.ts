@@ -2142,6 +2142,7 @@ export const zUpdateMonitor = z.object({
  * `Option<Option<T>>` collapses a missing key and an explicit null.
  */
 export const zUpdatePreferencesRequest = z.object({
+    clock_24h: z.nullish(z.boolean()),
     language: z.nullish(z.string()),
     timezone: z.nullish(z.string())
 });
@@ -2275,6 +2276,7 @@ export const zUpdateUserRole = z.object({
 });
 
 export const zUserResponse = z.object({
+    clock_24h: z.nullable(z.boolean()),
     email: z.string(),
     id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     is_admin: z.boolean(),

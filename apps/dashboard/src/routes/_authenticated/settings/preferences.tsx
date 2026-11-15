@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
+import { ClockSelector } from '@/features/user/ui/components/clock-selector';
 import { LanguageSelector } from '@/features/user/ui/components/language-selector';
 import { TimeZoneSelector } from '@/features/user/ui/components/time-zone-selector';
 import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
@@ -11,8 +12,8 @@ export const Route = createFileRoute('/_authenticated/settings/preferences')({
 });
 
 /**
- * How Rustrak reads to the reader: language and time zone, saved on the
- * account, and the theme, kept on this device.
+ * How Rustrak reads to the reader: language, time zone and clock, saved on
+ * the account, and the theme, kept on this device.
  */
 function PreferencesPage() {
   const t = useTranslations('settings');
@@ -28,6 +29,7 @@ function PreferencesPage() {
       <SettingSection title={t('account.regional')}>
         <LanguageSelector />
         <TimeZoneSelector />
+        <ClockSelector />
       </SettingSection>
 
       <SettingSection title={t('preferences.display')}>

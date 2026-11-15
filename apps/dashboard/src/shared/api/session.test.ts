@@ -140,6 +140,30 @@ describe('createSessionStore', () => {
     expect(read).toHaveBeenCalledTimes(2);
   });
 
+  // A sign-out asks again, and a sign-in can land before that answer does.
+  // The late 401 is older than the session the sign-in proved.
+  it('drops an answer a sign-in has already overtaken', async () => {
+    let answer!: (session: CurrentUser) => void;
+    const store = createSessionStore(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+
+    store.clear();
+    const late = store.ensure();
+    store.set({ state: 'authenticated', user: alice });
+    answer({ state: 'anonymous' });
+    await late;
+
+    expect(store.peek()).toEqual({ state: 'authenticated', user: alice });
+    expect(await store.ensure()).toEqual({
+      state: 'authenticated',
+      user: alice,
+    });
+  });
+
   it('tells subscribers when the answer changes', async () => {
     const listener = vi.fn();
     const store = createSessionStore(async () => ({
