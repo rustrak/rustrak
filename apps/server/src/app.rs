@@ -453,6 +453,15 @@ pub fn app(
             .cookie_secure(state.config.security.ssl_proxy)
             .cookie_http_only(true)
             .cookie_same_site(actix_web::cookie::SameSite::Lax)
+            // Max-Age = absolute_lifetime(); idle and absolute expiry are
+            // enforced by `DbSessionStore::load`, not by the cookie.
+            .session_lifecycle(
+                actix_session::config::PersistentSession::default().session_ttl(
+                    actix_web::cookie::time::Duration::days(
+                        crate::services::auth_session::absolute_lifetime().num_days(),
+                    ),
+                ),
+            )
             .build(),
         )
         .configure(crate::routes::configure);
