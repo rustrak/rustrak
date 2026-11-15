@@ -1,0 +1,28 @@
+---
+version: v0.27.1
+title: 24-Hour Clock
+description: Pick a 24-hour or 12-hour clock in Preferences, and a dashboard that loads far less on the first visit
+date: 2026-11-15
+tags: [dashboard, preferences, performance]
+---
+
+## 24-hour clock
+
+Preferences has a new clock setting next to language and timezone ([@janatjak](https://github.com/janatjak)).
+
+- Choose 24-hour or 12-hour, and every time in the dashboard follows it
+- Until you choose, the clock follows your language: 24-hour in French, 12-hour in English
+- Stored per user, so it follows you to any browser. `PATCH /api/auth/me` accepts `clock_24h`, and `null` goes back to the language default
+
+## Lighter dashboard
+
+- Pages and their loading skeletons load when you open them, not up front
+- Assets ship precompressed as Brotli and gzip at the highest levels and are served as they are, so the server spends no CPU compressing them
+- Platform icons load as files when drawn instead of being inlined into the JavaScript
+- The code viewer carries only the languages it highlights, and the API client validates with Zod Mini
+- Relative times no longer re-render the whole app after every read
+
+## Improvements
+
+- Signing in applies your saved language, timezone and clock straight away ([@janatjak](https://github.com/janatjak))
+- A sign-in right after a sign-out is no longer undone by the older session answer
