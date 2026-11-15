@@ -239,6 +239,29 @@ export function DataTable<TData extends RowData>({
     }
   }
 
+  // One toolbar for both heads: a selection made on a desktop outlives the
+  // window narrowing to a phone, and must still be acted on or cleared there.
+  const bulkToolbar = (
+    <div
+      role="toolbar"
+      aria-label={labels.selectionToolbar}
+      className={styles.bulk()}
+    >
+      <span aria-live="polite" className={styles.bulkCount()}>
+        {labels.selected(selectedCount)}
+      </span>
+      {bulkActions}
+      <Button
+        variant="ghost"
+        size="xs"
+        className="ms-auto"
+        onClick={() => table.toggleAllRowsSelected(false)}
+      >
+        {labels.clearSelection}
+      </Button>
+    </div>
+  );
+
   return (
     <div className={styles.card({ className })}>
       <div ref={scroller} className={styles.scroller()} aria-busy={loading}>
@@ -256,6 +279,7 @@ export function DataTable<TData extends RowData>({
               table={table}
               columns={columns}
               className={styles.th()}
+              bulkToolbar={bulkMode ? bulkToolbar : null}
             />
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="max-md:hidden">
@@ -276,24 +300,7 @@ export function DataTable<TData extends RowData>({
                       colSpan={columns.length - 1}
                       className={styles.th()}
                     >
-                      <div
-                        role="toolbar"
-                        aria-label={labels.selectionToolbar}
-                        className={styles.bulk()}
-                      >
-                        <span aria-live="polite" className={styles.bulkCount()}>
-                          {labels.selected(selectedCount)}
-                        </span>
-                        {bulkActions}
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="ms-auto"
-                          onClick={() => table.toggleAllRowsSelected(false)}
-                        >
-                          {labels.clearSelection}
-                        </Button>
-                      </div>
+                      {bulkToolbar}
                     </th>
                   </>
                 ) : (

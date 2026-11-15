@@ -1,4 +1,5 @@
 import type { Column, RowData } from '@tanstack/react-table';
+import type { ReactNode } from 'react';
 import { useMobileBreakpoint } from '../../lib/use-mobile';
 import { Button } from '../button/button';
 import { Menu } from '../menu/menu';
@@ -20,11 +21,14 @@ export function DataTablePhoneHead<TData extends RowData>({
   table,
   columns,
   className,
+  bulkToolbar,
 }: {
   table: DataTableInstance<TData>;
   /** The columns drawn: one heading each. */
   columns: Column<DataTableFeatures, TData, unknown>[];
   className: string;
+  /** While rows are selected, the head is the selection's toolbar instead. */
+  bulkToolbar?: ReactNode;
 }) {
   const labels = useDataTableLabels();
   // Not in the DOM at all above `md`: a second, hidden set of headings would
@@ -48,6 +52,16 @@ export function DataTablePhoneHead<TData extends RowData>({
   });
 
   if (!mobile) return null;
+
+  if (bulkToolbar) {
+    return (
+      <tr>
+        <th scope="col" colSpan={columns.length} className={className}>
+          {bulkToolbar}
+        </th>
+      </tr>
+    );
+  }
 
   const sortMenu =
     actions.length > 0 ? (

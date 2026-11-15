@@ -387,7 +387,15 @@ function RootView({
   const project = useCurrentProject();
   const permissions = usePermissionsLater();
   const install = useInstallMode();
-  const logout = useMutation(userMutations.logout());
+  // On the mutation, not on `mutate`: a per-call callback is dropped if this
+  // view unmounts first (the reader opened Projects mid sign-out).
+  const logout = useMutation({
+    ...userMutations.logout(),
+    onSettled: () => {
+      onNavigate();
+      router.push('/login');
+    },
+  });
 
   const base = project ? `/projects/${project.id}` : '';
   const inTabs = project
@@ -513,14 +521,7 @@ function RootView({
               : tUser('header.signOut')
           }
           disabled={logout.isPending}
-          onClick={() =>
-            logout.mutate(undefined, {
-              onSettled: () => {
-                onNavigate();
-                router.push('/login');
-              },
-            })
-          }
+          onClick={() => logout.mutate()}
         />
       </SheetSection>
     </>
