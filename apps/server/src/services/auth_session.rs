@@ -17,16 +17,15 @@ use crate::auth::session::SESSION_USER_ID_KEY;
 use crate::db::DbPool;
 use crate::error::AppResult;
 
-/// Signed out after this long without a request: the state TTL actix-session
-/// applied by default before sessions moved server-side.
+/// Sliding idle timeout, measured from `last_seen_at`.
 fn idle_timeout() -> Duration {
-    Duration::days(1)
+    Duration::days(14)
 }
 
-/// Signed out this long after the session began, however active: Django's
-/// `SESSION_COOKIE_AGE`, which Sentry keeps.
-fn absolute_lifetime() -> Duration {
-    Duration::days(14)
+/// Absolute lifetime from `created_at` (NIST 800-63B AAL1 reauth interval).
+/// Also the cookie's `Max-Age` (`app.rs`).
+pub(crate) fn absolute_lifetime() -> Duration {
+    Duration::days(30)
 }
 
 /// `last_seen_at` is written at most this often, so a dashboard polling the

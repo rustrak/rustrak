@@ -1599,11 +1599,46 @@ async fn test_idle_session_is_refused() {
     let cookie = crate::common::login(&app, "idle@example.com").await;
 
     sqlx::query("UPDATE sessions SET last_seen_at = $1")
-        .bind(chrono::Utc::now() - chrono::Duration::days(2))
+        .bind(chrono::Utc::now() - chrono::Duration::days(15))
         .execute(&db.pool)
         .await
         .unwrap();
     assert_eq!(me_status(&app, &cookie).await, 401);
+}
+
+#[actix_web::test]
+async fn test_session_within_idle_timeout_is_accepted() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "away@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    let cookie = crate::common::login(&app, "away@example.com").await;
+
+    sqlx::query("UPDATE sessions SET last_seen_at = $1")
+        .bind(chrono::Utc::now() - chrono::Duration::days(13))
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(me_status(&app, &cookie).await, 200);
+}
+
+#[actix_web::test]
+async fn test_cookie_max_age_matches_absolute_lifetime() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "persist@example.com", "password123", false).await;
+    let app = crate::common::app(&db.pool).await;
+    let cookie = crate::common::login(&app, "persist@example.com").await;
+
+    assert_eq!(
+        cookie.max_age(),
+        Some(actix_web::cookie::time::Duration::days(30))
+    );
+
+    let (created, expires): (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) =
+        sqlx::query_as("SELECT created_at, expires_at FROM sessions")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(expires - created, chrono::Duration::days(30));
 }
 
 #[actix_web::test]
