@@ -195,7 +195,11 @@ export function CommandBarDialog({
       open={open}
       onOpenChange={onOpenChange}
       size="xl"
-      className="mt-[calc(14vh-1.5rem)] max-h-[76svh] self-start rounded-2xl bg-surface-floating text-fg shadow-overlay sm:max-w-[42rem]"
+      // On a phone search is a screen of its own, the whole height, the way
+      // every native app opens it: the keyboard takes the bottom half, and a
+      // sheet sharing what is left with the page behind it leaves room for
+      // three results.
+      className="mt-[calc(14vh-1.5rem)] max-h-[76svh] self-start rounded-2xl bg-surface-floating text-fg shadow-overlay sm:max-w-[42rem] max-md:mt-0 max-md:h-dvh max-md:max-h-none max-md:self-stretch max-md:rounded-none max-md:border-0 max-md:pt-safe-top"
     >
       {/* Named for the screen reader only: the search field is the palette's
           visible heading, so `DialogHeader` would repeat it. */}
@@ -231,13 +235,24 @@ export function CommandBarDialog({
             className="h-full min-w-0 flex-1 bg-transparent text-fg text-section font-normal tracking-normal outline-none placeholder:text-fg-placeholder"
             placeholder={t('commands.searchPlaceholder')}
           />
-          <Kbd>esc</Kbd>
+          {isMobile ? (
+            // No Escape key on a phone: iOS's "Cancel" beside the field.
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="-me-1 shrink-0 rounded-md px-1 text-value text-fg-brand active:opacity-60"
+            >
+              {t('common.close')}
+            </button>
+          ) : (
+            <Kbd>esc</Kbd>
+          )}
         </div>
 
         {/* Fixed height so the list does not resize under the selection as
               it shortens with the query. It gives way only when the dialog
               hits its own cap, which is the short-viewport case. */}
-        <div className="flex h-[26rem] min-h-0">
+        <div className="flex h-[26rem] min-h-0 max-md:h-auto max-md:flex-1">
           <ResultsList
             ref={listRef}
             projects={projects}
@@ -260,7 +275,10 @@ export function CommandBarDialog({
 
         {/* `canPreview`, so the hint is not advertising a Tab that does
               nothing on the viewports where the column cannot open. */}
-        <CommandBarFooter hasPreview={canPreview} previewOpen={showPreview} />
+        {/* Keys to press, on a screen with no keyboard: a phone gets none. */}
+        {isMobile ? null : (
+          <CommandBarFooter hasPreview={canPreview} previewOpen={showPreview} />
+        )}
       </Command>
     </Dialog>
   );

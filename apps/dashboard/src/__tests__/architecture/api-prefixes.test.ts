@@ -106,7 +106,32 @@ function serverApiPrefixes(): string[] {
   return [...declaration[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 }
 
+/**
+ * `const SERVER_PREFIXES = ['/api', ...]` in `public/sw.js`. The service
+ * worker leaves these alone; one missing here would have it answer `/auth`'s
+ * SSO navigation with the offline page whenever the network blips.
+ */
+function serviceWorkerPrefixes(): string[] {
+  const source = read('../../../public/sw.js');
+  const declaration = /const SERVER_PREFIXES = \[([^\]]*)\]/.exec(source);
+
+  if (!declaration) {
+    throw new Error(
+      'public/sw.js no longer declares `SERVER_PREFIXES`, the paths the ' +
+        'service worker must never answer for the server.',
+    );
+  }
+
+  return [...declaration[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
+}
+
 describe('the API prefixes do not drift', () => {
+  it('leaves to the server, from the service worker, exactly what it keeps', () => {
+    expect([...serviceWorkerPrefixes()].sort()).toEqual(
+      [...serverApiPrefixes()].sort(),
+    );
+  });
+
   // The floor. Both readers throw on a missing declaration, but a regex that
   // matched an empty array would satisfy the equality below with two empty
   // lists and say nothing at all.

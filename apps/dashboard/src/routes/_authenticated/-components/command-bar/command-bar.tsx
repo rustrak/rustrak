@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import type { CommandProject } from './commands';
 import { CommandBarDialog } from './dialog/command-bar-dialog';
+import { OPEN_EVENT } from './open-command-bar';
 
 const IS_MAC = /mac|iphone|ipad|ipod/i.test(navigator.userAgent);
 
@@ -45,7 +46,11 @@ export function CommandBar({ projects, trigger }: CommandBarProps) {
     };
 
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener(OPEN_EVENT, openBar);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(OPEN_EVENT, openBar);
+    };
   }, [open]);
 
   const shortcut = IS_MAC ? '⌘K' : 'Ctrl K';

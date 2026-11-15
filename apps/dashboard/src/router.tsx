@@ -1,8 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { createRouter } from '@tanstack/react-router';
+import { pageTransition } from '@/shared/lib/page-transition';
 import { NotFoundScreen } from '@/shared/ui/components/not-found-screen';
 import { RouteError } from '@/shared/ui/components/route-error';
 import { routeTree } from './routeTree.gen';
+
+/** Below `md`, where the page slides like an app's, unless asked not to. */
+const animatesPages = () =>
+  window.matchMedia('(width < 48rem)').matches &&
+  !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * The router.
@@ -30,6 +36,14 @@ export function createAppRouter(queryClient: QueryClient) {
     // client-routed application has to do for itself. Without it, following a
     // link from halfway down the issues list opens the issue halfway down.
     scrollRestoration: true,
+    // On a phone a navigation moves the page the way an app's would: deeper
+    // slides in from the right, back slides in from the left, a tab
+    // cross-fades (`shared/lib/page-transition.ts`; the motion is in
+    // `styles.css`). A desktop navigates in place, as it always has.
+    defaultViewTransition: {
+      types: ({ fromLocation, toLocation }) =>
+        animatesPages() ? pageTransition(fromLocation, toLocation) : false,
+    },
   });
 }
 

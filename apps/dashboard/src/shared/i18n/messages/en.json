@@ -125,6 +125,7 @@
     "highestFirst": "Highest first",
     "aToZ": "A to Z",
     "zToA": "Z to A",
+    "sortBy": "Sort",
     "clearFilter": "Clear filter",
     "hideColumn": "Hide column",
     "range": "{first}–{last} of {total}",
@@ -2946,5 +2947,23 @@
     "setWorkspaceDefault": "Make it everyone’s default",
     "unsetWorkspaceDefault": "Stop being everyone’s default",
     "loadFailed": "Views could not be loaded"
+  },
+  "mobile": {
+    "tabs": "Tabs",
+    "search": "Search",
+    "more": "More",
+    "projects": "Projects",
+    "back": "Back",
+    "switchProject": "Switch project, current: {name}",
+    "switchProjectHint": "Switch project",
+    "chooseProject": "Choose a project",
+    "workspace": "Workspace",
+    "allIssues": "Issues in all projects",
+    "install": "Install app",
+    "installHint": "Open Rustrak from your home screen, full screen",
+    "installIntro": "Safari installs web apps from its share menu. It takes three taps.",
+    "installStep1": "Tap Share <share></share> in Safari's toolbar",
+    "installStep2": "Choose Add to Home Screen",
+    "installStep3": "Tap Add"
   }
 }

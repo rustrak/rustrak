@@ -2,9 +2,50 @@
 <html lang="en" class="dark" style="color-scheme: dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <!--
+      `viewport-fit=cover` lets the page draw under the notch and the home
+      indicator; the shell pads itself back with `env(safe-area-inset-*)`.
+      `interactive-widget=resizes-content` makes the on-screen keyboard shrink
+      the layout instead of covering the bottom of it. No `maximum-scale`:
+      pinch-zoom stays available to whoever needs it, and inputs are 16 px on
+      a phone so iOS has no reason to zoom on focus.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <!--
+      The browser chrome and the status bar take the colour of the sheet the
+      pages sit on (`--surface-panel`), which on a phone is the whole screen.
+      `ThemeProvider` keeps the dark one current when the reader picks a
+      theme that differs from the system's (`theme-color.tsx`).
+    -->
+    <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" href="/icon.png" />
-    <link rel="apple-touch-icon" href="/apple-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Rustrak" />
+    <!--
+      `default` and not `black-translucent`: on iOS 26 the translucent style
+      leaves a strip under the app that no CSS can reach (WebKit bug 301108).
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!--
+      Chrome fires `beforeinstallprompt` once, as soon as the page qualifies,
+      which can be before the bundle has run. Parked here so the install row
+      in "More" can use it (`shared/ui/hooks/use-install.ts`). Not
+      `preventDefault`: the browser's own install offer still shows, and the
+      app adds a way back to it rather than replacing it.
+    -->
+    <script>
+      addEventListener('beforeinstallprompt', (event) => {
+        window.__installPrompt = event;
+        dispatchEvent(new Event('rustrak:installable'));
+      });
+    </script>
     <!--
       English until the reader's locale is known: `Messages` then sets `lang`,
       and each page renders its own <title>.
@@ -20,8 +61,8 @@
       white until React mounts and swaps the class.
     -->
   </head>
-  <body class="antialiased min-h-screen flex flex-col">
-    <div id="root" class="min-h-screen flex flex-col flex-1"></div>
+  <body class="antialiased min-h-dvh flex flex-col">
+    <div id="root" class="min-h-dvh flex flex-col flex-1"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

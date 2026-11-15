@@ -101,6 +101,9 @@ export function AgentTracesTable({
         meta: {
           label: t('columns.duration'),
           width: 104,
+          // Kept on a phone, with errors: how long a run took and whether it
+          // failed are what a list of runs is read for.
+          mobile: true,
           sortLabels: most,
           ...figure,
         },
@@ -154,6 +157,7 @@ export function AgentTracesTable({
         meta: {
           label: t('columns.errors'),
           width: 88,
+          mobile: true,
           sortLabels: most,
           ...figure,
         },

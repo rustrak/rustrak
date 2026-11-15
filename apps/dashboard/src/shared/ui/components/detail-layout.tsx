@@ -32,6 +32,8 @@ export function DetailBody({
       aria-busy={busy}
       className={cn(
         'flex min-h-0 flex-1 max-lg:flex-col max-lg:overflow-y-auto',
+        // A phone scrolls the whole page, header included (`Page`).
+        'max-md:flex-none max-md:overflow-visible',
         busy && 'opacity-60',
       )}
     >

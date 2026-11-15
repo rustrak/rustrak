@@ -32,7 +32,12 @@ const dialog = tv({
       'data-starting-style:opacity-0 data-starting-style:ease-entrance',
       'data-ending-style:opacity-0 data-ending-style:ease-exit',
     ],
-    viewport: 'fixed inset-0 z-50 flex items-center justify-center p-6',
+    viewport: [
+      'fixed inset-0 z-50 flex items-center justify-center p-6',
+      // A phone gets a bottom sheet: the same box, risen from where the
+      // thumb is, full width and flush with the bottom edge.
+      'max-md:items-end max-md:p-0',
+    ],
     popup: [
       'relative flex max-h-full w-full flex-col overflow-hidden',
       'rounded-xl border border-border bg-surface shadow-dialog',
@@ -41,15 +46,26 @@ const dialog = tv({
        * It appears growing a touch from the centre. It neither rises nor
        * drops: a modal comes from nowhere on the screen, it interrupts.
        */
-      'transition-[scale,opacity] duration-fast',
+      'transition-[scale,opacity,translate] duration-fast',
       'data-starting-style:scale-97 data-starting-style:opacity-0',
       'data-starting-style:ease-entrance',
       'data-ending-style:scale-97 data-ending-style:opacity-0',
       'data-ending-style:ease-exit',
+      /*
+       * On a phone it is a sheet, and a sheet rises: it slides up from below
+       * the edge instead of growing, at the pace the sidebar slides, and goes
+       * back down the same way.
+       */
+      'max-md:max-h-[calc(100dvh-var(--spacing-safe-top)-var(--spacing-topbar))]',
+      'max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-3xl',
+      'max-md:border-x-0 max-md:border-b-0 max-md:pb-safe-bottom',
+      'max-md:duration-slow',
+      'max-md:data-starting-style:translate-y-full max-md:data-starting-style:scale-100 max-md:data-starting-style:opacity-100',
+      'max-md:data-ending-style:translate-y-full max-md:data-ending-style:scale-100 max-md:data-ending-style:opacity-100',
     ],
     // The air below comes from the header, not the body, so a modal without
     // a body -- a confirmation -- does not sit with its text on the footer.
-    header: 'flex shrink-0 items-start gap-3.25 px-5.5 pt-5 pb-4',
+    header: 'flex shrink-0 items-start gap-3.25 px-5.5 pt-5 pb-4 max-md:px-4',
     heading: 'flex min-w-0 flex-1 flex-col gap-1.25 pt-0.5',
     title: 'text-fg text-section',
     description: 'text-body text-fg-tertiary',
@@ -61,14 +77,17 @@ const dialog = tv({
       focusRing,
     ],
     // The body is the only part that scrolls: header and footer stay put.
-    body: 'min-h-0 flex-1 overflow-y-auto px-5.5 pb-4.5',
+    body: 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-5.5 pb-4.5 max-md:px-4',
     footer: [
       'flex shrink-0 flex-wrap items-center gap-2.25',
       'border-border-subtle border-t bg-surface-raised px-5.5 py-4',
+      'max-md:px-4 max-md:bg-surface',
     ],
     // On the left, whatever is not an action: the shortcut, the caveat.
     hint: 'text-fg-subtle text-meta',
-    actions: 'ms-auto flex items-center gap-2.25',
+    // On a phone the actions share the width: two thumb-sized targets
+    // rather than two small ones in a corner.
+    actions: 'ms-auto flex items-center gap-2.25 max-md:w-full max-md:*:flex-1',
   },
   variants: {
     size: {

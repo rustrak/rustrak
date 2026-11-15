@@ -221,6 +221,8 @@ export { queryFieldsFromColumns } from './components/query-bar/query-bar-parts';
 
 /* --- Shell --------------------------------------------------------------- */
 
+export type { SheetProps, SheetRowProps } from './components/sheet/sheet';
+export { Sheet, SheetRow, SheetSection } from './components/sheet/sheet';
 export type {
   AppShellProps,
   PageHeaderProps,
@@ -253,5 +255,7 @@ export {
   SidebarSubmenu,
   SidebarUser,
 } from './components/shell/sidebar';
+export type { TabBarItemProps, TabBarProps } from './components/shell/tab-bar';
+export { TabBar, TabBarItem } from './components/shell/tab-bar';
 export type { TopbarProps } from './components/shell/topbar';
 export { Topbar, TopbarMenuButton } from './components/shell/topbar';

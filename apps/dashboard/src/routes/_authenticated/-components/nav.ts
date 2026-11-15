@@ -398,3 +398,18 @@ export function isSettingsPath(pathname: string): boolean {
     pathname,
   );
 }
+
+/** Where the docs live, linked from the sidebar's foot and from More. */
+export const DOCS_URL = 'https://rustrak.dev';
+
+/** The page the URL is in. Overview only on its exact path. */
+export function activePage(
+  pathname: string,
+  base: string,
+): NavPage | undefined {
+  return PROJECT_PAGES.find((page) =>
+    page.href === ''
+      ? pathname === base || pathname === `${base}/`
+      : isUnder(pathname, `${base}${page.href}`),
+  );
+}

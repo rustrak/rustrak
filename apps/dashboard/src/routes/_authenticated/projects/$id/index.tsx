@@ -195,7 +195,10 @@ function ProjectScreen({ project }: { project?: ProjectResponse }) {
             />
             {project ? (
               <>
-                <Separator orientation="vertical" className="h-5" />
+                <Separator
+                  orientation="vertical"
+                  className="h-5 max-md:hidden"
+                />
                 <SavedViews
                   projectId={projectId}
                   page="overview"

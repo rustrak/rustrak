@@ -637,6 +637,12 @@
   --text-tag--line-height: 1.2;
   --text-tag--font-weight: 500;
 
+  /* Tab bar label · 10.5 / 500 · under a 22 px glyph, five across a phone */
+  --text-tab: 0.65625rem;
+  --text-tab--line-height: 1.2;
+  --text-tab--font-weight: 500;
+  --text-tab--letter-spacing: -0.005em;
+
   /* Keyboard shortcut · 10.5 / 500 */
   --text-kbd: 0.65625rem;
   --text-kbd--line-height: 1.2;
@@ -808,6 +814,52 @@
   --spacing-icon-lg: 14px;
   --spacing-icon-xl: 15px;
   --spacing-icon-2xl: 16px;
+  /* A tab bar's glyph: the one icon a thumb aims at rather than reads past. */
+  --spacing-icon-3xl: 22px;
+
+  /* --- Phone ------------------------------------------------------------ */
+  /* The bottom tab bar, without the home indicator under it. 56 px is the
+     Material navigation bar's height and three of Apple's 44 pt rows' worth
+     of icon plus label: tall enough to hit with a thumb, short enough to stay
+     out of the way of a list. */
+  --spacing-tab-bar: 56px;
+  /* The notch and the home indicator, as spacing: `pt-safe-top`,
+     `pb-safe-bottom`. Zero everywhere else, so they cost nothing on a
+     desktop. `viewport-fit=cover` in the page is what makes them non-zero. */
+  --spacing-safe-top: env(safe-area-inset-top, 0px);
+  --spacing-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/*
+ * Touch.
+ *
+ * Below `md` the same components are pressed with a thumb, not pointed at with
+ * a cursor, so their measurements change here, once, instead of in every
+ * recipe as `max-md:` classes. A 32 px button is a fine target for a mouse and
+ * a miss for a finger: Apple asks for 44 pt and Material for 48 dp, and the
+ * steps below land the controls between 36 and 44 px and every row a list
+ * offers to tap (a nav row, a menu item) at 44.
+ *
+ * The gutter drops from 28 to 16 px: on a 390 px screen 28 px a side is 14 %
+ * of the width spent on air, and 16 is what iOS and Android both use for the
+ * edge of a list.
+ *
+ * Only measurements change. Type stays as it is, because the density is the
+ * product, except for what is typed into (`base.css`).
+ */
+@media (width < 48rem) {
+  :root {
+    --spacing-control-xs: 32px;
+    --spacing-control-sm: 36px;
+    --spacing-control-md: 40px;
+    --spacing-control-lg: 44px;
+    --spacing-chip: 28px;
+    --spacing-topbar: 52px;
+    --spacing-tab: 44px;
+    --spacing-nav-item: 44px;
+    --spacing-menu-item: 44px;
+    --spacing-page-gutter: 16px;
+  }
 }
 
 /*

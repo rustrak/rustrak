@@ -17,10 +17,11 @@ import { EmptyIcon } from '../icon/icon-catalog';
 import { Text } from '../text/text';
 import { DataTableColumnHeader } from './column-header';
 import type { DataTableFeatures } from './features';
-import { droppedToFit } from './fit';
 import { useDataTableLabels } from './labels';
 import { DataTablePagination } from './pagination';
+import { DataTablePhoneHead } from './phone-head';
 import type { DataTableInstance } from './use-data-table';
+import { useFittedColumns } from './use-fitted-columns';
 
 /**
  * The rendering half of the table; `useDataTable` is the state half.
@@ -38,8 +39,17 @@ const dataTable = tv({
     card: [
       'flex min-h-0 flex-col overflow-hidden',
       'rounded-xl border border-border-subtle bg-panel',
+      /*
+       * On a phone the list runs edge to edge, the way every native list
+       * does: a card inset by the gutter on a 390 px screen spends 32 px of
+       * the title's width on a frame.
+       */
+      'max-md:-mx-page-gutter max-md:rounded-none max-md:border-x-0',
+      // And it is part of the page's scroll, not a box scrolling inside it
+      // (`Page`): the column head sticks under the top bar instead.
+      'max-md:flex-none max-md:overflow-visible',
     ],
-    scroller: 'min-h-0 flex-1 overflow-auto',
+    scroller: 'min-h-0 flex-1 overflow-auto max-md:overflow-visible',
     // Fixed layout: the widths in the colgroup are the widths, so dragging
     // one column moves only the flexible one, never the rest.
     table: 'w-full table-fixed border-separate border-spacing-0',
@@ -80,7 +90,12 @@ const dataTable = tv({
      * side unmounts, the incoming one rises 2 px into place, and the row
      * itself never moves.
      */
-    bulk: ['flex h-full items-center gap-1.5', swapAnimation],
+    // A phone wraps the actions onto a second line rather than pushing the
+    // last of them, and Clear, off the edge of the screen.
+    bulk: [
+      'flex h-full items-center gap-1.5 max-md:flex-wrap max-md:py-1.5',
+      swapAnimation,
+    ],
     headerSwap: ['h-full', swapAnimation],
     bulkCount: 'me-2 font-medium text-control text-fg',
     empty: [
@@ -118,9 +133,6 @@ const dataTable = tv({
     ],
   },
 });
-
-/** The flexible column never gets narrower than this while others grow. */
-const FLEX_MIN_WIDTH = 320;
 
 /** No column is dragged narrower than this. */
 const MIN_WIDTH = 48;
@@ -174,65 +186,8 @@ export function DataTable<TData extends RowData>({
 }: DataTableProps<TData>) {
   const labels = useDataTableLabels();
   const rows = table.getRowModel().rows;
-  const visible = table.getVisibleLeafColumns();
-  const sizing = table.state.columnSizing;
-  const sizedWidth = (column: (typeof columns)[number]) =>
-    sizing[column.id] ?? column.columnDef.meta?.width;
-  // Once the reader has sized every column, the actions column is the one
-  // that takes up the slack -- so the menu stays against the right edge.
-  const anyFlexible = visible.some(
-    (column) =>
-      column.id !== 'select' &&
-      column.id !== 'actions' &&
-      sizedWidth(column) === undefined,
-  );
-  const widthOf = (column: (typeof visible)[number]) =>
-    column.id === 'select'
-      ? 40
-      : column.id === 'actions'
-        ? anyFlexible
-          ? 48
-          : undefined
-        : sizedWidth(column);
-  const drawnWidth = (column: (typeof visible)[number]) =>
-    widthOf(column) ?? (column.id === 'actions' ? 48 : FLEX_MIN_WIDTH);
-  // The card's width, measured: optional columns (`meta.drop`) step aside
-  // when the rest would not fit, before the table scrolls under the pinned
-  // actions column.
-  const scroller = useRef<HTMLDivElement>(null);
-  const [available, setAvailable] = useState<number>();
-  useLayoutEffect(() => {
-    const node = scroller.current;
-    if (!node) return;
-    const observer = new ResizeObserver(() => setAvailable(node.clientWidth));
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-  // The column under a resize handle never steps aside mid-gesture: its
-  // handle holds the focus, and the next key must be able to undo the last.
-  const [resizing, setResizing] = useState<string>();
-  const dropped = droppedToFit(
-    visible.map((column) => ({
-      id: column.id,
-      width: drawnWidth(column),
-      drop: column.id === resizing ? undefined : column.columnDef.meta?.drop,
-    })),
-    available,
-  );
-  const columns = visible.filter((column) => !dropped.has(column.id));
-  const shown = <T extends { column: { id: string } }>(items: T[]) =>
-    items.filter((item) => !dropped.has(item.column.id));
-  // A header spans the leaves still drawn under it; a group with none left
-  // spans nothing and is not drawn.
-  const spanOf = (header: Header<DataTableFeatures, TData, unknown>) =>
-    header
-      .getLeafHeaders()
-      .filter(
-        (leaf) => leaf.subHeaders.length === 0 && !dropped.has(leaf.column.id),
-      ).length;
-  // Wide enough for every sized column and a readable flexible one; past
-  // that the card scrolls sideways instead of crushing the title.
-  const minWidth = columns.reduce((sum, column) => sum + drawnWidth(column), 0);
+  const { columns, widthOf, scroller, setResizing, shown, spanOf, minWidth } =
+    useFittedColumns(table);
   const filtered =
     table.state.columnFilters.length > 0 || Boolean(table.state.globalFilter);
   const selectedCount = Object.keys(table.state.rowSelection).length;
@@ -289,6 +244,29 @@ export function DataTable<TData extends RowData>({
     }
   }
 
+  // One toolbar for both heads: a selection made on a desktop outlives the
+  // window narrowing to a phone, and must still be acted on or cleared there.
+  const bulkToolbar = (
+    <div
+      role="toolbar"
+      aria-label={labels.selectionToolbar}
+      className={styles.bulk()}
+    >
+      <span aria-live="polite" className={styles.bulkCount()}>
+        {labels.selected(selectedCount)}
+      </span>
+      {bulkActions}
+      <Button
+        variant="ghost"
+        size="xs"
+        className="ms-auto"
+        onClick={() => table.toggleAllRowsSelected(false)}
+      >
+        {labels.clearSelection}
+      </Button>
+    </div>
+  );
+
   return (
     <div className={styles.card({ className })}>
       <div ref={scroller} className={styles.scroller()} aria-busy={loading}>
@@ -300,8 +278,16 @@ export function DataTable<TData extends RowData>({
           </colgroup>
 
           <thead>
+            {/* A phone has no figure columns to head, so no sort in them:
+                its head is the list's name and one sort menu. */}
+            <DataTablePhoneHead
+              table={table}
+              columns={columns}
+              className={styles.th()}
+              bulkToolbar={bulkMode ? bulkToolbar : null}
+            />
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
+              <tr key={headerGroup.id} className="max-md:hidden">
                 {bulkMode && headerGroup.headers[0]?.column.id === 'select' ? (
                   <>
                     {/* The box stays: it is how the selection is grown to the
@@ -319,24 +305,7 @@ export function DataTable<TData extends RowData>({
                       colSpan={columns.length - 1}
                       className={styles.th()}
                     >
-                      <div
-                        role="toolbar"
-                        aria-label={labels.selectionToolbar}
-                        className={styles.bulk()}
-                      >
-                        <span aria-live="polite" className={styles.bulkCount()}>
-                          {labels.selected(selectedCount)}
-                        </span>
-                        {bulkActions}
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className="ms-auto"
-                          onClick={() => table.toggleAllRowsSelected(false)}
-                        >
-                          {labels.clearSelection}
-                        </Button>
-                      </div>
+                      {bulkToolbar}
                     </th>
                   </>
                 ) : (

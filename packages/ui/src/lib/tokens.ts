@@ -97,6 +97,7 @@ export const textTokens = [
   'column',
   'badge',
   'tag',
+  'tab',
   'kbd',
   'numeric',
   'numeric-lg',
@@ -138,6 +139,10 @@ export const spacingTokens = [
   'icon-lg',
   'icon-xl',
   'icon-2xl',
+  'icon-3xl',
+  'tab-bar',
+  'safe-top',
+  'safe-bottom',
 ] as const;
 
 export const radiusTokens = [

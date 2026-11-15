@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <title>Rustrak</title>
+    <!--
+      Served by the service worker when a navigation fails, so it cannot load
+      anything: no stylesheet, no font, no script file. Everything is inline,
+      and the colours are the design system's panel and text tokens written
+      out by hand.
+    -->
+    <style>
+      :root {
+        color-scheme: dark light;
+        --bg: #222222;
+        --fg: #ededed;
+        --muted: #9a9a9a;
+        --border: #3a3a3a;
+        --lime: oklch(0.91 0.18 127);
+        --lime-ink: oklch(0.2 0.02 127);
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --fg: #171717;
+          --muted: #6b6b6b;
+          --border: #e5e5e5;
+          --lime: oklch(0.86 0.19 127);
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+        text-align: center;
+        -webkit-font-smoothing: antialiased;
+      }
+      .mark {
+        width: 56px; height: 56px; border-radius: 16px;
+        display: grid; place-items: center;
+        border: 1px solid var(--border);
+        margin-bottom: 8px;
+      }
+      .mark svg { width: 26px; height: 26px; stroke: var(--muted); }
+      h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+      p { margin: 0; max-width: 300px; color: var(--muted); }
+      button {
+        margin-top: 12px;
+        min-height: 44px; padding: 0 22px; border: 0; border-radius: 9999px;
+        background: var(--lime); color: var(--lime-ink);
+        font: inherit; font-weight: 600; cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      button:active { transform: scale(0.97); }
+    </style>
+  </head>
+  <body>
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 8.8a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16.3a5 5 0 0 1 7 0M12 20h.01M3 3l18 18" />
+      </svg>
+    </div>
+    <h1 data-t="title">You are offline</h1>
+    <p data-t="body">Rustrak needs a connection to your server to show live errors.</p>
+    <button type="button" data-t="retry" onclick="location.reload()">Try again</button>
+    <script>
+      // The reader's language, with no catalogue to load: the five the
+      // dashboard ships, inline.
+      const t = {
+        es: ['Sin conexión', 'Rustrak necesita conexión con tu servidor para mostrar los errores en vivo.', 'Reintentar'],
+        fr: ['Vous êtes hors ligne', 'Rustrak a besoin d’une connexion à votre serveur pour afficher les erreurs en direct.', 'Réessayer'],
+        zh: ['你已离线', 'Rustrak 需要连接到你的服务器才能显示实时错误。', '重试'],
+        ro: ['Ești offline', 'Rustrak are nevoie de o conexiune la serverul tău pentru a afișa erorile în timp real.', 'Reîncearcă'],
+      }[(navigator.language || 'en').slice(0, 2)];
+      if (t) {
+        document.documentElement.lang = navigator.language.slice(0, 2);
+        ['title', 'body', 'retry'].forEach((key, i) => {
+          document.querySelector(`[data-t="${key}"]`).textContent = t[i];
+        });
+      }
+      addEventListener('online', () => location.reload());
+    </script>
+  </body>
+</html>

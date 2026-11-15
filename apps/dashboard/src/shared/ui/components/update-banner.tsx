@@ -112,7 +112,7 @@ export function UpdateBanner({ info }: UpdateBannerProps) {
   });
 
   return (
-    <div className="pointer-events-none fixed top-3 left-1/2 z-50 -translate-x-1/2">
+    <div className="pointer-events-none fixed top-[calc(var(--spacing-safe-top)+0.75rem)] left-1/2 z-50 -translate-x-1/2">
       {/* The pill only reads as an update to sighted users; without this a
           screen reader user learns nothing until they tab into it. */}
       <span role="status" className="sr-only">

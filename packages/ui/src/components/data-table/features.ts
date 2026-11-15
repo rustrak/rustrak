@@ -15,6 +15,7 @@ import {
 } from '@tanstack/react-table';
 import type { IconComponent } from '../icon/icon';
 import type { TagTone } from '../tag/tag';
+import type { DataTableLabels } from './labels';
 
 /**
  * One value a filterable column can take: a level, an environment, a release.
@@ -107,6 +108,13 @@ export interface DataTableColumnMeta {
    */
   drop?: number;
   /**
+   * Kept on a phone. Below `md` a table is a list: the flexible column, the
+   * row's actions, and only the fixed-width columns that say `mobile` --
+   * a figure the row is unreadable without. Everything else steps aside, and
+   * the flexible column's cell is expected to carry the essentials itself.
+   */
+  mobile?: boolean;
+  /**
    * The sort menu's wording, said in the data's own terms. "Most events
    * first" reads; "Descending" makes the reader translate. Defaults to
    * A→Z / Z→A wording for text and high/low wording for numeric columns.
@@ -156,4 +164,16 @@ export function columnLabel<TData extends RowData>(
   const { meta, header } = column.columnDef;
   if (meta?.label) return meta.label;
   return typeof header === 'string' ? header : column.id;
+}
+
+/** The wording a sort offers when the column has not chosen its own. */
+export function sortWording(
+  meta: DataTableColumnMeta | undefined,
+  labels: DataTableLabels,
+): { asc: string; desc: string } {
+  if (meta?.sortLabels) return meta.sortLabels;
+  if (meta?.numeric) {
+    return { asc: labels.lowestFirst, desc: labels.highestFirst };
+  }
+  return { asc: labels.aToZ, desc: labels.zToA };
 }

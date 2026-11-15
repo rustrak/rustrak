@@ -1,0 +1,104 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import {
+  Cover,
+  Do,
+  DoDont,
+  DocPage,
+  Dont,
+  Guarantee,
+  Guarantees,
+  Place,
+  Rule,
+  Section,
+  Stage,
+  UsedIn,
+} from '../../docs/blocks';
+import {
+  IssuesIcon,
+  LogsIcon,
+  MenuIcon,
+  NotificationIcon,
+  OverviewIcon,
+  PerformanceIcon,
+  ReleasesIcon,
+  SearchIcon,
+} from '../icon/icon-catalog';
+import { TabBar, TabBarItem } from './tab-bar';
+import * as TabBarStories from './tab-bar.stories';
+
+<Meta of={TabBarStories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Shell"
+  title="TabBar"
+  lede="A phone's navigation: three to five destinations along the bottom edge, where the thumb already is."
+  note="Below md only, given to AppShell, which then stops drawing the sidebar."
+/>
+
+<Section
+  n="01"
+  title="Anatomy"
+  intro="A glyph on a pill, a label under it, and a badge when something is waiting. The pill is the active state."
+>
+
+<Stage label="a project's tabs">
+  <div className="w-[390px]">
+    <TabBar aria-label="Tabs">
+      <TabBarItem icon={OverviewIcon} label="Overview" href="#" />
+      <TabBarItem icon={IssuesIcon} label="Issues" href="#" active badge={12} />
+      <TabBarItem icon={PerformanceIcon} label="Performance" href="#" />
+      <TabBarItem icon={SearchIcon} label="Search" render={<button type="button" />} />
+      <TabBarItem icon={MenuIcon} label="More" render={<button type="button" />} />
+    </TabBar>
+  </div>
+</Stage>
+
+<Rule>
+  It sits under the content, in the shell's column, never over it: a bar laid
+  over the page hides the last row of every list.
+</Rule>
+
+</Section>
+
+<Section n="02" title="Guidelines">
+
+<DoDont>
+  <Do example={<div className="w-[390px]"><TabBar aria-label="Tabs"><TabBarItem icon={OverviewIcon} label="Overview" href="#" /><TabBarItem icon={IssuesIcon} label="Issues" href="#" active /><TabBarItem icon={MenuIcon} label="More" render={<button type="button" />} /></TabBar></div>}>
+    Three to five places someone opens the app for, the rest under More.
+  </Do>
+  <Dont example={<div className="w-[390px]"><TabBar aria-label="Tabs"><TabBarItem icon={OverviewIcon} label="Overview" href="#" /><TabBarItem icon={IssuesIcon} label="Issues" href="#" /><TabBarItem icon={ReleasesIcon} label="Releases" href="#" /><TabBarItem icon={PerformanceIcon} label="Performance" href="#" /><TabBarItem icon={LogsIcon} label="Logs" href="#" /><TabBarItem icon={NotificationIcon} label="Alerts" href="#" /></TabBar></div>}>
+    Every page as a tab. Six labels across a phone truncate to nothing.
+  </Dont>
+</DoDont>
+
+</Section>
+
+<Section n="03" title="Where it is used">
+
+<UsedIn>
+  <Place at="Dashboard, below md">A project's overview, issues and first monitor, then Search and More; above any project, Projects and Issues.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="04" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="MarksTheCurrentPage">The active tab carries <code>aria-current="page"</code>, and a badge past 99 reads 99+.</Guarantee>
+  <Guarantee story="KeyboardPath">Every tab is reachable with Tab, in order, whether it is a link or a button.</Guarantee>
+  <Guarantee>The home indicator is padded under it, so its targets stay above the swipe area.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="05" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

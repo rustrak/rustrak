@@ -314,6 +314,29 @@ changes, since sign-in stays inside the SPA and boot resolved them for nobody.
 - A new user-facing sentence goes in **all five** `messages/*.json`.
   `locale-completeness` and `message-keys` fail the build otherwise.
 
+## On a phone, and installed
+
+The dashboard is an installable PWA and has a phone layout. **The layout
+follows the width, never whether it is installed**: below `md` (768 px) it is
+the phone's, installed or not, and an installed desktop window stays a desktop.
+
+- **PWA**: `public/manifest.webmanifest`, `public/sw.js` (registered from
+  `main.tsx`, production only) and `public/offline.html`. The worker caches
+  `/assets` and answers a failed navigation with the offline page; it never
+  caches the shell or any server path, so `no-store` on the shell keeps
+  meaning what it means. Its `SERVER_PREFIXES` is the fourth copy of the API
+  prefix list, pinned by `api-prefixes.test.ts`.
+- **Navigation**: below `md`, `AppShell` draws the tab bar
+  (`-components/mobile-nav.tsx`) instead of the sidebar, and "More" opens a
+  `Sheet` with the rest. Both read `nav.ts`, so a page added there is
+  reachable on a phone with no extra work.
+- **Scrolling**: on a phone the content area scrolls the whole page, header
+  included, and lists run edge to edge (`DataTable`'s `meta.mobile` keeps a
+  figure column; the rest step aside, so the identity cell carries the
+  essentials).
+- Page transitions are the router's `defaultViewTransition`, phone only
+  (`shared/lib/page-transition.ts`, keyframes in `styles.css`).
+
 ## Rules the CI enforces
 
 `src/__tests__/architecture/` holds rule files written on

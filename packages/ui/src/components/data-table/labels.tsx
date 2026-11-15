@@ -37,6 +37,8 @@ export interface DataTableLabels {
   highestFirst: string;
   aToZ: string;
   zToA: string;
+  /** The phone's sort picker, before anything is sorted: "Sort". */
+  sortBy: string;
   clearFilter: string;
   hideColumn: string;
   /** "1–50 of 230", with the figures already formatted. */
@@ -89,6 +91,7 @@ const ENGLISH_LABELS: DataTableLabels = {
   highestFirst: 'Highest first',
   aToZ: 'A to Z',
   zToA: 'Z to A',
+  sortBy: 'Sort',
   clearFilter: 'Clear filter',
   hideColumn: 'Hide column',
   range: (first, last, total) => `${first}–${last} of ${total}`,
