@@ -1,0 +1,31 @@
+---
+version: v0.28.0
+title: Installable PWA
+description: The dashboard is now an installable PWA with a mobile shell, and sessions survive browser restarts
+date: 2026-11-15
+tags: [dashboard, pwa, mobile, auth]
+---
+
+## Installable PWA
+
+The dashboard ships a web app manifest and a service worker, so it installs as a standalone app on phones and desktops.
+
+- Install from the browser, or from **Install** in the mobile menu
+- The service worker caches only fingerprinted `/assets/*`, cache-first. Navigations always go to the network and fall back to `offline.html` when it fails
+- `/api`, `/auth` and every other server path bypass the worker, so no signed-in response is ever cached on the device
+- The cache is keyed to the release, and a new version drops the old one on activation
+
+## Mobile shell
+
+- A bottom tab bar for issues, projects, search and more, with a sheet for switching projects and settings
+- Pull to refresh
+- Tables fit the screen and keep their sort and column headings on narrow widths
+
+## Persistent sessions
+
+- The session cookie is now persistent (`Max-Age` 30 days), so closing the browser no longer signs you out
+- Idle timeout goes from 1 to 14 days, sliding on `last_seen_at`; absolute lifetime from 14 to 30 days. Both are enforced server-side
+
+## Improvements
+
+- The bulk actions toolbar wraps on phone widths
