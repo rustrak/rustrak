@@ -1,17 +1,9 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import type { CommandProject } from './commands';
 import { CommandBarDialog } from './dialog/command-bar-dialog';
+import { OPEN_EVENT } from './open-command-bar';
 
 const IS_MAC = /mac|iphone|ipad|ipod/i.test(navigator.userAgent);
-
-const OPEN_EVENT = 'rustrak:command-bar';
-
-/**
- * Opens the bar from outside the sidebar: the phone's tab bar, which has no
- * keyboard to press the shortcut with. One bar, mounted once with the sidebar,
- * so the shortcut is never bound twice.
- */
-export const openCommandBar = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
 interface CommandBarProps {
   projects: CommandProject[];

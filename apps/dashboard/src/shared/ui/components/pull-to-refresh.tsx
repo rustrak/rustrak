@@ -55,6 +55,9 @@ export function PullToRefresh({
     if (!node) return;
     let start: number | null = null;
     let distance = 0;
+    // One refresh at a time: a second pull would restart the first one's
+    // requests, and the first to settle would hide the indicator early.
+    let inFlight = false;
 
     const onStart = (event: TouchEvent) => {
       start =
@@ -78,11 +81,13 @@ export function PullToRefresh({
     const onEnd = () => {
       if (start === null) return;
       start = null;
-      if (distance >= THRESHOLD) {
+      if (distance >= THRESHOLD && !inFlight) {
+        inFlight = true;
         setRefreshing(true);
-        void queryClient
-          .refetchQueries({ type: 'active' })
-          .finally(() => setRefreshing(false));
+        void queryClient.refetchQueries({ type: 'active' }).finally(() => {
+          inFlight = false;
+          setRefreshing(false);
+        });
       }
       distance = 0;
       setPull(0);

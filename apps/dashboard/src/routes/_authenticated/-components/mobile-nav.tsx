@@ -39,18 +39,18 @@ import { promptInstall, useInstallMode } from '@/shared/ui/hooks/use-install';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import {
-  activePage,
-  DOCS_URL,
   type FrameProject,
   ProjectLogo,
   useCurrentProject,
   usePathname,
 } from './app-frame';
-import { openCommandBar } from './command-bar/command-bar';
+import { openCommandBar } from './command-bar/open-command-bar';
 import {
   ACCOUNT_SETTINGS,
+  activePage,
   allowed,
   canSeeTeam,
+  DOCS_URL,
   inProductOrder,
   isSettingsPath,
   isUnder,
@@ -491,7 +491,7 @@ function RootView({
             <ExternalLinkIcon size="lg" className="shrink-0 text-fg-ghost" />
           }
           render={
-            <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" />
+            <Link href={DOCS_URL} target="_blank" rel="noopener noreferrer" />
           }
         />
       </SheetSection>

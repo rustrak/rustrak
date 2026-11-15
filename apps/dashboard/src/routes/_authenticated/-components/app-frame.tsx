@@ -41,15 +41,16 @@ import { CommandBar } from './command-bar/command-bar';
 import { MobileHeading } from './mobile-nav';
 import {
   ACCOUNT_SETTINGS,
+  activePage,
   allowed,
   canSeeTeam,
+  DOCS_URL,
   inProductOrder,
   isSettingsPath,
   isUnder,
   type NavPage,
   OVERVIEW,
   PROJECT_GROUPS,
-  PROJECT_PAGES,
   PROJECT_SETTINGS,
   shownInProject,
   WORKSPACE_SETTINGS,
@@ -69,8 +70,6 @@ import {
  * Moving between them is a `SidebarScope` change, so it slides.
  */
 
-export const DOCS_URL = 'https://rustrak.dev';
-
 /** How many projects the workspace sidebar lists under its heading. */
 const SIDEBAR_PROJECTS = 5;
 
@@ -84,18 +83,6 @@ type ProjectOption = Pick<ProjectResponse, 'id' | 'name' | 'platform'>;
 /** The path without the query, so `?page=2` does not re-render the frame. */
 export const usePathname = () =>
   useLocation({ select: (location) => location.pathname });
-
-/** The page the URL is in. Overview only on its exact path. */
-export function activePage(
-  pathname: string,
-  base: string,
-): NavPage | undefined {
-  return PROJECT_PAGES.find((page) =>
-    page.href === ''
-      ? pathname === base || pathname === `${base}/`
-      : isUnder(pathname, `${base}${page.href}`),
-  );
-}
 
 /** The project the URL is in, as the project layout's loader cached it. */
 export function useCurrentProject(): FrameProject | null {

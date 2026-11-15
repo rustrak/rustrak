@@ -15,17 +15,18 @@ import {
   ResolveIcon,
 } from '../icon/icon-catalog';
 import { Popover } from '../popover/popover';
-import type {
-  ColumnFilterSpec,
-  DataTableColumnMeta,
-  DataTableFeatures,
+import {
+  type ColumnFilterSpec,
+  type DataTableColumnMeta,
+  type DataTableFeatures,
+  sortWording,
 } from './features';
 import {
   OptionsFilterPanel,
   RangeFilterPanel,
   TextFilterPanel,
 } from './filter-panel';
-import { type DataTableLabels, useDataTableLabels } from './labels';
+import { useDataTableLabels } from './labels';
 
 /**
  * A column header that is also the column's control -- the GitHub pattern.
@@ -91,18 +92,6 @@ const columnHeader = tv({
 });
 
 const styles = columnHeader();
-
-/** The wording a sort offers when the column has not chosen its own. */
-export function sortWording(
-  meta: DataTableColumnMeta | undefined,
-  labels: DataTableLabels,
-): { asc: string; desc: string } {
-  if (meta?.sortLabels) return meta.sortLabels;
-  if (meta?.numeric) {
-    return { asc: labels.lowestFirst, desc: labels.highestFirst };
-  }
-  return { asc: labels.aToZ, desc: labels.zToA };
-}
 
 export interface DataTableColumnHeaderProps<TData extends RowData> {
   header: Header<DataTableFeatures, TData, unknown>;

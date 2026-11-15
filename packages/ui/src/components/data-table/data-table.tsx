@@ -12,17 +12,16 @@ import {
 } from 'react';
 import { interactiveTransition, swapAnimation } from '../../lib/motion';
 import { tv } from '../../lib/tv';
-import { useMobileBreakpoint } from '../../lib/use-mobile';
 import { Button } from '../button/button';
 import { EmptyIcon } from '../icon/icon-catalog';
 import { Text } from '../text/text';
 import { DataTableColumnHeader } from './column-header';
 import type { DataTableFeatures } from './features';
-import { droppedToFit } from './fit';
 import { useDataTableLabels } from './labels';
 import { DataTablePagination } from './pagination';
 import { DataTablePhoneHead } from './phone-head';
 import type { DataTableInstance } from './use-data-table';
+import { useFittedColumns } from './use-fitted-columns';
 
 /**
  * The rendering half of the table; `useDataTable` is the state half.
@@ -130,12 +129,6 @@ const dataTable = tv({
   },
 });
 
-/** The flexible column never gets narrower than this while others grow. */
-const FLEX_MIN_WIDTH = 320;
-
-/** The same, on a phone (`true`) and on anything wider. */
-const FLEX_MIN_WIDTHS = { true: 180, false: FLEX_MIN_WIDTH } as const;
-
 /** No column is dragged narrower than this. */
 const MIN_WIDTH = 48;
 
@@ -168,28 +161,6 @@ export interface DataTableProps<TData extends RowData> {
   className?: string;
 }
 
-/**
- * What a phone does not draw: the ticks, and every fixed-width column that
- * does not say `mobile`. What is left is a list -- the flexible column and
- * the row's actions.
- */
-function droppedOnPhone(
-  columns: readonly {
-    id: string;
-    columnDef: { meta?: { width?: number; mobile?: boolean } };
-  }[],
-  mobile: boolean,
-): string[] {
-  if (!mobile) return [];
-  return columns
-    .filter(
-      ({ id, columnDef: { meta } }) =>
-        id === 'select' ||
-        (id !== 'actions' && meta?.width !== undefined && !meta.mobile),
-    )
-    .map(({ id }) => id);
-}
-
 function cellAttributes<TData extends RowData>(
   cell: Cell<DataTableFeatures, TData, unknown>,
 ) {
@@ -209,75 +180,9 @@ export function DataTable<TData extends RowData>({
   className,
 }: DataTableProps<TData>) {
   const labels = useDataTableLabels();
-  /*
-   * A phone has no room for the ticks, and no keyboard to work a selection
-   * with: the select column is not drawn there, and the flexible column
-   * gives up its desktop minimum, so the title gets the width the screen has
-   * instead of scrolling sideways past the edge.
-   */
-  const { mobile } = useMobileBreakpoint();
-  const flexMinWidth = FLEX_MIN_WIDTHS[String(mobile) as 'true' | 'false'];
   const rows = table.getRowModel().rows;
-  const visible = table.getVisibleLeafColumns();
-  const sizing = table.state.columnSizing;
-  const sizedWidth = (column: (typeof columns)[number]) =>
-    sizing[column.id] ?? column.columnDef.meta?.width;
-  // Once the reader has sized every column, the actions column is the one
-  // that takes up the slack -- so the menu stays against the right edge.
-  const anyFlexible = visible.some(
-    (column) =>
-      column.id !== 'select' &&
-      column.id !== 'actions' &&
-      sizedWidth(column) === undefined,
-  );
-  const widthOf = (column: (typeof visible)[number]) =>
-    column.id === 'select'
-      ? 40
-      : column.id === 'actions'
-        ? anyFlexible
-          ? 48
-          : undefined
-        : sizedWidth(column);
-  const drawnWidth = (column: (typeof visible)[number]) =>
-    widthOf(column) ?? (column.id === 'actions' ? 48 : flexMinWidth);
-  // The card's width, measured: optional columns (`meta.drop`) step aside
-  // when the rest would not fit, before the table scrolls under the pinned
-  // actions column.
-  const scroller = useRef<HTMLDivElement>(null);
-  const [available, setAvailable] = useState<number>();
-  useLayoutEffect(() => {
-    const node = scroller.current;
-    if (!node) return;
-    const observer = new ResizeObserver(() => setAvailable(node.clientWidth));
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-  // The column under a resize handle never steps aside mid-gesture: its
-  // handle holds the focus, and the next key must be able to undo the last.
-  const [resizing, setResizing] = useState<string>();
-  const dropped = droppedToFit(
-    visible.map((column) => ({
-      id: column.id,
-      width: drawnWidth(column),
-      drop: column.id === resizing ? undefined : column.columnDef.meta?.drop,
-    })),
-    available,
-  );
-  for (const id of droppedOnPhone(visible, mobile)) dropped.add(id);
-  const columns = visible.filter((column) => !dropped.has(column.id));
-  const shown = <T extends { column: { id: string } }>(items: T[]) =>
-    items.filter((item) => !dropped.has(item.column.id));
-  // A header spans the leaves still drawn under it; a group with none left
-  // spans nothing and is not drawn.
-  const spanOf = (header: Header<DataTableFeatures, TData, unknown>) =>
-    header
-      .getLeafHeaders()
-      .filter(
-        (leaf) => leaf.subHeaders.length === 0 && !dropped.has(leaf.column.id),
-      ).length;
-  // Wide enough for every sized column and a readable flexible one; past
-  // that the card scrolls sideways instead of crushing the title.
-  const minWidth = columns.reduce((sum, column) => sum + drawnWidth(column), 0);
+  const { columns, widthOf, scroller, setResizing, shown, spanOf, minWidth } =
+    useFittedColumns(table);
   const filtered =
     table.state.columnFilters.length > 0 || Boolean(table.state.globalFilter);
   const selectedCount = Object.keys(table.state.rowSelection).length;

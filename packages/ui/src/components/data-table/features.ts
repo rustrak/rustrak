@@ -15,6 +15,7 @@ import {
 } from '@tanstack/react-table';
 import type { IconComponent } from '../icon/icon';
 import type { TagTone } from '../tag/tag';
+import type { DataTableLabels } from './labels';
 
 /**
  * One value a filterable column can take: a level, an environment, a release.
@@ -163,4 +164,16 @@ export function columnLabel<TData extends RowData>(
   const { meta, header } = column.columnDef;
   if (meta?.label) return meta.label;
   return typeof header === 'string' ? header : column.id;
+}
+
+/** The wording a sort offers when the column has not chosen its own. */
+export function sortWording(
+  meta: DataTableColumnMeta | undefined,
+  labels: DataTableLabels,
+): { asc: string; desc: string } {
+  if (meta?.sortLabels) return meta.sortLabels;
+  if (meta?.numeric) {
+    return { asc: labels.lowestFirst, desc: labels.highestFirst };
+  }
+  return { asc: labels.aToZ, desc: labels.zToA };
 }

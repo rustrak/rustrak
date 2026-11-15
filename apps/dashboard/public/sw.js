@@ -49,13 +49,18 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // Off, and explicitly: preload is per registration and cannot skip a
+      // path, so it would also fire for `/auth`, which this worker leaves
+      // alone, and the browser would then send that navigation twice. An SSO
+      // callback carries a one-time code, and the second request fails.
       if (self.registration.navigationPreload) {
-        await self.registration.navigationPreload.enable();
+        await self.registration.navigationPreload.disable();
       }
+      // Only this worker's own caches: cache storage is shared by the origin.
       const names = await caches.keys();
       await Promise.all(
         names
-          .filter((name) => name !== CACHE)
+          .filter((name) => name.startsWith('rustrak-') && name !== CACHE)
           .map((name) => caches.delete(name)),
       );
       await self.clients.claim();
@@ -94,7 +99,7 @@ async function cacheFirst(request) {
 
 async function networkOrOffline(event) {
   try {
-    return (await event.preloadResponse) || (await fetch(event.request));
+    return await fetch(event.request);
   } catch {
     const cache = await caches.open(CACHE);
     return (await cache.match(OFFLINE)) || Response.error();
