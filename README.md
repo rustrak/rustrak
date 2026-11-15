@@ -284,6 +284,8 @@ and `GET /api/telemetry/preview` shows the exact document before it leaves.
 | [API reference](https://rustrak.dev/reference/api) | Endpoints and schemas |
 | [Architecture](https://rustrak.dev/reference/architecture) | Two-phase ingestion, grouping, storage |
 
+Questions, ideas or something to show? Join [GitHub Discussions](https://github.com/rustrak/rustrak/discussions). Bugs go to [Issues](https://github.com/rustrak/rustrak/issues).
+
 ## Contributors
 
 People who have contributed code, translations or documentation to Rustrak.
