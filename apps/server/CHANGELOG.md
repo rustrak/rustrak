@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.28.0
+
+### Minor Changes
+
+- [`886870e`](https://github.com/rustrak/rustrak/commit/886870ed93936cae216a910c0ba986ff6bdaba57) Thanks [@AbianS](https://github.com/AbianS)! - The dashboard is now an installable PWA (web app manifest and an assets-only service worker) with a mobile shell. The session cookie is persistent: 14-day sliding idle timeout and 30-day absolute lifetime.
+
 ## 0.27.1
 
 ### Patch Changes
