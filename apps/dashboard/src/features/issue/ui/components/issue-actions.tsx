@@ -268,15 +268,18 @@ export function IssueActionBar({
         onOpenChange={setDeleting}
         count={1}
         isPending={remove.isPending}
+        // `mutateAsync`, not `mutate`'s callbacks: the delete's invalidation
+        // can refetch this page's event into a 404 first, which unmounts this
+        // component, and Query drops a per-call `onSuccess` once its observer
+        // is gone, leaving the reader on "Page not found".
         onConfirm={() =>
-          remove.mutate(issue.id, {
-            onSuccess: () => {
+          remove.mutateAsync(issue.id).then(
+            () => {
               setDeleting(false);
               router.push(`/projects/${projectId}/issues`);
             },
-            onError: (error) =>
-              toastFailure(t('toasts.deleteOneFailed'), error),
-          })
+            (error) => toastFailure(t('toasts.deleteOneFailed'), error),
+          )
         }
       />
     </div>
