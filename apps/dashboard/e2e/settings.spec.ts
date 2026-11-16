@@ -3,6 +3,7 @@ import {
   createProject,
   expect,
   freshContext,
+  newPage,
   sendError,
   test,
   unique,
@@ -202,9 +203,8 @@ test.describe('your account', () => {
     await elsewhere.request.post('/auth/login', {
       data: { email: member.email, password: member.password },
     });
-    const page = await elsewhere.newPage();
+    const page = await newPage(elsewhere);
     await page.goto('/settings/profile');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Perfil');
-    await elsewhere.close();
   });
 });

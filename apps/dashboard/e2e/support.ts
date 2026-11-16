@@ -1,29 +1,53 @@
 import {
   type APIRequestContext,
   type Browser,
+  type BrowserContext,
   test as base,
   expect,
+  type Page,
 } from '@playwright/test';
 import MCR from 'monocart-coverage-reports';
 import * as coverage from './coverage';
 
 export { expect };
 
+/** Pages opened in other users' contexts (`newPage`) during the current test. */
+const otherPages: Page[] = [];
+
 /**
- * Every spec imports `test` from here: it records the page's V8 coverage when
+ * Every spec imports `test` from here: it records V8 coverage when
  * `E2E_COVERAGE` is set (see `coverage.ts`) and is Playwright's own otherwise.
+ * That is the test's `page` and every page `newPage` opened, whose contexts it
+ * closes afterwards, once their coverage is in.
  */
 export const test = base.extend<{ recordCoverage: undefined }>({
   recordCoverage: [
     async ({ page }, use) => {
-      if (!coverage.enabled) return use(undefined);
-      await page.coverage.startJSCoverage({ resetOnNavigation: false });
+      if (coverage.enabled)
+        await page.coverage.startJSCoverage({ resetOnNavigation: false });
       await use(undefined);
-      await MCR(coverage.options).add(await page.coverage.stopJSCoverage());
+      const pages = [page, ...otherPages.splice(0)];
+      for (const each of pages) {
+        if (coverage.enabled && !each.isClosed())
+          await MCR(coverage.options).add(await each.coverage.stopJSCoverage());
+        if (each !== page) await each.context().close();
+      }
     },
     { auto: true },
   ],
 });
+
+/**
+ * A page in another user's context. Use it rather than `context.newPage()`,
+ * and leave closing to the fixture, so its coverage is counted.
+ */
+export async function newPage(context: BrowserContext) {
+  const page = await context.newPage();
+  otherPages.push(page);
+  if (coverage.enabled)
+    await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  return page;
+}
 
 /**
  * Setup for the journeys: everything here goes through the API or the ingest
@@ -75,7 +99,9 @@ export async function sendEnvelope(
   items: [header: object, payload: object][],
   eventId = hex(16),
 ) {
-  const { username: key, pathname } = new URL(dsn);
+  // The DSN's own origin, not the suite's: a DSN naming the wrong server must
+  // fail here the way it would fail for an SDK.
+  const { username: key, pathname, origin } = new URL(dsn);
   const body = [
     JSON.stringify({ event_id: eventId }),
     ...items.flatMap(([header, payload]) => [
@@ -83,7 +109,7 @@ export async function sendEnvelope(
       JSON.stringify(payload),
     ]),
   ].join('\n');
-  const response = await request.post(`/api${pathname}/envelope/`, {
+  const response = await request.post(`${origin}/api${pathname}/envelope/`, {
     headers: {
       'Content-Type': 'application/x-sentry-envelope',
       'X-Sentry-Auth': `Sentry sentry_version=7, sentry_key=${key}`,
@@ -250,6 +276,20 @@ export async function sendFeedback(
     ],
   ]);
   expect(response.ok()).toBe(true);
+
+  // Stored in the background, like an error: the inbox does not poll.
+  const projectId = Number(new URL(dsn).pathname.slice(1));
+  await expect
+    .poll(async () =>
+      JSON.stringify(
+        await (
+          await request.get(
+            `/api/projects/${projectId}/issues?category=feedback&filter=all`,
+          )
+        ).json(),
+      ),
+    )
+    .toContain(feedback.message);
 }
 
 /**
@@ -279,7 +319,7 @@ export async function createMember(
     email,
     password,
     id: user.id as number,
-    page: await context.newPage(),
+    page: await newPage(context),
   };
 }
 

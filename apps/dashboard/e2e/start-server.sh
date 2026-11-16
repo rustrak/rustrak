@@ -17,6 +17,9 @@ fi
 export HOST=127.0.0.1
 export PORT="${E2E_PORT:-8790}"
 export DATABASE_URL="sqlite://$data/rustrak.db"
+# Not the default /tmp/rustrak/ingest: startup recovery would digest a dev
+# server's pending events into this database, and they would be lost there.
+export INGEST_DIR="$data/ingest"
 export SOURCEMAP_STORAGE_PATH="$data/sourcemaps"
 export RUSTRAK_DASHBOARD_DIR="$here/../dist"
 export SESSION_SECRET_KEY="e2e0000000000000000000000000000000000000000000000000000000000000"

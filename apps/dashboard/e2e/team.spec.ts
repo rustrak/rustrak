@@ -1,4 +1,4 @@
-import { expect, freshContext, test, unique } from './support';
+import { expect, freshContext, newPage, test, unique } from './support';
 
 // The invite link is copied to the clipboard; that copy is what gets shared.
 test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
@@ -23,7 +23,7 @@ test('an invited member sets a password and is signed in', async ({
 
   // The new member, in a browser that has never signed in.
   const member = await freshContext(browser);
-  const invited = await member.newPage();
+  const invited = await newPage(member);
   await invited.goto(link);
   await expect(invited.getByRole('textbox', { name: 'Email' })).toHaveValue(
     email,
@@ -39,7 +39,6 @@ test('an invited member sets a password and is signed in', async ({
   await expect(
     invited.getByRole('button', { name: `Account: ${email}` }),
   ).toBeVisible();
-  await member.close();
 
   await page.reload();
   await expect(copy).toBeHidden();

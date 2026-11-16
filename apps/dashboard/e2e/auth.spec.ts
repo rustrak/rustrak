@@ -48,17 +48,25 @@ test.describe('signing in', () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test('signing out ends the session on the server', async ({ page }) => {
+  test('signing out ends the session on the server', async ({
+    page,
+    playwright,
+  }) => {
     // Its own session: signing out the shared one would sign out every test.
     await page.request.post('/auth/login', { data: ADMIN });
     await page.goto('/projects');
+    // The cookie as it was, to replay after the browser has dropped it.
+    const signedIn = await page.context().storageState();
 
     await page.getByRole('button', { name: `Account: ${ADMIN.email}` }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/login$/);
 
-    expect((await page.request.get('/auth/me')).status()).toBe(401);
-    await page.goto('/projects');
-    await expect(page).toHaveURL(/\/login$/);
+    const replay = await playwright.request.newContext({
+      baseURL: test.info().project.use.baseURL,
+      storageState: signedIn,
+    });
+    expect((await replay.get('/auth/me')).status()).toBe(401);
+    await replay.dispose();
   });
 });

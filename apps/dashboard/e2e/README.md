@@ -6,6 +6,7 @@ server, on a fresh SQLite file, served from one origin the way Rustrak ships
 or the contract between them breaks.
 
 ```bash
+pnpm --filter @rustrak/dashboard exec playwright install --with-deps chromium   # once
 pnpm turbo run build --filter=@rustrak/dashboard   # the suite serves dist/
 pnpm --filter @rustrak/dashboard test:e2e           # starts the server itself
 pnpm --filter @rustrak/dashboard exec playwright test --ui   # to debug one
