@@ -9,6 +9,7 @@
     "preview": "vite preview --port 3000",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "generate-routes": "tsr generate",
     "lint": "biome check --formatter-enabled=false --error-on-warnings .",
     "format": "biome format --write .",
@@ -47,6 +48,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@tailwindcss/vite": "4.3.5",
     "@tanstack/react-query-devtools": "5.107.1",
     "@tanstack/router-cli": "1.168.0",
@@ -57,6 +59,7 @@
     "@types/react-syntax-highlighter": "15.5.13",
     "@vitejs/plugin-react": "6.3.0",
     "archunit": "2.5.5",
+    "monocart-coverage-reports": "3.2.0",
     "tailwindcss": "4.3.5",
     "typescript": "6.0.3",
     "vite": "8.3.8",

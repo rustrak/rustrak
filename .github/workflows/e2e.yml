@@ -1,0 +1,87 @@
+name: Dashboard E2E
+
+# The dashboard driven in a real Chromium against the real server: the compiled
+# `dist/` served by a debug build of `apps/server` on a fresh SQLite file, the
+# way Rustrak ships. Its own workflow, rather than a fifth job in ci.yml, so the
+# README can carry its badge; it runs on the same events and in parallel.
+#
+# The server is a debug build: the release profile is ten minutes of fat LTO
+# that a browser test does not need (see ci.yml).
+
+on:
+  pull_request:
+  push:
+    branches: [main, next]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  # Codecov authenticates the coverage upload with a GitHub OIDC token.
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "line-tables-only"
+
+jobs:
+  dashboard:
+    # Skips the automated "chore: version packages" PR, as ci.yml does.
+    if: ${{ !(startsWith(github.head_ref, 'changeset-release/') && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache-save-if: ${{ github.event_name == 'push' }}
+          cache-workspaces: apps/server -> target
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: pnpm install --frozen-lockfile
+
+      # Compiled here so the suite's `cargo run` starts the binary at once
+      # instead of compiling inside Playwright's web-server timeout.
+      - name: Build the server
+        working-directory: apps/server
+        run: cargo build --locked --bin rustrak
+
+      # The dashboard bundles `@rustrak/ui` and the client from their own
+      # builds (`^...`: its dependencies, through turbo), and is built here
+      # with source maps so coverage maps back to `src/`.
+      - run: pnpm turbo run build --filter=@rustrak/dashboard^...
+      - run: pnpm --filter @rustrak/dashboard exec vite build --sourcemap
+
+      - run: pnpm --filter @rustrak/dashboard exec playwright install --with-deps chromium
+
+      - run: pnpm --filter @rustrak/dashboard run test:e2e
+        env:
+          E2E_COVERAGE: "1"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: apps/dashboard/playwright-report
+          retention-days: 14
+
+      # The README's "dashboard coverage" badge. Off pull requests for the
+      # same reason as ci.yml's coverage job: badges read main.
+      - name: Upload dashboard coverage
+        if: github.event_name != 'pull_request'
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          files: apps/dashboard/coverage-e2e/lcov.info
+          flags: dashboard
+          name: dashboard
+          use_oidc: true
+          fail_ci_if_error: true

@@ -43,6 +43,7 @@ minimumReleaseAgeExclude:
   - archunit@2.5.5
   - playwright-core@1.65.1
   - playwright@1.65.1
+  - "@playwright/test@1.65.1"
 
 overrides:
   nextra>zod: 4.3.5
