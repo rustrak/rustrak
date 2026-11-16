@@ -18,6 +18,8 @@ test('an invited member sets a password and is signed in', async ({
     name: `Copy invite link for ${email}`,
   });
   await expect(copy).toBeVisible();
+  // The row can land before the copy does; this notice comes after it.
+  await expect(page.getByText('Invite link copied to clipboard')).toBeVisible();
   const link = await page.evaluate(() => navigator.clipboard.readText());
   expect(link).toMatch(/\/invite\/\w+$/);
 

@@ -280,16 +280,20 @@ export async function sendFeedback(
   // Stored in the background, like an error: the inbox does not poll.
   const projectId = Number(new URL(dsn).pathname.slice(1));
   await expect
-    .poll(async () =>
-      JSON.stringify(
-        await (
-          await request.get(
-            `/api/projects/${projectId}/issues?category=feedback&filter=all`,
-          )
-        ).json(),
-      ),
-    )
-    .toContain(feedback.message);
+    .poll(async () => {
+      const { items } = await (
+        await request.get(
+          `/api/projects/${projectId}/issues?category=feedback&filter=all`,
+        )
+      ).json();
+      return items.some((item: Record<string, unknown>) =>
+        Object.values(item).some(
+          (value) =>
+            typeof value === 'string' && value.includes(feedback.message),
+        ),
+      );
+    })
+    .toBe(true);
 }
 
 /**
