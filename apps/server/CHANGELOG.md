@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.29.0
+
+### Minor Changes
+
+- [#551](https://github.com/rustrak/rustrak/pull/551) [`14f6cf3`](https://github.com/rustrak/rustrak/commit/14f6cf3ee8f1f9c06bbe83855a4b5bbd7eba8449) Thanks [@rane-keba](https://github.com/rane-keba)! - `OIDC_GROUP_ROLES` maps provider groups to roles, on one project or on all of them, and keeps those assignments in step with the groups on every SSO login.
+
 ## 0.28.0
 
 ### Minor Changes
