@@ -293,9 +293,12 @@ impl RoleService {
         // SQLite's BEGIN IMMEDIATE already runs this alone. On PostgreSQL two
         // sign-ins of one account could both delete before either inserts and
         // leave the union of their groups' access, so take the user's row
-        // first and let the replacements run one after the other.
+        // first and let the replacements run one after the other. NO KEY
+        // UPDATE, because inserting an identity already holds KEY SHARE on
+        // this row through its foreign key; FOR UPDATE would deadlock two
+        // links of the same account.
         #[cfg(feature = "postgres")]
-        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE")
             .bind(user_id)
             .execute(&mut **tx)
             .await?;
