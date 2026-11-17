@@ -273,6 +273,91 @@ impl RoleService {
         Ok(())
     }
 
+    /// Bring a user's SSO-managed assignments in line with their groups.
+    ///
+    /// The roles named in `mapping` belong to SSO: every assignment of them is
+    /// replaced by the ones `matched` asks for. Any other role, given by hand,
+    /// and the user's personal permissions are left alone. Roles and projects
+    /// are looked up now, so the mapping may name ones created after startup;
+    /// one that does not exist is logged and skipped rather than failing the
+    /// login.
+    pub async fn sync_sso_assignments(
+        tx: &mut sqlx::Transaction<'_, Db>,
+        user_id: i32,
+        mapping: &[crate::config::GroupRole],
+        matched: &[crate::config::GroupRole],
+    ) -> AppResult<()> {
+        if mapping.is_empty() {
+            return Ok(());
+        }
+        // SQLite's BEGIN IMMEDIATE already runs this alone. On PostgreSQL two
+        // sign-ins of one account could both delete before either inserts and
+        // leave the union of their groups' access, so take the user's row
+        // first and let the replacements run one after the other. NO KEY
+        // UPDATE, because inserting an identity already holds KEY SHARE on
+        // this row through its foreign key; FOR UPDATE would deadlock two
+        // links of the same account.
+        #[cfg(feature = "postgres")]
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE")
+            .bind(user_id)
+            .execute(&mut **tx)
+            .await?;
+
+        let mut role_ids: HashMap<&str, i32> = HashMap::new();
+        for entry in mapping {
+            if role_ids.contains_key(entry.role.as_str()) {
+                continue;
+            }
+            let id: Option<(i32,)> =
+                sqlx::query_as("SELECT id FROM roles WHERE name = $1 AND user_id IS NULL")
+                    .bind(&entry.role)
+                    .fetch_optional(&mut **tx)
+                    .await?;
+            match id {
+                Some((id,)) => {
+                    role_ids.insert(&entry.role, id);
+                }
+                None => log::warn!(
+                    "OIDC_GROUP_ROLES names role {:?}, which does not exist; skipped",
+                    entry.role
+                ),
+            }
+        }
+
+        for &role_id in role_ids.values() {
+            sqlx::query("DELETE FROM role_assignments WHERE user_id = $1 AND role_id = $2")
+                .bind(user_id)
+                .bind(role_id)
+                .execute(&mut **tx)
+                .await?;
+        }
+
+        for entry in matched {
+            let Some(&role_id) = role_ids.get(entry.role.as_str()) else {
+                continue;
+            };
+            let project_id = match &entry.project_slug {
+                None => None,
+                Some(slug) => {
+                    let id: Option<(i32,)> =
+                        sqlx::query_as("SELECT id FROM projects WHERE slug = $1")
+                            .bind(slug)
+                            .fetch_optional(&mut **tx)
+                            .await?;
+                    let Some((id,)) = id else {
+                        log::warn!(
+                            "OIDC_GROUP_ROLES names project {slug:?}, which does not exist; skipped"
+                        );
+                        continue;
+                    };
+                    Some(id)
+                }
+            };
+            Self::assign(&mut **tx, user_id, role_id, project_id).await?;
+        }
+        Ok(())
+    }
+
     /// Gives a user the roles they already hold on one more project.
     pub async fn extend_to_project(pool: &DbPool, user_id: i32, project_id: i32) -> AppResult<()> {
         sqlx::query(

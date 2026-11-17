@@ -168,6 +168,7 @@ impl FakeProvider {
             link_existing_accounts: false,
             groups_claim: "groups".to_string(),
             admin_groups: Vec::new(),
+            group_roles: Vec::new(),
             additional_trusted_audiences: Vec::new(),
             disable_password_login: false,
         }

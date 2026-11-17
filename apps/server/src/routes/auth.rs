@@ -68,6 +68,13 @@ struct PendingLink {
     /// Only the intersection is kept, which the operator's own list bounds,
     /// and it is re-checked against the current mapping before it is used.
     matched_admin_groups: Vec<String>,
+    /// The `OIDC_GROUP_ROLES` entries the identity's groups matched, bounded
+    /// and re-checked the same way. `None` for a link that was pending across
+    /// the upgrade: its groups were never read, so confirming it leaves
+    /// assignments alone until the next SSO login, rather than taking them
+    /// all away as an empty match would.
+    #[serde(default)]
+    matched_group_roles: Option<Vec<crate::config::GroupRole>>,
 }
 
 #[derive(Serialize)]
@@ -379,6 +386,7 @@ async fn handle_sso_callback(
     // the provider sends. Re-decided at confirmation, in case the mapping
     // changed in between.
     let matched_admin_groups = service.link_policy().matched_admin_groups(&identity.groups);
+    let matched_group_roles = service.link_policy().matched_group_roles(&identity.groups);
     let result =
         match UsersService::find_or_provision_oidc(pool, &identity, service.link_policy()).await? {
             OidcOutcome::SignedIn(user) => CallbackResult::SignedIn(user),
@@ -389,6 +397,7 @@ async fn handle_sso_callback(
                 email_verified: identity.email_verified,
                 user_id: user.id,
                 matched_admin_groups,
+                matched_group_roles: Some(matched_group_roles),
             }),
         };
     Ok(result)
@@ -544,15 +553,19 @@ pub async fn confirm_sso_link(
     };
     // Decided now, not at the callback: the operator may have changed the
     // mapping, or turned SSO off, while this link waited for a password.
-    let role = service
-        .link_policy()
-        .role_from_matched(&pending.matched_admin_groups);
+    let policy = service.link_policy();
+    let role = policy.role_from_matched(&pending.matched_admin_groups);
+    let (mapping, matched_roles) = match &pending.matched_group_roles {
+        Some(matched) => (policy.group_roles.as_slice(), policy.still_mapped(matched)),
+        None => (&[][..], Vec::new()),
+    };
     let user = UsersService::confirm_oidc_link(
         pool.get_ref(),
         &identity,
         pending.user_id,
         &req.password,
         role,
+        (mapping, &matched_roles),
     )
     .await?;
 
