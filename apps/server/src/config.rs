@@ -144,6 +144,9 @@ pub struct OidcConfig {
     /// roles exactly as they are, which keeps SSO from being a role oracle by
     /// accident.
     pub admin_groups: Vec<String>,
+    /// Groups that give a role, on one project or on all of them, synced on
+    /// every SSO login (`OIDC_GROUP_ROLES`). Empty leaves assignments alone.
+    pub group_roles: Vec<GroupRole>,
     /// Audiences an ID token may carry besides the client ID. Empty trusts
     /// none, as OpenID Connect Core 3.1.3.7 requires: a token naming an
     /// audience the client does not trust is rejected.
@@ -151,6 +154,47 @@ pub struct OidcConfig {
     /// Refuse password sign-in so SSO is the only way in. Startup rejects the
     /// switch when SSO is not configured: it would lock everyone out.
     pub disable_password_login: bool,
+}
+
+/// One `OIDC_GROUP_ROLES` entry: members of `group` hold the role named
+/// `role` on the project `project_slug`, or on every project when it is `None`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GroupRole {
+    pub group: String,
+    pub role: String,
+    pub project_slug: Option<String>,
+}
+
+impl GroupRole {
+    /// Parse `<group>=<role>[@<project slug>]` entries separated by `;`.
+    ///
+    /// `;` because group and role names may contain commas. The group ends at
+    /// the last `=`, so a DN such as `cn=devs,ou=groups` is one group; the
+    /// slug starts at the last `@`, and slugs never contain one.
+    pub fn parse_list(value: &str) -> Result<Vec<Self>, ConfigError> {
+        value
+            .split(';')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| {
+                let invalid = || ConfigError::InvalidGroupRole(entry.to_string());
+                let (group, target) = entry.rsplit_once('=').ok_or_else(invalid)?;
+                let (role, project_slug) = match target.rsplit_once('@') {
+                    Some((role, slug)) => (role, Some(slug.trim())),
+                    None => (target, None),
+                };
+                let (group, role) = (group.trim(), role.trim());
+                if group.is_empty() || role.is_empty() || project_slug == Some("") {
+                    return Err(invalid());
+                }
+                Ok(Self {
+                    group: group.to_string(),
+                    role: role.to_string(),
+                    project_slug: project_slug.map(str::to_string),
+                })
+            })
+            .collect()
+    }
 }
 
 impl std::fmt::Debug for OidcConfig {
@@ -170,6 +214,7 @@ impl std::fmt::Debug for OidcConfig {
             .field("link_existing_accounts", &self.link_existing_accounts)
             .field("groups_claim", &self.groups_claim)
             .field("admin_groups", &self.admin_groups)
+            .field("group_roles", &self.group_roles)
             .field(
                 "additional_trusted_audiences",
                 &self.additional_trusted_audiences,
@@ -557,12 +602,17 @@ pub enum ConfigError {
     InvalidBoolean { name: String, value: String },
     InvalidNumber { name: String, value: String },
     PasswordLoginDisabledWithoutSso,
+    InvalidGroupRole(String),
 }
 
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigError::InvalidPort => write!(f, "PORT must be a valid number"),
+            ConfigError::InvalidGroupRole(entry) => write!(
+                f,
+                "OIDC_GROUP_ROLES entry {entry:?} must be <group>=<role>[@<project slug>]"
+            ),
             ConfigError::MissingDatabaseUrl => {
                 write!(f, "DATABASE_URL environment variable is required")
             }
@@ -676,6 +726,7 @@ impl OidcConfig {
                 .map(|value| value.trim().to_string())
                 .unwrap_or_else(|| "groups".to_string()),
             admin_groups: list("OIDC_ADMIN_GROUPS"),
+            group_roles: GroupRole::parse_list(&env::var("OIDC_GROUP_ROLES").unwrap_or_default())?,
             additional_trusted_audiences: list("OIDC_ADDITIONAL_TRUSTED_AUDIENCES"),
             disable_password_login,
         }))

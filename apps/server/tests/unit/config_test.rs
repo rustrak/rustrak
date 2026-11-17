@@ -587,6 +587,38 @@ fn test_oidc_group_mapping_defaults_to_the_groups_claim() {
 }
 
 #[test]
+fn test_oidc_group_roles_parse_and_reject_malformed_entries() {
+    use rustrak::config::GroupRole;
+    let entry = |group: &str, role: &str, slug: Option<&str>| GroupRole {
+        group: group.into(),
+        role: role.into(),
+        project_slug: slug.map(Into::into),
+    };
+
+    assert!(GroupRole::parse_list("").unwrap().is_empty());
+    assert_eq!(
+        GroupRole::parse_list(" shop = Viewer @ storefront ;; cn=ops,ou=groups=Dev, Ops ;")
+            .unwrap(),
+        [
+            entry("shop", "Viewer", Some("storefront")),
+            entry("cn=ops,ou=groups", "Dev, Ops", None),
+        ]
+    );
+    for bad in [
+        "no-equals",
+        "=Viewer",
+        "shop=",
+        "shop=@storefront",
+        "shop=Viewer@",
+    ] {
+        assert!(
+            GroupRole::parse_list(bad).is_err(),
+            "{bad:?} must be refused"
+        );
+    }
+}
+
+#[test]
 fn test_oidc_trusts_only_the_client_id_unless_told_otherwise() {
     let mut env = oidc_env();
     env.set("OIDC_ISSUER_URL", "https://id.example.com");

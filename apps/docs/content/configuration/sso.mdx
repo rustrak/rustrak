@@ -171,8 +171,9 @@ in one of the listed groups becomes an `admin`, everyone else becomes a
 promotes them the next time they sign in and taking them out demotes them the
 same way. Accounts that sign in with a password are never touched.
 
-Groups only decide owner or member. Provider groups do not map to the
-[roles](/usage/roles) a member holds: give those in the dashboard.
+This setting only decides owner or member. To give members
+[roles](/usage/roles) from their groups, see
+[Project roles from provider groups](#project-roles-from-provider-groups).
 
 Worth knowing:
 
@@ -205,6 +206,55 @@ groups before turning the mapping on.
 contains a comma cannot be named here (the same is true for a single string
 claim). That is why only a string claim is split, and array entries never
 are: an array entry is one group, whatever it contains.
+
+## Project roles from provider groups
+
+`OIDC_GROUP_ROLES` gives [roles](/usage/roles) from groups, on one project or
+on all of them, the way Argo CD maps groups to project roles. Each entry is
+`<group>=<role name>[@<project slug>]`, and entries are separated by `;`:
+
+```bash
+OIDC_GROUP_ROLES="shop-team=Viewer@storefront;platform=Developer"
+```
+
+Here `shop-team` holds **Viewer** on the `storefront` project only, so that is
+the one project its members see, and `platform` holds **Developer** on every
+project, including later ones. Create the roles first under
+**Settings → Roles**.
+
+**Every SSO login syncs** the account's assignments of the roles the mapping
+names: the ones the current groups match are given, the rest are taken away.
+Roles the mapping does not name, given by hand in the dashboard, and personal
+permissions are never touched, and neither are accounts that sign in with a
+password.
+
+Worth knowing:
+
+- Roles are found by name and projects by slug when someone signs in, so a
+  role or project created later works without a restart. An entry naming one
+  that does not exist is logged and skipped; the login still succeeds.
+- A role taken out of the mapping stops being managed: assignments it already
+  gave stay until someone removes them in the dashboard.
+- Assignments of a mapped role made by hand, including the ones creating a
+  project extends to it, are replaced on the next SSO login.
+- The group ends at the last `=` and the project slug starts at the last `@`,
+  so a group such as `cn=devs,ou=groups` or a role name with a comma works.
+  A malformed entry stops Rustrak at startup.
+- Groups come from the same claim as `OIDC_ADMIN_GROUPS`, with the same
+  caveats: ID token only, compared exactly.
+
+### Microsoft Entra ID
+
+- In the app registration, **Token configuration → Add groups claim**, choose
+  **Groups assigned to the application** and tick it for the **ID** token.
+  Limiting it to assigned groups avoids Entra's overage, where a user in more
+  than 200 groups gets no `groups` claim at all.
+- Cloud-only groups arrive as object IDs, so the mapping names the GUID:
+  `OIDC_GROUP_ROLES="1f2e3d4c-...=Viewer@storefront"`.
+- For readable names, define **App roles** on the registration, assign groups
+  to them in the enterprise application, and set `OIDC_GROUPS_CLAIM=roles`.
+- **Assignment required** on the enterprise application keeps everyone outside
+  the assigned groups from signing in at all.
 
 ## SSO-only login
 
@@ -293,6 +343,7 @@ client ID, and the log line for a rejected login names each one. For example:
 | `OIDC_ALLOWED_DOMAINS` | *(all)* | Comma-separated email domains allowed to use SSO |
 | `OIDC_GROUPS_CLAIM` | `groups` | Claim carrying the identity's groups |
 | `OIDC_ADMIN_GROUPS` | *(none)* | Comma-separated groups that grant the global `admin` role |
+| `OIDC_GROUP_ROLES` | *(none)* | `;`-separated `<group>=<role>[@<project slug>]` entries; see [Project roles from provider groups](#project-roles-from-provider-groups) |
 | `OIDC_ADDITIONAL_TRUSTED_AUDIENCES` | *(none)* | Comma-separated audiences an ID token may carry besides the client ID. See [Audiences besides the client ID](#audiences-besides-the-client-id) |
 | `OIDC_DISABLE_PASSWORD_LOGIN` | `false` | Refuse password sign-in; the first account stays as break-glass |
 
