@@ -856,6 +856,7 @@ fn linking(link_existing_accounts: bool, auto_provision: bool) -> OidcLinkPolicy
         auto_provision,
         link_existing_accounts,
         admin_groups: Vec::new(),
+        group_roles: Vec::new(),
     }
 }
 
@@ -868,6 +869,7 @@ fn linking_with_admin_groups(
         auto_provision,
         link_existing_accounts,
         admin_groups: admin_groups.iter().map(|group| group.to_string()).collect(),
+        group_roles: Vec::new(),
     }
 }
 
@@ -1005,8 +1007,15 @@ async fn test_oidc_link_is_confirmed_only_with_the_account_password() {
         groups: Vec::new(),
     };
 
-    let wrong =
-        UsersService::confirm_oidc_link(&db.pool, &identity, existing.id, "not-it", None).await;
+    let wrong = UsersService::confirm_oidc_link(
+        &db.pool,
+        &identity,
+        existing.id,
+        "not-it",
+        None,
+        (&[], &[]),
+    )
+    .await;
     assert!(matches!(
         wrong,
         Err(rustrak::error::AppError::Unauthorized(_))
@@ -1025,9 +1034,16 @@ async fn test_oidc_link_is_confirmed_only_with_the_account_password() {
         OidcOutcome::ConfirmWithPassword(_)
     ));
 
-    let linked = UsersService::confirm_oidc_link(&db.pool, &identity, existing.id, &password, None)
-        .await
-        .expect("the right password links the identity");
+    let linked = UsersService::confirm_oidc_link(
+        &db.pool,
+        &identity,
+        existing.id,
+        &password,
+        None,
+        (&[], &[]),
+    )
+    .await
+    .expect("the right password links the identity");
     assert_eq!(linked.id, existing.id);
 
     // From now on the identity signs in directly, whatever the switches say.
@@ -1056,11 +1072,25 @@ async fn test_oidc_link_cannot_move_an_identity_to_a_second_account() {
         groups: Vec::new(),
     };
 
-    UsersService::confirm_oidc_link(&db.pool, &identity, first.id, "password-one", None)
-        .await
-        .unwrap();
-    let moved =
-        UsersService::confirm_oidc_link(&db.pool, &identity, second.id, "password-two", None).await;
+    UsersService::confirm_oidc_link(
+        &db.pool,
+        &identity,
+        first.id,
+        "password-one",
+        None,
+        (&[], &[]),
+    )
+    .await
+    .unwrap();
+    let moved = UsersService::confirm_oidc_link(
+        &db.pool,
+        &identity,
+        second.id,
+        "password-two",
+        None,
+        (&[], &[]),
+    )
+    .await;
 
     assert!(matches!(moved, Err(rustrak::error::AppError::Conflict(_))));
     let owner = oidc_login(
@@ -1362,6 +1392,7 @@ async fn test_oidc_group_role_applies_only_after_the_link_is_confirmed() {
         existing.id,
         &password,
         policy.role_from_matched(&matched),
+        (&[], &[]),
     )
     .await
     .expect("the right password links the identity and applies its groups");
@@ -1662,4 +1693,98 @@ async fn test_purge_removes_only_dead_sessions() {
         .unwrap();
     assert_eq!(purged, 1);
     assert_eq!(session_rows(&db.pool, user.id).await, 1);
+}
+
+fn linking_with_group_roles(group_roles: &str) -> OidcLinkPolicy {
+    OidcLinkPolicy {
+        auto_provision: true,
+        link_existing_accounts: true,
+        admin_groups: Vec::new(),
+        group_roles: rustrak::config::GroupRole::parse_list(group_roles).unwrap(),
+    }
+}
+
+/// (role name, project id) pairs a user holds, sorted.
+async fn held(pool: &rustrak::db::DbPool, user_id: i32) -> Vec<(String, Option<i32>)> {
+    let mut held: Vec<_> = rustrak::services::RoleService::assignments_for(pool, user_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|a| (a.role_name, a.project_id))
+        .collect();
+    held.sort();
+    held
+}
+
+#[actix_web::test]
+async fn test_oidc_group_roles_follow_the_groups_on_every_login() {
+    use rustrak::services::RoleService;
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "owner@example.com", "owner-password", true).await;
+    let storefront = crate::common::create_test_project(&db.pool, "Storefront").await;
+    let billing = crate::common::create_test_project(&db.pool, "Billing").await;
+    let viewer = RoleService::create(&db.pool, "Viewer", "", Vec::new())
+        .await
+        .unwrap();
+    RoleService::create(&db.pool, "Developer", "", Vec::new())
+        .await
+        .unwrap();
+    let manual = RoleService::create(&db.pool, "Manual", "", Vec::new())
+        .await
+        .unwrap();
+    let policy = linking_with_group_roles(&format!(
+        "shop=Viewer@{};platform=Developer;ghost=Missing;shop=Viewer@no-such-project",
+        storefront.slug
+    ));
+
+    let user = oidc_login_in_groups(
+        &db.pool,
+        "sub-g",
+        "g@example.com",
+        &["shop"],
+        policy.clone(),
+    )
+    .await
+    .expect("a provisioned account");
+    assert_eq!(
+        held(&db.pool, user.id).await,
+        [("Viewer".to_string(), Some(storefront.id))],
+        "the group gives its role on its project only; unknown roles and projects are skipped"
+    );
+
+    // A role given by hand, outside the mapping, must survive the sync, and a
+    // managed role given by hand on another project is taken back.
+    RoleService::assign(&db.pool, user.id, manual.id, Some(billing.id))
+        .await
+        .unwrap();
+    RoleService::assign(&db.pool, user.id, viewer.id, Some(billing.id))
+        .await
+        .unwrap();
+
+    oidc_login_in_groups(
+        &db.pool,
+        "sub-g",
+        "g@example.com",
+        &["platform"],
+        policy.clone(),
+    )
+    .await
+    .expect("a returning account");
+    assert_eq!(
+        held(&db.pool, user.id).await,
+        [
+            ("Developer".to_string(), None),
+            ("Manual".to_string(), Some(billing.id)),
+        ],
+        "leaving a group takes its role away; joining one gives it on every project"
+    );
+
+    oidc_login_in_groups(&db.pool, "sub-g", "g@example.com", &[], linking(true, true))
+        .await
+        .expect("a returning account");
+    assert_eq!(
+        held(&db.pool, user.id).await.len(),
+        2,
+        "without a mapping, SSO leaves assignments alone"
+    );
 }

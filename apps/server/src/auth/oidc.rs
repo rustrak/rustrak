@@ -234,6 +234,7 @@ impl OidcService {
             auto_provision: self.config.auto_provision,
             link_existing_accounts: self.config.link_existing_accounts,
             admin_groups: self.config.admin_groups.clone(),
+            group_roles: self.config.group_roles.clone(),
         }
     }
 

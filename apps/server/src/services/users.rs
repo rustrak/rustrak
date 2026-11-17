@@ -1,7 +1,9 @@
+use crate::config::GroupRole;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::user::OidcIdentity;
 use crate::models::{CreateUserRequest, User, UserRole};
+use crate::services::RoleService;
 
 pub struct UsersService;
 
@@ -25,9 +27,32 @@ pub struct OidcLinkPolicy {
     pub link_existing_accounts: bool,
     /// Groups that grant the global `admin` role. Empty leaves roles alone.
     pub admin_groups: Vec<String>,
+    /// Groups that give a role on one project or on all. Empty leaves role
+    /// assignments alone.
+    pub group_roles: Vec<GroupRole>,
 }
 
 impl OidcLinkPolicy {
+    /// The mapping entries an identity's groups match, bounded by the
+    /// operator's list like `matched_admin_groups`.
+    pub fn matched_group_roles(&self, groups: &[String]) -> Vec<GroupRole> {
+        self.group_roles
+            .iter()
+            .filter(|entry| groups.contains(&entry.group))
+            .cloned()
+            .collect()
+    }
+
+    /// Entries matched minutes earlier that the mapping still holds now, for a
+    /// link interrupted by the password step.
+    pub fn still_mapped(&self, matched: &[GroupRole]) -> Vec<GroupRole> {
+        matched
+            .iter()
+            .filter(|entry| self.group_roles.contains(entry))
+            .cloned()
+            .collect()
+    }
+
     /// The role an identity's groups ask for, or `None` when the operator has
     /// not configured a mapping and roles are therefore left alone.
     pub fn role_for(&self, groups: &[String]) -> Option<UserRole> {
@@ -170,10 +195,19 @@ impl UsersService {
             *email_verified,
         );
         let mapped_role = policy.role_for(groups);
+        let matched_roles = policy.matched_group_roles(groups);
 
         if let Some(mut user) = Self::get_by_oidc_identity(pool, issuer, subject).await? {
             user.ensure_active()?;
-            Self::touch_oidc_login(pool, issuer, subject, &mut user, mapped_role).await?;
+            Self::touch_oidc_login(
+                pool,
+                issuer,
+                subject,
+                &mut user,
+                mapped_role,
+                (&policy.group_roles, &matched_roles),
+            )
+            .await?;
             return Ok(OidcOutcome::SignedIn(user));
         }
 
@@ -263,6 +297,8 @@ impl UsersService {
                 .await?
         };
         Self::apply_sso_role(&mut tx, &mut user, mapped_role).await?;
+        RoleService::sync_sso_assignments(&mut tx, user.id, &policy.group_roles, &matched_roles)
+            .await?;
 
         let inserted = sqlx::query(
             r#"
@@ -305,6 +341,7 @@ impl UsersService {
         user_id: i32,
         password: &str,
         role: Option<UserRole>,
+        (group_roles, matched_roles): (&[GroupRole], &[GroupRole]),
     ) -> AppResult<User> {
         let invalid = || AppError::Unauthorized("Invalid credentials".to_string());
         let user = Self::get_by_id(pool, user_id).await?.ok_or_else(invalid)?;
@@ -342,6 +379,7 @@ impl UsersService {
         // authenticate at the provider with this email could change it.
         if inserted.rows_affected() > 0 {
             Self::apply_sso_role(&mut tx, &mut user, role).await?;
+            RoleService::sync_sso_assignments(&mut tx, user.id, group_roles, matched_roles).await?;
         }
         sqlx::query("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1")
             .bind(user.id)
@@ -398,9 +436,11 @@ impl UsersService {
         subject: &str,
         user: &mut User,
         role: Option<UserRole>,
+        (group_roles, matched_roles): (&[GroupRole], &[GroupRole]),
     ) -> AppResult<()> {
         let mut tx = crate::db::begin_write(pool).await?;
         Self::apply_sso_role(&mut tx, user, role).await?;
+        RoleService::sync_sso_assignments(&mut tx, user.id, group_roles, matched_roles).await?;
         sqlx::query(
             "UPDATE oidc_identities SET last_login = CURRENT_TIMESTAMP WHERE issuer = $1 AND subject = $2",
         )
