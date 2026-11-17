@@ -16,3 +16,7 @@ flags:
   typescript:
     paths:
       - packages/client/
+  # The dashboard as its Playwright journeys exercise it (.github/workflows/e2e.yml).
+  dashboard:
+    paths:
+      - apps/dashboard/src/

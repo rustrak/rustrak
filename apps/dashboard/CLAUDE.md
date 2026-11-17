@@ -13,7 +13,10 @@ server. The browser still sees one origin either way.
 pnpm dev --filter=@rustrak/dashboard          # Vite on :3000, proxying to the server
 pnpm build --filter=@rustrak/dashboard        # -> dist/
 pnpm test --filter=@rustrak/dashboard         # architecture rules + the portable core
+pnpm --filter @rustrak/dashboard test:e2e     # Playwright against the real server, after a build
 ```
+
+End-to-end tests live in `e2e/`; its `README.md` says what earns one.
 
 The code is organised by **domain, not by technical type**, following a reduced
 [Feature-Sliced Design](https://feature-sliced.design). There is no

@@ -3,8 +3,10 @@
 <img width="2000" height="1440" alt="Rustrak, self-hosted error tracking: project overview dashboard with errors, sessions and open issues" src="https://github.com/user-attachments/assets/33b9e743-8dc0-4fb1-95f6-477a806c348e" />
 
 [![CI](https://github.com/rustrak/rustrak/actions/workflows/ci.yml/badge.svg)](https://github.com/rustrak/rustrak/actions/workflows/ci.yml)
+[![Dashboard E2E](https://github.com/rustrak/rustrak/actions/workflows/e2e.yml/badge.svg)](https://github.com/rustrak/rustrak/actions/workflows/e2e.yml)
 [![Server coverage](https://img.shields.io/codecov/c/github/rustrak/rustrak/main?flag=rust&label=server%20coverage&logo=codecov)](https://codecov.io/gh/rustrak/rustrak)
 [![Client coverage](https://img.shields.io/codecov/c/github/rustrak/rustrak/main?flag=typescript&label=client%20coverage&logo=codecov)](https://codecov.io/gh/rustrak/rustrak)
+[![Dashboard coverage](https://img.shields.io/codecov/c/github/rustrak/rustrak/main?flag=dashboard&label=dashboard%20coverage&logo=codecov)](https://codecov.io/gh/rustrak/rustrak)
 [![Release](https://img.shields.io/github/v/release/rustrak/rustrak)](https://github.com/rustrak/rustrak/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Docker pulls](https://img.shields.io/docker/pulls/rustrak/rustrak-server)](https://hub.docker.com/r/rustrak/rustrak-server)

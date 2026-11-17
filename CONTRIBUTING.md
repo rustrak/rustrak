@@ -88,7 +88,14 @@ pnpm test
 # Run tests for a specific package
 cd apps/server && cargo test
 cd apps/dashboard && pnpm test
+
+# Dashboard end-to-end (Playwright): starts the real server itself
+pnpm turbo run build --filter=@rustrak/dashboard
+pnpm --filter @rustrak/dashboard exec playwright install --with-deps chromium  # once
+cd apps/dashboard && pnpm test:e2e
 ```
+
+Read `apps/dashboard/e2e/README.md` before adding an end-to-end test.
 
 ### Linting and Formatting
 

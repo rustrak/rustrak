@@ -109,6 +109,14 @@
   },
   "overrides": [
     {
+      "includes": ["apps/dashboard/src/**"],
+      "linter": {
+        "domains": {
+          "playwright": "none"
+        }
+      }
+    },
+    {
       "includes": ["apps/dashboard/src/routes/**"],
       "linter": {
         "rules": {
