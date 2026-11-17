@@ -496,6 +496,7 @@ fn oidc_env() -> EnvGuard {
         "OIDC_LINK_EXISTING_ACCOUNTS",
         "OIDC_GROUPS_CLAIM",
         "OIDC_ADMIN_GROUPS",
+        "OIDC_GROUP_ROLES",
         "OIDC_ADDITIONAL_TRUSTED_AUDIENCES",
         "OIDC_DISABLE_PASSWORD_LOGIN",
     ] {
@@ -616,6 +617,33 @@ fn test_oidc_group_roles_parse_and_reject_malformed_entries() {
             "{bad:?} must be refused"
         );
     }
+}
+
+#[test]
+fn test_oidc_group_roles_are_read_from_the_environment() {
+    let mut env = oidc_env();
+    env.set("OIDC_ISSUER_URL", "https://id.example.com");
+    env.set("OIDC_CLIENT_ID", "rustrak");
+    env.set("OIDC_CLIENT_SECRET", "secret");
+    env.set(
+        "OIDC_REDIRECT_URL",
+        "https://rustrak.example.com/auth/sso/callback",
+    );
+
+    let config = OidcConfig::from_env().unwrap().unwrap();
+    assert!(
+        config.group_roles.is_empty(),
+        "no mapping means SSO must not touch assignments"
+    );
+
+    env.set("OIDC_GROUP_ROLES", "shop=Viewer@storefront");
+    let config = OidcConfig::from_env().unwrap().unwrap();
+    assert_eq!(config.group_roles.len(), 1);
+    assert_eq!(config.group_roles[0].group, "shop");
+
+    env.set("OIDC_GROUP_ROLES", "shop");
+    let message = OidcConfig::from_env().unwrap_err().to_string();
+    assert!(message.contains("OIDC_GROUP_ROLES"), "{message}");
 }
 
 #[test]

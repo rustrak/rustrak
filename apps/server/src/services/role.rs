@@ -287,6 +287,19 @@ impl RoleService {
         mapping: &[crate::config::GroupRole],
         matched: &[crate::config::GroupRole],
     ) -> AppResult<()> {
+        if mapping.is_empty() {
+            return Ok(());
+        }
+        // SQLite's BEGIN IMMEDIATE already runs this alone. On PostgreSQL two
+        // sign-ins of one account could both delete before either inserts and
+        // leave the union of their groups' access, so take the user's row
+        // first and let the replacements run one after the other.
+        #[cfg(feature = "postgres")]
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+            .bind(user_id)
+            .execute(&mut **tx)
+            .await?;
+
         let mut role_ids: HashMap<&str, i32> = HashMap::new();
         for entry in mapping {
             if role_ids.contains_key(entry.role.as_str()) {

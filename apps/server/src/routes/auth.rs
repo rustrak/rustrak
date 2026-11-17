@@ -69,10 +69,12 @@ struct PendingLink {
     /// and it is re-checked against the current mapping before it is used.
     matched_admin_groups: Vec<String>,
     /// The `OIDC_GROUP_ROLES` entries the identity's groups matched, bounded
-    /// and re-checked the same way. Defaulted for links pending across an
-    /// upgrade.
+    /// and re-checked the same way. `None` for a link that was pending across
+    /// the upgrade: its groups were never read, so confirming it leaves
+    /// assignments alone until the next SSO login, rather than taking them
+    /// all away as an empty match would.
     #[serde(default)]
-    matched_group_roles: Vec<crate::config::GroupRole>,
+    matched_group_roles: Option<Vec<crate::config::GroupRole>>,
 }
 
 #[derive(Serialize)]
@@ -395,7 +397,7 @@ async fn handle_sso_callback(
                 email_verified: identity.email_verified,
                 user_id: user.id,
                 matched_admin_groups,
-                matched_group_roles,
+                matched_group_roles: Some(matched_group_roles),
             }),
         };
     Ok(result)
@@ -553,14 +555,17 @@ pub async fn confirm_sso_link(
     // mapping, or turned SSO off, while this link waited for a password.
     let policy = service.link_policy();
     let role = policy.role_from_matched(&pending.matched_admin_groups);
-    let matched_roles = policy.still_mapped(&pending.matched_group_roles);
+    let (mapping, matched_roles) = match &pending.matched_group_roles {
+        Some(matched) => (policy.group_roles.as_slice(), policy.still_mapped(matched)),
+        None => (&[][..], Vec::new()),
+    };
     let user = UsersService::confirm_oidc_link(
         pool.get_ref(),
         &identity,
         pending.user_id,
         &req.password,
         role,
-        (&policy.group_roles, &matched_roles),
+        (mapping, &matched_roles),
     )
     .await?;
 

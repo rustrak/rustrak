@@ -1788,3 +1788,56 @@ async fn test_oidc_group_roles_follow_the_groups_on_every_login() {
         "without a mapping, SSO leaves assignments alone"
     );
 }
+
+#[actix_web::test]
+async fn test_oidc_group_roles_apply_only_after_the_link_is_confirmed() {
+    use rustrak::services::RoleService;
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "owner@example.com", "owner-password", true).await;
+    let password = format!("pass-{}", uuid::Uuid::new_v4());
+    let existing = create_test_user(&db.pool, "linked@example.com", &password, false).await;
+    let shop = crate::common::create_test_project(&db.pool, "Shop").await;
+    let ops = crate::common::create_test_project(&db.pool, "Ops").await;
+    RoleService::create(&db.pool, "Viewer", "", Vec::new())
+        .await
+        .unwrap();
+    let mapping = format!("shop=Viewer@{};ops=Viewer@{}", shop.slug, ops.slug);
+    let mut policy = linking_with_group_roles(&mapping);
+    policy.link_existing_accounts = false;
+    let identity = OidcIdentity {
+        issuer: "https://id.example.com".to_string(),
+        subject: "linked-subject".to_string(),
+        email: "linked@example.com".to_string(),
+        email_verified: true,
+        groups: vec!["shop".to_string(), "ops".to_string()],
+    };
+
+    let outcome = UsersService::find_or_provision_oidc(&db.pool, &identity, policy.clone())
+        .await
+        .unwrap();
+    assert!(matches!(outcome, OidcOutcome::ConfirmWithPassword(_)));
+    assert!(
+        held(&db.pool, existing.id).await.is_empty(),
+        "matching the email alone must not give anything"
+    );
+
+    // Read at the callback; the operator then drops `ops` from the mapping
+    // before the password arrives.
+    let matched = policy.matched_group_roles(&identity.groups);
+    let now = linking_with_group_roles(&format!("shop=Viewer@{}", shop.slug));
+    UsersService::confirm_oidc_link(
+        &db.pool,
+        &identity,
+        existing.id,
+        &password,
+        None,
+        (&now.group_roles, &now.still_mapped(&matched)),
+    )
+    .await
+    .expect("the right password links the identity");
+    assert_eq!(
+        held(&db.pool, existing.id).await,
+        [("Viewer".to_string(), Some(shop.id))],
+        "the confirmed link gets what the current mapping still grants"
+    );
+}
