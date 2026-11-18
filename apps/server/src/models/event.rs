@@ -14,7 +14,13 @@ pub struct Event {
     pub issue_id: Option<Uuid>,
     /// NULL for transaction events (they don't have a grouping)
     pub grouping_id: Option<i32>,
+    /// The payload, decoded from `stored` by `EventService`'s reads.
+    #[sqlx(skip)]
     pub data: serde_json::Value,
+    /// The payload as the row holds it (`data` and `payload`).
+    #[sqlx(flatten)]
+    #[serde(skip)]
+    pub stored: crate::db::payload::Stored,
     pub timestamp: DateTime<Utc>,
     pub ingested_at: DateTime<Utc>,
     pub digested_at: DateTime<Utc>,

@@ -5,6 +5,7 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use crate::db::dialect::{like_pattern, since};
+use crate::db::payload::Stored;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{
@@ -12,8 +13,28 @@ use crate::models::{
     TransactionTimeseriesPoint,
 };
 use crate::services::scope::bucket_hours;
+use crate::services::span::span_data;
+use sqlx::FromRow;
 
 pub struct TransactionService;
+
+/// The `FROM`/`WHERE` of a transaction's spans (`$1` the transaction, `$2`
+/// its project). With no planner statistics SQLite read them through
+/// `idx_spans_project_trace (project_id=?)`, every span of the project;
+/// `INDEXED BY` (SQLite only) holds it to the transaction's own index, as
+/// `services::span::TRACE_INDEX` does. Postgres picks it by itself.
+#[cfg(feature = "postgres")]
+macro_rules! spans_of_transaction {
+    () => {
+        "FROM spans WHERE transaction_id = $1 AND project_id = $2"
+    };
+}
+#[cfg(not(feature = "postgres"))]
+macro_rules! spans_of_transaction {
+    () => {
+        "FROM spans INDEXED BY idx_spans_transaction WHERE transaction_id = $1 AND project_id = $2"
+    };
+}
 
 /// Optional equality filters for the transaction list. A `None` field matches
 /// every row; a `Some` value restricts to exact matches on the denormalized
@@ -155,7 +176,7 @@ impl TransactionService {
             r#"
             SELECT id, event_id, transaction_name,
                    timestamp, start_timestamp, duration_ms,
-                   platform, environment, release, ingested_at, data
+                   platform, environment, release, ingested_at, data, payload
             FROM transactions
             WHERE id = $1
               AND project_id = $2
@@ -169,6 +190,13 @@ impl TransactionService {
 
         let timestamp: DateTime<chrono::Utc> = row.get("timestamp");
         let start_timestamp: Option<DateTime<chrono::Utc>> = row.get("start_timestamp");
+        let mut data: serde_json::Value = Stored::from_row(&row)?.read(pool).await?;
+        if data.is_object() && data.get("spans").is_none() {
+            let spans = Self::stored_spans(pool, project_id, id).await?;
+            if !spans.is_empty() {
+                data["spans"] = spans.into();
+            }
+        }
 
         Ok(TransactionDetailResponse {
             id: row.get("id"),
@@ -181,8 +209,42 @@ impl TransactionService {
             environment: row.get("environment"),
             release: row.get("release"),
             ingested_at: row.get("ingested_at"),
-            data: row.get("data"),
+            data,
         })
+    }
+
+    /// A transaction's `spans` as the SDK sent them, rebuilt from the rows
+    /// they were stored in instead of the payload. Only compact rows carry a
+    /// position (`SPAN_POSITION`): an AI root promoted from `contexts.trace`
+    /// was never in `spans`.
+    async fn stored_spans(
+        pool: &DbPool,
+        project_id: i32,
+        transaction_id: Uuid,
+    ) -> AppResult<Vec<serde_json::Value>> {
+        let rows = sqlx::query(concat!(
+            "SELECT id, span_id, parent_span_id, op, description, status, segment_id, \
+             start_timestamp, timestamp, exclusive_time_ms, tags, data, payload ",
+            spans_of_transaction!()
+        ))
+        .bind(transaction_id)
+        .bind(project_id)
+        .fetch_all(pool)
+        .await?;
+        let mut spans: Vec<(u64, serde_json::Value)> = Vec::new();
+        for row in &rows {
+            match span_data(pool, row).await {
+                Ok((Some(position), span)) => spans.push((position, span)),
+                Ok((None, _)) => {}
+                // One bad row must not fail the transaction it belongs to.
+                Err(e) => log::error!(
+                    "Span {} left out of transaction {transaction_id}: {e}",
+                    row.get::<Uuid, _>("id")
+                ),
+            }
+        }
+        spans.sort_by_key(|(position, _)| *position);
+        Ok(spans.into_iter().map(|(_, span)| span).collect())
     }
 
     /// Lists the indexed spans extracted from a transaction, ordered by
@@ -208,22 +270,18 @@ impl TransactionService {
             )));
         }
 
-        let rows = sqlx::query(
-            r#"
-            SELECT id, transaction_id, span_id, trace_id, parent_span_id,
-                   op, description, status,
-                   start_timestamp, timestamp, duration_ms, exclusive_time_ms,
-                   is_segment, segment_id, platform, release, environment,
-                   gen_ai_operation_type, gen_ai_agent_name,
-                   gen_ai_request_model, gen_ai_response_model,
-                   gen_ai_tool_name, gen_ai_conversation_id,
-                   gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens
-            FROM spans
-            WHERE transaction_id = $1
-              AND project_id = $2
-            ORDER BY start_timestamp ASC, id ASC
-            "#,
-        )
+        let rows = sqlx::query(concat!(
+            "SELECT id, transaction_id, span_id, trace_id, parent_span_id, \
+             op, description, status, \
+             start_timestamp, timestamp, duration_ms, exclusive_time_ms, \
+             is_segment, segment_id, platform, release, environment, \
+             gen_ai_operation_type, gen_ai_agent_name, \
+             gen_ai_request_model, gen_ai_response_model, \
+             gen_ai_tool_name, gen_ai_conversation_id, \
+             gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens ",
+            spans_of_transaction!(),
+            " ORDER BY start_timestamp ASC, id ASC"
+        ))
         .bind(transaction_id)
         .bind(project_id)
         .fetch_all(pool)
@@ -610,5 +668,32 @@ pub(crate) fn percentile_cont(sorted: &[f64], p: f64) -> f64 {
                 sorted[lo] + (sorted[hi] - sorted[lo]) * frac
             }
         }
+    }
+}
+
+#[cfg(all(test, not(feature = "postgres")))]
+mod tests {
+    /// A migrated database that was never analyzed, as a new install's is,
+    /// reads a transaction's spans through their own index.
+    #[tokio::test]
+    async fn a_transactions_spans_are_read_through_its_index_without_statistics() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::run_migrations(&pool).await.unwrap();
+        let rows: Vec<(i64, i64, i64, String)> = sqlx::query_as(concat!(
+            "EXPLAIN QUERY PLAN SELECT data ",
+            spans_of_transaction!()
+        ))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let plan: Vec<String> = rows.into_iter().map(|r| r.3).collect();
+        assert!(
+            plan.iter().any(|p| p.contains("idx_spans_transaction ")),
+            "{plan:?}"
+        );
     }
 }

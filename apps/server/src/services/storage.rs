@@ -58,18 +58,31 @@ const CLEANUP_BATCH_SIZE: i64 = 10_000;
 /// Rows per project and table the storage page's size estimate reads.
 const SIZE_SAMPLE_ROWS: i64 = 200;
 
-/// The size samples: `(payload bytes, rows)` over a project's newest rows,
-/// `$1` the project and `$2` the sample size. Each walks the table's
-/// `(project_id, ingested_at)` index; spans have no `ingested_at` and take
-/// whichever rows their `project_id` index yields first.
+/// The size samples: `(payload bytes, rows)` over a project's rows, `$1` the
+/// project and `$2` the sample size. A table can hold rows of two sizes
+/// (JSON written before compression, compressed after), so a sample is the
+/// same rows every time, picked across the table's whole history: events
+/// and transactions in `event_id` order from their `(project_id, event_id)`
+/// index, spans in `trace_id` order from `(project_id, trace_id)`, both
+/// random ids. Never the newest rows, which are all compressed, nor no
+/// order, which yields whichever rows a plan reaches first.
 /// `length(CAST(.. AS TEXT))` is the character length, the same measure on
-/// both backends.
-const EVENTS_SAMPLE: &str = "SELECT COALESCE(SUM(length(CAST(data AS TEXT))), 0), COUNT(*) \
-     FROM (SELECT data FROM events WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
-const TRANSACTIONS_SAMPLE: &str = "SELECT COALESCE(SUM(length(CAST(data AS TEXT))), 0), COUNT(*) \
-     FROM (SELECT data FROM transactions WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
-const SPANS_SAMPLE: &str = "SELECT COALESCE(SUM(length(CAST(data AS TEXT))), 0), COUNT(*) \
-     FROM (SELECT data FROM spans WHERE project_id = $1 LIMIT $2) AS sample";
+/// both backends; a compressed payload counts its bytes (`length` of a blob).
+/// Logs are stored one way and keep their newest rows.
+macro_rules! payload_sample {
+    ($from:literal) => {
+        concat!(
+            "SELECT COALESCE(SUM(CASE WHEN payload IS NULL THEN length(CAST(data AS TEXT)) \
+             ELSE length(payload) END), 0), COUNT(*) FROM (SELECT data, payload FROM ",
+            $from,
+            " LIMIT $2) AS sample"
+        )
+    };
+}
+const EVENTS_SAMPLE: &str = payload_sample!("events WHERE project_id = $1 ORDER BY event_id");
+const TRANSACTIONS_SAMPLE: &str =
+    payload_sample!("transactions WHERE project_id = $1 ORDER BY event_id");
+const SPANS_SAMPLE: &str = payload_sample!("spans WHERE project_id = $1 ORDER BY trace_id, id");
 const LOGS_SAMPLE: &str = "SELECT COALESCE(SUM(COALESCE(length(CAST(body AS TEXT)), 0) \
      + COALESCE(length(CAST(attributes AS TEXT)), 0)), 0), COUNT(*) \
      FROM (SELECT body, attributes FROM logs WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
@@ -769,6 +782,32 @@ impl StorageService {
                     on_batch(counts);
                     crate::db::maintenance::yield_to_writers().await;
                 }
+                // Standalone and Spans v2 rows have no transaction to go with,
+                // so they age out by their end time (they carry no ingest
+                // time), or their start in a row with none; `count_cleanup`
+                // counts the same rows.
+                // ponytail: `idx_spans_standalone_project` finds the project's
+                // rows and `timestamp` is filtered per row; a
+                // `(project_id, timestamp)` partial index makes it a range scan.
+                loop {
+                    let spans = sqlx::query(
+                        "DELETE FROM spans WHERE id IN ( \
+                             SELECT id FROM spans WHERE project_id = $1 AND transaction_id IS NULL \
+                             AND COALESCE(timestamp, start_timestamp) < $2 LIMIT $3)",
+                    )
+                    .bind(project_id)
+                    .bind(cutoff)
+                    .bind(batch_size)
+                    .execute(pool)
+                    .await?
+                    .rows_affected() as i64;
+                    if spans == 0 {
+                        break;
+                    }
+                    counts.spans += spans;
+                    on_batch(counts);
+                    crate::db::maintenance::yield_to_writers().await;
+                }
             }
 
             if filter.include_logs {
@@ -963,10 +1002,13 @@ impl StorageService {
     }
 
     /// Counts what a cleanup at `cutoff` would remove. Retention is keyed on
-    /// `ingested_at` (server receipt time, not client-controlled). Spans are
-    /// estimated through their parent transactions since they cascade (see
-    /// [`Self::estimate_transaction_spans`]). An issue is "removed" when it has
-    /// events but none survive the cutoff.
+    /// `ingested_at` (server receipt time, not client-controlled), except for
+    /// standalone spans, which have none and are keyed on their own
+    /// `timestamp` (their `start_timestamp` without one), set by the SDK. A
+    /// transaction's spans are estimated through it since they go with it
+    /// (see [`Self::estimate_transaction_spans`]); standalone ones are
+    /// counted. An issue is "removed" when it has events but none survive
+    /// the cutoff.
     ///
     /// The scope is written as `project_id IN (...)` rather than
     /// `$n IS NULL OR project_id = $m`: the planner cannot use an index for the
@@ -1024,6 +1066,18 @@ impl StorageService {
                 transactions += count;
                 spans += Self::estimate_transaction_spans(pool, id, cutoff, count).await?;
             }
+            // The standalone spans `purge` deletes, by the same predicate.
+            let standalone: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM spans WHERE transaction_id IS NULL \
+                 AND COALESCE(timestamp, start_timestamp) < $1 \
+                 AND project_id IN (SELECT id FROM projects WHERE $2 IS NULL OR id = $3)",
+            )
+            .bind(cutoff)
+            .bind(project_id)
+            .bind(project_id)
+            .fetch_one(pool)
+            .await?;
+            spans += standalone;
         }
 
         // Mask out categories the filter excludes. An issue can only be emptied
@@ -1075,7 +1129,7 @@ impl StorageService {
     ///
     /// Row counts are exact, the totals of `age`. `estimated_bytes` is the
     /// JSON payload length the project holds, estimated from a sample of its
-    /// newest rows per table (see [`Self::estimate_bytes`]); summing every
+    /// rows per table (see [`Self::estimate_bytes`]); summing every
     /// payload meant reading the whole database on each load of the storage
     /// page.
     async fn projects_from(pool: &DbPool, age: &StorageAge) -> AppResult<Vec<ProjectStorage>> {
@@ -1161,7 +1215,7 @@ impl StorageService {
     }
 
     /// Payload bytes `count` rows hold, estimated as the bytes of a sample of
-    /// the project's newest rows scaled by `count`. Exact whenever the project
+    /// the project's rows scaled by `count`. Exact whenever the project
     /// has no more rows than the sample.
     ///
     /// ponytail: the newest rows stand in for all of them, so a project whose

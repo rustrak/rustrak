@@ -180,6 +180,121 @@ pub fn span_attributes(data: &serde_json::Value) -> serde_json::Value {
     }
 }
 
+/// Marks a `spans.data` written by [`SpanColumns::compact`]: the span object
+/// without the keys its columns give back. Its value is `{"index": n}`, the
+/// span's position in its transaction's `spans`, so the payload is rebuilt
+/// in the order the SDK sent. `spans.data` holds one of three shapes:
+///
+/// - this key holding that object: a compact span object (transaction child
+///   or legacy standalone span), expanded by [`SpanColumns::expand`];
+/// - an object with `span_id` and no marker: a whole span object written
+///   before compaction, or an AI root promoted from `contexts.trace`;
+/// - anything else: a Spans v2 attribute bag.
+///
+/// An explicit key rather than the absence of `span_id`, which a span keeps
+/// whenever its column was cut short. Its value is an object because a v2
+/// bag never holds one (`SpanV2Entry::flat_attributes` drops them), so an
+/// attribute of the same name is never read as the marker.
+pub const SPAN_POSITION: &str = "_rustrak_position";
+
+/// The `spans` columns that a span object's own top-level keys land in.
+pub struct SpanColumns {
+    pub span_id: Option<String>,
+    pub parent_span_id: Option<String>,
+    pub op: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>,
+    pub segment_id: Option<String>,
+    pub start_timestamp: Option<DateTime<Utc>>,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub exclusive_time_ms: Option<f64>,
+    pub tags: Option<serde_json::Value>,
+}
+
+impl SpanColumns {
+    /// The JSON each column gives back for its key. A timestamp gives back
+    /// epoch seconds only at whole microseconds, the precision both backends
+    /// store: an integer on a whole second, otherwise the float nearest its
+    /// microseconds, which is what a JSON parser makes of a float written
+    /// with at most six decimals.
+    fn restored(&self) -> [(&'static str, Option<serde_json::Value>); 10] {
+        use serde_json::{Number, Value};
+        let text = |v: &Option<String>| v.as_deref().map(Value::from);
+        let float = |v: f64| Number::from_f64(v).map(Value::Number);
+        let time = |t: Option<DateTime<Utc>>| {
+            t.filter(|t| t.timestamp_subsec_nanos() % 1000 == 0)
+                .and_then(|t| match t.timestamp_micros() {
+                    micros if micros % 1_000_000 == 0 => Some(Value::from(t.timestamp())),
+                    // One rounding, from an integer exact below 2^53 µs.
+                    micros => float(micros as f64 / 1e6),
+                })
+        };
+        [
+            ("span_id", text(&self.span_id)),
+            ("parent_span_id", text(&self.parent_span_id)),
+            ("op", text(&self.op)),
+            ("description", text(&self.description)),
+            ("status", text(&self.status)),
+            ("segment_id", text(&self.segment_id)),
+            ("start_timestamp", time(self.start_timestamp)),
+            ("timestamp", time(self.timestamp)),
+            ("exclusive_time", self.exclusive_time_ms.and_then(float)),
+            ("tags", self.tags.clone()),
+        ]
+    }
+
+    /// `span` without every key these columns give back exactly, marked with
+    /// its `position`. A key whose column differs (cut short, an integer
+    /// stored as a float, a sub-microsecond timestamp) stays, so
+    /// [`Self::expand`] rebuilds the object the SDK sent. A span that is not
+    /// [`Self::compactable`] is kept whole.
+    pub fn compact(&self, mut span: serde_json::Value, position: usize) -> serde_json::Value {
+        if !Self::compactable(&span) {
+            return span;
+        }
+        let Some(object) = span.as_object_mut() else {
+            return span;
+        };
+        for (key, value) in self.restored() {
+            if value.is_some() && object.get(key) == value.as_ref() {
+                object.remove(key);
+            }
+        }
+        object.insert(
+            SPAN_POSITION.to_string(),
+            serde_json::json!({ "index": position }),
+        );
+        span
+    }
+
+    /// An object that does not already use the marker key.
+    pub fn compactable(span: &serde_json::Value) -> bool {
+        span.as_object()
+            .is_some_and(|object| !object.contains_key(SPAN_POSITION))
+    }
+
+    /// The span object a compact `data` was made from, with its position;
+    /// any other shape as is, with none.
+    pub fn expand(&self, mut data: serde_json::Value) -> (Option<u64>, serde_json::Value) {
+        let Some(object) = data.as_object_mut() else {
+            return (None, data);
+        };
+        let Some(position) = object
+            .get(SPAN_POSITION)
+            .and_then(|marker| marker.as_object()?.get("index")?.as_u64())
+        else {
+            return (None, data);
+        };
+        object.remove(SPAN_POSITION);
+        for (key, value) in self.restored() {
+            if let Some(value) = value {
+                object.entry(key).or_insert(value);
+            }
+        }
+        (Some(position), data)
+    }
+}
+
 /// Aggregate performance stats for one (transaction_name, op) group.
 /// Powers the performance overview: throughput + latency percentiles +
 /// failure rate per transaction. Percentiles are continuous (linear

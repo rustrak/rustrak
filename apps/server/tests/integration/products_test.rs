@@ -328,20 +328,25 @@ async fn agents_off_keeps_ai_data_out_of_the_stored_transaction() {
 
     let _dir = send(&db, project_id, &key, &[(header, txn.to_string())]).await;
 
-    let data: sqlx::types::Json<serde_json::Value> =
-        sqlx::query_scalar("SELECT data FROM transactions WHERE project_id = $1")
-            .bind(project_id)
-            .fetch_one(&db.pool)
-            .await
-            .unwrap();
-    let ops: Vec<&str> = data.0["spans"]
+    // The payload the transaction endpoint returns, its spans rebuilt from
+    // the rows they are stored in.
+    let id: Uuid = sqlx::query_scalar("SELECT id FROM transactions WHERE project_id = $1")
+        .bind(project_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    let data = rustrak::services::TransactionService::get_by_id(&db.pool, project_id, id)
+        .await
+        .unwrap()
+        .data;
+    let ops: Vec<&str> = data["spans"]
         .as_array()
         .unwrap()
         .iter()
         .filter_map(|s| s["op"].as_str())
         .collect();
     assert_eq!(ops, vec!["db"], "the stored payload is not a second copy");
-    assert!(data.0["contexts"]["trace"].get("data").is_none());
+    assert!(data["contexts"]["trace"].get("data").is_none());
 }
 
 #[actix_web::test]

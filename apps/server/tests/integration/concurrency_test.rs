@@ -1014,6 +1014,89 @@ async fn test_pool_only_writes_are_checkpointed_by_the_digest() {
     assert!(logged < 16, "the log did not start over: {logged} frames");
 }
 
+/// A burst of transactions or spans commits through the pool without a
+/// pause. A `PASSIVE` checkpoint never reaches the end of a log that grows
+/// while it copies, and the log only starts over after one that did, so the
+/// timer's checkpoints alone let it grow for the whole burst.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn test_the_log_starts_over_under_writes_that_never_pause() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let pool = production_pool(&temp_dir.path().join("rustrak_busy_log.db"), 4).await;
+    let spool = TempDir::new().unwrap();
+    let processors = crate::common::processors(&pool, spool.path());
+    sqlx::query("CREATE TABLE filler (b BLOB)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut tasks = Vec::new();
+    for sql in [
+        "INSERT INTO filler VALUES (zeroblob(40000))",
+        "SELECT COUNT(*) FROM filler",
+    ] {
+        let (pool, stop) = (pool.clone(), Arc::clone(&stop));
+        tasks.push(tokio::spawn(async move {
+            while !stop.load(Ordering::Relaxed) {
+                sqlx::query(sql).execute(&pool).await.unwrap();
+            }
+        }));
+    }
+    let logged = || async {
+        let (_, logged, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(NOOP)")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        logged
+    };
+    let long = i64::from(rustrak::db::COMMITTER_CHECKPOINT_PAGES);
+    while logged().await < long {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    let mut shortest = i64::MAX;
+    for _ in 0..50 {
+        processors
+            .errors
+            .checkpoint_when_caught_up(&pool)
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        shortest = shortest.min(logged().await);
+        if shortest < long {
+            break;
+        }
+    }
+    stop.store(true, Ordering::Relaxed);
+    for task in tasks {
+        task.await.unwrap();
+    }
+    assert!(
+        shortest < long,
+        "the log never started over: at least {shortest} frames"
+    );
+
+    // Once the burst is over nothing writes, so no commit would start the
+    // log over and truncate it: the timer gives its bytes back itself.
+    // 50 MB is past `COMMITTER_CHECKPOINT_PAGES` even in a log just reset.
+    sqlx::query("INSERT INTO filler VALUES (zeroblob(50000000))")
+        .execute(&pool)
+        .await
+        .unwrap();
+    processors
+        .errors
+        .checkpoint_when_caught_up(&pool)
+        .await
+        .unwrap();
+    let wal = temp_dir.path().join("rustrak_busy_log.db-wal");
+    assert_eq!(
+        std::fs::metadata(wal).unwrap().len(),
+        0,
+        "the log kept its size"
+    );
+}
+
 /// Once the live digest is idle nothing it keeps open pins a read snapshot:
 /// a `TRUNCATE` checkpoint gets the whole log back at once, with the
 /// committer's connection still open.

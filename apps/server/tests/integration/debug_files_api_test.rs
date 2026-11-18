@@ -628,13 +628,12 @@ async fn digest_symbolicates_an_ios_crash() {
         .await
         .expect("digest must succeed");
 
-    let (data,): (String,) =
-        sqlx::query_as("SELECT CAST(data AS TEXT) FROM events WHERE project_id = $1")
-            .bind(project_id)
-            .fetch_one(&db.pool)
-            .await
-            .unwrap();
-    let data: Value = serde_json::from_str(&data).unwrap();
+    let id: Uuid = sqlx::query_scalar("SELECT id FROM events WHERE project_id = $1")
+        .bind(project_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    let data = crate::common::stored_json(&db.pool, "events", id).await;
     let frames = &data["exception"]["values"][0]["stacktrace"]["frames"];
     let names: Vec<&str> = frames
         .as_array()

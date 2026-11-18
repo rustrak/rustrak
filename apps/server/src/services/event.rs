@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::db::payload::{Column, Encoder, NO_DATA};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{AlertType, Event, EventSummary};
@@ -122,12 +123,16 @@ impl EventService {
 
     /// The issue's newest event, payload included.
     pub async fn latest_for_issue(pool: &DbPool, issue_id: Uuid) -> AppResult<Option<Event>> {
-        Ok(sqlx::query_as::<_, Event>(
+        let event = sqlx::query_as::<_, Event>(
             "SELECT * FROM events WHERE issue_id = $1 ORDER BY timestamp DESC, id DESC LIMIT 1",
         )
         .bind(issue_id)
         .fetch_optional(pool)
-        .await?)
+        .await?;
+        match event {
+            Some(event) => Ok(Some(Self::with_data(pool, event).await?)),
+            None => Ok(None),
+        }
     }
 
     pub async fn get_by_id(pool: &DbPool, id: Uuid) -> AppResult<Event> {
@@ -137,6 +142,13 @@ impl EventService {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Event {} not found", id)))?;
 
+        Self::with_data(pool, event).await
+    }
+
+    /// The one read of an event's payload: `stored`, compressed or not,
+    /// decoded into `data`.
+    async fn with_data(pool: &DbPool, mut event: Event) -> AppResult<Event> {
+        event.data = std::mem::take(&mut event.stored).read(pool).await?;
         Ok(event)
     }
 
@@ -146,12 +158,15 @@ impl EventService {
         project_id: i32,
         event_id: Uuid,
     ) -> AppResult<Event> {
-        sqlx::query_as::<_, Event>("SELECT * FROM events WHERE project_id = $1 AND event_id = $2")
-            .bind(project_id)
-            .bind(event_id)
-            .fetch_optional(pool)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))
+        let event = sqlx::query_as::<_, Event>(
+            "SELECT * FROM events WHERE project_id = $1 AND event_id = $2",
+        )
+        .bind(project_id)
+        .bind(event_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))?;
+        Self::with_data(pool, event).await
     }
 
     /// Creates a new event and returns its primary key: one
@@ -177,6 +192,7 @@ impl EventService {
             remote_addr,
             event_id,
             project_id,
+            &Encoder::current(pool, Column::Events).await?,
         );
         let id = Uuid::new_v4();
         let link = EventLink {
@@ -230,13 +246,12 @@ impl EventService {
 }
 
 /// Every `events` column an event's own payload decides, built once from
-/// the parsed event so the tree can be dropped before the write. `data` is
-/// the payload serialised once: bound as text (SQLite stores JSON as text,
-/// Postgres casts it to JSONB).
+/// the parsed event so the tree can be dropped before the write. `payload`
+/// is the event serialised once and compressed, before any transaction.
 pub struct EventRow {
     pub event_id: Uuid,
     pub project_id: i32,
-    pub data: String,
+    pub payload: Vec<u8>,
     pub timestamp: DateTime<Utc>,
     pub ingested_at: DateTime<Utc>,
     pub calculated_type: String,
@@ -274,6 +289,7 @@ impl EventRow {
         remote_addr: Option<&str>,
         event_id: Uuid,
         project_id: i32,
+        encoder: &Encoder,
     ) -> Self {
         // Each cut to its VARCHAR column, which Postgres enforces; Relay's
         // own limits are 200 for `release` and 64 for `environment`.
@@ -284,7 +300,7 @@ impl EventRow {
         Self {
             event_id,
             project_id,
-            data: event_data.to_string(),
+            payload: encoder.encode(event_data.to_string().as_bytes()),
             timestamp: extract_timestamp(event_data, "timestamp").unwrap_or(ingested_at),
             ingested_at,
             calculated_type: denormalized.calculated_type.clone(),
@@ -328,7 +344,7 @@ impl EventRow {
     ) -> AppResult<Vec<(i32, Uuid)>> {
         let mut insert = sqlx::QueryBuilder::<crate::db::Db>::new(
             r#"INSERT INTO events (
-                id, event_id, project_id, issue_id, grouping_id, data,
+                id, event_id, project_id, issue_id, grouping_id, data, payload,
                 timestamp, ingested_at,
                 calculated_type, calculated_value, "transaction",
                 last_frame_filename, last_frame_module, last_frame_function,
@@ -342,14 +358,10 @@ impl EventRow {
                 .push_bind(row.event_id)
                 .push_bind(row.project_id)
                 .push_bind(link.issue_id)
-                .push_bind(link.grouping_id);
-            #[cfg(feature = "postgres")]
-            b.push("CAST(")
-                .push_bind_unseparated(&row.data)
-                .push_unseparated(" AS JSONB)");
-            #[cfg(feature = "sqlite")]
-            b.push_bind(&row.data);
-            b.push_bind(row.timestamp)
+                .push_bind(link.grouping_id)
+                .push_bind(NO_DATA)
+                .push_bind(&row.payload)
+                .push_bind(row.timestamp)
                 .push_bind(row.ingested_at)
                 .push_bind(&row.calculated_type)
                 .push_bind(&row.calculated_value)

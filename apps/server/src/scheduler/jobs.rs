@@ -90,6 +90,46 @@ impl ScheduledJob for SessionPurgeJob {
     }
 }
 
+/// Trains the payload compression dictionaries that are due
+/// ([`crate::db::payload::train_due`]), off the ingest and digest paths.
+/// Each run reads three row estimates; a training reads at most 16 MB, also
+/// while a table of old rows waits for enough new ones.
+pub struct PayloadDictionaryJob;
+
+impl PayloadDictionaryJob {
+    pub const KEY: &'static str = "payload_dictionaries";
+}
+
+#[async_trait]
+impl ScheduledJob for PayloadDictionaryJob {
+    fn key(&self) -> &'static str {
+        Self::KEY
+    }
+
+    fn schedule(&self, _settings: &Value) -> Option<(Schedule, Tz)> {
+        Some((
+            Schedule::Interval {
+                value: 10,
+                unit: IntervalUnit::Minute,
+            },
+            Tz::UTC,
+        ))
+    }
+
+    fn misfire(&self) -> Misfire {
+        Misfire::RunOnce
+    }
+
+    async fn run(&self, ctx: JobContext<'_>) -> AppResult<Value> {
+        let trained = crate::db::payload::train_due(ctx.pool).await?;
+        let trained: Vec<Value> = trained
+            .into_iter()
+            .map(|(column, id)| json!({ "table": column.table(), "dictionary": id }))
+            .collect();
+        Ok(json!({ "trained": trained }))
+    }
+}
+
 /// Enforces the retention an admin chose in Settings → Storage, daily or
 /// weekly at the hour they chose, in UTC. Never runs while everything is
 /// kept forever. Runs through the manual cleanup's [`CleanupJob`], so the

@@ -126,7 +126,7 @@ pub use storage::{
     SourceMapStorage, StorageAge, StorageSummary, AGE_BUCKET_DAYS,
 };
 pub use transaction::{
-    span_attributes, SpanDetailResponse, SpanResponse, TransactionDetailResponse,
+    span_attributes, SpanColumns, SpanDetailResponse, SpanResponse, TransactionDetailResponse,
     TransactionResponse, TransactionStatsResponse, TransactionTimeseriesPoint,
 };
 pub use user::{ChangePasswordRequest, CreateUserRequest, LoginRequest, User, UserRole};
