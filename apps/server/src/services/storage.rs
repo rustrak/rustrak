@@ -64,7 +64,8 @@ const SIZE_SAMPLE_ROWS: i64 = 200;
 /// same rows every time, picked across the table's whole history: events
 /// and transactions in `event_id` order from their `(project_id, event_id)`
 /// index, spans in `trace_id` order from `(project_id, trace_id)`, both
-/// random ids. Never the newest rows, which are all compressed, nor no
+/// random ids (spans by nothing more: a second key would sort a whole trace
+/// before the limit). Never the newest rows, which are all compressed, nor no
 /// order, which yields whichever rows a plan reaches first.
 /// `length(CAST(.. AS TEXT))` is the character length, the same measure on
 /// both backends; a compressed payload counts its bytes (`length` of a blob).
@@ -82,7 +83,7 @@ macro_rules! payload_sample {
 const EVENTS_SAMPLE: &str = payload_sample!("events WHERE project_id = $1 ORDER BY event_id");
 const TRANSACTIONS_SAMPLE: &str =
     payload_sample!("transactions WHERE project_id = $1 ORDER BY event_id");
-const SPANS_SAMPLE: &str = payload_sample!("spans WHERE project_id = $1 ORDER BY trace_id, id");
+const SPANS_SAMPLE: &str = payload_sample!("spans WHERE project_id = $1 ORDER BY trace_id");
 const LOGS_SAMPLE: &str = "SELECT COALESCE(SUM(COALESCE(length(CAST(body AS TEXT)), 0) \
      + COALESCE(length(CAST(attributes AS TEXT)), 0)), 0), COUNT(*) \
      FROM (SELECT body, attributes FROM logs WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
@@ -785,10 +786,9 @@ impl StorageService {
                 // Standalone and Spans v2 rows have no transaction to go with,
                 // so they age out by their end time (they carry no ingest
                 // time), or their start in a row with none; `count_cleanup`
-                // counts the same rows.
-                // ponytail: `idx_spans_standalone_project` finds the project's
-                // rows and `timestamp` is filtered per row; a
-                // `(project_id, timestamp)` partial index makes it a range scan.
+                // counts the same rows. `idx_spans_standalone_age` holds that
+                // expression, so a batch is a range scan, not a pass over
+                // every row the project keeps under the write lock.
                 loop {
                     let spans = sqlx::query(
                         "DELETE FROM spans WHERE id IN ( \

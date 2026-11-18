@@ -574,6 +574,40 @@ async fn a_retraining_that_yields_a_stored_dictionary_is_not_due_again() {
     );
 }
 
+/// A dictionary's id hashes its content alone, not its entropy tables
+/// (`ZDICT_finalizeDictionary`), so a retraining can name a stored id with
+/// other bytes. The rows after it are compressed with the stored bytes, the
+/// ones every reader decodes them with.
+#[actix_web::test]
+async fn a_retraining_under_a_stored_id_compresses_with_the_stored_bytes() {
+    let db = TestDb::new().await;
+    let pool = db.pool.clone();
+    let project = create_test_project(&pool, "Stored bytes").await;
+    let (issue, grouping) = issue(&pool, project.id).await;
+    // Rows no other test trains on: the decoder registry is keyed by id
+    // across the process, and this id is about to name other bytes.
+    insert_events(&pool, project.id, (issue.id, grouping), 90_000, 500).await;
+    analyze(&pool).await;
+    assert_eq!(payload::train_due(&pool).await.unwrap().len(), 1);
+
+    // The id now names bytes this training does not produce, and it is due
+    // again over the same rows.
+    sqlx::query("UPDATE payload_dictionaries SET dictionary = $1, row_count = row_count - 4500")
+        .bind(b"raw dictionary content the training never made, ".repeat(32))
+        .execute(&pool)
+        .await
+        .unwrap();
+    payload::forget_dictionaries();
+    assert_eq!(payload::train_due(&pool).await.unwrap().len(), 1);
+
+    let data = event(10_000);
+    let id = create_event(&pool, project.id, (issue.id, grouping), &data, Utc::now()).await;
+    let (row, _) = stored(&pool, "events", id).await;
+    payload::forget_dictionaries();
+    let json = payload::decode(&pool, &row.unwrap()).await.unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&json).unwrap(), data);
+}
+
 /// Turns every event of `issue_id` into the format rows had before
 /// compression, as an in-place upgrade finds them.
 async fn make_issue_legacy(pool: &DbPool, issue_id: Uuid) {

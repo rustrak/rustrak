@@ -504,23 +504,25 @@ async fn train(pool: &DbPool, column: Column, rows: i64) -> AppResult<Option<u32
     let id = zstd::zstd_safe::get_dict_id_from_dict(&dictionary)
         .ok_or_else(|| AppError::Internal("trained a dictionary without an id".into()))?
         .get();
-    sqlx::query(
+    // Committed, or already stored and now measured from these rows, so the
+    // next training waits for ten times them. The id hashes the dictionary's
+    // content but not its entropy tables (`ZDICT_finalizeDictionary`), so a
+    // stored one can differ from these bytes: every write that names the id
+    // compresses with the stored bytes, the ones its readers load.
+    let stored: Vec<u8> = sqlx::query_scalar(
         "INSERT INTO payload_dictionaries (id, kind, dictionary, row_count, created_at) \
          VALUES ($1, $2, $3, $4, $5) \
-         ON CONFLICT (id) DO UPDATE SET row_count = excluded.row_count",
+         ON CONFLICT (id) DO UPDATE SET row_count = excluded.row_count \
+         RETURNING dictionary",
     )
     .bind(i64::from(id))
     .bind(column.table())
     .bind(&dictionary)
     .bind(rows)
     .bind(chrono::Utc::now())
-    .execute(pool)
+    .fetch_one(pool)
     .await?;
-    // Committed, or already stored (the same samples train the same bytes,
-    // and the id is their hash) and now measured from these rows, so the
-    // next training waits for ten times them. From here on every write may
-    // name it.
-    let prepared = Arc::new(EncoderDictionary::copy(&dictionary, LEVEL));
+    let prepared = Arc::new(EncoderDictionary::copy(&stored, LEVEL));
     encoders_of(&mut lock(&ENCODERS), pool).insert(column, Some((id, prepared)));
     Ok(Some(id))
 }

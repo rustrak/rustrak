@@ -1671,10 +1671,16 @@ async fn test_cleanup_lookups_are_index_range_scans() {
             "SELECT id FROM logs WHERE project_id = $1 AND ingested_at < $2 LIMIT $3",
             "idx_logs_project_ingested",
         ),
+        // A range over the age, not a filter per row of the project.
         (
             "SELECT id FROM spans WHERE project_id = $1 AND transaction_id IS NULL \
-             AND timestamp < $2 LIMIT $3",
-            "idx_spans_standalone_project",
+             AND COALESCE(timestamp, start_timestamp) < $2 LIMIT $3",
+            "idx_spans_standalone_age (project_id=? AND <expr><?)",
+        ),
+        // The size sample reads spans in index order, with no sort.
+        (
+            "SELECT data, payload FROM spans WHERE project_id = $1 ORDER BY trace_id LIMIT $2",
+            "SEARCH spans USING INDEX idx_spans_project_trace (project_id=?)",
         ),
         (
             "SELECT COUNT(*) FROM events e WHERE e.ingested_at < $1 \
@@ -1702,6 +1708,7 @@ async fn test_cleanup_lookups_are_index_range_scans() {
     ] {
         let got = plan(sql).await;
         assert!(got.contains(index), "{sql}\n  expected {index}, got: {got}");
+        assert!(!got.contains("TEMP B-TREE"), "{sql}\n  sorts: {got}");
     }
 }
 
