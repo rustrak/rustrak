@@ -174,7 +174,7 @@ nix = { version = "0.31.3", default-features = false, features = ["fs", "process
 rustrak = { path = ".", default-features = false, features = ["test-seams"] }
 
 # Names the request type for helpers that drive an `init_service` app
-actix-http = "3.21.0"
+actix-http = "3.22.0"
 
 # Test framework & fixtures
 rstest = "0.28.0"
