@@ -1717,14 +1717,14 @@
     },
     "compactionPostgres": {
       "title": "Redă discului spațiul datelor șterse",
-      "description": "PostgreSQL refolosește spațiul eliberat de retenție în tabelele sale, dar nu îl redă niciodată discului: baza de date rămâne la {size} după o curățare. Compactarea rescrie fiecare tabel pentru a-l reda.",
+      "description": "PostgreSQL refolosește spațiul eliberat de retenție în tabelele sale, dar nu îl redă aproape niciodată discului: baza de date rămâne la {size} după o curățare. Compactarea rescrie fiecare tabel pentru a-l reda.",
       "action": "Compactează tabelele",
       "dialogTitle": "Compactezi tabelele?",
       "dialogDescription": "Rustrak rescrie cu VACUUM FULL fiecare tabel din care retenția șterge, de la cel mai mic la cel mai mare, și redă discului spațiul rândurilor șterse.",
       "tableSize": "{table} · {indexes} de indecși",
-      "disk": "Are nevoie de până la {required} liberi pe discul serverului PostgreSQL cât rulează, dimensiunea celui mai mare tabel. Rustrak nu vede acel disc: verifică-l înainte.",
-      "lock": "Fiecare tabel este blocat cât este rescris, câteva secunde pentru fiecare GB păstrat. Erorile sunt acceptate în continuare și sunt salvate după ce tabelul lor este gata. Tranzacțiile, span-urile și logurile trimise cât tabelul lor este rescris sunt refuzate și se pierd (SDK-urile nu le mai trimit timp de 10 secunde), iar paginile care afișează acel tabel așteaptă până se termină.",
-      "duration": "Cel mai mare tabel durează cel mai mult. Rulează-l într-un moment liniștit sau folosește pg_repack, care face același lucru fără blocare."
+      "disk": "Are nevoie de aproximativ {required} liberi pe discul serverului PostgreSQL cât rulează, dimensiunea celui mai mare tabel, și cam tot atât pentru WAL dacă se află pe același disc. Rustrak nu vede acel disc: verifică-l înainte.",
+      "lock": "Fiecare tabel este blocat cât este rescris, câteva secunde pentru fiecare GB păstrat. Erorile sunt acceptate în continuare și sunt salvate după ce tabelul lor este gata. Tranzacțiile, span-urile și logurile trimise cât tabelul lor este rescris sunt refuzate și se pierd (SDK-urile nu le mai trimit timp de 10 secunde), iar paginile care afișează acel tabel dau eroare până se termină.",
+      "duration": "Cel mai mare tabel durează cel mai mult. Rulează-l într-un moment liniștit sau folosește pg_repack, care blochează fiecare tabel doar scurt, la început și la sfârșit."
     }
   },
   "errors": {

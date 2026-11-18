@@ -169,7 +169,8 @@ pub struct CompactedTable {
     pub table: String,
     pub bytes_before: i64,
     pub bytes_after: i64,
-    /// How long the table was locked and rewritten.
+    /// How long its `VACUUM FULL` took: the wait for the table's lock (at
+    /// most five seconds) and the rewrite under it.
     pub duration_ms: i64,
 }
 
@@ -208,8 +209,10 @@ pub struct Compaction {
     #[cfg_attr(feature = "openapi", schema(required))]
     pub reclaimable_bytes: Option<i64>,
     /// Free disk a compaction needs. SQLite: twice the live data, one copy
-    /// in its temporary file and one in the write-ahead log. Postgres: at
-    /// most the largest table's size, the copy of the one being rewritten.
+    /// in its temporary file and one in the write-ahead log. Postgres: the
+    /// largest table's size, the copy of the one being rewritten. Not the
+    /// write-ahead log the rewrite adds, which needs about as much again
+    /// when it is on the same disk.
     pub required_disk_bytes: i64,
     /// Free disk next to the database, `null` when it cannot be read (always
     /// on Postgres, whose disk is the database server's).

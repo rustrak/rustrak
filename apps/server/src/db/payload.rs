@@ -545,7 +545,7 @@ async fn samples(pool: &DbPool, column: Column) -> AppResult<Option<(Vec<u8>, Ve
 
     let limit = column.rows().1;
     // The rows stream on one connection; a decode must not wait for another.
-    decoders(pool, column).await?;
+    let loaded = decoders(pool, column).await?;
     #[cfg(feature = "postgres")]
     let sql = format!(
         "SELECT payload FROM {table} TABLESAMPLE SYSTEM \
@@ -566,7 +566,11 @@ async fn samples(pool: &DbPool, column: Column) -> AppResult<Option<(Vec<u8>, Ve
     let (mut samples, mut sizes, mut read) = (Vec::new(), Vec::new(), 0);
     while let Some(stored) = rows.try_next().await? {
         read += 1;
-        let json = decode(pool, &stored).await?;
+        let dictionary = dictionary_id(&stored)?.and_then(|id| loaded.get(&id));
+        // A row that does not decode with those is left out of the sample.
+        let Ok(json) = decode_with(&stored, dictionary.map(|d| &**d)) else {
+            continue;
+        };
         if samples.len() + json.len() <= MAX_SAMPLE_BYTES {
             samples.extend_from_slice(&json);
             sizes.push(json.len());

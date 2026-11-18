@@ -191,7 +191,8 @@ const COMPACTION_LOCK_TIMEOUT_SECS: u64 = 5;
 /// named in `rewriting` meanwhile: ingest turns away the items it would
 /// write into it on the request path (see `pipeline::shed_by`), which would
 /// otherwise wait on the lock until they held the whole pool. Digests and
-/// dashboard reads of it wait. The old files go only once the new copy is
+/// dashboard reads of it fail as transient at the pool's lock timeout (see
+/// `db::prepare_session`) and are retried. The old files go only once the new copy is
 /// complete, so a run that fails or is cancelled leaves that table as it
 /// was, and needs free disk for that copy.
 ///
@@ -218,7 +219,14 @@ pub async fn compact(
     sqlx::query("SET statement_timeout = 0")
         .execute(&mut conn)
         .await?;
+    const TOTAL_SIZE: &str = "SELECT pg_total_relation_size($1::regclass)";
     for table in retained_tables(pool).await? {
+        // Read now, not with the order above: the table kept growing while
+        // the ones before it were rewritten.
+        let bytes_before: i64 = sqlx::query_scalar(TOTAL_SIZE)
+            .bind(&table.table)
+            .fetch_one(&mut conn)
+            .await?;
         let started = std::time::Instant::now();
         // Named before the lock is asked for: queued, it already blocks.
         set(Some(&table.table));
@@ -238,12 +246,12 @@ pub async fn compact(
             e => e.into(),
         })?;
         let duration_ms = started.elapsed().as_millis() as i64;
-        let bytes_after: i64 = sqlx::query_scalar("SELECT pg_total_relation_size($1::regclass)")
+        let bytes_after: i64 = sqlx::query_scalar(TOTAL_SIZE)
             .bind(&table.table)
             .fetch_one(&mut conn)
             .await?;
         on_table(CompactedTable {
-            bytes_before: table.table_bytes + table.index_bytes,
+            bytes_before,
             bytes_after,
             duration_ms,
             table: table.table,

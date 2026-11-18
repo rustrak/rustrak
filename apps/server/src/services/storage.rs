@@ -420,6 +420,13 @@ impl CleanupJob {
     /// with `Conflict` while a cleanup runs. Never scheduled: only a person
     /// starts one.
     pub async fn start_compaction(&self, pool: DbPool) -> AppResult<CleanupStatus> {
+        // Before the sizes: on Postgres reading them waits on a running
+        // compaction's table lock, and would start a second one after it.
+        if lock(&self.status).state == CleanupState::Running {
+            return Err(AppError::Conflict(
+                "A storage cleanup is already running".to_string(),
+            ));
+        }
         let compaction = crate::db::maintenance::compaction(&pool).await?;
         if !compaction.needed {
             return Err(AppError::Validation(

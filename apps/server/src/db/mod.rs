@@ -47,6 +47,22 @@ pub type DbPool = PgPool;
 #[cfg(feature = "sqlite")]
 pub type DbPool = SqlitePool;
 
+/// What every pooled Postgres session starts with. The lock timeout is for
+/// a compaction (`maintenance::compact`), the one thing that locks a whole
+/// table for long: a query that meets the lock fails as transient after two
+/// seconds, under the pool's acquire timeout, instead of holding its
+/// connection until the rewrite ends and the pool with it.
+#[cfg(feature = "postgres")]
+pub async fn prepare_session(conn: &mut sqlx::PgConnection) -> Result<(), sqlx::Error> {
+    sqlx::query("SET timezone = 'UTC'")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("SET lock_timeout = '2s'")
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
 /// Creates a new database connection pool with the provided configuration
 pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error> {
     log::info!("Connecting to database...");
@@ -60,12 +76,7 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error>
             .idle_timeout(Some(config.idle_timeout))
             .max_lifetime(Some(config.max_lifetime))
             .before_acquire(|conn, _meta| Box::pin(async move { Ok(!conn.is_in_transaction()) }))
-            .after_connect(|conn, _meta| {
-                Box::pin(async move {
-                    sqlx::query("SET timezone = 'UTC'").execute(conn).await?;
-                    Ok(())
-                })
-            })
+            .after_connect(|conn, _meta| Box::pin(prepare_session(conn)))
             .connect(&config.url)
             .await?
     };

@@ -594,7 +594,8 @@ export type CompactedTable = {
     bytes_after: number;
     bytes_before: number;
     /**
-     * How long the table was locked and rewritten.
+     * How long its `VACUUM FULL` took: the wait for the table's lock (at
+     * most five seconds) and the rewrite under it.
      */
     duration_ms: number;
     table: string;
@@ -635,8 +636,10 @@ export type Compaction = {
     reclaimable_bytes: number | null;
     /**
      * Free disk a compaction needs. SQLite: twice the live data, one copy
-     * in its temporary file and one in the write-ahead log. Postgres: at
-     * most the largest table's size, the copy of the one being rewritten.
+     * in its temporary file and one in the write-ahead log. Postgres: the
+     * largest table's size, the copy of the one being rewritten. Not the
+     * write-ahead log the rewrite adds, which needs about as much again
+     * when it is on the same disk.
      */
     required_disk_bytes: number;
     /**

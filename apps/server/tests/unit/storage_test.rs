@@ -1687,14 +1687,14 @@ async fn test_cleanup_lookups_are_index_range_scans() {
              AND e.project_id IN (SELECT id FROM projects WHERE $2 IS NULL OR id = $3)",
             "idx_events_project_ingested",
         ),
-        // The storage page's size estimate samples each project's newest rows.
+        // So do its event and transaction samples, and the logs' newest rows.
         (
-            "SELECT data FROM events WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
-            "idx_events_project_ingested",
+            "SELECT data, payload FROM events WHERE project_id = $1 ORDER BY event_id LIMIT $2",
+            "sqlite_autoindex_events_",
         ),
         (
-            "SELECT data FROM transactions WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
-            "idx_transactions_project_ingested",
+            "SELECT data, payload FROM transactions WHERE project_id = $1 ORDER BY event_id LIMIT $2",
+            "sqlite_autoindex_transactions_",
         ),
         (
             "SELECT body FROM logs WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",

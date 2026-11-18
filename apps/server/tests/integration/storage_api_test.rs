@@ -1437,6 +1437,46 @@ async fn compacting_postgres_gives_the_space_of_deleted_rows_back() {
     );
 }
 
+/// A pooled session gives up on a locked table instead of holding its
+/// connection for the whole rewrite: more reads of the table than the pool
+/// has connections all fail as transient, and the pool still serves the
+/// rest of the database meanwhile.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn a_pooled_session_does_not_wait_out_a_table_lock() {
+    let db = TestDb::new().await;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(std::time::Duration::from_secs(20))
+        .after_connect(|conn, _| Box::pin(rustrak::db::prepare_session(conn)))
+        .connect_with((*db.pool.connect_options()).clone())
+        .await
+        .unwrap();
+    let mut rewrite = db.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE events IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *rewrite)
+        .await
+        .unwrap();
+
+    let reads = futures_util::future::join_all(
+        (0..6)
+            .map(|_| sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM events").fetch_one(&pool)),
+    );
+    let reads = tokio::time::timeout(std::time::Duration::from_secs(15), reads)
+        .await
+        .expect("the reads waited on the lock");
+    for read in reads {
+        let error = rustrak::error::AppError::from(read.unwrap_err());
+        assert!(error.is_transient(), "{error}");
+    }
+    let other: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projects")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(other, 0);
+    rewrite.rollback().await.unwrap();
+}
+
 /// A table another session is reading cannot be rewritten: the compaction
 /// waits at most its lock timeout, fails saying why, and leaves the table as
 /// it was. Meanwhile a second compaction is refused.
@@ -1633,6 +1673,8 @@ async fn a_compaction_turns_away_only_what_the_table_it_rewrites_would_block() {
     let state = crate::common::state(pool, crate::common::config_with_ingest_dir(dir.path())).await;
     let app = crate::common::app_with(&state).await;
     let mut reader = compaction_stopped_at(pool, &app, &token, "spans").await;
+    // Refused at once, not after waiting on the lock to read the sizes.
+    assert_eq!(post_compaction(&app, &token).await.status(), 409);
 
     let shed = |(status, retry_after, limits, waited): (_, Option<String>, Option<String>, _)| {
         assert_eq!(status, 429);

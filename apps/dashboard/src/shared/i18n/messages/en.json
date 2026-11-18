@@ -1717,14 +1717,14 @@
     },
     "compactionPostgres": {
       "title": "Give deleted data’s space back to the disk",
-      "description": "PostgreSQL reuses the space retention frees inside its tables, but never gives it back to the disk: the database stays at {size} after a cleanup. Compacting rewrites each table to give that space back.",
+      "description": "PostgreSQL reuses the space retention frees inside its tables, but rarely gives it back to the disk: the database stays at {size} after a cleanup. Compacting rewrites each table to give that space back.",
       "action": "Compact tables",
       "dialogTitle": "Compact the tables?",
       "dialogDescription": "Rustrak rewrites each table retention deletes from with VACUUM FULL, smallest first, and gives the space their deleted rows held back to the disk.",
       "tableSize": "{table} · {indexes} of indexes",
-      "disk": "Needs up to {required} free on the PostgreSQL server’s disk while it runs, the size of the largest table. Rustrak cannot see that disk: check it first.",
-      "lock": "Each table is locked while it is rewritten, a few seconds per GB it keeps. Errors keep being accepted and are stored once their table is done. Transactions, spans and logs sent while their table is rewritten are turned away and lost (SDKs pause sending them for 10 seconds), and pages showing that table wait until it is done.",
-      "duration": "The largest table takes longest. Run it at a quiet time, or use pg_repack, which does the same without locking."
+      "disk": "Needs about {required} free on the PostgreSQL server’s disk while it runs, the size of the largest table, plus about as much again for the write-ahead log if it is on the same disk. Rustrak cannot see that disk: check it first.",
+      "lock": "Each table is locked while it is rewritten, a few seconds per GB it keeps. Errors keep being accepted and are stored once their table is done. Transactions, spans and logs sent while their table is rewritten are turned away and lost (SDKs pause sending them for 10 seconds), and pages showing that table show an error until it is done.",
+      "duration": "The largest table takes longest. Run it at a quiet time, or use pg_repack, which only locks each table briefly at the start and the end."
     }
   },
   "errors": {

@@ -271,24 +271,26 @@ delete a lot by hand. Rustrak never compacts on a schedule.
     for `logs`). SDKs pause those categories for 10 s and keep sending
     errors; an envelope that also carries an error still has its error
     stored.
-  - **Dashboard pages showing the table being rewritten wait** until it is
-    done; the rest of the dashboard works.
-- **Free disk** on the database server of up to the largest table's size: the
-  new copy is written before the old one is removed, and the rewrite is
-  written to the WAL too. Rustrak cannot see the database server's disk, so
-  check it first. If the disk fills, the rewrite fails and the table is left
+  - **Dashboard pages showing the table being rewritten fail** with a
+    temporary error until it is done; the rest of the dashboard works.
+- **Free disk** on the database server of about the largest table's size: the
+  new copy is written before the old one is removed. The rewrite is written
+  to the WAL too, so allow about as much again if the WAL is on the same
+  disk. Rustrak cannot see the database server's disk, so check it first. If the disk fills, the rewrite fails and the table is left
   exactly as it was.
 - A table some other query is using gets 5 seconds to be released; past that,
   the compaction stops, says which table, and leaves it as it was. Tables
   already compacted stay compacted; run it again at a quieter time.
 
-Run it at a quiet time. To compact without locking, use
+Run it at a quiet time. To compact while the tables stay in use, use
 [pg_repack](https://reorg.github.io/pg_repack/), an extension installed on the
 database server and run as a superuser (Rustrak's tables all have the
-primary key it needs). It also needs about twice the table's size free while
-it works:
+primary key it needs). It locks each table only briefly, at the start and at
+the end. It needs about twice the size of the tables and their indexes free
+while it works, and the extension created in Rustrak's database first:
 
 ```bash
+psql -h db-host -U postgres -d rustrak -c 'CREATE EXTENSION pg_repack'
 pg_repack -h db-host -U rustrak -d rustrak -t spans -t transactions -t events -t logs
 ```
 
