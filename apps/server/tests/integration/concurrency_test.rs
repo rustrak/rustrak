@@ -1647,6 +1647,7 @@ async fn test_an_inline_write_waits_its_turn_behind_the_digests() {
                 None,
                 Utc::now(),
                 Some(slot),
+                &[],
             )
             .await
         }

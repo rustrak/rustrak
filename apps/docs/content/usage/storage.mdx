@@ -34,6 +34,7 @@ What a cleanup does:
 - Deletes the **source maps no upload references** any more, for example the ones a deleted project left behind. Referenced files are never touched.
 - Works in small batches, each committed on its own, so ingestion keeps working. If the server restarts mid-cleanup, what was already deleted stays deleted and the next run finishes the rest. If the server was down at run time, it runs once when it comes back.
 - On SQLite, gives the space it freed back to the disk once the deletes are done, a few megabytes at a time, so the database file shrinks. This needs a database Rustrak created with incremental auto-vacuum, which every new one is; an older file reuses the freed space for new data but keeps its size until it is compacted once, with the **Compact database** button on this page (see [Reclaiming disk space](/configuration/database#reclaiming-disk-space)). Compaction needs free disk of about twice the data it keeps and blocks writes while it runs: errors that arrive meanwhile are kept and processed afterwards, but logs, traces and sessions are lost. Run it at a quiet time.
+- On PostgreSQL, the freed space is reused for new data, so the tables stop growing, but the database does not shrink. **Compact tables** on this page gives the space back by rewriting each table, locking it while it does: errors keep being accepted, but transactions, spans and logs sent while their table is rewritten are turned away and lost; see [Reclaiming disk space](/configuration/database#reclaiming-disk-space-on-postgresql) for when it is worth it and what it costs.
 
 > **Warning:** Deleted data is gone for good. Check what the panel says will go before you save.
 
@@ -134,3 +135,5 @@ You can also drive all of this from an AI assistant via the [MCP server](/sdks/m
 | Source-map GC | Only unreferenced (orphaned) files are removed |
 | Deleting events | Project and issue event counts stay consistent |
 | Cleanup on SQLite | The freed space goes back to the disk (a database created before incremental auto-vacuum needs a one-off `VACUUM` first) |
+| Cleanup on PostgreSQL | The freed space is reused; it goes back to the disk only with **Compact tables** |
+| Compact tables on PostgreSQL | `202 Accepted`; each table is locked while it is rewritten, and one that stays busy for 5 s fails the run, unchanged. Meanwhile, transactions, spans and logs for that table get `429` with `X-Sentry-Rate-Limits`; errors are accepted |

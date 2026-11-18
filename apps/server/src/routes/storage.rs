@@ -205,7 +205,7 @@ pub async fn gc_source_maps(
     operation_id = "storage.getCompaction",
     tag = "Storage",
     responses(
-        (status = 200, description = "Whether the SQLite file gives freed space back, and what compacting it takes", body = Compaction),
+        (status = 200, description = "Whether the database gives freed space back, and what compacting it takes", body = Compaction),
         (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -231,9 +231,11 @@ pub async fn get_compaction(pool: web::Data<DbPool>, actor: ApiActor) -> AppResu
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Rewrites a SQLite file created before
-/// incremental mode, so it gives freed space back from then on. Writes wait
-/// while it runs; follow it with `GET /api/storage/cleanup/status`.
+/// Gives the space deleted data held back to
+/// the disk: on SQLite it rewrites a file created before incremental mode, on
+/// Postgres it rewrites each table retention deletes from (`VACUUM FULL`),
+/// locking that table while it does. Follow it with
+/// `GET /api/storage/cleanup/status`, which lists each table rewritten.
 pub async fn compact(
     pool: web::Data<DbPool>,
     job: web::Data<CleanupJob>,
@@ -281,7 +283,9 @@ pub async fn compact(
         CleanupState,
         crate::models::CleanupKind,
         CleanupStatus,
+        crate::models::CompactedTable,
         Compaction,
+        crate::models::TableSize,
         SourceMapGcResult,
     ))
 )]

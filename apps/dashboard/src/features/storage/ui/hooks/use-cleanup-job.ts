@@ -4,7 +4,12 @@ import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { storageQueries } from '@/features/storage/api/queries';
-import { elapsed, removedParts } from '@/features/storage/model/retention';
+import {
+  compactedBytes,
+  elapsed,
+  removedParts,
+} from '@/features/storage/model/retention';
+import { formatBytes } from '@/shared/lib/utils';
 
 /** How often a running cleanup is asked for its progress. */
 const POLL_MS = 2000;
@@ -87,9 +92,16 @@ function announce(
   const compacting = job.kind === 'compaction';
   const id = compacting ? COMPACTION_TOAST : undefined;
   if (job.state === 'completed') {
+    // Postgres reports each table it rewrote; SQLite only that it is done.
+    const freed =
+      job.compacted.length > 0
+        ? t('toasts.compactedFreed', {
+            size: formatBytes(compactedBytes(job.compacted)),
+          })
+        : undefined;
     toast.success(
       compacting ? t('toasts.compacted') : summarizeRemoved(job.removed, t),
-      { id },
+      { id, description: freed },
     );
   } else {
     toast.error(

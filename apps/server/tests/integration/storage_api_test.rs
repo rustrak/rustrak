@@ -1335,17 +1335,436 @@ async fn a_new_database_is_never_compacted() {
     assert_eq!(post_compaction(&app, &token).await.status(), 400);
 }
 
+/// A relation's whole size on disk: heap, TOAST and indexes.
+#[cfg(feature = "postgres")]
+async fn total_size(pool: &DbPool, table: &str) -> i64 {
+    sqlx::query_scalar("SELECT pg_total_relation_size($1::regclass)")
+        .bind(table)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// The entry for `table` in a list of per-table objects.
+#[cfg(feature = "postgres")]
+fn entry<'a>(list: &'a Value, table: &str) -> &'a Value {
+    list.as_array()
+        .and_then(|l| l.iter().find(|t| t["table"] == table))
+        .unwrap_or_else(|| panic!("no {table} in {list}"))
+}
+
+/// What retention leaves on Postgres: most of `events` deleted and vacuumed,
+/// so the space is free inside the table but still on disk. Compacting gives
+/// it back, reports the sizes it measured, and every row left reads back,
+/// including the ones compressed with a dictionary.
 #[cfg(feature = "postgres")]
 #[actix_web::test]
-async fn postgres_never_needs_a_compaction() {
+async fn compacting_postgres_gives_the_space_of_deleted_rows_back() {
+    use super::payload_storage_test::{event, insert_events, issue};
+    use rustrak::db::payload;
+
     let db = TestDb::new().await;
-    let admin = seed_user(&db.pool, "admin@x.com", UserRole::Admin).await;
-    let token = token_for(&db.pool, admin.id).await;
-    let app = storage_app(&db.pool, None).await;
+    let pool = &db.pool;
+    let admin = seed_user(pool, "admin@x.com", UserRole::Admin).await;
+    let token = token_for(pool, admin.id).await;
+    let project = create_test_project(pool, "bloated").await.id;
+    let (issue, grouping) = issue(pool, project).await;
+    insert_events(pool, project, (issue.id, grouping), 0, 500).await;
+    sqlx::query("ANALYZE events").execute(pool).await.unwrap();
+    assert_eq!(payload::train_due(pool).await.unwrap().len(), 1);
+    insert_events(pool, project, (issue.id, grouping), 500, 4_500).await;
+    // Random ids, so the rows kept are spread over the whole table, as the
+    // newest rows retention keeps are among the free space it leaves.
+    sqlx::query("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id LIMIT 200)")
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query("VACUUM events").execute(pool).await.unwrap();
+    let before = total_size(pool, "events").await;
+    let app = storage_app(pool, None).await;
 
     let body: Value = test::read_body_json(get_compaction(&app, &token).await).await;
-    assert_eq!(body["needed"], false, "autovacuum gives the space back");
-    assert_eq!(post_compaction(&app, &token).await.status(), 400);
+    assert_eq!(body["needed"], true, "{body}");
+    assert_eq!(
+        body["reclaimable_bytes"],
+        Value::Null,
+        "no estimate: {body}"
+    );
+    let listed = entry(&body["tables"], "events");
+    assert_eq!(
+        listed["table_bytes"].as_i64().unwrap() + listed["index_bytes"].as_i64().unwrap(),
+        before
+    );
+
+    assert_eq!(post_compaction(&app, &token).await.status(), 202);
+    let done = wait_for_cleanup(&app, &token).await;
+    assert_eq!(done["state"], "completed", "{done}");
+    assert_eq!(done["kind"], "compaction");
+    let after = total_size(pool, "events").await;
+    assert!(after * 4 < before, "{before} bytes before, {after} after");
+    let reported = entry(&done["compacted"], "events");
+    assert_eq!(reported["bytes_before"], before, "{done}");
+    assert_eq!(reported["bytes_after"], after, "{done}");
+
+    payload::forget_dictionaries();
+    let kept: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM events")
+        .fetch_all(pool)
+        .await
+        .unwrap();
+    assert_eq!(kept.len(), 200);
+    let mut with_dictionary = 0;
+    for id in kept {
+        let (stored, _) = crate::common::stored_payload(pool, "events", id).await;
+        if payload::dictionary_id(&stored.unwrap()).unwrap().is_some() {
+            with_dictionary += 1;
+        }
+        let req = test::TestRequest::get()
+            .uri(&format!(
+                "/api/projects/{project}/issues/{}/events/{id}",
+                issue.id
+            ))
+            .insert_header(bearer(&token))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 200);
+        let body: Value = test::read_body_json(resp).await;
+        let i = usize::from_str_radix(body["data"]["event_id"].as_str().unwrap(), 16).unwrap();
+        assert_eq!(body["data"], event(i));
+    }
+    assert!(
+        with_dictionary > 100,
+        "{with_dictionary} rows used the dictionary"
+    );
+}
+
+/// A table another session is reading cannot be rewritten: the compaction
+/// waits at most its lock timeout, fails saying why, and leaves the table as
+/// it was. Meanwhile a second compaction is refused.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn a_compaction_that_cannot_lock_a_table_fails_and_changes_nothing() {
+    let db = TestDb::new().await;
+    let pool = &db.pool;
+    let admin = seed_user(pool, "admin@x.com", UserRole::Admin).await;
+    let token = token_for(pool, admin.id).await;
+    let tables = ["logs", "events", "transactions", "spans"];
+    let mut before = Vec::new();
+    for table in tables {
+        before.push(total_size(pool, table).await);
+    }
+    let mut reader = pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE logs, events, transactions, spans IN ACCESS SHARE MODE")
+        .execute(&mut *reader)
+        .await
+        .unwrap();
+    let app = storage_app(pool, None).await;
+
+    assert_eq!(post_compaction(&app, &token).await.status(), 202);
+    assert_eq!(
+        post_compaction(&app, &token).await.status(),
+        409,
+        "one at a time"
+    );
+    let done = wait_for_cleanup(&app, &token).await;
+    reader.rollback().await.unwrap();
+
+    assert_eq!(done["state"], "failed", "{done}");
+    let error = done["error"].as_str().unwrap();
+    assert!(error.contains("lock"), "{error}");
+    assert_eq!(done["compacted"], json!([]), "{done}");
+    for (table, size) in tables.into_iter().zip(before) {
+        assert_eq!(total_size(pool, table).await, size, "{table}");
+    }
+}
+
+/// An envelope with `event_id` in its header and one item per `(type, payload)`.
+#[cfg(feature = "postgres")]
+fn envelope(event_id: &str, items: &[(&str, String)]) -> Vec<u8> {
+    let mut out = format!("{}\n", json!({ "event_id": event_id }));
+    for (ty, payload) in items {
+        let mut header = json!({ "type": ty, "length": payload.len() });
+        if *ty == "log" {
+            header["content_type"] = json!("application/vnd.sentry.items.log+json");
+        }
+        out.push_str(&format!("{header}\n{payload}\n"));
+    }
+    out.into_bytes()
+}
+
+#[cfg(feature = "postgres")]
+fn error_item(id: &str) -> (&'static str, String) {
+    let event = json!({
+        "event_id": id, "timestamp": 1704801600.0_f64, "platform": "python", "level": "error",
+        "exception": { "values": [{ "type": "ValueError", "value": "boom" }] }
+    });
+    ("event", event.to_string())
+}
+
+#[cfg(feature = "postgres")]
+fn transaction_item(id: &str) -> (&'static str, String) {
+    let txn = json!({
+        "event_id": id, "type": "transaction", "transaction": "/api/test",
+        "start_timestamp": 1704801590.0_f64, "timestamp": 1704801600.0_f64,
+        "spans": [{ "op": "db", "description": "SELECT 1" }]
+    });
+    ("transaction", txn.to_string())
+}
+
+#[cfg(feature = "postgres")]
+fn span_item() -> (&'static str, String) {
+    let span = json!({
+        "span_id": &Uuid::new_v4().simple().to_string()[..16],
+        "trace_id": Uuid::new_v4().simple().to_string(), "op": "http.client",
+        "start_timestamp": 1704801590.0_f64, "timestamp": 1704801590.5_f64
+    });
+    ("span", span.to_string())
+}
+
+#[cfg(feature = "postgres")]
+fn log_item() -> (&'static str, String) {
+    let logs = json!({ "items": [{
+        "timestamp": 1704801600.0_f64, "trace_id": "5b8efff798038103d269b633813fc60c",
+        "level": "error", "body": "boom"
+    }]});
+    ("log", logs.to_string())
+}
+
+/// What an SDK gets for `body`, and how long it waited.
+#[cfg(feature = "postgres")]
+async fn send<S>(
+    app: &S,
+    project: i32,
+    key: &str,
+    body: Vec<u8>,
+) -> (
+    actix_web::http::StatusCode,
+    Option<String>,
+    Option<String>,
+    std::time::Duration,
+)
+where
+    S: actix_web::dev::Service<
+        actix_http::Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    >,
+{
+    let started = std::time::Instant::now();
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/{project}/envelope/"))
+        .insert_header(("X-Sentry-Auth", format!("Sentry sentry_key={key}")))
+        .insert_header(("Content-Type", "application/x-sentry-envelope"))
+        .set_payload(body)
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    let header = |name| {
+        resp.headers()
+            .get(name)
+            .map(|v| v.to_str().unwrap().to_string())
+    };
+    (
+        resp.status(),
+        header("Retry-After"),
+        header("X-Sentry-Rate-Limits"),
+        started.elapsed(),
+    )
+}
+
+/// Starts a compaction that stops at `table`: another session reads it, so
+/// the compaction queues for its lock and, queued, blocks every later query
+/// on the table exactly as the rewrite itself would. Returns once it waits
+/// there; committing the returned session lets it go on.
+#[cfg(feature = "postgres")]
+async fn compaction_stopped_at<S>(
+    pool: &DbPool,
+    app: &S,
+    token: &str,
+    table: &str,
+) -> sqlx::PgConnection
+where
+    S: actix_web::dev::Service<
+        actix_http::Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    >,
+{
+    use sqlx::Connection;
+    let mut reader = sqlx::PgConnection::connect_with(&pool.connect_options())
+        .await
+        .unwrap();
+    sqlx::query("BEGIN").execute(&mut reader).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "LOCK TABLE {table} IN ACCESS SHARE MODE"
+    )))
+    .execute(&mut reader)
+    .await
+    .unwrap();
+    assert_eq!(post_compaction(app, token).await.status(), 202);
+    crate::common::eventually(|| async {
+        let queued: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE relation = $1::regclass \
+             AND mode = 'AccessExclusiveLock' AND NOT granted)",
+        )
+        .bind(table)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        queued.then_some(())
+    })
+    .await;
+    reader
+}
+
+/// While the compaction rewrites `spans`, what would be written into it on
+/// the request path (transactions and standalone spans) is turned away at
+/// once with Relay's per-category 429, so it never queues on the lock and
+/// holds the pool. Errors are spooled and stored, an envelope mixing both
+/// keeps its error, logs (another table) are kept, the dashboard still
+/// reads, and once the compaction is over everything is taken again.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn a_compaction_turns_away_only_what_the_table_it_rewrites_would_block() {
+    let db = TestDb::new().await;
+    let pool = &db.pool;
+    let admin = seed_user(pool, "admin@x.com", UserRole::Admin).await;
+    let token = token_for(pool, admin.id).await;
+    let (project, key) = crate::common::create_ingest_project(pool, "compacting").await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let state = crate::common::state(pool, crate::common::config_with_ingest_dir(dir.path())).await;
+    let app = crate::common::app_with(&state).await;
+    let mut reader = compaction_stopped_at(pool, &app, &token, "spans").await;
+
+    let shed = |(status, retry_after, limits, waited): (_, Option<String>, Option<String>, _)| {
+        assert_eq!(status, 429);
+        assert_eq!(retry_after.as_deref(), Some("10"));
+        assert_eq!(limits.as_deref(), Some("10:transaction;span:organization"));
+        assert!(waited < std::time::Duration::from_secs(1), "{waited:?}");
+    };
+    let error = Uuid::new_v4().simple().to_string();
+    let accepted = send(&app, project, &key, envelope(&error, &[error_item(&error)])).await;
+    assert_eq!(accepted.0, 200);
+    assert_eq!(accepted.2, None, "an error is not limited");
+    let tx = Uuid::new_v4().simple().to_string();
+    shed(send(&app, project, &key, envelope(&tx, &[transaction_item(&tx)])).await);
+    shed(send(&app, project, &key, envelope(&tx, &[span_item()])).await);
+    let mixed = Uuid::new_v4().simple().to_string();
+    shed(
+        send(
+            &app,
+            project,
+            &key,
+            envelope(&mixed, &[error_item(&mixed), transaction_item(&mixed)]),
+        )
+        .await,
+    );
+    let log = Uuid::new_v4().simple().to_string();
+    assert_eq!(
+        send(&app, project, &key, envelope(&log, &[log_item()]))
+            .await
+            .0,
+        200,
+        "logs is not being rewritten"
+    );
+
+    // Many SDKs at once: none waits on the lock, so the pool stays free for
+    // a dashboard read of a table nobody rewrites.
+    let started = std::time::Instant::now();
+    let senders = (0..20).map(|_| {
+        let id = Uuid::new_v4().simple().to_string();
+        let body = envelope(&id, &[transaction_item(&id)]);
+        send(&app, project, &key, body)
+    });
+    let read = async {
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/projects/{project}/issues"))
+            .insert_header(bearer(&token))
+            .to_request();
+        test::call_service(&app, req).await.status()
+    };
+    let (sent, read) = tokio::join!(futures_util::future::join_all(senders), read);
+    assert_eq!(read, 200);
+    for response in sent {
+        shed(response);
+    }
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+
+    sqlx::query("COMMIT").execute(&mut reader).await.unwrap();
+    let done = wait_for_cleanup(&app, &token).await;
+    assert_eq!(done["state"], "completed", "{done}");
+    entry(&done["compacted"], "spans");
+    let after = Uuid::new_v4().simple().to_string();
+    let accepted = send(
+        &app,
+        project,
+        &key,
+        envelope(&after, &[transaction_item(&after)]),
+    )
+    .await;
+    assert_eq!((accepted.0.as_u16(), accepted.2), (200, None));
+
+    crate::common::eventually(|| async {
+        let events: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        (events == 2).then_some(())
+    })
+    .await;
+    let stored: (Vec<Uuid>, i64) = sqlx::query_as(
+        "SELECT (SELECT array_agg(event_id) FROM transactions), (SELECT COUNT(*) FROM logs)",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, (vec![Uuid::parse_str(&after).unwrap()], 1));
+}
+
+/// Rewriting `logs` turns away logs only: transactions are kept.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn a_compaction_of_logs_turns_away_logs_only() {
+    let db = TestDb::new().await;
+    let pool = &db.pool;
+    let admin = seed_user(pool, "admin@x.com", UserRole::Admin).await;
+    let token = token_for(pool, admin.id).await;
+    let (project, key) = crate::common::create_ingest_project(pool, "compacting").await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let state = crate::common::state(pool, crate::common::config_with_ingest_dir(dir.path())).await;
+    let app = crate::common::app_with(&state).await;
+    let mut reader = compaction_stopped_at(pool, &app, &token, "logs").await;
+
+    let id = Uuid::new_v4().simple().to_string();
+    let (status, retry_after, limits, waited) =
+        send(&app, project, &key, envelope(&id, &[log_item()])).await;
+    assert_eq!(status, 429);
+    assert_eq!(retry_after.as_deref(), Some("10"));
+    assert_eq!(limits.as_deref(), Some("10:log_item:organization"));
+    assert!(waited < std::time::Duration::from_secs(1), "{waited:?}");
+    let tx = Uuid::new_v4().simple().to_string();
+    assert_eq!(
+        send(&app, project, &key, envelope(&tx, &[transaction_item(&tx)]))
+            .await
+            .0,
+        200
+    );
+
+    sqlx::query("COMMIT").execute(&mut reader).await.unwrap();
+    assert_eq!(wait_for_cleanup(&app, &token).await["state"], "completed");
+    assert_eq!(
+        send(&app, project, &key, envelope(&id, &[log_item()]))
+            .await
+            .0,
+        200
+    );
+    let logs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM logs")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    assert_eq!(logs, 1);
 }
 
 #[actix_web::test]
@@ -1364,10 +1783,11 @@ async fn a_compaction_needs_twice_the_live_data_free() {
     let compaction = |free| rustrak::models::Compaction {
         needed: true,
         file_bytes: 300,
-        live_bytes: 100,
-        reclaimable_bytes: 200,
+        live_bytes: Some(100),
+        reclaimable_bytes: Some(200),
         required_disk_bytes: 200,
         free_disk_bytes: free,
+        tables: Vec::new(),
     };
     assert!(compaction(Some(200)).has_room());
     assert!(

@@ -77,13 +77,15 @@ async fn serve(config: config::Config) -> std::io::Result<()> {
     })?;
 
     // A SQLite file from before incremental mode never shrinks; say so once.
+    // On Postgres compacting is a tool on offer, not a state to warn about.
+    #[cfg(feature = "sqlite")]
     match rustrak::db::maintenance::compaction(&db_pool).await {
         Ok(compaction) if compaction.needed => log::warn!(
             "This SQLite database was created by an earlier version of Rustrak and \
              never gives deleted data's space back to the disk ({} MiB could be freed \
              now). Compact it once from Settings > Storage; databases created by this \
              version never need it. https://rustrak.dev/configuration/database",
-            compaction.reclaimable_bytes / (1024 * 1024)
+            compaction.reclaimable_bytes.unwrap_or(0) / (1024 * 1024)
         ),
         Ok(_) => {}
         Err(e) => log::warn!("Could not read the database's compaction state: {e}"),

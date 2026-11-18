@@ -18,7 +18,7 @@ use uuid::Uuid;
 const BROWSERS: [&str; 3] = ["Chrome", "Firefox", "Safari"];
 
 /// An error event the way an SDK sends it, varied by `i`.
-fn event(i: usize) -> Value {
+pub(crate) fn event(i: usize) -> Value {
     json!({
         "event_id": format!("{i:032x}"),
         "timestamp": 1_700_000_000.0 + i as f64,
@@ -77,7 +77,7 @@ fn denormalized() -> DenormalizedFields {
 }
 
 /// An issue and its grouping, with no event yet.
-async fn issue(pool: &DbPool, project_id: i32) -> (rustrak::models::Issue, i32) {
+pub(crate) async fn issue(pool: &DbPool, project_id: i32) -> (rustrak::models::Issue, i32) {
     let issue = IssueService::create(
         pool,
         project_id,
@@ -131,7 +131,7 @@ async fn create_event(
 }
 
 /// `count` events through the digest's own batch insert.
-async fn insert_events(
+pub(crate) async fn insert_events(
     pool: &DbPool,
     project_id: i32,
     (issue_id, grouping): (Uuid, i32),
@@ -643,6 +643,16 @@ async fn after_an_upgrade_the_first_dictionary_waits_for_new_rows_and_learns_onl
     let (old, old_grouping) = issue(&pool, project.id).await;
     insert_events(&pool, project.id, (old.id, old_grouping), 0, 2_000).await;
     make_issue_legacy(&pool, old.id).await;
+    // The sample is read in page order and its order shapes the dictionary.
+    // The UPDATE above leaves dead rows whose space pruning or autovacuum
+    // frees at random times, and a new row placed there would be read out
+    // of order: a different dictionary from the same rows. Rewritten, the
+    // table has room only at its end, as the fresh one does.
+    #[cfg(feature = "postgres")]
+    sqlx::query("VACUUM FULL events")
+        .execute(&pool)
+        .await
+        .unwrap();
     let (new, grouping) = issue(&pool, project.id).await;
     insert_events(&pool, project.id, (new.id, grouping), 2_000, 499).await;
     analyze(&pool).await;

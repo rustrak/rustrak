@@ -1,5 +1,6 @@
 import type {
   CleanupCounts,
+  CompactedTable,
   ProjectStorage,
   RetentionResponse,
   RetentionSettings,
@@ -298,4 +299,9 @@ export function elapsed(since: string | null, now: number): string {
     ? Math.max(0, Math.floor((now - Date.parse(since)) / 1000))
     : 0;
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+/** What a Postgres compaction gave back to the disk, over the tables it rewrote. */
+export function compactedBytes(tables: CompactedTable[]): number {
+  return tables.reduce((sum, t) => sum + t.bytes_before - t.bytes_after, 0);
 }

@@ -381,20 +381,6 @@ export const zCleanupState = z.enum([
 ]);
 
 /**
- * The cleanup job as the API reports it. Kept in memory: a restart forgets
- * it, and a run cut short by one is simply run again, since every batch it
- * committed is already gone.
- */
-export const zCleanupStatus = z.object({
-    error: z.nullable(z.string()),
-    finished_at: z.nullable(z.iso.datetime({ offset: true })),
-    kind: zCleanupKind,
-    removed: zCleanupCounts,
-    started_at: z.nullable(z.iso.datetime({ offset: true })),
-    state: zCleanupState
-});
-
-/**
  * Maps a path as it appears in a stack trace to the path in the repository.
  */
 export const zCodeMapping = z.object({
@@ -410,21 +396,29 @@ export const zCommentRequest = z.object({
 });
 
 /**
- * Whether the SQLite file can give the space a cleanup frees back to the
- * disk, and what compacting it once would take.
- *
- * A database created before Rustrak set `auto_vacuum = INCREMENTAL` keeps
- * SQLite's default, `NONE`: its freed pages are reused but the file never
- * shrinks. One `VACUUM` rewrites it in incremental mode. Always
- * `needed: false` on Postgres, whose autovacuum gives the space back.
+ * One table a Postgres compaction rewrote. Sizes are heap, TOAST and
+ * indexes together (`pg_total_relation_size`).
  */
-export const zCompaction = z.object({
-    file_bytes: z.int(),
-    free_disk_bytes: z.nullable(z.int()),
-    live_bytes: z.int(),
-    needed: z.boolean(),
-    reclaimable_bytes: z.int(),
-    required_disk_bytes: z.int()
+export const zCompactedTable = z.object({
+    bytes_after: z.int(),
+    bytes_before: z.int(),
+    duration_ms: z.int(),
+    table: z.string()
+});
+
+/**
+ * The cleanup job as the API reports it. Kept in memory: a restart forgets
+ * it, and a run cut short by one is simply run again, since every batch it
+ * committed is already gone.
+ */
+export const zCleanupStatus = z.object({
+    compacted: z.array(zCompactedTable),
+    error: z.nullable(z.string()),
+    finished_at: z.nullable(z.iso.datetime({ offset: true })),
+    kind: zCleanupKind,
+    removed: zCleanupCounts,
+    started_at: z.nullable(z.iso.datetime({ offset: true })),
+    state: zCleanupState
 });
 
 export const zConfirmSsoLinkRequest = z.object({
@@ -1961,6 +1955,38 @@ export const zStorageSummary = z.object({
 
 export const zSubscriptionResponse = z.object({
     is_subscribed: z.boolean()
+});
+
+/**
+ * A table's size on disk: `pg_table_size` (heap and TOAST) and
+ * `pg_indexes_size`, which add up to `pg_total_relation_size`.
+ */
+export const zTableSize = z.object({
+    index_bytes: z.int(),
+    table: z.string(),
+    table_bytes: z.int()
+});
+
+/**
+ * Whether the database can give the space a cleanup frees back to the
+ * disk, and what compacting it would take.
+ *
+ * SQLite: a database created before Rustrak set `auto_vacuum =
+ * INCREMENTAL` keeps SQLite's default, `NONE`: its freed pages are reused
+ * but the file never shrinks. One `VACUUM` rewrites it in incremental mode.
+ *
+ * Postgres: always `needed`. Vacuum makes a deleted row's space reusable
+ * but leaves it in the table's files; only rewriting the table (`VACUUM
+ * FULL`) hands it back, so the compaction is on offer at any time.
+ */
+export const zCompaction = z.object({
+    file_bytes: z.int(),
+    free_disk_bytes: z.nullable(z.int()),
+    live_bytes: z.nullable(z.int()),
+    needed: z.boolean(),
+    reclaimable_bytes: z.nullable(z.int()),
+    required_disk_bytes: z.int(),
+    tables: z.array(zTableSize)
 });
 
 /**
@@ -4380,7 +4406,7 @@ export const zStoragePreviewCleanupResponse = zCleanupCounts;
 export const zStorageGetCleanupStatusResponse = zCleanupStatus;
 
 /**
- * Whether the SQLite file gives freed space back, and what compacting it takes
+ * Whether the database gives freed space back, and what compacting it takes
  */
 export const zStorageGetCompactionResponse = zCompaction;
 

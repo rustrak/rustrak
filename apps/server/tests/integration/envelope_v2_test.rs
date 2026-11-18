@@ -61,6 +61,72 @@ fn error_envelope(event_id: &str) -> Vec<u8> {
     .into_bytes()
 }
 
+/// A lock Rustrak did not take (a manual `VACUUM FULL`, pg_repack's swap):
+/// ingest writes a transaction inline and spools an error for the digest, so
+/// both wait for the lock instead of failing, and nothing sent meanwhile is
+/// lost once the tables are released. Rustrak's own compaction turns the
+/// inline writes away instead (`storage_api_test`).
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn ingest_waits_out_a_compaction_lock_and_loses_nothing() {
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) = create_ingest_project(&db.pool, "Compacting").await;
+    let dir = TempDir::new().unwrap();
+    let app =
+        crate::common::app_with_config(&db.pool, crate::common::config_with_ingest_dir(dir.path()))
+            .await;
+    let mut compaction = db.pool.begin().await.unwrap();
+    sqlx::query("LOCK TABLE events, transactions, spans IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *compaction)
+        .await
+        .unwrap();
+
+    let ids: Vec<String> = (0..6)
+        .map(|_| Uuid::new_v4().simple().to_string())
+        .collect();
+    let requests = ids.iter().enumerate().map(|(i, id)| {
+        let body = if i % 2 == 0 {
+            transaction_envelope(id, project_id, &sentry_key)
+        } else {
+            error_envelope(id)
+        };
+        let req = test::TestRequest::post()
+            .uri(&format!("/api/{project_id}/envelope/"))
+            .insert_header(("X-Sentry-Auth", format!("Sentry sentry_key={sentry_key}")))
+            .insert_header(("Content-Type", "application/x-sentry-envelope"))
+            .set_payload(body)
+            .to_request();
+        test::call_service(&app, req)
+    });
+    let release = async {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM transactions")
+            .fetch_one(&mut *compaction)
+            .await
+            .unwrap();
+        compaction.commit().await.unwrap();
+        stored
+    };
+    let (responses, stored_while_locked) =
+        tokio::join!(futures_util::future::join_all(requests), release);
+
+    assert_eq!(stored_while_locked, 0, "the writes waited for the lock");
+    for resp in responses {
+        assert_eq!(resp.status(), 200);
+    }
+    crate::common::eventually(|| async {
+        let counts: (i64, i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM transactions), (SELECT COUNT(*) FROM spans), \
+             (SELECT COUNT(*) FROM events)",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+        (counts == (3, 3, 3)).then_some(())
+    })
+    .await;
+}
+
 /// Regression guard: error envelope must still work after EnvelopeItemKind refactor.
 #[actix_web::test]
 async fn test_error_envelope_still_works_after_refactor() {

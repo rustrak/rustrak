@@ -141,6 +141,9 @@ pub struct CleanupJob {
     snapshot: Arc<Mutex<Option<CachedSnapshot>>>,
     /// Held by the one read of the figures in flight.
     reading: Arc<tokio::sync::Mutex<()>>,
+    /// The table a Postgres compaction is rewriting (or queued to lock):
+    /// ingest turns away what it would write into it.
+    rewriting: Arc<Mutex<Option<String>>>,
 }
 
 /// A snapshot and when its read began.
@@ -201,14 +204,23 @@ enum CleanupPlan {
         settings: RetentionSettings,
         store: Arc<dyn SourceMapStore>,
     },
-    /// Rewrites a SQLite file created before incremental mode. Deletes
-    /// nothing, but runs as the job so it never overlaps a cleanup.
-    Compact,
+    /// Rewrites a SQLite file created before incremental mode, or the
+    /// Postgres tables retention deletes from. Deletes nothing, but runs as
+    /// the job so it never overlaps a cleanup.
+    Compact(Arc<Mutex<Option<String>>>),
 }
 
 impl CleanupJob {
     pub fn status(&self) -> CleanupStatus {
         lock(&self.status).clone()
+    }
+
+    /// The table a compaction holds locked right now, if any.
+    pub fn rewriting(&self) -> Option<String> {
+        self.rewriting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// The storage page's figures.
@@ -402,10 +414,11 @@ impl CleanupJob {
         Ok((started, handle))
     }
 
-    /// Starts compacting a SQLite file created before incremental mode, in
-    /// the background. Refuses with `Validation` when the file needs no
-    /// compaction or the disk has no room for it, and with `Conflict` while
-    /// a cleanup runs.
+    /// Starts compacting in the background (see
+    /// [`crate::db::maintenance::compact`]). Refuses with `Validation` when a
+    /// SQLite file needs no compaction or its disk has no room for it, and
+    /// with `Conflict` while a cleanup runs. Never scheduled: only a person
+    /// starts one.
     pub async fn start_compaction(&self, pool: DbPool) -> AppResult<CleanupStatus> {
         let compaction = crate::db::maintenance::compaction(&pool).await?;
         if !compaction.needed {
@@ -423,7 +436,7 @@ impl CleanupJob {
         tokio::spawn(Self::execute(
             Arc::clone(&self.status),
             pool,
-            CleanupPlan::Compact,
+            CleanupPlan::Compact(Arc::clone(&self.rewriting)),
         ));
         Ok(started)
     }
@@ -489,9 +502,13 @@ impl CleanupJob {
                     lock(&progress).removed = counts.clone();
                     Ok(counts)
                 }
-                CleanupPlan::Compact => crate::db::maintenance::compact(&pool)
+                CleanupPlan::Compact(rewriting) => {
+                    crate::db::maintenance::compact(&pool, &rewriting, |table| {
+                        lock(&progress).compacted.push(table)
+                    })
                     .await
-                    .map(|()| CleanupCounts::default()),
+                    .map(|()| CleanupCounts::default())
+                }
             };
             // The rows are gone either way; giving their space back is best
             // effort, so a failure here is logged rather than failing the run.

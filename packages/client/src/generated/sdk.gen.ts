@@ -2991,9 +2991,11 @@ export class Storage extends HeyApiClient {
     }
     
     /**
-     * Rewrites a SQLite file created before
-     * incremental mode, so it gives freed space back from then on. Writes wait
-     * while it runs; follow it with `GET /api/storage/cleanup/status`.
+     * Gives the space deleted data held back to
+     * the disk: on SQLite it rewrites a file created before incremental mode, on
+     * Postgres it rewrites each table retention deletes from (`VACUUM FULL`),
+     * locking that table while it does. Follow it with
+     * `GET /api/storage/cleanup/status`, which lists each table rewritten.
      */
     public compact<ThrowOnError extends boolean = false>(options?: Options<StorageCompactData, ThrowOnError>): RequestResult<StorageCompactResponses, StorageCompactErrors, ThrowOnError> {
         return (options?.client ?? this.client).post<StorageCompactResponses, StorageCompactErrors, ThrowOnError>({
