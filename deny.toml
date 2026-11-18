@@ -13,11 +13,12 @@ ignore = [
     # signatures with the provider's public key and never holds an RSA private
     # key. No patched release exists yet: drop this once `rsa` ships one.
     { id = "RUSTSEC-2023-0071", reason = "only RSA public-key verification is used (OIDC ID tokens)" },
-    # Timing side channels in `crypto-bigint` 0.5, pulled in by `openidconnect`
-    # through `p256`/`p384`. Rustrak only verifies ID token signatures with the
-    # provider's public key; no secret ever goes through it. The fix is 0.7.6,
-    # which `openidconnect` 4 cannot use yet: drop this once it moves to it.
-    { id = "RUSTSEC-2026-0387", reason = "only ECDSA public-key verification is used (OIDC ID tokens)" },
+    # `chrono` and `chrono-tz` are flagged unmaintained, with no fixed release.
+    # chrono comes in through sqlx, oauth2, openidconnect, rmcp, schemars and
+    # croner, so dropping it is not in our hands; the way out is moving the
+    # server's own date and timezone code to `jiff` once those crates allow it.
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained, no alternative reachable: required by sqlx, openidconnect, rmcp, croner" },
+    { id = "RUSTSEC-2026-0555", reason = "unmaintained, no fixed release; timezone handling would move to jiff together with chrono" },
     # `zip` 7, pulled in by `symbolic-debuginfo` (up to 13.9 it requires ^7.2):
     # all four are in `ZipArchive::extract` / `ZipStreamReader::extract`,
     # which neither symbolic nor Rustrak calls; both only read entries. Rustrak's
@@ -26,6 +27,12 @@ ignore = [
     { id = "RUSTSEC-2026-0368", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
     { id = "RUSTSEC-2026-0369", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
     { id = "RUSTSEC-2026-0429", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
+    { id = "RUSTSEC-2026-0546", reason = "zip 7 extract() is never called (symbolic-debuginfo reads entries only)" },
+    # symbolic builds zip 7 with only `deflate`: no `aes-crypto` (0545), no
+    # `legacy-zip` (0547), and it never uses `ZipStreamReader` (0548).
+    { id = "RUSTSEC-2026-0545", reason = "zip 7 is built without aes-crypto (symbolic-debuginfo enables deflate only)" },
+    { id = "RUSTSEC-2026-0547", reason = "zip 7 is built without legacy-zip (symbolic-debuginfo enables deflate only)" },
+    { id = "RUSTSEC-2026-0548", reason = "ZipStreamReader is never used (symbolic-debuginfo reads through ZipArchive)" },
     # `zstd` 0.13 / `zstd-safe` 7, pulled in by `symbolic-debuginfo` (up to
     # 14.0-alpha it requires ^0.13.1), which only calls `zstd::bulk::decompress`
     # on compressed ELF sections. 0391 is `with_context` stream reuse, 0398
@@ -59,16 +66,6 @@ allow = [
     "MPL-2.0",
 ]
 private = { ignore = true }
-
-# zstd-sys uses "MIT/Apache-2.0" (slash = non-SPDX) instead of SPDX "MIT OR Apache-2.0".
-# cargo-deny can't parse the slash form, so we clarify it manually using the actual license files.
-[[licenses.clarify]]
-name = "zstd-sys"
-expression = "MIT OR Apache-2.0"
-license-files = [
-    { path = "LICENSE.Mit", hash = 0x94c25aa8 },
-    { path = "LICENSE.Apache-2.0", hash = 0x1ea3b7b0 },
-]
 
 [bans]
 multiple-versions = "warn"

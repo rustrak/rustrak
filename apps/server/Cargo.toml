@@ -150,7 +150,7 @@ sha1 = "0.11"
 tempfile = "3.27.0"
 
 # Email sending
-lettre = { version = "0.11.23", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "builder", "smtp-transport"] }
+lettre = { version = "0.11.24", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "builder", "smtp-transport"] }
 
 # Global allocator. glibc malloc keeps one arena per thread and never gives an
 # arena back once its thread exits; the blocking pool creates and retires threads
