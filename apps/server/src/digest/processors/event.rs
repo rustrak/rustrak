@@ -3,6 +3,7 @@ use super::feedback::{self, Feedback, NewAttachment};
 use super::{InFlightDigests, InFlightGuard};
 use crate::config::SmtpSettings;
 use crate::config::{Config, RateLimitConfig};
+use crate::db::payload::{Column, Encoder};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::ingest::storage::{
@@ -470,6 +471,8 @@ impl ErrorProcessor {
                 None,
                 event_id,
                 project_id,
+                // Rolled back: no dictionary to look for.
+                &Encoder::default(),
             ),
             denormalized,
             level: like.level,
@@ -1061,8 +1064,10 @@ impl ErrorProcessor {
             metadata.remote_addr.as_deref(),
             event_id,
             project_id,
+            &check!(Encoder::current(pool, Column::Events).await),
         );
-        let data_bytes = row.data.len() + attachments.iter().map(|a| a.data.len()).sum::<usize>();
+        let data_bytes =
+            row.payload.len() + attachments.iter().map(|a| a.data.len()).sum::<usize>();
         Prepared::Ready(Box::new(PreparedEvent {
             budget,
             metadata,
@@ -1337,22 +1342,20 @@ impl ErrorProcessor {
     /// checkpoint, so this is what checkpoints the writes that never reach
     /// the digest (transactions, logs, spans, sessions, alert rows), and the
     /// log a burst deferred, right after the burst. On a timer, never in a
-    /// request; `PASSIVE` waits for no reader and no writer.
+    /// request; `PASSIVE` waits for no reader and no writer. A log grown
+    /// long, caught up or not, is made to start over
+    /// (`db::checkpoint_on_timer`).
     #[cfg(feature = "sqlite")]
     pub async fn checkpoint_when_caught_up(&self, pool: &DbPool) -> AppResult<()> {
-        if !timer_checkpoints(
+        let caught_up = timer_checkpoints(
             self.pending.counts(0).installation as usize,
             self.batch_max_events,
             self.is_halted(),
-        ) {
-            return Ok(());
-        }
+        );
         let mut committer = self.committer.lock().await;
         let conn = self.committer_conn(pool, &mut committer).await?;
-        let result = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
-            .execute(&mut *conn)
+        let result = crate::db::checkpoint_on_timer(conn, caught_up)
             .await
-            .map(drop)
             .map_err(AppError::from);
         if let Err(e) = &result {
             drop_if_broken(&mut committer, e);

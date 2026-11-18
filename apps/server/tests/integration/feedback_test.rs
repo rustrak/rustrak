@@ -1048,12 +1048,8 @@ async fn attachments_of_an_error_event_are_kept_listed_and_downloadable() {
     assert_eq!(resp.status(), 200);
     assert_eq!(test::read_body(resp).await.as_ref(), b"log");
     // Never in the event's own data.
-    let data: String = sqlx::query_scalar("SELECT CAST(data AS TEXT) FROM events WHERE id = $1")
-        .bind(event_id)
-        .fetch_one(&s.db.pool)
-        .await
-        .unwrap();
-    assert!(!data.contains("_rustrak_attachments"));
+    let data = crate::common::stored_json(&s.db.pool, "events", event_id).await;
+    assert!(!data.to_string().contains("_rustrak_attachments"));
 }
 
 /// Relay trims an event on the event's own size: a small event carrying a
@@ -1078,11 +1074,15 @@ async fn an_attachment_does_not_make_its_event_trimmed() {
     assert_eq!(resp.status(), 200);
     wait_for_issues(&s.db.pool, s.project.id, 1).await;
 
-    let data: String = sqlx::query_scalar("SELECT CAST(data AS TEXT) FROM events")
+    let id: Uuid = sqlx::query_scalar("SELECT id FROM events")
         .fetch_one(&s.db.pool)
         .await
         .unwrap();
-    assert!(data.contains(&crumb), "breadcrumb data was trimmed");
+    let data = crate::common::stored_json(&s.db.pool, "events", id).await;
+    assert!(
+        data.to_string().contains(&crumb),
+        "breadcrumb data was trimmed"
+    );
 }
 
 #[actix_web::test]

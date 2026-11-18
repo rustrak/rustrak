@@ -62,7 +62,11 @@ fn drop_malformed_item(result: AppResult<()>, item_type: &str) -> AppResult<()> 
 /// they are stored, so a slot given back after parsing would let large bodies
 /// pile up in memory past [`LARGE_BODY_SLOTS`] while the database is slow.
 ///
+/// `shed` names the categories a compaction turns away (see [`shed_by`]);
+/// the second value says whether any item was.
+///
 /// [`LARGE_BODY_SLOTS`]: crate::ingest::decompression::LARGE_BODY_SLOTS
+#[allow(clippy::too_many_arguments)]
 pub async fn process_envelope(
     processors: &Arc<Processors>,
     pool: &DbPool,
@@ -71,8 +75,10 @@ pub async fn process_envelope(
     remote_addr: Option<String>,
     ingested_at: chrono::DateTime<Utc>,
     _large_body: crate::ingest::decompression::LargeBodySlot,
-) -> AppResult<Option<String>> {
+    shed: &[&str],
+) -> AppResult<(Option<String>, bool)> {
     let mut parser = EnvelopeParser::new(body);
+    let mut turned_away = false;
     let envelope = parser.parse()?;
 
     // event_id validation is deferred until after the loop: session-only
@@ -103,6 +109,11 @@ pub async fn process_envelope(
                 );
                 continue;
             }
+        }
+        // Its table is being compacted: Relay's rate limit, siblings kept.
+        if category_of(&item_kind).is_some_and(|c| shed.contains(&c)) {
+            turned_away = true;
+            continue;
         }
         match item_kind {
             EnvelopeItemKind::Event(p) => {
@@ -284,7 +295,7 @@ pub async fn process_envelope(
 
     let Some(event_item) = event_item else {
         log::debug!("No event item in envelope");
-        return Ok(event_id);
+        return Ok((event_id, turned_away));
     };
     let (Some(event_id), Some(event_uuid)) = (event_id, event_uuid) else {
         unreachable!("an event item requires an event id");
@@ -301,7 +312,7 @@ pub async fn process_envelope(
     };
     enqueue_digest(processors, pool, event_uuid, metadata, event_item).await?;
 
-    Ok(Some(event_id))
+    Ok((Some(event_id), turned_away))
 }
 
 /// Stores an event durably and queues it for the live digest.
@@ -1139,6 +1150,28 @@ fn product_of(item: &EnvelopeItemKind) -> Option<Product> {
         EnvelopeItemKind::Event(_)
         | EnvelopeItemKind::Attachment(_)
         | EnvelopeItemKind::Other(..) => None,
+    }
+}
+
+/// The Sentry data category of an item written inline, on the request path.
+fn category_of(item: &EnvelopeItemKind) -> Option<&'static str> {
+    match item {
+        EnvelopeItemKind::Transaction(_) => Some("transaction"),
+        EnvelopeItemKind::Span(_) | EnvelopeItemKind::SpanV2Batch(_) => Some("span"),
+        EnvelopeItemKind::Log(_) => Some("log_item"),
+        _ => None,
+    }
+}
+
+/// The categories whose inline write would wait on `table` while a
+/// compaction rewrites it: a transaction writes its spans too. Errors are
+/// spooled and their digest waits, so `events` turns nothing away.
+pub fn shed_by(table: &str) -> &'static [&'static str] {
+    match table {
+        "transactions" => &["transaction"],
+        "spans" => &["transaction", "span"],
+        "logs" => &["log_item"],
+        _ => &[],
     }
 }
 

@@ -1,4 +1,4 @@
-use super::span::{insert_span_rows, SpanRow};
+use super::span::{encode_span_rows, insert_span_rows, SpanRow};
 use super::ProcessorCtx;
 use crate::error::AppResult;
 use crate::models::span_v2::{parse_span_v2_container, SpanV2Entry};
@@ -91,8 +91,9 @@ impl SpanV2Processor {
             });
         }
 
+        let rows = encode_span_rows(&ctx.pool, ctx.keep_ai_spans, rows).await?;
         let mut tx = ctx.pool.begin().await?;
-        insert_span_rows(&mut tx, ctx.project_id, ctx.keep_ai_spans, rows).await?;
+        insert_span_rows(&mut tx, ctx.project_id, rows).await?;
         tx.commit().await?;
         Ok(())
     }

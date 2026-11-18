@@ -1,9 +1,12 @@
 use super::ProcessorCtx;
+use crate::db::payload::{Column, Encoder, NO_DATA};
+use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::SpanColumns;
 use crate::protocol::{clamp_opt, extract_timestamp, is_stale};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
 use bytes::Bytes;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 use uuid::Uuid;
 
 pub struct SpanProcessor;
@@ -35,9 +38,18 @@ pub(crate) struct SpanRow {
 impl SpanRow {
     /// The row of one span object, from its own fields only: a producer that
     /// knows more (a transaction's id, trace and scope) sets it afterwards.
-    pub(crate) fn from_span(mut span: serde_json::Value) -> Self {
-        let start_timestamp = extract_timestamp(&span, "start_timestamp");
-        let timestamp = extract_timestamp(&span, "timestamp");
+    /// `data` keeps only what the columns do not ([`SpanColumns::compact`]);
+    /// `position` is the span's index in its transaction's `spans`.
+    pub(crate) fn from_span(mut span: serde_json::Value, position: usize) -> Self {
+        // To the nearest microsecond, which both backends keep: a float the
+        // SDK wrote as `.123456` parses to the f64 just below or above it,
+        // and `epoch_to_utc` truncates `.12345588` to `.123455`.
+        let micros = |key| {
+            extract_timestamp(&span, key)
+                .map(|t| t.duration_round(TimeDelta::microseconds(1)).unwrap_or(t))
+        };
+        let start_timestamp = micros("start_timestamp");
+        let timestamp = micros("timestamp");
         let duration_ms = match (start_timestamp, timestamp) {
             (Some(st), Some(ts)) => (ts - st)
                 .num_microseconds()
@@ -52,34 +64,64 @@ impl SpanRow {
             Some(span_data) => extract_gen_ai_columns(span_data, op.as_deref()),
             None => GenAiColumns::default(),
         };
-        Self {
-            transaction_id: None,
+        let columns = SpanColumns {
             span_id: text(&span, "span_id", 32),
-            trace_id: text(&span, "trace_id", 64),
-            start_timestamp,
-            timestamp,
-            duration_ms,
-            // Relay's exclusive_time is already in milliseconds.
-            exclusive_time_ms: span.get("exclusive_time").and_then(|v| v.as_f64()),
-            op,
-            gen_ai,
             parent_span_id: text(&span, "parent_span_id", 32),
+            op,
             description: span
                 .get("description")
                 .and_then(|v| v.as_str())
                 .map(str::to_string),
             status: text(&span, "status", 32),
             segment_id: text(&span, "segment_id", 32),
-            is_segment: span
-                .get("is_segment")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
-            platform: text(&span, "platform", 64),
-            release: text(&span, "release", 200),
-            environment: text(&span, "environment", 64),
+            start_timestamp,
+            timestamp,
+            // Relay's exclusive_time is already in milliseconds.
+            exclusive_time_ms: span.get("exclusive_time").and_then(|v| v.as_f64()),
             // The spec promises an object; anything else is dropped.
             tags: span.get("tags").filter(|t| t.is_object()).cloned(),
-            data: span,
+        };
+        let trace_id = text(&span, "trace_id", 64);
+        let is_segment = span
+            .get("is_segment")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let platform = text(&span, "platform", 64);
+        let release = text(&span, "release", 200);
+        let environment = text(&span, "environment", 64);
+        let data = columns.compact(span, position);
+        let SpanColumns {
+            span_id,
+            parent_span_id,
+            op,
+            description,
+            status,
+            segment_id,
+            start_timestamp,
+            timestamp,
+            exclusive_time_ms,
+            tags,
+        } = columns;
+        Self {
+            transaction_id: None,
+            span_id,
+            trace_id,
+            start_timestamp,
+            timestamp,
+            duration_ms,
+            exclusive_time_ms,
+            op,
+            gen_ai,
+            parent_span_id,
+            description,
+            status,
+            segment_id,
+            is_segment,
+            platform,
+            release,
+            environment,
+            tags,
+            data,
         }
     }
 }
@@ -88,25 +130,21 @@ impl SpanRow {
 /// 32,766 and Postgres's 65,535 bind limits.
 const SPAN_ROWS_PER_INSERT: usize = 256;
 
-/// Inserts `rows` with one multi-row INSERT per [`SPAN_ROWS_PER_INSERT`],
-/// inside the caller's transaction. One statement per span was one database
-/// round trip per span, on the ingest path the SDK waits on: a transaction
-/// with 1,000 spans spent most of its time there.
-///
-/// A standalone span already stored under the same trace and span id is
-/// skipped, which makes an SDK retry a no-op. The conflict target is a partial
-/// index on `transaction_id IS NULL`, so a transaction's children never match.
+/// The rows to insert, each with its payload compressed, before the write's
+/// transaction begins: nothing is read or compressed under SQLite's write
+/// lock.
 ///
 /// With `keep_ai_spans` false -- the project turned agents off -- every AI
 /// span is left out here, the one place all three span producers go
 /// through, and the rest of the trace is stored as usual.
-pub(crate) async fn insert_span_rows(
-    conn: &mut <crate::db::Db as sqlx::Database>::Connection,
-    project_id: i32,
+pub(crate) async fn encode_span_rows(
+    pool: &DbPool,
     keep_ai_spans: bool,
     rows: Vec<SpanRow>,
-) -> AppResult<()> {
-    let mut rows = rows
+) -> AppResult<Vec<(SpanRow, Vec<u8>)>> {
+    let encoder = Encoder::current(pool, Column::Spans).await?;
+    let mut compressor = encoder.compressor();
+    Ok(rows
         .into_iter()
         // An AI span by its attributes, or by its `op` alone when it came
         // without a `data` bag: the same test Relay applies (`is_ai_span`).
@@ -115,7 +153,28 @@ pub(crate) async fn insert_span_rows(
                 || (row.gen_ai.operation_type.is_none()
                     && !is_ai_span(&serde_json::Value::Null, row.op.as_deref()))
         })
-        .peekable();
+        .map(|row| {
+            let payload = compressor.encode(row.data.to_string().as_bytes());
+            (row, payload)
+        })
+        .collect())
+}
+
+/// Inserts `rows`, as [`encode_span_rows`] made them, with one multi-row
+/// INSERT per [`SPAN_ROWS_PER_INSERT`], inside the caller's transaction.
+/// One statement per span was one database
+/// round trip per span, on the ingest path the SDK waits on: a transaction
+/// with 1,000 spans spent most of its time there.
+///
+/// A standalone span already stored under the same trace and span id is
+/// skipped, which makes an SDK retry a no-op. The conflict target is a partial
+/// index on `transaction_id IS NULL`, so a transaction's children never match.
+pub(crate) async fn insert_span_rows(
+    conn: &mut <crate::db::Db as sqlx::Database>::Connection,
+    project_id: i32,
+    rows: Vec<(SpanRow, Vec<u8>)>,
+) -> AppResult<()> {
+    let mut rows = rows.into_iter().peekable();
     while rows.peek().is_some() {
         let mut query = sqlx::QueryBuilder::new(
             r#"INSERT INTO spans (
@@ -125,7 +184,7 @@ pub(crate) async fn insert_span_rows(
                 start_timestamp, timestamp, duration_ms, exclusive_time_ms,
                 is_segment, segment_id,
                 platform, release, environment,
-                tags, data,
+                tags, data, payload,
                 gen_ai_operation_type, gen_ai_agent_name,
                 gen_ai_request_model, gen_ai_response_model,
                 gen_ai_tool_name, gen_ai_conversation_id,
@@ -133,39 +192,43 @@ pub(crate) async fn insert_span_rows(
                 gen_ai_usage_cached_input_tokens, gen_ai_usage_reasoning_output_tokens
             ) "#,
         );
-        query.push_values(rows.by_ref().take(SPAN_ROWS_PER_INSERT), |mut row, span| {
-            row.push_bind(Uuid::new_v4())
-                .push_bind(span.transaction_id)
-                .push_bind(project_id)
-                .push_bind(span.span_id)
-                .push_bind(span.trace_id)
-                .push_bind(span.parent_span_id)
-                .push_bind(span.op)
-                .push_bind(span.description)
-                .push_bind(span.status)
-                .push_bind(span.start_timestamp)
-                .push_bind(span.timestamp)
-                .push_bind(span.duration_ms)
-                .push_bind(span.exclusive_time_ms)
-                .push_bind(span.is_segment)
-                .push_bind(span.segment_id)
-                .push_bind(span.platform)
-                .push_bind(span.release)
-                .push_bind(span.environment)
-                .push_bind(span.tags.map(sqlx::types::Json))
-                .push_bind(sqlx::types::Json(span.data))
-                .push_bind(span.gen_ai.operation_type)
-                .push_bind(span.gen_ai.agent_name)
-                .push_bind(span.gen_ai.request_model)
-                .push_bind(span.gen_ai.response_model)
-                .push_bind(span.gen_ai.tool_name)
-                .push_bind(span.gen_ai.conversation_id)
-                .push_bind(span.gen_ai.usage_input_tokens)
-                .push_bind(span.gen_ai.usage_output_tokens)
-                .push_bind(span.gen_ai.usage_total_tokens)
-                .push_bind(span.gen_ai.usage_cached_input_tokens)
-                .push_bind(span.gen_ai.usage_reasoning_output_tokens);
-        });
+        query.push_values(
+            rows.by_ref().take(SPAN_ROWS_PER_INSERT),
+            |mut row, (span, payload)| {
+                row.push_bind(Uuid::new_v4())
+                    .push_bind(span.transaction_id)
+                    .push_bind(project_id)
+                    .push_bind(span.span_id)
+                    .push_bind(span.trace_id)
+                    .push_bind(span.parent_span_id)
+                    .push_bind(span.op)
+                    .push_bind(span.description)
+                    .push_bind(span.status)
+                    .push_bind(span.start_timestamp)
+                    .push_bind(span.timestamp)
+                    .push_bind(span.duration_ms)
+                    .push_bind(span.exclusive_time_ms)
+                    .push_bind(span.is_segment)
+                    .push_bind(span.segment_id)
+                    .push_bind(span.platform)
+                    .push_bind(span.release)
+                    .push_bind(span.environment)
+                    .push_bind(span.tags.map(sqlx::types::Json))
+                    .push_bind(NO_DATA)
+                    .push_bind(payload)
+                    .push_bind(span.gen_ai.operation_type)
+                    .push_bind(span.gen_ai.agent_name)
+                    .push_bind(span.gen_ai.request_model)
+                    .push_bind(span.gen_ai.response_model)
+                    .push_bind(span.gen_ai.tool_name)
+                    .push_bind(span.gen_ai.conversation_id)
+                    .push_bind(span.gen_ai.usage_input_tokens)
+                    .push_bind(span.gen_ai.usage_output_tokens)
+                    .push_bind(span.gen_ai.usage_total_tokens)
+                    .push_bind(span.gen_ai.usage_cached_input_tokens)
+                    .push_bind(span.gen_ai.usage_reasoning_output_tokens);
+            },
+        );
         query.push(
             " ON CONFLICT (project_id, trace_id, span_id)
                 WHERE transaction_id IS NULL
@@ -228,13 +291,14 @@ impl SpanProcessor {
             ));
         }
 
-        Ok(SpanRow::from_span(data))
+        Ok(SpanRow::from_span(data, 0))
     }
 
     /// Writes one chunk in one transaction.
     async fn insert_all(&self, ctx: &ProcessorCtx, parsed: Vec<SpanRow>) -> AppResult<()> {
+        let rows = encode_span_rows(&ctx.pool, ctx.keep_ai_spans, parsed).await?;
         let mut tx = ctx.pool.begin().await?;
-        insert_span_rows(&mut tx, ctx.project_id, ctx.keep_ai_spans, parsed).await?;
+        insert_span_rows(&mut tx, ctx.project_id, rows).await?;
         tx.commit().await?;
         Ok(())
     }

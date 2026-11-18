@@ -1671,7 +1671,8 @@
       "gcFailed": "Impossible de supprimer les source maps inutilisées",
       "compacting": "Compactage de la base de données… {elapsed}",
       "compacted": "Base de données compactée",
-      "compactionFailed": "Le compactage a échoué"
+      "compactionFailed": "Le compactage a échoué",
+      "compactedFreed": "{size} rendus au disque"
     },
     "unit": {
       "errors": "{count, plural, =1 {# erreur} other {# erreurs}}",
@@ -1713,6 +1714,17 @@
       "pause": "Pendant l'opération, la base n'accepte aucune écriture : les erreurs sont conservées et traitées ensuite, mais les logs, traces et sessions reçus entre-temps sont perdus.",
       "duration": "Compter quelques secondes par Go de données. Lancez-la à un moment calme.",
       "confirm": "Compacter"
+    },
+    "compactionPostgres": {
+      "title": "Rendre au disque l’espace des données supprimées",
+      "description": "PostgreSQL réutilise l’espace que la rétention libère dans ses tables, mais ne le rend presque jamais au disque : la base reste à {size} après un nettoyage. Le compactage réécrit chaque table pour le rendre.",
+      "action": "Compacter les tables",
+      "dialogTitle": "Compacter les tables ?",
+      "dialogDescription": "Rustrak réécrit avec VACUUM FULL chaque table dont la rétention supprime des lignes, de la plus petite à la plus grande, et rend au disque l’espace de leurs lignes supprimées.",
+      "tableSize": "{table} · {indexes} d’index",
+      "disk": "Nécessite environ {required} libres sur le disque du serveur PostgreSQL pendant l’opération, la taille de la plus grande table, et à peu près autant pour le WAL s’il est sur le même disque. Rustrak ne voit pas ce disque : vérifiez-le avant.",
+      "lock": "Chaque table est verrouillée pendant sa réécriture, quelques secondes par Go conservé. Les erreurs restent acceptées et sont enregistrées une fois leur table terminée. Les transactions, spans et logs envoyés pendant la réécriture de leur table sont refusés et perdus (les SDK cessent de les envoyer pendant 10 secondes), et les pages qui affichent cette table renvoient une erreur jusqu’à ce qu’elle soit terminée.",
+      "duration": "La plus grande table prend le plus de temps. Lancez-le à un moment calme, ou utilisez pg_repack, qui ne verrouille chaque table que brièvement, au début et à la fin."
     }
   },
   "errors": {

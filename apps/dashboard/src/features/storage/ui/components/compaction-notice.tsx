@@ -17,10 +17,13 @@ import { storageQueries } from '@/features/storage/api/queries';
 import { formatBytes } from '@/shared/lib/utils';
 
 /**
- * A row in the storage page's retention section, shown only on a SQLite file created before incremental mode, which never
- * gives deleted data's space back to the disk: says how much it holds and
- * compacts it once, behind a dialog that prices the disk and the pause.
- * Read again with the rest of the page, so it goes once compacted.
+ * A row in the storage page's retention section. On SQLite, shown only on a
+ * file created before incremental mode, which never gives deleted data's
+ * space back to the disk: says how much it holds and compacts it once. On
+ * PostgreSQL (the server lists the tables it would rewrite) always there:
+ * vacuum never hands freed space back, so compacting is a tool on offer.
+ * Either way behind a dialog that prices the disk and the pause. Read again
+ * with the rest of the page, so a compacted SQLite file loses it.
  */
 export function CompactionNotice({
   disabled,
@@ -38,6 +41,7 @@ export function CompactionNotice({
   // once it stops: a compaction that just finished must not leave its button
   // up, and a cleanup changes what there is to give back.
   if (disabled || !compaction?.needed) return null;
+  const postgres = compaction.tables.length > 0;
 
   return (
     <div className="flex flex-wrap items-start gap-4 border-b border-border-divider px-5 py-4 last:border-b-0">
@@ -48,16 +52,20 @@ export function CompactionNotice({
       />
       <div className="min-w-0 flex-1 space-y-1">
         <p className="text-value font-medium text-fg">
-          {t('compaction.title')}
+          {t(postgres ? 'compactionPostgres.title' : 'compaction.title')}
         </p>
         <p className="max-w-2xl text-hint text-fg-subtle">
-          {t('compaction.description', {
-            size: formatBytes(compaction.reclaimable_bytes),
-          })}
+          {postgres
+            ? t('compactionPostgres.description', {
+                size: formatBytes(compaction.file_bytes),
+              })
+            : t('compaction.description', {
+                size: formatBytes(compaction.reclaimable_bytes ?? 0),
+              })}
         </p>
       </div>
       <Button onClick={() => setConfirming(true)} disabled={disabled}>
-        {t('compaction.action')}
+        {t(postgres ? 'compactionPostgres.action' : 'compaction.action')}
       </Button>
       <ConfirmDialog
         open={confirming}
@@ -101,6 +109,56 @@ function ConfirmDialog({
         }),
     });
 
+  if (compaction.tables.length > 0) {
+    return (
+      <Dialog
+        alert
+        size="lg"
+        open={open}
+        onOpenChange={(o) => !isPending && onOpenChange(o)}
+      >
+        <DialogHeader
+          dismissible={false}
+          title={t('compactionPostgres.dialogTitle')}
+          description={t('compactionPostgres.dialogDescription')}
+        />
+        <DialogBody>
+          <ul className="mb-4 space-y-1 text-value text-fg">
+            {compaction.tables.map((table) => (
+              <li key={table.table} className="flex justify-between gap-4">
+                <span className="font-mono">{table.table}</span>
+                <span className="tabular-nums text-fg-subtle">
+                  {t('compactionPostgres.tableSize', {
+                    table: formatBytes(table.table_bytes),
+                    indexes: formatBytes(table.index_bytes),
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <ul className="list-disc space-y-1.5 pl-5 text-value text-fg">
+            <li>
+              {t('compactionPostgres.disk', {
+                required: formatBytes(compaction.required_disk_bytes),
+              })}
+            </li>
+            <li>{t('compactionPostgres.lock')}</li>
+            <li>{t('compactionPostgres.duration')}</li>
+          </ul>
+        </DialogBody>
+        <DialogFooter>
+          <DialogClose
+            disabled={isPending}
+            render={<Button variant="secondary">{t('cancel')}</Button>}
+          />
+          <Button variant="primary" onClick={run} loading={isPending}>
+            {t('compaction.confirm')}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog
       alert
@@ -112,7 +170,7 @@ function ConfirmDialog({
         dismissible={false}
         title={t('compaction.dialogTitle')}
         description={t('compaction.dialogDescription', {
-          size: formatBytes(compaction.reclaimable_bytes),
+          size: formatBytes(compaction.reclaimable_bytes ?? 0),
         })}
       />
       <DialogBody>

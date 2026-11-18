@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use sqlx::{QueryBuilder, Row};
+use sqlx::{FromRow, QueryBuilder, Row};
 
 use crate::db::dialect::{bucket, bucket_time, since_utc};
+use crate::db::payload::Stored;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     span_attributes, AgentConversation, AgentConversationSummary, AgentDurationPoint,
     AgentModelRow, AgentSummary, AgentTimeseriesPoint, AgentToolRow, AgentTraceSummary,
-    ConversationSpan, GenAiBreakdownRow, SpanDetailResponse, SpanResponse,
+    ConversationSpan, GenAiBreakdownRow, SpanColumns, SpanDetailResponse, SpanResponse,
 };
 use crate::services::transaction::percentile_cont;
 
@@ -46,6 +47,30 @@ fn span_from_row(row: &<crate::db::Db as sqlx::Database>::Row) -> SpanResponse {
         gen_ai_usage_output_tokens: row.get("gen_ai_usage_output_tokens"),
         gen_ai_usage_total_tokens: row.get("gen_ai_usage_total_tokens"),
     }
+}
+
+/// The one read of `spans.data`: the span object as the SDK sent it, and its
+/// position in its transaction's `spans` ([`SpanColumns::expand`]). The row
+/// selects `data`, `payload`, `tags` and the span columns `SpanColumns`
+/// names.
+pub(crate) async fn span_data(
+    pool: &DbPool,
+    row: &<crate::db::Db as sqlx::Database>::Row,
+) -> AppResult<(Option<u64>, serde_json::Value)> {
+    let data = Stored::from_row(row)?.read(pool).await?;
+    Ok(SpanColumns {
+        span_id: row.get("span_id"),
+        parent_span_id: row.get("parent_span_id"),
+        op: row.get("op"),
+        description: row.get("description"),
+        status: row.get("status"),
+        segment_id: row.get("segment_id"),
+        start_timestamp: row.get("start_timestamp"),
+        timestamp: row.get("timestamp"),
+        exclusive_time_ms: row.get("exclusive_time_ms"),
+        tags: row.get("tags"),
+    }
+    .expand(data))
 }
 
 /// The scope every agents-dashboard aggregate is read through.
@@ -203,7 +228,7 @@ impl SpanService {
                    gen_ai_tool_name, gen_ai_conversation_id,
                    gen_ai_usage_input_tokens, gen_ai_usage_output_tokens,
                    gen_ai_usage_total_tokens,
-                   tags, data
+                   tags, data, payload
             FROM spans
             WHERE id = $1 AND project_id = $2
             "#,
@@ -214,11 +239,9 @@ impl SpanService {
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Span {} not found", id)))?;
 
-        let data: serde_json::Value = row.get("data");
-
         Ok(SpanDetailResponse {
             span: span_from_row(&row),
-            attributes: span_attributes(&data),
+            attributes: span_attributes(&span_data(pool, &row).await?.1),
             tags: row.get("tags"),
         })
     }
@@ -822,7 +845,8 @@ impl SpanService {
             SELECT id, trace_id, span_id, parent_span_id, gen_ai_operation_type,
                    gen_ai_agent_name, COALESCE(gen_ai_response_model, gen_ai_request_model) AS model,
                    gen_ai_tool_name, status, start_timestamp, duration_ms,
-                   gen_ai_usage_total_tokens, data
+                   gen_ai_usage_total_tokens, data, payload,
+                   op, description, segment_id, timestamp, exclusive_time_ms, tags
             FROM spans
             WHERE project_id = $1 AND gen_ai_operation_type IS NOT NULL
               AND trace_id IN (SELECT trace_id FROM spans
@@ -840,11 +864,18 @@ impl SpanService {
             )));
         }
 
-        let spans = rows
-            .iter()
-            .map(|row| {
-                let data: serde_json::Value = row.get("data");
-                let attributes = span_attributes(&data);
+        let mut spans = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let attributes = match span_data(pool, row).await {
+                Ok((_, data)) => span_attributes(&data),
+                // One bad row must not fail the conversation it belongs to.
+                Err(e) => {
+                    let id: uuid::Uuid = row.get("id");
+                    log::error!("Span {id} left out of conversation {conversation_id}: {e}");
+                    continue;
+                }
+            };
+            spans.push({
                 let text = |keys: &[&str]| {
                     keys.iter().find_map(|key| match attributes.get(*key)? {
                         serde_json::Value::String(s) if !s.is_empty() => Some(s.clone()),
@@ -882,8 +913,8 @@ impl SpanService {
                     ]),
                     tool_calls: text(&["gen_ai.response.tool_calls"]),
                 }
-            })
-            .collect();
+            });
+        }
 
         Ok(AgentConversation {
             conversation_id: conversation_id.to_string(),

@@ -3,8 +3,12 @@
 //! callers do not branch on the backend.
 
 use crate::db::DbPool;
+#[cfg(feature = "postgres")]
+use crate::error::AppError;
 use crate::error::AppResult;
-use crate::models::Compaction;
+#[cfg(feature = "postgres")]
+use crate::models::TableSize;
+use crate::models::{CompactedTable, Compaction};
 
 /// One step of handing freed pages back to the filesystem: 2,000 pages, 8 MiB
 /// at SQLite's default 4 KiB page. Each step is its own write transaction, so
@@ -118,16 +122,144 @@ pub async fn compaction(pool: &DbPool) -> AppResult<Compaction> {
     Ok(Compaction {
         needed: auto_vacuum == 0,
         file_bytes: pages * page_size,
-        live_bytes,
-        reclaimable_bytes: free * page_size,
+        live_bytes: Some(live_bytes),
+        reclaimable_bytes: Some(free * page_size),
         required_disk_bytes: 2 * live_bytes,
         free_disk_bytes: free_disk_bytes(std::path::Path::new(&file)),
+        tables: Vec::new(),
     })
 }
 
+/// The tables retention deletes from: where the space a cleanup frees is,
+/// and what a compaction rewrites.
 #[cfg(feature = "postgres")]
-pub async fn compaction(_pool: &DbPool) -> AppResult<Compaction> {
-    Ok(Compaction::default())
+const RETAINED_TABLES: [&str; 4] = ["events", "transactions", "spans", "logs"];
+
+/// The [`RETAINED_TABLES`], smallest first: each table rewritten gives its
+/// free space back before the next, larger one needs room for its copy.
+#[cfg(feature = "postgres")]
+async fn retained_tables(pool: &DbPool) -> AppResult<Vec<TableSize>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT relname::text, pg_table_size(oid), pg_indexes_size(oid) FROM pg_class \
+         WHERE oid = ANY($1::text[]::regclass[]) ORDER BY pg_total_relation_size(oid), relname",
+    )
+    .bind(&RETAINED_TABLES[..])
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(table, table_bytes, index_bytes)| TableSize {
+            table,
+            table_bytes,
+            index_bytes,
+        })
+        .collect())
+}
+
+/// Vacuum makes a deleted row's space reusable inside its table but never
+/// hands it to the filesystem, short of empty pages at the very end; only a
+/// rewrite does. How much of a table is free space takes an extension
+/// (`pgstattuple`) to tell, so none is claimed: the sizes are what can be
+/// known.
+#[cfg(feature = "postgres")]
+pub async fn compaction(pool: &DbPool) -> AppResult<Compaction> {
+    let tables = retained_tables(pool).await?;
+    Ok(Compaction {
+        needed: true,
+        file_bytes: size_bytes(pool).await?,
+        live_bytes: None,
+        reclaimable_bytes: None,
+        required_disk_bytes: tables
+            .iter()
+            .map(|t| t.table_bytes + t.index_bytes)
+            .max()
+            .unwrap_or(0),
+        free_disk_bytes: None,
+        tables,
+    })
+}
+
+/// How long the compaction waits for a table's lock. Queued, its request
+/// holds every later query on the table behind it, so it gives up soon
+/// rather than stall ingestion behind a long reader.
+#[cfg(feature = "postgres")]
+const COMPACTION_LOCK_TIMEOUT_SECS: u64 = 5;
+
+/// Rewrites each of the [`RETAINED_TABLES`] with `VACUUM FULL`, smallest
+/// first, calling `on_table` after each. A table is locked (`ACCESS
+/// EXCLUSIVE`) for its whole rewrite, a few seconds per GB it keeps, and
+/// named in `rewriting` meanwhile: ingest turns away the items it would
+/// write into it on the request path (see `pipeline::shed_by`), which would
+/// otherwise wait on the lock until they held the whole pool. Pooled
+/// queries on it, the dashboard's reads, fail as transient at the pool's
+/// lock timeout (see `db::prepare_session`); the digest, on a connection of
+/// its own with no such timeout, waits. The old files go only once the new copy is
+/// complete, so a run that fails or is cancelled leaves that table as it
+/// was, and needs free disk for that copy.
+///
+/// It runs on a session of its own, outside any transaction (`VACUUM`
+/// refuses one) and never handed back to the pool with its timeouts.
+#[cfg(feature = "postgres")]
+pub async fn compact(
+    pool: &DbPool,
+    rewriting: &std::sync::Mutex<Option<String>>,
+    mut on_table: impl FnMut(CompactedTable),
+) -> AppResult<()> {
+    let set = |table: Option<&str>| {
+        *rewriting
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = table.map(str::to_string);
+    };
+    let mut conn = pool.acquire().await?.detach();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SET lock_timeout = '{COMPACTION_LOCK_TIMEOUT_SECS}s'"
+    )))
+    .execute(&mut conn)
+    .await?;
+    // A role's own statement_timeout would cancel a large table mid-copy.
+    sqlx::query("SET statement_timeout = 0")
+        .execute(&mut conn)
+        .await?;
+    const TOTAL_SIZE: &str = "SELECT pg_total_relation_size($1::regclass)";
+    for table in retained_tables(pool).await? {
+        // Read now, not with the order above: the table kept growing while
+        // the ones before it were rewritten.
+        let bytes_before: i64 = sqlx::query_scalar(TOTAL_SIZE)
+            .bind(&table.table)
+            .fetch_one(&mut conn)
+            .await?;
+        let started = std::time::Instant::now();
+        // Named before the lock is asked for: queued, it already blocks.
+        set(Some(&table.table));
+        // The name is one of RETAINED_TABLES, read back from pg_class.
+        let vacuumed = sqlx::query(sqlx::AssertSqlSafe(format!("VACUUM FULL {}", table.table)))
+            .execute(&mut conn)
+            .await;
+        set(None);
+        vacuumed.map_err(|e| match e {
+            sqlx::Error::Database(ref d) if d.code().as_deref() == Some("55P03") => {
+                AppError::Conflict(format!(
+                    "Could not lock {} within {COMPACTION_LOCK_TIMEOUT_SECS} s: another \
+                         query was using it. It was left as it was; try again at a quieter time.",
+                    table.table
+                ))
+            }
+            e => e.into(),
+        })?;
+        let duration_ms = started.elapsed().as_millis() as i64;
+        let bytes_after: i64 = sqlx::query_scalar(TOTAL_SIZE)
+            .bind(&table.table)
+            .fetch_one(&mut conn)
+            .await?;
+        on_table(CompactedTable {
+            bytes_before,
+            bytes_after,
+            duration_ms,
+            table: table.table,
+        });
+    }
+    sqlx::Connection::close(conn).await?;
+    Ok(())
 }
 
 /// Rewrites the database in incremental mode with one `VACUUM`. It holds
@@ -135,7 +267,11 @@ pub async fn compaction(_pool: &DbPool) -> AppResult<Compaction> {
 /// while logs, spans and sessions arriving meanwhile fail once the busy
 /// timeout runs out. Measured at about 3 s per GB of live data on NVMe.
 #[cfg(feature = "sqlite")]
-pub async fn compact(pool: &DbPool) -> AppResult<()> {
+pub async fn compact(
+    pool: &DbPool,
+    _rewriting: &std::sync::Mutex<Option<String>>,
+    _on_table: impl FnMut(CompactedTable),
+) -> AppResult<()> {
     let mut conn = pool.acquire().await?;
     sqlx::query("PRAGMA auto_vacuum = INCREMENTAL")
         .execute(&mut *conn)
@@ -154,12 +290,10 @@ pub async fn compact(pool: &DbPool) -> AppResult<()> {
     Ok(())
 }
 
-#[cfg(feature = "postgres")]
-pub async fn compact(_pool: &DbPool) -> AppResult<()> {
-    Ok(())
-}
-
-/// Postgres reclaims a deleted row's space with its own autovacuum.
+/// Postgres: autovacuum makes a deleted row's space reusable, which keeps a
+/// table from growing under retention. A plain `VACUUM` here would hand back
+/// only empty pages at a table's end, and retention empties its oldest pages,
+/// at the start; giving the rest back takes [`compact`].
 #[cfg(feature = "postgres")]
 pub async fn reclaim_free_space(_pool: &DbPool) -> AppResult<i64> {
     Ok(0)

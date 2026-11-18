@@ -10,7 +10,7 @@ use crate::error::{AppError, AppResult};
 use crate::ingest::{decompression, pipeline, read_body};
 use crate::models::monitor::{CheckIn, CheckInStatus};
 use crate::models::Product;
-use crate::services::RateLimitService;
+use crate::services::{CleanupJob, RateLimitService};
 
 /// Response for successful ingestion.
 /// `id` is absent for session-only envelopes, mirroring Relay's StoreResponse.
@@ -131,7 +131,11 @@ async fn ingest(
         .connection_info()
         .realip_remote_addr()
         .map(|s| s.to_string());
-    let id = pipeline::process_envelope(
+    let shed = req
+        .app_data::<web::Data<CleanupJob>>()
+        .and_then(|job| job.rewriting())
+        .map_or(&[][..], |table| pipeline::shed_by(&table));
+    let (id, turned_away) = pipeline::process_envelope(
         &processors,
         pool.get_ref(),
         &auth.project,
@@ -139,8 +143,22 @@ async fn ingest(
         remote_addr,
         ingested_at,
         large_body,
+        shed,
     )
     .await?;
+    if turned_away {
+        // Relay's answer when it drops some items for a rate limit and
+        // queues the rest: a 429 naming the limited categories, which SDKs
+        // stop sending for that long while still sending the others.
+        let retry_after = crate::error::RETRY_AFTER_SECS;
+        return Ok(HttpResponse::TooManyRequests()
+            .insert_header(("Retry-After", retry_after.to_string()))
+            .insert_header((
+                "X-Sentry-Rate-Limits",
+                format!("{retry_after}:{}:organization", shed.join(";")),
+            ))
+            .json(IngestResponse { id }));
+    }
     Ok(HttpResponse::Ok().json(IngestResponse { id }))
 }
 

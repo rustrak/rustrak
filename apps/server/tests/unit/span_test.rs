@@ -411,12 +411,11 @@ mod level2 {
     }
 
     #[tokio::test]
-    async fn test_span_data_column_stores_full_raw_payload() {
-        // Mirrors TransactionProcessor::insert_span: the `data` column holds
-        // the entire raw span JSON (full fidelity for debugging/future
-        // gen_ai.* normalization), not just the nested `data` attributes
-        // sub-object — consistent whether a span arrives standalone or
-        // embedded in a transaction, since both write into the same table.
+    async fn test_span_data_column_keeps_what_no_column_holds() {
+        // The `data` column holds the span object minus the keys its columns
+        // give back (`SpanColumns::compact`), so a span is stored once: the
+        // attribute bag and any other key stay, `span_id` is the column's.
+        // Same for a standalone span and a transaction's child.
         let db = TestDb::new().await;
         let project = ProjectService::create(
             &db.pool,
@@ -443,14 +442,16 @@ mod level2 {
             .await
             .unwrap();
 
-        const QUERY: &str = "SELECT data FROM spans WHERE project_id = $1";
-        let data: serde_json::Value = sqlx::query_scalar(QUERY)
+        const QUERY: &str = "SELECT id FROM spans WHERE project_id = $1";
+        let id: uuid::Uuid = sqlx::query_scalar(QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)
             .await
             .unwrap();
+        let data = crate::common::stored_json(&db.pool, "spans", id).await;
 
-        assert_eq!(data["span_id"], "9fd17741416e8e4e");
+        assert!(data.get("span_id").is_none(), "{data}");
+        assert_eq!(data["trace_id"], "d3d20f000885466b8c8f947c9b92b8d3");
         assert_eq!(data["data"]["gen_ai.request.model"], "gpt-4");
         assert_eq!(data["data"]["some.unknown.attr"], 42);
     }

@@ -459,3 +459,46 @@ pub fn call_tool(
 }
 #[cfg(all(feature = "sqlite", unix))]
 pub mod crash;
+
+/// A row's `payload`, and whether its `data` holds nothing (SQL NULL on
+/// Postgres, JSON `null` on SQLite, whose NOT NULL cannot be dropped).
+pub async fn stored_payload(pool: &DbPool, table: &str, id: Uuid) -> (Option<Vec<u8>>, bool) {
+    sqlx::query_as::<_, (Option<Vec<u8>>, bool)>(sqlx::AssertSqlSafe(format!(
+        "SELECT payload, (data IS NULL OR CAST(data AS TEXT) = 'null') FROM {table} WHERE id = $1"
+    )))
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+/// Turns a row into the format every row had before compression: the JSON
+/// in `data`, no `payload`.
+pub async fn make_legacy(pool: &DbPool, table: &str, id: Uuid) {
+    let (payload, _) = stored_payload(pool, table, id).await;
+    let json: serde_json::Value = serde_json::from_slice(
+        &rustrak::db::payload::decode(pool, &payload.unwrap())
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "UPDATE {table} SET data = $1, payload = NULL WHERE id = $2"
+    )))
+    .bind(sqlx::types::Json(json))
+    .bind(id)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// The JSON a row's `payload` holds.
+pub async fn stored_json(pool: &DbPool, table: &str, id: Uuid) -> serde_json::Value {
+    let (payload, _) = stored_payload(pool, table, id).await;
+    serde_json::from_slice(
+        &rustrak::db::payload::decode(pool, &payload.expect("a payload"))
+            .await
+            .unwrap(),
+    )
+    .unwrap()
+}

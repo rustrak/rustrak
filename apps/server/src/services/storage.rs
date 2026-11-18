@@ -58,18 +58,32 @@ const CLEANUP_BATCH_SIZE: i64 = 10_000;
 /// Rows per project and table the storage page's size estimate reads.
 const SIZE_SAMPLE_ROWS: i64 = 200;
 
-/// The size samples: `(payload bytes, rows)` over a project's newest rows,
-/// `$1` the project and `$2` the sample size. Each walks the table's
-/// `(project_id, ingested_at)` index; spans have no `ingested_at` and take
-/// whichever rows their `project_id` index yields first.
+/// The size samples: `(payload bytes, rows)` over a project's rows, `$1` the
+/// project and `$2` the sample size. A table can hold rows of two sizes
+/// (JSON written before compression, compressed after), so a sample is the
+/// same rows every time, picked across the table's whole history: events
+/// and transactions in `event_id` order from their `(project_id, event_id)`
+/// index, spans in `trace_id` order from `(project_id, trace_id)`, both
+/// random ids (spans by nothing more: a second key would sort a whole trace
+/// before the limit). Never the newest rows, which are all compressed, nor no
+/// order, which yields whichever rows a plan reaches first.
 /// `length(CAST(.. AS TEXT))` is the character length, the same measure on
-/// both backends.
-const EVENTS_SAMPLE: &str = "SELECT COALESCE(SUM(length(CAST(data AS TEXT))), 0), COUNT(*) \
-     FROM (SELECT data FROM events WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
-const TRANSACTIONS_SAMPLE: &str = "SELECT COALESCE(SUM(length(CAST(data AS TEXT))), 0), COUNT(*) \
-     FROM (SELECT data FROM transactions WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
-const SPANS_SAMPLE: &str = "SELECT COALESCE(SUM(length(CAST(data AS TEXT))), 0), COUNT(*) \
-     FROM (SELECT data FROM spans WHERE project_id = $1 LIMIT $2) AS sample";
+/// both backends; a compressed payload counts its bytes (`length` of a blob).
+/// Logs are stored one way and keep their newest rows.
+macro_rules! payload_sample {
+    ($from:literal) => {
+        concat!(
+            "SELECT COALESCE(SUM(CASE WHEN payload IS NULL THEN length(CAST(data AS TEXT)) \
+             ELSE length(payload) END), 0), COUNT(*) FROM (SELECT data, payload FROM ",
+            $from,
+            " LIMIT $2) AS sample"
+        )
+    };
+}
+const EVENTS_SAMPLE: &str = payload_sample!("events WHERE project_id = $1 ORDER BY event_id");
+const TRANSACTIONS_SAMPLE: &str =
+    payload_sample!("transactions WHERE project_id = $1 ORDER BY event_id");
+const SPANS_SAMPLE: &str = payload_sample!("spans WHERE project_id = $1 ORDER BY trace_id");
 const LOGS_SAMPLE: &str = "SELECT COALESCE(SUM(COALESCE(length(CAST(body AS TEXT)), 0) \
      + COALESCE(length(CAST(attributes AS TEXT)), 0)), 0), COUNT(*) \
      FROM (SELECT body, attributes FROM logs WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2) AS sample";
@@ -127,6 +141,9 @@ pub struct CleanupJob {
     snapshot: Arc<Mutex<Option<CachedSnapshot>>>,
     /// Held by the one read of the figures in flight.
     reading: Arc<tokio::sync::Mutex<()>>,
+    /// The table a Postgres compaction is rewriting (or queued to lock):
+    /// ingest turns away what it would write into it.
+    rewriting: Arc<Mutex<Option<String>>>,
 }
 
 /// A snapshot and when its read began.
@@ -187,14 +204,23 @@ enum CleanupPlan {
         settings: RetentionSettings,
         store: Arc<dyn SourceMapStore>,
     },
-    /// Rewrites a SQLite file created before incremental mode. Deletes
-    /// nothing, but runs as the job so it never overlaps a cleanup.
-    Compact,
+    /// Rewrites a SQLite file created before incremental mode, or the
+    /// Postgres tables retention deletes from. Deletes nothing, but runs as
+    /// the job so it never overlaps a cleanup.
+    Compact(Arc<Mutex<Option<String>>>),
 }
 
 impl CleanupJob {
     pub fn status(&self) -> CleanupStatus {
         lock(&self.status).clone()
+    }
+
+    /// The table a compaction holds locked right now, if any.
+    pub fn rewriting(&self) -> Option<String> {
+        self.rewriting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// The storage page's figures.
@@ -388,11 +414,19 @@ impl CleanupJob {
         Ok((started, handle))
     }
 
-    /// Starts compacting a SQLite file created before incremental mode, in
-    /// the background. Refuses with `Validation` when the file needs no
-    /// compaction or the disk has no room for it, and with `Conflict` while
-    /// a cleanup runs.
+    /// Starts compacting in the background (see
+    /// [`crate::db::maintenance::compact`]). Refuses with `Validation` when a
+    /// SQLite file needs no compaction or its disk has no room for it, and
+    /// with `Conflict` while a cleanup runs. Never scheduled: only a person
+    /// starts one.
     pub async fn start_compaction(&self, pool: DbPool) -> AppResult<CleanupStatus> {
+        // Before the sizes: on Postgres reading them waits on a running
+        // compaction's table lock, and would start a second one after it.
+        if lock(&self.status).state == CleanupState::Running {
+            return Err(AppError::Conflict(
+                "A storage cleanup is already running".to_string(),
+            ));
+        }
         let compaction = crate::db::maintenance::compaction(&pool).await?;
         if !compaction.needed {
             return Err(AppError::Validation(
@@ -409,7 +443,7 @@ impl CleanupJob {
         tokio::spawn(Self::execute(
             Arc::clone(&self.status),
             pool,
-            CleanupPlan::Compact,
+            CleanupPlan::Compact(Arc::clone(&self.rewriting)),
         ));
         Ok(started)
     }
@@ -475,9 +509,13 @@ impl CleanupJob {
                     lock(&progress).removed = counts.clone();
                     Ok(counts)
                 }
-                CleanupPlan::Compact => crate::db::maintenance::compact(&pool)
+                CleanupPlan::Compact(rewriting) => {
+                    crate::db::maintenance::compact(&pool, &rewriting, |table| {
+                        lock(&progress).compacted.push(table)
+                    })
                     .await
-                    .map(|()| CleanupCounts::default()),
+                    .map(|()| CleanupCounts::default())
+                }
             };
             // The rows are gone either way; giving their space back is best
             // effort, so a failure here is logged rather than failing the run.
@@ -769,6 +807,31 @@ impl StorageService {
                     on_batch(counts);
                     crate::db::maintenance::yield_to_writers().await;
                 }
+                // Standalone and Spans v2 rows have no transaction to go with,
+                // so they age out by their end time (they carry no ingest
+                // time), or their start in a row with none; `count_cleanup`
+                // counts the same rows. `idx_spans_standalone_age` holds that
+                // expression, so a batch is a range scan, not a pass over
+                // every row the project keeps under the write lock.
+                loop {
+                    let spans = sqlx::query(
+                        "DELETE FROM spans WHERE id IN ( \
+                             SELECT id FROM spans WHERE project_id = $1 AND transaction_id IS NULL \
+                             AND COALESCE(timestamp, start_timestamp) < $2 LIMIT $3)",
+                    )
+                    .bind(project_id)
+                    .bind(cutoff)
+                    .bind(batch_size)
+                    .execute(pool)
+                    .await?
+                    .rows_affected() as i64;
+                    if spans == 0 {
+                        break;
+                    }
+                    counts.spans += spans;
+                    on_batch(counts);
+                    crate::db::maintenance::yield_to_writers().await;
+                }
             }
 
             if filter.include_logs {
@@ -963,10 +1026,13 @@ impl StorageService {
     }
 
     /// Counts what a cleanup at `cutoff` would remove. Retention is keyed on
-    /// `ingested_at` (server receipt time, not client-controlled). Spans are
-    /// estimated through their parent transactions since they cascade (see
-    /// [`Self::estimate_transaction_spans`]). An issue is "removed" when it has
-    /// events but none survive the cutoff.
+    /// `ingested_at` (server receipt time, not client-controlled), except for
+    /// standalone spans, which have none and are keyed on their own
+    /// `timestamp` (their `start_timestamp` without one), set by the SDK. A
+    /// transaction's spans are estimated through it since they go with it
+    /// (see [`Self::estimate_transaction_spans`]); standalone ones are
+    /// counted. An issue is "removed" when it has events but none survive
+    /// the cutoff.
     ///
     /// The scope is written as `project_id IN (...)` rather than
     /// `$n IS NULL OR project_id = $m`: the planner cannot use an index for the
@@ -1024,6 +1090,18 @@ impl StorageService {
                 transactions += count;
                 spans += Self::estimate_transaction_spans(pool, id, cutoff, count).await?;
             }
+            // The standalone spans `purge` deletes, by the same predicate.
+            let standalone: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM spans WHERE transaction_id IS NULL \
+                 AND COALESCE(timestamp, start_timestamp) < $1 \
+                 AND project_id IN (SELECT id FROM projects WHERE $2 IS NULL OR id = $3)",
+            )
+            .bind(cutoff)
+            .bind(project_id)
+            .bind(project_id)
+            .fetch_one(pool)
+            .await?;
+            spans += standalone;
         }
 
         // Mask out categories the filter excludes. An issue can only be emptied
@@ -1075,7 +1153,7 @@ impl StorageService {
     ///
     /// Row counts are exact, the totals of `age`. `estimated_bytes` is the
     /// JSON payload length the project holds, estimated from a sample of its
-    /// newest rows per table (see [`Self::estimate_bytes`]); summing every
+    /// rows per table (see [`Self::estimate_bytes`]); summing every
     /// payload meant reading the whole database on each load of the storage
     /// page.
     async fn projects_from(pool: &DbPool, age: &StorageAge) -> AppResult<Vec<ProjectStorage>> {
@@ -1161,7 +1239,7 @@ impl StorageService {
     }
 
     /// Payload bytes `count` rows hold, estimated as the bytes of a sample of
-    /// the project's newest rows scaled by `count`. Exact whenever the project
+    /// the project's rows scaled by `count`. Exact whenever the project
     /// has no more rows than the sample.
     ///
     /// ponytail: the newest rows stand in for all of them, so a project whose

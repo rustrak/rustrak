@@ -6,6 +6,7 @@ compile_error!("Either feature \"postgres\" or \"sqlite\" must be enabled.");
 
 pub mod dialect;
 pub mod maintenance;
+pub mod payload;
 
 use crate::config::DatabaseConfig;
 use sqlx::Connection as _;
@@ -46,6 +47,23 @@ pub type DbPool = PgPool;
 #[cfg(feature = "sqlite")]
 pub type DbPool = SqlitePool;
 
+/// What every pooled Postgres session starts with. The lock timeout is for
+/// a compaction (`maintenance::compact`), the one thing that locks a whole
+/// table for long: a query that meets the lock fails as transient after two
+/// seconds, under the pool's acquire timeout, instead of holding its
+/// connection until the rewrite ends and the pool with it. It bounds a
+/// wait for a row lock the same way.
+#[cfg(feature = "postgres")]
+pub async fn prepare_session(conn: &mut sqlx::PgConnection) -> Result<(), sqlx::Error> {
+    sqlx::query("SET timezone = 'UTC'")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("SET lock_timeout = '2s'")
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
 /// Creates a new database connection pool with the provided configuration
 pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error> {
     log::info!("Connecting to database...");
@@ -59,12 +77,7 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error>
             .idle_timeout(Some(config.idle_timeout))
             .max_lifetime(Some(config.max_lifetime))
             .before_acquire(|conn, _meta| Box::pin(async move { Ok(!conn.is_in_transaction()) }))
-            .after_connect(|conn, _meta| {
-                Box::pin(async move {
-                    sqlx::query("SET timezone = 'UTC'").execute(conn).await?;
-                    Ok(())
-                })
-            })
+            .after_connect(|conn, _meta| Box::pin(prepare_session(conn)))
             .connect(&config.url)
             .await?
     };
@@ -190,18 +203,70 @@ const CAUGHT_UP_CHECKPOINT_WAIT: Duration = Duration::from_millis(5);
 /// database after it.
 #[cfg(feature = "sqlite")]
 pub async fn checkpoint_caught_up(conn: &mut sqlx::SqliteConnection) -> Result<(), sqlx::Error> {
+    checkpoint_briefly(
+        conn,
+        "PRAGMA wal_checkpoint(FULL)",
+        CAUGHT_UP_CHECKPOINT_WAIT,
+    )
+    .await
+}
+
+/// The digest's checkpoint once a second: `PASSIVE` once it is caught up, as
+/// before. The log only starts over after a checkpoint that reached its end,
+/// which a `PASSIVE` one never does while pool connections keep committing
+/// (a burst of transactions or spans), so the log grew for the whole burst.
+/// Once it is [`COMMITTER_CHECKPOINT_PAGES`] long, whether the digest is
+/// caught up or not, a `PASSIVE` copy and then a `TRUNCATE`, which waits for
+/// the write lock and the readers no longer than [`LONG_LOG_CHECKPOINT_WAIT`],
+/// start it over at zero bytes, also when no commit follows.
+#[cfg(feature = "sqlite")]
+pub async fn checkpoint_on_timer(
+    conn: &mut sqlx::SqliteConnection,
+    caught_up: bool,
+) -> Result<(), sqlx::Error> {
+    let (_, logged, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(NOOP)")
+        .fetch_one(&mut *conn)
+        .await?;
+    let long = logged >= i64::from(COMMITTER_CHECKPOINT_PAGES);
+    if caught_up || long {
+        sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
+            .execute(&mut *conn)
+            .await?;
+    }
+    if long {
+        checkpoint_briefly(
+            conn,
+            "PRAGMA wal_checkpoint(TRUNCATE)",
+            LONG_LOG_CHECKPOINT_WAIT,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// How long [`checkpoint_on_timer`]'s `TRUNCATE` waits for the write lock and
+/// the readers. Measured under a burst of transactions on Linux: 5 ms missed
+/// about one tick in two, so the log ran two or three seconds of writes long;
+/// 100 ms missed none.
+#[cfg(feature = "sqlite")]
+const LONG_LOG_CHECKPOINT_WAIT: Duration = Duration::from_millis(100);
+
+/// `checkpoint` waiting `wait` at most on a reader or another writer,
+/// instead of the connection's whole busy timeout.
+#[cfg(feature = "sqlite")]
+async fn checkpoint_briefly(
+    conn: &mut sqlx::SqliteConnection,
+    checkpoint: &'static str,
+    wait: Duration,
+) -> Result<(), sqlx::Error> {
     let busy_timeout = |wait: Duration| {
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "PRAGMA busy_timeout = {}",
             wait.as_millis()
         )))
     };
-    busy_timeout(CAUGHT_UP_CHECKPOINT_WAIT)
-        .execute(&mut *conn)
-        .await?;
-    let checkpoint = sqlx::query("PRAGMA wal_checkpoint(FULL)")
-        .execute(&mut *conn)
-        .await;
+    busy_timeout(wait).execute(&mut *conn).await?;
+    let checkpoint = sqlx::query(checkpoint).execute(&mut *conn).await;
     busy_timeout(SQLITE_BUSY_TIMEOUT)
         .execute(&mut *conn)
         .await?;

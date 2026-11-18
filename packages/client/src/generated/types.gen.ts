@@ -547,6 +547,11 @@ export type CleanupState = 'idle' | 'running' | 'completed' | 'failed';
  */
 export type CleanupStatus = {
     /**
+     * Tables a Postgres compaction has rewritten so far, in order; empty on
+     * SQLite and for a cleanup.
+     */
+    compacted: Array<CompactedTable>;
+    /**
      * Why a `failed` run stopped. Batches committed before it stay deleted.
      */
     error: string | null;
@@ -582,37 +587,67 @@ export type CommentRequest = {
 };
 
 /**
- * Whether the SQLite file can give the space a cleanup frees back to the
- * disk, and what compacting it once would take.
+ * One table a Postgres compaction rewrote. Sizes are heap, TOAST and
+ * indexes together (`pg_total_relation_size`).
+ */
+export type CompactedTable = {
+    bytes_after: number;
+    bytes_before: number;
+    /**
+     * How long its `VACUUM FULL` took: the wait for the table's lock (at
+     * most five seconds) and the rewrite under it.
+     */
+    duration_ms: number;
+    table: string;
+};
+
+/**
+ * Whether the database can give the space a cleanup frees back to the
+ * disk, and what compacting it would take.
  *
- * A database created before Rustrak set `auto_vacuum = INCREMENTAL` keeps
- * SQLite's default, `NONE`: its freed pages are reused but the file never
- * shrinks. One `VACUUM` rewrites it in incremental mode. Always
- * `needed: false` on Postgres, whose autovacuum gives the space back.
+ * SQLite: a database created before Rustrak set `auto_vacuum =
+ * INCREMENTAL` keeps SQLite's default, `NONE`: its freed pages are reused
+ * but the file never shrinks. One `VACUUM` rewrites it in incremental mode.
+ *
+ * Postgres: always `needed`. Vacuum makes a deleted row's space reusable
+ * but leaves it in the table's files; only rewriting the table (`VACUUM
+ * FULL`) hands it back, so the compaction is on offer at any time.
  */
 export type Compaction = {
     /**
-     * The database file's size.
+     * The database's size.
      */
     file_bytes: number;
     /**
-     * Free disk next to the database, `null` when it cannot be read.
+     * Free disk next to the database, `null` when it cannot be read (always
+     * on Postgres, whose disk is the database server's).
      */
     free_disk_bytes: number | null;
     /**
-     * What the data in it takes, the part a compaction keeps.
+     * What the data in it takes, the part a compaction keeps. `null` on
+     * Postgres, which cannot tell without an extension.
      */
-    live_bytes: number;
+    live_bytes: number | null;
     needed: boolean;
     /**
-     * Free pages inside the file, the part a compaction gives back.
+     * Free space inside the database, the part a compaction gives back.
+     * `null` on Postgres, for the same reason.
      */
-    reclaimable_bytes: number;
+    reclaimable_bytes: number | null;
     /**
-     * Free disk a compaction needs: twice the live data, one copy in
-     * SQLite's temporary file and one in the write-ahead log.
+     * Free disk a compaction needs. SQLite: twice the live data, one copy
+     * in its temporary file and one in the write-ahead log. Postgres: the
+     * largest table's size, the copy of the one being rewritten. Not the
+     * write-ahead log the rewrite adds, which needs about as much again
+     * when it is on the same disk, and more while replication or archiving
+     * holds it back.
      */
     required_disk_bytes: number;
+    /**
+     * Postgres: the tables a compaction rewrites, in the order it does.
+     * Empty on SQLite, which compacts one file.
+     */
+    tables: Array<TableSize>;
 };
 
 export type ConfirmSsoLinkRequest = {
@@ -2569,6 +2604,16 @@ export type StorageSummary = {
 
 export type SubscriptionResponse = {
     is_subscribed: boolean;
+};
+
+/**
+ * A table's size on disk: `pg_table_size` (heap and TOAST) and
+ * `pg_indexes_size`, which add up to `pg_total_relation_size`.
+ */
+export type TableSize = {
+    index_bytes: number;
+    table: string;
+    table_bytes: number;
 };
 
 /**
@@ -9641,7 +9686,7 @@ export type StorageGetCompactionError = StorageGetCompactionErrors[keyof Storage
 
 export type StorageGetCompactionResponses = {
     /**
-     * Whether the SQLite file gives freed space back, and what compacting it takes
+     * Whether the database gives freed space back, and what compacting it takes
      */
     200: Compaction;
 };

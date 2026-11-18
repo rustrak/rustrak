@@ -121,12 +121,12 @@ pub use span_v2::{parse_span_v2_container, SpanV2Entry};
 pub use stats::{EventTimeseriesPoint, MetricDelta, ProjectStatsSummary};
 pub use storage::{
     CleanupCounts, CleanupFilter, CleanupFrequency, CleanupKind, CleanupRequest, CleanupState,
-    CleanupStatus, Compaction, KindAge, ProjectAge, ProjectRetention, ProjectStorage,
-    RetentionResponse, RetentionRun, RetentionSettings, RetentionWindows, SourceMapGcResult,
-    SourceMapStorage, StorageAge, StorageSummary, AGE_BUCKET_DAYS,
+    CleanupStatus, CompactedTable, Compaction, KindAge, ProjectAge, ProjectRetention,
+    ProjectStorage, RetentionResponse, RetentionRun, RetentionSettings, RetentionWindows,
+    SourceMapGcResult, SourceMapStorage, StorageAge, StorageSummary, TableSize, AGE_BUCKET_DAYS,
 };
 pub use transaction::{
-    span_attributes, SpanDetailResponse, SpanResponse, TransactionDetailResponse,
+    span_attributes, SpanColumns, SpanDetailResponse, SpanResponse, TransactionDetailResponse,
     TransactionResponse, TransactionStatsResponse, TransactionTimeseriesPoint,
 };
 pub use user::{ChangePasswordRequest, CreateUserRequest, LoginRequest, User, UserRole};

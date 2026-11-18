@@ -8,7 +8,10 @@ use bytes::Bytes;
 use chrono::Utc;
 use rustrak::error::AppError;
 use rustrak::ingest::{delete_event, read_event};
-use rustrak::models::{CleanupCounts, CleanupFilter, CleanupState, CleanupStatus, CreateProject};
+use rustrak::models::{
+    CleanupCounts, CleanupFilter, CleanupState, CleanupStatus, CreateProject, ProjectRetention,
+    RetentionSettings, RetentionWindows,
+};
 use rustrak::services::sourcemap_store::{LocalSourceMapStore, SourceMapStore};
 use rustrak::services::{CleanupJob, ProjectService, StorageService};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -378,7 +381,8 @@ async fn test_span_counts_past_the_sample_scale_and_include_standalone_spans() {
     // Span counts are estimated from a sample of transactions, because an exact
     // count reads the whole `spans` table. Past the sample size a uniform
     // project still lands exactly, and standalone spans (no transaction) are
-    // counted on their own: the cleanup never deletes them, the page shows them.
+    // counted on their own: the page shows them, and the preview leaves this
+    // one out since it has no time to age by.
     let db = TestDb::new().await;
     let project = ProjectService::create(
         &db.pool,
@@ -420,6 +424,139 @@ async fn test_span_counts_past_the_sample_scale_and_include_standalone_spans() {
         .find(|r| r.project_id == project.id)
         .expect("project in breakdown");
     assert_eq!(p.spans_count, 1_101);
+}
+
+/// Seeds one span ending at `timestamp`, under `transaction_id` or standalone.
+async fn seed_span_at(
+    pool: &rustrak::db::DbPool,
+    project_id: i32,
+    transaction_id: Option<Uuid>,
+    timestamp: chrono::DateTime<Utc>,
+) {
+    sqlx::query(
+        "INSERT INTO spans (id, transaction_id, project_id, start_timestamp, timestamp, data) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(transaction_id)
+    .bind(project_id)
+    .bind(timestamp)
+    .bind(timestamp)
+    .bind(serde_json::json!({}))
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn project_span_count(pool: &rustrak::db::DbPool, project_id: i32) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM spans WHERE project_id = $1")
+        .bind(project_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_retention_purges_standalone_spans_past_the_transactions_window() {
+    // Standalone and Spans v2 rows have no transaction to cascade from, so
+    // the transactions window applies to them directly, by their end time.
+    let db = TestDb::new().await;
+    let mut projects = Vec::new();
+    for name in ["default-window", "kept-forever"] {
+        let p = ProjectService::create(
+            &db.pool,
+            CreateProject {
+                name: name.to_string(),
+                slug: None,
+                platform: None,
+            },
+        )
+        .await
+        .unwrap();
+        projects.push(p.id);
+    }
+    let (default_project, forever) = (projects[0], projects[1]);
+
+    let days_ago = |d| Utc::now() - chrono::Duration::days(d);
+    for project in [default_project, forever] {
+        seed_span_at(&db.pool, project, None, days_ago(40)).await;
+        seed_span_at(&db.pool, project, None, days_ago(5)).await;
+    }
+    // An old span under a transaction the window still keeps stays with it.
+    let recent_txn: Uuid = {
+        seed_transaction_with_spans_at(&db.pool, default_project, 0, days_ago(5)).await;
+        sqlx::query_scalar("SELECT id FROM transactions WHERE project_id = $1")
+            .bind(default_project)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap()
+    };
+    seed_span_at(&db.pool, default_project, Some(recent_txn), days_ago(40)).await;
+
+    let settings = RetentionSettings {
+        defaults: RetentionWindows {
+            transactions_days: Some(30),
+            ..Default::default()
+        },
+        overrides: vec![ProjectRetention {
+            project_id: forever,
+            events_days: None,
+            transactions_days: None,
+            logs_days: None,
+        }],
+        ..Default::default()
+    };
+    let counts = StorageService::apply_retention_in_batches(&db.pool, &settings, 1, |_| {})
+        .await
+        .unwrap();
+
+    assert_eq!(counts.spans, 1, "only the old standalone span");
+    assert_eq!(project_span_count(&db.pool, default_project).await, 2);
+    assert_eq!(project_span_count(&db.pool, forever).await, 2);
+}
+
+#[tokio::test]
+async fn test_cleanup_preview_counts_the_standalone_spans_it_deletes() {
+    // The preview is the dry run the destructive MCP tool shows first: it
+    // counts the standalone spans the cleanup deletes, aged by their end
+    // time, or by their start when they have none.
+    let db = TestDb::new().await;
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "standalone-preview".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    let days_ago = |d| Utc::now() - chrono::Duration::days(d);
+    seed_span_at(&db.pool, project.id, None, days_ago(40)).await;
+    seed_span_at(&db.pool, project.id, None, days_ago(5)).await;
+    sqlx::query(
+        "INSERT INTO spans (id, transaction_id, project_id, start_timestamp, data) \
+         VALUES ($1, NULL, $2, $3, $4)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(project.id)
+    .bind(days_ago(40))
+    .bind(serde_json::json!({}))
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let preview =
+        StorageService::preview_cleanup(&db.pool, 30, Some(project.id), CleanupFilter::all())
+            .await
+            .unwrap();
+    let deleted =
+        StorageService::execute_cleanup(&db.pool, 30, Some(project.id), CleanupFilter::all())
+            .await
+            .unwrap();
+    assert_eq!(deleted.spans, 2, "both old standalone spans");
+    assert_eq!(preview.spans, deleted.spans);
+    assert_eq!(project_span_count(&db.pool, project.id).await, 1);
 }
 
 #[tokio::test]
@@ -1534,19 +1671,30 @@ async fn test_cleanup_lookups_are_index_range_scans() {
             "SELECT id FROM logs WHERE project_id = $1 AND ingested_at < $2 LIMIT $3",
             "idx_logs_project_ingested",
         ),
+        // A range over the age, not a filter per row of the project.
+        (
+            "SELECT id FROM spans WHERE project_id = $1 AND transaction_id IS NULL \
+             AND COALESCE(timestamp, start_timestamp) < $2 LIMIT $3",
+            "idx_spans_standalone_age (project_id=? AND <expr><?)",
+        ),
+        // The size sample reads spans in index order, with no sort.
+        (
+            "SELECT data, payload FROM spans WHERE project_id = $1 ORDER BY trace_id LIMIT $2",
+            "SEARCH spans USING INDEX idx_spans_project_trace (project_id=?)",
+        ),
         (
             "SELECT COUNT(*) FROM events e WHERE e.ingested_at < $1 \
              AND e.project_id IN (SELECT id FROM projects WHERE $2 IS NULL OR id = $3)",
             "idx_events_project_ingested",
         ),
-        // The storage page's size estimate samples each project's newest rows.
+        // So do its event and transaction samples, and the logs' newest rows.
         (
-            "SELECT data FROM events WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
-            "idx_events_project_ingested",
+            "SELECT data, payload FROM events WHERE project_id = $1 ORDER BY event_id LIMIT $2",
+            "sqlite_autoindex_events_",
         ),
         (
-            "SELECT data FROM transactions WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
-            "idx_transactions_project_ingested",
+            "SELECT data, payload FROM transactions WHERE project_id = $1 ORDER BY event_id LIMIT $2",
+            "sqlite_autoindex_transactions_",
         ),
         (
             "SELECT body FROM logs WHERE project_id = $1 ORDER BY ingested_at DESC LIMIT $2",
@@ -1560,6 +1708,7 @@ async fn test_cleanup_lookups_are_index_range_scans() {
     ] {
         let got = plan(sql).await;
         assert!(got.contains(index), "{sql}\n  expected {index}, got: {got}");
+        assert!(!got.contains("TEMP B-TREE"), "{sql}\n  sorts: {got}");
     }
 }
 

@@ -1671,7 +1671,8 @@
       "gcFailed": "No se pudieron borrar los source maps sin usar",
       "compacting": "Compactando la base de datos… {elapsed}",
       "compacted": "Base de datos compactada",
-      "compactionFailed": "La compactación falló"
+      "compactionFailed": "La compactación falló",
+      "compactedFreed": "{size} devueltos al disco"
     },
     "unit": {
       "errors": "{count, plural, =1 {# error} other {# errores}}",
@@ -1713,6 +1714,17 @@
       "pause": "Mientras dura, la base de datos no acepta escrituras: los errores se guardan y se procesan después, pero los logs, trazas y sesiones que lleguen mientras tanto se pierden.",
       "duration": "Tarda unos segundos por GB de datos. Hazlo en un momento tranquilo.",
       "confirm": "Compactar"
+    },
+    "compactionPostgres": {
+      "title": "Devolver al disco el espacio de lo borrado",
+      "description": "PostgreSQL reutiliza el espacio que libera la retención dentro de sus tablas, pero casi nunca lo devuelve al disco: la base de datos sigue ocupando {size} tras una limpieza. Compactar reescribe cada tabla para devolverlo.",
+      "action": "Compactar tablas",
+      "dialogTitle": "¿Compactar las tablas?",
+      "dialogDescription": "Rustrak reescribe con VACUUM FULL cada tabla de la que borra la retención, de la más pequeña a la más grande, y devuelve al disco el espacio de sus filas borradas.",
+      "tableSize": "{table} · {indexes} de índices",
+      "disk": "Necesita unos {required} libres en el disco del servidor PostgreSQL mientras dura, el tamaño de la tabla más grande, y otro tanto para el WAL si está en el mismo disco. Rustrak no ve ese disco: compruébalo antes.",
+      "lock": "Cada tabla queda bloqueada mientras se reescribe, unos segundos por GB que conserva. Los errores se siguen aceptando y se guardan cuando su tabla termina. Las transacciones, spans y logs que lleguen mientras se reescribe su tabla se rechazan y se pierden (los SDK dejan de enviarlos durante 10 segundos), y las páginas que muestran esa tabla dan error hasta que termine.",
+      "duration": "La tabla más grande es la que más tarda. Hazlo en un momento tranquilo, o usa pg_repack, que solo bloquea cada tabla un momento al empezar y al acabar."
     }
   },
   "errors": {

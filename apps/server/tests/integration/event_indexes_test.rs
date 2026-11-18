@@ -117,6 +117,35 @@ async fn event_read_paths_are_answered_from_one_index() {
     }
 }
 
+/// The gen_ai indexes hold AI spans only, and the agents tables still read
+/// through them.
+#[tokio::test]
+async fn gen_ai_indexes_leave_other_spans_out() {
+    let db = TestDb::new().await;
+    for name in [
+        "idx_spans_gen_ai_op_type",
+        "idx_spans_gen_ai_model",
+        "idx_spans_gen_ai_tool",
+    ] {
+        let (sql,): (String,) = sqlx::query_as("SELECT sql FROM sqlite_master WHERE name = $1")
+            .bind(name)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        assert!(
+            sql.contains("WHERE gen_ai_operation_type IS NOT NULL"),
+            "{sql}"
+        );
+    }
+    // SpanService::tools_table. INDEXED BY fails to plan unless the query
+    // implies the partial predicate (`= 'tool'` implies IS NOT NULL).
+    let tools = "SELECT gen_ai_tool_name, duration_ms, status FROM spans INDEXED BY \
+                 idx_spans_gen_ai_tool WHERE project_id = $1 \
+                 AND gen_ai_operation_type = 'tool' AND gen_ai_tool_name IS NOT NULL";
+    let got = plan(&db.pool, tools).await;
+    assert!(got.contains("idx_spans_gen_ai_tool"), "{got}");
+}
+
 /// Indexes no query needs: each duplicates a UNIQUE constraint's own index,
 /// is a prefix of another, or is read by nothing.
 #[tokio::test]
@@ -130,6 +159,16 @@ async fn redundant_indexes_are_gone() {
         "idx_sfm_lookup",
         "idx_events_project_digested",
         "idx_events_event_type",
+        // Every trace lookup also filters by project (idx_spans_project_trace
+        // and the gen_ai partials); nothing looks a span or a transaction up
+        // by span_id or trace_id alone.
+        "idx_spans_span_id",
+        "idx_spans_trace",
+        "idx_transactions_trace",
+        // Replaced by the partial idx_spans_gen_ai_{op_type,model,tool}.
+        "idx_spans_project_gen_ai_op_type",
+        "idx_spans_project_gen_ai_model",
+        "idx_spans_project_gen_ai_tool",
     ] {
         let (n,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = $1")

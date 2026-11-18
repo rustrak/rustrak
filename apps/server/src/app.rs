@@ -17,7 +17,9 @@ use crate::digest::session_aggregator::SessionAggregator;
 use crate::routes::dashboard::Dashboard;
 use crate::routes::metrics::MetricsEndpoint;
 use crate::scheduler::engine::Scheduler;
-use crate::scheduler::jobs::{MonitorSweepJob, SessionPurgeJob, StorageCleanupJob};
+use crate::scheduler::jobs::{
+    MonitorSweepJob, PayloadDictionaryJob, SessionPurgeJob, StorageCleanupJob,
+};
 use crate::services::oauth::{ClientMetadataSource, HttpClientMetadata};
 use crate::services::sourcemap::{DbSourceMapProvider, SourceMapProvider};
 use crate::services::sourcemap_store::{LocalSourceMapStore, SourceMapStore};
@@ -226,6 +228,7 @@ impl AppState {
         let scheduler = Arc::new(Scheduler::new(vec![
             Arc::new(MonitorSweepJob::new(self.processors.clone().into_inner())),
             Arc::new(SessionPurgeJob),
+            Arc::new(PayloadDictionaryJob),
             Arc::new(StorageCleanupJob::new(
                 self.cleanup_job.clone().into_inner(),
                 Arc::clone(&self.sourcemap_store),

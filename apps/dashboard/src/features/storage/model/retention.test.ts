@@ -8,6 +8,7 @@ import type {
 import { describe, expect, it } from 'vitest';
 import {
   bucketGoes,
+  compactedBytes,
   deletesAnything,
   elapsed,
   estimateBytes,
@@ -306,5 +307,18 @@ describe('impactOf', () => {
     expect(
       impactOf({ data: undefined, isError: true, isFetching: true }),
     ).toBeNull();
+  });
+});
+
+describe('compactedBytes', () => {
+  it('is what the rewritten tables gave back, together', () => {
+    const table = (bytes_before: number, bytes_after: number) => ({
+      table: 'spans',
+      bytes_before,
+      bytes_after,
+      duration_ms: 1,
+    });
+    expect(compactedBytes([table(1_000, 200), table(500, 100)])).toBe(1_200);
+    expect(compactedBytes([])).toBe(0);
   });
 });

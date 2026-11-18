@@ -156,31 +156,72 @@ pub struct CleanupStatus {
     /// Why a `failed` run stopped. Batches committed before it stay deleted.
     #[cfg_attr(feature = "openapi", schema(required))]
     pub error: Option<String>,
+    /// Tables a Postgres compaction has rewritten so far, in order; empty on
+    /// SQLite and for a cleanup.
+    pub compacted: Vec<CompactedTable>,
 }
 
-/// Whether the SQLite file can give the space a cleanup frees back to the
-/// disk, and what compacting it once would take.
+/// One table a Postgres compaction rewrote. Sizes are heap, TOAST and
+/// indexes together (`pg_total_relation_size`).
+#[derive(Debug, Default, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CompactedTable {
+    pub table: String,
+    pub bytes_before: i64,
+    pub bytes_after: i64,
+    /// How long its `VACUUM FULL` took: the wait for the table's lock (at
+    /// most five seconds) and the rewrite under it.
+    pub duration_ms: i64,
+}
+
+/// A table's size on disk: `pg_table_size` (heap and TOAST) and
+/// `pg_indexes_size`, which add up to `pg_total_relation_size`.
+#[derive(Debug, Default, Clone, Serialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TableSize {
+    pub table: String,
+    pub table_bytes: i64,
+    pub index_bytes: i64,
+}
+
+/// Whether the database can give the space a cleanup frees back to the
+/// disk, and what compacting it would take.
 ///
-/// A database created before Rustrak set `auto_vacuum = INCREMENTAL` keeps
-/// SQLite's default, `NONE`: its freed pages are reused but the file never
-/// shrinks. One `VACUUM` rewrites it in incremental mode. Always
-/// `needed: false` on Postgres, whose autovacuum gives the space back.
+/// SQLite: a database created before Rustrak set `auto_vacuum =
+/// INCREMENTAL` keeps SQLite's default, `NONE`: its freed pages are reused
+/// but the file never shrinks. One `VACUUM` rewrites it in incremental mode.
+///
+/// Postgres: always `needed`. Vacuum makes a deleted row's space reusable
+/// but leaves it in the table's files; only rewriting the table (`VACUUM
+/// FULL`) hands it back, so the compaction is on offer at any time.
 #[derive(Debug, Default, Clone, Serialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Compaction {
     pub needed: bool,
-    /// The database file's size.
+    /// The database's size.
     pub file_bytes: i64,
-    /// What the data in it takes, the part a compaction keeps.
-    pub live_bytes: i64,
-    /// Free pages inside the file, the part a compaction gives back.
-    pub reclaimable_bytes: i64,
-    /// Free disk a compaction needs: twice the live data, one copy in
-    /// SQLite's temporary file and one in the write-ahead log.
+    /// What the data in it takes, the part a compaction keeps. `null` on
+    /// Postgres, which cannot tell without an extension.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub live_bytes: Option<i64>,
+    /// Free space inside the database, the part a compaction gives back.
+    /// `null` on Postgres, for the same reason.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub reclaimable_bytes: Option<i64>,
+    /// Free disk a compaction needs. SQLite: twice the live data, one copy
+    /// in its temporary file and one in the write-ahead log. Postgres: the
+    /// largest table's size, the copy of the one being rewritten. Not the
+    /// write-ahead log the rewrite adds, which needs about as much again
+    /// when it is on the same disk, and more while replication or archiving
+    /// holds it back.
     pub required_disk_bytes: i64,
-    /// Free disk next to the database, `null` when it cannot be read.
+    /// Free disk next to the database, `null` when it cannot be read (always
+    /// on Postgres, whose disk is the database server's).
     #[cfg_attr(feature = "openapi", schema(required))]
     pub free_disk_bytes: Option<i64>,
+    /// Postgres: the tables a compaction rewrites, in the order it does.
+    /// Empty on SQLite, which compacts one file.
+    pub tables: Vec<TableSize>,
 }
 
 impl Compaction {

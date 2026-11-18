@@ -13633,7 +13633,7 @@
         "operationId": "storage.getCompaction",
         "responses": {
           "200": {
-            "description": "Whether the SQLite file gives freed space back, and what compacting it takes",
+            "description": "Whether the database gives freed space back, and what compacting it takes",
             "content": {
               "application/json": {
                 "schema": {
@@ -13663,7 +13663,7 @@
         "tags": [
           "Storage"
         ],
-        "summary": "Rewrites a SQLite file created before\nincremental mode, so it gives freed space back from then on. Writes wait\nwhile it runs; follow it with `GET /api/storage/cleanup/status`.",
+        "summary": "Gives the space deleted data held back to\nthe disk: on SQLite it rewrites a file created before incremental mode, on\nPostgres it rewrites each table retention deletes from (`VACUUM FULL`),\nlocking that table while it does. Follow it with\n`GET /api/storage/cleanup/status`, which lists each table rewritten.",
         "operationId": "storage.compact",
         "responses": {
           "202": {
@@ -17238,9 +17238,17 @@
           "removed",
           "started_at",
           "finished_at",
-          "error"
+          "error",
+          "compacted"
         ],
         "properties": {
+          "compacted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactedTable"
+            },
+            "description": "Tables a Postgres compaction has rewritten so far, in order; empty on\nSQLite and for a cleanup."
+          },
           "error": {
             "type": [
               "string",
@@ -17304,22 +17312,51 @@
           }
         }
       },
+      "CompactedTable": {
+        "type": "object",
+        "description": "One table a Postgres compaction rewrote. Sizes are heap, TOAST and\nindexes together (`pg_total_relation_size`).",
+        "required": [
+          "table",
+          "bytes_before",
+          "bytes_after",
+          "duration_ms"
+        ],
+        "properties": {
+          "bytes_after": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "bytes_before": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How long its `VACUUM FULL` took: the wait for the table's lock (at\nmost five seconds) and the rewrite under it."
+          },
+          "table": {
+            "type": "string"
+          }
+        }
+      },
       "Compaction": {
         "type": "object",
-        "description": "Whether the SQLite file can give the space a cleanup frees back to the\ndisk, and what compacting it once would take.\n\nA database created before Rustrak set `auto_vacuum = INCREMENTAL` keeps\nSQLite's default, `NONE`: its freed pages are reused but the file never\nshrinks. One `VACUUM` rewrites it in incremental mode. Always\n`needed: false` on Postgres, whose autovacuum gives the space back.",
+        "description": "Whether the database can give the space a cleanup frees back to the\ndisk, and what compacting it would take.\n\nSQLite: a database created before Rustrak set `auto_vacuum =\nINCREMENTAL` keeps SQLite's default, `NONE`: its freed pages are reused\nbut the file never shrinks. One `VACUUM` rewrites it in incremental mode.\n\nPostgres: always `needed`. Vacuum makes a deleted row's space reusable\nbut leaves it in the table's files; only rewriting the table (`VACUUM\nFULL`) hands it back, so the compaction is on offer at any time.",
         "required": [
           "needed",
           "file_bytes",
           "live_bytes",
           "reclaimable_bytes",
           "required_disk_bytes",
-          "free_disk_bytes"
+          "free_disk_bytes",
+          "tables"
         ],
         "properties": {
           "file_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "The database file's size."
+            "description": "The database's size."
           },
           "free_disk_bytes": {
             "type": [
@@ -17327,25 +17364,38 @@
               "null"
             ],
             "format": "int64",
-            "description": "Free disk next to the database, `null` when it cannot be read."
+            "description": "Free disk next to the database, `null` when it cannot be read (always\non Postgres, whose disk is the database server's)."
           },
           "live_bytes": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "description": "What the data in it takes, the part a compaction keeps."
+            "description": "What the data in it takes, the part a compaction keeps. `null` on\nPostgres, which cannot tell without an extension."
           },
           "needed": {
             "type": "boolean"
           },
           "reclaimable_bytes": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "description": "Free pages inside the file, the part a compaction gives back."
+            "description": "Free space inside the database, the part a compaction gives back.\n`null` on Postgres, for the same reason."
           },
           "required_disk_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Free disk a compaction needs: twice the live data, one copy in\nSQLite's temporary file and one in the write-ahead log."
+            "description": "Free disk a compaction needs. SQLite: twice the live data, one copy\nin its temporary file and one in the write-ahead log. Postgres: the\nlargest table's size, the copy of the one being rewritten. Not the\nwrite-ahead log the rewrite adds, which needs about as much again\nwhen it is on the same disk, and more while replication or archiving\nholds it back."
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TableSize"
+            },
+            "description": "Postgres: the tables a compaction rewrites, in the order it does.\nEmpty on SQLite, which compacts one file."
           }
         }
       },
@@ -21932,6 +21982,28 @@
         "properties": {
           "is_subscribed": {
             "type": "boolean"
+          }
+        }
+      },
+      "TableSize": {
+        "type": "object",
+        "description": "A table's size on disk: `pg_table_size` (heap and TOAST) and\n`pg_indexes_size`, which add up to `pg_total_relation_size`.",
+        "required": [
+          "table",
+          "table_bytes",
+          "index_bytes"
+        ],
+        "properties": {
+          "index_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "table": {
+            "type": "string"
+          },
+          "table_bytes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

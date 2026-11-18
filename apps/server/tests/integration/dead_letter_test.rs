@@ -431,7 +431,7 @@ async fn one_event_the_database_runs_out_of_memory_on_does_not_stall_the_live_di
     let project = create_test_project(&db.pool, "Out Of Memory").await;
     for statement in [
         "CREATE FUNCTION oom() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN \
-         IF NEW.data->>'message' = 'huge' THEN \
+         IF NEW.calculated_value = 'huge' THEN \
          RAISE EXCEPTION 'out of memory' USING ERRCODE = '53200'; END IF; \
          RETURN NEW; END $$",
         "CREATE TRIGGER oom BEFORE INSERT ON events FOR EACH ROW EXECUTE FUNCTION oom()",
@@ -669,11 +669,11 @@ async fn recovery_waits_for_a_digest_slot() {
 async fn refuse_the_poison(pool: &rustrak::db::DbPool) {
     #[cfg(feature = "sqlite")]
     let refuse = "CREATE TRIGGER refuse_poison BEFORE INSERT ON events \
-                  WHEN json_extract(NEW.data, '$.message') = 'poison' \
+                  WHEN NEW.calculated_value = 'poison' \
                   BEGIN SELECT RAISE(ABORT, 'refused'); END";
     #[cfg(feature = "postgres")]
     let refuse = "ALTER TABLE events ADD CONSTRAINT refuse_poison \
-                  CHECK (data->>'message' IS DISTINCT FROM 'poison') NOT VALID";
+                  CHECK (calculated_value IS DISTINCT FROM 'poison') NOT VALID";
     sqlx::query(refuse).execute(pool).await.unwrap();
 }
 

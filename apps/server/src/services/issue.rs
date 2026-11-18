@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::db::dialect::{bucket, compare_utc, epoch, json_member, push_compare_utc, since};
+use crate::db::payload::{self, Column, Decompress};
 use crate::db::{Db, DbPool};
 use crate::error::{AppError, AppResult};
 use crate::models::rbac::ProjectScope;
@@ -11,6 +12,7 @@ use crate::services::github;
 use crate::services::grouping::DenormalizedFields;
 use crate::services::scope::Scope;
 use crate::services::IssueSocialService;
+use futures_util::TryStreamExt;
 use serde::Serialize;
 use sqlx::QueryBuilder;
 use std::collections::HashMap;
@@ -62,6 +64,34 @@ pub struct IssueAggregates {
 
 /// Max events scanned when computing per-issue aggregates (tags, user count).
 const AGGREGATE_SCAN_CAP: i64 = 1000;
+
+/// The members of an event's payload the aggregates read.
+#[derive(serde::Deserialize)]
+struct Members {
+    tags: Option<serde_json::Value>,
+    user: Option<serde_json::Value>,
+    contexts: Option<serde_json::Value>,
+}
+
+/// `Members` of event `id`, whose payload is compressed where SQL cannot
+/// reach (a row in the old format has its members selected by the query).
+/// `None` when it cannot be decoded: logged and left out, so one bad row
+/// does not fail the page.
+///
+/// ponytail: decodes each compressed payload in full (zstd and a skipping
+/// parse, tens of microseconds for a typical event), one row at a time as
+/// they stream, up to `AGGREGATE_SCAN_CAP` per call. Keep the members in
+/// columns at digest time if aggregates over large events get slow.
+fn compressed_members(
+    decompress: &mut Decompress<'_>,
+    id: Uuid,
+    payload: &[u8],
+) -> Option<Members> {
+    decompress
+        .read(payload)
+        .inspect_err(|e| log::error!("Event {id} left out of its issue's aggregates: {e}"))
+        .ok()
+}
 
 /// `issues.numeric_id` of a new row. Postgres has an identity column; SQLite
 /// reads a counter that a trigger advances on insert (single writer, so the
@@ -1034,17 +1064,35 @@ impl IssueService {
         issue_id: Uuid,
         key: &str,
     ) -> AppResult<Vec<IssueTagValue>> {
-        // Only the member, never the whole payload: an event can be megabytes.
+        // Only the member of a row in the old format, never the whole
+        // payload: an event can be megabytes.
         let sql = format!(
-            "SELECT {}, timestamp FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
+            "SELECT id, {}, timestamp, payload FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
             json_member("data", &["tags"])
         );
-        let rows: Vec<(Option<serde_json::Value>, DateTime<Utc>)> =
-            sqlx::query_as(sqlx::AssertSqlSafe(sql))
-                .bind(issue_id)
-                .bind(AGGREGATE_SCAN_CAP)
-                .fetch_all(pool)
-                .await?;
+        type Row = (
+            Uuid,
+            Option<serde_json::Value>,
+            DateTime<Utc>,
+            Option<Vec<u8>>,
+        );
+        let dictionaries = payload::decoders(pool, Column::Events).await?;
+        let mut decompress = Decompress::new(&dictionaries)?;
+        let mut stream = sqlx::query_as::<_, Row>(sqlx::AssertSqlSafe(sql))
+            .bind(issue_id)
+            .bind(AGGREGATE_SCAN_CAP)
+            .fetch(pool);
+        let mut rows = Vec::new();
+        while let Some((id, tags, timestamp, payload)) = stream.try_next().await? {
+            let tags = match payload {
+                None => tags,
+                Some(bytes) => match compressed_members(&mut decompress, id, &bytes) {
+                    Some(members) => members.tags,
+                    None => continue,
+                },
+            };
+            rows.push((tags, timestamp));
+        }
 
         struct Acc {
             count: i64,
@@ -1093,16 +1141,32 @@ impl IssueService {
     /// only filled for events digested since it was added.
     pub async fn aggregates(pool: &DbPool, issue_id: Uuid) -> AppResult<IssueAggregates> {
         let sql = format!(
-            "SELECT {}, {} FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
+            "SELECT id, {}, {}, payload FROM events WHERE issue_id = $1 ORDER BY digested_at DESC LIMIT $2",
             json_member("data", &["tags"]),
             json_member("data", &["user"])
         );
-        type Row = (Option<serde_json::Value>, Option<serde_json::Value>);
-        let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+        type Row = (
+            Uuid,
+            Option<serde_json::Value>,
+            Option<serde_json::Value>,
+            Option<Vec<u8>>,
+        );
+        let dictionaries = payload::decoders(pool, Column::Events).await?;
+        let mut decompress = Decompress::new(&dictionaries)?;
+        let mut stream = sqlx::query_as::<_, Row>(sqlx::AssertSqlSafe(sql))
             .bind(issue_id)
             .bind(AGGREGATE_SCAN_CAP)
-            .fetch_all(pool)
-            .await?;
+            .fetch(pool);
+        let mut rows = Vec::new();
+        while let Some((id, tags, user, payload)) = stream.try_next().await? {
+            rows.push(match payload {
+                None => (tags, user),
+                Some(bytes) => match compressed_members(&mut decompress, id, &bytes) {
+                    Some(members) => (members.tags, members.user),
+                    None => continue,
+                },
+            });
+        }
 
         let mut tag_counts: HashMap<String, HashMap<String, i64>> = HashMap::new();
         let mut users: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1203,7 +1267,7 @@ impl IssueService {
         // Only the context, not the whole event: a feedback event is small,
         // but this runs once per page of up to 100.
         let mut qb = QueryBuilder::new(format!(
-            "SELECT issue_id, {} FROM events WHERE issue_id IN (",
+            "SELECT issue_id, id, {}, payload FROM events WHERE issue_id IN (",
             json_member("data", &["contexts", "feedback"])
         ));
         let mut sep = qb.separated(", ");
@@ -1211,13 +1275,26 @@ impl IssueService {
             sep.push_bind(*id);
         }
         qb.push(")");
-        let rows: Vec<(Uuid, Option<serde_json::Value>)> =
-            qb.build_query_as().fetch_all(pool).await?;
+        let dictionaries = payload::decoders(pool, Column::Events).await?;
+        let mut decompress = Decompress::new(&dictionaries)?;
+        let mut stream = qb
+            .build_query_as::<(Uuid, Uuid, Option<serde_json::Value>, Option<Vec<u8>>)>()
+            .fetch(pool);
 
-        Ok(rows
-            .into_iter()
-            .filter_map(|(id, context)| Some((id, context?)))
-            .collect())
+        let mut contexts = HashMap::new();
+        while let Some((id, event_id, context, payload)) = stream.try_next().await? {
+            let context = match payload {
+                None => context,
+                Some(bytes) => match compressed_members(&mut decompress, event_id, &bytes) {
+                    Some(members) => members.contexts.and_then(|c| c.get("feedback").cloned()),
+                    None => continue,
+                },
+            };
+            if let Some(context) = context {
+                contexts.insert(id, context);
+            }
+        }
+        Ok(contexts)
     }
 
     /// Bulk-computes [`IssueListStats`] (user_count + 24h trend) for the given

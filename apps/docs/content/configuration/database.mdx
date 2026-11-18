@@ -229,6 +229,79 @@ DATABASE_MAX_CONNECTIONS=25
 DATABASE_MIN_CONNECTIONS=5
 ```
 
+### Reclaiming disk space on PostgreSQL
+
+PostgreSQL never hands the space of deleted rows back to the operating system
+by itself. Autovacuum marks it free and new rows reuse it, so with
+[retention](/usage/storage) on, the tables stop growing; but a 100 GB database
+stays 100 GB on disk after a cleanup, mostly free space inside. Plain `VACUUM`
+only cuts empty pages off the end of a table, and retention empties its
+oldest pages, at the start
+([VACUUM](https://www.postgresql.org/docs/current/sql-vacuum.html)).
+
+Getting that space back means rewriting the tables. **Settings → Storage →
+Compact tables** does it with `VACUUM FULL`, one table at a time, for the four
+tables retention deletes from (`events`, `transactions`, `spans`, `logs`),
+smallest first, so the space each one gives back is there for the next. The
+dialog lists each table's size; afterwards the job reports each table's size
+before and after and how long it took (`compacted` in
+`GET /api/storage/cleanup/status`).
+
+**When.** After a cleanup has deleted a large share of the data and you need
+the disk back: typically once, after upgrading to a version that stores
+payloads compressed, when your retention period has passed and the old,
+larger rows are gone. With retention on, the tables then stay at their size
+by reuse alone; compacting again only helps after you shorten retention or
+delete a lot by hand. Rustrak never compacts on a schedule.
+
+**What it costs.**
+
+- **Each table is locked for its whole rewrite** (`ACCESS EXCLUSIVE`), which
+  takes a few seconds per GB the table keeps (measured: 1.1 GB of tables, 80%
+  deleted, compacted to 0.2 GB in 1.3 s; `spans` locked for 0.9 s).
+  Meanwhile:
+  - **Error events keep being accepted.** They are written to disk first and
+    stored once their table is done, so none is lost.
+  - **Transactions, spans and logs sent while their table is rewritten are
+    turned away and lost.** They are written while the SDK's request is open,
+    so instead of waiting on the lock (and taking every database connection
+    with them), they get `429` with `Retry-After: 10` and
+    `X-Sentry-Rate-Limits` naming only their categories (`transaction;span`
+    while `spans` is rewritten, `transaction` for `transactions`, `log_item`
+    for `logs`). SDKs pause those categories for 10 s and keep sending
+    errors; an envelope that also carries an error still has its error
+    stored.
+  - **Dashboard pages showing the table being rewritten fail** with a
+    temporary error until it is done; the rest of the dashboard works.
+- **Free disk** on the database server of about the largest table's size: the
+  new copy is written before the old one is removed. The rewrite is written
+  to the WAL too, so allow about as much again if the WAL is on the same
+  disk, and more if replication or archiving is holding WAL back. Rustrak cannot see the database server's disk, so check it first. If the disk fills, the rewrite fails and the table is left
+  exactly as it was.
+- A table some other query is using gets 5 seconds to be released; past that,
+  the compaction stops, says which table, and leaves it as it was. Tables
+  already compacted stay compacted; run it again at a quieter time.
+
+Run it at a quiet time. To compact while the tables stay in use, use
+[pg_repack](https://reorg.github.io/pg_repack/), an extension installed on the
+database server and run as a superuser (Rustrak's tables all have the
+primary key it needs). It locks each table only briefly, at the start and at
+the end. It needs about twice the size of the tables and their indexes free
+while it works, and the extension created in Rustrak's database first:
+
+```bash
+psql -h db-host -U postgres -d rustrak -c 'CREATE EXTENSION pg_repack'
+pg_repack -h db-host -U postgres -d rustrak --no-kill-backend \
+  -t spans -t transactions -t events -t logs
+```
+
+Without `--no-kill-backend`, pg_repack cancels the queries still holding a
+table after its 60-second wait for the lock. With it, that table is skipped
+instead: run the command again for it later.
+
+PostgreSQL 19 adds `REPACK (CONCURRENTLY)`, which does the same without an
+extension.
+
 ### Backup
 
 ```bash

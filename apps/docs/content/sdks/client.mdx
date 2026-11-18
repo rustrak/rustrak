@@ -568,7 +568,7 @@ Every method, grouped as it hangs off the client.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `storage.compact()` | `POST /api/storage/compaction` | Rewrites a SQLite file created before incremental mode, so it gives freed space back from then on. |
+| `storage.compact()` | `POST /api/storage/compaction` | Gives the space deleted data held back to the disk: on SQLite it rewrites a file created before incremental mode, on Postgres it rewrites each table retention deletes from (`VACUUM FULL`), locking that table while it does. |
 | `storage.executeCleanup({ body })` | `POST /api/storage/cleanup` | Starts deleting old data and the issues it empties. |
 | `storage.gcSourceMaps()` | `POST /api/storage/source-maps/gc` | Delete orphaned source maps (DB + disk). |
 | `storage.getAge()` | `GET /api/storage/age` | Rows per age bucket, per project and kind. |

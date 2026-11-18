@@ -1,6 +1,8 @@
-use super::span::{insert_span_rows, text, SpanRow};
+use super::span::{encode_span_rows, insert_span_rows, text, SpanRow};
 use super::ProcessorCtx;
+use crate::db::payload::{Column, Encoder, NO_DATA};
 use crate::error::{AppError, AppResult};
+use crate::models::SpanColumns;
 use crate::protocol::{clamp, extract_timestamp, is_stale, relay_level};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
 use bytes::Bytes;
@@ -79,77 +81,39 @@ impl TransactionProcessor {
 
         let id = Uuid::new_v4();
 
-        // Parent transaction + its extracted spans are written in one DB
-        // transaction, and a retry with the same event id is a no-op.
-        let mut tx = ctx.pool.begin().await?;
-
-        let inserted = sqlx::query(
-            r#"
-            INSERT INTO transactions (
-                id, event_id, project_id,
-                transaction_name,
-                trace_id, span_id, parent_span_id, op, status, source,
-                start_timestamp, timestamp, duration_ms,
-                platform, environment, release, server_name,
-                sdk_name, sdk_version, level,
-                data, remote_addr, ingested_at
-            ) VALUES (
-                $1, $2, $3,
-                $4,
-                $5, $6, $7, $8, $9, $10,
-                $11, $12, $13,
-                $14, $15, $16, $17,
-                $18, $19, $20,
-                $21, $22, $23
-            )
-            ON CONFLICT (project_id, event_id) DO NOTHING
-            "#,
-        )
-        .bind(id)
-        .bind(ctx.event_id)
-        .bind(ctx.project_id)
-        .bind(&transaction_name)
-        .bind(trace_id.as_deref())
-        .bind(span_id.as_deref())
-        .bind(parent_span_id.as_deref())
-        .bind(op.as_deref())
-        .bind(status.as_deref())
-        .bind(source)
-        .bind(start_timestamp)
-        .bind(timestamp)
-        .bind(duration_ms)
-        .bind(&platform)
-        .bind(&environment)
-        .bind(&release)
-        .bind(server_name)
-        .bind(sdk_name)
-        .bind(sdk_version)
-        .bind(level)
-        .bind(sqlx::types::Json(&data))
-        .bind(ctx.remote_addr.as_deref())
-        .bind(ctx.ingested_at)
-        .execute(&mut *tx)
-        .await?;
-
-        if inserted.rows_affected() == 0 {
-            return Ok(());
+        // The spans are stored once, as `spans` rows the transaction endpoint
+        // rebuilds them from. They stay in the payload when there are none
+        // (`[]` has no row to come back from) or one is not
+        // `SpanColumns::compactable`.
+        let spans = data.as_object_mut().and_then(|d| d.remove("spans"));
+        let apart = matches!(&spans, Some(serde_json::Value::Array(s))
+            if !s.is_empty() && s.iter().all(SpanColumns::compactable));
+        if let (false, Some(spans)) = (apart, &spans) {
+            data["spans"] = spans.clone();
         }
+
+        // Everything is encoded before the write's transaction begins:
+        // nothing is read or compressed under SQLite's write lock. The
+        // payload is taken before the AI root below normalizes its copy.
+        let payload = Encoder::current(&ctx.pool, Column::Transactions)
+            .await?
+            .encode(data.to_string().as_bytes());
 
         // Extract each span into the indexed `spans` table. Mirrors Relay's span
         // extraction (DataCategory::SpanIndexed): individually queryable rows
         // linked to the parent transaction. A span inherits the transaction's
-        // trace_id when it doesn't carry its own. The parent transaction was
-        // already serialized above, so the spans can be moved out of `data`.
-        let spans = data
-            .get_mut("spans")
-            .and_then(|s| s.as_array_mut())
-            .map(std::mem::take)
-            .unwrap_or_default();
+        // trace_id when it doesn't carry its own.
+        let spans = match spans {
+            Some(serde_json::Value::Array(spans)) => spans,
+            _ => Vec::new(),
+        };
         let mut rows: Vec<SpanRow> = spans
             .into_iter()
-            .map(|span| {
+            .enumerate()
+            .map(|(position, span)| {
                 span_row(
                     span,
+                    position,
                     id,
                     trace_id.as_deref(),
                     non_empty(&platform),
@@ -218,7 +182,66 @@ impl TransactionProcessor {
             }
         }
 
-        insert_span_rows(&mut tx, ctx.project_id, ctx.keep_ai_spans, rows).await?;
+        let rows = encode_span_rows(&ctx.pool, ctx.keep_ai_spans, rows).await?;
+
+        // Parent transaction + its extracted spans are written in one DB
+        // transaction, and a retry with the same event id is a no-op.
+        let mut tx = ctx.pool.begin().await?;
+
+        let inserted = sqlx::query(
+            r#"
+            INSERT INTO transactions (
+                id, event_id, project_id,
+                transaction_name,
+                trace_id, span_id, parent_span_id, op, status, source,
+                start_timestamp, timestamp, duration_ms,
+                platform, environment, release, server_name,
+                sdk_name, sdk_version, level,
+                data, payload, remote_addr, ingested_at
+            ) VALUES (
+                $1, $2, $3,
+                $4,
+                $5, $6, $7, $8, $9, $10,
+                $11, $12, $13,
+                $14, $15, $16, $17,
+                $18, $19, $20,
+                $21, $22, $23, $24
+            )
+            ON CONFLICT (project_id, event_id) DO NOTHING
+            "#,
+        )
+        .bind(id)
+        .bind(ctx.event_id)
+        .bind(ctx.project_id)
+        .bind(&transaction_name)
+        .bind(trace_id.as_deref())
+        .bind(span_id.as_deref())
+        .bind(parent_span_id.as_deref())
+        .bind(op.as_deref())
+        .bind(status.as_deref())
+        .bind(source)
+        .bind(start_timestamp)
+        .bind(timestamp)
+        .bind(duration_ms)
+        .bind(&platform)
+        .bind(&environment)
+        .bind(&release)
+        .bind(server_name)
+        .bind(sdk_name)
+        .bind(sdk_version)
+        .bind(level)
+        .bind(NO_DATA)
+        .bind(payload)
+        .bind(ctx.remote_addr.as_deref())
+        .bind(ctx.ingested_at)
+        .execute(&mut *tx)
+        .await?;
+
+        if inserted.rows_affected() == 0 {
+            return Ok(());
+        }
+
+        insert_span_rows(&mut tx, ctx.project_id, rows).await?;
 
         tx.commit().await?;
 
@@ -255,13 +278,14 @@ fn strip_ai_data(data: &mut serde_json::Value) {
 /// environment-filtered view.
 fn span_row(
     span: serde_json::Value,
+    position: usize,
     transaction_id: Uuid,
     txn_trace_id: Option<&str>,
     platform: Option<&str>,
     release: Option<&str>,
     environment: Option<&str>,
 ) -> SpanRow {
-    let mut row = SpanRow::from_span(span);
+    let mut row = SpanRow::from_span(span, position);
     row.transaction_id = Some(transaction_id);
     row.trace_id = row.trace_id.or_else(|| txn_trace_id.map(str::to_string));
     row.platform = platform.map(str::to_string);

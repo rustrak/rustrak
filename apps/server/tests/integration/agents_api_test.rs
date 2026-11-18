@@ -701,6 +701,24 @@ async fn test_agent_conversations_list_and_transcript() {
     assert_eq!(spans[3]["output"], "It ships tomorrow.");
     assert_eq!(spans[4]["trace_id"], "turn-2");
 
+    // Spans stored the way every row was before compression read the same.
+    let ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM spans WHERE project_id = $1")
+        .bind(project_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    for id in ids {
+        crate::common::make_legacy(&pool, "spans", id).await;
+    }
+    let legacy: Value = test::call_and_read_body_json(
+        &app,
+        get(format!(
+            "/api/projects/{project_id}/agents/conversations/conv-1"
+        )),
+    )
+    .await;
+    assert_eq!(legacy, body);
+
     let resp = test::call_service(
         &app,
         get(format!(

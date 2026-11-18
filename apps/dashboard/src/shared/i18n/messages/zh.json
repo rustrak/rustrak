@@ -1671,7 +1671,8 @@
       "gcFailed": "无法删除未使用的 source map",
       "compacting": "正在压缩数据库… {elapsed}",
       "compacted": "数据库已压缩",
-      "compactionFailed": "压缩失败"
+      "compactionFailed": "压缩失败",
+      "compactedFreed": "已将 {size} 归还给磁盘"
     },
     "unit": {
       "errors": "{count} 个错误",
@@ -1713,6 +1714,17 @@
       "pause": "运行期间数据库不接受写入：错误会被保留并稍后处理，但期间到达的日志、追踪和会话会丢失。",
       "duration": "每 GB 数据需要几秒钟。请在空闲时段运行。",
       "confirm": "压缩"
+    },
+    "compactionPostgres": {
+      "title": "将已删除数据的空间归还给磁盘",
+      "description": "PostgreSQL 会在表内复用保留策略释放的空间，但几乎不会将其归还给磁盘：清理后数据库仍占用 {size}。压缩会重写每张表，归还这部分空间。",
+      "action": "压缩数据表",
+      "dialogTitle": "压缩数据表？",
+      "dialogDescription": "Rustrak 使用 VACUUM FULL 从小到大依次重写保留策略会删除数据的每张表，并将已删除行占用的空间归还给磁盘。",
+      "tableSize": "{table} · 索引 {indexes}",
+      "disk": "运行期间 PostgreSQL 服务器磁盘上大约需要 {required} 可用空间，即最大一张表的大小；如果预写日志（WAL）在同一磁盘上，还需要大致相同的空间。Rustrak 无法查看该磁盘：请先确认。",
+      "lock": "每张表在重写期间会被锁定，每保留 1 GB 数据约需数秒。错误事件仍会被接收，并在其所在表完成后保存。在其所在表重写期间发送的事务、span 和日志会被拒绝并丢失（SDK 会暂停发送这些数据 10 秒），显示该表的页面在完成前会报错。",
+      "duration": "最大的表耗时最长。请在空闲时段运行，或使用 pg_repack，它只在开始和结束时短暂锁表。"
     }
   },
   "errors": {
