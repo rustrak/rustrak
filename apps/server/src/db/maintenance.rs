@@ -190,9 +190,10 @@ const COMPACTION_LOCK_TIMEOUT_SECS: u64 = 5;
 /// EXCLUSIVE`) for its whole rewrite, a few seconds per GB it keeps, and
 /// named in `rewriting` meanwhile: ingest turns away the items it would
 /// write into it on the request path (see `pipeline::shed_by`), which would
-/// otherwise wait on the lock until they held the whole pool. Digests and
-/// dashboard reads of it fail as transient at the pool's lock timeout (see
-/// `db::prepare_session`) and are retried. The old files go only once the new copy is
+/// otherwise wait on the lock until they held the whole pool. Pooled
+/// queries on it, the dashboard's reads, fail as transient at the pool's
+/// lock timeout (see `db::prepare_session`); the digest, on a connection of
+/// its own with no such timeout, waits. The old files go only once the new copy is
 /// complete, so a run that fails or is cancelled leaves that table as it
 /// was, and needs free disk for that copy.
 ///

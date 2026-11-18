@@ -639,7 +639,8 @@ export type Compaction = {
      * in its temporary file and one in the write-ahead log. Postgres: the
      * largest table's size, the copy of the one being rewritten. Not the
      * write-ahead log the rewrite adds, which needs about as much again
-     * when it is on the same disk.
+     * when it is on the same disk, and more while replication or archiving
+     * holds it back.
      */
     required_disk_bytes: number;
     /**

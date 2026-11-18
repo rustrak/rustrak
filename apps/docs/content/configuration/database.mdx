@@ -276,7 +276,7 @@ delete a lot by hand. Rustrak never compacts on a schedule.
 - **Free disk** on the database server of about the largest table's size: the
   new copy is written before the old one is removed. The rewrite is written
   to the WAL too, so allow about as much again if the WAL is on the same
-  disk. Rustrak cannot see the database server's disk, so check it first. If the disk fills, the rewrite fails and the table is left
+  disk, and more if replication or archiving is holding WAL back. Rustrak cannot see the database server's disk, so check it first. If the disk fills, the rewrite fails and the table is left
   exactly as it was.
 - A table some other query is using gets 5 seconds to be released; past that,
   the compaction stops, says which table, and leaves it as it was. Tables
@@ -291,8 +291,13 @@ while it works, and the extension created in Rustrak's database first:
 
 ```bash
 psql -h db-host -U postgres -d rustrak -c 'CREATE EXTENSION pg_repack'
-pg_repack -h db-host -U rustrak -d rustrak -t spans -t transactions -t events -t logs
+pg_repack -h db-host -U postgres -d rustrak --no-kill-backend \
+  -t spans -t transactions -t events -t logs
 ```
+
+Without `--no-kill-backend`, pg_repack cancels the queries still holding a
+table after its 60-second wait for the lock. With it, that table is skipped
+instead: run the command again for it later.
 
 PostgreSQL 19 adds `REPACK (CONCURRENTLY)`, which does the same without an
 extension.

@@ -566,8 +566,11 @@ async fn samples(pool: &DbPool, column: Column) -> AppResult<Option<(Vec<u8>, Ve
     let (mut samples, mut sizes, mut read) = (Vec::new(), Vec::new(), 0);
     while let Some(stored) = rows.try_next().await? {
         read += 1;
-        let dictionary = dictionary_id(&stored)?.and_then(|id| loaded.get(&id));
         // A row that does not decode with those is left out of the sample.
+        let Ok(id) = dictionary_id(&stored) else {
+            continue;
+        };
+        let dictionary = id.and_then(|id| loaded.get(&id));
         let Ok(json) = decode_with(&stored, dictionary.map(|d| &**d)) else {
             continue;
         };

@@ -17388,7 +17388,7 @@
           "required_disk_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Free disk a compaction needs. SQLite: twice the live data, one copy\nin its temporary file and one in the write-ahead log. Postgres: the\nlargest table's size, the copy of the one being rewritten. Not the\nwrite-ahead log the rewrite adds, which needs about as much again\nwhen it is on the same disk."
+            "description": "Free disk a compaction needs. SQLite: twice the live data, one copy\nin its temporary file and one in the write-ahead log. Postgres: the\nlargest table's size, the copy of the one being rewritten. Not the\nwrite-ahead log the rewrite adds, which needs about as much again\nwhen it is on the same disk, and more while replication or archiving\nholds it back."
           },
           "tables": {
             "type": "array",

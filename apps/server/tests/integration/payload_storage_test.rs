@@ -364,7 +364,22 @@ async fn events_get_a_dictionary_of_their_own_and_a_new_one_at_ten_times_the_row
 
     insert_events(&pool, project.id, (issue.id, grouping), 499, 1).await;
     analyze(&pool).await;
+    // One row whose header is in no known format is left out of the sample;
+    // it does not stop the training.
+    let whole: Vec<u8> = sqlx::query_scalar("SELECT payload FROM events WHERE id = $1")
+        .bind(first)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let set_payload = |bytes: Vec<u8>| {
+        sqlx::query("UPDATE events SET payload = $1 WHERE id = $2")
+            .bind(bytes)
+            .bind(first)
+            .execute(&pool)
+    };
+    set_payload(vec![9]).await.unwrap();
     let trained = payload::train_due(&pool).await.unwrap();
+    set_payload(whole).await.unwrap();
     let ids = dictionaries(&pool).await;
     assert_eq!(ids.len(), 1);
     assert_eq!(trained, [(Column::Events, ids[0] as u32)]);

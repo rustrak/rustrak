@@ -51,7 +51,8 @@ pub type DbPool = SqlitePool;
 /// a compaction (`maintenance::compact`), the one thing that locks a whole
 /// table for long: a query that meets the lock fails as transient after two
 /// seconds, under the pool's acquire timeout, instead of holding its
-/// connection until the rewrite ends and the pool with it.
+/// connection until the rewrite ends and the pool with it. It bounds a
+/// wait for a row lock the same way.
 #[cfg(feature = "postgres")]
 pub async fn prepare_session(conn: &mut sqlx::PgConnection) -> Result<(), sqlx::Error> {
     sqlx::query("SET timezone = 'UTC'")
