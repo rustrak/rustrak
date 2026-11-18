@@ -1,5 +1,11 @@
 # docs
 
+## 0.18.2
+
+### Patch Changes
+
+- [`3f44929`](https://github.com/rustrak/rustrak/commit/3f44929cb735ed4871505b6098f91627138217c8) Thanks [@AbianS](https://github.com/AbianS)! - Document reclaiming disk space on PostgreSQL (Compact tables and pg_repack), the Storage page's compaction behaviour, and project roles from provider groups with `OIDC_GROUP_ROLES`.
+
 ## 0.18.1
 
 ### Patch Changes
