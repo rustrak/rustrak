@@ -1,0 +1,56 @@
+---
+version: v0.29.0
+title: Smaller Storage
+description: Events, transactions and spans take up to 75% less disk, PostgreSQL can give the space back, and OIDC groups map to project roles
+date: 2026-11-18
+tags: [storage, performance, postgresql, sqlite, sso]
+---
+
+## Upgrading
+
+- **Back up before upgrading. There is no downgrade:** v0.28.0 does not start against a migrated database, and the down migrations refuse to run once a compressed payload exists. Going back means restoring the backup.
+- Migrations are near-instant: schema changes plus three small index builds (0.7 s on a 4 GB SQLite database). They run before the server listens.
+- **Existing rows are not rewritten.** They stay readable as before, but only rows written after the upgrade are smaller. Disk usage drops as retention removes the old ones.
+- **PostgreSQL:** once your retention period has passed, run **Settings → Storage → Compact tables** once to return the space to the disk. Do it at a quiet time: each table is locked while it is rewritten and needs free disk about the size of the largest table. See [Reclaiming disk space](/configuration/database#reclaiming-disk-space-on-postgresql), including `pg_repack` if you cannot lock.
+- Span `start_timestamp`, `timestamp` and `duration_ms` are now rounded to the nearest microsecond instead of truncated, so they can differ by up to 1 µs.
+
+## Smaller storage
+
+Measured on the same dataset (50k error events, 100k transactions, 1.14M spans):
+
+| | v0.28.0 | v0.29.0 |
+|---|---:|---:|
+| SQLite | 4,022 MB | 983 MB |
+| PostgreSQL (after `VACUUM FULL`) | 2,299 MB | 843 MB |
+| SQLite WAL peak during an ingest burst | 8.0 GB | 0.3 GB |
+
+- Event, transaction and span payloads are stored zstd-compressed, with a dictionary each instance trains from its own rows
+- Spans are stored once: transactions no longer embed their `spans` array. API and MCP output is unchanged
+- Three span and transaction indexes nothing read are dropped, and the gen_ai span indexes only hold AI spans
+- Retention now deletes standalone spans past the transactions window; they were never deleted before
+- The SQLite WAL is truncated once it passes ~40 MB instead of growing for a whole ingest burst
+- PostgreSQL autovacuum runs at 1% dead rows on `events`, `transactions`, `spans` and `logs` instead of 20%
+
+## Compact tables on PostgreSQL
+
+PostgreSQL never returns the space of deleted rows to the operating system. **Compact tables** on the Storage page, which did nothing on PostgreSQL, now rewrites `events`, `transactions`, `spans` and `logs` with `VACUUM FULL`, one at a time.
+
+- Manual only, never scheduled. A failed run leaves the table as it was
+- While a table is rewritten, error events keep being accepted. Transactions, spans and logs bound for it get `429` with `X-Sentry-Rate-Limits` and are dropped by the SDK
+- The storage response lists per-table sizes on PostgreSQL
+
+## Project roles from OIDC groups
+
+`OIDC_GROUP_ROLES` gives roles from provider groups, on one project or on all of them ([@rane-keba](https://github.com/rane-keba)):
+
+```bash
+OIDC_GROUP_ROLES="shop-team=Viewer@storefront;platform=Developer"
+```
+
+Every SSO login syncs the account's assignments of the roles the mapping names. Roles it does not name, and password accounts, are never touched. See [SSO](/configuration/sso#project-roles-from-provider-groups).
+
+## Improvements
+
+- Deleting an issue returns to the issue list
+- lettre 0.11.24 fixes the RUSTSEC-2026-0560..0565 SMTP advisories
+- Transaction ingest is 15–40% faster, and the span list and trace view 4–5× faster on SQLite
