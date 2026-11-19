@@ -43,7 +43,7 @@ pub mod users;
 pub use alert::AlertService;
 pub use attachment::AttachmentService;
 pub use auth_session::{AuthSessionService, DbSessionStore};
-pub use auth_token::AuthTokenService;
+pub use auth_token::{AuthTokenService, DeclaredToken};
 pub use event::EventService;
 pub use event_trim::trim_oversized_event;
 pub use gen_ai::{

@@ -481,3 +481,71 @@ async fn a_restart_repairs_an_id_sequence_left_behind_a_declared_project() {
         assert_ne!(api_project(&db, &format!("Later {n}")).await, 5);
     }
 }
+
+#[tokio::test]
+async fn two_declared_tokens_can_swap_values() {
+    let db = TestDb::new().await;
+    apply(
+        &db,
+        &format!(
+            "{}{}",
+            token("ci", TOKEN, "CI"),
+            token("deploy", NEW_TOKEN, "Deploy")
+        ),
+    )
+    .await;
+
+    // Each new value is still the other row's until both are written.
+    apply(
+        &db,
+        &format!(
+            "{}{}",
+            token("ci", NEW_TOKEN, "CI"),
+            token("deploy", TOKEN, "Deploy")
+        ),
+    )
+    .await;
+
+    let ci = AuthTokenService::get_by_token(&db.pool, NEW_TOKEN)
+        .await
+        .unwrap()
+        .unwrap();
+    let deploy = AuthTokenService::get_by_token(&db.pool, TOKEN)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ci.description.as_deref(), Some("CI"));
+    assert_eq!(deploy.description.as_deref(), Some("Deploy"));
+    assert_eq!(AuthTokenService::list(&db.pool).await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_refused_token_change_leaves_every_declared_token_as_it_was() {
+    let db = TestDb::new().await;
+    let from_dashboard = AuthTokenService::create(&db.pool, CreateAuthToken::default())
+        .await
+        .unwrap();
+    apply(&db, &token("ci", TOKEN, "CI")).await;
+
+    // "ci" rotates, but "deploy" takes the dashboard token's value: refused,
+    // and the rotation must not have happened either.
+    let err = apply_err(
+        &db,
+        &format!(
+            "{}{}",
+            token("ci", NEW_TOKEN, "CI"),
+            token("deploy", &from_dashboard.token, "Deploy")
+        ),
+    )
+    .await;
+
+    assert!(err.contains("\"deploy\""), "{err}");
+    assert!(AuthTokenService::get_by_token(&db.pool, TOKEN)
+        .await
+        .unwrap()
+        .is_some());
+    assert!(AuthTokenService::get_by_token(&db.pool, NEW_TOKEN)
+        .await
+        .unwrap()
+        .is_none());
+}

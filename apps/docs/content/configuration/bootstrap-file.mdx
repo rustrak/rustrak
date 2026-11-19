@@ -153,6 +153,8 @@ For tokens the file is the source of truth:
 - Tokens created in the dashboard are never touched.
 - A value that already belongs to a token created in the dashboard stops the
   server.
+- Tokens are applied all at once: if one is refused, none of the others
+  change either. Two names may swap values.
 
 > **Unsetting `RUSTRAK_CONFIG` revokes nothing.** Revocation happens only
 > while a file is being applied. Turning the file off leaves every token it
@@ -191,5 +193,6 @@ server with the line and the reason:
 What depends on the database is checked next: a key that does not match the
 stored one, a `slug` or key taken by another project, an invalid superuser
 email, or a token value that is already
-another token's. Each item is applied
-on its own, so after a fix the next start picks up where the last one stopped.
+another token's. The superuser and each project are applied on
+their own, and the tokens together, so after a fix the next start picks up
+where the last one stopped.

@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::models::{CreateProject, CreateUserRequest, Product, UpdateProject, User, UserRole};
-use crate::services::{AuthTokenService, ProjectService, UsersService};
+use crate::services::{AuthTokenService, DeclaredToken, ProjectService, UsersService};
 use file::{BootstrapFile, ProjectSpec, SuperuserSpec};
 
 /// Bootstrap initial superuser from the CREATE_SUPERUSER env var, which the
@@ -101,24 +101,20 @@ pub async fn apply(pool: &DbPool, file: &BootstrapFile) -> Result<(), ApplyError
             .await
             .map_err(|e| ApplyError(format!("moving the project id sequence: {e}")))?;
     }
-    // Revoked first: a token renamed in the file keeps its value, which its
-    // old row still holds until it goes.
-    let declared: Vec<&str> = file.tokens.iter().map(|t| t.name.as_str()).collect();
-    let revoked = AuthTokenService::revoke_undeclared(pool, &declared)
+    let declared: Vec<DeclaredToken<'_>> = file
+        .tokens
+        .iter()
+        .map(|t| DeclaredToken {
+            name: &t.name,
+            raw: &t.token,
+            description: t.description.as_deref(),
+        })
+        .collect();
+    let revoked = AuthTokenService::sync_declared(pool, &declared)
         .await
-        .map_err(|e| ApplyError(format!("revoking tokens: {e}")))?;
+        .map_err(|e| ApplyError(format!("tokens: {e}")))?;
     for name in revoked {
         info!("rustrak.toml: revoked token {name:?}, no longer in the file");
-    }
-    for spec in &file.tokens {
-        AuthTokenService::upsert_declared(
-            pool,
-            &spec.name,
-            &spec.token,
-            spec.description.as_deref(),
-        )
-        .await
-        .map_err(|e| ApplyError(format!("token {:?}: {e}", spec.name)))?;
     }
     Ok(())
 }
