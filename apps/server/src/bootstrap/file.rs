@@ -260,6 +260,12 @@ fn resolve_token(raw: RawToken) -> Result<TokenSpec, FileError> {
             "bootstrap.tokens: name cannot be empty".to_string(),
         ));
     }
+    // `auth_tokens.config_name` is VARCHAR(255) on PostgreSQL.
+    if name.len() > 255 {
+        return Err(FileError(
+            "bootstrap.tokens: name cannot exceed 255 bytes".to_string(),
+        ));
+    }
     let at = format!("bootstrap.tokens {name:?}");
     let token = secret(raw.token, raw.token_file, "token", &at)?;
     if !is_valid_token_format(&token) {

@@ -333,3 +333,17 @@ fn a_value_of_the_wrong_type_is_not_echoed_in_the_error() {
         "the error leaks the secret: {err}"
     );
 }
+
+#[test]
+fn refuses_a_token_name_over_255_bytes_and_accepts_255() {
+    let fits = "t".repeat(255);
+    parse(&format!(
+        "[[bootstrap.tokens]]\nname = \"{fits}\"\ntoken = \"{TOKEN}\"\n"
+    ));
+
+    let long = "t".repeat(256);
+    let err = parse_err(&format!(
+        "[[bootstrap.tokens]]\nname = \"{long}\"\ntoken = \"{TOKEN}\"\n"
+    ));
+    assert!(err.contains("255"), "{err}");
+}

@@ -41,11 +41,15 @@ token = "0123456789abcdef0123456789abcdef01234567"
 description = "Deploys from CI"
 ```
 
-Project 1 above always has this DSN:
+Project 1 above always has this DSN, built from `PUBLIC_URL`'s scheme and
+host (and port, if it has one):
 
 ```
-https://0123456789abcdef0123456789abcdef@<PUBLIC_URL host>/1
+<scheme>://0123456789abcdef0123456789abcdef@<host>/1
 ```
+
+With `PUBLIC_URL=https://errors.example.com` that is
+`https://0123456789abcdef0123456789abcdef@errors.example.com/1`.
 
 The file has one section, `[bootstrap]`. Any other section (`[server]`,
 `[database]`…) or any field not listed on this page stops the server, so a
@@ -91,7 +95,8 @@ What happens to a project on a start:
   managed by the file. Removing a line never deletes data.
 - **Deleted from the dashboard:** while its data is still being removed, a
   start skips it with a warning; the first start after that creates it again,
-  empty, with the same id and key.
+  empty, with the same id. It keeps its DSN only if the file declares its
+  `sentry_key`; without one it gets a new random key.
 - **Its `slug` or `sentry_key` is already another project's:** the server
   does not start, and the message names the conflict.
 
@@ -137,7 +142,7 @@ creates. Use it as `Authorization: Bearer <token>`.
 
 | Field | Required | Value | On every start |
 |---|---|---|---|
-| `name` | yes | Not blank, unique in the file. Surrounding spaces are trimmed. | Identity. |
+| `name` | yes | Not blank, at most 255 bytes, unique in the file. Surrounding spaces are trimmed. | Identity. |
 | `token` | one of the two | 40 lowercase hexadecimal characters (`openssl rand -hex 20`), different from every other token's. | Set to this value. |
 | `token_file` | one of the two | Path of a file holding the token. See [Secrets](#secrets). | Same as `token`. |
 | `description` | no | Free text, shown in the dashboard's token list. | Set to this value. |
@@ -193,6 +198,8 @@ server with the line and the reason:
 What depends on the database is checked next: a key that does not match the
 stored one, a `slug` or key taken by another project, an invalid superuser
 email, or a token value that is already
-another token's. The superuser and each project are applied on
-their own, and the tokens together, so after a fix the next start picks up
-where the last one stopped.
+another token's. Every key is checked before anything is written. Renames
+are applied together, so declared projects can exchange names and slugs, and
+so are the tokens; a refusal in either changes none of them. Otherwise the
+superuser and each project are applied on their own, so after a fix the next
+start picks up where the last one stopped.

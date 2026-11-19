@@ -23,6 +23,13 @@ enum SlugPrecheck {
 
 pub struct ProjectService;
 
+/// A project's new name and slug, for [`ProjectService::rename_many`].
+pub struct ProjectRename {
+    pub id: i32,
+    pub name: String,
+    pub slug: String,
+}
+
 impl ProjectService {
     pub async fn list(pool: &DbPool) -> AppResult<Vec<Project>> {
         let projects = sqlx::query_as::<_, Project>(
@@ -778,6 +785,48 @@ impl ProjectService {
             }
             Err(e) => Err(AppError::Database(e)),
         }
+    }
+
+    /// Gives each project its new name and slug, in one transaction. Every
+    /// one is first parked on a placeholder, so projects may exchange names
+    /// and slugs; a final value another project holds refuses the lot and
+    /// changes nothing. `slug` is stored as given: slugify it first.
+    pub async fn rename_many(pool: &DbPool, renames: &[ProjectRename]) -> AppResult<()> {
+        if renames.is_empty() {
+            return Ok(());
+        }
+        let mut tx = pool.begin().await?;
+        for r in renames {
+            let parked = format!("renaming-{}", uuid::Uuid::new_v4().simple());
+            sqlx::query("UPDATE projects SET name = $1, slug = $1 WHERE id = $2")
+                .bind(parked)
+                .bind(r.id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        for r in renames {
+            let result = sqlx::query(
+                "UPDATE projects SET name = $1, slug = $2, updated_at = CURRENT_TIMESTAMP \
+                 WHERE id = $3",
+            )
+            .bind(&r.name)
+            .bind(&r.slug)
+            .bind(r.id)
+            .execute(&mut *tx)
+            .await;
+            match result {
+                Ok(_) => {}
+                Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+                    return Err(AppError::Conflict(format!(
+                        "project {}: name {:?} or slug {:?} is already another project's",
+                        r.id, r.name, r.slug
+                    )));
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Moves PostgreSQL's id sequence past every id in use, so a project

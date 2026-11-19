@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::models::{CreateProject, CreateUserRequest, Product, UpdateProject, User, UserRole};
+use crate::services::project::ProjectRename;
 use crate::services::{AuthTokenService, DeclaredToken, ProjectService, UsersService};
 use file::{BootstrapFile, ProjectSpec, SuperuserSpec};
 
@@ -80,19 +81,18 @@ pub struct ApplyError(String);
 ///   a new value rotates one, and a name removed from the file revokes it.
 ///   Tokens created from the dashboard are never touched.
 ///
-/// Each item is applied on its own and an error stops at that item; applying
-/// the same file again picks up where it stopped.
+/// Every key is checked before anything is written. Renames are applied
+/// together, so declared projects may exchange names and slugs; the tokens are
+/// applied together too. Otherwise each item is applied on its own and an
+/// error stops at that item; applying the same file again picks up where it
+/// stopped.
 pub async fn apply(pool: &DbPool, file: &BootstrapFile) -> Result<(), ApplyError> {
     if let Some(su) = &file.superuser {
         apply_superuser(pool, su)
             .await
             .map_err(|e| ApplyError(format!("superuser: {e}")))?;
     }
-    for spec in &file.projects {
-        apply_project(pool, spec)
-            .await
-            .map_err(|e| ApplyError(format!("project {}: {e}", spec.id)))?;
-    }
+    apply_projects(pool, &file.projects).await?;
     // At every start rather than after each insert, so a start that stopped
     // between creating a project and this is repaired by the next one. Nothing
     // creates a project before apply has finished.
@@ -135,39 +135,83 @@ async fn apply_superuser(pool: &DbPool, su: &SuperuserSpec) -> AppResult<()> {
     Ok(())
 }
 
-async fn apply_project(pool: &DbPool, spec: &ProjectSpec) -> Result<(), String> {
-    let stored: Option<(Uuid, bool)> =
-        sqlx::query_as("SELECT sentry_key, deleted_at IS NOT NULL FROM projects WHERE id = $1")
-            .bind(spec.id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| e.to_string())?;
-    match stored {
-        Some((_, true)) => {
-            // Its rows are still being removed in the background. Reviving it
-            // would hand its DSN to whatever is left; once the deletion
-            // finishes, the next start creates it again.
-            warn!(
-                "rustrak.toml: project {} is being deleted; it will be created again on a later start",
-                spec.id
-            );
-            Ok(())
-        }
-        Some((key, false)) => {
-            if let Some(declared) = spec.sentry_key.filter(|&k| k != key) {
-                return Err(format!(
-                    "the file declares sentry_key {} but the project's is {}. A key never \
-                     changes, since every client using the DSN would stop reporting",
-                    declared.simple(),
-                    key.simple()
-                ));
-            }
-            reconcile_project(pool, spec)
+/// Prefixes an error with the project it is about.
+fn at(id: i32) -> impl Fn(String) -> ApplyError {
+    move |e| ApplyError(format!("project {id}: {e}"))
+}
+
+/// Existing projects first, so a new one can take a name or slug an existing
+/// one gives up in the same file.
+async fn apply_projects(pool: &DbPool, specs: &[ProjectSpec]) -> Result<(), ApplyError> {
+    let mut existing = Vec::new();
+    let mut new = Vec::new();
+    let mut renames = Vec::new();
+    for spec in specs {
+        let stored: Option<(Uuid, bool)> =
+            sqlx::query_as("SELECT sentry_key, deleted_at IS NOT NULL FROM projects WHERE id = $1")
+                .bind(spec.id)
+                .fetch_optional(pool)
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(|e| at(spec.id)(e.to_string()))?;
+        match stored {
+            Some((_, true)) => {
+                // Its rows are still being removed in the background. Reviving
+                // it would hand its DSN to whatever is left; once the deletion
+                // finishes, the next start creates it again.
+                warn!(
+                    "rustrak.toml: project {} is being deleted; it will be created again on a later start",
+                    spec.id
+                );
+            }
+            Some((key, false)) => {
+                if let Some(declared) = spec.sentry_key.filter(|&k| k != key) {
+                    return Err(at(spec.id)(format!(
+                        "the file declares sentry_key {} but the project's is {}. A key never \
+                         changes, since every client using the DSN would stop reporting",
+                        declared.simple(),
+                        key.simple()
+                    )));
+                }
+                let current = ProjectService::get_by_id(pool, spec.id)
+                    .await
+                    .map_err(|e| at(spec.id)(e.to_string()))?;
+                let name = spec.name.trim().to_string();
+                let slug = spec
+                    .slug
+                    .as_deref()
+                    .map(slugify)
+                    .unwrap_or(current.slug.clone());
+                if name != current.name || slug != current.slug {
+                    renames.push(ProjectRename {
+                        id: spec.id,
+                        name,
+                        slug,
+                    });
+                }
+                existing.push(spec);
+            }
+            None => new.push(spec),
         }
-        None => create_project(pool, spec).await,
     }
+
+    ProjectService::rename_many(pool, &renames)
+        .await
+        .map_err(|e| ApplyError(e.to_string()))?;
+    for r in &renames {
+        info!(
+            "rustrak.toml: renamed project {} to {} ({})",
+            r.id, r.name, r.slug
+        );
+    }
+    for spec in existing {
+        reconcile_project(pool, spec)
+            .await
+            .map_err(|e| at(spec.id)(e.to_string()))?;
+    }
+    for spec in new {
+        create_project(pool, spec).await.map_err(at(spec.id))?;
+    }
+    Ok(())
 }
 
 async fn create_project(pool: &DbPool, spec: &ProjectSpec) -> Result<(), String> {
@@ -212,21 +256,13 @@ async fn create_project(pool: &DbPool, spec: &ProjectSpec) -> Result<(), String>
     Ok(())
 }
 
+/// Everything but the name and slug, which [`apply_projects`] renames.
 /// Writes only what differs, so a restart with an unchanged file writes nothing.
 async fn reconcile_project(pool: &DbPool, spec: &ProjectSpec) -> AppResult<()> {
     let current = ProjectService::get_by_id(pool, spec.id).await?;
     let mut update = UpdateProject::default();
     let mut changed = false;
 
-    let name = spec.name.trim();
-    if current.name != name {
-        update.name = Some(name.to_string());
-        changed = true;
-    }
-    if let Some(slug) = spec.slug.as_deref().filter(|s| slugify(s) != current.slug) {
-        update.slug = Some(slug.to_string());
-        changed = true;
-    }
     if let Some(platform) = spec
         .platform
         .as_deref()
@@ -246,7 +282,7 @@ async fn reconcile_project(pool: &DbPool, spec: &ProjectSpec) -> AppResult<()> {
 
     if changed {
         ProjectService::update(pool, spec.id, update).await?;
-        info!("rustrak.toml: updated project {} ({name})", spec.id);
+        info!("rustrak.toml: updated project {}", spec.id);
     }
     Ok(())
 }

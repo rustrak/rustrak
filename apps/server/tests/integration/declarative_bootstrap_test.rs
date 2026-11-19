@@ -549,3 +549,88 @@ async fn a_refused_token_change_leaves_every_declared_token_as_it_was() {
         .unwrap()
         .is_none());
 }
+
+#[tokio::test]
+async fn two_declared_projects_can_swap_names_and_slugs() {
+    let db = TestDb::new().await;
+    apply(
+        &db,
+        &format!(
+            "{}{}",
+            project(1, "A", "a", KEY),
+            project(2, "B", "b", OTHER_KEY)
+        ),
+    )
+    .await;
+
+    apply(
+        &db,
+        &format!(
+            "{}{}",
+            project(1, "B", "b", KEY),
+            project(2, "A", "a", OTHER_KEY)
+        ),
+    )
+    .await;
+
+    let one = ProjectService::get_by_id(&db.pool, 1).await.unwrap();
+    let two = ProjectService::get_by_id(&db.pool, 2).await.unwrap();
+    assert_eq!((one.name.as_str(), one.slug.as_str()), ("B", "b"));
+    assert_eq!((two.name.as_str(), two.slug.as_str()), ("A", "a"));
+}
+
+#[tokio::test]
+async fn a_new_project_can_take_the_name_an_existing_one_gives_up() {
+    let db = TestDb::new().await;
+    apply(&db, &project(1, "App", "app", KEY)).await;
+
+    apply(
+        &db,
+        &format!(
+            "{}{}",
+            project(2, "App", "app", OTHER_KEY),
+            project(1, "Legacy", "legacy", KEY)
+        ),
+    )
+    .await;
+
+    assert_eq!(
+        ProjectService::get_by_id(&db.pool, 1).await.unwrap().slug,
+        "legacy"
+    );
+    assert_eq!(
+        ProjectService::get_by_id(&db.pool, 2).await.unwrap().slug,
+        "app"
+    );
+}
+
+#[tokio::test]
+async fn a_rename_onto_an_undeclared_projects_slug_changes_no_project() {
+    let db = TestDb::new().await;
+    api_project(&db, "Shop").await; // slug "shop", not in the file
+    apply(
+        &db,
+        &format!(
+            "{}{}",
+            project(10, "A", "a", KEY),
+            project(11, "B", "b", OTHER_KEY)
+        ),
+    )
+    .await;
+
+    let err = apply_err(
+        &db,
+        &format!(
+            "{}{}",
+            project(10, "B", "b", KEY),
+            project(11, "A", "shop", OTHER_KEY)
+        ),
+    )
+    .await;
+
+    assert!(err.contains("project 11") && err.contains("shop"), "{err}");
+    let one = ProjectService::get_by_id(&db.pool, 10).await.unwrap();
+    let two = ProjectService::get_by_id(&db.pool, 11).await.unwrap();
+    assert_eq!((one.name.as_str(), one.slug.as_str()), ("A", "a"));
+    assert_eq!((two.name.as_str(), two.slug.as_str()), ("B", "b"));
+}
