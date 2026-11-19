@@ -3,7 +3,7 @@ use crate::db::payload::{Column, Encoder, NO_DATA};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::SpanColumns;
-use crate::protocol::{clamp_opt, extract_timestamp, is_stale};
+use crate::protocol::{clamp_opt, extract_timestamp, infer_span_op, is_stale};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
 use bytes::Bytes;
 use chrono::{DateTime, DurationRound, TimeDelta, Utc};
@@ -255,8 +255,22 @@ impl SpanProcessor {
     /// Parses and validates one standalone span payload (Relay's legacy
     /// "span" schema — one flat span object per envelope item).
     fn parse_item(work: &[u8]) -> AppResult<SpanRow> {
-        let data: serde_json::Value = serde_json::from_slice(work)
+        let mut data: serde_json::Value = serde_json::from_slice(work)
             .map_err(|e| AppError::Validation(format!("Invalid span JSON: {e}")))?;
+
+        // Relay turns a span item into a v2 span, whose attributes are its
+        // `data`, then its `tags`, without the empty values and with `kind`
+        // as `sentry.kind` (relay-spans/src/v1_to_v2.rs). No `op`, or an
+        // empty one, is then inferred from them.
+        if data["op"].as_str().is_none_or(str::is_empty) {
+            let op = infer_span_op(|name| {
+                let top = (name == "sentry.kind").then(|| data.get("kind")).flatten();
+                top.or_else(|| data.get("data")?.get(name))
+                    .or_else(|| data.get("tags")?.get(name))
+                    .filter(|value| !value.is_null() && value.as_str() != Some(""))
+            });
+            data["op"] = op.into();
+        }
 
         // span_id and trace_id are required for a standalone span to be
         // accepted.

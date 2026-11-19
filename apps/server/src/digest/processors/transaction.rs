@@ -39,6 +39,9 @@ impl TransactionProcessor {
 
         // Denormalize the trace context (contexts.trace.*) into queryable columns
         // — mirrors Relay, which surfaces op/status/span_id for performance views.
+        if let Some(trace) = data.pointer_mut("/contexts/trace") {
+            default_op(trace);
+        }
         let trace = data.get("contexts").and_then(|c| c.get("trace"));
         let trace_id = trace_str(trace, "trace_id", 64);
         let span_id = trace_str(trace, "span_id", 32);
@@ -277,7 +280,7 @@ fn strip_ai_data(data: &mut serde_json::Value) {
 /// them NULL would drop every transaction-embedded AI span from an
 /// environment-filtered view.
 fn span_row(
-    span: serde_json::Value,
+    mut span: serde_json::Value,
     position: usize,
     transaction_id: Uuid,
     txn_trace_id: Option<&str>,
@@ -285,6 +288,7 @@ fn span_row(
     release: Option<&str>,
     environment: Option<&str>,
 ) -> SpanRow {
+    default_op(&mut span);
     let mut row = SpanRow::from_span(span, position);
     row.transaction_id = Some(transaction_id);
     row.trace_id = row.trace_id.or_else(|| txn_trace_id.map(str::to_string));
@@ -292,6 +296,18 @@ fn span_row(
     row.release = release.map(str::to_string);
     row.environment = environment.map(str::to_string);
     row
+}
+
+/// Gives a span or trace context with no `op` the one Relay gives it,
+/// `"default"` (relay-event-normalization/src/transactions/processor.rs).
+/// No `op` is an absent key, a null or a value that is not a string, which
+/// Relay's parser empties; an empty string is an `op`.
+fn default_op(span: &mut serde_json::Value) {
+    if let Some(span) = span.as_object_mut() {
+        if !span.get("op").is_some_and(|op| op.is_string()) {
+            span.insert("op".to_string(), "default".into());
+        }
+    }
 }
 
 /// Extracts a top-level string field from the payload, defaulting to empty.

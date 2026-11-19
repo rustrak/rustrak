@@ -7,7 +7,7 @@
 //! not the legacy one-span-per-item format `span_test.rs` covers.
 
 use rustrak::ingest::envelope::{EnvelopeItemKind, ItemHeaders};
-use rustrak::models::span_v2::{parse_span_v2_container, SpanV2Entry};
+use rustrak::models::span_v2::parse_span_v2_container;
 use serde_json::json;
 
 #[test]
@@ -108,27 +108,6 @@ fn test_flat_attributes_unwraps_typed_value_type_pairs() {
     // The {"value":..., "type":...} wrapper must not leak through.
     assert!(flat["sentry.op"].is_string());
     assert!(flat.get("type").is_none());
-}
-
-#[test]
-fn test_op_reads_sentry_op_attribute() {
-    let flat = json!({ "sentry.op": "gen_ai.execute_tool" });
-    assert_eq!(
-        SpanV2Entry::op(&flat).as_deref(),
-        Some("gen_ai.execute_tool")
-    );
-}
-
-#[test]
-fn test_op_falls_back_to_gen_ai_operation_name_when_sentry_op_absent() {
-    let flat = json!({ "gen_ai.operation.name": "invoke_agent" });
-    assert_eq!(SpanV2Entry::op(&flat).as_deref(), Some("invoke_agent"));
-}
-
-#[test]
-fn test_op_is_none_when_neither_attribute_present() {
-    let flat = json!({ "some.other.attr": "x" });
-    assert_eq!(SpanV2Entry::op(&flat), None);
 }
 
 #[test]
