@@ -1,7 +1,7 @@
 import { Wordmark } from '@rustrak/ui';
 import { getPageMap } from 'nextra/page-map';
 import { Layout, Navbar } from 'nextra-theme-docs';
-import { Footer } from '@/components/home/chrome';
+import { Footer } from '@/components/home/footer';
 
 /**
  * The documentation shell: navbar, sidebar, search, table of contents, footer.

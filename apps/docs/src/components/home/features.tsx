@@ -1,9 +1,10 @@
 'use client';
 
 import { ArrowRightIcon, cn, Tab, TabList, TabPanel, Tabs } from '@rustrak/ui';
+import { useInView } from 'motion/react';
 import * as m from 'motion/react-m';
 import Image from 'next/image';
-import type { ReactNode } from 'react';
+import { type ReactNode, useRef } from 'react';
 import { EASE, VIEW } from '../landing/motion';
 import { SectionHead } from './chrome';
 import { highlight } from './code';
@@ -151,8 +152,16 @@ export function Showcase({
   children: ReactNode;
   className?: string;
 }) {
+  // A screenshot is built when its frame comes within a viewport of being
+  // seen, not prerendered: the four of them were ~350 KB of the landing's HTML
+  // and most of its hydration, for UI that is invisible until it scrolls in
+  // anyway. The frame keeps its aspect ratio, so nothing shifts. An
+  // interactive one is real text (commands, a DSN), so it stays in the HTML.
+  const frame = useRef<HTMLDivElement>(null);
+  const near = useInView(frame, { once: true, margin: '100% 0px' });
   return (
     <m.div
+      ref={frame}
       initial={{ opacity: 0, y: 48, scale: 0.96 }}
       whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={VIEW}
@@ -178,9 +187,11 @@ export function Showcase({
         transition={{ duration: 1.5, ease: EASE, delay: 0.25 }}
         className="absolute top-[9%] right-0 bottom-0 left-[7%] overflow-hidden rounded-tl-2xl border-white/15 border-t border-l bg-panel shadow-dialog"
       >
-        <Scaled width={designWidth} cropped className="size-full">
-          {children}
-        </Scaled>
+        {(near || interactive) && (
+          <Scaled width={designWidth} cropped className="size-full">
+            {children}
+          </Scaled>
+        )}
       </m.div>
     </m.div>
   );
