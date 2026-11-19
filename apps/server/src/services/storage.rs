@@ -506,6 +506,8 @@ impl CleanupJob {
                     counts.source_maps = StorageService::gc_source_maps(&pool, store.as_ref())
                         .await?
                         .files_removed;
+                    // What the spans it just removed were the last to use.
+                    StorageService::gc_span_descriptions(&pool).await?;
                     lock(&progress).removed = counts.clone();
                     Ok(counts)
                 }
@@ -561,6 +563,12 @@ impl CleanupJob {
 }
 
 impl StorageService {
+    /// Removes the span descriptions stored apart that no span refers to
+    /// any more, and returns how many (see `services::span_description`).
+    pub async fn gc_span_descriptions(pool: &DbPool) -> AppResult<u64> {
+        crate::services::span_description::remove_unused(pool).await
+    }
+
     /// Dry-run for [`Self::gc_source_maps`]: counts the orphaned `source_file`
     /// rows and the bytes a GC would reclaim. Mutates nothing.
     pub async fn preview_source_map_gc(pool: &DbPool) -> AppResult<SourceMapGcResult> {

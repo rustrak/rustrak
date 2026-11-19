@@ -189,7 +189,12 @@ mod level2 {
             .await
             .unwrap();
 
-        const QUERY: &str = "SELECT span_id, trace_id, parent_span_id, op, description, transaction_id, duration_ms FROM spans WHERE project_id = $1";
+        const QUERY: &str = concat!(
+            "SELECT span_id, trace_id, ",
+            rustrak::span_hex_id!("parent_span_id"),
+            ", op, description, transaction_id, duration_ms",
+            " FROM spans WHERE project_id = $1"
+        );
 
         let rows = sqlx::query(QUERY)
             .bind(project.id)

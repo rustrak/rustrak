@@ -254,12 +254,19 @@ impl SpanService {
         project_id: i32,
         id: uuid::Uuid,
     ) -> AppResult<SpanDetailResponse> {
-        let row = sqlx::query(
+        let row = sqlx::query(concat!(
             r#"
-            SELECT id, transaction_id, span_id, trace_id, parent_span_id,
-                   op, description, status,
+            SELECT id, transaction_id, span_id, trace_id, "#,
+            crate::span_hex_id!("parent_span_id"),
+            ", op, ",
+            crate::span_description!(),
+            r#", status,
                    start_timestamp, timestamp, duration_ms, exclusive_time_ms,
-                   is_segment, segment_id, platform, release, environment,
+                   is_segment, "#,
+            crate::span_hex_id!("segment_id"),
+            ", ",
+            crate::span_scope!(),
+            r#",
                    gen_ai_operation_type, gen_ai_agent_name,
                    gen_ai_request_model, gen_ai_response_model,
                    gen_ai_tool_name, gen_ai_conversation_id,
@@ -268,8 +275,8 @@ impl SpanService {
                    tags, data, payload
             FROM spans
             WHERE id = $1 AND project_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .bind(project_id)
         .fetch_optional(pool)
@@ -309,14 +316,23 @@ impl SpanService {
         let (hits,): (i64,) = count.build_query_as().fetch_one(pool).await?;
 
         let mut select = QueryBuilder::new(
-            "SELECT id, transaction_id, span_id, trace_id, parent_span_id, \
-                    op, description, status, \
+            concat!(
+                "SELECT id, transaction_id, span_id, trace_id, ",
+                crate::span_hex_id!("parent_span_id"),
+                ", op, ",
+                crate::span_description!(),
+                ", status, \
                     start_timestamp, timestamp, duration_ms, exclusive_time_ms, \
-                    is_segment, segment_id, platform, release, environment, \
+                    is_segment, ",
+                crate::span_hex_id!("segment_id"),
+                ", ",
+                crate::span_scope!(),
+                ", \
                     gen_ai_operation_type, gen_ai_agent_name, \
                     gen_ai_request_model, gen_ai_response_model, \
                     gen_ai_tool_name, gen_ai_conversation_id, \
-                    gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens",
+                    gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens"
+            ),
         );
         select.push(filters.from());
         filters.push_where(&mut select, project_id);
@@ -847,20 +863,26 @@ impl SpanService {
         project_id: i32,
         conversation_id: &str,
     ) -> AppResult<AgentConversation> {
-        let rows = sqlx::query(
+        let rows = sqlx::query(concat!(
             r#"
-            SELECT id, trace_id, span_id, parent_span_id, gen_ai_operation_type,
+            SELECT id, trace_id, span_id, "#,
+            crate::span_hex_id!("parent_span_id"),
+            r#", gen_ai_operation_type,
                    gen_ai_agent_name, COALESCE(gen_ai_response_model, gen_ai_request_model) AS model,
                    gen_ai_tool_name, status, start_timestamp, duration_ms,
                    gen_ai_usage_total_tokens, data, payload,
-                   op, description, segment_id, timestamp, exclusive_time_ms, tags
+                   op, "#,
+            crate::span_description!(),
+            ", ",
+            crate::span_hex_id!("segment_id"),
+            r#", timestamp, exclusive_time_ms, tags
             FROM spans
             WHERE project_id = $1 AND gen_ai_operation_type IS NOT NULL
               AND trace_id IN (SELECT trace_id FROM spans
                                WHERE project_id = $1 AND gen_ai_conversation_id = $2)
             ORDER BY start_timestamp ASC, id ASC
-            "#,
-        )
+            "#
+        ))
         .bind(project_id)
         .bind(conversation_id)
         .fetch_all(pool)

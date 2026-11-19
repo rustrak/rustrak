@@ -5,6 +5,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::SpanColumns;
 use crate::protocol::{clamp_opt, extract_timestamp, infer_span_op, is_stale};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
+use crate::services::span_description::hex_id;
 use bytes::Bytes;
 use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 use uuid::Uuid;
@@ -25,6 +26,9 @@ pub(crate) struct SpanRow {
     pub gen_ai: GenAiColumns,
     pub parent_span_id: Option<String>,
     pub description: Option<String>,
+    /// The stored copy this span's description is read from, when it is not
+    /// in `description` (see `services::span_description`).
+    pub description_id: Option<i64>,
     pub status: Option<String>,
     pub segment_id: Option<String>,
     pub is_segment: bool,
@@ -114,6 +118,7 @@ impl SpanRow {
             gen_ai,
             parent_span_id,
             description,
+            description_id: None,
             status,
             segment_id,
             is_segment,
@@ -126,7 +131,22 @@ impl SpanRow {
     }
 }
 
-/// Rows per INSERT. A span is 31 binds, so 256 stays well under both SQLite's
+impl SpanRow {
+    /// An AI span, by what the span itself says: the test [`encode_span_rows`]
+    /// leaves them out by when a project has agents off.
+    pub(crate) fn is_ai(&self) -> bool {
+        self.gen_ai.operation_type.is_some()
+            || is_ai_span(&serde_json::Value::Null, self.op.as_deref())
+    }
+
+    /// Reads the description from its stored copy instead of this row.
+    pub(crate) fn refer_to(&mut self, description_id: i64) {
+        self.description = None;
+        self.description_id = Some(description_id);
+    }
+}
+
+/// Rows per INSERT. A span is 34 binds, so 256 stays well under both SQLite's
 /// 32,766 and Postgres's 65,535 bind limits.
 const SPAN_ROWS_PER_INSERT: usize = 256;
 
@@ -139,20 +159,19 @@ const SPAN_ROWS_PER_INSERT: usize = 256;
 /// through, and the rest of the trace is stored as usual.
 pub(crate) async fn encode_span_rows(
     pool: &DbPool,
+    project_id: i32,
     keep_ai_spans: bool,
-    rows: Vec<SpanRow>,
+    mut rows: Vec<SpanRow>,
 ) -> AppResult<Vec<(SpanRow, Vec<u8>)>> {
+    // An AI span by its attributes, or by its `op` alone when it came
+    // without a `data` bag: the same test Relay applies (`is_ai_span`).
+    // Before anything of a span is stored, its description included.
+    rows.retain(|row| keep_ai_spans || !row.is_ai());
+    crate::services::span_description::intern(pool, project_id, &mut rows).await?;
     let encoder = Encoder::current(pool, Column::Spans).await?;
     let mut compressor = encoder.compressor();
     Ok(rows
         .into_iter()
-        // An AI span by its attributes, or by its `op` alone when it came
-        // without a `data` bag: the same test Relay applies (`is_ai_span`).
-        .filter(|row| {
-            keep_ai_spans
-                || (row.gen_ai.operation_type.is_none()
-                    && !is_ai_span(&serde_json::Value::Null, row.op.as_deref()))
-        })
         .map(|row| {
             let payload = compressor.encode(row.data.to_string().as_bytes());
             (row, payload)
@@ -180,9 +199,9 @@ pub(crate) async fn insert_span_rows(
             r#"INSERT INTO spans (
                 id, transaction_id, project_id,
                 span_id, trace_id, parent_span_id,
-                op, description, status,
+                op, description, description_id, status,
                 start_timestamp, timestamp, duration_ms, exclusive_time_ms,
-                is_segment, segment_id,
+                is_segment, segment_id, parent_span_id_int, segment_id_int,
                 platform, release, environment,
                 tags, data, payload,
                 gen_ai_operation_type, gen_ai_agent_name,
@@ -195,21 +214,28 @@ pub(crate) async fn insert_span_rows(
         query.push_values(
             rows.by_ref().take(SPAN_ROWS_PER_INSERT),
             |mut row, (span, payload)| {
+                // An id of the usual form is kept as its 8 bytes, and not
+                // as text as well.
+                let parent = span.parent_span_id.as_deref().and_then(hex_id);
+                let segment = span.segment_id.as_deref().and_then(hex_id);
                 row.push_bind(Uuid::new_v4())
                     .push_bind(span.transaction_id)
                     .push_bind(project_id)
                     .push_bind(span.span_id)
                     .push_bind(span.trace_id)
-                    .push_bind(span.parent_span_id)
+                    .push_bind(span.parent_span_id.filter(|_| parent.is_none()))
                     .push_bind(span.op)
                     .push_bind(span.description)
+                    .push_bind(span.description_id)
                     .push_bind(span.status)
                     .push_bind(span.start_timestamp)
                     .push_bind(span.timestamp)
                     .push_bind(span.duration_ms)
                     .push_bind(span.exclusive_time_ms)
                     .push_bind(span.is_segment)
-                    .push_bind(span.segment_id)
+                    .push_bind(span.segment_id.filter(|_| segment.is_none()))
+                    .push_bind(parent)
+                    .push_bind(segment)
                     .push_bind(span.platform)
                     .push_bind(span.release)
                     .push_bind(span.environment)
@@ -319,7 +345,7 @@ impl SpanProcessor {
 
     /// Writes one chunk in one transaction.
     async fn insert_all(&self, ctx: &ProcessorCtx, parsed: Vec<SpanRow>) -> AppResult<()> {
-        let rows = encode_span_rows(&ctx.pool, ctx.keep_ai_spans, parsed).await?;
+        let rows = encode_span_rows(&ctx.pool, ctx.project_id, ctx.keep_ai_spans, parsed).await?;
         let mut tx = ctx.pool.begin().await?;
         insert_span_rows(&mut tx, ctx.project_id, rows).await?;
         tx.commit().await?;
