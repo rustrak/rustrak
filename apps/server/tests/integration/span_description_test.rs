@@ -373,3 +373,38 @@ async fn streamed_spans_keep_their_names_once_too() {
     assert_eq!(items.len(), 3);
     assert!(items.iter().all(|item| item["description"] == SQL));
 }
+
+#[actix_web::test]
+async fn a_project_with_agents_off_stores_no_description_of_an_ai_span() {
+    // Its AI spans are not stored, and neither is anything they said.
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Agents off").await;
+    let now = Utc::now().timestamp() as f64;
+    let prompt = format!(
+        "chat gpt-4o: {}",
+        "summarise the customer's last order ".repeat(3)
+    );
+    let off = ProcessorCtx {
+        keep_ai_spans: false,
+        ..ctx(&db.pool, project.id)
+    };
+    for n in 0..3 {
+        let item = json!({
+            "span_id": format!("{n:016x}"), "trace_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "op": "gen_ai.chat", "description": prompt,
+            "data": { "gen_ai.operation.name": "chat" },
+            "start_timestamp": now, "timestamp": now + 0.1,
+        });
+        SpanProcessor
+            .process_batch(vec![serde_json::to_vec(&item).unwrap().into()], &off)
+            .await
+            .unwrap();
+    }
+    // An ordinary span of the same project still is.
+    for _ in 0..2 {
+        transaction(&db.pool, project.id, SQL).await;
+    }
+
+    assert_eq!(descriptions(&db.pool, project.id).await, [SQL]);
+    assert_eq!(stored(&db.pool, project.id).await.len(), 2);
+}

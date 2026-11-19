@@ -230,6 +230,38 @@ async fn a_transactions_spans_read_their_scope_from_it() {
 }
 
 #[actix_web::test]
+async fn a_scope_a_child_span_names_gives_way_to_its_transactions() {
+    // As before, and as Relay does with the platform: a span in a
+    // transaction is of that transaction's platform, release and environment.
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Conflict").await;
+    let txn = transaction(
+        &db.pool,
+        project.id,
+        "app@1.4.2",
+        json!([{
+            "span_id": "f000000000000001", "parent_span_id": ROOT, "op": "db.sql.query",
+            "platform": "node", "release": "web@9", "environment": "staging",
+        }]),
+    )
+    .await;
+
+    let kept: (Option<String>, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT platform, release, environment FROM spans WHERE span_id = 'f000000000000001'",
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(kept, (None, None, None));
+    for span in &served(&db.pool, &token, project.id, txn, "f000000000000001").await[..3] {
+        assert_eq!(span["platform"], "php", "{span}");
+        assert_eq!(span["release"], "app@1.4.2", "{span}");
+        assert_eq!(span["environment"], "production", "{span}");
+    }
+}
+
+#[actix_web::test]
 async fn a_span_item_keeps_the_scope_it_names() {
     // No transaction to read it from.
     let db = TestDb::new().await;

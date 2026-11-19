@@ -300,11 +300,13 @@ fn span_row(
     // (`span_scope!`), not repeated on each of its spans. An AI span keeps
     // a copy: the agents pages filter `spans` by environment, through
     // indexes that hold it.
-    if row.is_ai() {
-        row.platform = platform.map(str::to_string);
-        row.release = release.map(str::to_string);
-        row.environment = environment.map(str::to_string);
-    }
+    // Any other span keeps none, not even one it names itself: a span in
+    // a transaction is of that transaction's, as it was when each was
+    // stamped with it, and as Relay makes its platform.
+    let own = row.is_ai();
+    row.platform = platform.filter(|_| own).map(str::to_string);
+    row.release = release.filter(|_| own).map(str::to_string);
+    row.environment = environment.filter(|_| own).map(str::to_string);
     row
 }
 

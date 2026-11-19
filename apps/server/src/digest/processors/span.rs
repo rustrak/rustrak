@@ -163,14 +163,15 @@ pub(crate) async fn encode_span_rows(
     keep_ai_spans: bool,
     mut rows: Vec<SpanRow>,
 ) -> AppResult<Vec<(SpanRow, Vec<u8>)>> {
+    // An AI span by its attributes, or by its `op` alone when it came
+    // without a `data` bag: the same test Relay applies (`is_ai_span`).
+    // Before anything of a span is stored, its description included.
+    rows.retain(|row| keep_ai_spans || !row.is_ai());
     crate::services::span_description::intern(pool, project_id, &mut rows).await?;
     let encoder = Encoder::current(pool, Column::Spans).await?;
     let mut compressor = encoder.compressor();
     Ok(rows
         .into_iter()
-        // An AI span by its attributes, or by its `op` alone when it came
-        // without a `data` bag: the same test Relay applies (`is_ai_span`).
-        .filter(|row| keep_ai_spans || !row.is_ai())
         .map(|row| {
             let payload = compressor.encode(row.data.to_string().as_bytes());
             (row, payload)
