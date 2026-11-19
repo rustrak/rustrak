@@ -176,6 +176,32 @@ async fn a_deleted_project_is_gone_at_once_and_its_rows_follow() {
         .collect();
     assert_eq!(stored, [i64::from(other.id)], "the storage page");
 
+    let age: Value = test::call_and_read_body_json(
+        &app,
+        request(test::TestRequest::get(), &token, "/api/storage/age"),
+    )
+    .await;
+    let aged: Vec<i64> = age["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["project_id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(aged, [i64::from(other.id)], "the storage page's ages");
+    // The list of issues across projects, which an owner reads unscoped.
+    let issues: Value = test::call_and_read_body_json(
+        &app,
+        request(test::TestRequest::get(), &token, "/api/issues"),
+    )
+    .await;
+    let of: Vec<i64> = issues["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|issue| issue["project_id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(of, [i64::from(other.id)], "issues across projects");
+
     // Its DSN stops taking events.
     let envelope = "{}\n{\"type\":\"event\",\"length\":2}\n{}\n";
     let ingest = test::TestRequest::post()
@@ -247,4 +273,63 @@ async fn deleting_a_project_twice_is_not_found() {
     assert!(ProjectService::get_by_id(&db.pool, doomed.id)
         .await
         .is_err());
+}
+
+#[actix_web::test]
+async fn release_health_rows_go_in_the_batches_too() {
+    // Sessions are counted per minute and per user and day, so they grow
+    // with traffic like the rest: they are not left to the project row's
+    // cascade, which is one statement however many there are.
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Sessions").await;
+    let other = create_test_project(&db.pool, "Other sessions").await;
+    for id in [project.id, other.id] {
+        for minute in 0..3 {
+            sqlx::query(
+                "INSERT INTO session_counts (project_id, release, environment, bucket, total) \
+                 VALUES ($1, 'app@1', 'production', $2, 1)",
+            )
+            .bind(id)
+            .bind(Utc::now() - chrono::Duration::minutes(minute))
+            .execute(&db.pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO session_users (project_id, release, environment, day, did) \
+                 VALUES ($1, 'app@1', 'production', $2, $3)",
+            )
+            .bind(id)
+            .bind(Utc::now().date_naive() - chrono::Duration::days(minute))
+            .bind(format!("user-{minute}"))
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        }
+    }
+    let sessions = |id: i32| {
+        let pool = db.pool.clone();
+        async move {
+            let mut left = Vec::new();
+            for table in ["session_counts", "session_users"] {
+                let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                    "SELECT COUNT(*) FROM {table} WHERE project_id = $1"
+                )))
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+                left.push(n);
+            }
+            left
+        }
+    };
+
+    rustrak::services::StorageService::purge_project(&db.pool, project.id)
+        .await
+        .unwrap();
+
+    // Gone while the project row, and so its cascade, is still to come.
+    assert_eq!(rows(&db.pool, project.id).await[5], ("projects", 1));
+    assert_eq!(sessions(project.id).await, [0, 0]);
+    assert_eq!(sessions(other.id).await, [3, 3]);
 }

@@ -800,13 +800,55 @@ impl StorageService {
             &mut |_| {},
         )
         .await?;
+        // Release health: a row a minute per release and environment, and
+        // one per user and day. The cleanup keeps them, having no window
+        // for them; a deleted project's go here rather than in one
+        // statement with the project row.
+        for (table, column) in [("session_counts", "bucket"), ("session_users", "day")] {
+            Self::delete_oldest(pool, table, column, project_id, CLEANUP_BATCH_SIZE).await?;
+        }
         Ok(counts)
     }
 
+    /// Deletes every row of `project_id` in `table`, the oldest by `column`
+    /// first, about `batch_size` at a time: each statement takes the rows up
+    /// to the `batch_size`th oldest value, so rows sharing it go together.
+    async fn delete_oldest(
+        pool: &DbPool,
+        table: &str,
+        column: &str,
+        project_id: i32,
+        batch_size: i64,
+    ) -> AppResult<()> {
+        let sql = format!(
+            "DELETE FROM {table} WHERE project_id = $1 AND {column} <= ( \
+                 SELECT MAX({column}) FROM ( \
+                     SELECT {column} FROM {table} WHERE project_id = $2 \
+                     ORDER BY {column} LIMIT $3) AS oldest)"
+        );
+        loop {
+            let deleted = sqlx::query(sqlx::AssertSqlSafe(&*sql))
+                .bind(project_id)
+                .bind(project_id)
+                .bind(batch_size)
+                .execute(pool)
+                .await?
+                .rows_affected();
+            if deleted == 0 {
+                return Ok(());
+            }
+            crate::db::maintenance::yield_to_writers().await;
+        }
+    }
+
+    /// The projects there are, without the ones being deleted: their rows
+    /// are on their way out, and nothing should count or age them.
     async fn project_ids(pool: &DbPool) -> AppResult<Vec<i32>> {
-        Ok(sqlx::query_scalar("SELECT id FROM projects ORDER BY id")
-            .fetch_all(pool)
-            .await?)
+        Ok(
+            sqlx::query_scalar("SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY id")
+                .fetch_all(pool)
+                .await?,
+        )
     }
 
     async fn purge(
