@@ -167,6 +167,9 @@ overrides:
   nextra-theme-docs>zod: 4.3.5
   next>@swc/helpers: 0.5.15
 
+patchedDependencies:
+  nextra@4.6.1: a089a94a66cc4bc4b9b3a60c1f1f2cb4da80f7738fbb0a960730b512c6767f7d
+
 importers:
 
   .:
@@ -363,10 +366,10 @@ importers:
         version: 16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       nextra:
         specifier: 4.6.1
-        version: 4.6.1(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3)
+        version: 4.6.1(patch_hash=a089a94a66cc4bc4b9b3a60c1f1f2cb4da80f7738fbb0a960730b512c6767f7d)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3)
       nextra-theme-docs:
         specifier: 4.6.1
-        version: 4.6.1(@types/react@19.3.0)(immer@11.1.8)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(nextra@4.6.1(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
+        version: 4.6.1(@types/react@19.3.0)(immer@11.1.8)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(nextra@4.6.1(patch_hash=a089a94a66cc4bc4b9b3a60c1f1f2cb4da80f7738fbb0a960730b512c6767f7d)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
       platformicons:
         specifier: 9.10.1
         version: 9.10.1(react@19.3.1)
@@ -11823,6 +11826,10 @@ snapshots:
     dependencies:
       acorn: 8.18.0
 
+  acorn-jsx@5.3.2(acorn@8.19.0):
+    dependencies:
+      acorn: 8.19.0
+
   acorn-loose@8.5.2:
     dependencies:
       acorn: 8.19.0
@@ -12632,8 +12639,8 @@ snapshots:
 
   espree@11.2.0:
     dependencies:
-      acorn: 8.18.0
-      acorn-jsx: 5.3.2(acorn@8.18.0)
+      acorn: 8.19.0
+      acorn-jsx: 5.3.2(acorn@8.19.0)
       eslint-visitor-keys: 5.0.1
 
   esprima@4.0.1: {}
@@ -14137,13 +14144,13 @@ snapshots:
       - '@types/node'
       - babel-plugin-macros
 
-  nextra-theme-docs@4.6.1(@types/react@19.3.0)(immer@11.1.8)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(nextra@4.6.1(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)):
+  nextra-theme-docs@4.6.1(@types/react@19.3.0)(immer@11.1.8)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(nextra@4.6.1(patch_hash=a089a94a66cc4bc4b9b3a60c1f1f2cb4da80f7738fbb0a960730b512c6767f7d)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)):
     dependencies:
       '@headlessui/react': 2.2.9(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       clsx: 2.1.1
       next: 16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       next-themes: 0.4.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      nextra: 4.6.1(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3)
+      nextra: 4.6.1(patch_hash=a089a94a66cc4bc4b9b3a60c1f1f2cb4da80f7738fbb0a960730b512c6767f7d)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3)
       react: 19.3.1
       react-compiler-runtime: 19.1.0-rc.3(react@19.3.1)
       react-dom: 19.3.1(react@19.3.1)
@@ -14155,7 +14162,7 @@ snapshots:
       - immer
       - use-sync-external-store
 
-  nextra@4.6.1(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3):
+  nextra@4.6.1(patch_hash=a089a94a66cc4bc4b9b3a60c1f1f2cb4da80f7738fbb0a960730b512c6767f7d)(next@16.4.6(@babel/core@7.29.7(supports-color@5.5.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.65.1)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@5.5.0)(typescript@6.0.3):
     dependencies:
       '@formatjs/intl-localematcher': 0.6.2
       '@headlessui/react': 2.2.9(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

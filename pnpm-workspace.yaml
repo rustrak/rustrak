@@ -49,3 +49,6 @@ overrides:
   nextra>zod: 4.3.5
   nextra-theme-docs>zod: 4.3.5
   next>@swc/helpers: 0.5.15
+
+patchedDependencies:
+  nextra@4.6.1: patches/nextra@4.6.1.patch

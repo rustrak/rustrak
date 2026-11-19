@@ -1,0 +1,12 @@
+diff --git a/dist/server/page-map/find-meta-and-page-file-paths.js b/dist/server/page-map/find-meta-and-page-file-paths.js
+index e9bdc946c78e917d83de9584c04206d0c62a84a8..894bf98e825119ec1f72f7d4b832167f3b04ed8c 100644
+--- a/dist/server/page-map/find-meta-and-page-file-paths.js
++++ b/dist/server/page-map/find-meta-and-page-file-paths.js
+@@ -15,7 +15,6 @@ async function findMetaAndPageFilePaths({
+     // Include `_meta` files from `content` directory
+     `${contentDir}/**/*.{md,mdx}`,
+     // Include all Markdown/MDX files from `content` directory
+-    `${appDir}/**/page.{js,jsx,jsx,tsx,md,mdx}`,
+     `${appDir}/**/_meta.{js,jsx,ts,tsx}`,
+     // Include `_meta` files from `app` directory
+     `${appDir}/_meta.global.{js,jsx,ts,tsx}`,

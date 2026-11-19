@@ -1,7 +1,7 @@
 import { Wordmark } from '@rustrak/ui';
 import { getPageMap } from 'nextra/page-map';
 import { Layout, Navbar } from 'nextra-theme-docs';
-import { Footer } from '@/components/home/chrome';
+import { Footer } from '@/components/home/footer';
 
 /**
  * The documentation shell: navbar, sidebar, search, table of contents, footer.
@@ -26,6 +26,9 @@ import { Footer } from '@/components/home/chrome';
 /* The same wordmark the landing's nav draws, held still (no hover motion). */
 const logo = <Wordmark still className="h-5 w-auto text-fg" />;
 
+/* Sections with their own index route, listed in the navbar without entries. */
+const FOLDED = new Set(['changelog', 'blog']);
+
 export default async function DocsLayout({
   children,
 }: {
@@ -37,8 +40,11 @@ export default async function DocsLayout({
   // The changelog has its own index and needs none of them.
   // Everything but the children stays, the title included: without it the
   // navbar link renders empty.
+  // The blog likewise: its folder has no index page in the map, so with its
+  // posts left in, the navbar's Blog link went to the first post (the theme
+  // prefers a folder's first child over its route) instead of `/blog`.
   const pageMap = (await getPageMap()).map((item) => {
-    if (!('children' in item) || item.name !== 'changelog') return item;
+    if (!('children' in item) || !FOLDED.has(item.name)) return item;
     const { children: _, ...folder } = item;
     return folder;
   });

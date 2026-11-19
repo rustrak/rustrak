@@ -1,6 +1,7 @@
 import { MotionConfig } from 'motion/react';
 import type { ReactNode } from 'react';
-import { Footer, Nav } from '../home/chrome';
+import { Nav } from '../home/chrome';
+import { Footer } from '../home/footer';
 import { SmoothScroll } from '../landing/smooth-scroll';
 
 /**
