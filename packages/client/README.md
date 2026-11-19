@@ -418,7 +418,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | Method | Endpoint | Description |
 |---|---|---|
 | `projects.create({ body })` | `POST /api/projects` | Create a new project |
-| `projects.delete({ path })` | `DELETE /api/projects/{id}` | Delete a project |
+| `projects.delete({ path })` | `DELETE /api/projects/{id}` | Delete a project. |
 | `projects.get({ path })` | `GET /api/projects/{id}` | Get a project by ID |
 | `projects.getRateLimits()` | `GET /api/rate-limits` | What a project without limits of its own follows |
 | `projects.list({ query? })` | `GET /api/projects` | List projects with pagination. |

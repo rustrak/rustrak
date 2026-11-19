@@ -1608,15 +1608,21 @@ fn narrowing_clause(filters: &IssueFilters, binds: &mut Vec<String>) -> String {
 /// `column` within `projects`. The ids are written into the SQL, not bound:
 /// they are integers the server resolved from the reader's access, and a
 /// literal keeps the `(project_id, ...)` indexes usable on both backends.
+///
+/// Never a project being deleted: its issues are still there for the minutes
+/// its removal takes, and a list across projects would go on showing them.
 fn project_clause(column: &str, projects: &ProjectScope) -> String {
-    match projects {
+    let reachable = match projects {
         ProjectScope::All => "1 = 1".to_string(),
-        ProjectScope::Only(ids) if ids.is_empty() => "1 = 0".to_string(),
+        ProjectScope::Only(ids) if ids.is_empty() => return "1 = 0".to_string(),
         ProjectScope::Only(ids) => {
             let ids: Vec<String> = ids.iter().map(i32::to_string).collect();
             format!("{column} IN ({})", ids.join(", "))
         }
-    }
+    };
+    format!(
+        "({reachable} AND {column} NOT IN (SELECT id FROM projects WHERE deleted_at IS NOT NULL))"
+    )
 }
 
 /// WHERE clause for an issue filter within `projects`.

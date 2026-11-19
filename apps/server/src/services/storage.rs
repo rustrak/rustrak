@@ -782,10 +782,93 @@ impl StorageService {
         Ok(counts)
     }
 
+    /// Removes everything a project stores in the tables that grow with its
+    /// traffic, in the cleanup's own batches, so that deleting the project
+    /// row afterwards cascades over little. See
+    /// [`Self::execute_cleanup_in_batches`] for why batches.
+    pub async fn purge_project(pool: &DbPool, project_id: i32) -> AppResult<CleanupCounts> {
+        Self::purge_project_in_batches(pool, project_id, CLEANUP_BATCH_SIZE, |_| {}).await
+    }
+
+    /// [`Self::purge_project`] deleting at most `batch_size` rows per
+    /// statement, calling `on_batch` with how many each statement over the
+    /// release health tables removed.
+    pub async fn purge_project_in_batches(
+        pool: &DbPool,
+        project_id: i32,
+        batch_size: i64,
+        mut on_batch: impl FnMut(u64),
+    ) -> AppResult<CleanupCounts> {
+        // Past any row: what the cleanup takes for "older than" is all of it.
+        let cutoff = Utc::now() + chrono::Duration::days(365 * 100);
+        let mut counts = CleanupCounts::default();
+        Self::purge(
+            pool,
+            cutoff,
+            &[project_id],
+            CleanupFilter::all(),
+            batch_size,
+            &mut counts,
+            &mut |_| {},
+        )
+        .await?;
+        // Release health: a row a minute per release and environment, and
+        // one per user and day. The cleanup keeps them, having no window
+        // for them; a deleted project's go here rather than in one
+        // statement with the project row.
+        for table in ["session_counts", "session_users"] {
+            Self::delete_rows(pool, table, project_id, batch_size, &mut on_batch).await?;
+        }
+        Ok(counts)
+    }
+
+    /// Deletes every row of `project_id` in `table`, at most `batch_size`
+    /// per statement.
+    ///
+    /// A batch is picked by row, not by value: the users of one day share
+    /// its date, so "up to the oldest N dates" took a whole day at once,
+    /// however many users it had. The tables have composite keys and no id,
+    /// hence each backend's own row address.
+    async fn delete_rows(
+        pool: &DbPool,
+        table: &str,
+        project_id: i32,
+        batch_size: i64,
+        on_batch: &mut impl FnMut(u64),
+    ) -> AppResult<()> {
+        #[cfg(feature = "postgres")]
+        let sql = format!(
+            "DELETE FROM {table} WHERE ctid = ANY(ARRAY( \
+                 SELECT ctid FROM {table} WHERE project_id = $1 LIMIT $2))"
+        );
+        #[cfg(not(feature = "postgres"))]
+        let sql = format!(
+            "DELETE FROM {table} WHERE rowid IN ( \
+                 SELECT rowid FROM {table} WHERE project_id = $1 LIMIT $2)"
+        );
+        loop {
+            let deleted = sqlx::query(sqlx::AssertSqlSafe(&*sql))
+                .bind(project_id)
+                .bind(batch_size)
+                .execute(pool)
+                .await?
+                .rows_affected();
+            if deleted == 0 {
+                return Ok(());
+            }
+            on_batch(deleted);
+            crate::db::maintenance::yield_to_writers().await;
+        }
+    }
+
+    /// The projects there are, without the ones being deleted: their rows
+    /// are on their way out, and nothing should count or age them.
     async fn project_ids(pool: &DbPool) -> AppResult<Vec<i32>> {
-        Ok(sqlx::query_scalar("SELECT id FROM projects ORDER BY id")
-            .fetch_all(pool)
-            .await?)
+        Ok(
+            sqlx::query_scalar("SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY id")
+                .fetch_all(pool)
+                .await?,
+        )
     }
 
     async fn purge(
@@ -1165,6 +1248,7 @@ impl StorageService {
                 p.name,
                 (SELECT COUNT(*) FROM source_file_metadata m WHERE m.project_id = p.id) AS source_maps_count
             FROM projects p
+            WHERE p.deleted_at IS NULL
             ORDER BY p.id
             "#,
         )

@@ -9,7 +9,11 @@ use super::{blur_count, Volume};
 impl Volume {
     pub async fn collect(pool: &DbPool) -> AppResult<Self> {
         Ok(Self {
-            projects: count(pool, "SELECT COUNT(*) FROM projects").await?,
+            projects: count(
+                pool,
+                "SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL",
+            )
+            .await?,
             users: count(pool, "SELECT COUNT(*) FROM users").await?,
             issues_open: count(
                 pool,
