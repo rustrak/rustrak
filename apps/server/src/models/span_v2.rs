@@ -12,6 +12,7 @@
 //! replaces the legacy `timestamp` field name.
 
 use crate::error::{AppError, AppResult};
+use crate::protocol::infer_span_op;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -102,20 +103,19 @@ impl SpanV2Entry {
     }
 
     /// Derives the semantic operation for this span from its (already
-    /// flattened) attributes: `sentry.op` first, falling back to
-    /// `gen_ai.operation.name` — mirrors Relay's `derive_op_for_v2_span`
-    /// for the AI case, the only fallback Rustrak needs (other resource
-    /// types' op-inference-by-request-shape is out of scope).
-    pub fn op(flat_attributes: &Value) -> Option<String> {
-        flat_attributes
-            .get("sentry.op")
-            .and_then(|v| v.as_str())
-            .or_else(|| {
-                flat_attributes
-                    .get("gen_ai.operation.name")
-                    .and_then(|v| v.as_str())
-            })
-            .map(str::to_string)
+    /// flattened) attributes: `sentry.op`, or the one Relay infers where the
+    /// span has no such attribute (`normalize_sentry_op`,
+    /// relay-event-normalization/src/eap/mod.rs). A `sentry.op` that is there
+    /// with no usable value is left alone, so that span has no op.
+    pub fn op(&self, flat_attributes: &Value) -> Option<String> {
+        if self.attributes.contains_key("sentry.op") {
+            return flat_attributes
+                .get("sentry.op")?
+                .as_str()
+                .map(str::to_string);
+        }
+        // Relay does not store an empty attribute.
+        Some(infer_span_op(|name| flat_attributes.get(name))).filter(|op| !op.is_empty())
     }
 
     /// Reads a string-valued `sentry.*` attribute.

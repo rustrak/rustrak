@@ -1636,3 +1636,133 @@ async fn test_pre_1970_timestamps_are_dropped_like_relay() {
 
     server.shutdown();
 }
+
+// A span sent without an op (#559). `@sentry/nextjs` sends its Next.js
+// internal spans that way on purpose, and sentry.io shows them as `default`.
+
+#[actix_web::test]
+async fn test_spans_sent_without_an_op_are_stored_with_the_one_relay_gives_them() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Span op").await;
+    let server = TestServer::new(&db).await;
+
+    let now = now_epoch();
+    let trace = "4123456789abcdef0123456789abcdef";
+    let string = |v: &str| serde_json::json!({ "value": v, "type": "string" });
+    let child = |span_id: &str, fields: serde_json::Value| {
+        let mut span = serde_json::json!({
+            "span_id": span_id,
+            "parent_span_id": "a000000000000000",
+            "trace_id": trace,
+            "start_timestamp": now - 0.5,
+            "timestamp": now,
+        });
+        for (key, value) in fields.as_object().unwrap() {
+            span[key] = value.clone();
+        }
+        span
+    };
+    // As static tracing sends it: a transaction with its spans inside.
+    let transaction = serde_json::json!({
+        "type": "transaction",
+        "transaction": "GET /items/[id]",
+        "start_timestamp": now - 1.0,
+        "timestamp": now,
+        "contexts": { "trace": { "trace_id": trace, "span_id": "a000000000000000" } },
+        "spans": [
+            child("a000000000000001", serde_json::json!({
+                "description": "build component tree",
+                "data": { "next.span_type": "NextNodeServer.getLayoutOrPageModule" },
+            })),
+            // Inside a transaction Relay infers nothing from attributes.
+            child("a000000000000002", serde_json::json!({
+                "description": "SELECT 1",
+                "data": { "db.system.name": "postgresql" },
+            })),
+            child("a000000000000003", serde_json::json!({
+                "op": "function",
+                "description": "resolve page server component",
+            })),
+        ],
+    });
+    // A span item of its own.
+    let item = child(
+        "b000000000000001",
+        serde_json::json!({ "kind": "client", "data": { "http.request.method": "GET" } }),
+    );
+    // As JS SDK 11 streams them.
+    let streamed = |span_id: &str, attributes: serde_json::Value| {
+        serde_json::json!({
+            "trace_id": trace,
+            "span_id": span_id,
+            "name": "start response",
+            "start_timestamp": now - 0.5,
+            "end_timestamp": now,
+            "attributes": attributes,
+        })
+    };
+    let container = serde_json::json!({ "version": 2, "items": [
+        streamed("c000000000000001", serde_json::json!({
+            "next.span_type": string("NextNodeServer.startResponse"),
+        })),
+        streamed("c000000000000002", serde_json::json!({
+            "db.system.name": string("postgresql"),
+        })),
+        streamed("c000000000000003", serde_json::json!({
+            "sentry.op": string("http.server"),
+            "http.request.method": string("GET"),
+        })),
+    ]});
+
+    let status = post_items(
+        &server,
+        &project,
+        &[
+            (serde_json::json!({ "type": "transaction" }), transaction),
+            (serde_json::json!({ "type": "span" }), item),
+            (
+                serde_json::json!({
+                    "type": "span",
+                    "content_type": "application/vnd.sentry.items.span.v2+json",
+                    "item_count": 3
+                }),
+                container,
+            ),
+        ],
+    )
+    .await;
+    assert!(status.is_success(), "ingest returned {status}");
+
+    let op: Option<String> =
+        sqlx::query_scalar("SELECT op FROM transactions WHERE project_id = $1")
+            .bind(project.id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(op.as_deref(), Some("default"), "the transaction");
+
+    let ops: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT span_id, op FROM spans WHERE project_id = $1 ORDER BY span_id")
+            .bind(project.id)
+            .fetch_all(&db.pool)
+            .await
+            .unwrap();
+    let ops: Vec<(&str, Option<&str>)> = ops
+        .iter()
+        .map(|(span_id, op)| (span_id.as_str(), op.as_deref()))
+        .collect();
+    assert_eq!(
+        ops,
+        [
+            ("a000000000000001", Some("default")),
+            ("a000000000000002", Some("default")),
+            ("a000000000000003", Some("function")),
+            ("b000000000000001", Some("http.client")),
+            ("c000000000000001", Some("default")),
+            ("c000000000000002", Some("db")),
+            ("c000000000000003", Some("http.server")),
+        ]
+    );
+
+    server.shutdown();
+}

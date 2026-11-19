@@ -39,6 +39,9 @@ impl TransactionProcessor {
 
         // Denormalize the trace context (contexts.trace.*) into queryable columns
         // — mirrors Relay, which surfaces op/status/span_id for performance views.
+        if let Some(trace) = data.pointer_mut("/contexts/trace") {
+            default_op(trace);
+        }
         let trace = data.get("contexts").and_then(|c| c.get("trace"));
         let trace_id = trace_str(trace, "trace_id", 64);
         let span_id = trace_str(trace, "span_id", 32);
@@ -85,7 +88,11 @@ impl TransactionProcessor {
         // rebuilds them from. They stay in the payload when there are none
         // (`[]` has no row to come back from) or one is not
         // `SpanColumns::compactable`.
-        let spans = data.as_object_mut().and_then(|d| d.remove("spans"));
+        let mut spans = data.as_object_mut().and_then(|d| d.remove("spans"));
+        // Before the payload keeps them or the rows take them, so both agree.
+        if let Some(serde_json::Value::Array(spans)) = &mut spans {
+            spans.iter_mut().for_each(default_op);
+        }
         let apart = matches!(&spans, Some(serde_json::Value::Array(s))
             if !s.is_empty() && s.iter().all(SpanColumns::compactable));
         if let (false, Some(spans)) = (apart, &spans) {
@@ -292,6 +299,18 @@ fn span_row(
     row.release = release.map(str::to_string);
     row.environment = environment.map(str::to_string);
     row
+}
+
+/// Gives a span or trace context with no `op` the one Relay gives it,
+/// `"default"` (relay-event-normalization/src/transactions/processor.rs).
+/// No `op` is an absent key, a null or a value that is not a string, which
+/// Relay's parser empties; an empty string is an `op`.
+fn default_op(span: &mut serde_json::Value) {
+    if let Some(span) = span.as_object_mut() {
+        if !span.get("op").is_some_and(|op| op.is_string()) {
+            span.insert("op".to_string(), "default".into());
+        }
+    }
 }
 
 /// Extracts a top-level string field from the payload, defaulting to empty.

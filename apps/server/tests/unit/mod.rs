@@ -26,6 +26,7 @@ mod rbac_test;
 mod schedule_test;
 mod sourcemap_store_test;
 mod sourcemap_test;
+mod span_op_test;
 mod span_test;
 mod span_v2_test;
 mod storage_test;

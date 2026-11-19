@@ -111,3 +111,39 @@ pub(crate) fn is_valid_email(email: &str) -> bool {
 
     true
 }
+
+/// The `op` Relay gives a span item that has none, from the attributes
+/// `attribute` finds: `derive_op_for_v2_span` (relay-spans/src/op.rs), in its
+/// order. It runs after `normalize_attribute_names`, which is why each
+/// attribute is also looked up under the names sentry-conventions deprecates.
+pub(crate) fn infer_span_op<'a>(
+    attribute: impl Fn(&str) -> Option<&'a serde_json::Value>,
+) -> String {
+    let any = |names: &[&str]| names.iter().find_map(|name| attribute(name));
+    let text = |name: &str| attribute(name).and_then(|value| value.as_str());
+    let method = [
+        "http.request.method",
+        "http.method",
+        "http.request_method",
+        "method",
+    ];
+    let op = if any(&method).is_some() {
+        match any(&["sentry.kind", "otel.kind"]).and_then(|kind| kind.as_str()) {
+            Some("client") => "http.client",
+            Some("server") => "http.server",
+            _ if attribute("sentry.http.prefetch").is_some() => "http.prefetch",
+            _ => "http",
+        }
+    } else if any(&["db.system.name", "db.system"]).is_some() {
+        "db"
+    } else if let Some(operation) = text("gen_ai.operation.name") {
+        return format!("gen_ai.{operation}");
+    } else if attribute("rpc.service").is_some() {
+        "rpc"
+    } else if attribute("messaging.system").is_some() {
+        "message"
+    } else {
+        text("faas.trigger").unwrap_or("default")
+    };
+    op.to_string()
+}
