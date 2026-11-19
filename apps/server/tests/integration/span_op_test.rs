@@ -135,3 +135,46 @@ async fn a_transaction_sent_without_ops_reads_back_as_default_everywhere() {
     let group = get("transactions/stats/group?name=GET%20/items/[id]&op=default".into()).await;
     assert_eq!(group["count"], 1);
 }
+
+#[actix_web::test]
+async fn spans_kept_in_the_transaction_payload_get_the_default_op_too() {
+    // One entry that is not an object keeps the whole array in the payload,
+    // where the detail endpoint reads it from.
+    let db = TestDb::new().await;
+    let pool = db.pool.clone();
+    let token = create_test_token(&pool).await;
+    let project = create_test_project(&pool, "Span op kept").await;
+    let ctx = ProcessorCtx {
+        pool: pool.clone(),
+        project_id: project.id,
+        event_id: Uuid::new_v4(),
+        ingested_at: Utc::now(),
+        remote_addr: None,
+        keep_ai_spans: true,
+    };
+    let mut payload = nextjs_transaction();
+    payload["spans"].as_array_mut().unwrap().push(Value::Null);
+    TransactionProcessor
+        .process(serde_json::to_vec(&payload).unwrap().into(), &ctx)
+        .await
+        .unwrap();
+    let id: Uuid = sqlx::query_scalar("SELECT id FROM transactions WHERE project_id = $1")
+        .bind(project.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let app = crate::common::app(&pool).await;
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/projects/{}/transactions/{id}", project.id))
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let detail: Value = test::read_body_json(resp).await;
+
+    let spans = detail["data"]["spans"].as_array().unwrap();
+    let ops: Vec<&Value> = spans[..3].iter().map(|span| &span["op"]).collect();
+    assert_eq!(ops, ["default", "default", "function"]);
+    assert!(spans[3].is_null(), "what is not a span is left as sent");
+}

@@ -261,6 +261,22 @@ fn inferred() -> Vec<(Value, &'static str)> {
         (json!({ "data": { "db.system.name": "" } }), "default"),
         // A tag is an attribute where `data` has none of that name.
         (json!({ "tags": { "db.system.name": "mysql" } }), "db"),
+        // An empty `data` value does not hide the tag of the same name.
+        (
+            json!({ "data": { "db.system.name": null }, "tags": { "db.system.name": "mysql" } }),
+            "db",
+        ),
+        (
+            json!({ "kind": null, "data": { "sentry.kind": "client", "http.request.method": "GET" } }),
+            "http.client",
+        ),
+        // A `sentry.op` attribute is the op: Relay infers only without one.
+        (json!({ "data": { "sentry.op": "custom" } }), "custom"),
+        (json!({ "tags": { "sentry.op": "custom" } }), "custom"),
+        (
+            json!({ "op": "", "data": { "sentry.op": "custom", "db.system.name": "mysql" } }),
+            "custom",
+        ),
         // An op the SDK sent is never replaced.
         (
             json!({ "op": "custom", "data": { "db.system.name": "mysql" } }),
@@ -391,4 +407,27 @@ async fn a_v2_span_without_sentry_op_gets_the_one_its_attributes_imply() {
             "{attributes}"
         );
     }
+}
+
+#[tokio::test]
+async fn a_span_item_that_is_not_an_object_is_skipped_like_any_malformed_one() {
+    use rustrak::digest::processors::SpanProcessor;
+    let db = TestDb::new().await;
+    let ctx = project(&db).await;
+
+    let valid = json!({
+        "span_id": "aaaaaaaaaaaaaaa1",
+        "trace_id": "4c79f60c11214eb38604f4ae0781bfb2",
+        "start_timestamp": 946684800.0,
+        "timestamp": 946684810.0,
+    });
+    let items = [json!([]), json!(1), json!("text"), Value::Null, valid]
+        .iter()
+        .map(|item| serde_json::to_vec(item).unwrap().into())
+        .collect();
+    SpanProcessor.process_batch(items, &ctx).await.unwrap();
+
+    let ops = ops(&ctx).await;
+    assert_eq!(ops.len(), 1, "only the span is stored");
+    assert_eq!(ops["aaaaaaaaaaaaaaa1"].as_deref(), Some("default"));
 }

@@ -88,7 +88,11 @@ impl TransactionProcessor {
         // rebuilds them from. They stay in the payload when there are none
         // (`[]` has no row to come back from) or one is not
         // `SpanColumns::compactable`.
-        let spans = data.as_object_mut().and_then(|d| d.remove("spans"));
+        let mut spans = data.as_object_mut().and_then(|d| d.remove("spans"));
+        // Before the payload keeps them or the rows take them, so both agree.
+        if let Some(serde_json::Value::Array(spans)) = &mut spans {
+            spans.iter_mut().for_each(default_op);
+        }
         let apart = matches!(&spans, Some(serde_json::Value::Array(s))
             if !s.is_empty() && s.iter().all(SpanColumns::compactable));
         if let (false, Some(spans)) = (apart, &spans) {
@@ -280,7 +284,7 @@ fn strip_ai_data(data: &mut serde_json::Value) {
 /// them NULL would drop every transaction-embedded AI span from an
 /// environment-filtered view.
 fn span_row(
-    mut span: serde_json::Value,
+    span: serde_json::Value,
     position: usize,
     transaction_id: Uuid,
     txn_trace_id: Option<&str>,
@@ -288,7 +292,6 @@ fn span_row(
     release: Option<&str>,
     environment: Option<&str>,
 ) -> SpanRow {
-    default_op(&mut span);
     let mut row = SpanRow::from_span(span, position);
     row.transaction_id = Some(transaction_id);
     row.trace_id = row.trace_id.or_else(|| txn_trace_id.map(str::to_string));
