@@ -787,6 +787,18 @@ impl StorageService {
     /// row afterwards cascades over little. See
     /// [`Self::execute_cleanup_in_batches`] for why batches.
     pub async fn purge_project(pool: &DbPool, project_id: i32) -> AppResult<CleanupCounts> {
+        Self::purge_project_in_batches(pool, project_id, CLEANUP_BATCH_SIZE, |_| {}).await
+    }
+
+    /// [`Self::purge_project`] deleting at most `batch_size` rows per
+    /// statement, calling `on_batch` with how many each statement over the
+    /// release health tables removed.
+    pub async fn purge_project_in_batches(
+        pool: &DbPool,
+        project_id: i32,
+        batch_size: i64,
+        mut on_batch: impl FnMut(u64),
+    ) -> AppResult<CleanupCounts> {
         // Past any row: what the cleanup takes for "older than" is all of it.
         let cutoff = Utc::now() + chrono::Duration::days(365 * 100);
         let mut counts = CleanupCounts::default();
@@ -795,7 +807,7 @@ impl StorageService {
             cutoff,
             &[project_id],
             CleanupFilter::all(),
-            CLEANUP_BATCH_SIZE,
+            batch_size,
             &mut counts,
             &mut |_| {},
         )
@@ -804,31 +816,38 @@ impl StorageService {
         // one per user and day. The cleanup keeps them, having no window
         // for them; a deleted project's go here rather than in one
         // statement with the project row.
-        for (table, column) in [("session_counts", "bucket"), ("session_users", "day")] {
-            Self::delete_oldest(pool, table, column, project_id, CLEANUP_BATCH_SIZE).await?;
+        for table in ["session_counts", "session_users"] {
+            Self::delete_rows(pool, table, project_id, batch_size, &mut on_batch).await?;
         }
         Ok(counts)
     }
 
-    /// Deletes every row of `project_id` in `table`, the oldest by `column`
-    /// first, about `batch_size` at a time: each statement takes the rows up
-    /// to the `batch_size`th oldest value, so rows sharing it go together.
-    async fn delete_oldest(
+    /// Deletes every row of `project_id` in `table`, at most `batch_size`
+    /// per statement.
+    ///
+    /// A batch is picked by row, not by value: the users of one day share
+    /// its date, so "up to the oldest N dates" took a whole day at once,
+    /// however many users it had. The tables have composite keys and no id,
+    /// hence each backend's own row address.
+    async fn delete_rows(
         pool: &DbPool,
         table: &str,
-        column: &str,
         project_id: i32,
         batch_size: i64,
+        on_batch: &mut impl FnMut(u64),
     ) -> AppResult<()> {
+        #[cfg(feature = "postgres")]
         let sql = format!(
-            "DELETE FROM {table} WHERE project_id = $1 AND {column} <= ( \
-                 SELECT MAX({column}) FROM ( \
-                     SELECT {column} FROM {table} WHERE project_id = $2 \
-                     ORDER BY {column} LIMIT $3) AS oldest)"
+            "DELETE FROM {table} WHERE ctid = ANY(ARRAY( \
+                 SELECT ctid FROM {table} WHERE project_id = $1 LIMIT $2))"
+        );
+        #[cfg(not(feature = "postgres"))]
+        let sql = format!(
+            "DELETE FROM {table} WHERE rowid IN ( \
+                 SELECT rowid FROM {table} WHERE project_id = $1 LIMIT $2)"
         );
         loop {
             let deleted = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-                .bind(project_id)
                 .bind(project_id)
                 .bind(batch_size)
                 .execute(pool)
@@ -837,6 +856,7 @@ impl StorageService {
             if deleted == 0 {
                 return Ok(());
             }
+            on_batch(deleted);
             crate::db::maintenance::yield_to_writers().await;
         }
     }

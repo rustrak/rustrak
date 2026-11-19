@@ -333,3 +333,42 @@ async fn release_health_rows_go_in_the_batches_too() {
     assert_eq!(sessions(project.id).await, [0, 0]);
     assert_eq!(sessions(other.id).await, [3, 3]);
 }
+
+#[actix_web::test]
+async fn no_statement_removes_more_than_a_batch_of_release_health_rows() {
+    // The users of one day share its date, and the minutes of one release
+    // share nothing: a batch is a number of rows whatever they have in common.
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Busy day").await;
+    for user in 0..5 {
+        sqlx::query(
+            "INSERT INTO session_users (project_id, release, environment, day, did) \
+             VALUES ($1, 'app@1', 'production', $2, $3)",
+        )
+        .bind(project.id)
+        .bind(Utc::now().date_naive())
+        .bind(format!("user-{user}"))
+        .execute(&db.pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO session_counts (project_id, release, environment, bucket, total) \
+             VALUES ($1, $2, 'production', $3, 1)",
+        )
+        .bind(project.id)
+        .bind(format!("app@{user}"))
+        .bind(Utc::now())
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    }
+
+    let mut batches = Vec::new();
+    rustrak::services::StorageService::purge_project_in_batches(&db.pool, project.id, 2, |rows| {
+        batches.push(rows)
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(batches, [2, 2, 1, 2, 2, 1]);
+}
