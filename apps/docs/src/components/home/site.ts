@@ -9,3 +9,11 @@ export const CONTAINER = 'mx-auto w-full max-w-6xl px-6';
 
 /** The photograph every product shot and the closing call sit on. */
 export const BACKDROP = '/home/lime-swirl.jpg';
+
+export const LINKS = [
+  { href: '/getting-started/overview', label: 'Docs' },
+  { href: '/roadmap', label: 'Roadmap' },
+  { href: '/changelog', label: 'Changelog' },
+  { href: '/blog', label: 'Blog' },
+  { href: '/benchmarks', label: 'Benchmarks' },
+];

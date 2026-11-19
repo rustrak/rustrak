@@ -45,7 +45,7 @@ impl SpanV2Processor {
             }
 
             let mut flat = entry.flat_attributes();
-            let op = SpanV2Entry::op(&flat);
+            let op = entry.op(&flat);
 
             // gen_ai.* normalization — same shared entry point as the legacy
             // standalone-span and transaction-embedded producers. Mutates

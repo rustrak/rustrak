@@ -13,9 +13,16 @@ export default defineConfig({
   // consumer's first page paid for the whole design system. Kept as modules,
   // each page's chunk takes only the components it renders.
   unbundle: true,
-  // `"use client"` at the top of every module. The whole package is client
-  // code, so the consuming framework does not have to resolve it per module.
-  outputOptions: { banner: "'use client';" },
+  // `"use client"` at the top of every component module, so the consuming
+  // framework does not have to resolve it per module. Not on the barrel: a
+  // `'use client'` barrel is one client reference carrying every export, so a
+  // Server Component importing only `Wordmark` shipped recharts, the table and
+  // Base UI to the browser. Not on `lib/` either: `cn` and the tokens are
+  // plain functions a Server Component should be able to call.
+  outputOptions: {
+    banner: (chunk) =>
+      chunk.fileName.startsWith('components/') ? "'use client';" : '',
+  },
   // React, Base UI and the icon library are resolved by the application.
   // Bundling them would duplicate React's context tree and break every hook.
   deps: { neverBundle: [/^react/, /^react-dom/, /^@base-ui\/react/] },

@@ -3,7 +3,7 @@ use crate::db::payload::{Column, Encoder, NO_DATA};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::SpanColumns;
-use crate::protocol::{clamp_opt, extract_timestamp, is_stale};
+use crate::protocol::{clamp_opt, extract_timestamp, infer_span_op, is_stale};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
 use bytes::Bytes;
 use chrono::{DateTime, DurationRound, TimeDelta, Utc};
@@ -255,7 +255,7 @@ impl SpanProcessor {
     /// Parses and validates one standalone span payload (Relay's legacy
     /// "span" schema — one flat span object per envelope item).
     fn parse_item(work: &[u8]) -> AppResult<SpanRow> {
-        let data: serde_json::Value = serde_json::from_slice(work)
+        let mut data: serde_json::Value = serde_json::from_slice(work)
             .map_err(|e| AppError::Validation(format!("Invalid span JSON: {e}")))?;
 
         // span_id and trace_id are required for a standalone span to be
@@ -267,6 +267,29 @@ impl SpanProcessor {
                 .is_none_or(str::is_empty)
             {
                 return Err(AppError::Validation(format!("span missing {key}")));
+            }
+        }
+
+        // Relay turns a span item into a v2 span, whose attributes are its
+        // `data`, then its `tags`, without the empty values and with `kind`
+        // as `sentry.kind` (relay-spans/src/v1_to_v2.rs). With no `op`, or an
+        // empty one, a `sentry.op` among them is the op, and without that one
+        // is inferred. After the checks above, so `data` is an object.
+        if data["op"].as_str().is_none_or(str::is_empty) {
+            let attribute = |name: &str| {
+                let filled =
+                    |value: &&serde_json::Value| !value.is_null() && value.as_str() != Some("");
+                let top = (name == "sentry.kind").then(|| data.get("kind")).flatten();
+                top.filter(filled)
+                    .or_else(|| data.get("data")?.get(name).filter(filled))
+                    .or_else(|| data.get("tags")?.get(name).filter(filled))
+            };
+            let op = match attribute("sentry.op") {
+                Some(op) => op.as_str().map(str::to_string),
+                None => Some(infer_span_op(attribute)),
+            };
+            if let Some(op) = op {
+                data["op"] = op.into();
             }
         }
 

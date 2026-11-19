@@ -575,6 +575,29 @@ export const MenuItemLeavesRowClosed: Story = {
   },
 };
 
+/**
+ * The checkbox is 14 px in a 40 px cell: a click that misses it but lands
+ * in its cell ticks the row instead of opening it (#563).
+ */
+const selectCellLeavesRowSpy = fn();
+
+export const SelectCellTicksRow: Story = {
+  render: () => <IssuesTable onRowClick={selectCellLeavesRowSpy} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const firstRow = canvas.getAllByRole('row')[1] as HTMLElement;
+    const box = within(firstRow).getByRole('checkbox', { name: 'Select row' });
+    const cell = box.closest('td') as HTMLElement;
+
+    await userEvent.click(cell);
+    await expect(box).toBeChecked();
+    await expect(selectCellLeavesRowSpy).not.toHaveBeenCalled();
+
+    await userEvent.click(cell);
+    await expect(box).not.toBeChecked();
+  },
+};
+
 /** A row opens with Enter once focus reaches it -- the keyboard path for `onRowClick`. */
 const rowOpensFromKeyboardSpy = fn();
 
