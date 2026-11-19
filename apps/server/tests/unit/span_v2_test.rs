@@ -227,7 +227,12 @@ mod level2 {
             .await
             .unwrap();
 
-        const QUERY: &str = "SELECT span_id, trace_id, parent_span_id, op, description, status, transaction_id, duration_ms FROM spans WHERE project_id = $1 AND span_id = $2";
+        const QUERY: &str = concat!(
+            "SELECT span_id, trace_id, ",
+            rustrak::span_hex_id!("parent_span_id"),
+            ", op, description, status, transaction_id, duration_ms",
+            " FROM spans WHERE project_id = $1 AND span_id = $2"
+        );
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -454,7 +459,11 @@ mod level2 {
             .await
             .unwrap();
 
-        const QUERY: &str = "SELECT is_segment, segment_id FROM spans WHERE project_id = $1";
+        const QUERY: &str = concat!(
+            "SELECT is_segment, ",
+            rustrak::span_hex_id!("segment_id"),
+            " FROM spans WHERE project_id = $1"
+        );
 
         let row = sqlx::query(QUERY)
             .bind(project.id)
@@ -812,7 +821,11 @@ mod level2 {
             .await
             .unwrap();
 
-        const QUERY: &str = "SELECT is_segment, segment_id FROM spans WHERE project_id = $1";
+        const QUERY: &str = concat!(
+            "SELECT is_segment, ",
+            rustrak::span_hex_id!("segment_id"),
+            " FROM spans WHERE project_id = $1"
+        );
         let row = sqlx::query(QUERY)
             .bind(project.id)
             .fetch_one(&db.pool)

@@ -370,7 +370,11 @@ mod level2 {
             "both spans must be extracted into the spans table"
         );
 
-        const SPAN_QUERY: &str = "SELECT op, description, status, duration_ms, trace_id, parent_span_id FROM spans WHERE span_id = $1";
+        const SPAN_QUERY: &str = concat!(
+            "SELECT op, description, status, duration_ms, trace_id, ",
+            rustrak::span_hex_id!("parent_span_id"),
+            " FROM spans WHERE span_id = $1"
+        );
 
         let row = sqlx::query(SPAN_QUERY)
             .bind("cccccccccccccccc")
@@ -1272,7 +1276,7 @@ mod level2 {
             .await
             .unwrap();
 
-        const QUERY: &str = "SELECT span_id, trace_id, op, description, status, is_segment, segment_id, transaction_id, start_timestamp, timestamp, gen_ai_operation_type, gen_ai_agent_name, gen_ai_usage_total_tokens FROM spans WHERE project_id = $1";
+        const QUERY: &str = concat!("SELECT span_id, trace_id, op, description, status, is_segment, ", rustrak::span_hex_id!("segment_id"), ", transaction_id, start_timestamp, timestamp, gen_ai_operation_type, gen_ai_agent_name, gen_ai_usage_total_tokens", " FROM spans WHERE project_id = $1");
 
         let row = sqlx::query(QUERY)
             .bind(project.id)

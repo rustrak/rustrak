@@ -54,6 +54,8 @@ mod sentry_api_test;
 mod sessions_api_test;
 mod sourcemap_cache_test;
 mod sourcemaps_api_test;
+mod span_compact_test;
+mod span_description_test;
 mod span_op_test;
 mod span_storage_test;
 mod span_v2_ingest_test;
