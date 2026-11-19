@@ -208,6 +208,79 @@ impl AuthTokenService {
         Ok(())
     }
 
+    /// Makes the instance token `rustrak.toml` declares under `name` hold
+    /// `raw`, creating it the first time. A new value replaces the old one in
+    /// place, which revokes the old one: that is how a declared token rotates.
+    /// Writes nothing when nothing changed.
+    pub async fn upsert_declared(
+        pool: &DbPool,
+        name: &str,
+        raw: &str,
+        description: Option<&str>,
+    ) -> AppResult<()> {
+        let hashed = hash(raw);
+        let stored: Option<(i32, String, Option<String>)> =
+            sqlx::query_as("SELECT id, token, description FROM auth_tokens WHERE config_name = $1")
+                .bind(name)
+                .fetch_optional(pool)
+                .await?;
+        let result = match stored {
+            Some((_, ref token, ref desc)) if *token == hashed && desc.as_deref() == description => {
+                return Ok(());
+            }
+            Some((id, _, _)) => {
+                sqlx::query(
+                    "UPDATE auth_tokens SET token = $1, token_prefix = $2, description = $3 \
+                     WHERE id = $4",
+                )
+                .bind(&hashed)
+                .bind(&raw[..8])
+                .bind(description)
+                .bind(id)
+                .execute(pool)
+                .await
+            }
+            None => {
+                sqlx::query(
+                    "INSERT INTO auth_tokens \
+                     (token, token_prefix, description, user_id, all_permissions, all_projects, config_name) \
+                     VALUES ($1, $2, $3, NULL, TRUE, TRUE, $4)",
+                )
+                .bind(&hashed)
+                .bind(&raw[..8])
+                .bind(description)
+                .bind(name)
+                .execute(pool)
+                .await
+            }
+        };
+        match result {
+            Ok(_) => Ok(()),
+            // Never the value in the message: it is a credential.
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Err(AppError::Conflict(
+                "its token is already the value of another API token".to_string(),
+            )),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Revokes every token `rustrak.toml` declared whose name is no longer in
+    /// `declared`. Tokens created any other way are never touched.
+    pub async fn revoke_undeclared(pool: &DbPool, declared: &[&str]) -> AppResult<Vec<String>> {
+        let managed: Vec<(i32, String)> =
+            sqlx::query_as("SELECT id, config_name FROM auth_tokens WHERE config_name IS NOT NULL")
+                .fetch_all(pool)
+                .await?;
+        let mut revoked = Vec::new();
+        for (id, name) in managed {
+            if !declared.contains(&name.as_str()) {
+                Self::delete(pool, id).await?;
+                revoked.push(name);
+            }
+        }
+        Ok(revoked)
+    }
+
     /// Checks if any tokens exist (for bootstrap check)
     pub async fn has_any_token(pool: &DbPool) -> AppResult<bool> {
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM auth_tokens")

@@ -254,6 +254,29 @@ impl ProjectService {
     }
 
     pub async fn create(pool: &DbPool, input: CreateProject) -> AppResult<Project> {
+        // Generate sentry_key in application (for cross-DB compatibility)
+        Self::create_inner(pool, input, None, uuid::Uuid::new_v4()).await
+    }
+
+    /// [`Self::create`] with the id and the sentry key chosen by the caller,
+    /// which together fix the DSN: what `rustrak.toml` declares. The caller
+    /// checks that neither is taken; a collision is still refused, never
+    /// renumbered.
+    pub async fn create_with_identity(
+        pool: &DbPool,
+        input: CreateProject,
+        id: i32,
+        sentry_key: uuid::Uuid,
+    ) -> AppResult<Project> {
+        Self::create_inner(pool, input, Some(id), sentry_key).await
+    }
+
+    async fn create_inner(
+        pool: &DbPool,
+        input: CreateProject,
+        id: Option<i32>,
+        sentry_key: uuid::Uuid,
+    ) -> AppResult<Project> {
         // Validate name
         let name = input.name.trim();
         if name.is_empty() {
@@ -299,11 +322,9 @@ impl ProjectService {
             _ => (Self::generate_unique_slug(pool, name).await?, false),
         };
 
-        // Generate sentry_key in application (for cross-DB compatibility)
-        let sentry_key = uuid::Uuid::new_v4();
-
         let project = Self::try_insert_with_retry(
             pool,
+            id,
             name,
             &slug,
             sentry_key,
@@ -638,7 +659,7 @@ impl ProjectService {
     ) -> AppResult<Project> {
         let sentry_key = uuid::Uuid::new_v4();
         // `false`: this helper exists to exercise the derived-slug retry path.
-        Self::try_insert_with_retry(pool, name, stale_slug, sentry_key, platform, false).await
+        Self::try_insert_with_retry(pool, None, name, stale_slug, sentry_key, platform, false).await
     }
 
     /// The user-chosen half of [`Self::create_with_stale_slug`]: skips the
@@ -659,20 +680,19 @@ impl ProjectService {
         platform: Option<&str>,
     ) -> AppResult<Project> {
         let sentry_key = uuid::Uuid::new_v4();
-        Self::try_insert_with_retry(pool, name, slug, sentry_key, platform, true).await
+        Self::try_insert_with_retry(pool, None, name, slug, sentry_key, platform, true).await
     }
 
     async fn try_insert_with_retry(
         pool: &DbPool,
+        id: Option<i32>,
         name: &str,
         slug: &str,
         sentry_key: uuid::Uuid,
         platform: Option<&str>,
         slug_is_user_chosen: bool,
     ) -> AppResult<Project> {
-        const INSERT_SQL: &str = r#"
-            INSERT INTO projects (name, slug, sentry_key, platform)
-            VALUES ($1, $2, $3, $4)
+        const RETURNING: &str = r#"
             RETURNING id, name, slug, sentry_key, stored_event_count,
                       digested_event_count, created_at, updated_at, platform,
                       quota_exceeded_until, quota_exceeded_reason, next_quota_check,
@@ -680,14 +700,33 @@ impl ProjectService {
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
                    disabled_products, product_order
         "#;
+        // An id the caller chose goes in as `$5`; otherwise the database picks one.
+        let insert_sql = match id {
+            Some(_) => format!(
+                "INSERT INTO projects (name, slug, sentry_key, platform, id) \
+                 VALUES ($1, $2, $3, $4, $5) {RETURNING}"
+            ),
+            None => format!(
+                "INSERT INTO projects (name, slug, sentry_key, platform) \
+                 VALUES ($1, $2, $3, $4) {RETURNING}"
+            ),
+        };
+        let insert = |slug: &str| {
+            let mut q = sqlx::query_as::<_, Project>(sqlx::AssertSqlSafe(insert_sql.clone()))
+                .bind(name)
+                .bind(slug.to_string())
+                .bind(sentry_key)
+                .bind(platform);
+            if let Some(id) = id {
+                q = q.bind(id);
+            }
+            q.fetch_one(pool)
+        };
 
-        let result = sqlx::query_as::<_, Project>(INSERT_SQL)
-            .bind(name)
-            .bind(slug)
-            .bind(sentry_key)
-            .bind(platform)
-            .fetch_one(pool)
-            .await;
+        let result = insert(slug).await;
+        if let (Ok(_), Some(_)) = (&result, id) {
+            Self::sync_id_sequence(pool).await?;
+        }
 
         match result {
             Ok(p) => Ok(p),
@@ -724,27 +763,36 @@ impl ProjectService {
                     ))
                     .with_field("name", FieldErrorCode::AlreadyExists));
                 }
-                sqlx::query_as::<_, Project>(INSERT_SQL)
-                    .bind(name)
-                    .bind(&new_slug)
-                    .bind(sentry_key)
-                    .bind(platform)
-                    .fetch_one(pool)
-                    .await
-                    .map_err(|e| {
-                        if let sqlx::Error::Database(ref db_err) = e {
-                            if db_err.is_unique_violation() {
-                                return AppError::Conflict(format!(
-                                    "Project with name '{}' already exists",
-                                    name
-                                ))
-                                .with_field("name", FieldErrorCode::AlreadyExists);
-                            }
+                insert(&new_slug).await.map_err(|e| {
+                    if let sqlx::Error::Database(ref db_err) = e {
+                        if db_err.is_unique_violation() {
+                            return AppError::Conflict(format!(
+                                "Project with name '{}' already exists",
+                                name
+                            ))
+                            .with_field("name", FieldErrorCode::AlreadyExists);
                         }
-                        AppError::Database(e)
-                    })
+                    }
+                    AppError::Database(e)
+                })
             }
             Err(e) => Err(AppError::Database(e)),
         }
+    }
+
+    /// After an insert with an explicit id, moves PostgreSQL's id sequence
+    /// past every id in use, so the next project created without one does not
+    /// collide with it. SQLite's AUTOINCREMENT already follows the largest id.
+    async fn sync_id_sequence(pool: &DbPool) -> AppResult<()> {
+        #[cfg(feature = "postgres")]
+        sqlx::query(
+            "SELECT setval(pg_get_serial_sequence('projects', 'id'), \
+             (SELECT COALESCE(MAX(id), 1) FROM projects))",
+        )
+        .execute(pool)
+        .await?;
+        #[cfg(not(feature = "postgres"))]
+        let _ = pool;
+        Ok(())
     }
 }
