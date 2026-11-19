@@ -444,3 +444,40 @@ async fn refuses_a_superuser_email_the_users_table_would_not_accept() {
         "the error leaks the password: {err}"
     );
 }
+
+#[tokio::test]
+async fn renaming_a_token_keeps_its_value_working() {
+    let db = TestDb::new().await;
+    apply(&db, &token("ci", TOKEN, "CI")).await;
+
+    // Same value under a new name: the old row must go before the new one
+    // takes the value, or every start fails on it.
+    apply(&db, &token("deploy", TOKEN, "CI")).await;
+    apply(&db, &token("deploy", TOKEN, "CI")).await;
+
+    assert!(AuthTokenService::get_by_token(&db.pool, TOKEN)
+        .await
+        .unwrap()
+        .is_some());
+    assert_eq!(AuthTokenService::list(&db.pool).await.unwrap().len(), 1);
+}
+
+/// A start that stopped between creating a declared project and moving the id
+/// sequence past it (a crash, a failed query) is repaired by the next start.
+#[cfg(feature = "postgres")]
+#[tokio::test]
+async fn a_restart_repairs_an_id_sequence_left_behind_a_declared_project() {
+    let db = TestDb::new().await;
+    let toml = project(5, "App", "app", KEY);
+    apply(&db, &toml).await;
+    sqlx::query("SELECT setval(pg_get_serial_sequence('projects', 'id'), 1, false)")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    apply(&db, &toml).await;
+
+    for n in 0..6 {
+        assert_ne!(api_project(&db, &format!("Later {n}")).await, 5);
+    }
+}

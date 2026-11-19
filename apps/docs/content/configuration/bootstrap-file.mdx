@@ -72,8 +72,8 @@ One block per project. A project is identified by its `id`.
 | Field | Required | Value | On every start |
 |---|---|---|---|
 | `id` | yes | Positive integer, unique in the file. It is the number at the end of the DSN. | Identity: never changes. |
-| `name` | yes | Not blank, at most 255 characters, unique in the file. Surrounding spaces are trimmed. | Set to this value. |
-| `slug` | no | Any text; it is stored slugified (`"My App"` becomes `my-app`). Unique in the file once slugified. Omitted: derived from the name when the project is created. | Set to this value if given. If omitted, never changed after creation, even when the name changes. |
+| `name` | yes | Not blank, at most 255 bytes, unique in the file. Surrounding spaces are trimmed. | Set to this value. |
+| `slug` | no | Any text with at least one letter or digit; it is stored slugified (`"My App"` becomes `my-app`). Unique in the file once slugified. Omitted: derived from the name when the project is created. | Set to this value if given. If omitted, never changed after creation, even when the name changes. |
 | `sentry_key` | no | The DSN's 32 hexadecimal characters, or the same UUID with hyphens. Unique in the file. Omitted: a random key when the project is created. | Must match the stored key, or the server does not start. Never changed. |
 | `platform` | no | One of the [platform ids](#platforms). | Set to this value if given. If omitted, whatever the dashboard set is kept. |
 | `disabled_products` | no | A list of `feedback`, `releases`, `performance`, `agents`, `logs`, `crons`. Never `issues`. | Set to this list if given, in any order. `[]` turns them all back on. If omitted, whatever the dashboard set is kept. |
@@ -171,7 +171,8 @@ working directory, the file is read once at startup, and trailing line breaks
 (`\n`, `\r\n`) are dropped. Nothing else is trimmed: spaces are part of the
 secret.
 
-Error messages and logs name the field and the line, never the value.
+Error messages and logs name the field and the line, never the value, even
+when the value is of the wrong type.
 
 ## Errors stop the server
 
@@ -182,12 +183,13 @@ server with the line and the reason:
 - a missing required field, or a value of the wrong type;
 - two projects with the same `id`, `name`, `slug` or `sentry_key`;
 - two tokens with the same `name` or the same value;
-- a malformed `sentry_key` or token, an unknown `platform`, or `issues` in
+- a `name` over 255 bytes, a `slug` with no letter or digit, a malformed
+  `sentry_key` or token, an unknown `platform`, or `issues` in
   `disabled_products`;
 - a `_file` that cannot be read.
 
 What depends on the database is checked next: a key that does not match the
-stored one, a `slug` or key taken by another project, a `name` longer than
-255 characters, an invalid superuser email, or a token value that is already
+stored one, a `slug` or key taken by another project, an invalid superuser
+email, or a token value that is already
 another token's. Each item is applied
 on its own, so after a fix the next start picks up where the last one stopped.

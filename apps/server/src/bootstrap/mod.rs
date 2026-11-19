@@ -93,6 +93,23 @@ pub async fn apply(pool: &DbPool, file: &BootstrapFile) -> Result<(), ApplyError
             .await
             .map_err(|e| ApplyError(format!("project {}: {e}", spec.id)))?;
     }
+    // At every start rather than after each insert, so a start that stopped
+    // between creating a project and this is repaired by the next one. Nothing
+    // creates a project before apply has finished.
+    if !file.projects.is_empty() {
+        ProjectService::sync_id_sequence(pool)
+            .await
+            .map_err(|e| ApplyError(format!("moving the project id sequence: {e}")))?;
+    }
+    // Revoked first: a token renamed in the file keeps its value, which its
+    // old row still holds until it goes.
+    let declared: Vec<&str> = file.tokens.iter().map(|t| t.name.as_str()).collect();
+    let revoked = AuthTokenService::revoke_undeclared(pool, &declared)
+        .await
+        .map_err(|e| ApplyError(format!("revoking tokens: {e}")))?;
+    for name in revoked {
+        info!("rustrak.toml: revoked token {name:?}, no longer in the file");
+    }
     for spec in &file.tokens {
         AuthTokenService::upsert_declared(
             pool,
@@ -102,13 +119,6 @@ pub async fn apply(pool: &DbPool, file: &BootstrapFile) -> Result<(), ApplyError
         )
         .await
         .map_err(|e| ApplyError(format!("token {:?}: {e}", spec.name)))?;
-    }
-    let declared: Vec<&str> = file.tokens.iter().map(|t| t.name.as_str()).collect();
-    let revoked = AuthTokenService::revoke_undeclared(pool, &declared)
-        .await
-        .map_err(|e| ApplyError(format!("revoking tokens: {e}")))?;
-    for name in revoked {
-        info!("rustrak.toml: revoked token {name:?}, no longer in the file");
     }
     Ok(())
 }

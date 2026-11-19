@@ -2,7 +2,7 @@
 //! the server listens, a bad one stops it with a message and a non-zero exit.
 
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
@@ -34,6 +34,17 @@ fn server(dir: &Path, config: &Path, port: u16) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     command
+}
+
+/// A running server, killed and reaped when dropped, so a test that panics
+/// while it runs does not leave it behind: `Child` alone does neither.
+struct Running(Child);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 fn write_config(dir: &Path, toml: &str) -> std::path::PathBuf {
@@ -81,17 +92,19 @@ async fn serves_the_declared_project_and_its_dsn_to_the_declared_token() {
         ),
     );
     let port = free_port();
-    let mut child = server(dir.path(), &config, port)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn the server binary");
+    let mut child = Running(
+        server(dir.path(), &config, port)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn the server binary"),
+    );
 
     let client = reqwest::Client::new();
     let url = format!("http://127.0.0.1:{port}/api/projects/7");
     let deadline = Instant::now() + Duration::from_secs(30);
     let body: serde_json::Value = loop {
-        if let Ok(Some(status)) = child.try_wait() {
+        if let Ok(Some(status)) = child.0.try_wait() {
             panic!("the server exited ({status})");
         }
         if let Ok(r) = client.get(&url).bearer_auth(TOKEN).send().await {
@@ -102,8 +115,7 @@ async fn serves_the_declared_project_and_its_dsn_to_the_declared_token() {
         assert!(Instant::now() < deadline, "the server never answered");
         tokio::time::sleep(Duration::from_millis(50)).await;
     };
-    let _ = child.kill();
-    let _ = child.wait();
+    drop(child);
 
     assert_eq!(body["name"], "Storefront");
     assert_eq!(body["dsn"], format!("https://{KEY}@errors.example.com/7"));
@@ -144,16 +156,18 @@ async fn refuses_to_start_when_the_database_contradicts_the_file() {
     );
     // Up once, so project 1 exists with KEY.
     let port = free_port();
-    let mut child = server(dir.path(), &config, port)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut child = Running(
+        server(dir.path(), &config, port)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
     let client = reqwest::Client::new();
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         assert!(
-            child.try_wait().unwrap().is_none(),
+            child.0.try_wait().unwrap().is_none(),
             "the first start failed"
         );
         let health = client
@@ -169,8 +183,7 @@ async fn refuses_to_start_when_the_database_contradicts_the_file() {
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let _ = child.kill();
-    let _ = child.wait();
+    drop(child);
 
     write_config(
         dir.path(),

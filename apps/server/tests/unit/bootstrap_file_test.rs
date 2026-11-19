@@ -299,3 +299,37 @@ fn refuses_a_platform_it_does_not_know() {
     ));
     assert!(err.contains("id 1") && err.contains("cobol"), "{err}");
 }
+
+#[test]
+fn refuses_a_declared_slug_that_slugifies_to_nothing() {
+    // Created once with a slug derived from the name, then refused by every
+    // later start: caught before the first.
+    for slug in ["", "  ", "---"] {
+        let err = parse_err(&project(1, "App", slug, KEY));
+        assert!(
+            err.contains("id 1") && err.contains("slug"),
+            "{slug:?}: {err}"
+        );
+    }
+}
+
+#[test]
+fn refuses_a_project_name_over_255_bytes_and_accepts_255() {
+    let fits = "a".repeat(255);
+    parse(&project(1, &fits, "a", KEY));
+
+    let err = parse_err(&project(1, &"a".repeat(256), "a", KEY));
+    assert!(err.contains("id 1") && err.contains("255"), "{err}");
+}
+
+#[test]
+fn a_value_of_the_wrong_type_is_not_echoed_in_the_error() {
+    let err =
+        parse_err("[bootstrap.superuser]\nemail = \"admin@example.com\"\npassword = 987654321\n");
+    assert!(err.contains("line 3") && err.contains("password"), "{err}");
+    assert!(err.contains("expected a string"), "{err}");
+    assert!(
+        !err.contains("987654321"),
+        "the error leaks the secret: {err}"
+    );
+}

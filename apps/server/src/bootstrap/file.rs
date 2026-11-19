@@ -155,6 +155,10 @@ impl BootstrapFile {
             if name.is_empty() {
                 return Err(at("name cannot be empty".into()));
             }
+            // The limit `ProjectService` enforces, in bytes like it.
+            if name.len() > 255 {
+                return Err(at("name cannot exceed 255 bytes".into()));
+            }
             if !names.insert(name) {
                 return Err(at(format!("name {name:?} is declared twice")));
             }
@@ -180,6 +184,13 @@ impl BootstrapFile {
             }
             // Compared as stored: "App" and "app" are one slug.
             if let Some(slug) = p.slug.as_deref().map(slugify) {
+                // Creation would derive one from the name, and every later
+                // start would then try to set this one and fail.
+                if slug.is_empty() {
+                    return Err(at(
+                        "slug has no letters or digits; set one, or leave slug out".into(),
+                    ));
+                }
                 if !slugs.insert(slug.clone()) {
                     return Err(at(format!("slug {slug:?} is declared twice")));
                 }
@@ -211,10 +222,20 @@ impl BootstrapFile {
 }
 
 /// `toml`'s own message quotes the offending line, which can be the one
-/// holding a token or a password. This keeps the line number, the key on it
-/// and the reason: never the value.
+/// holding a token or a password, and a type or value mismatch names the
+/// value itself (``invalid type: integer `123`, expected a string``). This
+/// keeps the line number, the key on it and what was expected: never the
+/// value.
 fn syntax_error(text: &str, e: &toml::de::Error) -> FileError {
-    let reason = e.message().trim_end();
+    let message = e.message().trim_end();
+    let reason = match message.split_once(", expected ") {
+        Some((found, expected))
+            if found.starts_with("invalid type") || found.starts_with("invalid value") =>
+        {
+            format!("expected {expected}")
+        }
+        _ => message.to_string(),
+    };
     let Some(span) = e.span() else {
         return FileError(reason.to_string());
     };

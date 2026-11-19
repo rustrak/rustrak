@@ -262,6 +262,9 @@ impl ProjectService {
     /// which together fix the DSN: what `rustrak.toml` declares. The caller
     /// checks that neither is taken; a collision is still refused, never
     /// renumbered.
+    ///
+    /// The id sequence is not moved: call [`Self::sync_id_sequence`] before
+    /// anything creates a project without an id.
     pub async fn create_with_identity(
         pool: &DbPool,
         input: CreateProject,
@@ -724,9 +727,6 @@ impl ProjectService {
         };
 
         let result = insert(slug).await;
-        if let (Ok(_), Some(_)) = (&result, id) {
-            Self::sync_id_sequence(pool).await?;
-        }
 
         match result {
             Ok(p) => Ok(p),
@@ -780,10 +780,11 @@ impl ProjectService {
         }
     }
 
-    /// After an insert with an explicit id, moves PostgreSQL's id sequence
-    /// past every id in use, so the next project created without one does not
-    /// collide with it. SQLite's AUTOINCREMENT already follows the largest id.
-    async fn sync_id_sequence(pool: &DbPool) -> AppResult<()> {
+    /// Moves PostgreSQL's id sequence past every id in use, so a project
+    /// created without an id never collides with one created by
+    /// [`Self::create_with_identity`], which does not move it. Idempotent;
+    /// SQLite's AUTOINCREMENT already follows the largest id.
+    pub async fn sync_id_sequence(pool: &DbPool) -> AppResult<()> {
         #[cfg(feature = "postgres")]
         sqlx::query(
             "SELECT setval(pg_get_serial_sequence('projects', 'id'), \
