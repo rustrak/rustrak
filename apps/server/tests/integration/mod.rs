@@ -62,6 +62,7 @@ mod spans_api_test;
 mod sso_flow_test;
 mod stats_api_test;
 mod storage_api_test;
+mod streamed_spans_test;
 mod team_rbac_test;
 mod telemetry_test;
 mod token_scopes_test;
