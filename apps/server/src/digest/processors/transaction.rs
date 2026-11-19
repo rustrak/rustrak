@@ -170,6 +170,7 @@ impl TransactionProcessor {
                     gen_ai,
                     parent_span_id: parent_span_id.clone(),
                     description: Some(transaction_name.clone()),
+                    description_id: None,
                     status: status.clone(),
                     // The root is its own segment.
                     segment_id: Some(root_span_id.clone()),
@@ -189,7 +190,7 @@ impl TransactionProcessor {
             }
         }
 
-        let rows = encode_span_rows(&ctx.pool, ctx.keep_ai_spans, rows).await?;
+        let rows = encode_span_rows(&ctx.pool, ctx.project_id, ctx.keep_ai_spans, rows).await?;
 
         // Parent transaction + its extracted spans are written in one DB
         // transaction, and a retry with the same event id is a no-op.
@@ -295,9 +296,15 @@ fn span_row(
     let mut row = SpanRow::from_span(span, position);
     row.transaction_id = Some(transaction_id);
     row.trace_id = row.trace_id.or_else(|| txn_trace_id.map(str::to_string));
-    row.platform = platform.map(str::to_string);
-    row.release = release.map(str::to_string);
-    row.environment = environment.map(str::to_string);
+    // The transaction's scope is read from the transaction
+    // (`span_scope!`), not repeated on each of its spans. An AI span keeps
+    // a copy: the agents pages filter `spans` by environment, through
+    // indexes that hold it.
+    if row.is_ai() {
+        row.platform = platform.map(str::to_string);
+        row.release = release.map(str::to_string);
+        row.environment = environment.map(str::to_string);
+    }
     row
 }
 

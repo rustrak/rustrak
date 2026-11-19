@@ -34,6 +34,7 @@ pub mod source_bundle;
 pub mod sourcemap;
 pub mod sourcemap_store;
 pub mod span;
+pub mod span_description;
 pub mod stats;
 pub mod storage;
 pub mod transaction;

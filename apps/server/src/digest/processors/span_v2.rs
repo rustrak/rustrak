@@ -79,6 +79,7 @@ impl SpanV2Processor {
                 gen_ai,
                 parent_span_id: clamp_opt(entry.parent_span_id, 32),
                 description: entry.name,
+                description_id: None,
                 status: clamp_opt(entry.status, 32),
                 segment_id,
                 is_segment: entry.is_segment,
@@ -91,7 +92,7 @@ impl SpanV2Processor {
             });
         }
 
-        let rows = encode_span_rows(&ctx.pool, ctx.keep_ai_spans, rows).await?;
+        let rows = encode_span_rows(&ctx.pool, ctx.project_id, ctx.keep_ai_spans, rows).await?;
         let mut tx = ctx.pool.begin().await?;
         insert_span_rows(&mut tx, ctx.project_id, rows).await?;
         tx.commit().await?;

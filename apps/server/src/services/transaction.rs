@@ -209,7 +209,13 @@ impl TransactionService {
         transaction_id: Uuid,
     ) -> AppResult<Vec<serde_json::Value>> {
         let rows = sqlx::query(concat!(
-            "SELECT id, span_id, parent_span_id, op, description, status, segment_id, \
+            "SELECT id, span_id, ",
+            crate::span_hex_id!("parent_span_id"),
+            ", op, ",
+            crate::span_description!(),
+            ", status, ",
+            crate::span_hex_id!("segment_id"),
+            ", \
              start_timestamp, timestamp, exclusive_time_ms, tags, data, payload ",
             spans_of_transaction!()
         ))
@@ -257,10 +263,17 @@ impl TransactionService {
         }
 
         let rows = sqlx::query(concat!(
-            "SELECT id, transaction_id, span_id, trace_id, parent_span_id, \
-             op, description, status, \
+            "SELECT id, transaction_id, span_id, trace_id, ",
+            crate::span_hex_id!("parent_span_id"),
+            ", op, ",
+            crate::span_description!(),
+            ", status, \
              start_timestamp, timestamp, duration_ms, exclusive_time_ms, \
-             is_segment, segment_id, platform, release, environment, \
+             is_segment, ",
+            crate::span_hex_id!("segment_id"),
+            ", ",
+            crate::span_scope!(),
+            ", \
              gen_ai_operation_type, gen_ai_agent_name, \
              gen_ai_request_model, gen_ai_response_model, \
              gen_ai_tool_name, gen_ai_conversation_id, \
