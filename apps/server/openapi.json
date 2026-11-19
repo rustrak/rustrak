@@ -11018,7 +11018,7 @@
         "tags": [
           "Spans"
         ],
-        "summary": "Lists spans for a project with offset-based pagination (newest by\nstart_timestamp first), optionally filtered by op/status/trace_id, over a\nwindow of 90 days at most.\n`total_count` stops at 1000: when `total_capped` is true there are more\nspans, on pages past `total_pages`.\nReturns spans regardless of origin — standalone or extracted from a\ntransaction — since both are stored in the same table.",
+        "summary": "Lists spans for a project with offset-based pagination (newest by\nstart_timestamp first), optionally filtered by op/status/trace_id, over a\nwindow of 90 days at most (every span of a trace when only `trace_id` is\ngiven).\n`total_count` stops at 1000: when `total_capped` is true there are more\nspans, on pages past `total_pages`.\nReturns spans regardless of origin — standalone or extracted from a\ntransaction — since both are stored in the same table.",
         "operationId": "spans.list",
         "parameters": [
           {

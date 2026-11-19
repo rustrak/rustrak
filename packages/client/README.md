@@ -502,7 +502,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | Method | Endpoint | Description |
 |---|---|---|
 | `spans.get({ path })` | `GET /api/projects/{project_id}/spans/{span_id}` | Returns one span together with its attributes and tags — the `gen_ai.*` payload (prompts, responses, tool arguments and results) that the list response deliberately omits, since `spans.data` is untrimmed and a whole trace's worth of it would dwarf the waterfall it is drawn from. |
-| `spans.list({ path, query? })` | `GET /api/projects/{project_id}/spans` | Lists spans for a project with offset-based pagination (newest by start_timestamp first), optionally filtered by op/status/trace_id, over a window of 90 days at most. |
+| `spans.list({ path, query? })` | `GET /api/projects/{project_id}/spans` | Lists spans for a project with offset-based pagination (newest by start_timestamp first), optionally filtered by op/status/trace_id, over a window of 90 days at most (every span of a trace when only `trace_id` is given). |
 
 ### Stats
 

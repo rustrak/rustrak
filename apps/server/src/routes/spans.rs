@@ -65,7 +65,8 @@ pub struct ListSpansQuery {
 ))]
 /// Lists spans for a project with offset-based pagination (newest by
 /// start_timestamp first), optionally filtered by op/status/trace_id, over a
-/// window of 90 days at most.
+/// window of 90 days at most (every span of a trace when only `trace_id` is
+/// given).
 /// `total_count` stops at 1000: when `total_capped` is true there are more
 /// spans, on pages past `total_pages`.
 /// Returns spans regardless of origin — standalone or extracted from a
@@ -90,9 +91,9 @@ pub async fn list_spans(
         operation_type: query.operation_type.clone(),
         // A trace is found by its id, which no window makes cheaper, and
         // its page is only right with every span of it.
-        period_hours: match query.trace_id {
-            Some(_) => crate::routes::period::parse_period_hours(query.period.as_deref()),
-            None => Some(crate::routes::period::window_hours(query.period.as_deref())),
+        period_hours: match (&query.trace_id, &query.period) {
+            (Some(_), None) => None,
+            _ => Some(crate::routes::period::window_hours(query.period.as_deref())),
         },
     };
 

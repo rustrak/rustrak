@@ -10,6 +10,11 @@ use uuid::Uuid;
 
 const TRACE: &str = "4c79f60c11214eb38604f4ae0781bfb2";
 
+/// The start of this second: the lists read the last 90 days.
+fn now() -> f64 {
+    Utc::now().timestamp() as f64
+}
+
 /// The Next.js transaction of the issue, cut down: the root and two of its
 /// spans carry no op, one span carries its own.
 fn nextjs_transaction() -> Value {
@@ -19,8 +24,8 @@ fn nextjs_transaction() -> Value {
             "parent_span_id": "fa90fdead5f74053",
             "trace_id": TRACE,
             "description": description,
-            "start_timestamp": 946684800.0,
-            "timestamp": 946684805.0,
+            "start_timestamp": now(),
+            "timestamp": now() + 5.0,
             "data": { "next.span_type": "AppRender.getBodyResult" },
         })
     };
@@ -31,8 +36,8 @@ fn nextjs_transaction() -> Value {
     json!({
         "type": "transaction",
         "transaction": "GET /items/[id]",
-        "start_timestamp": 946684800.0,
-        "timestamp": 946684810.0,
+        "start_timestamp": now(),
+        "timestamp": now() + 10.0,
         "contexts": { "trace": { "trace_id": TRACE, "span_id": "fa90fdead5f74053" } },
         "spans": [span("a000000000000001", "render route (app) /items/[id]"), null_op, own_op],
     })
@@ -64,8 +69,8 @@ async fn a_transaction_sent_without_ops_reads_back_as_default_everywhere() {
         "trace_id": "5c79f60c11214eb38604f4ae0781bfb2",
         "span_id": "b000000000000001",
         "name": "start response",
-        "start_timestamp": 946684800.0,
-        "end_timestamp": 946684801.0,
+        "start_timestamp": now(),
+        "end_timestamp": now() + 1.0,
         "attributes": { "next.span_type": { "value": "NextNodeServer.startResponse", "type": "string" } },
     }]});
     SpanV2Processor

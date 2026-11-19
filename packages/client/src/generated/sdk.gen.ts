@@ -2497,7 +2497,8 @@ export class Spans extends HeyApiClient {
     /**
      * Lists spans for a project with offset-based pagination (newest by
      * start_timestamp first), optionally filtered by op/status/trace_id, over a
-     * window of 90 days at most.
+     * window of 90 days at most (every span of a trace when only `trace_id` is
+     * given).
      * `total_count` stops at 1000: when `total_capped` is true there are more
      * spans, on pages past `total_pages`.
      * Returns spans regardless of origin — standalone or extracted from a

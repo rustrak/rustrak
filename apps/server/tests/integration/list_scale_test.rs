@@ -209,9 +209,12 @@ async fn the_spans_of_a_trace_are_listed_whatever_their_age() {
         at.timestamp()
     );
     assert_eq!(get(&db.pool, &token, base.clone()).await["total_count"], 3);
-    // Asked for a window, it is kept to it.
-    let day = get(&db.pool, &token, format!("{base}&period=24h")).await;
-    assert_eq!(day["total_count"], 0);
+    // Asked for a window, it is kept to it, and one that cannot be read is
+    // the longest, as on every other list.
+    for period in ["24h", "all", ""] {
+        let windowed = get(&db.pool, &token, format!("{base}&period={period}")).await;
+        assert_eq!(windowed["total_count"], 0, "period={period}");
+    }
 }
 
 #[actix_web::test]
