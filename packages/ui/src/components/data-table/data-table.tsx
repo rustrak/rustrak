@@ -173,6 +173,7 @@ function cellAttributes<TData extends RowData>(
   return {
     'data-align': meta?.align,
     'data-numeric': meta?.numeric || undefined,
+    'data-select': cell.column.id === 'select' || undefined,
   };
 }
 
@@ -196,18 +197,22 @@ export function DataTable<TData extends RowData>({
   /*
    * A click that lands on a control inside the row -- the checkbox, an
    * action, a link a cell rendered -- belongs to that control. Only the inert
-   * remainder of the row opens it.
+   * remainder of the row opens it. The checkbox's whole cell is its hit
+   * area: a 14 px box is too easy to miss, and a miss must not open the row.
    */
   function handleRowClick(
     row: Row<DataTableFeatures, TData>,
     event: MouseEvent,
   ) {
-    if (!onRowClick) return;
     const target = event.target as HTMLElement;
     // A portalled popup (the row's menu) bubbles here too, from outside the row.
     if (!(event.currentTarget as HTMLElement).contains(target)) return;
     if (target.closest('button, a, input, label, [role="checkbox"]')) return;
-    onRowClick(row);
+    if (target.closest('[data-select]')) {
+      if (row.getCanSelect()) row.toggleSelected();
+      return;
+    }
+    onRowClick?.(row);
   }
 
   /*
