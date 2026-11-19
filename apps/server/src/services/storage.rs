@@ -782,6 +782,27 @@ impl StorageService {
         Ok(counts)
     }
 
+    /// Removes everything a project stores in the tables that grow with its
+    /// traffic, in the cleanup's own batches, so that deleting the project
+    /// row afterwards cascades over little. See
+    /// [`Self::execute_cleanup_in_batches`] for why batches.
+    pub async fn purge_project(pool: &DbPool, project_id: i32) -> AppResult<CleanupCounts> {
+        // Past any row: what the cleanup takes for "older than" is all of it.
+        let cutoff = Utc::now() + chrono::Duration::days(365 * 100);
+        let mut counts = CleanupCounts::default();
+        Self::purge(
+            pool,
+            cutoff,
+            &[project_id],
+            CleanupFilter::all(),
+            CLEANUP_BATCH_SIZE,
+            &mut counts,
+            &mut |_| {},
+        )
+        .await?;
+        Ok(counts)
+    }
+
     async fn project_ids(pool: &DbPool) -> AppResult<Vec<i32>> {
         Ok(sqlx::query_scalar("SELECT id FROM projects ORDER BY id")
             .fetch_all(pool)
@@ -1165,6 +1186,7 @@ impl StorageService {
                 p.name,
                 (SELECT COUNT(*) FROM source_file_metadata m WHERE m.project_id = p.id) AS source_maps_count
             FROM projects p
+            WHERE p.deleted_at IS NULL
             ORDER BY p.id
             "#,
         )

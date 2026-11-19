@@ -9,7 +9,7 @@ use crate::models::{CreateProject, ProjectResponse, UpdateProject};
 use crate::pagination::{OffsetPaginatedResponse, SortOrder};
 use crate::routes::period::parse_period_hours;
 use crate::services::stats::StatsService;
-use crate::services::{ProjectService, RoleService};
+use crate::services::{CleanupJob, ProjectDeletions, ProjectService, RoleService};
 
 #[cfg(feature = "openapi")]
 use utoipa::OpenApi;
@@ -270,15 +270,21 @@ pub async fn update_project(
     tag = "Projects",
     params(("id" = i32, Path, description = "Project ID")),
     responses(
-        (status = 204, description = "Project deleted"),
+        (status = 204, description = "Project deleted; its data is removed in the background"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Delete a project
+/// Delete a project.
+///
+/// The project is gone at once: it is no longer listed or found, its DSN
+/// stops taking events, and its name and slug are free. Its stored data is
+/// removed afterwards, in the background.
 pub async fn delete_project(
     pool: web::Data<DbPool>,
+    deletions: web::Data<ProjectDeletions>,
+    storage: web::Data<CleanupJob>,
     path: web::Path<i32>,
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
@@ -286,6 +292,9 @@ pub async fn delete_project(
     actor.require(Resource::Project, Action::Delete, Some(id))?;
 
     ProjectService::delete(pool.get_ref(), id).await?;
+    // The storage page's kept figures still list it.
+    storage.forget_snapshot();
+    deletions.start(pool.get_ref().clone());
 
     Ok(HttpResponse::NoContent().finish())
 }

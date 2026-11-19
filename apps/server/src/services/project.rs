@@ -34,6 +34,7 @@ impl ProjectService {
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
                    disabled_products, product_order
             FROM projects
+            WHERE deleted_at IS NULL
             ORDER BY created_at DESC
             "#,
         )
@@ -46,9 +47,10 @@ impl ProjectService {
     /// Every project's slug by id, for a list across projects to name each
     /// row's project.
     pub async fn slugs(pool: &DbPool) -> AppResult<std::collections::HashMap<i32, String>> {
-        let rows: Vec<(i32, String)> = sqlx::query_as("SELECT id, slug FROM projects")
-            .fetch_all(pool)
-            .await?;
+        let rows: Vec<(i32, String)> =
+            sqlx::query_as("SELECT id, slug FROM projects WHERE deleted_at IS NULL")
+                .fetch_all(pool)
+                .await?;
         Ok(rows.into_iter().collect())
     }
 
@@ -61,9 +63,10 @@ impl ProjectService {
     ) -> AppResult<(Vec<Project>, i64)> {
         let offset = crate::pagination::offset(page, per_page);
 
-        let total_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM projects")
-            .fetch_one(pool)
-            .await?;
+        let total_count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await?;
 
         let order_clause = match order {
             SortOrder::Asc => "ORDER BY created_at ASC",
@@ -79,6 +82,7 @@ impl ProjectService {
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
                    disabled_products, product_order
             FROM projects
+            WHERE deleted_at IS NULL
             {}
             LIMIT $1 OFFSET $2
             "#,
@@ -124,7 +128,10 @@ impl ProjectService {
             SortOrder::Desc => "ORDER BY created_at DESC",
         };
 
-        let count_query = format!("SELECT COUNT(*) FROM projects WHERE id IN ({})", in_clause);
+        let count_query = format!(
+            "SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND id IN ({})",
+            in_clause
+        );
         let mut count_q = sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(&*count_query));
         for id in ids {
             count_q = count_q.bind(id);
@@ -140,7 +147,7 @@ impl ProjectService {
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
                    disabled_products, product_order
             FROM projects
-            WHERE id IN ({})
+            WHERE deleted_at IS NULL AND id IN ({})
             {}
             LIMIT ${} OFFSET ${}
             "#,
@@ -166,7 +173,7 @@ impl ProjectService {
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
                    disabled_products, product_order
             FROM projects
-            WHERE id = $1
+            WHERE id = $1 AND deleted_at IS NULL
             "#,
         )
         .bind(id)
@@ -206,7 +213,7 @@ impl ProjectService {
                    i.quota_hour_window AS installation_hour_window,
                    i.quota_hour_count AS installation_hour_count
             FROM projects p CROSS JOIN installation i
-            WHERE p.id = $1 AND i.id = 1
+            WHERE p.id = $1 AND p.deleted_at IS NULL AND i.id = 1
             "#,
         )
         .bind(id)
@@ -238,10 +245,12 @@ impl ProjectService {
         let Ok(numeric_id) = project_ref.parse::<i32>() else {
             return Ok(None);
         };
-        Ok(sqlx::query_scalar("SELECT id FROM projects WHERE id = $1")
-            .bind(numeric_id)
-            .fetch_optional(pool)
-            .await?)
+        Ok(
+            sqlx::query_scalar("SELECT id FROM projects WHERE id = $1 AND deleted_at IS NULL")
+                .bind(numeric_id)
+                .fetch_optional(pool)
+                .await?,
+        )
     }
 
     pub async fn create(pool: &DbPool, input: CreateProject) -> AppResult<Project> {
@@ -540,12 +549,29 @@ impl ProjectService {
         Ok(())
     }
 
-    /// Deletes a project (hard delete)
+    /// Marks a project deleted: from here on every reader treats it as
+    /// absent, and [`ProjectDeletions`](crate::services::ProjectDeletions)
+    /// removes its rows and, last, the project itself.
+    ///
+    /// Deleting it outright ran in the request, cascading through every
+    /// table of the project: 144 s for 6M spans on a small server, with the
+    /// project still listed and a second attempt refused meanwhile. Sentry's
+    /// request does the same as this one (`PENDING_DELETION`).
+    ///
+    /// The name and slug, both unique, are given up at once, as Sentry gives
+    /// up the slug, so a project of the same name can be created right away.
+    /// `NotFound` when there is no such project, or it is already deleted.
     pub async fn delete(pool: &DbPool, id: i32) -> AppResult<()> {
-        let result = sqlx::query("DELETE FROM projects WHERE id = $1")
-            .bind(id)
-            .execute(pool)
-            .await?;
+        let released = format!("deleted-{}", uuid::Uuid::new_v4().simple());
+        let result = sqlx::query(
+            "UPDATE projects SET deleted_at = $1, name = $2, slug = $2 \
+             WHERE id = $3 AND deleted_at IS NULL",
+        )
+        .bind(chrono::Utc::now())
+        .bind(released)
+        .bind(id)
+        .execute(pool)
+        .await?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(format!(

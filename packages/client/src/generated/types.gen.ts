@@ -5026,7 +5026,7 @@ export type ProjectsDeleteError = ProjectsDeleteErrors[keyof ProjectsDeleteError
 
 export type ProjectsDeleteResponses = {
     /**
-     * Project deleted
+     * Project deleted; its data is removed in the background
      */
     204: void;
 };

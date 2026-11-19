@@ -179,7 +179,8 @@ pub async fn lock_quota_rows(
     .await?;
     let mut select = sqlx::QueryBuilder::<crate::db::Db>::new(
         "SELECT id, quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count, \
-         rate_limit_per_minute, rate_limit_per_hour FROM projects WHERE id IN (",
+         rate_limit_per_minute, rate_limit_per_hour FROM projects \
+         WHERE deleted_at IS NULL AND id IN (",
     );
     let mut ids = select.separated(", ");
     for id in project_ids {

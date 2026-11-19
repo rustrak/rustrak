@@ -37,6 +37,7 @@ mod oauth_test;
 mod openapi_contract_test;
 mod payload_storage_test;
 mod products_test;
+mod project_delete_test;
 mod projects_api_test;
 mod quota_enforcement_test;
 mod rate_limit_test;

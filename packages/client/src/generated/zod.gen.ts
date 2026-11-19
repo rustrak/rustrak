@@ -2906,7 +2906,7 @@ export const zProjectsDeletePath = z.object({
 });
 
 /**
- * Project deleted
+ * Project deleted; its data is removed in the background
  */
 export const zProjectsDeleteResponse = z.void();
 

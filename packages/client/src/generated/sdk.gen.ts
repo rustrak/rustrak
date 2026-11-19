@@ -1630,7 +1630,11 @@ export class Projects extends HeyApiClient {
     }
     
     /**
-     * Delete a project
+     * Delete a project.
+     *
+     * The project is gone at once: it is no longer listed or found, its DSN
+     * stops taking events, and its name and slug are free. Its stored data is
+     * removed afterwards, in the background.
      */
     public delete<ThrowOnError extends boolean = false>(options: Options<ProjectsDeleteData, ThrowOnError>): RequestResult<ProjectsDeleteResponses, ProjectsDeleteErrors, ThrowOnError> {
         return (options.client ?? this.client).delete<ProjectsDeleteResponses, ProjectsDeleteErrors, ThrowOnError>({

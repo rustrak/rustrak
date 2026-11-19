@@ -23,7 +23,7 @@ use crate::scheduler::jobs::{
 use crate::services::oauth::{ClientMetadataSource, HttpClientMetadata};
 use crate::services::sourcemap::{DbSourceMapProvider, SourceMapProvider};
 use crate::services::sourcemap_store::{LocalSourceMapStore, SourceMapStore};
-use crate::services::{AlertService, CleanupJob};
+use crate::services::{AlertService, CleanupJob, ProjectDeletions};
 use crate::telemetry::{self, Counters, Reporter, TelemetryStatus};
 use crate::workers::sourcemap_assembly::{AssemblyQueue, AssemblyWorker};
 use crate::workers::supervise;
@@ -46,6 +46,7 @@ pub struct AppState {
     /// One for the process, so a second cleanup is refused whichever worker
     /// takes the request.
     pub cleanup_job: web::Data<CleanupJob>,
+    pub project_deletions: web::Data<ProjectDeletions>,
     pub telemetry_reporter: web::Data<Arc<Reporter>>,
     pub telemetry_status: web::Data<TelemetryStatus>,
     pub metrics: web::Data<MetricsEndpoint>,
@@ -171,6 +172,7 @@ impl AppState {
             session_aggregator,
             processors: web::Data::new(processors),
             cleanup_job: web::Data::new(CleanupJob::default()),
+            project_deletions: web::Data::new(ProjectDeletions::default()),
             telemetry_reporter: web::Data::new(telemetry_reporter),
             telemetry_status: web::Data::new(telemetry_status),
             metrics: web::Data::new(metrics),
@@ -208,6 +210,9 @@ impl AppState {
             let pool = pool.clone();
             async move { job.warm_snapshot(&pool).await }
         });
+
+        // What a restart interrupted: projects deleted, their rows not yet.
+        self.project_deletions.start(pool.clone());
 
         // A large backlog or a database that is down for a while must not
         // keep the HTTP listener from binding.
@@ -424,6 +429,7 @@ pub fn app(
         .app_data(state.telemetry_status.clone())
         .app_data(state.metrics.clone())
         .app_data(state.cleanup_job.clone())
+        .app_data(state.project_deletions.clone())
         .app_data(state.client_metadata.clone())
         // `Logger::default()`'s format, plus the incident id a 5xx echoes
         // in `INCIDENT_ID_HEADER`. `error_response` never sees the request
