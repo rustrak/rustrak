@@ -42,7 +42,8 @@ pub struct ListTransactionsQuery {
     /// Filter by release.
     pub release: Option<String>,
 
-    /// Only this window (`24h`, `7d`, `14d`...); all time if absent.
+    /// Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+    /// if absent.
     pub period: Option<String>,
 
     /// `slowest` for the longest first; newest first otherwise.
@@ -76,7 +77,8 @@ pub struct TransactionStatsQuery {
     /// Only this environment.
     pub environment: Option<String>,
 
-    /// Only this window (`24h`, `7d`, `14d`...); all time if absent.
+    /// Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+    /// if absent.
     pub period: Option<String>,
 
     /// Only the endpoints whose name contains this, ignoring case.
@@ -92,7 +94,7 @@ impl TransactionStatsQuery {
     pub fn filter(&self) -> crate::services::transaction::StatsFilter {
         crate::services::transaction::StatsFilter {
             environment: self.environment.clone().filter(|e| !e.is_empty()),
-            period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
+            period_hours: Some(crate::routes::period::window_hours(self.period.as_deref())),
             query: self.query.clone(),
             sort: self.sort,
         }
@@ -109,7 +111,8 @@ pub struct TransactionStatGroupQuery {
     pub op: Option<String>,
     /// Only this environment.
     pub environment: Option<String>,
-    /// Only this window (`24h`, `7d`, `14d`...); all time if absent.
+    /// Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+    /// if absent.
     pub period: Option<String>,
 }
 
@@ -117,7 +120,7 @@ impl TransactionStatGroupQuery {
     pub fn filter(&self) -> crate::services::transaction::StatsFilter {
         crate::services::transaction::StatsFilter {
             environment: self.environment.clone().filter(|e| !e.is_empty()),
-            period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
+            period_hours: Some(crate::routes::period::window_hours(self.period.as_deref())),
             ..Default::default()
         }
     }
@@ -133,13 +136,16 @@ impl TransactionStatGroupQuery {
         ListTransactionsQuery,
     ),
     responses(
-        (status = 200, description = "Paginated transaction list", body = inline(crate::pagination::OffsetPaginatedResponse<TransactionResponse>)),
+        (status = 200, description = "Paginated transaction list", body = inline(crate::pagination::CappedPaginatedResponse<TransactionResponse>)),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
-/// Lists transactions for a project with offset-based pagination (newest first).
+/// Lists transactions for a project with offset-based pagination (newest or
+/// slowest first), over a window of 90 days at most.
+/// `total_count` stops at 1000: when `total_capped` is true there are more
+/// transactions, on pages past `total_pages`.
 pub async fn list_transactions(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
@@ -159,20 +165,22 @@ pub async fn list_transactions(
         status: query.status.clone(),
         environment: query.environment.clone(),
         release: query.release.clone(),
-        period_hours: crate::routes::period::parse_period_hours(query.period.as_deref()),
+        period_hours: Some(crate::routes::period::window_hours(query.period.as_deref())),
         slowest: query.sort == Some(TransactionListSort::Slowest),
     };
 
-    let (transactions, total_count) =
+    let (transactions, hits) =
         TransactionService::list_offset(pool.get_ref(), project_id, page, per_page, &filters)
             .await?;
 
-    Ok(HttpResponse::Ok().json(OffsetPaginatedResponse::new(
-        transactions,
-        total_count,
-        page,
-        per_page,
-    )))
+    Ok(
+        HttpResponse::Ok().json(crate::pagination::CappedPaginatedResponse::new(
+            transactions,
+            hits,
+            page,
+            per_page,
+        )),
+    )
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(

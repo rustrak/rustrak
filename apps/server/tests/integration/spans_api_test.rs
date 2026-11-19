@@ -23,8 +23,9 @@ async fn store_sample_spans(pool: &rustrak::db::DbPool, project_id: i32) {
             "trace_id": trace_id,
             "op": op,
             "status": status,
-            "start_timestamp": 1.0,
-            "timestamp": 2.0
+            // Started now: the span list reads the last 90 days.
+            "start_timestamp": Utc::now().timestamp(),
+            "timestamp": Utc::now().timestamp() + 1
         }))
         .unwrap();
         let ctx = ProcessorCtx {

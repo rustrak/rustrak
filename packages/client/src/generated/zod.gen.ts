@@ -4040,11 +4040,13 @@ export const zSpansListQuery = z.object({
     op: z.nullish(z.string()),
     status: z.nullish(z.string()),
     trace_id: z.nullish(z.string()),
-    operation_type: z.nullish(z.string())
+    operation_type: z.nullish(z.string()),
+    period: z.nullish(z.string())
 });
 
 /**
- * Offset-based paginated response wrapper
+ * A page of a list over a table too large to count: [`OffsetPaginatedResponse`]
+ * whose total stops at [`MAX_HITS`].
  */
 export const zSpansListResponse = z.object({
     items: z.array(z.object({
@@ -4077,6 +4079,7 @@ export const zSpansListResponse = z.object({
     })),
     page: z.int(),
     per_page: z.int(),
+    total_capped: z.boolean(),
     total_count: z.int(),
     total_pages: z.int()
 });
@@ -4126,7 +4129,8 @@ export const zTransactionsListQuery = z.object({
 });
 
 /**
- * Offset-based paginated response wrapper
+ * A page of a list over a table too large to count: [`OffsetPaginatedResponse`]
+ * whose total stops at [`MAX_HITS`].
  */
 export const zTransactionsListResponse = z.object({
     items: z.array(z.object({
@@ -4144,6 +4148,7 @@ export const zTransactionsListResponse = z.object({
     })),
     page: z.int(),
     per_page: z.int(),
+    total_capped: z.boolean(),
     total_count: z.int(),
     total_pages: z.int()
 });

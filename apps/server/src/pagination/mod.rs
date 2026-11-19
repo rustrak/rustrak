@@ -10,6 +10,11 @@ pub const PAGE_SIZE: i64 = 20;
 /// The largest page any list serves.
 pub const MAX_PER_PAGE: i64 = 100;
 
+/// The most rows a list over `spans` or `transactions` counts. Sentry's
+/// `MAX_HITS_LIMIT` (`sentry/api/paginator.py`): past it the total reads
+/// "1000+", because an exact count reads every matching row.
+pub const MAX_HITS: i64 = 1000;
+
 /// A requested page size, refused outside 1..=[`MAX_PER_PAGE`] with Sentry's
 /// own message (`clamp_pagination_per_page`, `utils/pagination_factory.py`):
 /// a page silently smaller than asked for reads as the end of the list.
@@ -75,6 +80,39 @@ impl<T> OffsetPaginatedResponse<T> {
             page,
             per_page,
             total_pages,
+        }
+    }
+}
+
+/// A page of a list over a table too large to count: [`OffsetPaginatedResponse`]
+/// whose total stops at [`MAX_HITS`].
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(bound = "T: utoipa::ToSchema"))]
+pub struct CappedPaginatedResponse<T> {
+    pub items: Vec<T>,
+    /// How many rows match, counted no further than 1000.
+    pub total_count: i64,
+    /// More rows match than `total_count` says, on pages past `total_pages`.
+    /// To read them all, ask for pages until one comes back short.
+    pub total_capped: bool,
+    pub page: i64,
+    pub per_page: i64,
+    pub total_pages: i64,
+}
+
+impl<T> CappedPaginatedResponse<T> {
+    /// The page of a list that counted `hits` rows and stopped one past
+    /// [`MAX_HITS`].
+    pub fn new(items: Vec<T>, hits: i64, page: i64, per_page: i64) -> Self {
+        let page_of = OffsetPaginatedResponse::new(items, hits.min(MAX_HITS), page, per_page);
+        Self {
+            items: page_of.items,
+            total_count: page_of.total_count,
+            total_capped: hits > MAX_HITS,
+            page: page_of.page,
+            per_page: page_of.per_page,
+            total_pages: page_of.total_pages,
         }
     }
 }

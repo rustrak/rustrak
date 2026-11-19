@@ -16,6 +16,7 @@ import { queryOptions } from '@tanstack/react-query';
 import { projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
+import { allPages } from '../model/pages';
 
 type AgentWindow = NonNullable<AgentsSummaryData['query']>;
 type AgentTimeseriesQuery = NonNullable<AgentsRunsData['query']>;
@@ -152,13 +153,7 @@ export const agentQueries = {
               signal,
             }),
           );
-        const first = await page(1);
-        const rest = await Promise.all(
-          Array.from({ length: Math.max(first.total_pages - 1, 0) }, (_, i) =>
-            page(i + 2),
-          ),
-        );
-        return [first, ...rest].flatMap((p) => p.items);
+        return allPages(page);
       },
     }),
   /**

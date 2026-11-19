@@ -9,7 +9,7 @@ use crate::routes::spans;
 #[tool_router(router = span_tools, vis = "pub(super)")]
 impl RustrakMcp {
     #[tool(
-        description = "List spans for a Rustrak project (newest first), with offset pagination and optional filters. Covers spans regardless of origin — standalone \"span\" envelope items and spans extracted from transactions both share this table. Filter by operation_type (agent/tool/handoff/ai_client) to find AI Agent Monitoring spans specifically.",
+        description = "List spans for a Rustrak project (newest first), with offset pagination and optional filters. Covers spans regardless of origin — standalone \"span\" envelope items and spans extracted from transactions both share this table. Filter by operation_type (agent/tool/handoff/ai_client) to find AI Agent Monitoring spans specifically. Reads the last 90 days unless a shorter period is given; with a trace_id and no period, every span of that trace. total_count stops at 1000: when total_capped is true there are more, so ask for the next pages until one comes back short.",
         annotations(read_only_hint = true)
     )]
     async fn list_spans(

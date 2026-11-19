@@ -105,7 +105,11 @@ async fn test_ingest_standalone_span_envelope_without_trace_header_stores_row() 
     let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
     // No `trace` field anywhere in the envelope headers — DSC intentionally absent.
-    let span_json = r#"{"span_id":"9fd17741416e8e4e","trace_id":"d3d20f000885466b8c8f947c9b92b8d3","op":"http.client","start_timestamp":1234567890.0,"timestamp":1234567890.5}"#;
+    // Started now: the span list reads the last 90 days.
+    let now = chrono::Utc::now().timestamp();
+    let span_json = format!(
+        r#"{{"span_id":"9fd17741416e8e4e","trace_id":"d3d20f000885466b8c8f947c9b92b8d3","op":"http.client","start_timestamp":{now}.0,"timestamp":{now}.5}}"#
+    );
     let envelope = format!(
         "{{}}\n{{\"type\":\"span\",\"length\":{}}}\n{}",
         span_json.len(),
@@ -146,8 +150,14 @@ async fn test_ingest_multiple_standalone_spans_in_one_envelope() {
 
     let app = crate::common::app_with_config(&db.pool, config.clone()).await;
 
-    let span1 = r#"{"span_id":"1111111111111111","trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","op":"http.client","start_timestamp":1.0,"timestamp":1.5}"#;
-    let span2 = r#"{"span_id":"2222222222222222","trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","op":"db.query","start_timestamp":1.5,"timestamp":1.8}"#;
+    // Started now: the span list reads the last 90 days.
+    let now = chrono::Utc::now().timestamp();
+    let span1 = format!(
+        r#"{{"span_id":"1111111111111111","trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","op":"http.client","start_timestamp":{now}.0,"timestamp":{now}.5}}"#
+    );
+    let span2 = format!(
+        r#"{{"span_id":"2222222222222222","trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","op":"db.query","start_timestamp":{now}.5,"timestamp":{now}.8}}"#
+    );
     let envelope = format!(
         "{{}}\n{{\"type\":\"span\",\"length\":{}}}\n{}\n{{\"type\":\"span\",\"length\":{}}}\n{}",
         span1.len(),

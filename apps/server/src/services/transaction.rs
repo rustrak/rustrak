@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row};
 use uuid::Uuid;
 
-use crate::db::dialect::{like_pattern, since};
+use crate::db::dialect::{like_pattern, since_utc};
 use crate::db::payload::Stored;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
@@ -53,13 +53,35 @@ pub struct TransactionFilters {
     pub slowest: bool,
 }
 
+impl TransactionFilters {
+    /// `WHERE ...` for the project's transactions these filters keep, with
+    /// only the filters asked for in the SQL (see `SpanFilters::push_where`).
+    fn push_where(&self, qb: &mut QueryBuilder<crate::db::Db>, project_id: i32) {
+        qb.push(" WHERE project_id = ").push_bind(project_id);
+        for (column, value) in [
+            ("transaction_name", &self.name),
+            ("op", &self.op),
+            ("status", &self.status),
+            ("environment", &self.environment),
+            ("release", &self.release),
+        ] {
+            if let Some(value) = value {
+                qb.push(format!(" AND {column} = "))
+                    .push_bind(value.clone());
+            }
+        }
+        qb.push(" AND ")
+            .push(since_utc("timestamp", self.period_hours));
+    }
+}
+
 impl TransactionService {
-    /// Lists transactions for a project with offset-based pagination (newest first),
-    /// optionally filtered by op/status/environment/release.
+    /// Lists transactions for a project with offset-based pagination, newest
+    /// or slowest first, optionally filtered by name/op/status/environment/
+    /// release and a window.
     ///
-    /// Each filter uses a `($n IS NULL OR col = $m)` guard so a `None` is a no-op
-    /// — static SQL, positional binds, no parameter reuse (dialect-safe across
-    /// Postgres and SQLite). Ordered by ingested_at DESC. Returns (rows, total).
+    /// Returns the page and how many rows match, counted no further than one
+    /// past [`MAX_HITS`](crate::pagination::MAX_HITS).
     pub async fn list_offset(
         pool: &DbPool,
         project_id: i32,
@@ -69,33 +91,13 @@ impl TransactionService {
     ) -> AppResult<(Vec<TransactionResponse>, i64)> {
         let offset = crate::pagination::offset(page, per_page);
 
-        let window = since("timestamp", filters.period_hours);
-        let count_sql = format!(
-            r#"
-            SELECT COUNT(*) FROM transactions
-            WHERE project_id = $1
-              AND ($2 IS NULL OR transaction_name = $3)
-              AND ($4 IS NULL OR op = $5)
-              AND ($6 IS NULL OR status = $7)
-              AND ($8 IS NULL OR environment = $9)
-              AND ($10 IS NULL OR release = $11)
-              AND {window}
-            "#,
-        );
-        let total_count: (i64,) = sqlx::query_as(sqlx::AssertSqlSafe(&*count_sql))
-            .bind(project_id)
-            .bind(filters.name.as_deref())
-            .bind(filters.name.as_deref())
-            .bind(filters.op.as_deref())
-            .bind(filters.op.as_deref())
-            .bind(filters.status.as_deref())
-            .bind(filters.status.as_deref())
-            .bind(filters.environment.as_deref())
-            .bind(filters.environment.as_deref())
-            .bind(filters.release.as_deref())
-            .bind(filters.release.as_deref())
-            .fetch_one(pool)
-            .await?;
+        let mut count = QueryBuilder::new("SELECT COUNT(*) FROM (SELECT 1 FROM transactions");
+        filters.push_where(&mut count, project_id);
+        count
+            .push(" LIMIT ")
+            .push_bind(crate::pagination::MAX_HITS + 1)
+            .push(") AS hits");
+        let (hits,): (i64,) = count.build_query_as().fetch_one(pool).await?;
 
         let order = if filters.slowest {
             // NULL durations last on both backends, without NULLS LAST.
@@ -103,39 +105,23 @@ impl TransactionService {
         } else {
             "ingested_at DESC, id DESC"
         };
-        let sql = format!(
-            r#"
-            SELECT id, event_id, transaction_name,
-                   timestamp, start_timestamp, duration_ms,
-                   platform, environment, release, ingested_at, status
-            FROM transactions
-            WHERE project_id = $1
-              AND ($2 IS NULL OR transaction_name = $3)
-              AND ($4 IS NULL OR op = $5)
-              AND ($6 IS NULL OR status = $7)
-              AND ($8 IS NULL OR environment = $9)
-              AND ($10 IS NULL OR release = $11)
-              AND {window}
-            ORDER BY {order}
-            LIMIT $12 OFFSET $13
-            "#,
+        // The page's ids first, then their rows: ranking by duration reads
+        // every match, which idx_transactions_group_window answers without
+        // the table as long as nothing but the ids is asked of it.
+        let mut select = QueryBuilder::new(
+            "SELECT id, event_id, transaction_name, \
+                    timestamp, start_timestamp, duration_ms, \
+                    platform, environment, release, ingested_at, status \
+             FROM transactions WHERE id IN (SELECT id FROM transactions",
         );
-        let rows = sqlx::query(sqlx::AssertSqlSafe(&*sql))
-            .bind(project_id)
-            .bind(filters.name.as_deref())
-            .bind(filters.name.as_deref())
-            .bind(filters.op.as_deref())
-            .bind(filters.op.as_deref())
-            .bind(filters.status.as_deref())
-            .bind(filters.status.as_deref())
-            .bind(filters.environment.as_deref())
-            .bind(filters.environment.as_deref())
-            .bind(filters.release.as_deref())
-            .bind(filters.release.as_deref())
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(pool)
-            .await?;
+        filters.push_where(&mut select, project_id);
+        select
+            .push(format!(" ORDER BY {order} LIMIT "))
+            .push_bind(per_page)
+            .push(" OFFSET ")
+            .push_bind(offset)
+            .push(format!(") ORDER BY {order}"));
+        let rows = select.build().fetch_all(pool).await?;
 
         let transactions: Vec<TransactionResponse> = rows
             .iter()
@@ -158,7 +144,7 @@ impl TransactionService {
             })
             .collect();
 
-        Ok((transactions, total_count.0))
+        Ok((transactions, hits))
     }
 
     /// Fetches a single transaction by its primary key, scoped to a project.
@@ -340,8 +326,12 @@ impl TransactionService {
         filter: &StatsFilter,
     ) -> AppResult<(Vec<TransactionStatsResponse>, i64)> {
         let offset = crate::pagination::offset(page, per_page);
-        let (groups, time) = Self::totals(pool, project_id, filter).await?;
-        let stats = Self::grouped(pool, project_id, filter, None, per_page, offset, time).await?;
+        let (stats, mut groups) =
+            Self::grouped(pool, project_id, filter, None, per_page, offset, None).await?;
+        // A page past the last has no row to carry the count.
+        if stats.is_empty() && offset > 0 {
+            groups = Self::totals(pool, project_id, filter).await?.0;
+        }
         Ok((stats, groups))
     }
 
@@ -356,8 +346,8 @@ impl TransactionService {
         filter: &StatsFilter,
     ) -> AppResult<Option<TransactionStatsResponse>> {
         let (_, time) = Self::totals(pool, project_id, filter).await?;
-        let mut rows =
-            Self::grouped(pool, project_id, filter, Some((name, op)), 1, 0, time).await?;
+        let (mut rows, _) =
+            Self::grouped(pool, project_id, filter, Some((name, op)), 1, 0, Some(time)).await?;
         Ok(rows.pop())
     }
 
@@ -384,7 +374,9 @@ impl TransactionService {
     }
 
     /// The groups the filter matches, or the one `group` names, in the
-    /// filter's order.
+    /// filter's order, and how many groups the query matches in all. `time`
+    /// is what a group's share is measured against: when `None`, the time
+    /// of every group the query matches, read in the same pass.
     #[allow(clippy::too_many_arguments)]
     async fn grouped(
         pool: &DbPool,
@@ -393,8 +385,8 @@ impl TransactionService {
         group: Option<(&str, Option<&str>)>,
         limit: i64,
         offset: i64,
-        time: f64,
-    ) -> AppResult<Vec<TransactionStatsResponse>> {
+        time: Option<f64>,
+    ) -> AppResult<(Vec<TransactionStatsResponse>, i64)> {
         #[cfg(feature = "postgres")]
         let percentiles = ", percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) AS p50, \
                              percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95, \
@@ -411,7 +403,9 @@ impl TransactionService {
         let sql = format!(
             "SELECT transaction_name, op, COUNT(*) AS cnt, {FAILS} AS fails, \
                     SUM(duration_ms) AS total, AVG(duration_ms) AS avg, \
-                    MAX(timestamp) AS last_seen {percentiles} \
+                    MAX(timestamp) AS last_seen, \
+                    COUNT(*) OVER () AS groups, \
+                    SUM(SUM(duration_ms)) OVER () AS time {percentiles} \
              FROM transactions \
              WHERE project_id = $1 AND {} {only} \
              GROUP BY transaction_name, op \
@@ -433,6 +427,8 @@ impl TransactionService {
         }
         let rows = query.bind(limit).bind(offset).fetch_all(pool).await?;
 
+        let groups = rows.first().map_or(0, |row| row.get("groups"));
+        let time = time.unwrap_or_else(|| rows.first().map_or(0.0, |row| row.get("time")));
         let mut out = Vec::with_capacity(rows.len());
         for row in &rows {
             let transaction_name: String = row.get("transaction_name");
@@ -476,7 +472,7 @@ impl TransactionService {
                 last_seen: row.get("last_seen"),
             });
         }
-        Ok(out)
+        Ok((out, groups))
     }
 
     /// The durations of one (name, op) group under the filter.
@@ -528,7 +524,7 @@ impl TransactionService {
              WHERE project_id = $1 AND transaction_name = $2 \
                AND (op = $3 OR (op IS NULL AND $4 IS NULL)) \
                AND duration_ms IS NOT NULL AND ($5 IS NULL OR environment = $6) AND {}",
-            since("timestamp", period_hours)
+            since_utc("timestamp", period_hours)
         );
         let rows: Vec<(DateTime<Utc>, f64, Option<String>)> =
             sqlx::query_as(sqlx::AssertSqlSafe(&*sql))
@@ -637,7 +633,7 @@ impl StatsFilter {
         format!(
             "duration_ms IS NOT NULL AND ($2 IS NULL OR environment = $3) \
              AND ($4 IS NULL OR LOWER(transaction_name) LIKE $5 ESCAPE '\\') AND {}",
-            since("timestamp", self.period_hours)
+            since_utc("timestamp", self.period_hours)
         )
     }
 

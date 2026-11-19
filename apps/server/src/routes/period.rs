@@ -22,9 +22,30 @@ pub fn parse_period_hours(period: Option<&str>) -> Option<i64> {
         .map(|h| h.clamp(1, 90 * 24))
 }
 
+/// The longest window a read over `transactions` or `spans` covers, and the
+/// one it gets when it names none. Sentry's `MAX_STATS_PERIOD`
+/// (`sentry/api/utils.py`): those tables only grow, so a read with no
+/// window costs more every day the instance runs.
+pub const MAX_WINDOW_HOURS: i64 = 90 * 24;
+
+/// The window of a read that always has one: `period` as
+/// [`parse_period_hours`] reads it, [`MAX_WINDOW_HOURS`] when absent or
+/// unreadable.
+pub fn window_hours(period: Option<&str>) -> i64 {
+    parse_period_hours(period).unwrap_or(MAX_WINDOW_HOURS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_defaults_to_the_longest_one() {
+        assert_eq!(window_hours(None), 90 * 24);
+        assert_eq!(window_hours(Some("last tuesday")), 90 * 24);
+        assert_eq!(window_hours(Some("7d")), 168);
+        assert_eq!(window_hours(Some("365d")), 90 * 24);
+    }
 
     #[test]
     fn parses_hour_suffix() {

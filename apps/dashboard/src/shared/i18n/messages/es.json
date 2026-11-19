@@ -1903,6 +1903,7 @@
         "7d": "Últimos 7 días",
         "14d": "Últimos 14 días",
         "30d": "Últimos 30 días",
+        "90d": "Últimos 90 días",
         "all": "Todo el historial",
         "allShort": "Todo"
       },

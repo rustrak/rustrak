@@ -2496,7 +2496,10 @@ export class Sessions extends HeyApiClient {
 export class Spans extends HeyApiClient {
     /**
      * Lists spans for a project with offset-based pagination (newest by
-     * start_timestamp first), optionally filtered by op/status/trace_id.
+     * start_timestamp first), optionally filtered by op/status/trace_id, over a
+     * window of 90 days at most.
+     * `total_count` stops at 1000: when `total_capped` is true there are more
+     * spans, on pages past `total_pages`.
      * Returns spans regardless of origin — standalone or extracted from a
      * transaction — since both are stored in the same table.
      */
@@ -2537,7 +2540,10 @@ export class Spans extends HeyApiClient {
 
 export class Transactions extends HeyApiClient {
     /**
-     * Lists transactions for a project with offset-based pagination (newest first).
+     * Lists transactions for a project with offset-based pagination (newest or
+     * slowest first), over a window of 90 days at most.
+     * `total_count` stops at 1000: when `total_capped` is true there are more
+     * transactions, on pages past `total_pages`.
      */
     public list<ThrowOnError extends boolean = false>(options: Options<TransactionsListData, ThrowOnError>): RequestResult<TransactionsListResponses, TransactionsListErrors, ThrowOnError> {
         return (options.client ?? this.client).get<TransactionsListResponses, TransactionsListErrors, ThrowOnError>({

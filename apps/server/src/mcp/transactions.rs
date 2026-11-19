@@ -29,7 +29,7 @@ impl TransactionArgs {
 #[tool_router(router = transaction_tools, vis = "pub(super)")]
 impl RustrakMcp {
     #[tool(
-        description = "List performance transactions for a Rustrak project (newest first), with offset pagination and optional filters. Each transaction includes its name, duration in milliseconds, platform, environment, and release. Use name+op to list the samples of a single grouped transaction (see get_transaction_stats).",
+        description = "List performance transactions for a Rustrak project (newest first), with offset pagination and optional filters. Each transaction includes its name, duration in milliseconds, platform, environment, and release. Use name+op to list the samples of a single grouped transaction (see get_transaction_stats). Reads the last 90 days unless a shorter period is given. total_count stops at 1000: when total_capped is true there are more, so ask for the next pages until one comes back short.",
         annotations(read_only_hint = true)
     )]
     async fn list_transactions(
@@ -58,7 +58,7 @@ impl RustrakMcp {
     }
 
     #[tool(
-        description = "Get aggregate performance stats for a Rustrak project, grouped by transaction name + operation: throughput (count), p50/p95/p99 latency, and failure rate. Offset-paginated, most frequent first. This is the performance overview — use it to find slow or failing transactions, then list_transactions with name+op to inspect samples.",
+        description = "Get aggregate performance stats for a Rustrak project, grouped by transaction name + operation: throughput (count), p50/p95/p99 latency, and failure rate. Offset-paginated, most time-consuming first, over the last 90 days unless a shorter period is given. This is the performance overview — use it to find slow or failing transactions, then list_transactions with name+op to inspect samples.",
         annotations(read_only_hint = true)
     )]
     async fn get_transaction_stats(

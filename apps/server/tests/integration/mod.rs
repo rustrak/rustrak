@@ -26,6 +26,8 @@ mod global_issues_test;
 mod health_test;
 mod ingest_test;
 mod issues_api_test;
+mod list_indexes_test;
+mod list_scale_test;
 mod logs_api_test;
 mod mcp_test;
 mod metrics_test;

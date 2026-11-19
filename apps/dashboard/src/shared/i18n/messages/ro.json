@@ -1903,6 +1903,7 @@
         "7d": "Ultimele 7 zile",
         "14d": "Ultimele 14 zile",
         "30d": "Ultimele 30 de zile",
+        "90d": "Ultimele 90 de zile",
         "all": "Tot istoricul",
         "allShort": "Tot"
       },

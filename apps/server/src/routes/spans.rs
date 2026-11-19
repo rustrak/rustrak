@@ -6,7 +6,7 @@ use crate::error::AppResult;
 use crate::models::rbac::{Action, Resource};
 #[cfg(feature = "openapi")]
 use crate::models::{SpanDetailResponse, SpanResponse};
-use crate::pagination::OffsetPaginatedResponse;
+use crate::pagination::CappedPaginatedResponse;
 use crate::services::span::{SpanFilters, SpanService};
 use uuid::Uuid;
 
@@ -40,6 +40,11 @@ pub struct ListSpansQuery {
     /// Filter by gen_ai.operation.type
     /// (`agent`/`tool`/`handoff`/`ai_client`/`other`).
     pub operation_type: Option<String>,
+
+    /// Only the spans that started in this window (`24h`, `7d`, `14d`...):
+    /// 90 days at most, and 90 days if absent. With a `trace_id` and no
+    /// period, every span of the trace whatever its age.
+    pub period: Option<String>,
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -52,14 +57,17 @@ pub struct ListSpansQuery {
         ListSpansQuery,
     ),
     responses(
-        (status = 200, description = "Paginated span list", body = inline(crate::pagination::OffsetPaginatedResponse<SpanResponse>)),
+        (status = 200, description = "Paginated span list", body = inline(crate::pagination::CappedPaginatedResponse<SpanResponse>)),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
 ))]
 /// Lists spans for a project with offset-based pagination (newest by
-/// start_timestamp first), optionally filtered by op/status/trace_id.
+/// start_timestamp first), optionally filtered by op/status/trace_id, over a
+/// window of 90 days at most.
+/// `total_count` stops at 1000: when `total_capped` is true there are more
+/// spans, on pages past `total_pages`.
 /// Returns spans regardless of origin — standalone or extracted from a
 /// transaction — since both are stored in the same table.
 pub async fn list_spans(
@@ -80,17 +88,18 @@ pub async fn list_spans(
         status: query.status.clone(),
         trace_id: query.trace_id.clone(),
         operation_type: query.operation_type.clone(),
+        // A trace is found by its id, which no window makes cheaper, and
+        // its page is only right with every span of it.
+        period_hours: match query.trace_id {
+            Some(_) => crate::routes::period::parse_period_hours(query.period.as_deref()),
+            None => Some(crate::routes::period::window_hours(query.period.as_deref())),
+        },
     };
 
-    let (spans, total_count) =
+    let (spans, hits) =
         SpanService::list_offset(pool.get_ref(), project_id, page, per_page, &filters).await?;
 
-    Ok(HttpResponse::Ok().json(OffsetPaginatedResponse::new(
-        spans,
-        total_count,
-        page,
-        per_page,
-    )))
+    Ok(HttpResponse::Ok().json(CappedPaginatedResponse::new(spans, hits, page, per_page)))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
