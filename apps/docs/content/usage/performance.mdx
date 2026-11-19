@@ -35,7 +35,7 @@ The SDK names each transaction after the route or page (`POST /api/orders`, `/ch
 | **p95** | 95% of calls were faster than this |
 | **Failures** | Share of calls whose trace status is not `ok` |
 
-The window button (`14d` by default) and the environment filter narrow the numbers. Search the list by name, and save a search you repeat as a [view](/usage/saved-views).
+The window button (`14d` by default, 90 days at most) and the environment filter narrow the numbers. Search the list by name, and save a search you repeat as a [view](/usage/saved-views).
 
 ## An endpoint's page
 
@@ -44,3 +44,30 @@ Click an endpoint to see calls per minute, p50 and p95, failures and time spent,
 Open a sample to see its trace: the transaction and its spans as a waterfall. Click a span for its operation, description, duration, start, status and self time (its duration minus its children's). The request, tags and user the SDK attached are next to the trace.
 
 <InteractiveDemo src="/demos/performance.openshowcase" />
+
+## API
+
+Read transactions with an [API token](/usage/tokens):
+
+```bash
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" \
+  "$RUSTRAK_URL/api/projects/3/transactions?name=POST%20/api/orders&op=http.server&sort=slowest&period=7d"
+```
+
+| Parameter | What it does |
+|---|---|
+| `name`, `op`, `status`, `environment`, `release` | Exact match on each |
+| `sort` | `slowest` for the longest first. Newest first otherwise |
+| `period` | Window such as `24h`, `7d`, `14d`. 90 days when absent, and at most |
+| `page`, `per_page` | Pagination. `per_page` is 20 by default, at most 100 |
+
+`GET /api/projects/{id}/transactions/stats` returns the endpoint list, and `GET /api/projects/{id}/spans` lists spans, filtered by `op`, `status`, `trace_id` or `operation_type` over the same kind of window. With a `trace_id` and no `period`, it returns every span of that trace, whatever its age.
+
+### Totals stop at 1000
+
+The transaction and span lists count matches up to 1000, because an exact count reads every matching row and these are the largest tables. When more match:
+
+- `total_count` is `1000` and `total_capped` is `true`.
+- `total_pages` covers those 1000 only. The pages after it still exist.
+
+To read every match, ask for the next page until one comes back with fewer than `per_page` items. The endpoint list counts endpoints exactly.

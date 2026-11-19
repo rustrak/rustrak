@@ -16,13 +16,12 @@ import { transactionQueries } from '@/features/transaction/api/queries';
 import { endpointHref } from '@/features/transaction/model/endpoints';
 import { EndpointsTable } from '@/features/transaction/ui/components/endpoints-table';
 import {
-  apiPeriod,
   DEFAULT_PERIOD,
-  PERIOD_CHOICES,
-  type PeriodChoice,
+  PERFORMANCE_PERIODS,
+  type PerformancePeriod,
+  performancePeriod,
   periodParam,
 } from '@/shared/lib/period';
-import { searchOneOf } from '@/shared/lib/search-params';
 import {
   filterValue,
   pageBeyondEnd,
@@ -45,7 +44,7 @@ type StatsSort = NonNullable<
 const SORTS: StatsSort[] = ['time_spent', 'count', 'avg', 'failure_rate'];
 
 interface PerformanceSearch extends TableSearch {
-  period?: PeriodChoice;
+  period?: PerformancePeriod;
 }
 
 const table = tableSearch({
@@ -77,7 +76,7 @@ function statsParams(
   return {
     environment: filterValue(query, 'environment'),
     query: query.search || undefined,
-    period: apiPeriod(search.period ?? DEFAULT_PERIOD),
+    period: search.period ?? DEFAULT_PERIOD,
     sort: query.sorting[0]?.id as StatsSort,
     page: query.pagination.pageIndex + 1,
     per_page: query.pagination.pageSize,
@@ -90,7 +89,7 @@ function validatePerformanceSearch(
 ): PerformanceSearch {
   return {
     ...table.validate(search),
-    period: searchOneOf(search.period, PERIOD_CHOICES),
+    period: performancePeriod(search.period),
   };
 }
 
@@ -234,7 +233,7 @@ function PerformanceScreen({
         }
       />
 
-      {page?.total_count === 0 && !filtered && period === 'all' ? (
+      {page?.total_count === 0 && !filtered && period === '90d' ? (
         <NoTransactions />
       ) : (
         <Page scroll={false}>
@@ -248,8 +247,8 @@ function PerformanceScreen({
                 endpointHref(
                   projectId,
                   { name: row.transaction_name, op: row.op },
-                  // The page's own period, `all` included: the endpoint page
-                  // reads a missing one as the default, not as all time.
+                  // The page's own period: the endpoint page reads a missing
+                  // one as the default.
                   {
                     period: search.period,
                     environment,
@@ -267,6 +266,7 @@ function PerformanceScreen({
             }
             period={
               <PeriodFilter
+                choices={PERFORMANCE_PERIODS}
                 period={period}
                 onChange={(next) =>
                   navigate({

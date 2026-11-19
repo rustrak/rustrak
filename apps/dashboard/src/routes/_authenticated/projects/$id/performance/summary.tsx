@@ -11,13 +11,13 @@ import {
   SlowestSamples,
 } from '@/features/transaction/ui/components/endpoint-detail';
 import {
-  apiPeriod,
   DEFAULT_PERIOD,
-  PERIOD_CHOICES,
-  type PeriodChoice,
+  PERFORMANCE_PERIODS,
+  type PerformancePeriod,
+  performancePeriod,
   periodParam,
 } from '@/shared/lib/period';
-import { searchOneOf, searchString } from '@/shared/lib/search-params';
+import { searchString } from '@/shared/lib/search-params';
 import {
   DetailBody,
   DetailHeader,
@@ -36,7 +36,7 @@ import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 interface EndpointSearch {
   name?: string;
   op?: string;
-  period?: PeriodChoice;
+  period?: PerformancePeriod;
   environment?: string;
 }
 
@@ -49,7 +49,7 @@ function endpointReads(projectId: number, search: EndpointSearch) {
   const group = {
     name: search.name ?? '',
     op: search.op,
-    period: apiPeriod(period),
+    period,
     environment: search.environment,
   };
   return {
@@ -75,7 +75,7 @@ export const Route = createFileRoute(
   validateSearch: (search: Record<string, unknown>): EndpointSearch => ({
     name: searchString(search.name),
     op: searchString(search.op),
-    period: searchOneOf(search.period, PERIOD_CHOICES),
+    period: performancePeriod(search.period),
     environment: searchString(search.environment),
   }),
   // The name *is* the address: without it there is no endpoint to show.
@@ -126,6 +126,7 @@ function EndpointPage() {
           </h1>
         </div>
         <PeriodFilter
+          choices={PERFORMANCE_PERIODS}
           period={period}
           onChange={(next) =>
             navigate({

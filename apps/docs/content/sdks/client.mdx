@@ -555,7 +555,7 @@ Every method, grouped as it hangs off the client.
 | Method | Endpoint | Description |
 |---|---|---|
 | `spans.get({ path })` | `GET /api/projects/{project_id}/spans/{span_id}` | Returns one span together with its attributes and tags — the `gen_ai.*` payload (prompts, responses, tool arguments and results) that the list response deliberately omits, since `spans.data` is untrimmed and a whole trace's worth of it would dwarf the waterfall it is drawn from. |
-| `spans.list({ path, query? })` | `GET /api/projects/{project_id}/spans` | Lists spans for a project with offset-based pagination (newest by start_timestamp first), optionally filtered by op/status/trace_id. |
+| `spans.list({ path, query? })` | `GET /api/projects/{project_id}/spans` | Lists spans for a project with offset-based pagination (newest by start_timestamp first), optionally filtered by op/status/trace_id, over a window of 90 days at most (every span of a trace when only `trace_id` is given). |
 
 ### Stats
 
@@ -615,7 +615,7 @@ Every method, grouped as it hangs off the client.
 | `transactions.getStatGroup({ path, query })` | `GET /api/projects/{project_id}/transactions/stats/group` | Returns the aggregate stats for a single transaction group — a direct lookup so the summary header works regardless of how many groups the project has. |
 | `transactions.getStatGroupTimeseries({ path, query })` | `GET /api/projects/{project_id}/transactions/stats/group/timeseries` | Returns one endpoint's trend over the window, every bucket present: how often it ran and failed, and its p50 and p95. |
 | `transactions.getStats({ path, query? })` | `GET /api/projects/{project_id}/transactions/stats` | Returns paginated aggregate performance stats (count, time spent, p50/p95/p99 latency, failure rate) grouped by transaction name + op, the most time spent first unless `sort` asks otherwise. |
-| `transactions.list({ path, query? })` | `GET /api/projects/{project_id}/transactions` | Lists transactions for a project with offset-based pagination (newest first). |
+| `transactions.list({ path, query? })` | `GET /api/projects/{project_id}/transactions` | Lists transactions for a project with offset-based pagination (newest or slowest first), over a window of 90 days at most. |
 
 {/* api:end */}
 

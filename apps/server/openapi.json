@@ -11018,7 +11018,7 @@
         "tags": [
           "Spans"
         ],
-        "summary": "Lists spans for a project with offset-based pagination (newest by\nstart_timestamp first), optionally filtered by op/status/trace_id.\nReturns spans regardless of origin — standalone or extracted from a\ntransaction — since both are stored in the same table.",
+        "summary": "Lists spans for a project with offset-based pagination (newest by\nstart_timestamp first), optionally filtered by op/status/trace_id, over a\nwindow of 90 days at most (every span of a trace when only `trace_id` is\ngiven).\n`total_count` stops at 1000: when `total_capped` is true there are more\nspans, on pages past `total_pages`.\nReturns spans regardless of origin — standalone or extracted from a\ntransaction — since both are stored in the same table.",
         "operationId": "spans.list",
         "parameters": [
           {
@@ -11101,6 +11101,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "description": "Only the spans that started in this window (`24h`, `7d`, `14d`...):\n90 days at most, and 90 days if absent. With a `trace_id` and no\nperiod, every span of the trace whatever its age.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -11110,10 +11122,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "description": "Offset-based paginated response wrapper",
+                  "description": "A page of a list over a table too large to count: [`OffsetPaginatedResponse`]\nwhose total stops at [`MAX_HITS`].",
                   "required": [
                     "items",
                     "total_count",
+                    "total_capped",
                     "page",
                     "per_page",
                     "total_pages"
@@ -11328,9 +11341,14 @@
                       "type": "integer",
                       "format": "int64"
                     },
+                    "total_capped": {
+                      "type": "boolean",
+                      "description": "More rows match than `total_count` says, on pages past `total_pages`.\nTo read them all, ask for pages until one comes back short."
+                    },
                     "total_count": {
                       "type": "integer",
-                      "format": "int64"
+                      "format": "int64",
+                      "description": "How many rows match, counted no further than 1000."
                     },
                     "total_pages": {
                       "type": "integer",
@@ -11513,7 +11531,7 @@
         "tags": [
           "Transactions"
         ],
-        "summary": "Lists transactions for a project with offset-based pagination (newest first).",
+        "summary": "Lists transactions for a project with offset-based pagination (newest or\nslowest first), over a window of 90 days at most.\n`total_count` stops at 1000: when `total_capped` is true there are more\ntransactions, on pages past `total_pages`.",
         "operationId": "transactions.list",
         "parameters": [
           {
@@ -11612,7 +11630,7 @@
           {
             "name": "period",
             "in": "query",
-            "description": "Only this window (`24h`, `7d`, `14d`...); all time if absent.",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
             "required": false,
             "schema": {
               "type": [
@@ -11650,10 +11668,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "description": "Offset-based paginated response wrapper",
+                  "description": "A page of a list over a table too large to count: [`OffsetPaginatedResponse`]\nwhose total stops at [`MAX_HITS`].",
                   "required": [
                     "items",
                     "total_count",
+                    "total_capped",
                     "page",
                     "per_page",
                     "total_pages"
@@ -11739,9 +11758,14 @@
                       "type": "integer",
                       "format": "int64"
                     },
+                    "total_capped": {
+                      "type": "boolean",
+                      "description": "More rows match than `total_count` says, on pages past `total_pages`.\nTo read them all, ask for pages until one comes back short."
+                    },
                     "total_count": {
                       "type": "integer",
-                      "format": "int64"
+                      "format": "int64",
+                      "description": "How many rows match, counted no further than 1000."
                     },
                     "total_pages": {
                       "type": "integer",
@@ -11836,7 +11860,7 @@
           {
             "name": "period",
             "in": "query",
-            "description": "Only this window (`24h`, `7d`, `14d`...); all time if absent.",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
             "required": false,
             "schema": {
               "type": [
@@ -12064,7 +12088,7 @@
           {
             "name": "period",
             "in": "query",
-            "description": "Only this window (`24h`, `7d`, `14d`...); all time if absent.",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
             "required": false,
             "schema": {
               "type": [
@@ -12167,7 +12191,7 @@
           {
             "name": "period",
             "in": "query",
-            "description": "Only this window (`24h`, `7d`, `14d`...); all time if absent.",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
             "required": false,
             "schema": {
               "type": [

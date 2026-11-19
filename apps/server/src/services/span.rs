@@ -202,6 +202,43 @@ pub struct SpanFilters {
     pub status: Option<String>,
     pub trace_id: Option<String>,
     pub operation_type: Option<String>,
+    /// Only the spans that started in the last this many hours; all time
+    /// when `None`.
+    pub period_hours: Option<i64>,
+}
+
+impl SpanFilters {
+    /// The `FROM` of a span list. Narrowed to a trace, SQLite is held to the
+    /// trace's index: with no planner statistics it walks the project's
+    /// spans in the list's order instead, every one of them for a trace of
+    /// a few (1.4 s over 2M spans). Postgres picks it by itself.
+    fn from(&self) -> &'static str {
+        if cfg!(not(feature = "postgres")) && self.trace_id.is_some() {
+            " FROM spans INDEXED BY idx_spans_project_trace"
+        } else {
+            " FROM spans"
+        }
+    }
+
+    /// `WHERE ...` for the project's spans these filters keep. Only the
+    /// filters asked for reach the SQL: a guard such as `$2 IS NULL OR op =
+    /// $3` hides from SQLite, which plans before it sees a value, that the
+    /// column is compared at all.
+    fn push_where(&self, qb: &mut QueryBuilder<crate::db::Db>, project_id: i32) {
+        qb.push(" WHERE project_id = ").push_bind(project_id);
+        for (column, value) in [
+            ("op", &self.op),
+            ("status", &self.status),
+            ("trace_id", &self.trace_id),
+            ("gen_ai_operation_type", &self.operation_type),
+        ] {
+            if let Some(value) = value {
+                qb.push(format!(" AND {column} = "))
+                    .push_bind(value.clone());
+            }
+        }
+        qb.push(" ").push(span_time_filter(self.period_hours));
+    }
 }
 
 impl SpanService {
@@ -247,11 +284,12 @@ impl SpanService {
     }
 
     /// Lists spans for a project with offset-based pagination (newest by
-    /// start_timestamp first), optionally filtered by op/status/trace_id.
+    /// start_timestamp first), optionally filtered by op/status/trace_id and
+    /// a window.
     ///
-    /// Each filter uses a `($n IS NULL OR col = $m)` guard so a `None` is a
-    /// no-op — static SQL, positional binds (dialect-safe across Postgres and
-    /// SQLite). Returns (rows, total).
+    /// Returns the page and how many rows match, counted no further than one
+    /// past [`MAX_HITS`](crate::pagination::MAX_HITS): on a table of tens of
+    /// millions an exact count reads every one of the project's spans.
     pub async fn list_offset(
         pool: &DbPool,
         project_id: i32,
@@ -259,68 +297,37 @@ impl SpanService {
         per_page: i64,
         filters: &SpanFilters,
     ) -> AppResult<(Vec<SpanResponse>, i64)> {
-        let page = page.max(1);
         let offset = crate::pagination::offset(page, per_page);
 
-        let total_count: (i64,) = sqlx::query_as(
-            r#"
-            SELECT COUNT(*) FROM spans
-            WHERE project_id = $1
-              AND ($2 IS NULL OR op = $3)
-              AND ($4 IS NULL OR status = $5)
-              AND ($6 IS NULL OR trace_id = $7)
-              AND ($8 IS NULL OR gen_ai_operation_type = $9)
-            "#,
-        )
-        .bind(project_id)
-        .bind(filters.op.as_deref())
-        .bind(filters.op.as_deref())
-        .bind(filters.status.as_deref())
-        .bind(filters.status.as_deref())
-        .bind(filters.trace_id.as_deref())
-        .bind(filters.trace_id.as_deref())
-        .bind(filters.operation_type.as_deref())
-        .bind(filters.operation_type.as_deref())
-        .fetch_one(pool)
-        .await?;
+        let mut count = QueryBuilder::new("SELECT COUNT(*) FROM (SELECT 1");
+        count.push(filters.from());
+        filters.push_where(&mut count, project_id);
+        count
+            .push(" LIMIT ")
+            .push_bind(crate::pagination::MAX_HITS + 1)
+            .push(") AS hits");
+        let (hits,): (i64,) = count.build_query_as().fetch_one(pool).await?;
 
-        let rows = sqlx::query(
-            r#"
-            SELECT id, transaction_id, span_id, trace_id, parent_span_id,
-                   op, description, status,
-                   start_timestamp, timestamp, duration_ms, exclusive_time_ms,
-                   is_segment, segment_id, platform, release, environment,
-                   gen_ai_operation_type, gen_ai_agent_name,
-                   gen_ai_request_model, gen_ai_response_model,
-                   gen_ai_tool_name, gen_ai_conversation_id,
-                   gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens
-            FROM spans
-            WHERE project_id = $1
-              AND ($2 IS NULL OR op = $3)
-              AND ($4 IS NULL OR status = $5)
-              AND ($6 IS NULL OR trace_id = $7)
-              AND ($8 IS NULL OR gen_ai_operation_type = $9)
-            ORDER BY start_timestamp DESC, id DESC
-            LIMIT $10 OFFSET $11
-            "#,
-        )
-        .bind(project_id)
-        .bind(filters.op.as_deref())
-        .bind(filters.op.as_deref())
-        .bind(filters.status.as_deref())
-        .bind(filters.status.as_deref())
-        .bind(filters.trace_id.as_deref())
-        .bind(filters.trace_id.as_deref())
-        .bind(filters.operation_type.as_deref())
-        .bind(filters.operation_type.as_deref())
-        .bind(per_page)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+        let mut select = QueryBuilder::new(
+            "SELECT id, transaction_id, span_id, trace_id, parent_span_id, \
+                    op, description, status, \
+                    start_timestamp, timestamp, duration_ms, exclusive_time_ms, \
+                    is_segment, segment_id, platform, release, environment, \
+                    gen_ai_operation_type, gen_ai_agent_name, \
+                    gen_ai_request_model, gen_ai_response_model, \
+                    gen_ai_tool_name, gen_ai_conversation_id, \
+                    gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens",
+        );
+        select.push(filters.from());
+        filters.push_where(&mut select, project_id);
+        select
+            .push(" ORDER BY start_timestamp DESC, id DESC LIMIT ")
+            .push_bind(per_page)
+            .push(" OFFSET ")
+            .push_bind(offset);
+        let rows = select.build().fetch_all(pool).await?;
 
-        let spans: Vec<SpanResponse> = rows.iter().map(span_from_row).collect();
-
-        Ok((spans, total_count.0))
+        Ok((rows.iter().map(span_from_row).collect(), hits))
     }
 
     /// Time-bucketed count of `gen_ai.operation.type = 'agent'` spans —

@@ -8507,6 +8507,12 @@ export type SpansListData = {
          * (`agent`/`tool`/`handoff`/`ai_client`/`other`).
          */
         operation_type?: string | null;
+        /**
+         * Only the spans that started in this window (`24h`, `7d`, `14d`...):
+         * 90 days at most, and 90 days if absent. With a `trace_id` and no
+         * period, every span of the trace whatever its age.
+         */
+        period?: string | null;
     };
     url: '/api/projects/{project_id}/spans';
 };
@@ -8526,7 +8532,8 @@ export type SpansListError = SpansListErrors[keyof SpansListErrors];
 
 export type SpansListResponses = {
     /**
-     * Offset-based paginated response wrapper
+     * A page of a list over a table too large to count: [`OffsetPaginatedResponse`]
+     * whose total stops at [`MAX_HITS`].
      */
     200: {
         items: Array<{
@@ -8580,6 +8587,14 @@ export type SpansListResponses = {
         }>;
         page: number;
         per_page: number;
+        /**
+         * More rows match than `total_count` says, on pages past `total_pages`.
+         * To read them all, ask for pages until one comes back short.
+         */
+        total_capped: boolean;
+        /**
+         * How many rows match, counted no further than 1000.
+         */
         total_count: number;
         total_pages: number;
     };
@@ -8708,7 +8723,8 @@ export type TransactionsListData = {
          */
         release?: string | null;
         /**
-         * Only this window (`24h`, `7d`, `14d`...); all time if absent.
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
          */
         period?: string | null;
         /**
@@ -8734,7 +8750,8 @@ export type TransactionsListError = TransactionsListErrors[keyof TransactionsLis
 
 export type TransactionsListResponses = {
     /**
-     * Offset-based paginated response wrapper
+     * A page of a list over a table too large to count: [`OffsetPaginatedResponse`]
+     * whose total stops at [`MAX_HITS`].
      */
     200: {
         items: Array<{
@@ -8761,6 +8778,14 @@ export type TransactionsListResponses = {
         }>;
         page: number;
         per_page: number;
+        /**
+         * More rows match than `total_count` says, on pages past `total_pages`.
+         * To read them all, ask for pages until one comes back short.
+         */
+        total_capped: boolean;
+        /**
+         * How many rows match, counted no further than 1000.
+         */
         total_count: number;
         total_pages: number;
     };
@@ -8790,7 +8815,8 @@ export type TransactionsGetStatsData = {
          */
         environment?: string | null;
         /**
-         * Only this window (`24h`, `7d`, `14d`...); all time if absent.
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
          */
         period?: string | null;
         /**
@@ -8879,7 +8905,8 @@ export type TransactionsGetStatGroupData = {
          */
         environment?: string | null;
         /**
-         * Only this window (`24h`, `7d`, `14d`...); all time if absent.
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
          */
         period?: string | null;
     };
@@ -8930,7 +8957,8 @@ export type TransactionsGetStatGroupTimeseriesData = {
          */
         environment?: string | null;
         /**
-         * Only this window (`24h`, `7d`, `14d`...); all time if absent.
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
          */
         period?: string | null;
     };

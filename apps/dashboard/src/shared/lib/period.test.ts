@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { apiPeriod, periodHours, periodParam } from './period';
+import {
+  apiPeriod,
+  performancePeriod,
+  periodHours,
+  periodParam,
+} from './period';
 
 describe('period', () => {
   it('reads hours and days', () => {
@@ -12,5 +17,21 @@ describe('period', () => {
     expect(apiPeriod('7d')).toBe('7d');
     expect(periodParam('14d')).toBeUndefined();
     expect(periodParam('all')).toBe('all');
+  });
+});
+
+describe('performancePeriod', () => {
+  it('reads the windows the performance pages offer', () => {
+    expect(performancePeriod('24h')).toBe('24h');
+    expect(performancePeriod('90d')).toBe('90d');
+  });
+
+  it('reads all time, from an older address or saved view, as the widest', () => {
+    expect(performancePeriod('all')).toBe('90d');
+  });
+
+  it('leaves anything else to the default', () => {
+    expect(performancePeriod(undefined)).toBeUndefined();
+    expect(performancePeriod('365d')).toBeUndefined();
   });
 });
