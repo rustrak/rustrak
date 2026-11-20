@@ -1,0 +1,84 @@
+---
+version: v0.30.0
+title: Leaner Span Storage
+description: Database spans take half the space, span and performance pages answer in milliseconds on tens of millions of rows, deleting a project no longer blocks, and streamed spans show up in Performance
+date: 2026-11-20
+tags: [storage, performance, tracing, postgresql, sqlite]
+---
+
+Everything in this release comes from the measurements [@janatjak](https://github.com/janatjak) shared in [#532](https://github.com/rustrak/rustrak/issues/532) and the issues that followed it.
+
+## Upgrading
+
+- **The migration builds two indexes before the server listens**, and events sent meanwhile are not accepted. It took 154 s on PostgreSQL with 42.4M spans and 5.3M transactions (2 vCPU, 3,000 IOPS) and 4 s on SQLite with 2M spans. Plan a few minutes of downtime on a large instance. The indexes add about 9% to the database.
+- **API:** `GET /api/projects/{id}/transactions` and `GET /api/projects/{id}/spans` read 90 days at most (`period`, 90 days when absent). Older transactions are no longer listed; one transaction is still served by its id. A span list filtered by `trace_id` alone still returns the whole trace.
+- **API:** those two lists count matches up to 1000. Past that, `total_count` is `1000` and the new `total_capped` is `true`. A script that counts to `total_pages` stops at 1000 rows; read on until a page comes back short. See [Totals stop at 1000](/usage/performance#totals-stop-at-1000).
+- Performance offers **Last 90 days** instead of All time. Links and saved views with `period=all` open on 90 days.
+- Spans and transactions sent without an op are stored as `default`, as on sentry.io. Rows stored before keep no op, so an endpoint whose transactions had none shows as two groups in Performance until retention removes the old rows.
+- Existing span rows are not rewritten: only spans written after the upgrade are smaller.
+
+## Smaller spans
+
+After v0.29.0 a span's compressed payload was small, and most of its row was plain columns. The largest was `description`, which on a database span holds the SQL text and has only a few hundred distinct values per app.
+
+Measured with PHP/Doctrine-shaped traffic (30,000 transactions, 240,000 spans, 210 distinct queries):
+
+| | v0.29.0 | v0.30.0 | |
+|---|---:|---:|---:|
+| One database span, PostgreSQL | 821 B | 367 B | −55% |
+| `spans` table, PostgreSQL | 196.1 MB | 112.8 MB | −42% |
+| `spans` table, SQLite | 189.0 MB | 94.1 MB | −50% |
+| SQLite database file | 259.2 MB | 164.2 MB | −37% |
+
+- A description is stored once per project and spans refer to it. Short ones (under 64 bytes) and ones seen only once stay in the span's row, so URLs with ids or SQL with inlined values never fill the table
+- Parent and segment span ids are stored as 8-byte numbers instead of hex text
+- A transaction's spans no longer repeat its platform, release and environment
+- Retention removes stored descriptions no span uses any more
+- The API returns exactly what it did. Ingest and reads are as fast as before
+
+## Fast on large tables
+
+Measured on PostgreSQL with 42.4M spans and 5.3M transactions (20 GB, 2 vCPU, 4 GB of RAM), cold cache:
+
+| Request | v0.29.0 | v0.30.0 |
+|---|---:|---:|
+| Span list | 97 s | 20 ms |
+| Transaction list (14d) | 15.2 s | 26 ms |
+| An endpoint's slowest samples | 12.6 s | 26 ms |
+| An endpoint's trend | 8.2 s | 84 ms |
+| Endpoint list (24h) | 16.2 s | 1.8 s |
+
+On SQLite with 2M spans, the span list went from 1,383 ms to 3 ms and the endpoint list from 1,213 ms to 165 ms.
+
+- A new index orders the span list, and one covering index answers the endpoint list, an endpoint's figures, trend and slowest samples without reading the table. It replaces two older ones
+- List totals stop at 1000 instead of counting every match, as Sentry does
+- Transaction and span lists read 90 days at most, as Sentry does, and the span list takes `period`
+- PostgreSQL vacuums `events`, `transactions`, `spans` and `logs` after 1% new rows, so index-only reads stay index-only on the newest rows
+
+## Deleting a project no longer blocks
+
+Deleting a project ran one `DELETE` that cascaded through all its rows, and a second click failed with `503`. Now the project disappears at once: it leaves the list and the Storage page, its DSN stops accepting events and its name is free for a new project. Its rows are removed in the background, in batches, and an interrupted run resumes.
+
+Deleting a project with 6M spans and 750k transactions on PostgreSQL:
+
+| | v0.29.0 | v0.30.0 |
+|---|---:|---:|
+| The delete answers in | 144 s | 19 ms |
+| A second delete | `503` after 2 s | `404` in 8 ms |
+| Slowest ingest to another project meanwhile | 1.5 s | 0.1 s |
+
+## Streamed spans in Performance
+
+The JavaScript SDKs from version 11 send no transactions by default (`traceLifecycle: 'stream'`), so Performance was empty for them ([#552](https://github.com/rustrak/rustrak/issues/552), [@janatjak](https://github.com/janatjak)). Each segment's root span is now shown as a transaction and the rest of the segment as its waterfall. A Next.js 16 app with `@sentry/nextjs` 11 shows the same transactions and spans in both modes, with no SDK option.
+
+- A span that ends after its root, like a page's LCP, joins the transaction when it arrives
+- Status is `ok` or `error`; the specific one is in the root's `sentry.status.message` attribute, as in Sentry
+- Platform is the SDK's language (`javascript` for `sentry.javascript.nextjs`), since a streamed span carries none
+
+See [SDKs that stream spans](/usage/performance#sdks-that-stream-spans).
+
+## Improvements
+
+- A span item without an op gets the one Relay infers from its attributes (`http.client`, `db`, `gen_ai.*`…). A span with only `gen_ai.operation.name: invoke_agent` is now `gen_ai.invoke_agent`
+- Clicking anywhere in a table's selection cell toggles the row instead of opening it
+- Dependencies updated to their latest versions
