@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.30.1
+
+### Patch Changes
+
+- [`ed9d8d9`](https://github.com/rustrak/rustrak/commit/ed9d8d9a227ab30aea659bdc13dc016b19505e2d) Thanks [@AbianS](https://github.com/AbianS)! - A transaction built from a streamed segment root now gets a valid RFC 9562 (version 8) UUID, so the dashboard no longer rejects it, and a migration repairs the ids 0.30.0 stored (@janatjak)
+
 ## 0.30.0
 
 ### Minor Changes
