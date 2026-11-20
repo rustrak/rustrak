@@ -250,6 +250,29 @@ async fn a_batch_delivered_twice_is_stored_once() {
     assert_eq!(span_ids(&one["data"]["spans"]), ["c000000000000001"]);
 }
 
+/// The client checks a transaction's id with a strict `z.uuid()`, which
+/// rejects the random version and variant bits of a bare hash: such a
+/// transaction could be neither listed nor opened (#572). Eight roots,
+/// since one bare hash in 64 already reads as a version 8 UUID.
+#[actix_web::test]
+async fn a_transaction_made_from_a_root_has_an_rfc_9562_id() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Ids").await;
+    let roots: Vec<Value> = (1..=8)
+        .map(|n| root(&format!("{n:016x}"), json!({})))
+        .collect();
+    send(&db.pool, project.id, roots).await;
+
+    let listed = transactions(&db.pool, &token, project.id).await;
+    assert_eq!(listed.len(), 8, "{listed:?}");
+    for transaction in listed {
+        let id = Uuid::parse_str(transaction["id"].as_str().unwrap()).unwrap();
+        assert_eq!(id.get_version_num(), 8, "{id}");
+        assert_eq!(id.get_variant(), uuid::Variant::RFC4122, "{id}");
+    }
+}
+
 #[actix_web::test]
 async fn each_segment_of_a_trace_has_its_own_spans() {
     let db = TestDb::new().await;

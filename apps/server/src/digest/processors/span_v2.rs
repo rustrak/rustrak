@@ -235,9 +235,14 @@ impl SegmentRoot {
         !op.is_some_and(|op| op.starts_with("ui.webvital.") || op.starts_with("ui.interaction."))
     }
 
+    /// The same root always gives the same id, so a root delivered again is
+    /// the same transaction. A version 8 UUID, since a bare hash has random
+    /// version and variant bits, and the client checks a transaction's id
+    /// with a strict `z.uuid()` that rejects most of them (#572).
     fn id(project_id: i32, trace_id: &str, span_id: &str) -> Uuid {
         let hash = Sha256::digest(format!("{project_id}:{trace_id}:{span_id}"));
-        Uuid::from_slice(&hash[..16]).expect("16 bytes")
+        let bytes: [u8; 16] = hash[..16].try_into().expect("16 bytes");
+        uuid::Builder::from_custom_bytes(bytes).into_uuid()
     }
 
     /// The transaction an SDK would have sent for it, without what its span
