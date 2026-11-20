@@ -273,6 +273,63 @@ async fn a_transaction_made_from_a_root_has_an_rfc_9562_id() {
     }
 }
 
+/// The last migration before the one that rewrites 0.30.0's ids.
+const BEFORE_RFC_IDS: i64 = 20261120000001;
+
+/// A root 0.30.0 stored kept a bare hash as its id. The migration gives it
+/// the id it would get now, so it opens in the dashboard and the same root
+/// delivered again is still the one transaction. A transaction sent whole
+/// keeps its own id.
+#[actix_web::test]
+async fn a_root_stored_by_0_30_0_gets_the_id_it_would_get_now() {
+    use sha2::{Digest, Sha256};
+
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Upgraded").await;
+    #[cfg(feature = "postgres")]
+    let migrator = sqlx::migrate!("./migrations/postgres");
+    #[cfg(not(feature = "postgres"))]
+    let migrator = sqlx::migrate!("./migrations/sqlite");
+    migrator.undo(&db.pool, BEFORE_RFC_IDS).await.unwrap();
+
+    let hash = Sha256::digest(format!("{}:{TRACE}:{ROOT}", project.id));
+    let stored = Uuid::from_slice(&hash[..16]).unwrap();
+    let whole = Uuid::new_v4();
+    for (id, event_id) in [(stored, stored), (whole, Uuid::new_v4())] {
+        sqlx::query(
+            "INSERT INTO transactions (id, event_id, project_id, trace_id, span_id, \
+             transaction_name, start_timestamp, timestamp, data) \
+             VALUES ($1, $2, $3, $4, $5, 'GET /items/[id]', $6, $6, $7)",
+        )
+        .bind(id)
+        .bind(event_id)
+        .bind(project.id)
+        .bind(TRACE)
+        .bind(ROOT)
+        .bind(Utc::now())
+        .bind(json!({}))
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    }
+    migrator.run(&db.pool).await.unwrap();
+    send(&db.pool, project.id, vec![root(ROOT, json!({}))]).await;
+
+    let mut ids: Vec<Uuid> = transactions(&db.pool, &token, project.id)
+        .await
+        .iter()
+        .map(|t| Uuid::parse_str(t["id"].as_str().unwrap()).unwrap())
+        .collect();
+    ids.sort();
+    let mut expected = vec![
+        uuid::Builder::from_custom_bytes(hash[..16].try_into().unwrap()).into_uuid(),
+        whole,
+    ];
+    expected.sort();
+    assert_eq!(ids, expected);
+}
+
 #[actix_web::test]
 async fn each_segment_of_a_trace_has_its_own_spans() {
     let db = TestDb::new().await;
