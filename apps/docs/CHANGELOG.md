@@ -1,5 +1,11 @@
 # docs
 
+## 0.18.3
+
+### Patch Changes
+
+- [`8e6aeec`](https://github.com/rustrak/rustrak/commit/8e6aeec184a542a32ae1a8b91f03d9356aa1896e) Thanks [@AbianS](https://github.com/AbianS)! - Docs and blog pages no longer ship the landing's JavaScript, the navbar's Blog link points at /blog again, and the Performance and Projects pages cover streamed spans, the transactions API and background project deletion.
+
 ## 0.18.2
 
 ### Patch Changes
