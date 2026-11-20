@@ -8,7 +8,7 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 # Web framework (HTTP/2 is disabled until Actix moves to h2 0.4.)
-actix-web = { version = "4.19.0", default-features = false, features = [
+actix-web = { version = "4.20.0", default-features = false, features = [
     "macros",
     "compress-brotli",
     "compress-gzip",
@@ -16,11 +16,11 @@ actix-web = { version = "4.19.0", default-features = false, features = [
     "cookies",
     "unicode",
 ] }
-actix-rt = "2.15.0"
+actix-rt = "2.16.0"
 
 # Static file serving for the compiled dashboard. Optional at runtime: the
 # server mounts it only when a build is actually present on disk.
-actix-files = "0.7.4"
+actix-files = "0.7.5"
 
 # Session management
 actix-session = "0.11"
@@ -51,7 +51,7 @@ chrono-tz = "0.10.4"
 time = "=0.3.55"
 
 # Database
-sqlx = { version = "0.9.0", features = [
+sqlx = { version = "0.9.1", features = [
     "runtime-tokio",
     "tls-rustls",
     "uuid",
@@ -60,7 +60,7 @@ sqlx = { version = "0.9.0", features = [
 ] }
 
 # UUID generation
-uuid = { version = "1.29.2", features = ["v4", "serde"] }
+uuid = { version = "1.29.3", features = ["v4", "serde"] }
 
 # Slug generation
 slug = "0.1.6"
@@ -69,7 +69,7 @@ slug = "0.1.6"
 thiserror = "2.0.21"
 
 # Random number generation for tokens
-rand = "0.10.3"
+rand = "0.10.4"
 
 # Hex encoding
 hex = "0.4.3"
@@ -78,12 +78,12 @@ hex = "0.4.3"
 flate2 = "1.1.11"
 # brotli and zstd held at the versions actix-http 3.18 depends on; going past
 # them compiles a second copy of each. Bump together with actix-http.
-brotli = "9.1.1"
+brotli = "9.1.3"
 zstd = "0.14.4"
 
 # Async utilities
 futures-util = "0.3.34"
-bytes = "1.12.1"
+bytes = "1.12.2"
 
 
 # Hashing (for grouping key hash)
@@ -113,7 +113,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["json", "r
 openidconnect = { version = "4.1.0", default-features = false }
 
 # GitHub App JWTs (RS256). Already in the tree through openidconnect.
-rsa = { version = "0.9", features = ["sha2"] }
+rsa = { version = "0.10", features = ["pkcs1v15"] }
 
 # HMAC for webhook signatures
 hmac = "0.13.0"
@@ -128,7 +128,7 @@ url = "2.5.8"
 async-trait = "0.1.92"
 
 # MCP server at /mcp (stateless Streamable HTTP, protocol 2026-07-28)
-rmcp = { version = "3.10.0", features = ["transport-streamable-http-server"] }
+rmcp = { version = "3.11.0", features = ["transport-streamable-http-server"] }
 # The tools' argument schemas, derived on the handlers' own request types.
 schemars = { version = "1.2.3", features = ["uuid1"] }
 http = "1.5.0"
@@ -136,7 +136,7 @@ http-body-util = "0.1.5"
 
 # Source map processing
 sourcemap = "9"
-zip = { version = "9.5", default-features = false, features = ["deflate-flate2"] }  # CVE-2025-29787 fixed in 2.3+; DO NOT lower below 2.3; no zstd (non-SPDX license)
+zip = { version = "9.8", default-features = false, features = ["deflate-flate2"] }  # CVE-2025-29787 fixed in 2.3+; DO NOT lower below 2.3; no zstd (non-SPDX license)
 # JVM deobfuscation: the crate Symbolicator remaps Android frames with
 proguard = "5.10"
 # Native (Apple) symbolication: the crates Symbolicator symbolicates with.
@@ -165,7 +165,7 @@ croner = "4.0.3"
 [target.'cfg(unix)'.dependencies]
 # statvfs: free disk before a SQLite compaction. Already built for `zip`.
 # prctl: transparent huge pages off (`allocator::tune`).
-nix = { version = "0.31.3", default-features = false, features = ["fs", "process"] }
+nix = { version = "0.32.0", default-features = false, features = ["fs", "process"] }
 
 [dev-dependencies]
 # The crate depends on itself so the integration tests, which are separate
@@ -191,7 +191,7 @@ testcontainers-modules = { version = "0.15.0", features = ["postgres"] }
 libc = "0.2.191"
 
 # Sentry SDK for E2E tests
-sentry = { version = "0.49.5", features = ["test"] }
+sentry = { version = "0.49.6", features = ["test"] }
 
 # Property-based testing
 proptest = "1.12.0"
