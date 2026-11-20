@@ -299,7 +299,10 @@ impl SpanColumns {
     /// object made of these columns.
     pub fn object(&self, data: serde_json::Value) -> serde_json::Value {
         let (position, data) = self.expand(data);
-        if position.is_some() || data.get("span_id").is_some() {
+        // A whole span object names the id its row has. An attribute bag
+        // can hold a `span_id` too, of the SDK's own making.
+        let whole = data.get("span_id").and_then(|id| id.as_str()) == self.span_id.as_deref();
+        if position.is_some() || (whole && self.span_id.is_some()) {
             return data;
         }
         let mut span: serde_json::Map<_, _> = self

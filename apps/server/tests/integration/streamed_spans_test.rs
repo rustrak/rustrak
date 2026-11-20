@@ -58,9 +58,10 @@ fn root(span_id: &str, attributes: Value) -> Value {
     all.as_object_mut()
         .unwrap()
         .extend(attributes.as_object().unwrap().clone());
+    let start = now();
     json!({
         "trace_id": TRACE, "span_id": span_id, "name": "GET /items/[id]", "status": "ok",
-        "is_segment": true, "start_timestamp": now(), "end_timestamp": now() + 0.5,
+        "is_segment": true, "start_timestamp": start, "end_timestamp": start + 0.5,
         "attributes": typed(all),
     })
 }
@@ -73,10 +74,11 @@ fn child(span_id: &str, segment: &str, name: &str, attributes: Value) -> Value {
     all.as_object_mut()
         .unwrap()
         .extend(attributes.as_object().unwrap().clone());
+    let start = now();
     json!({
         "trace_id": TRACE, "span_id": span_id, "parent_span_id": segment, "name": name,
         "status": "ok", "is_segment": false,
-        "start_timestamp": now() + 0.1, "end_timestamp": now() + 0.2,
+        "start_timestamp": start + 0.1, "end_timestamp": start + 0.2,
         "attributes": typed(all),
     })
 }
@@ -386,12 +388,13 @@ async fn a_transaction_sent_as_one_keeps_its_own_spans() {
     let db = TestDb::new().await;
     let token = create_test_token(&db.pool).await;
     let project = create_test_project(&db.pool, "Static").await;
+    let start = now();
     let payload = json!({
         "type": "transaction", "transaction": "GET /static", "platform": "node",
-        "start_timestamp": now(), "timestamp": now() + 1.0,
+        "start_timestamp": start, "timestamp": start + 1.0,
         "contexts": { "trace": { "trace_id": TRACE, "span_id": ROOT, "op": "http.server" } },
         "spans": [{ "span_id": "d000000000000001", "parent_span_id": ROOT, "op": "db",
-                    "trace_id": TRACE, "start_timestamp": now(), "timestamp": now() + 0.1 }],
+                    "trace_id": TRACE, "start_timestamp": start, "timestamp": start + 0.1 }],
     });
     TransactionProcessor
         .process(
@@ -411,4 +414,39 @@ async fn a_transaction_sent_as_one_keeps_its_own_spans() {
     assert_eq!(listed.len(), 1);
     let one = detail(&db.pool, &token, project.id, &listed[0]["id"]).await;
     assert_eq!(span_ids(&one["data"]["spans"]), ["d000000000000001"]);
+}
+
+#[actix_web::test]
+async fn an_attribute_named_span_id_is_an_attribute() {
+    // Not the span's id, and not a sign that the bag is a whole span.
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Named").await;
+    send(
+        &db.pool,
+        project.id,
+        vec![
+            root(ROOT, json!({ "span_id": "custom" })),
+            child(
+                "c000000000000001",
+                ROOT,
+                "SELECT 1",
+                json!({ "span_id": "custom", "sentry.op": "db" }),
+            ),
+        ],
+    )
+    .await;
+
+    let listed = transactions(&db.pool, &token, project.id).await;
+    let one = detail(&db.pool, &token, project.id, &listed[0]["id"]).await;
+    let data = &one["data"];
+    assert_eq!(data["request"]["url"], "http://localhost/items/6");
+    assert_eq!(data["contexts"]["trace"]["data"]["span_id"], "custom");
+    let spans = data["spans"].as_array().unwrap();
+    assert_eq!(spans.len(), 1, "{spans:?}");
+    assert_eq!(spans[0]["span_id"], "c000000000000001");
+    assert_eq!(spans[0]["op"], "db");
+    assert_eq!(spans[0]["description"], "SELECT 1");
+    assert!(spans[0]["timestamp"].is_number());
+    assert_eq!(spans[0]["data"]["span_id"], "custom");
 }
