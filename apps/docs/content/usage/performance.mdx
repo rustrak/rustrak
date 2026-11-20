@@ -23,6 +23,15 @@ sentry_sdk.init(dsn="YOUR_DSN", traces_sample_rate=0.2)
 
 The SDK names each transaction after the route or page (`POST /api/orders`, `/checkout`) and records spans inside it: database queries, outgoing HTTP calls, cache reads. Rustrak also accepts spans sent on their own, outside a transaction.
 
+### SDKs that stream spans
+
+The JavaScript SDKs from version 11 send no transactions by default (`traceLifecycle: 'stream'`): each span is sent when it ends, and the one at the root of a request or page load is marked as its segment's root. Rustrak shows that root as a transaction, and the segment's other spans as its waterfall, so these pages work the same in both modes and no SDK option is needed. A span that ends after its root, like the LCP of a page, joins the transaction when it arrives.
+
+Two things differ from a transaction the SDK sends whole:
+
+- **Status** is `ok` or `error`. The SDK sends the specific one (`not_found`, `internal_error`) as the `sentry.status.message` attribute of the root.
+- **Platform** is the SDK's language (`javascript` for `sentry.javascript.nextjs`), because a streamed span carries none.
+
 ## The endpoint list
 
 **Performance** groups transactions by name and operation (`http.server`, `pageload`) into endpoints:

@@ -58,7 +58,21 @@ pub(crate) async fn span_data(
     row: &<crate::db::Db as sqlx::Database>::Row,
 ) -> AppResult<(Option<u64>, serde_json::Value)> {
     let data = Stored::from_row(row)?.read(pool).await?;
-    Ok(SpanColumns {
+    Ok(span_columns(row).expand(data))
+}
+
+/// The same read, as the span object a transaction's `spans` would hold
+/// ([`SpanColumns::object`]).
+pub(crate) async fn span_object(
+    pool: &DbPool,
+    row: &<crate::db::Db as sqlx::Database>::Row,
+) -> AppResult<serde_json::Value> {
+    let data = Stored::from_row(row)?.read(pool).await?;
+    Ok(span_columns(row).object(data))
+}
+
+fn span_columns(row: &<crate::db::Db as sqlx::Database>::Row) -> SpanColumns {
+    SpanColumns {
         span_id: row.get("span_id"),
         parent_span_id: row.get("parent_span_id"),
         op: row.get("op"),
@@ -70,7 +84,6 @@ pub(crate) async fn span_data(
         exclusive_time_ms: row.get("exclusive_time_ms"),
         tags: row.get("tags"),
     }
-    .expand(data))
 }
 
 /// The scope every agents-dashboard aggregate is read through.

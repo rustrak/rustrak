@@ -293,6 +293,36 @@ impl SpanColumns {
         }
         (Some(position), data)
     }
+
+    /// The span as a transaction's `spans` would hold it, whichever shape
+    /// `data` is in: a Spans v2 attribute bag becomes the `data` of an
+    /// object made of these columns.
+    pub fn object(&self, data: serde_json::Value) -> serde_json::Value {
+        let (position, data) = self.expand(data);
+        // A whole span object names the id its row has. An attribute bag
+        // can hold a `span_id` too, of the SDK's own making.
+        let whole = data.get("span_id").and_then(|id| id.as_str()) == self.span_id.as_deref();
+        if position.is_some() || (whole && self.span_id.is_some()) {
+            return data;
+        }
+        let mut span: serde_json::Map<_, _> = self
+            .restored()
+            .into_iter()
+            .filter_map(|(key, value)| Some((key.to_string(), value?)))
+            .collect();
+        // `restored` gives a time back only where it is exact, for a span
+        // object that kept its own otherwise. A bag kept none.
+        for (key, at) in [
+            ("start_timestamp", self.start_timestamp),
+            ("timestamp", self.timestamp),
+        ] {
+            if let (false, Some(at)) = (span.contains_key(key), at) {
+                span.insert(key.to_string(), (at.timestamp_micros() as f64 / 1e6).into());
+            }
+        }
+        span.insert("data".to_string(), data);
+        span.into()
+    }
 }
 
 /// Aggregate performance stats for one (transaction_name, op) group.
