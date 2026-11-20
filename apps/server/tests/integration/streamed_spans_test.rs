@@ -250,6 +250,86 @@ async fn a_batch_delivered_twice_is_stored_once() {
     assert_eq!(span_ids(&one["data"]["spans"]), ["c000000000000001"]);
 }
 
+/// The client checks a transaction's id with a strict `z.uuid()`, which
+/// rejects the random version and variant bits of a bare hash: such a
+/// transaction could be neither listed nor opened (#572). Eight roots,
+/// since one bare hash in 64 already reads as a version 8 UUID.
+#[actix_web::test]
+async fn a_transaction_made_from_a_root_has_an_rfc_9562_id() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Ids").await;
+    let roots: Vec<Value> = (1..=8)
+        .map(|n| root(&format!("{n:016x}"), json!({})))
+        .collect();
+    send(&db.pool, project.id, roots).await;
+
+    let listed = transactions(&db.pool, &token, project.id).await;
+    assert_eq!(listed.len(), 8, "{listed:?}");
+    for transaction in listed {
+        let id = Uuid::parse_str(transaction["id"].as_str().unwrap()).unwrap();
+        assert_eq!(id.get_version_num(), 8, "{id}");
+        assert_eq!(id.get_variant(), uuid::Variant::RFC4122, "{id}");
+    }
+}
+
+/// The last migration before the one that rewrites 0.30.0's ids.
+const BEFORE_RFC_IDS: i64 = 20261120000001;
+
+/// A root 0.30.0 stored kept a bare hash as its id. The migration gives it
+/// the id it would get now, so it opens in the dashboard and the same root
+/// delivered again is still the one transaction. A transaction sent whole
+/// keeps its own id.
+#[actix_web::test]
+async fn a_root_stored_by_0_30_0_gets_the_id_it_would_get_now() {
+    use sha2::{Digest, Sha256};
+
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project = create_test_project(&db.pool, "Upgraded").await;
+    #[cfg(feature = "postgres")]
+    let migrator = sqlx::migrate!("./migrations/postgres");
+    #[cfg(not(feature = "postgres"))]
+    let migrator = sqlx::migrate!("./migrations/sqlite");
+    migrator.undo(&db.pool, BEFORE_RFC_IDS).await.unwrap();
+
+    let hash = Sha256::digest(format!("{}:{TRACE}:{ROOT}", project.id));
+    let stored = Uuid::from_slice(&hash[..16]).unwrap();
+    let whole = Uuid::new_v4();
+    for (id, event_id) in [(stored, stored), (whole, Uuid::new_v4())] {
+        sqlx::query(
+            "INSERT INTO transactions (id, event_id, project_id, trace_id, span_id, \
+             transaction_name, start_timestamp, timestamp, data) \
+             VALUES ($1, $2, $3, $4, $5, 'GET /items/[id]', $6, $6, $7)",
+        )
+        .bind(id)
+        .bind(event_id)
+        .bind(project.id)
+        .bind(TRACE)
+        .bind(ROOT)
+        .bind(Utc::now())
+        .bind(json!({}))
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    }
+    migrator.run(&db.pool).await.unwrap();
+    send(&db.pool, project.id, vec![root(ROOT, json!({}))]).await;
+
+    let mut ids: Vec<Uuid> = transactions(&db.pool, &token, project.id)
+        .await
+        .iter()
+        .map(|t| Uuid::parse_str(t["id"].as_str().unwrap()).unwrap())
+        .collect();
+    ids.sort();
+    let mut expected = vec![
+        uuid::Builder::from_custom_bytes(hash[..16].try_into().unwrap()).into_uuid(),
+        whole,
+    ];
+    expected.sort();
+    assert_eq!(ids, expected);
+}
+
 #[actix_web::test]
 async fn each_segment_of_a_trace_has_its_own_spans() {
     let db = TestDb::new().await;
