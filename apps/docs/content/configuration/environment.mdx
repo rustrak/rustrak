@@ -334,6 +334,7 @@ Global SMTP settings for email notifications and team invitations. Alert channel
 |----------|-------------|
 | `CREATE_SUPERUSER` | Create admin user on startup (`email:password`) |
 | `RUSTRAK_BOOTSTRAP_TOKEN` | Set to anything to create an API token on startup |
+| `RUSTRAK_CONFIG` | Path of `rustrak.toml`, which declares the first owner, projects with fixed DSNs and API tokens. See [Bootstrap file](/configuration/bootstrap-file) |
 
 ```bash
 CREATE_SUPERUSER="admin@example.com:secure-password"

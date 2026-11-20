@@ -49,7 +49,7 @@ impl Drop for Server {
 /// dropped before the server binds, so the OS can hand the same port to a
 /// test running in parallel; that server would then answer this one's
 /// `/health` while this one dies with `AddrInUse`.
-fn free_port() -> u16 {
+pub fn free_port() -> u16 {
     static GIVEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
     let mut given = GIVEN.lock().unwrap();
     loop {

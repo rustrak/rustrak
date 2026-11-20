@@ -60,6 +60,9 @@ pub struct Config {
     pub bootstrap_token: bool,
     /// `CREATE_SUPERUSER`, `email:password`.
     pub create_superuser: Option<String>,
+    /// `RUSTRAK_CONFIG`: the path of `rustrak.toml`, the declarative bootstrap
+    /// file. None when unset or blank.
+    pub config_file: Option<std::path::PathBuf>,
     /// GitHub's REST API, or a GitHub Enterprise Server's.
     pub github_api_url: String,
 }
@@ -272,6 +275,7 @@ impl Default for Config {
             oidc: None,
             bootstrap_token: false,
             create_superuser: None,
+            config_file: None,
             github_api_url: "https://api.github.com".to_string(),
         }
     }
@@ -335,6 +339,7 @@ impl Config {
             oidc: OidcConfig::from_env()?,
             bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").is_ok(),
             create_superuser: env::var("CREATE_SUPERUSER").ok(),
+            config_file: non_empty("RUSTRAK_CONFIG").map(std::path::PathBuf::from),
             github_api_url: non_empty("GITHUB_API_URL").unwrap_or(defaults.github_api_url),
         })
     }
