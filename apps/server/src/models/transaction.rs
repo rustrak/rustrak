@@ -340,7 +340,8 @@ pub struct TransactionStatsResponse {
     pub p50_ms: f64,
     pub p95_ms: f64,
     pub p99_ms: f64,
-    /// Fraction (0.0–1.0) of transactions whose trace status is set and not "ok".
+    /// Fraction (0.0–1.0) of transactions whose trace status is set and
+    /// neither `ok`, `cancelled` nor `unknown`.
     pub failure_rate: f64,
     pub avg_ms: f64,
     /// Every sample's duration added up: how much time the endpoint takes in all.
