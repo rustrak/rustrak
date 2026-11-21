@@ -302,7 +302,7 @@ export const zCheckInResponse = z.object({
     duration_ms: z.nullable(z.int()),
     environment: z.string(),
     expected_time: z.nullable(z.iso.datetime({ offset: true })),
-    id: z.uuid(),
+    id: z.string(),
     status: zCheckInStatus
 });
 
@@ -3890,7 +3890,7 @@ export const zMonitorsListCheckinsResponse = z.object({
         duration_ms: z.nullable(z.int()),
         environment: z.string(),
         expected_time: z.nullable(z.iso.datetime({ offset: true })),
-        id: z.uuid(),
+        id: z.string(),
         status: zCheckInStatus
     })),
     page: z.int(),
