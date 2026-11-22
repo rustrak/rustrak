@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use crate::models::token::is_valid_token_format;
 use crate::models::{Product, SELECTABLE_PLATFORMS};
+use crate::services::project::SLUG_MAX_LEN;
 
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
@@ -190,6 +191,9 @@ impl BootstrapFile {
                     return Err(at(
                         "slug has no letters or digits; set one, or leave slug out".into(),
                     ));
+                }
+                if slug.len() > SLUG_MAX_LEN {
+                    return Err(at(format!("slug cannot exceed {SLUG_MAX_LEN} characters")));
                 }
                 if !slugs.insert(slug.clone()) {
                     return Err(at(format!("slug {slug:?} is declared twice")));

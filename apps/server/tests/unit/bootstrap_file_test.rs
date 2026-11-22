@@ -347,3 +347,13 @@ fn refuses_a_token_name_over_255_bytes_and_accepts_255() {
     ));
     assert!(err.contains("255"), "{err}");
 }
+
+#[test]
+fn refuses_a_declared_slug_over_100_characters_and_accepts_100() {
+    // The column is VARCHAR(100) on PostgreSQL: refused before anything is
+    // written, not by the insert halfway through the file.
+    parse(&project(1, "App", &"a".repeat(100), KEY));
+
+    let err = parse_err(&project(1, "App", &"a".repeat(101), KEY));
+    assert!(err.contains("id 1") && err.contains("100"), "{err}");
+}

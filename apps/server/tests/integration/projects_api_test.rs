@@ -773,3 +773,52 @@ async fn test_list_projects_ignores_an_unparseable_stats_period() {
     assert_eq!(body["items"][0]["name"], "Junk Period");
     assert!(body["items"][0].get("stats").is_none());
 }
+
+#[actix_web::test]
+async fn test_create_project_rejects_a_user_slug_over_100_characters() {
+    let db = TestDb::new().await;
+
+    let result = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "Long Slug".to_string(),
+            slug: Some("a".repeat(101)),
+            platform: None,
+        },
+    )
+    .await;
+
+    let err = result.expect_err("a slug over the column's 100 characters must be refused");
+    assert_eq!(
+        actix_web::ResponseError::status_code(&err),
+        actix_web::http::StatusCode::BAD_REQUEST,
+        "{err:?}"
+    );
+}
+
+#[actix_web::test]
+async fn test_a_slug_derived_from_a_long_name_fits_the_column() {
+    let db = TestDb::new().await;
+    let name = "a".repeat(255);
+    let create = || CreateProject {
+        name: name.clone(),
+        slug: None,
+        platform: None,
+    };
+
+    let first = ProjectService::create(&db.pool, create()).await.unwrap();
+    // Names are unique, so the second derives from a different long name.
+    let second = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: format!("{} b", "a".repeat(253)),
+            ..create()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(first.slug, "a".repeat(100));
+    assert!(second.slug.len() <= 100, "{}", second.slug);
+    assert_ne!(first.slug, second.slug);
+}

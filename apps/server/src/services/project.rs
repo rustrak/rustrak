@@ -313,6 +313,7 @@ impl ProjectService {
                         "Cannot generate valid slug from input".to_string(),
                     ));
                 }
+                check_slug_len(&slugified)?;
                 // Pre-check so the ordinary case is a clean Conflict. The
                 // insert below still has to handle the TOCTOU race.
                 let taken: Option<i32> =
@@ -447,6 +448,7 @@ impl ProjectService {
                         "Cannot generate valid slug from input".to_string(),
                     ));
                 }
+                check_slug_len(&slugified)?;
                 // Explicit availability check so the normal path returns a
                 // clear Conflict rather than a raw unique violation. This is
                 // TOCTOU-racy on its own, so the unique-violation mapping
@@ -619,7 +621,8 @@ impl ProjectService {
     /// De-duplication is only ever correct for a *derived* slug. A slug the
     /// user typed is handled in [`Self::create`] and conflicts instead.
     async fn generate_unique_slug(pool: &DbPool, name: &str) -> AppResult<String> {
-        let base_slug = slugify(name);
+        let full = slugify(name);
+        let base_slug = fit(&full, SLUG_MAX_LEN);
 
         if base_slug.is_empty() {
             return Err(AppError::Validation(
@@ -627,21 +630,23 @@ impl ProjectService {
             ));
         }
 
-        // Find similar slugs
+        // Find similar slugs, by a prefix short enough to also match the
+        // candidates below, which shorten the base to make room for `-1000`.
         let similar_slugs: Vec<String> =
             sqlx::query_scalar("SELECT slug FROM projects WHERE slug LIKE $1 || '%'")
-                .bind(&base_slug)
+                .bind(fit(base_slug, SLUG_MAX_LEN - 5))
                 .fetch_all(pool)
                 .await?;
 
-        if !similar_slugs.contains(&base_slug) {
-            return Ok(base_slug);
+        if !similar_slugs.iter().any(|s| s == base_slug) {
+            return Ok(base_slug.to_string());
         }
 
         // Find the next available number
         let mut counter = 1;
         loop {
-            let candidate = format!("{}-{}", base_slug, counter);
+            let suffix = format!("-{counter}");
+            let candidate = format!("{}{suffix}", fit(base_slug, SLUG_MAX_LEN - suffix.len()));
             if !similar_slugs.contains(&candidate) {
                 return Ok(candidate);
             }
@@ -845,4 +850,24 @@ impl ProjectService {
         let _ = pool;
         Ok(())
     }
+}
+
+/// `projects.slug` is `VARCHAR(100)` on PostgreSQL.
+pub const SLUG_MAX_LEN: usize = 100;
+
+/// A slug the user typed that the column cannot hold.
+fn check_slug_len(slug: &str) -> AppResult<()> {
+    if slug.len() > SLUG_MAX_LEN {
+        return Err(
+            AppError::Validation(format!("Slug cannot exceed {SLUG_MAX_LEN} characters"))
+                .with_field("slug", FieldErrorCode::Invalid),
+        );
+    }
+    Ok(())
+}
+
+/// At most `max` bytes of a slug, without a trailing dash. `slugify` only
+/// produces ASCII, so any byte offset is a char boundary.
+fn fit(slug: &str, max: usize) -> &str {
+    slug[..slug.len().min(max)].trim_end_matches('-')
 }

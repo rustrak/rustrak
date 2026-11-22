@@ -190,7 +190,8 @@ server with the line and the reason:
 - a missing required field, or a value of the wrong type;
 - two projects with the same `id`, `name`, `slug` or `sentry_key`;
 - two tokens with the same `name` or the same value;
-- a `name` over 255 bytes, a `slug` with no letter or digit, a malformed
+- a `name` over 255 bytes, a `slug` with no letter or digit or over 100
+  characters, a malformed
   `sentry_key` or token, an unknown `platform`, or `issues` in
   `disabled_products`;
 - a `_file` that cannot be read.
