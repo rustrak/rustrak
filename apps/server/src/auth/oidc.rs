@@ -14,6 +14,8 @@ use openidconnect::{
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use crate::config::OidcConfig;
 use crate::error::{AppError, AppResult};
@@ -120,6 +122,187 @@ pub struct OidcService {
     config: OidcConfig,
 }
 
+/// The SSO settings and this process's discovery result.
+///
+/// `config` is what the operator asked for and never changes; `service` is the
+/// provider this process has discovered so far, empty until discovery
+/// succeeds. Startup no longer refuses to run when the provider is briefly
+/// unreachable: error ingest has nothing to do with login, so a provider
+/// outage at boot must not stop it (a restart, or an identity provider
+/// starting after the server, would otherwise be a self-inflicted outage).
+#[derive(Clone)]
+pub struct OidcState {
+    config: Option<OidcConfig>,
+    service: Arc<RwLock<Option<OidcService>>>,
+}
+
+impl OidcState {
+    /// Nothing configured: SSO is off and no discovery is attempted.
+    pub fn disabled() -> Self {
+        Self {
+            config: None,
+            service: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// The configured provider, before (or without) a successful discovery.
+    pub fn configured(config: OidcConfig) -> Self {
+        Self {
+            config: Some(config),
+            service: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// The configured provider with discovery already done, which is the
+    /// state a caller that just discovered it can hand over in one step.
+    pub fn discovered(self, service: OidcService) -> Self {
+        self.install(service);
+        self
+    }
+
+    /// The operator's settings, if SSO is configured at all.
+    pub fn config(&self) -> Option<&OidcConfig> {
+        self.config.as_ref()
+    }
+
+    /// The provider, if this process has discovered it.
+    ///
+    /// Handlers call this per request: discovery finishes in the background,
+    /// so a server that started while the provider was down gets SSO without a
+    /// restart, and `None` here only means "not reachable, try again later".
+    pub fn service(&self) -> Option<OidcService> {
+        self.service.read().ok().and_then(|slot| slot.clone())
+    }
+
+    /// Record a discovery result. The last writer wins: a retry that succeeds
+    /// replaces nothing but the empty slot, and a later retry never runs once
+    /// the slot is filled by the worker.
+    pub fn install(&self, service: OidcService) {
+        if let Ok(mut slot) = self.service.write() {
+            slot.replace(service);
+        }
+    }
+
+    /// Whether password sign-in is turned off. Read from the config rather
+    /// than the service, so the answer is the same before discovery succeeds:
+    /// a provider outage must not quietly re-enable the password path the
+    /// operator turned off.
+    pub fn password_login_disabled(&self) -> bool {
+        self.config
+            .as_ref()
+            .is_some_and(|config| config.disable_password_login)
+    }
+
+    /// The administrator-defined provider label, shown even before discovery
+    /// so the login page can name the provider it is waiting for.
+    pub fn provider_name(&self) -> Option<&str> {
+        self.config
+            .as_ref()
+            .map(|config| config.provider_name.as_str())
+    }
+}
+
+/// How long to wait before the first retry of a failed discovery, and the
+/// ceiling it backs off to. Retries are capped rather than unbounded so a
+/// provider that stays down costs one request every few minutes, while a
+/// provider that comes back is picked up within that window.
+pub const DISCOVERY_RETRY_START: Duration = Duration::from_secs(30);
+pub const DISCOVERY_RETRY_MAX: Duration = Duration::from_secs(15 * 60);
+
+/// How long one discovery attempt may take, across the metadata fetch and
+/// both endpoint checks. The provider is a local or nearby endpoint in
+/// practice; ten seconds covers it, and bounding the attempt is what keeps a
+/// stalled connection from parking the retry loop forever.
+pub const DISCOVERY_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Start discovery on the runtime without waiting for it.
+///
+/// `tokio::spawn` rather than [`crate::workers::supervise`]: discovery returns
+/// once it succeeds, so there is nothing to restart, and a failure is already
+/// retried inside [`discover_with_retry`].
+pub fn spawn_discovery(state: OidcState) {
+    tokio::spawn(discover_with_retry(state));
+}
+
+/// Try again later, or never: the difference one failed discovery makes.
+#[derive(Debug, thiserror::Error)]
+pub enum DiscoveryError {
+    /// The provider is unreachable, its connection failed or it answered an
+    /// error a later attempt can get past.
+    #[error("{0}")]
+    Retryable(String),
+    /// The settings or the discovery document are wrong in a way a retry
+    /// cannot change, so retrying would only repeat the same log line.
+    #[error("{0}")]
+    Permanent(String),
+}
+
+/// Discover the provider, retrying with backoff until it answers.
+///
+/// The first attempt is made straight away, so the common case (provider
+/// reachable) enables SSO before the first request needs it. A failure is
+/// logged and retried rather than returned: the server keeps serving ingest
+/// and password login, `/auth/sso/config` reports SSO as unavailable, and the
+/// provider coming back needs no restart. A failure no retry can fix stops the
+/// loop after one attempt. Returns once discovery has succeeded, on a
+/// permanent failure, or never (the process is shutting down).
+pub async fn discover_with_retry(state: OidcState) {
+    discover_with_policy(state, DISCOVERY_RETRY_START, DISCOVERY_ATTEMPT_TIMEOUT).await
+}
+
+/// The retry loop, with the two delays supplied so a test can run it fast.
+///
+/// Same behaviour as [`discover_with_retry`]; the parameters exist because a
+/// test of the recovery path would otherwise wait out the production backoff.
+pub async fn discover_with_policy(
+    state: OidcState,
+    retry_start: Duration,
+    attempt_timeout: Duration,
+) {
+    let Some(config) = state.config().cloned() else {
+        return;
+    };
+
+    let mut delay = retry_start;
+    loop {
+        // A provider that sends response headers and then stalls would hold
+        // this await forever, and the retry delay below would never be
+        // reached. The attempt gets its own deadline; expiry is just another
+        // failure to retry, since the next attempt builds a fresh client.
+        let attempt =
+            tokio::time::timeout(attempt_timeout, OidcService::discover(config.clone())).await;
+        let outcome = match attempt {
+            Ok(result) => result,
+            Err(_) => Err(DiscoveryError::Retryable(format!(
+                "OIDC discovery attempt timed out after {}s",
+                attempt_timeout.as_secs()
+            ))),
+        };
+
+        match outcome {
+            Ok(service) => {
+                log::info!("OpenID Connect SSO enabled ({})", service.provider_name());
+                state.install(service);
+                return;
+            }
+            Err(DiscoveryError::Permanent(err)) => {
+                log::error!(
+                    "OIDC SSO is off: {err}. This needs a configuration change; not retrying"
+                );
+                return;
+            }
+            Err(DiscoveryError::Retryable(err)) => {
+                log::warn!(
+                    "OIDC discovery failed, retrying in {}s; ingest and password login are unaffected: {err}",
+                    delay.as_secs()
+                );
+            }
+        }
+
+        tokio::time::sleep(delay).await;
+        delay = (delay * 2).min(DISCOVERY_RETRY_MAX);
+    }
+}
 /// HTTP client that rejects cleartext requests (loopback aside) before any
 /// OIDC data is sent. It wraps the server's own `reqwest` rather than the one
 /// `openidconnect` would bring, so the binary carries one HTTP stack.
@@ -190,30 +373,54 @@ fn require_https(url: &openidconnect::url::Url, endpoint: &str) -> AppResult<()>
 }
 
 impl OidcService {
-    /// Discover the provider once during startup. Startup fails when SSO is
-    /// explicitly configured but its discovery document is unavailable or
-    /// invalid, avoiding a login button that can never work.
-    pub async fn discover(config: OidcConfig) -> AppResult<Self> {
+    /// The settings this provider was discovered with.
+    pub fn config(&self) -> &OidcConfig {
+        &self.config
+    }
+
+    /// Check the settings that can be checked without the network.
+    ///
+    /// A malformed issuer URL or a cleartext one is an operator mistake, not
+    /// an outage: retrying it would never succeed, so the caller can refuse to
+    /// start rather than log the same line every backoff interval.
+    pub fn validate_config(config: &OidcConfig) -> AppResult<()> {
         let issuer = IssuerUrl::new(config.issuer_url.clone())
             .map_err(|e| AppError::Internal(format!("Invalid OIDC issuer URL: {e}")))?;
-        require_https(issuer.url(), "issuer URL")?;
+        require_https(issuer.url(), "issuer URL")
+    }
+
+    /// Discover the provider. Startup no longer calls this on the request
+    /// path: [`discover_with_retry`] runs it in the background, and a failure
+    /// is a retry rather than a refusal to serve.
+    ///
+    /// The error says whether another attempt could ever succeed. A malformed
+    /// issuer, a cleartext endpoint the provider advertises, or a discovery
+    /// document that does not parse is the provider's configuration and stays
+    /// what it is until someone changes it; an unreachable provider, a TLS
+    /// error or a 5xx may clear up on its own.
+    pub async fn discover(config: OidcConfig) -> Result<Self, DiscoveryError> {
+        Self::validate_config(&config).map_err(|e| DiscoveryError::Permanent(e.to_string()))?;
+        let issuer = IssuerUrl::new(config.issuer_url.clone())
+            .map_err(|e| DiscoveryError::Permanent(format!("Invalid OIDC issuer URL: {e}")))?;
         let http_client = HttpsClient(
             reqwest::ClientBuilder::new()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|e| {
-                    AppError::Internal(format!("Failed to create OIDC HTTP client: {e}"))
+                    DiscoveryError::Permanent(format!("Failed to create OIDC HTTP client: {e}"))
                 })?,
         );
         let metadata = CoreProviderMetadata::discover_async(issuer, &http_client)
             .await
-            .map_err(|e| AppError::Internal(format!("OIDC discovery failed: {e}")))?;
+            .map_err(|e| DiscoveryError::Retryable(format!("OIDC discovery failed: {e}")))?;
         require_https(
             metadata.authorization_endpoint().url(),
             "authorization endpoint",
-        )?;
+        )
+        .map_err(|e| DiscoveryError::Permanent(e.to_string()))?;
         if let Some(token_endpoint) = metadata.token_endpoint() {
-            require_https(token_endpoint.url(), "token endpoint")?;
+            require_https(token_endpoint.url(), "token endpoint")
+                .map_err(|e| DiscoveryError::Permanent(e.to_string()))?;
         }
 
         Ok(Self {

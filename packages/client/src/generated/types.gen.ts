@@ -2555,12 +2555,19 @@ export type SpanResponse = {
 };
 
 export type SsoConfigResponse = {
+    /**
+     * Whether discovery has succeeded, so a login can complete. False while
+     * the provider is unreachable, even with SSO configured.
+     */
     enabled: boolean;
     /**
      * Whether the login page should show the password form. False only when
      * the operator turned password sign-in off.
      */
     password_login_enabled: boolean;
+    /**
+     * The label from the settings, also present while discovery fails.
+     */
     provider_name: string | null;
 };
 

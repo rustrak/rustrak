@@ -21896,7 +21896,8 @@
         ],
         "properties": {
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether discovery has succeeded, so a login can complete. False while\nthe provider is unreachable, even with SSO configured."
           },
           "password_login_enabled": {
             "type": "boolean",
@@ -21906,7 +21907,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The label from the settings, also present while discovery fails."
           }
         }
       },
