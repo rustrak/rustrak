@@ -309,7 +309,9 @@
       "unsubscribe": "Unsubscribe",
       "deleteIssue": "Delete issue",
       "markSpam": "Mark as spam",
-      "moveToInbox": "Move to inbox"
+      "moveToInbox": "Move to inbox",
+      "resolveInCurrentRelease": "Resolve in current release",
+      "resolveInAnotherRelease": "Resolve in another release…"
     },
     "toasts": {
       "updateFailed": "Failed to update issues",
@@ -364,7 +366,11 @@
       "reopenedOnGitHub": "reopened the linked issue on GitHub",
       "githubCreated": "created {ref} on GitHub",
       "githubLinked": "linked {ref}",
-      "githubUnlinked": "unlinked {ref}"
+      "githubUnlinked": "unlinked {ref}",
+      "resolvedInNextRelease": "marked this issue as resolved in the upcoming release",
+      "resolvedInRelease": "marked this issue as resolved in {version}",
+      "resolvedAfterRelease": "marked this issue as resolved in releases greater than {version}",
+      "regressionInRelease": "detected a regression in {version}"
     },
     "issueStatus": {
       "new": "New",
@@ -437,7 +443,22 @@
       "properties": "Properties",
       "tags": "Tags",
       "code": "Code",
-      "activity": "Activity"
+      "activity": "Activity",
+      "resolvedInNextRelease": "In the next release",
+      "resolvedInRelease": "In {version}"
+    },
+    "resolveInRelease": {
+      "title": "Resolve in a release",
+      "description": "Events from this release or a later one will reopen the issue. Older releases will not.",
+      "label": "Release",
+      "placeholder": "Choose a release",
+      "empty": "This project has no releases yet.",
+      "confirm": "Resolve",
+      "cancel": "Cancel",
+      "search": "Search",
+      "searchPlaceholder": "Filter by version",
+      "loadFailed": "Could not load the releases",
+      "noMatch": "No release matches."
     }
   },
   "roles": {

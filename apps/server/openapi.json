@@ -10,7 +10,7 @@
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
     },
-    "version": "0.29.0"
+    "version": "0.30.1"
   },
   "paths": {
     "/api/0/issues/{issue_id}/": {
@@ -1161,7 +1161,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Sentry-compatible release creation. Idempotent: repeating the same\n`(project, version)` returns 208 rather than erroring — sentry-cli and JS\nbundler plugins call this on every build. Triggers date-based regression\nclearing (see [`crate::services::issue::IssueService::finalize_release`])\non every call, not just the new-row branch: `finalize_release`'s own\n`UPDATE ... WHERE` is idempotent (a repeat run affects 0 rows once nothing\nis left to clear), so this also self-heals a prior call that created the\nrow but failed before clearing ran — a plain `if created` gate would\notherwise skip clearing forever once a retry lands on the 208 branch.",
+        "summary": "Sentry-compatible release creation. Idempotent: repeating the same\n`(project, version)` returns 208 rather than erroring — sentry-cli and JS\nbundler plugins call this on every build. A new release resolves the\nissues waiting on \"resolved in next release\" (see\n[`crate::services::resolution::ResolutionService::clear_expired`]).",
         "operationId": "releases.create",
         "parameters": [
           {
@@ -3295,7 +3295,7 @@
                             "$ref": "#/components/schemas/IssueStatus"
                           },
                           "status_details": {
-                            "type": "object"
+                            "$ref": "#/components/schemas/StatusDetails"
                           },
                           "substatus": {
                             "type": [
@@ -7021,7 +7021,7 @@
                             "$ref": "#/components/schemas/IssueStatus"
                           },
                           "status_details": {
-                            "type": "object"
+                            "$ref": "#/components/schemas/StatusDetails"
                           },
                           "substatus": {
                             "type": [
@@ -7148,6 +7148,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BulkUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status or priority, too many ids, or no release to resolve in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -7407,6 +7417,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IssueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status, or no release to resolve in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -10252,7 +10272,7 @@
                           },
                           "id": {
                             "type": "string",
-                            "format": "uuid"
+                            "description": "The `check_in_id` the job sent, or one the server made when it sent\nnone: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not\nnecessarily an RFC 4122 UUID."
                           },
                           "status": {
                             "$ref": "#/components/schemas/CheckInStatus"
@@ -10398,6 +10418,7 @@
                         "description": "One release as the releases page reads it: its record, if CI created\none, and what it brought -- events, new issues, environments and session\nhealth -- the shape of Sentry's release list with `health=1`.\n\nCounts and rates cover the asked window and environment; the dates do not,\nso a release keeps its age however narrow the window.",
                         "required": [
                           "version",
+                          "registered",
                           "date_created",
                           "date_released",
                           "ref",
@@ -10487,6 +10508,10 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "registered": {
+                            "type": "boolean",
+                            "description": "Whether it has a release record (from CI or from an error event), so\nan issue can be resolved in it. One known only from sessions has none."
                           },
                           "sessions": {
                             "type": "integer",
@@ -11946,7 +11971,7 @@
                           "failure_rate": {
                             "type": "number",
                             "format": "double",
-                            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and not \"ok\"."
+                            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and\nneither `ok`, `cancelled` nor `unknown`."
                           },
                           "last_seen": {
                             "type": "string",
@@ -16968,6 +16993,17 @@
                 "type": "null"
               }
             ]
+          },
+          "statusDetails": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusDetailsUpdate",
+                "description": "Which release a `resolved` status resolves the issues in."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -17078,7 +17114,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "description": "The `check_in_id` the job sent, or one the server made when it sent\nnone: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not\nnecessarily an RFC 4122 UUID."
           },
           "status": {
             "$ref": "#/components/schemas/CheckInStatus"
@@ -18821,7 +18857,7 @@
             "$ref": "#/components/schemas/IssueStatus"
           },
           "status_details": {
-            "type": "object"
+            "$ref": "#/components/schemas/StatusDetails"
           },
           "substatus": {
             "type": [
@@ -18987,6 +19023,17 @@
               "null"
             ],
             "description": "`resolved`, `unresolved`, `ignored`, `resolvedInNextRelease` or `muted`."
+          },
+          "statusDetails": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusDetailsUpdate",
+                "description": "With `resolved`: `inNextRelease` or `inRelease`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "substatus": {
             "type": [
@@ -20369,6 +20416,7 @@
         "description": "One release as the releases page reads it: its record, if CI created\none, and what it brought -- events, new issues, environments and session\nhealth -- the shape of Sentry's release list with `health=1`.\n\nCounts and rates cover the asked window and environment; the dates do not,\nso a release keeps its age however narrow the window.",
         "required": [
           "version",
+          "registered",
           "date_created",
           "date_released",
           "ref",
@@ -20458,6 +20506,10 @@
               "string",
               "null"
             ]
+          },
+          "registered": {
+            "type": "boolean",
+            "description": "Whether it has a release record (from CI or from an error event), so\nan issue can be resolved in it. One known only from sessions has none."
           },
           "sessions": {
             "type": "integer",
@@ -21167,7 +21219,7 @@
             "type": "string"
           },
           "statusDetails": {
-            "type": "object"
+            "$ref": "#/components/schemas/StatusDetails"
           },
           "substatus": {
             "type": [
@@ -21896,7 +21948,8 @@
         ],
         "properties": {
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether discovery has succeeded, so a login can complete. False while\nthe provider is unreachable, even with SSO configured."
           },
           "password_login_enabled": {
             "type": "boolean",
@@ -21906,7 +21959,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The label from the settings, also present while discovery fails."
           }
         }
       },
@@ -21933,6 +21987,44 @@
         "properties": {
           "authorization_url": {
             "type": "string"
+          }
+        }
+      },
+      "StatusDetails": {
+        "type": "object",
+        "description": "Which release a resolved issue was resolved in, as Sentry's group\nserializer reports it: `inNextRelease` until the next release is known,\nthen `inRelease`. Empty for any other status.",
+        "properties": {
+          "inNextRelease": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "inRelease": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "StatusDetailsUpdate": {
+        "type": "object",
+        "description": "The release fields of Sentry's `StatusDetailsValidator`\n(`api/helpers/group_index/validators/status_details.py`): read with a\n`resolved` (or `resolvedInNextRelease`) status, ignored with any other.",
+        "properties": {
+          "inNextRelease": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Resolve in the release that ships next. Needs a release in the project."
+          },
+          "inRelease": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Resolve in this release version, or `latest` for the most recent one."
           }
         }
       },
@@ -22361,7 +22453,7 @@
           "failure_rate": {
             "type": "number",
             "format": "double",
-            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and not \"ok\"."
+            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and\nneither `ok`, `cancelled` nor `unknown`."
           },
           "last_seen": {
             "type": "string",
@@ -22540,6 +22632,17 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/IssueStatusUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statusDetails": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusDetailsUpdate",
+                "description": "Which release a `resolved` status resolves the issue in."
               },
               {
                 "type": "null"

@@ -1164,12 +1164,12 @@ fn category_of(item: &EnvelopeItemKind) -> Option<&'static str> {
 }
 
 /// The categories whose inline write would wait on `table` while a
-/// compaction rewrites it: a transaction writes its spans too. Errors are
+/// compaction rewrites it: a transaction writes its spans too, and a batch
+/// of streamed spans the transaction of each segment root in it. Errors are
 /// spooled and their digest waits, so `events` turns nothing away.
 pub fn shed_by(table: &str) -> &'static [&'static str] {
     match table {
-        "transactions" => &["transaction"],
-        "spans" => &["transaction", "span"],
+        "transactions" | "spans" => &["transaction", "span"],
         "logs" => &["log_item"],
         _ => &[],
     }
@@ -1179,6 +1179,17 @@ pub fn shed_by(table: &str) -> &'static [&'static str] {
 mod tests {
     use super::{next_recovery_delay, resolve_event_id, stable_delivery_id, validate_event_json};
     use std::time::Duration;
+
+    /// A streamed span batch writes its segment roots into `transactions`
+    /// as well as its spans (#552), so it waits on either table.
+    #[test]
+    fn a_span_is_turned_away_while_either_of_its_tables_is_compacted() {
+        for table in ["transactions", "spans"] {
+            assert!(super::shed_by(table).contains(&"span"), "{table}");
+            assert!(super::shed_by(table).contains(&"transaction"), "{table}");
+        }
+        assert_eq!(super::shed_by("logs"), ["log_item"]);
+    }
 
     #[test]
     fn recovery_backoff_starts_small_and_caps() {

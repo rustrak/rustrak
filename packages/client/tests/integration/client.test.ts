@@ -132,4 +132,67 @@ describe('RustrakClient', () => {
 
     expect(items.map((p) => p.sentry_key)).toEqual([key]);
   });
+
+  // A check-in's id is the `check_in_id` its job sent, and the server takes
+  // any 32 hex digits there. A job checking in with `curl` and a hand-made id
+  // must not make the monitor list fail validation.
+  it('lists a monitor whose check-in id is hex but not an RFC 4122 UUID', async () => {
+    const checkInId = 'e073863a-c521-c267-8cbc-173e871b7120';
+    server.use(
+      http.get('http://localhost:8080/api/projects/1/monitors', () =>
+        HttpResponse.json([
+          {
+            id: 'a338aa99-8027-4c01-8b39-12c488068fb8',
+            slug: 'nightly',
+            name: 'nightly',
+            config: {
+              schedule: { type: 'crontab', value: '0 * * * *' },
+              checkin_margin: 1,
+              max_runtime: 30,
+              timezone: 'UTC',
+              failure_issue_threshold: 1,
+              recovery_threshold: 1,
+            },
+            is_muted: false,
+            created_at: '2026-01-20T10:00:00.000Z',
+            environments: [
+              {
+                id: 'f9c1e94e-30bc-423d-8200-6a228854d2d8',
+                environment: 'production',
+                status: 'ok',
+                next_checkin: '2026-01-20T11:00:00.000Z',
+                next_checkin_latest: '2026-01-20T11:01:00.000Z',
+                last_checkin: '2026-01-20T10:00:00.000Z',
+                recent_checkins: [
+                  {
+                    id: checkInId,
+                    environment: 'production',
+                    status: 'ok',
+                    duration_ms: null,
+                    date_added: '2026-01-20T10:00:00.000Z',
+                    date_updated: '2026-01-20T10:00:00.000Z',
+                    expected_time: null,
+                  },
+                ],
+              },
+            ],
+          },
+        ]),
+      ),
+    );
+    const client = new RustrakClient({
+      baseUrl: 'http://localhost:8080',
+      token: 'test-token',
+    });
+
+    const monitors = expectOk(
+      await client.monitors.list({ path: { project_id: 1 } }),
+    );
+
+    expect(
+      monitors.flatMap((m) =>
+        m.environments.flatMap((e) => e.recent_checkins.map((c) => c.id)),
+      ),
+    ).toEqual([checkInId]);
+  });
 });

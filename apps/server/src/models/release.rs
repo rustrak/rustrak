@@ -72,6 +72,9 @@ pub struct ReleaseResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReleaseSummary {
     pub version: String,
+    /// Whether it has a release record (from CI or from an error event), so
+    /// an issue can be resolved in it. One known only from sessions has none.
+    pub registered: bool,
     /// The record's, else the first time the release was seen.
     pub date_created: DateTime<Utc>,
     #[cfg_attr(feature = "openapi", schema(required))]
@@ -102,6 +105,16 @@ pub struct ReleaseSummary {
 }
 
 impl Release {
+    /// The columns the release ordering reads.
+    pub fn release_ref(&self) -> crate::models::resolution::ReleaseRef {
+        crate::models::resolution::ReleaseRef {
+            id: self.id,
+            version: self.version.clone(),
+            date_created: self.date_created,
+            date_released: self.date_released,
+        }
+    }
+
     pub fn to_response(&self) -> ReleaseResponse {
         ReleaseResponse {
             version: self.version.clone(),

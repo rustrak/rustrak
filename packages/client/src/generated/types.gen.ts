@@ -409,6 +409,7 @@ export type BulkUpdateIssues = {
     ids: Array<string>;
     priority?: IssuePriority | null;
     status?: IssueStatusUpdate | null;
+    statusDetails?: StatusDetailsUpdate | null;
 };
 
 export type BulkUpdateResponse = {
@@ -440,6 +441,11 @@ export type CheckInResponse = {
     duration_ms: number | null;
     environment: string;
     expected_time: string | null;
+    /**
+     * The `check_in_id` the job sent, or one the server made when it sent
+     * none: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not
+     * necessarily an RFC 4122 UUID.
+     */
     id: string;
     status: CheckInStatus;
 };
@@ -1262,9 +1268,7 @@ export type IssueResponse = {
     project_id: number;
     short_id: string;
     status: IssueStatus;
-    status_details: {
-        [key: string]: unknown;
-    };
+    status_details: StatusDetails;
     substatus: string | null;
     title: string;
     /**
@@ -1357,6 +1361,7 @@ export type IssueUpdate = {
      * `resolved`, `unresolved`, `ignored`, `resolvedInNextRelease` or `muted`.
      */
     status?: string | null;
+    statusDetails?: StatusDetailsUpdate | null;
     substatus?: string | null;
 };
 
@@ -1994,6 +1999,11 @@ export type ReleaseSummary = {
      */
     new_issues: number;
     ref: string | null;
+    /**
+     * Whether it has a release record (from CI or from an error event), so
+     * an issue can be resolved in it. One known only from sessions has none.
+     */
+    registered: boolean;
     sessions: number;
     url: string | null;
     version: string;
@@ -2250,9 +2260,7 @@ export type SentryIssue = {
         [key: string]: unknown;
     } | null;
     status: string;
-    statusDetails: {
-        [key: string]: unknown;
-    };
+    statusDetails: StatusDetails;
     substatus: string | null;
     title: string;
     /**
@@ -2550,12 +2558,19 @@ export type SpanResponse = {
 };
 
 export type SsoConfigResponse = {
+    /**
+     * Whether discovery has succeeded, so a login can complete. False while
+     * the provider is unreachable, even with SSO configured.
+     */
     enabled: boolean;
     /**
      * Whether the login page should show the password form. False only when
      * the operator turned password sign-in off.
      */
     password_login_enabled: boolean;
+    /**
+     * The label from the settings, also present while discovery fails.
+     */
     provider_name: string | null;
 };
 
@@ -2566,6 +2581,32 @@ export type SsoLinkResponse = {
 
 export type SsoStartResponse = {
     authorization_url: string;
+};
+
+/**
+ * Which release a resolved issue was resolved in, as Sentry's group
+ * serializer reports it: `inNextRelease` until the next release is known,
+ * then `inRelease`. Empty for any other status.
+ */
+export type StatusDetails = {
+    inNextRelease?: boolean | null;
+    inRelease?: string | null;
+};
+
+/**
+ * The release fields of Sentry's `StatusDetailsValidator`
+ * (`api/helpers/group_index/validators/status_details.py`): read with a
+ * `resolved` (or `resolvedInNextRelease`) status, ignored with any other.
+ */
+export type StatusDetailsUpdate = {
+    /**
+     * Resolve in the release that ships next. Needs a release in the project.
+     */
+    inNextRelease?: boolean | null;
+    /**
+     * Resolve in this release version, or `latest` for the most recent one.
+     */
+    inRelease?: string | null;
 };
 
 /**
@@ -2774,7 +2815,8 @@ export type TransactionStatsResponse = {
      */
     count: number;
     /**
-     * Fraction (0.0–1.0) of transactions whose trace status is set and not "ok".
+     * Fraction (0.0–1.0) of transactions whose trace status is set and
+     * neither `ok`, `cancelled` nor `unknown`.
      */
     failure_rate: number;
     last_seen: string;
@@ -2844,6 +2886,7 @@ export type UpdateIssueState = {
     assignee_type?: string | null;
     priority?: IssuePriority | null;
     status?: IssueStatusUpdate | null;
+    statusDetails?: StatusDetailsUpdate | null;
     substatus?: string | null;
 };
 
@@ -4720,9 +4763,7 @@ export type IssuesListAllResponses = {
             project_id: number;
             short_id: string;
             status: IssueStatus;
-            status_details: {
-                [key: string]: unknown;
-            };
+            status_details: StatusDetails;
             substatus: string | null;
             title: string;
             /**
@@ -6546,9 +6587,7 @@ export type IssuesListResponses = {
             project_id: number;
             short_id: string;
             status: IssueStatus;
-            status_details: {
-                [key: string]: unknown;
-            };
+            status_details: StatusDetails;
             substatus: string | null;
             title: string;
             /**
@@ -6588,6 +6627,10 @@ export type IssuesBulkUpdateData = {
 };
 
 export type IssuesBulkUpdateErrors = {
+    /**
+     * Invalid status or priority, too many ids, or no release to resolve in
+     */
+    400: ErrorResponse;
     /**
      * Unauthorized
      */
@@ -6698,6 +6741,10 @@ export type IssuesUpdateData = {
 };
 
 export type IssuesUpdateErrors = {
+    /**
+     * Invalid status, or no release to resolve in
+     */
+    400: ErrorResponse;
     /**
      * Unauthorized
      */
@@ -8119,6 +8166,11 @@ export type MonitorsListCheckinsResponses = {
             duration_ms: number | null;
             environment: string;
             expected_time: string | null;
+            /**
+             * The `check_in_id` the job sent, or one the server made when it sent
+             * none: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not
+             * necessarily an RFC 4122 UUID.
+             */
             id: string;
             status: CheckInStatus;
         }>;
@@ -8209,6 +8261,11 @@ export type ReleasesListResponses = {
              */
             new_issues: number;
             ref: string | null;
+            /**
+             * Whether it has a release record (from CI or from an error event), so
+             * an issue can be resolved in it. One known only from sessions has none.
+             */
+            registered: boolean;
             sessions: number;
             url: string | null;
             version: string;
@@ -8856,7 +8913,8 @@ export type TransactionsGetStatsResponses = {
              */
             count: number;
             /**
-             * Fraction (0.0–1.0) of transactions whose trace status is set and not "ok".
+             * Fraction (0.0–1.0) of transactions whose trace status is set and
+             * neither `ok`, `cancelled` nor `unknown`.
              */
             failure_rate: number;
             last_seen: string;

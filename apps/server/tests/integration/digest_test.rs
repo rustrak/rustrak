@@ -8,10 +8,10 @@ use crate::common::TestDb;
 use chrono::Utc;
 use rustrak::config::RateLimitConfig;
 use rustrak::ingest::EventMetadata;
-use rustrak::models::{CleanupFilter, CreateRelease};
+use rustrak::models::CleanupFilter;
 use rustrak::services::scope::Scope;
 use rustrak::services::{
-    EventService, IssueService, IssueSocialService, ProjectService, ReleaseService, StorageService,
+    EventService, IssueService, IssueSocialService, ProjectService, StorageService,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -2525,7 +2525,9 @@ async fn test_bulk_status_change_records_activity() {
         &db.pool,
         project.id,
         &[mine.id, theirs.id],
-        Some("resolvedInNextRelease"),
+        Some(rustrak::models::StatusChange::ResolveIn(
+            rustrak::models::resolution::ResolveTarget::NextRelease { explicit: false },
+        )),
         None,
         None,
     )
@@ -2537,8 +2539,8 @@ async fn test_bulk_status_change_records_activity() {
         .await
         .unwrap();
     assert_eq!(activity.len(), 1);
-    assert_eq!(activity[0].activity_type, "set_status");
-    assert!(activity[0].data.contains("resolvedInNextRelease"));
+    assert_eq!(activity[0].activity_type, "set_resolved_in_release");
+    assert_eq!(activity[0].data, r#"{"version":""}"#);
     assert!(IssueSocialService::list_activity(&db.pool, theirs.id)
         .await
         .unwrap()
@@ -2576,10 +2578,15 @@ async fn test_bulk_set_status_and_delete() {
     .unwrap();
 
     let mut tx = db.pool.begin().await.unwrap();
-    let updated =
-        IssueService::bulk_set_status(&mut tx, project.id, &[i1.id, i2.id], "resolved", None)
-            .await
-            .unwrap();
+    let updated = IssueService::bulk_set_status(
+        &mut tx,
+        project.id,
+        &[i1.id, i2.id],
+        rustrak::models::StatusChange::Set("resolved", None),
+        None,
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
     assert_eq!(updated, 2);
     assert_eq!(
@@ -3520,101 +3527,8 @@ async fn test_issue_aggregates_read_tags_and_user_of_large_events() {
     assert!(values.iter().all(|v| v.first_seen == v.last_seen));
 }
 
-#[actix_web::test]
-async fn test_resolve_in_next_release_suppresses_same_release_regression() {
-    let db = TestDb::new().await;
-    let project = create_test_project(&db.pool, "RINR Project").await;
-    let temp_dir = TempDir::new().unwrap();
-    let cfg = crate::common::rate_limit();
-
-    // First event (release v1.0.0) creates the issue.
-    ingest_event_with_tags(
-        &db.pool,
-        project.id,
-        temp_dir.path(),
-        &cfg,
-        json!({}),
-        json!({"id": "u1"}),
-    )
-    .await;
-    let issue_id = only_issue_id(&db.pool, project.id).await;
-
-    // Resolve in next release.
-    IssueService::resolve_in_next_release(&db.pool, issue_id)
-        .await
-        .unwrap();
-    let i = IssueService::get_by_id(&db.pool, issue_id).await.unwrap();
-    assert_eq!(i.status, "resolved");
-    assert!(i.status_details.contains("in_next_release"));
-
-    // A new event from the SAME release must NOT regress it.
-    ingest_event_with_tags(
-        &db.pool,
-        project.id,
-        temp_dir.path(),
-        &cfg,
-        json!({}),
-        json!({"id": "u2"}),
-    )
-    .await;
-    let i = IssueService::get_by_id(&db.pool, issue_id).await.unwrap();
-    assert_eq!(
-        i.status, "resolved",
-        "same-release event should not regress"
-    );
-}
-
-#[actix_web::test]
-async fn test_finalize_release_clears_marker() {
-    let db = TestDb::new().await;
-    let project = create_test_project(&db.pool, "Deploy Project").await;
-    let temp_dir = TempDir::new().unwrap();
-    let cfg = crate::common::rate_limit();
-
-    ingest_event_with_tags(
-        &db.pool,
-        project.id,
-        temp_dir.path(),
-        &cfg,
-        json!({}),
-        json!({"id": "u1"}),
-    )
-    .await; // last_release = v1.0.0
-    let issue_id = only_issue_id(&db.pool, project.id).await;
-    IssueService::resolve_in_next_release(&db.pool, issue_id)
-        .await
-        .unwrap();
-
-    // Register the release the issue's last_release denormalizes to, so
-    // finalize_release has a `releases` row to chronologically compare against.
-    let (v1, _) = ReleaseService::create(
-        &db.pool,
-        project.id,
-        CreateRelease {
-            version: "v1.0.0".to_string(),
-            reference: None,
-            url: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    // Deploy a newer release (created strictly after v1.0.0) → marker cleared.
-    let finalized = IssueService::finalize_release(
-        &db.pool,
-        project.id,
-        v1.date_created + chrono::Duration::seconds(1),
-    )
-    .await
-    .unwrap();
-    assert_eq!(finalized, 1);
-    let i = IssueService::get_by_id(&db.pool, issue_id).await.unwrap();
-    assert!(!i.status_details.contains("in_next_release"));
-    assert_eq!(i.status, "resolved");
-}
-
 /// Stores `event` in the spool as ingest would, at `at`, under `event_id`.
-async fn spool_event(
+pub(super) async fn spool_event(
     ingest_dir: &std::path::Path,
     project_id: i32,
     event_id: Uuid,
@@ -3641,7 +3555,7 @@ async fn spool_event(
 }
 
 /// A spool file of `project_id`, owned for a digest.
-fn spool_ref(
+pub(super) fn spool_ref(
     processors: &rustrak::digest::processors::Processors,
     project_id: i32,
     event_id: Uuid,
@@ -3655,7 +3569,7 @@ fn spool_ref(
 }
 
 /// Digests `events` of `project_id`, each at its time, as one batch.
-async fn digest_in_order(
+pub(super) async fn digest_in_order(
     pool: &rustrak::db::DbPool,
     ingest_dir: &std::path::Path,
     project_id: i32,

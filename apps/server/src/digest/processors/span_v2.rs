@@ -1,10 +1,14 @@
 use super::span::{encode_span_rows, insert_span_rows, SpanRow};
 use super::ProcessorCtx;
+use crate::db::payload::{Column, Encoder, NO_DATA};
 use crate::error::AppResult;
 use crate::models::span_v2::{parse_span_v2_container, SpanV2Entry};
 use crate::protocol::{clamp, clamp_opt};
 use crate::services::gen_ai::extract_gen_ai_columns;
 use bytes::Bytes;
+use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 pub struct SpanV2Processor;
 
@@ -20,6 +24,7 @@ impl SpanV2Processor {
         let entries = parse_span_v2_container(&work)?;
 
         let mut rows = Vec::with_capacity(entries.len());
+        let mut roots = Vec::new();
         for entry in entries {
             // Mirrors the legacy SpanProcessor's validation (Relay's
             // DiscardReason::InvalidSpan/Timestamp) — skip only this entry,
@@ -67,6 +72,56 @@ impl SpanV2Processor {
             let release = clamp_opt(SpanV2Entry::release(&flat), 200);
             let environment = clamp_opt(SpanV2Entry::environment(&flat), 64);
 
+            if entry.is_segment && SegmentRoot::has(op.as_deref()) {
+                roots.push(SegmentRoot {
+                    id: SegmentRoot::id(ctx.project_id, &entry.trace_id, &entry.span_id),
+                    trace_id: clamp(&entry.trace_id, 64),
+                    span_id: clamp(&entry.span_id, 32),
+                    parent_span_id: clamp_opt(entry.parent_span_id.clone(), 32),
+                    name: clamp(
+                        flat["sentry.segment.name"]
+                            .as_str()
+                            .or(entry.name.as_deref())
+                            .unwrap_or_default(),
+                        200,
+                    ),
+                    op: clamp_opt(op.clone(), 64),
+                    // Relay's order: an older SDK's specific status, then
+                    // the span's own `ok` or `error`.
+                    status: clamp_opt(
+                        flat["sentry.status"]
+                            .as_str()
+                            .map(str::to_string)
+                            .or(entry.status.clone()),
+                        32,
+                    ),
+                    source: clamp(
+                        flat["sentry.segment.name.source"]
+                            .as_str()
+                            .unwrap_or("unknown"),
+                        32,
+                    ),
+                    origin: flat["sentry.origin"].as_str().map(str::to_string),
+                    start_timestamp,
+                    timestamp,
+                    duration_ms,
+                    platform: clamp(
+                        platform
+                            .as_deref()
+                            .or_else(|| sdk_platform(flat["sentry.sdk.name"].as_str()?))
+                            .unwrap_or_default(),
+                        64,
+                    ),
+                    release: release.clone().unwrap_or_default(),
+                    environment: environment.clone().unwrap_or_default(),
+                    sdk_name: clamp(flat["sentry.sdk.name"].as_str().unwrap_or_default(), 255),
+                    sdk_version: clamp(
+                        flat["sentry.sdk.version"].as_str().unwrap_or_default(),
+                        255,
+                    ),
+                });
+            }
+
             rows.push(SpanRow {
                 transaction_id: None,
                 span_id: Some(clamp(&entry.span_id, 32)),
@@ -93,9 +148,132 @@ impl SpanV2Processor {
         }
 
         let rows = encode_span_rows(&ctx.pool, ctx.project_id, ctx.keep_ai_spans, rows).await?;
+        let encoder = match roots.is_empty() {
+            true => None,
+            false => Some(Encoder::current(&ctx.pool, Column::Transactions).await?),
+        };
         let mut tx = ctx.pool.begin().await?;
+        for root in roots {
+            let payload = encoder
+                .as_ref()
+                .map(|encoder| encoder.encode(root.payload().to_string().as_bytes()));
+            // Its id is made from the span's, so the same root sent again
+            // is the same transaction.
+            sqlx::query(
+                "INSERT INTO transactions ( \
+                     id, event_id, project_id, transaction_name, \
+                     trace_id, span_id, parent_span_id, op, status, source, \
+                     start_timestamp, timestamp, duration_ms, \
+                     platform, environment, release, sdk_name, sdk_version, \
+                     data, payload, remote_addr, ingested_at \
+                 ) VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, \
+                           $13, $14, $15, $16, $17, $18, $19, $20, $21) \
+                 ON CONFLICT (project_id, event_id) DO NOTHING",
+            )
+            .bind(root.id)
+            .bind(ctx.project_id)
+            .bind(&root.name)
+            .bind(&root.trace_id)
+            .bind(&root.span_id)
+            .bind(&root.parent_span_id)
+            .bind(&root.op)
+            .bind(&root.status)
+            .bind(&root.source)
+            .bind(root.start_timestamp)
+            .bind(root.timestamp)
+            .bind(root.duration_ms)
+            .bind(&root.platform)
+            .bind(&root.environment)
+            .bind(&root.release)
+            .bind(&root.sdk_name)
+            .bind(&root.sdk_version)
+            .bind(NO_DATA)
+            .bind(payload)
+            .bind(ctx.remote_addr.as_deref())
+            .bind(ctx.ingested_at)
+            .execute(&mut *tx)
+            .await?;
+        }
         insert_span_rows(&mut tx, ctx.project_id, rows).await?;
         tx.commit().await?;
         Ok(())
     }
+}
+
+/// The root of a segment: what an SDK that streams its spans sends where it
+/// used to send a transaction, and what Sentry shows as one (`is_transaction`
+/// is its `sentry.is_segment`). It is stored as a `transactions` row, which
+/// is what Performance reads, beside its own span row. The segment's other
+/// spans are not tied to it here: they arrive before it and long after it,
+/// and are found by its id when it is read
+/// (`TransactionService::add_segment`).
+struct SegmentRoot {
+    id: Uuid,
+    trace_id: String,
+    span_id: String,
+    parent_span_id: Option<String>,
+    name: String,
+    op: Option<String>,
+    status: Option<String>,
+    source: String,
+    origin: Option<String>,
+    start_timestamp: DateTime<Utc>,
+    timestamp: DateTime<Utc>,
+    duration_ms: Option<f64>,
+    platform: String,
+    release: String,
+    environment: String,
+    sdk_name: String,
+    sdk_version: String,
+}
+
+impl SegmentRoot {
+    /// Not a web vital's or an interaction's span: Relay takes those out of
+    /// segments (`relay-event-normalization/src/eap/mod.rs`), whatever the
+    /// SDK marked them as.
+    fn has(op: Option<&str>) -> bool {
+        !op.is_some_and(|op| op.starts_with("ui.webvital.") || op.starts_with("ui.interaction."))
+    }
+
+    /// The same root always gives the same id, so a root delivered again is
+    /// the same transaction. A version 8 UUID, since a bare hash has random
+    /// version and variant bits, and the client checks a transaction's id
+    /// with a strict `z.uuid()` that rejects most of them (#572).
+    fn id(project_id: i32, trace_id: &str, span_id: &str) -> Uuid {
+        let hash = Sha256::digest(format!("{project_id}:{trace_id}:{span_id}"));
+        let bytes: [u8; 16] = hash[..16].try_into().expect("16 bytes");
+        uuid::Builder::from_custom_bytes(bytes).into_uuid()
+    }
+
+    /// The transaction an SDK would have sent for it, without what its span
+    /// row already holds: the attributes, and the vitals among them.
+    fn payload(&self) -> serde_json::Value {
+        let seconds = |at: DateTime<Utc>| at.timestamp_micros() as f64 / 1e6;
+        serde_json::json!({
+            "type": "transaction",
+            "transaction": self.name,
+            "transaction_info": { "source": self.source },
+            "start_timestamp": seconds(self.start_timestamp),
+            "timestamp": seconds(self.timestamp),
+            "platform": self.platform,
+            "release": self.release,
+            "environment": self.environment,
+            "sdk": { "name": self.sdk_name, "version": self.sdk_version },
+            "contexts": { "trace": {
+                "trace_id": self.trace_id,
+                "span_id": self.span_id,
+                "parent_span_id": self.parent_span_id,
+                "op": self.op,
+                "status": self.status,
+                "origin": self.origin,
+            } },
+        })
+    }
+}
+
+/// The platform an SDK is for, from its name (`sentry.javascript.nextjs`):
+/// a streamed span carries no `sentry.platform`. Relay derives none, and
+/// Sentry shows `other`.
+fn sdk_platform(sdk_name: &str) -> Option<&str> {
+    sdk_name.strip_prefix("sentry.")?.split('.').next()
 }

@@ -24,6 +24,7 @@ mod native_test;
 mod notification_test;
 mod payload_test;
 mod rbac_test;
+mod release_resolution_test;
 mod schedule_test;
 mod sourcemap_store_test;
 mod sourcemap_test;

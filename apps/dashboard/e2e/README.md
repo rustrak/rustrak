@@ -42,6 +42,8 @@ watching that test, and only that test, go red.
 | **Triage** | | |
 | An issue shows the exception and the frame that threw | `issues` | A frame without its line |
 | Resolve moves it from Open to Resolved, after a reload | `issues` | Resolve sending the wrong status |
+| Resolved in the current release, an older build keeps it resolved and that release reopens it | `issues` | "Current release" sent as a plain resolve |
+| Resolving in a release picked from the list, only it or a later one reopens it | `issues` | The picker resolving in another release than the one chosen |
 | Resolving the selected issues leaves the rest open | `issues` | A bulk action that drops part of the selection |
 | A deleted issue is gone, not hidden (the API answers 404) | `issues` | Delete aimed at the wrong issue |
 | Assign to yourself shows "Me" in the list | `issues` | An assignment that sends nobody |
@@ -65,6 +67,7 @@ watching that test, and only that test, go red.
 | The chosen language is kept on the account | `settings` | The language not saved |
 | An invited member sets a password and is signed in | `team` | Accepting that does not sign in |
 | On a phone, the tab bar reaches an issue | `mobile` | The tab pointing elsewhere |
+| On a phone, a settings header keeps its title whole | `mobile` | Actions crushing the title to an ellipsis (#579) |
 
 Not here, on purpose: validation messages, formatting, a component's states,
 every filter and every column. Those are Vitest's (`src/**/*.test.ts`) or the

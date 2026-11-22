@@ -23,7 +23,7 @@ const API_VERSION: &str = "2022-11-28";
 /// Signs the JWT GitHub accepts as the app itself. Valid for nine minutes and
 /// backdated one, which is what GitHub recommends against clock drift.
 pub fn app_jwt(app_id: i64, private_key_pem: &str, now: DateTime<Utc>) -> AppResult<String> {
-    let key = rsa::RsaPrivateKey::from_pkcs1_pem(private_key_pem)
+    let key = rsa::PrivateKey::from_pkcs1_pem(private_key_pem)
         .map_err(|e| AppError::Internal(format!("GitHub App private key is unreadable: {e}")))?;
     let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
     let claims = URL_SAFE_NO_PAD.encode(
@@ -35,7 +35,7 @@ pub fn app_jwt(app_id: i64, private_key_pem: &str, now: DateTime<Utc>) -> AppRes
         .to_string(),
     );
     let signing_input = format!("{header}.{claims}");
-    let signer = rsa::pkcs1v15::SigningKey::<rsa::sha2::Sha256>::new(key);
+    let signer = rsa::pkcs1v15::SigningKey::<sha2::Sha256>::new(key);
     let signature = signer.sign(signing_input.as_bytes()).to_bytes();
     Ok(format!(
         "{signing_input}.{}",
@@ -518,8 +518,8 @@ mod tests {
         assert_eq!(claims["iss"], "42");
         assert_eq!(claims["exp"], (now + Duration::seconds(540)).timestamp());
 
-        let key = rsa::RsaPrivateKey::from_pkcs1_pem(pem).unwrap();
-        let verifier = rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new(key.to_public_key());
+        let key = rsa::PrivateKey::from_pkcs1_pem(pem).unwrap();
+        let verifier = rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(key.to_public_key());
         let signature = rsa::pkcs1v15::Signature::try_from(
             URL_SAFE_NO_PAD.decode(parts[2]).unwrap().as_slice(),
         )

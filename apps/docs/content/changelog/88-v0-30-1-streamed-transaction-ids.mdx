@@ -1,0 +1,12 @@
+---
+version: v0.30.1
+title: Streamed Transaction IDs
+description: Transactions made from streamed spans get valid UUIDs, and the ones 0.30.0 stored are repaired
+date: 2026-11-20
+tags: [tracing, fix]
+---
+
+## Fixes
+
+- A transaction made from a streamed segment root took its id from a bare SHA-256 prefix, whose version and variant bits are random, so the dashboard rejected most of them. The id is now a version 8 UUID derived the same way, so a root delivered again still matches its transaction ([#572](https://github.com/rustrak/rustrak/issues/572), [@janatjak](https://github.com/janatjak))
+- A migration rewrites the ids 0.30.0 stored for those transactions, on PostgreSQL and SQLite. It touches only those rows

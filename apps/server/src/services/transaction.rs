@@ -13,7 +13,8 @@ use crate::models::{
     TransactionTimeseriesPoint,
 };
 use crate::services::scope::bucket_hours;
-use crate::services::span::span_data;
+use crate::services::span::{span_data, span_object};
+use crate::services::span_description::hex_id;
 use sqlx::FromRow;
 
 pub struct TransactionService;
@@ -33,6 +34,52 @@ macro_rules! spans_of_transaction {
 macro_rules! spans_of_transaction {
     () => {
         "FROM spans INDEXED BY idx_spans_transaction WHERE transaction_id = $1 AND project_id = $2"
+    };
+}
+
+/// The spans streamed for a segment: `$1` the project, `$2` the trace, `$3`
+/// and `$4` the segment's id as text and as its 8 bytes. A trace's own index
+/// finds them, so no span pays for an index on its segment.
+#[cfg(feature = "postgres")]
+macro_rules! spans_of_segment {
+    () => {
+        "FROM spans WHERE project_id = $1 AND trace_id = $2 AND transaction_id IS NULL \
+         AND (segment_id = $3 OR segment_id_int = $4)"
+    };
+}
+#[cfg(not(feature = "postgres"))]
+macro_rules! spans_of_segment {
+    () => {
+        "FROM spans INDEXED BY idx_spans_project_trace \
+         WHERE project_id = $1 AND trace_id = $2 AND transaction_id IS NULL \
+         AND (segment_id = $3 OR segment_id_int = $4)"
+    };
+}
+
+/// The most spans of a segment a transaction is served with: what an SDK
+/// puts in one transaction, and in one envelope of streamed spans.
+const SEGMENT_SPANS: i64 = 1000;
+
+/// The columns a [`SpanResponse`] is read from.
+macro_rules! span_response_columns {
+    () => {
+        concat!(
+            "SELECT id, transaction_id, span_id, trace_id, ",
+            crate::span_hex_id!("parent_span_id"),
+            ", op, ",
+            crate::span_description!(),
+            ", status, \
+             start_timestamp, timestamp, duration_ms, exclusive_time_ms, \
+             is_segment, ",
+            crate::span_hex_id!("segment_id"),
+            ", ",
+            crate::span_scope!(),
+            ", \
+             gen_ai_operation_type, gen_ai_agent_name, \
+             gen_ai_request_model, gen_ai_response_model, \
+             gen_ai_tool_name, gen_ai_conversation_id, \
+             gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens "
+        )
     };
 }
 
@@ -162,7 +209,8 @@ impl TransactionService {
             r#"
             SELECT id, event_id, transaction_name,
                    timestamp, start_timestamp, duration_ms,
-                   platform, environment, release, ingested_at, data, payload
+                   platform, environment, release, ingested_at, data, payload,
+                   trace_id, span_id
             FROM transactions
             WHERE id = $1
               AND project_id = $2
@@ -182,6 +230,21 @@ impl TransactionService {
             if !spans.is_empty() {
                 data["spans"] = spans.into();
             }
+        }
+        // With none of its own, it is the root of a segment whose spans
+        // were streamed (#552), or has none.
+        let no_spans = |data: &serde_json::Value| {
+            data.get("spans")
+                .and_then(|spans| spans.as_array())
+                .is_none_or(Vec::is_empty)
+        };
+        if let (true, true, Some(trace_id), Some(span_id)) = (
+            data.is_object(),
+            no_spans(&data),
+            row.get::<Option<String>, _>("trace_id"),
+            row.get::<Option<String>, _>("span_id"),
+        ) {
+            Self::add_segment(pool, project_id, &trace_id, &span_id, &mut data).await?;
         }
 
         Ok(TransactionDetailResponse {
@@ -239,6 +302,118 @@ impl TransactionService {
         Ok(spans.into_iter().map(|(_, span)| span).collect())
     }
 
+    /// Completes a transaction made from a segment's root with what its
+    /// streamed spans hold: the others as its `spans`, in the order they
+    /// started, and the root's own attributes as its trace data, request,
+    /// user and measurements. Nothing the payload already has is replaced.
+    ///
+    /// Read here rather than copied into the payload when the root arrives,
+    /// because a segment's spans come in any order: a web vital is sent when
+    /// the page is left, long after its root.
+    async fn add_segment(
+        pool: &DbPool,
+        project_id: i32,
+        trace_id: &str,
+        root: &str,
+        data: &mut serde_json::Value,
+    ) -> AppResult<()> {
+        use serde_json::{json, Value};
+        let rows = sqlx::query(concat!(
+            "SELECT id, span_id, ",
+            crate::span_hex_id!("parent_span_id"),
+            ", op, ",
+            crate::span_description!(),
+            ", status, ",
+            crate::span_hex_id!("segment_id"),
+            ", \
+             start_timestamp, timestamp, exclusive_time_ms, tags, data, payload ",
+            spans_of_segment!(),
+            " ORDER BY start_timestamp ASC, id ASC LIMIT $5"
+        ))
+        .bind(project_id)
+        .bind(trace_id)
+        .bind(root)
+        .bind(hex_id(root))
+        .bind(SEGMENT_SPANS + 1)
+        .fetch_all(pool)
+        .await?;
+
+        let mut spans = Vec::with_capacity(rows.len());
+        let mut measurements = serde_json::Map::new();
+        for row in &rows {
+            let span = match span_object(pool, row).await {
+                Ok(span) => span,
+                // One bad row must not fail the transaction it belongs to.
+                Err(e) => {
+                    log::error!(
+                        "Span {} left out of its segment: {e}",
+                        row.get::<Uuid, _>("id")
+                    );
+                    continue;
+                }
+            };
+            let attributes = &span["data"];
+            // Three of a page's vitals are attributes of its root; LCP, CLS
+            // and INP are spans of their own.
+            for vital in ["ttfb", "fp", "fcp", "lcp", "cls", "inp"] {
+                let value = &attributes[format!("browser.web_vital.{vital}.value")];
+                if value.is_number() && !measurements.contains_key(vital) {
+                    measurements.insert(vital.to_string(), json!({ "value": value }));
+                }
+            }
+            if span["span_id"] != root {
+                spans.push(span);
+                continue;
+            }
+            let named = |pairs: &[(&str, &str)]| -> Value {
+                pairs
+                    .iter()
+                    .filter(|(_, attribute)| !attributes[*attribute].is_null())
+                    .map(|(key, attribute)| (key.to_string(), attributes[*attribute].clone()))
+                    .collect::<serde_json::Map<_, _>>()
+                    .into()
+            };
+            let parts = [
+                // As Sentry names a segment's request and user
+                // (`spans/consumers/process_segments/shim.py`).
+                (
+                    "request",
+                    named(&[("url", "url.full"), ("method", "http.request.method")]),
+                ),
+                (
+                    "user",
+                    named(&[
+                        ("id", "user.id"),
+                        ("email", "user.email"),
+                        ("username", "user.name"),
+                        ("ip_address", "user.ip_address"),
+                    ]),
+                ),
+            ];
+            for (key, part) in parts {
+                if data.get(key).is_none() && part.as_object().is_some_and(|p| !p.is_empty()) {
+                    data[key] = part;
+                }
+            }
+            if let Some(trace) = data
+                .pointer_mut("/contexts/trace")
+                .filter(|t| t.is_object())
+            {
+                if trace.get("data").is_none() {
+                    trace["data"] = attributes.clone();
+                }
+            }
+        }
+        spans.truncate(SEGMENT_SPANS as usize);
+        if !spans.is_empty() {
+            data["spans"] = spans.into();
+        }
+        if data.get("measurements").is_none() && !measurements.is_empty() {
+            data["measurements"] = measurements.into();
+        }
+        Ok(())
+    }
+
     /// Lists the indexed spans extracted from a transaction, ordered by
     /// start_timestamp (waterfall order). Scoped to the project so a foreign
     /// transaction id yields an empty list rather than leaking spans.
@@ -249,35 +424,22 @@ impl TransactionService {
     ) -> AppResult<Vec<SpanResponse>> {
         // A missing/cross-project id is NotFound, not an empty list — keeps the
         // endpoint's documented 404 honest and matches get_by_id.
-        let exists: Option<(i32,)> =
-            sqlx::query_as("SELECT 1 FROM transactions WHERE id = $1 AND project_id = $2")
-                .bind(transaction_id)
-                .bind(project_id)
-                .fetch_optional(pool)
-                .await?;
-        if exists.is_none() {
+        let found: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT trace_id, span_id FROM transactions WHERE id = $1 AND project_id = $2",
+        )
+        .bind(transaction_id)
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await?;
+        let Some(segment) = found else {
             return Err(AppError::NotFound(format!(
                 "Transaction {} not found",
                 transaction_id
             )));
-        }
+        };
 
-        let rows = sqlx::query(concat!(
-            "SELECT id, transaction_id, span_id, trace_id, ",
-            crate::span_hex_id!("parent_span_id"),
-            ", op, ",
-            crate::span_description!(),
-            ", status, \
-             start_timestamp, timestamp, duration_ms, exclusive_time_ms, \
-             is_segment, ",
-            crate::span_hex_id!("segment_id"),
-            ", ",
-            crate::span_scope!(),
-            ", \
-             gen_ai_operation_type, gen_ai_agent_name, \
-             gen_ai_request_model, gen_ai_response_model, \
-             gen_ai_tool_name, gen_ai_conversation_id, \
-             gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, gen_ai_usage_total_tokens ",
+        let mut rows = sqlx::query(concat!(
+            span_response_columns!(),
             spans_of_transaction!(),
             " ORDER BY start_timestamp ASC, id ASC"
         ))
@@ -285,6 +447,22 @@ impl TransactionService {
         .bind(project_id)
         .fetch_all(pool)
         .await?;
+        // With none of its own, the ones streamed for its segment
+        // ([`Self::add_segment`]), but for the root, which it is itself.
+        if let (true, (Some(trace_id), Some(root))) = (rows.is_empty(), segment) {
+            rows = sqlx::query(concat!(
+                span_response_columns!(),
+                spans_of_segment!(),
+                " AND span_id <> $3 ORDER BY start_timestamp ASC, id ASC LIMIT $5"
+            ))
+            .bind(project_id)
+            .bind(trace_id)
+            .bind(&root)
+            .bind(hex_id(&root))
+            .bind(SEGMENT_SPANS)
+            .fetch_all(pool)
+            .await?;
+        }
 
         let spans = rows
             .iter()
@@ -594,13 +772,15 @@ impl TransactionService {
 /// computed by the database (Postgres path). `p50`/`p95`/`p99` are nullable in
 /// the row type only because `percentile_cont` is; the `duration_ms IS NOT
 /// NULL` filter means a group that produced a row always has values.
-/// A failed sample: a trace status other than `ok`. As SQL, [`FAILS`].
+/// A failed sample: a trace status other than the ones Sentry counts as
+/// neither a success nor a failure (`ok`, `cancelled`, `unknown`), so the
+/// **Failures** figures match Sentry's for the same data. As SQL, [`FAILS`].
 fn is_failure(status: Option<&str>) -> bool {
-    status.is_some_and(|s| s != "ok")
+    status.is_some_and(|s| !matches!(s, "ok" | "cancelled" | "unknown"))
 }
 
 /// How many samples failed, as an aggregate.
-const FAILS: &str = "SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END)";
+const FAILS: &str = "SUM(CASE WHEN status IS NOT NULL AND status NOT IN ('ok', 'cancelled', 'unknown') THEN 1 ELSE 0 END)";
 
 /// How the endpoints are ranked.
 #[derive(Debug, Default, Clone, Copy, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema)]
@@ -624,7 +804,7 @@ impl StatsSort {
             Self::TimeSpent => "SUM(duration_ms)",
             Self::Count => "COUNT(*)",
             Self::Avg => "AVG(duration_ms)",
-            Self::FailureRate => "SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END) * 1.0 / COUNT(*)",
+            Self::FailureRate => "SUM(CASE WHEN status IS NOT NULL AND status NOT IN ('ok', 'cancelled', 'unknown') THEN 1 ELSE 0 END) * 1.0 / COUNT(*)",
         }
     }
 }
@@ -702,6 +882,31 @@ mod tests {
         let plan: Vec<String> = rows.into_iter().map(|r| r.3).collect();
         assert!(
             plan.iter().any(|p| p.contains("idx_spans_transaction ")),
+            "{plan:?}"
+        );
+    }
+
+    /// And a segment's through its trace's, where the planner's own choice
+    /// without statistics is not known to be it.
+    #[tokio::test]
+    async fn a_segments_spans_are_read_through_its_traces_index() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::run_migrations(&pool).await.unwrap();
+        let rows: Vec<(i64, i64, i64, String)> = sqlx::query_as(concat!(
+            "EXPLAIN QUERY PLAN SELECT data ",
+            spans_of_segment!()
+        ))
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let plan: Vec<String> = rows.into_iter().map(|r| r.3).collect();
+        assert!(
+            plan.iter()
+                .any(|p| p.contains("idx_spans_project_trace (project_id=? AND trace_id=?)")),
             "{plan:?}"
         );
     }

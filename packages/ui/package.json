@@ -39,8 +39,8 @@
     "@hugeicons/react": "1.1.10",
     "@tanstack/react-table": "9.3.1",
     "clsx": "2.1.1",
-    "recharts": "3.10.1",
-    "tailwind-merge": "3.7.0",
+    "recharts": "3.11.0",
+    "tailwind-merge": "3.7.1",
     "tailwind-variants": "4.0.2"
   },
   "peerDependencies": {
@@ -48,24 +48,24 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@storybook/addon-a11y": "10.6.7",
-    "@storybook/addon-docs": "10.6.7",
-    "@storybook/addon-themes": "10.6.7",
-    "@storybook/addon-vitest": "10.6.7",
-    "@storybook/react-vite": "10.6.7",
+    "@storybook/addon-a11y": "10.6.8",
+    "@storybook/addon-docs": "10.6.8",
+    "@storybook/addon-themes": "10.6.8",
+    "@storybook/addon-vitest": "10.6.8",
+    "@storybook/react-vite": "10.6.8",
     "@tailwindcss/vite": "4.3.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitest/browser": "5.1.0",
-    "@vitest/browser-playwright": "5.1.0",
+    "@vitest/browser": "5.1.1",
+    "@vitest/browser-playwright": "5.1.1",
     "playwright": "1.65.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "storybook": "10.6.7",
+    "storybook": "10.6.8",
     "tailwindcss": "4.3.5",
     "tsdown": "0.23.7",
     "typescript": "6.0.3",
     "vite": "8.3.8",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }

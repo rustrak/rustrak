@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use chrono::{DateTime, Utc};
 
-use crate::auth::{self, AuthenticatedUser, OidcService};
+use crate::auth::{self, AuthenticatedUser, OidcService, OidcState};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{AcceptInvitation, ChangePasswordRequest, LoginRequest, User};
@@ -98,8 +98,11 @@ enum CallbackResult {
 #[derive(Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 struct SsoConfigResponse {
+    /// Whether discovery has succeeded, so a login can complete. False while
+    /// the provider is unreachable, even with SSO configured.
     enabled: bool,
     #[cfg_attr(feature = "openapi", schema(required))]
+    /// The label from the settings, also present while discovery fails.
     provider_name: Option<String>,
     /// Whether the login page should show the password form. False only when
     /// the operator turned password sign-in off.
@@ -161,7 +164,7 @@ struct InvitationInfoResponse {
 /// Accept a pending invitation: creates the user (with the invite's email + role) and logs in.
 pub async fn accept_invitation(
     pool: web::Data<crate::db::DbPool>,
-    oidc: web::Data<Option<OidcService>>,
+    oidc: web::Data<OidcState>,
     session: Session,
     req: web::Json<AcceptInvitation>,
 ) -> AppResult<impl Responder> {
@@ -188,10 +191,8 @@ pub async fn accept_invitation(
 }
 
 /// Whether the operator turned password sign-in off.
-fn password_login_disabled(oidc: &web::Data<Option<OidcService>>) -> bool {
-    oidc.as_ref()
-        .as_ref()
-        .is_some_and(|service| service.password_login_disabled())
+fn password_login_disabled(oidc: &web::Data<OidcState>) -> bool {
+    oidc.password_login_disabled()
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -246,7 +247,7 @@ pub async fn get_invitation(
 /// Authenticate user and create session
 pub async fn login(
     pool: web::Data<crate::db::DbPool>,
-    oidc: web::Data<Option<OidcService>>,
+    oidc: web::Data<OidcState>,
     session: Session,
     req: web::Json<LoginRequest>,
 ) -> AppResult<impl Responder> {
@@ -291,14 +292,18 @@ pub async fn login(
     security(()),
 ))]
 /// Public, non-sensitive information used to render the login page.
-pub async fn sso_config(oidc: web::Data<Option<OidcService>>) -> impl Responder {
-    let service = oidc.as_ref().as_ref();
+pub async fn sso_config(oidc: web::Data<OidcState>) -> impl Responder {
+    // `enabled` follows discovery, not configuration: until the provider has
+    // answered, the button would lead to a login that cannot complete. The
+    // name is from the settings, so the page can say which provider it waits
+    // for.
+    let discovered = oidc.service().is_some();
     HttpResponse::Ok().json(SsoConfigResponse {
-        enabled: service.is_some(),
-        provider_name: service.map(|service| service.provider_name().to_string()),
-        // Startup refuses the switch without SSO configured, so "no provider"
-        // always means password login is the way in.
-        password_login_enabled: service.is_none_or(|service| !service.password_login_disabled()),
+        enabled: discovered,
+        provider_name: oidc.provider_name().map(str::to_string),
+        // From the settings, so a provider outage does not turn the password
+        // form back on behind the operator's back.
+        password_login_enabled: !oidc.password_login_disabled(),
     })
 }
 
@@ -315,14 +320,10 @@ pub async fn sso_config(oidc: web::Data<Option<OidcService>>) -> impl Responder 
 ))]
 /// Create a one-time OIDC authorization request and retain its protections in
 /// the session.
-pub async fn sso_start(
-    oidc: web::Data<Option<OidcService>>,
-    session: Session,
-) -> AppResult<impl Responder> {
+pub async fn sso_start(oidc: web::Data<OidcState>, session: Session) -> AppResult<impl Responder> {
     let service = oidc
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::NotFound("SSO is not configured".to_string()))?;
+        .service()
+        .ok_or_else(|| AppError::NotFound("SSO is not configured or unreachable".to_string()))?;
     let authorization = service.authorization_url()?;
 
     session.renew();
@@ -424,14 +425,13 @@ async fn handle_sso_callback(
 pub async fn sso_callback(
     req: HttpRequest,
     pool: web::Data<DbPool>,
-    oidc: web::Data<Option<OidcService>>,
+    oidc: web::Data<OidcState>,
     session: Session,
     query: web::Query<SsoCallbackQuery>,
 ) -> AppResult<HttpResponse> {
     let service = oidc
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::NotFound("SSO is not configured".to_string()))?;
+        .service()
+        .ok_or_else(|| AppError::NotFound("SSO is not configured or unreachable".to_string()))?;
 
     let wants_html = req
         .headers()
@@ -439,7 +439,7 @@ pub async fn sso_callback(
         .and_then(|v| v.to_str().ok())
         .is_some_and(|accept| accept.contains("text/html"));
 
-    match handle_sso_callback(pool.get_ref(), service, &session, &query).await {
+    match handle_sso_callback(pool.get_ref(), &service, &session, &query).await {
         Ok(CallbackResult::NeedsPassword(pending)) => {
             session
                 .insert(OIDC_PENDING_LINK_KEY, pending)
@@ -502,14 +502,10 @@ fn pending_link(session: &Session) -> AppResult<PendingLink> {
     security(()),
 ))]
 /// The account an SSO login matched, shown while its owner confirms.
-pub async fn sso_link(
-    oidc: web::Data<Option<OidcService>>,
-    session: Session,
-) -> AppResult<HttpResponse> {
+pub async fn sso_link(oidc: web::Data<OidcState>, session: Session) -> AppResult<HttpResponse> {
     let service = oidc
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::NotFound("SSO is not configured".to_string()))?;
+        .service()
+        .ok_or_else(|| AppError::NotFound("SSO is not configured or unreachable".to_string()))?;
     let pending = pending_link(&session)?;
     Ok(HttpResponse::Ok().json(SsoLinkResponse {
         email: pending.email,
@@ -535,14 +531,13 @@ pub async fn sso_link(
 /// is given, and sign in. A wrong password keeps the link pending for a retry.
 pub async fn confirm_sso_link(
     pool: web::Data<DbPool>,
-    oidc: web::Data<Option<OidcService>>,
+    oidc: web::Data<OidcState>,
     session: Session,
     req: web::Json<ConfirmSsoLinkRequest>,
 ) -> AppResult<HttpResponse> {
     let service = oidc
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::NotFound("SSO is not configured".to_string()))?;
+        .service()
+        .ok_or_else(|| AppError::NotFound("SSO is not configured or unreachable".to_string()))?;
     let pending = pending_link(&session)?;
     let identity = crate::models::user::OidcIdentity {
         issuer: pending.issuer,
