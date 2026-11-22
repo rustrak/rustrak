@@ -440,6 +440,11 @@ export type CheckInResponse = {
     duration_ms: number | null;
     environment: string;
     expected_time: string | null;
+    /**
+     * The `check_in_id` the job sent, or one the server made when it sent
+     * none: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not
+     * necessarily an RFC 4122 UUID.
+     */
     id: string;
     status: CheckInStatus;
 };
@@ -2774,7 +2779,8 @@ export type TransactionStatsResponse = {
      */
     count: number;
     /**
-     * Fraction (0.0–1.0) of transactions whose trace status is set and not "ok".
+     * Fraction (0.0–1.0) of transactions whose trace status is set and
+     * neither `ok`, `cancelled` nor `unknown`.
      */
     failure_rate: number;
     last_seen: string;
@@ -8119,6 +8125,11 @@ export type MonitorsListCheckinsResponses = {
             duration_ms: number | null;
             environment: string;
             expected_time: string | null;
+            /**
+             * The `check_in_id` the job sent, or one the server made when it sent
+             * none: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not
+             * necessarily an RFC 4122 UUID.
+             */
             id: string;
             status: CheckInStatus;
         }>;
@@ -8856,7 +8867,8 @@ export type TransactionsGetStatsResponses = {
              */
             count: number;
             /**
-             * Fraction (0.0–1.0) of transactions whose trace status is set and not "ok".
+             * Fraction (0.0–1.0) of transactions whose trace status is set and
+             * neither `ok`, `cancelled` nor `unknown`.
              */
             failure_rate: number;
             last_seen: string;

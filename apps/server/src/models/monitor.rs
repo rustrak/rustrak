@@ -449,6 +449,10 @@ impl MonitorFailure {
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CheckInResponse {
+    /// The `check_in_id` the job sent, or one the server made when it sent
+    /// none: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not
+    /// necessarily an RFC 4122 UUID.
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub id: uuid::Uuid,
     pub environment: String,
     pub status: CheckInStatus,

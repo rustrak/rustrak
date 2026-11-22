@@ -65,6 +65,7 @@ watching that test, and only that test, go red.
 | The chosen language is kept on the account | `settings` | The language not saved |
 | An invited member sets a password and is signed in | `team` | Accepting that does not sign in |
 | On a phone, the tab bar reaches an issue | `mobile` | The tab pointing elsewhere |
+| On a phone, a settings header keeps its title whole | `mobile` | Actions crushing the title to an ellipsis (#579) |
 
 Not here, on purpose: validation messages, formatting, a component's states,
 every filter and every column. Those are Vitest's (`src/**/*.test.ts`) or the

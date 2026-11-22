@@ -10252,7 +10252,7 @@
                           },
                           "id": {
                             "type": "string",
-                            "format": "uuid"
+                            "description": "The `check_in_id` the job sent, or one the server made when it sent\nnone: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not\nnecessarily an RFC 4122 UUID."
                           },
                           "status": {
                             "$ref": "#/components/schemas/CheckInStatus"
@@ -11946,7 +11946,7 @@
                           "failure_rate": {
                             "type": "number",
                             "format": "double",
-                            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and not \"ok\"."
+                            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and\nneither `ok`, `cancelled` nor `unknown`."
                           },
                           "last_seen": {
                             "type": "string",
@@ -17078,7 +17078,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "description": "The `check_in_id` the job sent, or one the server made when it sent\nnone: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not\nnecessarily an RFC 4122 UUID."
           },
           "status": {
             "$ref": "#/components/schemas/CheckInStatus"
@@ -22363,7 +22363,7 @@
           "failure_rate": {
             "type": "number",
             "format": "double",
-            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and not \"ok\"."
+            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and\nneither `ok`, `cancelled` nor `unknown`."
           },
           "last_seen": {
             "type": "string",
