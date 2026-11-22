@@ -18,7 +18,7 @@ use openidconnect::{
     JsonWebKeyId, JsonWebKeySetUrl, Nonce, PrivateSigningKey, ResponseTypes, StandardClaims,
     StandardTokenResponse, SubjectIdentifier, TokenUrl,
 };
-use rustrak::auth::{OidcService, SsoClaims};
+use rustrak::auth::{OidcService, OidcState, SsoClaims};
 use rustrak::config::OidcConfig;
 use rustrak::services::UsersService;
 use serde_json::Value;
@@ -332,7 +332,13 @@ async fn rustrak_app(
     oidc: Option<OidcService>,
 ) -> impl Service<actix_http::Request, Response = ServiceResponse, Error = actix_web::Error> {
     let mut state = crate::common::state(pool, crate::common::config()).await;
-    state.oidc = web::Data::new(oidc);
+    // What a settled discovery leaves behind: the settings the service was
+    // discovered with, plus the provider. Tests of the retry path build the
+    // undiscovered state themselves.
+    state.oidc = web::Data::new(match oidc {
+        Some(service) => OidcState::configured(service.config().clone()).discovered(service),
+        None => OidcState::disabled(),
+    });
     crate::common::app_with(&state).await
 }
 
@@ -463,6 +469,133 @@ async fn test_sso_config_reports_the_provider_only_when_configured() {
     )
     .await;
     assert_eq!(start.status(), 404);
+}
+
+/// The state the server now starts with when the provider is unreachable:
+/// the settings are known, the provider is not, and everything else serves.
+fn undiscovered_settings(issuer_url: &str) -> OidcConfig {
+    OidcConfig {
+        issuer_url: issuer_url.to_string(),
+        client_id: CLIENT_ID.to_string(),
+        client_secret: CLIENT_SECRET.to_string(),
+        redirect_url: REDIRECT_URL.to_string(),
+        provider_name: "Pocket ID".to_string(),
+        scopes: vec!["openid".into(), "email".into(), "profile".into()],
+        allowed_domains: Vec::new(),
+        auto_provision: true,
+        require_email_verified: true,
+        link_existing_accounts: false,
+        groups_claim: "groups".to_string(),
+        admin_groups: Vec::new(),
+        group_roles: Vec::new(),
+        additional_trusted_audiences: Vec::new(),
+        disable_password_login: false,
+    }
+}
+
+#[actix_web::test]
+async fn test_startup_survives_a_provider_that_cannot_be_reached() {
+    // Every other test's provider is up before its state is built. This is
+    // the case from #360: a provider that is down at boot must not stop
+    // ingest, password login, or the dashboard.
+    let db = TestDb::new().await;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let unreachable = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    drop(listener);
+
+    let config = undiscovered_settings(&unreachable);
+    let mut state = crate::common::state(&db.pool, crate::common::config()).await;
+    state.oidc = web::Data::new(OidcState::configured(config));
+    // What main does after building the state: start discovery, which is
+    // still failing every time at this point, and carry on serving.
+    state.spawn_oidc_discovery();
+    let app = crate::common::app_with(&state).await;
+
+    // The API answers, not a 5xx, on a route with no auth to complicate.
+    let health =
+        test::call_service(&app, test::TestRequest::get().uri("/health").to_request()).await;
+    assert_eq!(health.status(), 200);
+
+    // SSO reports itself unavailable, and its endpoints refuse rather than
+    // pretend a login can be started.
+    let body: Value = test::call_and_read_body_json(
+        &app,
+        test::TestRequest::get()
+            .uri("/auth/sso/config")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(body["enabled"], false);
+    // The label survives, so the page can name the provider it waits for.
+    assert_eq!(body["provider_name"], "Pocket ID");
+    // From the settings: the operator's choice does not flip during an outage.
+    assert_eq!(body["password_login_enabled"], true);
+
+    let start = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/sso/start")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(start.status(), 404);
+}
+
+#[actix_web::test]
+async fn test_a_discovery_failure_no_retry_can_fix_gives_up() {
+    // A cleartext issuer on something other than localhost is a settings
+    // mistake, not an outage: retrying it would log the same line forever.
+    let db = TestDb::new().await;
+    let state = OidcState::configured(undiscovered_settings("http://idp.example.com"));
+    // Returns instead of looping, which is the observable difference.
+    rustrak::auth::discover_with_retry(state.clone()).await;
+    let mut built = crate::common::state(&db.pool, crate::common::config()).await;
+    built.oidc = web::Data::new(state);
+    let app = crate::common::app_with(&built).await;
+
+    let body: Value = test::call_and_read_body_json(
+        &app,
+        test::TestRequest::get()
+            .uri("/auth/sso/config")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(body["enabled"], false);
+    // The password path stays as the operator left it.
+    assert_eq!(body["password_login_enabled"], true);
+}
+
+#[actix_web::test]
+async fn test_a_late_provider_enables_sso_without_a_restart() {
+    // The other half of #360: once the provider is reachable the server is
+    // already running, so discovery has to finish in the background and the
+    // handlers have to see the result.
+    let db = TestDb::new().await;
+    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+
+    let state = OidcState::configured(provider.config());
+    // The same retry `main` starts in the background, awaited here so the
+    // test observes the settled state.
+    rustrak::auth::discover_with_retry(state.clone()).await;
+    let mut built = crate::common::state(&db.pool, crate::common::config()).await;
+    built.oidc = web::Data::new(state);
+    let app_state = crate::common::app_with(&built).await;
+
+    let body: Value = test::call_and_read_body_json(
+        &app_state,
+        test::TestRequest::get()
+            .uri("/auth/sso/config")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(body["enabled"], true);
+
+    // And the login actually works through the state the handlers hold: the
+    // browser callback redirects home with a session, after provisioning.
+    let login = start_login(&app_state).await;
+    let resp = browser_callback(&app_state, login.cookie, &login.callback_query).await;
+    assert_eq!(location(&resp), "/");
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 1);
 }
 
 #[actix_web::test]

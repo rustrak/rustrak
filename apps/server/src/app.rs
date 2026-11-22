@@ -9,7 +9,7 @@ use actix_web::body::MessageBody;
 use actix_web::dev::{ServiceFactory, ServiceRequest, ServiceResponse};
 use actix_web::{middleware, web, App};
 
-use crate::auth::OidcService;
+use crate::auth::{OidcService, OidcState};
 use crate::config::Config;
 use crate::db::DbPool;
 use crate::digest::processors::Processors;
@@ -37,7 +37,7 @@ pub const SESSION_COOKIE: &str = "rustrak_session";
 pub struct AppState {
     pub config: web::Data<Config>,
     pub pool: web::Data<DbPool>,
-    pub oidc: web::Data<Option<OidcService>>,
+    pub oidc: web::Data<OidcState>,
     pub sourcemap_store: web::Data<Arc<dyn SourceMapStore>>,
     pub sourcemap_provider: web::Data<Arc<dyn SourceMapProvider>>,
     pub assembly_queue: web::Data<AssemblyQueue>,
@@ -62,31 +62,34 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Prepares the ingest directory and, with SSO configured, discovers the
-    /// provider; nothing is spawned.
+    /// Prepares the ingest directory and takes SSO's settings; the provider
+    /// is discovered afterwards, in [`AppState::spawn_oidc_discovery`], so a
+    /// provider that is unreachable at boot cannot stop error ingest.
     pub async fn build(config: Config, pool: DbPool) -> std::io::Result<Self> {
         crate::ingest::prepare_ingest_dir(&config.ingest_dir)
             .await
             .map_err(|e| std::io::Error::other(format!("Ingest directory error: {e}")))?;
 
         let oidc = match config.oidc.clone() {
-            Some(oidc) => {
-                if oidc.admits_any_provider_account() {
-                    log::warn!(
-                        "OIDC_AUTO_PROVISION is on with no OIDC_ALLOWED_DOMAINS: anyone with an account at {} can sign in",
-                        oidc.issuer_url
-                    );
-                }
-                let service = OidcService::discover(oidc).await.map_err(|e| {
+            Some(settings) => {
+                // A malformed or cleartext issuer would never succeed on a
+                // retry, so it stays a startup error; only the network is
+                // allowed to fail and be retried.
+                OidcService::validate_config(&settings).map_err(|e| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         format!("OIDC configuration error: {e}"),
                     )
                 })?;
-                log::info!("OpenID Connect SSO enabled ({})", service.provider_name());
-                Some(service)
+                if settings.admits_any_provider_account() {
+                    log::warn!(
+                        "OIDC_AUTO_PROVISION is on with no OIDC_ALLOWED_DOMAINS: anyone with an account at {} can sign in",
+                        settings.issuer_url
+                    );
+                }
+                OidcState::configured(settings)
             }
-            None => None,
+            None => OidcState::disabled(),
         };
 
         let sourcemap_store: Arc<dyn SourceMapStore> =
@@ -193,6 +196,21 @@ impl AppState {
         });
     }
 
+    /// Starts SSO's discovery, which retries until the provider answers.
+    ///
+    /// It runs off the startup path on purpose: the server is up before the
+    /// provider is reached, so a provider that is down, slow or not started
+    /// yet delays neither ingest nor password login. `/auth/sso/config`
+    /// answers "not enabled" until discovery succeeds, and the login page can
+    /// hide the provider button for that time without a restart afterwards.
+    pub fn spawn_oidc_discovery(&self) {
+        if self.oidc.config().is_none() {
+            return;
+        }
+        let oidc = self.oidc.get_ref().clone();
+        crate::auth::spawn_discovery(oidc);
+    }
+
     /// Starts every background task: source map assembly, session flushes,
     /// digest recovery, the scheduler, alert retries and, when it is on, the
     /// telemetry reporter. Each long-lived one is [`supervise`]d.
@@ -200,6 +218,7 @@ impl AppState {
         let pool = self.pool.get_ref().clone();
 
         self.spawn_assembly_worker();
+        self.spawn_oidc_discovery();
         supervise("session flusher", {
             let sessions = Arc::clone(&self.session_aggregator);
             move || Arc::clone(&sessions).run()
