@@ -617,20 +617,31 @@ async fn test_a_late_provider_enables_sso_without_a_restart() {
     .await;
     assert_eq!(start.status(), 404);
 
-    // Discovery starts while nothing listens, as `main` does at boot, so its
-    // first attempt fails and only the retry can install the service. The
-    // backoff is shortened so the test does not wait out production's 30s.
+    // Discovery starts against a provider that is down, as `main` does at
+    // boot, so its first attempt fails and only the retry can install the
+    // service. The port is held by a listener that hangs up on the first
+    // connection: that accept is the proof the failed attempt happened, so the
+    // provider below can only be reached by a retry. The backoff is shortened
+    // so the test does not wait out production's 30s.
+    let down = TcpListener::bind(addr).unwrap();
+    let (attempted, first_attempt) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = down.accept();
+        drop(down);
+        let _ = attempted.send(());
+    });
     let discovery = actix_web::rt::spawn(rustrak::auth::discover_with_policy(
         state.clone(),
         std::time::Duration::from_millis(200),
         std::time::Duration::from_secs(10),
     ));
-    // A refused connection fails in well under the backoff; the provider
-    // arrives after that first attempt and before the retry.
-    actix_web::rt::time::sleep(std::time::Duration::from_millis(50)).await;
+    actix_web::rt::time::timeout(std::time::Duration::from_secs(5), first_attempt)
+        .await
+        .expect("discovery must try the provider while it is down")
+        .unwrap();
     assert!(
         state.service().is_none(),
-        "the first attempt must fail while no provider listens"
+        "the first attempt must fail while the provider is down"
     );
     let provider = FakeProvider::start_on(addr, person("sub-1", "owner@example.com")).await;
 
