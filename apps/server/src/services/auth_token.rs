@@ -8,6 +8,14 @@ use crate::models::{AuthToken, CreateAuthToken, Permission};
 
 pub struct AuthTokenService;
 
+/// A token `rustrak.toml` declares: its name there, its raw value and its
+/// description.
+pub struct DeclaredToken<'a> {
+    pub name: &'a str,
+    pub raw: &'a str,
+    pub description: Option<&'a str>,
+}
+
 const COLUMNS: &str = "id, token, token_prefix, description, user_id, created_at, last_used_at, expires_at, all_permissions, all_projects";
 
 /// The form a token is stored and looked up in.
@@ -206,6 +214,103 @@ impl AuthTokenService {
             .execute(pool)
             .await?;
         Ok(())
+    }
+
+    /// Makes the instance tokens `rustrak.toml` declares exactly the ones in
+    /// `declared`, in one transaction: a name no longer declared is revoked, a
+    /// new one is created, and one whose value or description changed is
+    /// updated in place (a new value revokes the old one: that is how a
+    /// declared token rotates). Tokens created any other way are never
+    /// touched, and a refusal leaves every declared token as it was. Returns
+    /// the names revoked.
+    pub async fn sync_declared(
+        pool: &DbPool,
+        declared: &[DeclaredToken<'_>],
+    ) -> AppResult<Vec<String>> {
+        let mut tx = pool.begin().await?;
+        let stored: Vec<(i32, String, String, Option<String>)> = sqlx::query_as(
+            "SELECT id, config_name, token, description FROM auth_tokens \
+             WHERE config_name IS NOT NULL",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let mut revoked = Vec::new();
+        for (id, name, _, _) in &stored {
+            if !declared.iter().any(|d| d.name == name) {
+                sqlx::query("DELETE FROM auth_tokens WHERE id = $1")
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                revoked.push(name.clone());
+            }
+        }
+
+        // A changed value may still be another declared row's (two names
+        // swapping values, say), and `token` is unique: every changing row
+        // first gives its value up for a placeholder no hash can equal.
+        let wanted: Vec<(&DeclaredToken<'_>, String)> =
+            declared.iter().map(|d| (d, hash(d.raw))).collect();
+        for (d, hashed) in &wanted {
+            if let Some((id, ..)) = stored
+                .iter()
+                .find(|(_, name, token, _)| name == d.name && token != hashed)
+            {
+                sqlx::query("UPDATE auth_tokens SET token = $1 WHERE id = $2")
+                    .bind(format!("rotating-{id}"))
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+
+        for (d, hashed) in &wanted {
+            let current = stored.iter().find(|(_, name, ..)| name == d.name);
+            let result = match current {
+                Some((_, _, token, desc)) if token == hashed && desc.as_deref() == d.description => {
+                    continue;
+                }
+                Some((id, ..)) => {
+                    sqlx::query(
+                        "UPDATE auth_tokens SET token = $1, token_prefix = $2, description = $3 \
+                         WHERE id = $4",
+                    )
+                    .bind(hashed)
+                    .bind(&d.raw[..8])
+                    .bind(d.description)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await
+                }
+                None => {
+                    sqlx::query(
+                        "INSERT INTO auth_tokens \
+                         (token, token_prefix, description, user_id, all_permissions, all_projects, config_name) \
+                         VALUES ($1, $2, $3, NULL, TRUE, TRUE, $4)",
+                    )
+                    .bind(hashed)
+                    .bind(&d.raw[..8])
+                    .bind(d.description)
+                    .bind(d.name)
+                    .execute(&mut *tx)
+                    .await
+                }
+            };
+            match result {
+                Ok(_) => {}
+                // Never the value in the message: it is a credential.
+                Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+                    return Err(AppError::Conflict(format!(
+                        "token {:?}: its value is already another API token's",
+                        d.name
+                    )));
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        tx.commit().await?;
+        Ok(revoked)
     }
 
     /// Checks if any tokens exist (for bootstrap check)

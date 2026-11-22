@@ -1,7 +1,7 @@
 use actix_web::HttpServer;
 
 use rustrak::app::{app, AppState};
-use rustrak::bootstrap;
+use rustrak::bootstrap::{self, file::BootstrapFile};
 use rustrak::config;
 use rustrak::db;
 use rustrak::models;
@@ -41,6 +41,7 @@ fn main() -> std::io::Result<()> {
         log::error!("Configuration error: {}", e);
         std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
     })?;
+    let bootstrap_file = load_bootstrap_file(&config)?;
 
     // Capped so Tokio does not start a thread whenever none is idle, each
     // holding an allocator heap. Room for the live digest's and recovery's
@@ -53,10 +54,13 @@ fn main() -> std::io::Result<()> {
             .build()
             .expect("cannot start the main runtime")
     })
-    .block_on(serve(config))
+    .block_on(serve(config, bootstrap_file))
 }
 
-async fn serve(config: config::Config) -> std::io::Result<()> {
+async fn serve(
+    config: config::Config,
+    bootstrap_file: Option<BootstrapFile>,
+) -> std::io::Result<()> {
     log::info!("Starting Rustrak server on {}:{}", config.host, config.port);
     rustrak::services::notification::allow_private_destinations(
         config.alerts_allow_private_networks,
@@ -100,6 +104,14 @@ async fn serve(config: config::Config) -> std::io::Result<()> {
         Ok(0) => {}
         Ok(n) => log::info!("Hashed {n} API token(s) stored before tokens were hashed"),
         Err(e) => log::error!("Failed to hash stored API tokens: {e}"),
+    }
+    // Before anything else creates a project or a token, so the file's ids
+    // and names are the ones it gets.
+    if let Some(file) = &bootstrap_file {
+        bootstrap::apply(&db_pool, file).await.map_err(|e| {
+            log::error!("rustrak.toml: {e}");
+            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+        })?;
     }
     if config.bootstrap_token {
         bootstrap_token(&db_pool).await;
@@ -222,6 +234,33 @@ async fn stop_signal() -> i32 {
         let _ = tokio::signal::ctrl_c().await;
         SIGINT_EXIT
     }
+}
+
+/// Reads `rustrak.toml` when `RUSTRAK_CONFIG` names one, before the database
+/// is opened: a mistake in it stops the server before anything is written.
+fn load_bootstrap_file(config: &config::Config) -> std::io::Result<Option<BootstrapFile>> {
+    let Some(path) = &config.config_file else {
+        return Ok(None);
+    };
+    let refuse = |message: String| {
+        log::error!("{message}");
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, message)
+    };
+    let file = BootstrapFile::load(path).map_err(|e| refuse(e.to_string()))?;
+    // Two first owners, and nothing says which one was meant.
+    if file.superuser.is_some()
+        && config
+            .create_superuser
+            .as_deref()
+            .is_some_and(|s| !s.is_empty())
+    {
+        return Err(refuse(format!(
+            "{}: [bootstrap.superuser] and CREATE_SUPERUSER are both set; keep one",
+            path.display()
+        )));
+    }
+    log::info!("Read {}", path.display());
+    Ok(Some(file))
 }
 
 /// Creates a first API token when none exists.

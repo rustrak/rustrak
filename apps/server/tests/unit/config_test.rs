@@ -796,3 +796,28 @@ fn alerts_reach_private_networks_only_when_switched_on() {
         );
     }
 }
+
+/// `RUSTRAK_CONFIG` names the declarative bootstrap file; unset or blank, there is none.
+#[test]
+fn rustrak_config_names_the_bootstrap_file() {
+    for (value, expected) in [
+        (None, None),
+        (Some("  "), None),
+        (
+            Some("/etc/rustrak/rustrak.toml"),
+            Some("/etc/rustrak/rustrak.toml"),
+        ),
+    ] {
+        let mut env = EnvGuard::new();
+        env.set("DATABASE_URL", "postgres://test:test@localhost/test")
+            .set_opt("RUSTRAK_CONFIG", value);
+
+        let config = Config::from_env().expect("Config::from_env() should succeed");
+
+        assert_eq!(
+            config.config_file.as_deref(),
+            expected.map(std::path::Path::new),
+            "{value:?}"
+        );
+    }
+}

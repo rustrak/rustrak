@@ -1,0 +1,206 @@
+---
+description: "Declare Rustrak's first owner, its projects with fixed DSNs, and its API tokens in rustrak.toml, so an instance can be rebuilt from code."
+---
+
+# Bootstrap file
+
+`rustrak.toml` declares what an instance starts with: its first owner, its
+projects and its API tokens. The server applies it at every start, before it
+listens. A project's `id` and `sentry_key` are fixed in the file, so its DSN is
+known **before the server ever starts** and Compose, Helm or Aspire can hand it
+to your applications as a plain environment variable.
+
+```bash
+RUSTRAK_CONFIG=/etc/rustrak/rustrak.toml
+```
+
+Without `RUSTRAK_CONFIG` (unset or blank) no file is read and nothing below
+happens. If it names a file that does not exist or cannot be read, the server
+does not start.
+
+```toml
+[bootstrap.superuser]
+email = "admin@example.com"
+password = "change-me"
+
+[[bootstrap.projects]]
+id = 1
+name = "Storefront"
+slug = "storefront"
+sentry_key = "0123456789abcdef0123456789abcdef"
+platform = "javascript-nextjs"
+disabled_products = ["logs"]
+
+[[bootstrap.projects]]
+id = 2
+name = "Billing API"          # slug derived from the name, random key
+
+[[bootstrap.tokens]]
+name = "ci"
+token = "0123456789abcdef0123456789abcdef01234567"
+description = "Deploys from CI"
+```
+
+Project 1 above always has this DSN, built from `PUBLIC_URL`'s scheme and
+host (and port, if it has one):
+
+```
+<scheme>://0123456789abcdef0123456789abcdef@<host>/1
+```
+
+With `PUBLIC_URL=https://errors.example.com` that is
+`https://0123456789abcdef0123456789abcdef@errors.example.com/1`.
+
+The file has one section, `[bootstrap]`. Any other section (`[server]`,
+`[database]`…) or any field not listed on this page stops the server, so a
+typo is never silently ignored. Server settings are still
+[environment variables](/configuration/environment).
+
+## `[bootstrap.superuser]`
+
+The first owner, created only on an instance with no users yet, exactly like
+`CREATE_SUPERUSER`. Once anyone exists it is ignored: changing the password
+here later changes nothing. Set either this block or `CREATE_SUPERUSER`, not
+both (an empty `CREATE_SUPERUSER=` counts as unset).
+
+| Field | Required | Value |
+|---|---|---|
+| `email` | yes | A valid email address. Surrounding spaces are trimmed and it is lowercased. |
+| `password` | one of the two | The password, written here. Cannot be empty; may contain any character, `:` included. |
+| `password_file` | one of the two | Path of a file holding the password. See [Secrets](#secrets). |
+
+## `[[bootstrap.projects]]`
+
+One block per project. A project is identified by its `id`.
+
+| Field | Required | Value | On every start |
+|---|---|---|---|
+| `id` | yes | Positive integer, unique in the file. It is the number at the end of the DSN. | Identity: never changes. |
+| `name` | yes | Not blank, at most 255 bytes, unique in the file. Surrounding spaces are trimmed. | Set to this value. |
+| `slug` | no | Any text with at least one letter or digit; it is stored slugified (`"My App"` becomes `my-app`). Unique in the file once slugified. Omitted: derived from the name when the project is created. | Set to this value if given. If omitted, never changed after creation, even when the name changes. |
+| `sentry_key` | no | The DSN's 32 hexadecimal characters, or the same UUID with hyphens. Unique in the file. Omitted: a random key when the project is created. | Must match the stored key, or the server does not start. Never changed. |
+| `platform` | no | One of the [platform ids](#platforms). | Set to this value if given. If omitted, whatever the dashboard set is kept. |
+| `disabled_products` | no | A list of `feedback`, `releases`, `performance`, `agents`, `logs`, `crons`. Never `issues`. | Set to this list if given, in any order. `[]` turns them all back on. If omitted, whatever the dashboard set is kept. |
+
+What happens to a project on a start:
+
+- **Not in the database yet:** created with the declared id and key.
+- **Already there:** the fields above are brought in line with the file.
+  Nothing is written when nothing differs.
+- **Its key is different from the stored one:** the server refuses to start
+  rather than cut off every client using the DSN. The same happens when the
+  id belongs to a project made in the dashboard with another key. A key
+  never changes.
+- **Removed from the file:** the project and its events stay. It is no longer
+  managed by the file. Removing a line never deletes data.
+- **Deleted from the dashboard:** while its data is still being removed, a
+  start skips it with a warning; the first start after that creates it again,
+  empty, with the same id. It keeps its DSN only if the file declares its
+  `sentry_key`; without one it gets a new random key.
+- **Its `slug` or `sentry_key` is already another project's:** the server
+  does not start, and the message names the conflict.
+
+Projects created later from the dashboard get ids after the highest one in
+use, so they never collide with an id from the file.
+
+<details>
+<summary id="platforms">Platform ids</summary>
+
+`android` `apple` `apple-ios` `apple-macos` `as3` `bun` `c` `capacitor`
+`cfml` `cocoa` `cordova` `csharp` `dart` `deno` `dotnet` `dotnet-aspnet`
+`dotnet-aspnetcore` `dotnet-awslambda` `dotnet-gcpfunctions` `dotnet-maui`
+`dotnet-uwp` `dotnet-winforms` `dotnet-wpf` `dotnet-xamarin` `electron`
+`elixir` `flutter` `go` `go-echo` `go-fasthttp` `go-fiber` `go-gin`
+`go-http` `go-iris` `go-martini` `go-negroni` `godot` `groovy` `haskell`
+`ionic` `java` `java-log4j2` `java-logback` `java-spring`
+`java-spring-boot` `javascript` `javascript-angular` `javascript-astro`
+`javascript-ember` `javascript-gatsby` `javascript-nextjs`
+`javascript-nuxt` `javascript-react` `javascript-react-router`
+`javascript-remix` `javascript-solid` `javascript-solidstart`
+`javascript-svelte` `javascript-sveltekit` `javascript-tanstackstart-react`
+`javascript-vue` `kotlin` `minidump` `native` `native-qt`
+`nintendo-switch` `node` `node-awslambda` `node-azurefunctions`
+`node-cloudflare-pages` `node-cloudflare-workers` `node-connect`
+`node-express` `node-fastify` `node-gcpfunctions` `node-hapi` `node-hono`
+`node-koa` `node-nestjs` `objc` `other` `perl` `php` `php-laravel`
+`php-symfony` `playstation` `powershell` `python` `python-aiohttp`
+`python-asgi` `python-awslambda` `python-bottle` `python-celery`
+`python-chalice` `python-django` `python-falcon` `python-fastapi`
+`python-flask` `python-gcpfunctions` `python-litestar` `python-pylons`
+`python-pymongo` `python-pyramid` `python-quart` `python-rq`
+`python-sanic` `python-serverless` `python-starlette` `python-tornado`
+`python-tryton` `python-wsgi` `react-native` `ruby` `ruby-rack`
+`ruby-rails` `rust` `unity` `unreal` `xbox`
+
+</details>
+
+## `[[bootstrap.tokens]]`
+
+One block per API token. A token is identified by its `name` and acts on the
+whole instance with every permission, like the one `RUSTRAK_BOOTSTRAP_TOKEN`
+creates. Use it as `Authorization: Bearer <token>`.
+
+| Field | Required | Value | On every start |
+|---|---|---|---|
+| `name` | yes | Not blank, at most 255 bytes, unique in the file. Surrounding spaces are trimmed. | Identity. |
+| `token` | one of the two | 40 lowercase hexadecimal characters (`openssl rand -hex 20`), different from every other token's. | Set to this value. |
+| `token_file` | one of the two | Path of a file holding the token. See [Secrets](#secrets). | Same as `token`. |
+| `description` | no | Free text, shown in the dashboard's token list. | Set to this value. |
+
+For tokens the file is the source of truth:
+
+- **A new value under the same name** replaces the old one, which stops
+  working at once: that is how you rotate it.
+- **A name removed from the file** revokes its token on the next start. An
+  empty `[bootstrap]`, or a file with no tokens, revokes them all.
+- **Deleted from the dashboard:** it works again after the next start, since
+  the file still declares it. Remove it from the file to revoke it for good.
+- Tokens created in the dashboard are never touched.
+- A value that already belongs to a token created in the dashboard stops the
+  server.
+- Tokens are applied all at once: if one is refused, none of the others
+  change either. Two names may swap values.
+
+> **Unsetting `RUSTRAK_CONFIG` revokes nothing.** Revocation happens only
+> while a file is being applied. Turning the file off leaves every token it
+> created valid; revoke those from the dashboard, or apply a file without
+> them first.
+
+## Secrets
+
+`password` and `token` can be written in the file or read from another file
+with `password_file` and `token_file`, the way Docker and Kubernetes mount
+secrets. Set exactly one of the two: both, or neither, stops the server.
+
+The `_file` form keeps the secret out of `rustrak.toml`, which is often in a
+repository or a ConfigMap. Its path is absolute or relative to the server's
+working directory, the file is read once at startup, and trailing line breaks
+(`\n`, `\r\n`) are dropped. Nothing else is trimmed: spaces are part of the
+secret.
+
+Error messages and logs name the field and the line, never the value, even
+when the value is of the wrong type.
+
+## Errors stop the server
+
+The file is checked before the database is opened. Any of these stops the
+server with the line and the reason:
+
+- a TOML syntax error, an unknown section or an unknown field;
+- a missing required field, or a value of the wrong type;
+- two projects with the same `id`, `name`, `slug` or `sentry_key`;
+- two tokens with the same `name` or the same value;
+- a `name` over 255 bytes, a `slug` with no letter or digit or over 100
+  characters, a malformed
+  `sentry_key` or token, an unknown `platform`, or `issues` in
+  `disabled_products`;
+- a `_file` that cannot be read.
+
+What depends on the database is checked next: a key that does not match the
+stored one, a `slug` or key taken by another project, an invalid superuser
+email, or a token value that is already
+another token's. Every key is checked before anything is written. Renames
+are applied together, so declared projects can exchange names and slugs, and
+so are the tokens; a refusal in either changes none of them. Otherwise the
+superuser and each project are applied on their own, so after a fix the next
+start picks up where the last one stopped.

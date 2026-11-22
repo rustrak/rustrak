@@ -1,4 +1,5 @@
 export default {
+  'bootstrap-file': 'Bootstrap File',
   database: 'Database Backends',
   environment: 'Environment Variables',
   github: 'GitHub',
