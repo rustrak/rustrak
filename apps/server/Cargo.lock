@@ -4708,6 +4708,7 @@ dependencies = [
  "rustrak",
  "schemars 1.2.3",
  "sentry",
+ "sentry-release-parser",
  "serde",
  "serde_json",
  "sha1",
@@ -4990,6 +4991,16 @@ checksum = "2ab095af8f107e893941f857d8e204f5d25404247c34af131c7d199e3021679f"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
+]
+
+[[package]]
+name = "sentry-release-parser"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c98f1c38deb5d037aacfcbf6790951da8acba07b7e3a3c8b90df531f2d4ebae2"
+dependencies = [
+ "lazy_static",
+ "regex",
 ]
 
 [[package]]

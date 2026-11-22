@@ -187,7 +187,7 @@ pub struct SentryIssue {
     pub logger: Option<String>,
     pub level: String,
     pub status: String,
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[cfg_attr(feature = "openapi", schema(value_type = crate::models::issue::StatusDetails))]
     pub status_details: serde_json::Value,
     #[cfg_attr(feature = "openapi", schema(required))]
     pub substatus: Option<String>,
@@ -1091,6 +1091,9 @@ pub struct IssueUpdate {
     /// `resolved`, `unresolved`, `ignored`, `resolvedInNextRelease` or `muted`.
     pub status: Option<String>,
     pub substatus: Option<String>,
+    /// With `resolved`: `inNextRelease` or `inRelease`.
+    #[serde(default, rename = "statusDetails")]
+    pub status_details: Option<crate::models::StatusDetailsUpdate>,
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -1128,7 +1131,11 @@ pub async fn update_issue(
         Action::Update,
     )
     .await?;
-    let IssueUpdate { status, substatus } = body.into_inner();
+    let IssueUpdate {
+        status,
+        substatus,
+        status_details,
+    } = body.into_inner();
     let update = UpdateIssueState {
         // "muted" is Sentry's legacy name for "ignored" (`STATUS_UPDATE_CHOICES`).
         status: status.map(|s| {
@@ -1139,6 +1146,7 @@ pub async fn update_issue(
             }
         }),
         substatus,
+        status_details,
         ..Default::default()
     };
     crate::routes::issues::update_issue(

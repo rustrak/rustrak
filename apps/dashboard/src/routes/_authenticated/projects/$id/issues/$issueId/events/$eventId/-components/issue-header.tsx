@@ -1,6 +1,6 @@
 import type { IssueResponse } from '@rustrak/client';
 import { CopyIcon, cn, Tag, Text } from '@rustrak/ui';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { STATUS_TONE, statusDisplay } from '@/features/issue/model/status';
 import { IssueActionBar } from '@/features/issue/ui/components/issue-actions';
@@ -8,6 +8,7 @@ import { levelMark } from '@/shared/config/levels';
 import { useRelativeTime } from '@/shared/i18n/use-now';
 import { DetailHeader } from '@/shared/ui/components/detail-layout';
 import { useCopy } from '@/shared/ui/hooks/use-copy';
+import { ResolveInReleaseDialog } from './resolve-in-release-dialog';
 
 /**
  * The issue's identity and what can be done to it.
@@ -37,6 +38,7 @@ export function IssueHeader({
   const format = useFormatter();
   const relativeTime = useRelativeTime();
   const status = statusDisplay(issue);
+  const [choosingRelease, setChoosingRelease] = useState(false);
 
   const copyId = () => copy(issue.short_id, t('table.copied'));
 
@@ -116,6 +118,13 @@ export function IssueHeader({
         projectId={projectId}
         me={me}
         extra={github}
+        chooseRelease={() => setChoosingRelease(true)}
+      />
+      <ResolveInReleaseDialog
+        open={choosingRelease}
+        onOpenChange={setChoosingRelease}
+        issue={issue}
+        projectId={projectId}
       />
     </DetailHeader>
   );

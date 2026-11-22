@@ -161,6 +161,8 @@ mimalloc = "0.1.52"
 utoipa = { version = "6.0.0", features = ["actix_extras", "uuid", "chrono"], optional = true }
 utoipa-scalar = { version = "0.4.0", features = ["actix-web"], optional = true }
 croner = "4.0.3"
+# Sentry's release parser, the one Relay and Sentry compare versions with.
+sentry-release-parser = { version = "1.4.0", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 # statvfs: free disk before a SQLite compaction. Already built for `zip`.

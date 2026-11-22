@@ -68,6 +68,8 @@ interface IssueActionBarProps {
   me: number;
   /** The GitHub control, when the project has a repository. */
   extra?: ReactNode;
+  /** Opens the page's release picker, for "resolve in another release". */
+  chooseRelease?: () => void;
 }
 
 /**
@@ -84,6 +86,7 @@ export function IssueActionBar({
   projectId,
   me,
   extra,
+  chooseRelease,
 }: IssueActionBarProps) {
   const t = useTranslations('issues');
   const toastFailure = useToastFailure();
@@ -202,6 +205,13 @@ export function IssueActionBar({
           resolveInNextRelease={() =>
             update({ status: 'resolvedInNextRelease' })
           }
+          resolveInCurrentRelease={() =>
+            update({
+              status: 'resolved',
+              statusDetails: { inRelease: 'latest' },
+            })
+          }
+          chooseRelease={chooseRelease}
         />
       ) : null}
 
@@ -295,6 +305,8 @@ function TriageButtons({
   resolve,
   archive,
   resolveInNextRelease,
+  resolveInCurrentRelease,
+  chooseRelease,
 }: {
   resolved: boolean;
   archived: boolean;
@@ -303,6 +315,8 @@ function TriageButtons({
   resolve: () => void;
   archive: () => void;
   resolveInNextRelease: () => void;
+  resolveInCurrentRelease: () => void;
+  chooseRelease?: () => void;
 }) {
   const t = useTranslations('issues');
   return (
@@ -335,6 +349,20 @@ function TriageButtons({
               label: t('actions.resolveInNextRelease'),
               onSelect: resolveInNextRelease,
             },
+            {
+              id: 'current-release',
+              label: t('actions.resolveInCurrentRelease'),
+              onSelect: resolveInCurrentRelease,
+            },
+            ...(chooseRelease
+              ? [
+                  {
+                    id: 'another-release',
+                    label: t('actions.resolveInAnotherRelease'),
+                    onSelect: chooseRelease,
+                  },
+                ]
+              : []),
           ]}
         >
           {t('actions.resolve')}

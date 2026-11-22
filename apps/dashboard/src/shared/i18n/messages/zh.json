@@ -309,7 +309,9 @@
       "unsubscribe": "取消订阅",
       "deleteIssue": "删除问题",
       "markSpam": "标记为垃圾",
-      "moveToInbox": "移回收件箱"
+      "moveToInbox": "移回收件箱",
+      "resolveInCurrentRelease": "在当前版本中解决",
+      "resolveInAnotherRelease": "在其他版本中解决…"
     },
     "toasts": {
       "updateFailed": "更新问题失败",
@@ -364,7 +366,11 @@
       "reopenedOnGitHub": "在 GitHub 上重新打开了关联的 Issue",
       "githubCreated": "在 GitHub 上创建了 {ref}",
       "githubLinked": "关联了 {ref}",
-      "githubUnlinked": "取消关联了 {ref}"
+      "githubUnlinked": "取消关联了 {ref}",
+      "resolvedInNextRelease": "将此问题标记为在即将发布的版本中解决",
+      "resolvedInRelease": "将此问题标记为在 {version} 中解决",
+      "resolvedAfterRelease": "将此问题标记为在高于 {version} 的版本中解决",
+      "regressionInRelease": "在 {version} 中检测到回归"
     },
     "issueStatus": {
       "new": "新出现",
@@ -437,7 +443,22 @@
       "properties": "属性",
       "tags": "标签",
       "code": "代码",
-      "activity": "动态"
+      "activity": "动态",
+      "resolvedInNextRelease": "在下一个版本中",
+      "resolvedInRelease": "在 {version} 中"
+    },
+    "resolveInRelease": {
+      "title": "在某个版本中解决",
+      "description": "来自此版本或更高版本的事件会重新打开该问题，更早版本的事件不会。",
+      "label": "版本",
+      "placeholder": "选择一个版本",
+      "empty": "此项目还没有版本。",
+      "confirm": "解决",
+      "cancel": "取消",
+      "search": "搜索",
+      "searchPlaceholder": "按版本筛选",
+      "loadFailed": "无法加载版本",
+      "noMatch": "没有匹配的版本。"
     }
   },
   "roles": {

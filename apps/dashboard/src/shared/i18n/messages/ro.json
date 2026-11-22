@@ -309,7 +309,9 @@
       "unsubscribe": "Dezabonează-te",
       "deleteIssue": "Șterge problema",
       "markSpam": "Marchează ca spam",
-      "moveToInbox": "Mută în inbox"
+      "moveToInbox": "Mută în inbox",
+      "resolveInCurrentRelease": "Rezolvă în versiunea curentă",
+      "resolveInAnotherRelease": "Rezolvă în altă versiune…"
     },
     "toasts": {
       "updateFailed": "Actualizarea problemelor a eșuat",
@@ -364,7 +366,11 @@
       "reopenedOnGitHub": "a redeschis issue-ul legat pe GitHub",
       "githubCreated": "a creat {ref} pe GitHub",
       "githubLinked": "a legat {ref}",
-      "githubUnlinked": "a dezlegat {ref}"
+      "githubUnlinked": "a dezlegat {ref}",
+      "resolvedInNextRelease": "a marcat această problemă ca rezolvată în versiunea următoare",
+      "resolvedInRelease": "a marcat această problemă ca rezolvată în {version}",
+      "resolvedAfterRelease": "a marcat această problemă ca rezolvată în versiunile mai mari decât {version}",
+      "regressionInRelease": "a detectat o regresie în {version}"
     },
     "issueStatus": {
       "new": "Nouă",
@@ -437,7 +443,22 @@
       "properties": "Proprietăți",
       "tags": "Tag-uri",
       "code": "Cod",
-      "activity": "Activitate"
+      "activity": "Activitate",
+      "resolvedInNextRelease": "În următoarea versiune",
+      "resolvedInRelease": "În {version}"
+    },
+    "resolveInRelease": {
+      "title": "Rezolvă într-o versiune",
+      "description": "Evenimentele din această versiune sau dintr-una ulterioară vor redeschide problema. Cele din versiuni anterioare, nu.",
+      "label": "Versiune",
+      "placeholder": "Alege o versiune",
+      "empty": "Acest proiect nu are încă versiuni.",
+      "confirm": "Rezolvă",
+      "cancel": "Anulează",
+      "search": "Caută",
+      "searchPlaceholder": "Filtrează după versiune",
+      "loadFailed": "Versiunile nu au putut fi încărcate",
+      "noMatch": "Nicio versiune nu se potrivește."
     }
   },
   "roles": {

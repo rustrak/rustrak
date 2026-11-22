@@ -7,6 +7,7 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::session::crash_free_rate;
 use crate::models::{is_valid_version, CreateRelease, Release, ReleaseSummary, UpdateRelease};
+use crate::services::ResolutionService;
 
 const RELEASE_COLUMNS: &str = "id, project_id, version, ref, url, date_created, date_released";
 
@@ -40,6 +41,10 @@ impl ReleaseService {
     /// Idempotent by design: if the row already exists, the existing release
     /// is returned with `created = false` instead of erroring — matches
     /// sentry-cli's expectation that repeating `releases new` never fails.
+    ///
+    /// A new release resolves, in the same transaction, the issues pending
+    /// "resolved in next release" on an older one (Sentry's `post_save`
+    /// receiver running `clear_expired_resolutions`, only on creation).
     pub async fn create(
         pool: &DbPool,
         project_id: i32,
@@ -67,27 +72,32 @@ impl ReleaseService {
             r#"
             INSERT INTO releases (project_id, version, ref, url, date_created)
             VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (project_id, version) DO NOTHING
             RETURNING {RELEASE_COLUMNS}
             "#
         );
 
-        let result = sqlx::query_as::<_, Release>(sqlx::AssertSqlSafe(&*query))
+        // Write-first (INSERT opens the tx) — deferred BEGIN deliberate, see db::begin_write.
+        let mut tx = pool.begin().await?;
+        // A resolve in progress has read the releases: it writes its pending
+        // resolution before this one looks for pending resolutions.
+        ResolutionService::lock_project(&mut tx, project_id).await?;
+        let created = sqlx::query_as::<_, Release>(sqlx::AssertSqlSafe(&*query))
             .bind(project_id)
             .bind(version)
             .bind(&input.reference)
             .bind(&input.url)
             .bind(now)
-            .fetch_one(pool)
-            .await;
-
-        match result {
-            Ok(release) => Ok((release, true)),
-            Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => {
-                let existing = Self::get_by_version(pool, project_id, version).await?;
-                Ok((existing, false))
-            }
-            Err(e) => Err(AppError::Database(e)),
-        }
+            .fetch_optional(&mut *tx)
+            .await?;
+        let Some(release) = created else {
+            tx.commit().await?;
+            let existing = Self::get_by_version(pool, project_id, version).await?;
+            return Ok((existing, false));
+        };
+        ResolutionService::clear_expired(&mut tx, project_id, &release.release_ref()).await?;
+        tx.commit().await?;
+        Ok((release, true))
     }
 
     /// Fetches a release by `(project_id, version)`.
@@ -259,6 +269,7 @@ impl ReleaseService {
                 .entry(version.to_string())
                 .or_insert_with(|| ReleaseSummary {
                     version: version.to_string(),
+                    registered: false,
                     date_created: seen,
                     date_released: None,
                     reference: None,
@@ -292,6 +303,7 @@ impl ReleaseService {
         // Last, so the record's date wins over the first event's.
         for (version, created, released, reference, url) in records {
             let r = row(&mut rows, &version, created);
+            r.registered = true;
             r.date_created = created;
             r.date_released = released;
             r.reference = reference;

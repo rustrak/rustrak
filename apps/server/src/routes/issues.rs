@@ -11,7 +11,6 @@ use crate::pagination::{
     IssueCategory, IssueFilter, IssueSort, OffsetPaginatedResponse, SortOrder,
 };
 use crate::services::github;
-use crate::services::issue::RESOLVED_IN_NEXT_RELEASE;
 use crate::services::scope::Scope;
 use crate::services::{EventService, IssueService, IssueSocialService, ProjectService};
 use serde::Deserialize;
@@ -517,6 +516,7 @@ pub async fn get_issue(
     request_body = UpdateIssueState,
     responses(
         (status = 200, description = "Issue updated", body = IssueResponse),
+        (status = 400, description = "Invalid status, or no release to resolve in", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
@@ -538,25 +538,15 @@ pub async fn update_issue(
 
     let issue = IssueService::get_in_project(pool.get_ref(), project_id, issue_id).await?;
 
-    // Resolving in the next release suppresses regressions until a new
-    // deploy is recorded.
     let mut updated = issue;
-    let status = match body.status.as_deref() {
-        Some(RESOLVED_IN_NEXT_RELEASE) => Some((RESOLVED_IN_NEXT_RELEASE, None)),
-        _ => match body.resolved_status()? {
-            Some(status) => Some((status, body.validated_substatus()?)),
-            None => None,
-        },
-    };
-    if let Some((status, substatus)) = status {
-        updated = IssueService::change_status(
-            pool.get_ref(),
-            issue_id,
-            status,
-            substatus,
-            actor.user_id(),
-        )
-        .await?;
+    let change = crate::models::status_change(
+        body.status.as_deref(),
+        body.status_details.as_ref(),
+        body.validated_substatus()?,
+    )?;
+    if let Some(change) = change {
+        updated =
+            IssueService::change_status(pool.get_ref(), issue_id, change, actor.user_id()).await?;
     }
     if let Some(priority) = body.priority.as_deref() {
         updated = IssueService::set_priority(pool.get_ref(), issue_id, priority).await?;
@@ -713,6 +703,7 @@ pub async fn get_issue_aggregates(
     request_body = crate::models::BulkUpdateIssues,
     responses(
         (status = 200, description = "Number of issues updated", body = resp::BulkUpdateResponse),
+        (status = 400, description = "Invalid status or priority, too many ids, or no release to resolve in", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -732,7 +723,7 @@ pub async fn bulk_update_issues(
         pool.get_ref(),
         project_id,
         &body.ids,
-        body.status.as_deref(),
+        crate::models::status_change(body.status.as_deref(), body.status_details.as_ref(), None)?,
         body.priority.as_deref(),
         actor.user_id(),
     )

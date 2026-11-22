@@ -1766,3 +1766,66 @@ async fn test_spans_sent_without_an_op_are_stored_with_the_one_relay_gives_them(
 
     server.shutdown();
 }
+
+/// GH #576 through a real SDK and the Sentry API: tenants on staggered
+/// builds. Resolved in next release while `1.0.4118` is the newest, events
+/// from older builds keep it resolved and the first from `1.0.4120` reopens
+/// it.
+#[actix_web::test]
+async fn test_sdk_staggered_rollout_resolve_in_next_release() {
+    let db = TestDb::new().await;
+    let name = format!("SDK Staggered {}", Utc::now().timestamp_millis());
+    let project = create_test_project(&db.pool, &name).await;
+    let token = crate::common::create_test_token(&db.pool).await;
+    let server = TestServer::new(&db).await;
+    let _guard = sentry::init(
+        sentry::ClientOptions::new().dsn(&server.dsn(&project.sentry_key.to_string(), project.id)),
+    );
+    let send = |release: &'static str| {
+        sentry::capture_event(Event {
+            release: Some(release.into()),
+            fingerprint: vec!["tenant-bug".into()].into(),
+            message: Some("tenant bug".into()),
+            ..Default::default()
+        });
+    };
+
+    send("app@1.0.4117");
+    send("app@1.0.4118");
+    flush_and_digest(&server, project.id, 2).await;
+    let issue = only_issue(&db.pool, project.id).await;
+
+    let resolved: serde_json::Value = reqwest::Client::new()
+        .put(format!(
+            "http://127.0.0.1:{}/api/0/issues/{}/",
+            server.port, issue.numeric_id
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "status": "resolvedInNextRelease" }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(resolved["status"], "resolved");
+    assert_eq!(
+        resolved["statusDetails"],
+        serde_json::json!({ "inRelease": "app@1.0.4118" })
+    );
+
+    send("app@1.0.4117");
+    send("app@1.0.4118");
+    flush_and_digest(&server, project.id, 4).await;
+    assert_eq!(only_issue(&db.pool, project.id).await.status, "resolved");
+
+    send("app@1.0.4120");
+    flush_and_digest(&server, project.id, 5).await;
+    let reopened = only_issue(&db.pool, project.id).await;
+    assert_eq!(reopened.status, "unresolved");
+    assert_eq!(reopened.substatus.as_deref(), Some("regressed"));
+
+    server.shutdown();
+}

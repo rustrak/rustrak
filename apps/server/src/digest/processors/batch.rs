@@ -5,11 +5,13 @@ use super::event::{alert_type_for_lifecycle, PreparedEvent};
 use super::feedback;
 use crate::config::RateLimitConfig;
 use crate::error::{AppError, AppResult};
+use crate::models::resolution::{ProjectReleases, ReleaseRef};
 use crate::models::{AlertType, Grouping, Issue, STATUS_IGNORED, STATUS_RESOLVED};
 use crate::protocol::clamp;
 use crate::services::event::{EventLink, EventRow};
 use crate::services::rate_limit::{admit_batch, lock_quota_rows, write_quota_rows, QuotaScope};
-use crate::services::{DenormalizedFields, IssueService};
+use crate::services::resolution::{self, StoredResolution};
+use crate::services::{DenormalizedFields, IssueService, ResolutionService};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -133,21 +135,12 @@ pub(crate) fn fold_event(
     timestamp: DateTime<Utc>,
     denormalized: &DenormalizedFields,
     level: Option<&str>,
+    resolution_holds: bool,
 ) -> Folded {
-    // Detect regression: a new event for an already-resolved issue must
-    // reopen it as `regressed` (mirrors Sentry's lifecycle) — unless the
-    // issue was "resolved in next release" and this event is still from the
-    // same release (no new deploy yet), in which case it stays resolved.
-    let in_next_release = serde_json::from_str::<serde_json::Value>(&state.status_details)
-        .ok()
-        .and_then(|v| v.get("in_next_release").and_then(|b| b.as_bool()))
-        .unwrap_or(false);
-    // An event with no release metadata can't prove it's from a newer
-    // release, so treat it as the same release rather than triggering a
-    // spurious regression reopen.
-    let same_release =
-        denormalized.release.is_empty() || denormalized.release == state.last_release;
-    let regressed = state.status == STATUS_RESOLVED && !(in_next_release && same_release);
+    // A new event for a resolved issue reopens it as `regressed` (Sentry's
+    // `_handle_regression`), unless its resolution still covers the event's
+    // release (`GroupResolution.has_resolution`, `resolution_holds`).
+    let regressed = state.status == STATUS_RESOLVED && !resolution_holds;
     if regressed {
         state.status = crate::models::STATUS_UNRESOLVED.to_string();
         state.status_details = "{}".to_string();
@@ -400,6 +393,32 @@ async fn write_batch(
         quota = Some(rows);
     }
 
+    // Sentry's `_get_or_create_release_many`: a release exists from the
+    // first event that names it, dated by that event's timestamp.
+    let mut new_releases: Vec<(i32, ReleaseRef)> = Vec::new();
+    for &p in &projects {
+        let mut first: HashMap<&str, DateTime<Utc>> = HashMap::new();
+        for e in admitted.iter().map(|i| &batch[*i]) {
+            let release = e.denormalized.release.as_str();
+            if e.r.project_id != p || release.is_empty() {
+                continue;
+            }
+            let seen = release_date(e);
+            let at = first.entry(release).or_insert(seen);
+            *at = (*at).min(seen);
+        }
+        let mut first: Vec<(&str, DateTime<Utc>)> = first.into_iter().collect();
+        first.sort_unstable();
+        for release in ResolutionService::create_releases(conn, p, &first).await? {
+            new_releases.push((p, release));
+        }
+    }
+    // Read only for a resolved issue an event reaches.
+    let mut catalogs: HashMap<i32, ProjectReleases> = HashMap::new();
+    let mut resolutions: HashMap<Uuid, Option<StoredResolution>> = HashMap::new();
+    let mut regressions: HashMap<Uuid, Regression> = HashMap::new();
+    let no_releases = ProjectReleases::default();
+
     // Each admitted event's issue, in batch order: found, claimed from an
     // older key, or created by it. Then the event folds into it.
     let mut created: HashMap<Uuid, Issue> = HashMap::new();
@@ -480,7 +499,49 @@ async fn write_batch(
             let state = folds
                 .get_mut(&group.issue_id)
                 .ok_or_else(|| AppError::Internal("an issue the batch did not read".into()))?;
-            fold_event(state, e.metadata.ingested_at, &e.denormalized, e.level)
+            let release = e.denormalized.release.as_str();
+            let mut follows_semver = false;
+            let holds = if state.status == STATUS_RESOLVED {
+                if let std::collections::hash_map::Entry::Vacant(slot) = resolutions.entry(state.id)
+                {
+                    let mut found = ResolutionService::of_issues(conn, &[state.id]).await?;
+                    slot.insert(found.remove(&state.id));
+                }
+                let stored = resolutions.get(&state.id).and_then(Option::as_ref);
+                if stored.is_some() && !catalogs.contains_key(&p) {
+                    catalogs.insert(p, ResolutionService::project_releases(conn, p).await?);
+                }
+                let catalog = catalogs.get(&p).unwrap_or(&no_releases);
+                follows_semver = !release.is_empty() && catalog.follows_semver(Some(release));
+                resolution::holds(stored, catalog, release)
+            } else {
+                false
+            };
+            let folded = fold_event(
+                state,
+                e.metadata.ingested_at,
+                &e.denormalized,
+                e.level,
+                holds,
+            );
+            if folded.regressed {
+                let had_resolution = resolutions.insert(group.issue_id, None).flatten().is_some();
+                regressions.insert(
+                    group.issue_id,
+                    Regression {
+                        event_id: e.r.event_id,
+                        // Sentry's event has no release when it is invalid.
+                        release: if crate::models::is_valid_version(release) {
+                            release.to_string()
+                        } else {
+                            String::new()
+                        },
+                        had_resolution,
+                        follows_semver,
+                    },
+                );
+            }
+            folded
         };
         // No digest_order to compute: events order within an issue by
         // (timestamp, id) (see idx_events_issue_timestamp).
@@ -523,6 +584,19 @@ async fn write_batch(
         }
     }
 
+    // A regression removes the resolution it broke through; then each new
+    // release resolves the issues waiting on it (`clear_expired_resolutions`,
+    // which Sentry runs once the release row is committed).
+    let reopened: Vec<Uuid> = regressions
+        .iter()
+        .filter(|(_, r)| r.had_resolution)
+        .map(|(id, _)| *id)
+        .collect();
+    ResolutionService::delete(conn, &reopened).await?;
+    for (p, release) in &new_releases {
+        ResolutionService::clear_expired(conn, *p, release).await?;
+    }
+
     // Each touched issue once, in id order. One created by its only event
     // is already as that event left it.
     let mut issues: HashMap<Uuid, Issue> = HashMap::new();
@@ -554,7 +628,7 @@ async fn write_batch(
         insert_attachments(conn, &batch[*i], link.id).await?;
     }
     for fold in touched.iter().filter(|f| f.regressed) {
-        regression_activity(conn, fold.id).await?;
+        regression_activity(conn, fold.id, regressions.get(&fold.id)).await?;
     }
     if let Some(rows) = &quota {
         write_quota_rows(conn, rows).await?;
@@ -607,6 +681,20 @@ fn environments<'a>(
         }
     }
     rows
+}
+
+/// When `e` dates a release it creates: its timestamp, as Relay's
+/// `normalize_timestamps` leaves it, so a clock a minute or more ahead
+/// counts as the time the event arrived.
+// ponytail: only the future bound; Relay also pulls in timestamps older than
+// the retention, which a release dated in the past can only order earlier.
+fn release_date(e: &PreparedEvent) -> DateTime<Utc> {
+    let received = e.metadata.ingested_at;
+    if e.row.timestamp > received + chrono::Duration::seconds(60) {
+        received
+    } else {
+        e.row.timestamp
+    }
 }
 
 /// The columns of an already stored event its replay needs.
@@ -768,13 +856,42 @@ async fn write_issue(conn: &mut DbConn, f: &IssueFold) -> AppResult<Issue> {
     .await?)
 }
 
-async fn regression_activity(conn: &mut DbConn, issue_id: Uuid) -> AppResult<()> {
+/// The event that reopened an issue, for its activity.
+struct Regression {
+    event_id: Uuid,
+    release: String,
+    /// It broke through a release resolution.
+    had_resolution: bool,
+    follows_semver: bool,
+}
+
+/// Sentry's `SET_REGRESSION` activity: the event, its release and, when it
+/// broke through a release resolution, the release that one was in, which
+/// the "resolved in next release" activity learns now if it had none yet.
+async fn regression_activity(
+    conn: &mut DbConn,
+    issue_id: Uuid,
+    regression: Option<&Regression>,
+) -> AppResult<()> {
+    let mut data = serde_json::json!({ "status": crate::models::STATUS_UNRESOLVED });
+    if let Some(r) = regression {
+        data["event_id"] = r.event_id.simple().to_string().into();
+        data["version"] = r.release.clone().into();
+        if r.had_resolution {
+            let resolved_in =
+                ResolutionService::set_activity_version(conn, issue_id, &r.release, false).await?;
+            if let Some(resolved_in) = resolved_in {
+                data["follows_semver"] = r.follows_semver.into();
+                data["resolved_in_version"] = resolved_in.into();
+            }
+        }
+    }
     crate::services::IssueSocialService::add_activity_on(
         conn,
         issue_id,
         None,
         "set_regression",
-        &serde_json::json!({ "status": crate::models::STATUS_UNRESOLVED }).to_string(),
+        &data.to_string(),
     )
     .await
 }
@@ -1024,9 +1141,9 @@ mod tests {
         let c = fields(("Unknown", ""), "2.1", "cc", ("", "", ""));
 
         let folded = [
-            fold_event(&mut state, at(5), &a, None),
-            fold_event(&mut state, at(30), &b, Some("warning")),
-            fold_event(&mut state, at(25), &c, None),
+            fold_event(&mut state, at(5), &a, None, false),
+            fold_event(&mut state, at(30), &b, Some("warning"), false),
+            fold_event(&mut state, at(25), &c, None, false),
         ];
 
         assert_eq!(
@@ -1055,19 +1172,17 @@ mod tests {
         assert_eq!(state, expected);
     }
 
-    /// "Resolved in next release" holds against events of the same release
-    /// or of none, and gives way to the first event of another.
+    /// A resolution that covers the event's release keeps the issue
+    /// resolved; the first event it does not cover reopens it.
     #[test]
-    fn in_next_release_suppresses_until_a_new_release() {
-        let mut state = resolved(r#"{"in_next_release":true}"#);
-        let same = fields(("TypeError", "boom"), "1.0", "c", ("", "", ""));
-        let none = fields(("TypeError", "boom"), "", "c", ("", "", ""));
-        let newer = fields(("TypeError", "boom"), "2.0", "c", ("", "", ""));
+    fn a_holding_resolution_keeps_the_issue_resolved() {
+        let mut state = resolved(r#"{"inNextRelease":true}"#);
+        let e = fields(("TypeError", "boom"), "1.0", "c", ("", "", ""));
 
-        assert!(!fold_event(&mut state, at(21), &same, None).regressed);
-        assert!(!fold_event(&mut state, at(22), &none, None).regressed);
+        assert!(!fold_event(&mut state, at(21), &e, None, true).regressed);
         assert_eq!(state.status, "resolved");
-        assert!(fold_event(&mut state, at(23), &newer, None).regressed);
+        assert_eq!(state.status_details, r#"{"inNextRelease":true}"#);
+        assert!(fold_event(&mut state, at(23), &e, None, false).regressed);
         assert_eq!(
             (state.status.as_str(), state.status_details.as_str()),
             ("unresolved", "{}")
@@ -1100,7 +1215,7 @@ mod tests {
         state.first_release = String::new();
         let e = fields(("TypeError", "boom"), "3.0", "c", ("", "", ""));
 
-        let folded = fold_event(&mut state, at(21), &e, None);
+        let folded = fold_event(&mut state, at(21), &e, None, false);
 
         assert_eq!(
             (folded.regressed, folded.issue_event_count, folded.muted),

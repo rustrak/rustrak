@@ -309,7 +309,9 @@
       "unsubscribe": "Se désabonner",
       "deleteIssue": "Supprimer le problème",
       "markSpam": "Marquer comme spam",
-      "moveToInbox": "Remettre dans la boîte de réception"
+      "moveToInbox": "Remettre dans la boîte de réception",
+      "resolveInCurrentRelease": "Résoudre dans la version actuelle",
+      "resolveInAnotherRelease": "Résoudre dans une autre version…"
     },
     "toasts": {
       "updateFailed": "Échec de la mise à jour des problèmes",
@@ -364,7 +366,11 @@
       "reopenedOnGitHub": "a rouvert le ticket lié sur GitHub",
       "githubCreated": "a créé {ref} sur GitHub",
       "githubLinked": "a lié {ref}",
-      "githubUnlinked": "a délié {ref}"
+      "githubUnlinked": "a délié {ref}",
+      "resolvedInNextRelease": "a marqué ce problème comme résolu dans la prochaine version",
+      "resolvedInRelease": "a marqué ce problème comme résolu dans {version}",
+      "resolvedAfterRelease": "a marqué ce problème comme résolu dans les versions supérieures à {version}",
+      "regressionInRelease": "a détecté une régression dans {version}"
     },
     "issueStatus": {
       "new": "Nouveau",
@@ -437,7 +443,22 @@
       "properties": "Propriétés",
       "tags": "Tags",
       "code": "Code",
-      "activity": "Activité"
+      "activity": "Activité",
+      "resolvedInNextRelease": "Dans la prochaine version",
+      "resolvedInRelease": "Dans {version}"
+    },
+    "resolveInRelease": {
+      "title": "Résoudre dans une version",
+      "description": "Les événements de cette version ou d’une version ultérieure rouvriront le problème. Ceux des versions antérieures, non.",
+      "label": "Version",
+      "placeholder": "Choisissez une version",
+      "empty": "Ce projet n’a encore aucune version.",
+      "confirm": "Résoudre",
+      "cancel": "Annuler",
+      "search": "Rechercher",
+      "searchPlaceholder": "Filtrer par version",
+      "loadFailed": "Impossible de charger les versions",
+      "noMatch": "Aucune version ne correspond."
     }
   },
   "roles": {

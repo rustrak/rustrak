@@ -6,12 +6,15 @@ use crate::db::payload::{self, Column, Decompress};
 use crate::db::{Db, DbPool};
 use crate::error::{AppError, AppResult};
 use crate::models::rbac::ProjectScope;
+use crate::models::resolution::{self, ProjectReleases, ResolveTarget};
+use crate::models::StatusChange;
 use crate::models::{Grouping, Issue};
 use crate::pagination::{IssueCategory, IssueFilter, IssueSort, SortOrder};
 use crate::services::github;
 use crate::services::grouping::DenormalizedFields;
+use crate::services::resolution::DbConn;
 use crate::services::scope::Scope;
-use crate::services::IssueSocialService;
+use crate::services::{IssueSocialService, ResolutionService};
 use futures_util::TryStreamExt;
 use serde::Serialize;
 use sqlx::QueryBuilder;
@@ -582,10 +585,9 @@ impl IssueService {
     /// a legal pairing with `status` (see [`substatus_valid_for_status`]);
     /// otherwise the matching default substatus for `status` is used.
     ///
-    /// Always clears `status_details` — it only carries the "resolved in
-    /// next release" marker (see [`resolve_in_next_release`]), which no
-    /// longer applies once the issue transitions through a normal status
-    /// change.
+    /// Leaving `resolved` removes the issue's release resolution and its
+    /// `statusDetails` (Sentry's `handle_other_status_updates`); resolving
+    /// an issue that already is keeps the release it was resolved in.
     ///
     /// Accepted statuses: `unresolved`, `resolved`, `ignored`.
     ///
@@ -596,6 +598,24 @@ impl IssueService {
         status: &str,
         substatus_override: Option<&str>,
     ) -> AppResult<Issue> {
+        // Write-first (UPDATE opens the tx) — deferred BEGIN deliberate, see db::begin_write.
+        let mut tx = pool.begin().await?;
+        let issue = Self::set_status_on(&mut tx, id, None, status, substatus_override)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("Issue {} not found", id)))?;
+        tx.commit().await?;
+        Ok(issue)
+    }
+
+    /// [`Self::set_status`] on the caller's transaction, limited to
+    /// `project_id` when given; `None` when no such issue.
+    async fn set_status_on(
+        conn: &mut DbConn,
+        id: Uuid,
+        project_id: Option<i32>,
+        status: &str,
+        substatus_override: Option<&str>,
+    ) -> AppResult<Option<Issue>> {
         let default_substatus: Option<&str> = match status {
             crate::models::STATUS_UNRESOLVED => Some("ongoing"),
             crate::models::STATUS_RESOLVED => None,
@@ -618,21 +638,23 @@ impl IssueService {
         let issue = sqlx::query_as::<_, Issue>(
             r#"
             UPDATE issues
-            SET status = $2, substatus = $3, status_details = '{}'
-            WHERE id = $1
+            SET status = $2, substatus = $3,
+                status_details = CASE WHEN status = 'resolved' AND $5
+                                      THEN status_details ELSE '{}' END
+            WHERE id = $1 AND ($4 IS NULL OR project_id = $4)
             RETURNING *
             "#,
         )
         .bind(id)
         .bind(status)
         .bind(substatus)
-        .fetch_one(pool)
-        .await
-        .map_err(|error| match error {
-            sqlx::Error::RowNotFound => AppError::NotFound(format!("Issue {} not found", id)),
-            other => other.into(),
-        })?;
-
+        .bind(project_id)
+        .bind(status == crate::models::STATUS_RESOLVED)
+        .fetch_optional(&mut *conn)
+        .await?;
+        if issue.is_some() && status != crate::models::STATUS_RESOLVED {
+            ResolutionService::delete(conn, &[id]).await?;
+        }
         Ok(issue)
     }
 
@@ -656,67 +678,84 @@ impl IssueService {
         Self::set_status(pool, id, crate::models::STATUS_UNRESOLVED, None).await
     }
 
-    /// Resolves an issue "in the next release": it is marked resolved now, but
-    /// a regression is suppressed for further events from the current release.
-    /// A subsequent deploy (see [`finalize_release`]) clears the marker.
-    pub async fn resolve_in_next_release(pool: &DbPool, id: Uuid) -> AppResult<Issue> {
-        sqlx::query_as::<_, Issue>(
+    /// Resolves an issue in a release (Sentry's `handle_resolve_in_release`),
+    /// recording it in the activity. An issue that is already resolved is
+    /// left as it is, as Sentry skips it. Returns the issue as it stands and
+    /// whether it changed.
+    pub async fn resolve_in(
+        pool: &DbPool,
+        id: Uuid,
+        target: ResolveTarget<'_>,
+        user_id: Option<i32>,
+    ) -> AppResult<(Issue, bool)> {
+        let issue = Self::get_by_id(pool, id).await?;
+        // Reads the releases before it writes.
+        let mut tx = crate::db::begin_write(pool).await?;
+        ResolutionService::lock_project(&mut tx, issue.project_id).await?;
+        let releases = ResolutionService::project_releases(&mut tx, issue.project_id).await?;
+        let resolved = Self::resolve_in_on(
+            &mut tx,
+            &releases,
+            id,
+            issue.project_id,
+            target,
+            user_id,
+            false,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(match resolved {
+            Some(resolved) => (resolved, true),
+            // Resolved meanwhile, or already: the issue as it stands now.
+            None => (Self::get_by_id(pool, id).await?, false),
+        })
+    }
+
+    /// [`Self::resolve_in`] on the caller's transaction against the
+    /// project's `releases`: `None` when the issue is not in `project_id` or
+    /// was already resolved. The target is validated first, so a refused one
+    /// changes nothing. `bulk` marks the activity as one of several issues.
+    async fn resolve_in_on(
+        conn: &mut DbConn,
+        releases: &ProjectReleases,
+        id: Uuid,
+        project_id: i32,
+        target: ResolveTarget<'_>,
+        user_id: Option<i32>,
+        bulk: bool,
+    ) -> AppResult<Option<Issue>> {
+        resolution::target_release(releases, target)
+            .map_err(|message| AppError::Validation(message.to_string()))?;
+        let Some(mut issue) = sqlx::query_as::<_, Issue>(
             r#"
-            UPDATE issues
-            SET status = 'resolved', substatus = NULL, status_details = '{"in_next_release":true}'
-            WHERE id = $1
+            UPDATE issues SET status = 'resolved', substatus = NULL, status_details = '{}'
+            WHERE id = $1 AND project_id = $2 AND status <> 'resolved'
             RETURNING *
             "#,
         )
         .bind(id)
-        .fetch_one(pool)
-        .await
-        .map_err(|error| match error {
-            sqlx::Error::RowNotFound => AppError::NotFound(format!("Issue {} not found", id)),
-            other => other.into(),
-        })
-    }
-
-    /// Clears the "resolved in next release" marker on issues whose
-    /// `last_release` maps to a release that shipped *before*
-    /// `new_release_date_created`, in the same project. The comparison
-    /// (`date_created <`, project-scoped) is the chronological equivalent of
-    /// Sentry's `post_save` signal on `Release` (`clear_expired_resolutions`,
-    /// compared on `Release.date_added`) — it replaces a previous
-    /// implementation that compared `last_release` to the new version by
-    /// string inequality, which cannot tell "older" from "different".
-    /// Returns the number of issues finalized.
-    ///
-    /// Called on every `POST .../releases/` call, including the idempotent
-    /// 208 branch (see `routes::releases::create_release`) — unlike Sentry,
-    /// whose signal only fires on first creation. This is deliberate: the
-    /// query above is naturally idempotent (a repeat run affects 0 rows once
-    /// nothing is left to clear), so calling it unconditionally self-heals a
-    /// prior call that created the release row but crashed before clearing
-    /// ran, which Sentry's fire-and-forget task cannot do.
-    pub async fn finalize_release(
-        pool: &DbPool,
-        project_id: i32,
-        new_release_date_created: DateTime<Utc>,
-    ) -> AppResult<u64> {
-        let res = sqlx::query(
-            r#"
-            UPDATE issues
-            SET status_details = '{}'
-            WHERE project_id = $1
-              AND status = 'resolved'
-              AND status_details LIKE '%"in_next_release":true%'
-              AND last_release IN (
-                  SELECT version FROM releases
-                  WHERE project_id = $1 AND date_created < $2
-              )
-            "#,
-        )
         .bind(project_id)
-        .bind(new_release_date_created)
-        .execute(pool)
-        .await?;
-        Ok(res.rows_affected())
+        .fetch_optional(&mut *conn)
+        .await?
+        else {
+            return Ok(None);
+        };
+        let current = Self::latest_release_seen(conn, &issue).await?;
+        let mut decision = resolution::decide(releases, target, &current)
+            .map_err(|message| AppError::Validation(message.to_string()))?;
+        if bulk {
+            decision.activity_data["bulk"] = true.into();
+        }
+        match &decision.plan {
+            Some(plan) => {
+                ResolutionService::write(conn, id, project_id, plan, user_id).await?;
+                issue.status_details =
+                    resolution::status_details(Some(plan.kind), &plan.release.version);
+            }
+            None => ResolutionService::delete(conn, &[id]).await?,
+        }
+        ResolutionService::record_activity(conn, id, user_id, &decision.activity_data).await?;
+        Ok(Some(issue))
     }
 
     /// Sets an issue's priority (low/medium/high).
@@ -773,22 +812,61 @@ impl IssueService {
         Ok(hashes)
     }
 
-    /// Sets an issue's status the way a person does (a canonical status or
-    /// [`RESOLVED_IN_NEXT_RELEASE`]): recorded in its activity and mirrored to
-    /// the GitHub issues linked to it.
+    /// The release of the issue's newest event by timestamp that has a
+    /// release row: Sentry's `GroupRelease` with the highest `last_seen`
+    /// (`get_current_release_version_of_group`). An event that arrives late
+    /// from an older build does not make that build current. With no such
+    /// event left (retention), the issue's last release.
+    async fn latest_release_seen(conn: &mut DbConn, issue: &Issue) -> AppResult<String> {
+        let latest: Option<(String,)> = sqlx::query_as(
+            r#"
+            SELECT e.release FROM events e
+            JOIN releases r ON r.project_id = e.project_id AND r.version = e.release
+            WHERE e.issue_id = $1 AND e.release <> ''
+            ORDER BY e.timestamp DESC, e.id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(issue.id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(latest.map_or_else(|| issue.last_release.clone(), |(release,)| release))
+    }
+
+    /// Sets an issue's status the way a person does: recorded in its
+    /// activity and mirrored to the GitHub issues linked to it. Resolving
+    /// an issue that is already resolved changes nothing, as in Sentry.
     pub async fn change_status(
         pool: &DbPool,
         id: Uuid,
-        status: &str,
-        substatus: Option<&str>,
+        change: StatusChange<'_>,
         user_id: Option<i32>,
     ) -> AppResult<Issue> {
-        let issue = if status == RESOLVED_IN_NEXT_RELEASE {
-            Self::resolve_in_next_release(pool, id).await?
-        } else {
-            Self::set_status(pool, id, status, substatus).await?
+        let issue = match change {
+            StatusChange::ResolveIn(target) => {
+                let (issue, changed) = Self::resolve_in(pool, id, target, user_id).await?;
+                if !changed {
+                    return Ok(issue);
+                }
+                issue
+            }
+            StatusChange::Set(status, substatus) => {
+                let before = Self::get_by_id(pool, id).await?;
+                if status == crate::models::STATUS_RESOLVED && before.is_resolved() {
+                    return Ok(before);
+                }
+                // The change and its activity together, so a failed insert
+                // leaves the issue as it was for a retry.
+                // Write-first (UPDATE opens the tx) — deferred BEGIN deliberate, see db::begin_write.
+                let mut tx = pool.begin().await?;
+                let issue = Self::set_status_on(&mut tx, id, None, status, substatus)
+                    .await?
+                    .ok_or_else(|| AppError::NotFound(format!("Issue {} not found", id)))?;
+                IssueSocialService::record_status_change_on(&mut tx, id, user_id, status).await?;
+                tx.commit().await?;
+                issue
+            }
         };
-        IssueSocialService::record_status_change(pool, id, user_id, status).await?;
         github::sync::spawn("status sync", github::sync::mirror_status(pool.clone(), id));
         Ok(issue)
     }
@@ -801,26 +879,43 @@ impl IssueService {
         pool: &DbPool,
         project_id: i32,
         ids: &[Uuid],
-        status: Option<&str>,
+        change: Option<StatusChange<'_>>,
         priority: Option<&str>,
         user_id: Option<i32>,
     ) -> AppResult<u64> {
-        // Write-first (UPDATE opens the tx) — deferred BEGIN deliberate, see db::begin_write.
-        let mut tx = pool.begin().await?;
+        // Resolving in a release reads the project's releases first.
+        let mut tx = crate::db::begin_write(pool).await?;
+        // The project before the issues, in the digest's order.
+        if let Some(StatusChange::ResolveIn(_)) = change {
+            ResolutionService::lock_project(&mut tx, project_id).await?;
+        }
+        // The issues first, in id order, as `ResolutionService::clear_expired`
+        // locks them: in request order the two deadlock on Postgres.
+        #[cfg(feature = "postgres")]
+        if !ids.is_empty() {
+            let mut lock = QueryBuilder::<Db>::new("SELECT id FROM issues WHERE project_id = ");
+            lock.push_bind(project_id).push(" AND id IN (");
+            let mut list = lock.separated(", ");
+            for id in ids {
+                list.push_bind(*id);
+            }
+            lock.push(") ORDER BY id FOR NO KEY UPDATE");
+            lock.build().execute(&mut *tx).await?;
+        }
         let mut updated = 0u64;
-        if let Some(status) = status {
-            updated = Self::bulk_set_status(&mut tx, project_id, ids, status, user_id).await?;
+        if let Some(change) = change {
+            updated = Self::bulk_set_status(&mut tx, project_id, ids, change, user_id).await?;
         }
         if let Some(priority) = priority {
             let priority_updated =
                 Self::bulk_set_priority(&mut tx, project_id, ids, priority).await?;
-            if status.is_none() {
-                updated = priority_updated;
-            }
+            // Every issue the priority reached was updated, including those
+            // a resolve skipped as already resolved.
+            updated = updated.max(priority_updated);
         }
         tx.commit().await?;
 
-        if status.is_some() {
+        if change.is_some() {
             for &id in ids {
                 let pool = pool.clone();
                 github::sync::spawn("status sync", async move {
@@ -834,41 +929,72 @@ impl IssueService {
         Ok(updated)
     }
 
-    /// Bulk-sets the status (a canonical one or [`RESOLVED_IN_NEXT_RELEASE`])
-    /// of multiple issues in one project, recording each change in the issue's
-    /// activity. Returns the number of issues updated.
+    /// Bulk-sets the status of multiple issues in one project, recording
+    /// each change in the issue's activity. Issues already resolved are
+    /// skipped by a resolve, as Sentry skips them. Returns the number of
+    /// issues updated.
     pub async fn bulk_set_status(
         tx: &mut sqlx::Transaction<'_, Db>,
         project_id: i32,
         ids: &[Uuid],
-        status: &str,
+        change: StatusChange<'_>,
         user_id: Option<i32>,
     ) -> AppResult<u64> {
-        if status == RESOLVED_IN_NEXT_RELEASE {
-            return Self::bulk_resolve_in_next_release(tx, project_id, ids, user_id).await;
+        if ids.is_empty() {
+            return Ok(0);
         }
-        let substatus: Option<&str> = match status {
-            crate::models::STATUS_UNRESOLVED => Some("ongoing"),
-            crate::models::STATUS_RESOLVED => None,
-            crate::models::STATUS_IGNORED => Some("archived_forever"),
-            other => return Err(AppError::Validation(format!("Invalid status: {}", other))),
-        };
-
         let mut updated = 0u64;
-        for id in ids {
-            let res = sqlx::query(
-                "UPDATE issues SET status = $2, substatus = $3, status_details = '{}' WHERE id = $1 AND project_id = $4",
-            )
-            .bind(id)
-            .bind(status)
-            .bind(substatus)
-            .bind(project_id)
-            .execute(&mut **tx)
-            .await?;
-            if res.rows_affected() > 0 {
-                IssueSocialService::record_status_change_on(tx, *id, user_id, status).await?;
+        match change {
+            StatusChange::ResolveIn(target) => {
+                ResolutionService::lock_project(tx, project_id).await?;
+                let releases = ResolutionService::project_releases(tx, project_id).await?;
+                // Refused once for all of them, before any is changed.
+                resolution::target_release(&releases, target)
+                    .map_err(|message| AppError::Validation(message.to_string()))?;
+                // Sentry's `is_bulk`: more than one of the project's issues.
+                let mut count =
+                    QueryBuilder::<Db>::new("SELECT COUNT(*) FROM issues WHERE project_id = ");
+                count.push_bind(project_id).push(" AND id IN (");
+                let mut list = count.separated(", ");
+                for id in ids {
+                    list.push_bind(*id);
+                }
+                count.push(")");
+                let in_project: i64 = count.build_query_scalar().fetch_one(&mut **tx).await?;
+                let bulk = in_project > 1;
+                for &id in ids {
+                    if Self::resolve_in_on(tx, &releases, id, project_id, target, user_id, bulk)
+                        .await?
+                        .is_some()
+                    {
+                        updated += 1;
+                    }
+                }
             }
-            updated += res.rows_affected();
+            StatusChange::Set(status, substatus) => {
+                for &id in ids {
+                    if status == crate::models::STATUS_RESOLVED {
+                        let resolved: Option<(String,)> = sqlx::query_as(
+                            "SELECT status FROM issues WHERE id = $1 AND project_id = $2",
+                        )
+                        .bind(id)
+                        .bind(project_id)
+                        .fetch_optional(&mut **tx)
+                        .await?;
+                        if resolved.is_some_and(|(s,)| s == crate::models::STATUS_RESOLVED) {
+                            continue;
+                        }
+                    }
+                    if Self::set_status_on(tx, id, Some(project_id), status, substatus)
+                        .await?
+                        .is_some()
+                    {
+                        IssueSocialService::record_status_change_on(tx, id, user_id, status)
+                            .await?;
+                        updated += 1;
+                    }
+                }
+            }
         }
         Ok(updated)
     }
@@ -910,41 +1036,6 @@ impl IssueService {
         }
         qb.push(")");
         Ok(qb.build().execute(&mut **tx).await?.rows_affected())
-    }
-
-    /// Bulk "resolve in next release": same semantics as
-    /// [`Self::resolve_in_next_release`], applied to many issues in one project.
-    async fn bulk_resolve_in_next_release(
-        tx: &mut sqlx::Transaction<'_, Db>,
-        project_id: i32,
-        ids: &[Uuid],
-        user_id: Option<i32>,
-    ) -> AppResult<u64> {
-        let mut updated = 0u64;
-        for id in ids {
-            let res = sqlx::query(
-                r#"
-                UPDATE issues
-                SET status = 'resolved', substatus = NULL, status_details = '{"in_next_release":true}'
-                WHERE id = $1 AND project_id = $2
-                "#,
-            )
-            .bind(id)
-            .bind(project_id)
-            .execute(&mut **tx)
-            .await?;
-            if res.rows_affected() > 0 {
-                IssueSocialService::record_status_change_on(
-                    tx,
-                    *id,
-                    user_id,
-                    RESOLVED_IN_NEXT_RELEASE,
-                )
-                .await?;
-            }
-            updated += res.rows_affected();
-        }
-        Ok(updated)
     }
 
     /// Bulk-deletes multiple issues in one project. Returns the number deleted.
