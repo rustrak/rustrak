@@ -688,3 +688,16 @@ async fn the_spec_does_not_promise_an_rfc_4122_uuid_for_a_project_key() {
     assert_eq!(key["type"], serde_json::json!(["string", "null"]), "{key}");
     assert!(key.get("format").is_none(), "{key}");
 }
+
+/// A check-in's id is the `check_in_id` its job sent, and the server takes
+/// any 32 hex digits there, as Relay does. The client turns `format: uuid`
+/// into a check of the version and variant digits, so one such check-in would
+/// fail the whole monitor list.
+#[actix_web::test]
+async fn the_spec_does_not_promise_an_rfc_4122_uuid_for_a_check_in_id() {
+    let spec = serde_json::to_value(rustrak::openapi::ApiDoc::openapi()).unwrap();
+    let id = &spec["components"]["schemas"]["CheckInResponse"]["properties"]["id"];
+
+    assert_eq!(id["type"], "string", "{id}");
+    assert!(id.get("format").is_none(), "{id}");
+}

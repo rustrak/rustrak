@@ -10252,7 +10252,7 @@
                           },
                           "id": {
                             "type": "string",
-                            "format": "uuid"
+                            "description": "The `check_in_id` the job sent, or one the server made when it sent\nnone: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not\nnecessarily an RFC 4122 UUID."
                           },
                           "status": {
                             "$ref": "#/components/schemas/CheckInStatus"
@@ -17078,7 +17078,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "description": "The `check_in_id` the job sent, or one the server made when it sent\nnone: 32 hex digits in hyphenated UUID form (8-4-4-4-12), not\nnecessarily an RFC 4122 UUID."
           },
           "status": {
             "$ref": "#/components/schemas/CheckInStatus"
