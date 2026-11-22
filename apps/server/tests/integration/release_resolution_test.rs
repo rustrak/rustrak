@@ -1063,7 +1063,7 @@ async fn completing_resolutions_and_reopening_do_not_deadlock() {
         tx.commit().await?;
         Ok::<_, rustrak::error::AppError>(n)
     });
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    blocked_on_a_lock(env.pool()).await;
 
     sqlx::query("DELETE FROM issue_resolutions WHERE issue_id = $1")
         .bind(issue)
@@ -1121,7 +1121,7 @@ async fn completing_resolutions_and_a_bulk_change_do_not_deadlock() {
         )
         .await
     });
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    blocked_on_a_lock(env.pool()).await;
 
     sqlx::query("SELECT id FROM issues WHERE id = $1 FOR NO KEY UPDATE")
         .bind(b)
@@ -1130,4 +1130,73 @@ async fn completing_resolutions_and_a_bulk_change_do_not_deadlock() {
         .expect("the release reaches its second issue");
     release.commit().await.unwrap();
     assert_eq!(bulk.await.unwrap().expect("the bulk change finishes"), 2);
+}
+
+/// Waits until some connection of this database is waiting on a row lock,
+/// so the test goes on only once the other transaction is blocked where it
+/// has to be. Fails rather than proving nothing if that never happens.
+#[cfg(feature = "postgres")]
+async fn blocked_on_a_lock(pool: &DbPool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let waiting: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pg_stat_activity \
+             WHERE datname = current_database() AND wait_event_type = 'Lock'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        if waiting > 0 {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the other transaction never waited on a lock"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+/// A release the digest registers while someone resolves in next release:
+/// the resolve waits for the digest's project lock, so it sees the release
+/// and resolves in it, instead of anchoring on the older one.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn resolving_waits_for_the_releases_the_digest_is_registering() {
+    let env = Env::new("Release Race").await;
+    env.events(0, &[Some("r1")]).await;
+    let issue = env.issue().await.id;
+
+    // The digest's side: the project lock, then a release.
+    let mut digest = env.pool().begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(env.project.id as i64)
+        .execute(&mut *digest)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO releases (project_id, version, date_created) VALUES ($1, 'r2', $2)")
+        .bind(env.project.id)
+        .bind(env.start + Duration::minutes(10))
+        .execute(&mut *digest)
+        .await
+        .unwrap();
+
+    let pool = env.pool().clone();
+    let resolve = tokio::spawn(async move {
+        IssueService::resolve_in(
+            &pool,
+            issue,
+            rustrak::models::resolution::ResolveTarget::NextRelease { explicit: false },
+            None,
+        )
+        .await
+    });
+    blocked_on_a_lock(env.pool()).await;
+    digest.commit().await.unwrap();
+    resolve.await.unwrap().unwrap();
+
+    assert_eq!(
+        env.resolution().await,
+        Some((IN_RELEASE, RESOLVED, "r2".into(), Some("r1".into())))
+    );
 }
