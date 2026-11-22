@@ -617,26 +617,46 @@ async fn test_a_late_provider_enables_sso_without_a_restart() {
     .await;
     assert_eq!(start.status(), 404);
 
-    // The provider arrives; the retry that `main` runs in the background
-    // finishes against it and installs the service on the same state. The
+    // Discovery starts while nothing listens, as `main` does at boot, so its
+    // first attempt fails and only the retry can install the service. The
     // backoff is shortened so the test does not wait out production's 30s.
-    let provider = FakeProvider::start_on(addr, person("sub-1", "owner@example.com")).await;
-    rustrak::auth::discover_with_policy(
+    let discovery = actix_web::rt::spawn(rustrak::auth::discover_with_policy(
         state.clone(),
-        std::time::Duration::from_millis(1),
+        std::time::Duration::from_millis(200),
         std::time::Duration::from_secs(10),
-    )
-    .await;
+    ));
+    // A refused connection fails in well under the backoff; the provider
+    // arrives after that first attempt and before the retry.
+    actix_web::rt::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(
+        state.service().is_none(),
+        "the first attempt must fail while no provider listens"
+    );
+    let provider = FakeProvider::start_on(addr, person("sub-1", "owner@example.com")).await;
 
-    // The handler built before recovery now sees the provider.
-    let body: Value = test::call_and_read_body_json(
-        &app_state,
-        test::TestRequest::get()
-            .uri("/auth/sso/config")
-            .to_request(),
-    )
-    .await;
-    assert_eq!(body["enabled"], true);
+    // The handler built before recovery sees the provider once the retry
+    // lands, with no rebuild. Bounded, so a broken retry fails instead of
+    // hanging.
+    let mut enabled = false;
+    for _ in 0..100 {
+        let body: Value = test::call_and_read_body_json(
+            &app_state,
+            test::TestRequest::get()
+                .uri("/auth/sso/config")
+                .to_request(),
+        )
+        .await;
+        if body["enabled"] == true {
+            enabled = true;
+            break;
+        }
+        actix_web::rt::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(
+        enabled,
+        "the retry must install the provider that came back"
+    );
+    discovery.await.expect("discovery returns once it succeeds");
 
     // And the login actually works through the state the handlers hold: the
     // browser callback redirects home with a session, after provisioning.
