@@ -634,3 +634,48 @@ async fn a_rename_onto_an_undeclared_projects_slug_changes_no_project() {
     assert_eq!((one.name.as_str(), one.slug.as_str()), ("A", "a"));
     assert_eq!((two.name.as_str(), two.slug.as_str()), ("B", "b"));
 }
+
+#[tokio::test]
+async fn a_new_projects_taken_key_is_refused_before_anything_is_written() {
+    let db = TestDb::new().await;
+    apply(&db, &project(1, "A", "a", KEY)).await;
+    apply(&db, &project(5, "Taken", "taken", OTHER_KEY)).await;
+
+    // Project 5 left the file; a new project 2 claims its key while project 1
+    // is renamed and a first owner is declared.
+    let err = apply_err(
+        &db,
+        &format!(
+            "{SUPERUSER}{}{}",
+            project(1, "Renamed", "renamed", KEY),
+            project(2, "B", "b", OTHER_KEY)
+        ),
+    )
+    .await;
+
+    assert!(
+        err.contains("project 2") && err.contains("sentry_key"),
+        "{err}"
+    );
+    let one = ProjectService::get_by_id(&db.pool, 1).await.unwrap();
+    assert_eq!((one.name.as_str(), one.slug.as_str()), ("A", "a"));
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn a_declared_slug_wins_over_one_derived_from_another_projects_name() {
+    let db = TestDb::new().await;
+    apply(
+        &db,
+        &format!(
+            "[[bootstrap.projects]]\nid = 1\nname = \"My App\"\n{}",
+            project(2, "Other", "my-app", KEY)
+        ),
+    )
+    .await;
+
+    let one = ProjectService::get_by_id(&db.pool, 1).await.unwrap();
+    let two = ProjectService::get_by_id(&db.pool, 2).await.unwrap();
+    assert_eq!(two.slug, "my-app");
+    assert_eq!(one.slug, "my-app-1");
+}

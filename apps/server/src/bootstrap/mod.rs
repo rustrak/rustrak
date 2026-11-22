@@ -87,12 +87,13 @@ pub struct ApplyError(String);
 /// error stops at that item; applying the same file again picks up where it
 /// stopped.
 pub async fn apply(pool: &DbPool, file: &BootstrapFile) -> Result<(), ApplyError> {
+    // Projects first: they check every key before writing anything.
+    apply_projects(pool, &file.projects).await?;
     if let Some(su) = &file.superuser {
         apply_superuser(pool, su)
             .await
             .map_err(|e| ApplyError(format!("superuser: {e}")))?;
     }
-    apply_projects(pool, &file.projects).await?;
     // At every start rather than after each insert, so a start that stopped
     // between creating a project and this is repaired by the next one. Nothing
     // creates a project before apply has finished.
@@ -190,9 +191,28 @@ async fn apply_projects(pool: &DbPool, specs: &[ProjectSpec]) -> Result<(), Appl
                 }
                 existing.push(spec);
             }
-            None => new.push(spec),
+            None => {
+                if let Some(key) = spec.sentry_key {
+                    let holder: Option<i32> =
+                        sqlx::query_scalar("SELECT id FROM projects WHERE sentry_key = $1")
+                            .bind(key)
+                            .fetch_optional(pool)
+                            .await
+                            .map_err(|e| at(spec.id)(e.to_string()))?;
+                    if let Some(holder) = holder {
+                        return Err(at(spec.id)(format!(
+                            "sentry_key {} is already the key of project {holder}",
+                            key.simple()
+                        )));
+                    }
+                }
+                new.push(spec);
+            }
         }
     }
+    // Declared slugs first, so a slug derived from another project's name
+    // steps aside (`-1`) instead of taking it.
+    new.sort_by_key(|spec| spec.slug.is_none());
 
     ProjectService::rename_many(pool, &renames)
         .await
@@ -215,18 +235,8 @@ async fn apply_projects(pool: &DbPool, specs: &[ProjectSpec]) -> Result<(), Appl
 }
 
 async fn create_project(pool: &DbPool, spec: &ProjectSpec) -> Result<(), String> {
+    // A declared key was checked in `apply_projects`.
     let key = spec.sentry_key.unwrap_or_else(Uuid::new_v4);
-    let holder: Option<i32> = sqlx::query_scalar("SELECT id FROM projects WHERE sentry_key = $1")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    if let Some(holder) = holder {
-        return Err(format!(
-            "sentry_key {} is already the key of project {holder}",
-            key.simple()
-        ));
-    }
     let input = CreateProject {
         name: spec.name.trim().to_string(),
         slug: spec.slug.clone(),
