@@ -1,0 +1,55 @@
+---
+version: v0.31.0
+title: Release-Aware Resolutions
+description: Issues resolve in a release and only reopen for that release or a later one, and a rustrak.toml file declares the superuser, projects and tokens an instance starts with
+date: 2026-11-22
+tags: [releases, issues, configuration, sso, api]
+---
+
+## Upgrading
+
+- **`statusDetails` is now camelCase**, as in Sentry: `{"inNextRelease": true}` and `{"inRelease": "<version>"}` instead of `{"in_next_release": true}`. This applies to the issue API, bulk update, `PUT /api/0/issues/{id}/` and the MCP tool. Update any script that sends or reads the old key. `@rustrak/client` is regenerated
+- A migration creates releases from the events and issues you have retained, and turns existing "resolve in next release" markers into pending resolutions, on PostgreSQL and SQLite
+
+## Resolve in a release
+
+Releases used to be compared as strings. During a staggered rollout, an event from a server still running the old build reopened an issue that was already fixed. Releases now have an order, and a resolution knows which release it belongs to ([#576](https://github.com/rustrak/rustrak/issues/576)).
+
+- A release exists from the first event that names it, or from `sentry-cli releases new`, whichever comes first
+- `package@version` releases are compared by version, prereleases and build numbers included, once most of a project's recent releases use that format. Otherwise the release registered later is the newer one
+- **Resolve in current release** and **Resolve in another release…** join **Resolve in next release** in the issue actions. The release appears under the issue's status
+- A resolved issue reopens only for an event from the fix release or a later one. An event without a release never reopens it
+
+## Bootstrap file
+
+Set `RUSTRAK_CONFIG` to the path of a `rustrak.toml` and Rustrak applies it at every start, before it listens ([#41](https://github.com/rustrak/rustrak/issues/41)):
+
+```toml
+[bootstrap.superuser]
+email = "admin@example.com"
+password_file = "/run/secrets/admin_password"
+
+[[bootstrap.projects]]
+id = 1
+name = "Storefront"
+sentry_key = "0123456789abcdef0123456789abcdef"
+
+[[bootstrap.tokens]]
+name = "ci"
+token_file = "/run/secrets/ci_token"
+```
+
+- Projects keep their declared id and key, so the DSN is known before the first start. A project removed from the file is kept
+- The file is the source of truth for the tokens it declares: a new value rotates a token and a removed name revokes it. Tokens created in the dashboard are never touched
+- Secrets can be inline or in `*_file` paths for Docker and Kubernetes secrets
+- An invalid or conflicting file stops the server with the line, key and reason, without echoing the secret
+
+See [Bootstrap file](/configuration/bootstrap-file).
+
+## Fixes
+
+- An unreachable OIDC provider no longer stops the server. Discovery retries in the background with backoff, ingest and password login keep working, and the SSO button appears once the provider answers ([#360](https://github.com/rustrak/rustrak/issues/360), [@Goldloli](https://github.com/Goldloli))
+- The transaction failure rate no longer counts `cancelled` and `unknown`, matching Sentry's `failure_rate()` ([@Goldloli](https://github.com/Goldloli))
+- A check-in id that is 32 hex digits but not an RFC 4122 UUID no longer breaks the Crons page ([@HEOJUNFO](https://github.com/HEOJUNFO))
+- Settings header actions wrap under the title on phones
+- `url` bumped to 2.5.9 for RUSTSEC-2026-0592
