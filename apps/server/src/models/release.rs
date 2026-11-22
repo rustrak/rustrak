@@ -72,6 +72,9 @@ pub struct ReleaseResponse {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReleaseSummary {
     pub version: String,
+    /// Whether it has a release record (from CI or from an error event), so
+    /// an issue can be resolved in it. One known only from sessions has none.
+    pub registered: bool,
     /// The record's, else the first time the release was seen.
     pub date_created: DateTime<Utc>,
     #[cfg_attr(feature = "openapi", schema(required))]

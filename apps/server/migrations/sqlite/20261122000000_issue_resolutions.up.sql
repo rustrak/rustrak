@@ -18,39 +18,25 @@ CREATE INDEX idx_issue_resolutions_release ON issue_resolutions(release_id);
 
 -- Sentry creates a release the first time an event names it
 -- (`_get_or_create_release_many`); the digest does from now on. The releases
--- retained events name, dated by the earliest event timestamp, so the
--- ordering has them.
--- Versions `is_valid_version` refuses are left out.
+-- retained events and issues name, each dated by the earliest of what is
+-- left: its events' timestamps and the issues first and last seen with it,
+-- since retention may have taken the first events. A release CI registered
+-- keeps its own date. Versions `is_valid_version` refuses are left out.
 INSERT OR IGNORE INTO releases (project_id, version, date_created)
-SELECT project_id, release, MIN(timestamp)
-FROM events
-WHERE release <> '' AND LENGTH(release) <= 200
-  AND release NOT IN ('.', '..') AND LOWER(release) <> 'latest'
-  AND INSTR(release, '/') = 0 AND INSTR(release, '\') = 0
-  AND INSTR(release, char(13)) = 0 AND INSTR(release, char(10)) = 0
-  AND INSTR(release, char(12)) = 0 AND INSTR(release, char(9)) = 0
-GROUP BY project_id, release;
-
--- Releases retention has taken every event of, still named by an issue.
-INSERT OR IGNORE INTO releases (project_id, version, date_created)
-SELECT project_id, last_release, MIN(last_seen)
-FROM issues
-WHERE last_release <> '' AND LENGTH(last_release) <= 200
-  AND last_release NOT IN ('.', '..') AND LOWER(last_release) <> 'latest'
-  AND INSTR(last_release, '/') = 0 AND INSTR(last_release, '\') = 0
-  AND INSTR(last_release, char(13)) = 0 AND INSTR(last_release, char(10)) = 0
-  AND INSTR(last_release, char(12)) = 0 AND INSTR(last_release, char(9)) = 0
-GROUP BY project_id, last_release;
-
-INSERT OR IGNORE INTO releases (project_id, version, date_created)
-SELECT project_id, first_release, MIN(first_seen)
-FROM issues
-WHERE first_release <> '' AND LENGTH(first_release) <= 200
-  AND first_release NOT IN ('.', '..') AND LOWER(first_release) <> 'latest'
-  AND INSTR(first_release, '/') = 0 AND INSTR(first_release, '\') = 0
-  AND INSTR(first_release, char(13)) = 0 AND INSTR(first_release, char(10)) = 0
-  AND INSTR(first_release, char(12)) = 0 AND INSTR(first_release, char(9)) = 0
-GROUP BY project_id, first_release;
+SELECT project_id, version, MIN(seen)
+FROM (
+    SELECT project_id, release AS version, timestamp AS seen FROM events
+    UNION ALL
+    SELECT project_id, first_release, first_seen FROM issues
+    UNION ALL
+    SELECT project_id, last_release, last_seen FROM issues
+) named
+WHERE version <> '' AND LENGTH(version) <= 200
+  AND version NOT IN ('.', '..') AND LOWER(version) <> 'latest'
+  AND INSTR(version, '/') = 0 AND INSTR(version, '\') = 0
+  AND INSTR(version, char(13)) = 0 AND INSTR(version, char(10)) = 0
+  AND INSTR(version, char(12)) = 0 AND INSTR(version, char(9)) = 0
+GROUP BY project_id, version;
 
 -- The old marker becomes a pending in-next-release resolution anchored on
 -- the issue's last release, which is what it compared against.

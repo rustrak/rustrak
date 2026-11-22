@@ -266,6 +266,7 @@ impl ReleaseService {
                 .entry(version.to_string())
                 .or_insert_with(|| ReleaseSummary {
                     version: version.to_string(),
+                    registered: false,
                     date_created: seen,
                     date_released: None,
                     reference: None,
@@ -299,6 +300,7 @@ impl ReleaseService {
         // Last, so the record's date wins over the first event's.
         for (version, created, released, reference, url) in records {
             let r = row(&mut rows, &version, created);
+            r.registered = true;
             r.date_created = created;
             r.date_released = released;
             r.reference = reference;

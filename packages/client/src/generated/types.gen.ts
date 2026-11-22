@@ -1999,6 +1999,11 @@ export type ReleaseSummary = {
      */
     new_issues: number;
     ref: string | null;
+    /**
+     * Whether it has a release record (from CI or from an error event), so
+     * an issue can be resolved in it. One known only from sessions has none.
+     */
+    registered: boolean;
     sessions: number;
     url: string | null;
     version: string;
@@ -6623,6 +6628,10 @@ export type IssuesBulkUpdateData = {
 
 export type IssuesBulkUpdateErrors = {
     /**
+     * Invalid status or priority, too many ids, or no release to resolve in
+     */
+    400: ErrorResponse;
+    /**
      * Unauthorized
      */
     401: ErrorResponse;
@@ -6732,6 +6741,10 @@ export type IssuesUpdateData = {
 };
 
 export type IssuesUpdateErrors = {
+    /**
+     * Invalid status, or no release to resolve in
+     */
+    400: ErrorResponse;
     /**
      * Unauthorized
      */
@@ -8248,6 +8261,11 @@ export type ReleasesListResponses = {
              */
             new_issues: number;
             ref: string | null;
+            /**
+             * Whether it has a release record (from CI or from an error event), so
+             * an issue can be resolved in it. One known only from sessions has none.
+             */
+            registered: boolean;
             sessions: number;
             url: string | null;
             version: string;

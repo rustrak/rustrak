@@ -661,10 +661,18 @@ async fn leaving_resolved_drops_the_resolution() {
     for status in ["unresolved", "ignored"] {
         let env = Env::new(&format!("Leave {status}")).await;
         env.events(0, &[Some("a")]).await;
-        env.patch(json!({ "status": "resolved", "statusDetails": { "inRelease": "a" } }))
+        let (code, body) = env
+            .patch(json!({ "status": "resolved", "statusDetails": { "inRelease": "a" } }))
             .await;
+        assert_eq!(code, 200, "{body}");
+        assert!(
+            env.resolution().await.is_some(),
+            "{status}: no resolution to drop"
+        );
         let (code, body) = env.patch(json!({ "status": status })).await;
         assert_eq!(code, 200);
+        assert_eq!(body["status"], status);
+        assert_eq!(env.status().await.0, status);
         assert_eq!(body["status_details"], json!({}), "{status}");
         assert_eq!(env.resolution().await, None, "{status}");
     }
@@ -771,6 +779,14 @@ async fn bulk_resolve_in_a_release() {
     let resp = test::call_service(&app, bulk(json!({ "ids": ids, "status": "resolved" }))).await;
     let body: Value = test::read_body_json(resp).await;
     assert_eq!(body["updated"], 0);
+    // Unless the same request changes something else about them.
+    let resp = test::call_service(
+        &app,
+        bulk(json!({ "ids": ids, "status": "resolved", "priority": "low" })),
+    )
+    .await;
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["updated"], 2);
 }
 
 #[actix_web::test]
@@ -1003,4 +1019,58 @@ mod clear_expired {
         assert_eq!(clear(&env, other.id, &next).await, 0);
         assert_eq!(row(&env, issue).await.1, 0);
     }
+}
+
+/// A release created while someone reopens a pending issue: the reopen
+/// locks the issue, then deletes its resolution; completing pending
+/// resolutions must lock in that same order, or Postgres aborts one of the
+/// two as a deadlock.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn completing_resolutions_and_reopening_do_not_deadlock() {
+    use rustrak::models::resolution::ReleaseRef;
+    use rustrak::services::ResolutionService;
+
+    let env = Env::new("Deadlock").await;
+    env.events(0, &[Some("r1")]).await;
+    env.patch(json!({ "status": "resolvedInNextRelease" }))
+        .await;
+    assert_eq!(env.resolution().await.map(|r| r.1), Some(PENDING));
+    env.insert_release("r2", 60).await;
+    let r2: ReleaseRef = sqlx::query_as(
+        "SELECT id, version, date_created, date_released FROM releases \
+         WHERE project_id = $1 AND version = 'r2'",
+    )
+    .bind(env.project.id)
+    .fetch_one(env.pool())
+    .await
+    .unwrap();
+    let issue = env.issue().await.id;
+
+    // The reopen, half done: the issue row is locked.
+    let mut reopen = env.pool().begin().await.unwrap();
+    sqlx::query("UPDATE issues SET status = 'unresolved', status_details = '{}' WHERE id = $1")
+        .bind(issue)
+        .execute(&mut *reopen)
+        .await
+        .unwrap();
+
+    let pool = env.pool().clone();
+    let project = env.project.id;
+    let release = tokio::spawn(async move {
+        let mut tx = pool.begin().await.unwrap();
+        let n = ResolutionService::clear_expired(&mut tx, project, &r2).await?;
+        tx.commit().await?;
+        Ok::<_, rustrak::error::AppError>(n)
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    sqlx::query("DELETE FROM issue_resolutions WHERE issue_id = $1")
+        .bind(issue)
+        .execute(&mut *reopen)
+        .await
+        .expect("the reopen finishes");
+    reopen.commit().await.unwrap();
+    assert_eq!(release.await.unwrap().expect("the release finishes"), 0);
+    assert_eq!(env.status().await.2, json!({}));
 }

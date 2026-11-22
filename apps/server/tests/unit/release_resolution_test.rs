@@ -632,8 +632,8 @@ fn release_to_resolve_by_is_the_greatest_semver_in_a_semver_project() {
 // ---------------------------------------------------------------------------
 
 use rustrak::models::resolution::{
-    decide, status_details, ResolveTarget, NO_RELEASE_DATA, NO_SUCH_RELEASE, STATUS_PENDING,
-    STATUS_RESOLVED,
+    decide, status_details, target_release, ResolveTarget, NO_RELEASE_DATA, NO_SUCH_RELEASE,
+    STATUS_PENDING, STATUS_RESOLVED,
 };
 use serde_json::json;
 
@@ -774,6 +774,20 @@ fn explicit_in_next_release_without_releases_is_refused() {
 fn explicit_in_next_release_anchors_on_the_most_recent_release() {
     let p = project_of(&["app@2.0.0", "app@1.0.0"]);
     let target = ResolveTarget::NextRelease { explicit: true };
+    // The anchor: the most recent release, where the status alone would
+    // take the greatest semver one.
+    assert_eq!(
+        target_release(&p, target)
+            .unwrap()
+            .map(|r| r.version.as_str()),
+        Some("app@1.0.0")
+    );
+    assert_eq!(
+        target_release(&p, NEXT)
+            .unwrap()
+            .map(|r| r.version.as_str()),
+        Some("app@2.0.0")
+    );
     let plan = decide(&p, target, "app@1.0.0").unwrap().plan.unwrap();
     // Semver still names the current release, and resolves in it.
     assert_eq!(plan.current_release_version.as_deref(), Some("app@2.0.0"));

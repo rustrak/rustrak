@@ -172,6 +172,25 @@ async fn every_release_is_one_row_newest_first() {
     assert!(busy.first_event.unwrap() < busy.last_event.unwrap());
 }
 
+/// Only a release with a record can be resolved in: one known only from its
+/// sessions is listed, but says it has none.
+#[actix_web::test]
+async fn a_release_says_whether_it_has_a_record() {
+    let db = TestDb::new().await;
+    let p = seed(&db.pool).await;
+    let rows = ReleaseService::summaries(&db.pool, p, &SummaryFilter::default())
+        .await
+        .unwrap();
+    let registered: Vec<_> = rows
+        .iter()
+        .map(|r| (r.version.as_str(), r.registered))
+        .collect();
+    assert_eq!(
+        registered,
+        [("2.0.0", true), ("1.0.0", false), ("0.9.0", false)]
+    );
+}
+
 #[actix_web::test]
 async fn the_window_counts_only_recent_activity() {
     let db = TestDb::new().await;

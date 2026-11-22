@@ -7152,6 +7152,16 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid status or priority, too many ids, or no release to resolve in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized",
             "content": {
@@ -7407,6 +7417,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IssueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status, or no release to resolve in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -10398,6 +10418,7 @@
                         "description": "One release as the releases page reads it: its record, if CI created\none, and what it brought -- events, new issues, environments and session\nhealth -- the shape of Sentry's release list with `health=1`.\n\nCounts and rates cover the asked window and environment; the dates do not,\nso a release keeps its age however narrow the window.",
                         "required": [
                           "version",
+                          "registered",
                           "date_created",
                           "date_released",
                           "ref",
@@ -10487,6 +10508,10 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "registered": {
+                            "type": "boolean",
+                            "description": "Whether it has a release record (from CI or from an error event), so\nan issue can be resolved in it. One known only from sessions has none."
                           },
                           "sessions": {
                             "type": "integer",
@@ -20391,6 +20416,7 @@
         "description": "One release as the releases page reads it: its record, if CI created\none, and what it brought -- events, new issues, environments and session\nhealth -- the shape of Sentry's release list with `health=1`.\n\nCounts and rates cover the asked window and environment; the dates do not,\nso a release keeps its age however narrow the window.",
         "required": [
           "version",
+          "registered",
           "date_created",
           "date_released",
           "ref",
@@ -20480,6 +20506,10 @@
               "string",
               "null"
             ]
+          },
+          "registered": {
+            "type": "boolean",
+            "description": "Whether it has a release record (from CI or from an error event), so\nan issue can be resolved in it. One known only from sessions has none."
           },
           "sessions": {
             "type": "integer",

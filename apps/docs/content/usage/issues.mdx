@@ -85,7 +85,7 @@ The release options are under the arrow next to **Resolve**. The sidebar shows w
 This follows Sentry, so a staggered rollout, where some servers still run the old build after the fix shipped, does not reopen the issue:
 
 - A release exists from the first event that names it, or from `sentry-cli releases new`, whichever comes first.
-- Releases written as `package@version` (`my-app@1.4.2`, the format most SDKs send) are compared as versions, prereleases and build numbers included, once the project's recent releases mostly use that format. Otherwise the newer release is the one Rustrak saw first.
+- Releases written as `package@version` (`my-app@1.4.2`, the format most SDKs send) are compared as versions, prereleases and build numbers included, once the project's recent releases mostly use that format. Otherwise the newer release is the one registered later.
 - **Resolve in next release** remembers the release that is current: the highest version, or with plain version strings the issue's last release. If a release after it already exists, the issue counts as resolved in that one straight away; if not, it waits, and the next release that is created takes its place. Creating that release from CI is fine: older builds still do not reopen the issue.
 - An event without a release never reopens an issue resolved in a release.
 - Plain **Resolve** has no release to compare against: any new event reopens it.

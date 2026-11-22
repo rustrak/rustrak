@@ -454,7 +454,11 @@
       "placeholder": "Elige una release",
       "empty": "Este proyecto aún no tiene releases.",
       "confirm": "Resolver",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "search": "Buscar",
+      "searchPlaceholder": "Filtrar por versión",
+      "loadFailed": "No se pudieron cargar las releases",
+      "noMatch": "Ninguna release coincide."
     }
   },
   "roles": {

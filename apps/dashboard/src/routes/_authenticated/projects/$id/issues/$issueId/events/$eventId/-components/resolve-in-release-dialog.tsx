@@ -7,6 +7,7 @@ import {
   DialogHeader,
   Field,
   FieldLabel,
+  Input,
   Select,
   SelectItem,
   Text,
@@ -16,6 +17,7 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useIssueChange } from '@/features/issue/ui/components/issue-actions';
 import { releaseQueries } from '@/features/release/api/queries';
+import { LoadFailure } from '@/shared/ui/components/load-failure';
 
 /**
  * Sentry's "Another existing release": the issue is resolved in the release
@@ -35,13 +37,24 @@ export function ResolveInReleaseDialog({
 }) {
   const t = useTranslations('issues');
   const { update, isPending } = useIssueChange(projectId, issue);
-  // Newest first; read only once someone opens the picker.
+  // Newest first, narrowed by the server as the reader types, so a project
+  // with more releases than one page still reaches all of them. Read only
+  // once someone opens the picker.
+  const [search, setSearch] = useState('');
+  const query = search.trim();
   const releases = useQuery({
-    ...releaseQueries.list(projectId, { per_page: 100 }),
+    ...releaseQueries.list(projectId, {
+      per_page: 100,
+      ...(query ? { query } : {}),
+    }),
     enabled: open,
   });
   const [version, setVersion] = useState<string | null>(null);
-  const versions = releases.data?.items.map((r) => r.version) ?? [];
+  // Only a release with a record can be resolved in: one known only from
+  // its sessions would be refused.
+  const versions =
+    releases.data?.items.filter((r) => r.registered).map((r) => r.version) ??
+    [];
 
   const resolve = () => {
     if (!version) return;
@@ -55,10 +68,27 @@ export function ResolveInReleaseDialog({
         title={t('resolveInRelease.title')}
         description={t('resolveInRelease.description')}
       />
-      <DialogBody>
-        {releases.isSuccess && versions.length === 0 ? (
+      <DialogBody className="flex flex-col gap-3">
+        <Field>
+          <FieldLabel>{t('resolveInRelease.search')}</FieldLabel>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('resolveInRelease.searchPlaceholder')}
+          />
+        </Field>
+        {releases.isError ? (
+          <LoadFailure
+            error={releases.error.error}
+            title={t('resolveInRelease.loadFailed')}
+            notFoundOnMissing={false}
+            onRetry={() => releases.refetch()}
+          />
+        ) : releases.isSuccess && versions.length === 0 ? (
           <Text variant="meta" tone="subtle">
-            {t('resolveInRelease.empty')}
+            {query
+              ? t('resolveInRelease.noMatch')
+              : t('resolveInRelease.empty')}
           </Text>
         ) : (
           <Field>

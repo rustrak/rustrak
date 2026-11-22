@@ -705,7 +705,8 @@ impl IssueService {
         tx.commit().await?;
         Ok(match resolved {
             Some(resolved) => (resolved, true),
-            None => (issue, false),
+            // Resolved meanwhile, or already: the issue as it stands now.
+            None => (Self::get_by_id(pool, id).await?, false),
         })
     }
 
@@ -853,8 +854,15 @@ impl IssueService {
                 if status == crate::models::STATUS_RESOLVED && before.is_resolved() {
                     return Ok(before);
                 }
-                let issue = Self::set_status(pool, id, status, substatus).await?;
-                IssueSocialService::record_status_change(pool, id, user_id, status).await?;
+                // The change and its activity together, so a failed insert
+                // leaves the issue as it was for a retry.
+                // Write-first (UPDATE opens the tx) — deferred BEGIN deliberate, see db::begin_write.
+                let mut tx = pool.begin().await?;
+                let issue = Self::set_status_on(&mut tx, id, None, status, substatus)
+                    .await?
+                    .ok_or_else(|| AppError::NotFound(format!("Issue {} not found", id)))?;
+                IssueSocialService::record_status_change_on(&mut tx, id, user_id, status).await?;
+                tx.commit().await?;
                 issue
             }
         };
@@ -883,9 +891,9 @@ impl IssueService {
         if let Some(priority) = priority {
             let priority_updated =
                 Self::bulk_set_priority(&mut tx, project_id, ids, priority).await?;
-            if change.is_none() {
-                updated = priority_updated;
-            }
+            // Every issue the priority reached was updated, including those
+            // a resolve skipped as already resolved.
+            updated = updated.max(priority_updated);
         }
         tx.commit().await?;
 

@@ -454,7 +454,11 @@
       "placeholder": "Alege o versiune",
       "empty": "Acest proiect nu are încă versiuni.",
       "confirm": "Rezolvă",
-      "cancel": "Anulează"
+      "cancel": "Anulează",
+      "search": "Caută",
+      "searchPlaceholder": "Filtrează după versiune",
+      "loadFailed": "Versiunile nu au putut fi încărcate",
+      "noMatch": "Nicio versiune nu se potrivește."
     }
   },
   "roles": {

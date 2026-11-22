@@ -454,7 +454,11 @@
       "placeholder": "选择一个版本",
       "empty": "此项目还没有版本。",
       "confirm": "解决",
-      "cancel": "取消"
+      "cancel": "取消",
+      "search": "搜索",
+      "searchPlaceholder": "按版本筛选",
+      "loadFailed": "无法加载版本",
+      "noMatch": "没有匹配的版本。"
     }
   },
   "roles": {

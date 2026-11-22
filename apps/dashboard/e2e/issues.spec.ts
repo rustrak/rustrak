@@ -307,7 +307,10 @@ test.describe('issues', () => {
       .getByRole('menuitem', { name: 'Resolve in another release…' })
       .click();
     const dialog = page.getByRole('dialog');
+    // Narrowed by the server, as a project may have more than one page.
+    await dialog.getByPlaceholder('Filter by version').fill('2.0');
     await dialog.getByRole('combobox', { name: 'Release' }).click();
+    await expect(page.getByRole('option', { name: 'app@3.0.0' })).toBeHidden();
     await page.getByRole('option', { name: 'app@2.0.0' }).click();
     await dialog.getByRole('button', { name: 'Resolve' }).click();
     await expect(page.getByText('In app@2.0.0', { exact: true })).toBeVisible();

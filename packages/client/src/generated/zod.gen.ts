@@ -1281,6 +1281,7 @@ export const zReleaseSummary = z.object({
     last_event: z.nullable(z.iso.datetime({ offset: true })),
     new_issues: z.int(),
     ref: z.nullable(z.string()),
+    registered: z.boolean(),
     sessions: z.int(),
     url: z.nullable(z.string()),
     version: z.string()
@@ -3951,6 +3952,7 @@ export const zReleasesListResponse = z.object({
         last_event: z.nullable(z.iso.datetime({ offset: true })),
         new_issues: z.int(),
         ref: z.nullable(z.string()),
+        registered: z.boolean(),
         sessions: z.int(),
         url: z.nullable(z.string()),
         version: z.string()

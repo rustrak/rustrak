@@ -228,6 +228,30 @@ impl ResolutionService {
         project_id: i32,
         release: &ReleaseRef,
     ) -> AppResult<u64> {
+        // The issues first, in id order, as every other writer locks an issue
+        // before its resolution: the other order deadlocks with a reopen.
+        #[cfg(feature = "postgres")]
+        sqlx::query(
+            r#"
+            SELECT i.id FROM issues i
+            WHERE i.id IN (
+                SELECT r.issue_id FROM issue_resolutions r
+                JOIN releases rel ON rel.id = r.release_id
+                WHERE r.project_id = $1 AND r.status = $2
+                  AND (r.type IS NULL OR r.type = $3)
+                  AND r.release_id <> $5 AND rel.date_created < $4
+            )
+            ORDER BY i.id
+            FOR NO KEY UPDATE
+            "#,
+        )
+        .bind(project_id)
+        .bind(STATUS_PENDING)
+        .bind(ResolutionType::InNextRelease.code())
+        .bind(release.date_created)
+        .bind(release.id)
+        .execute(&mut *conn)
+        .await?;
         // One statement, so a resolution removed meanwhile (the issue was
         // reopened) is not resolved again: only the rows it changed come back.
         let resolved: Vec<(Uuid,)> = sqlx::query_as(

@@ -516,6 +516,7 @@ pub async fn get_issue(
     request_body = UpdateIssueState,
     responses(
         (status = 200, description = "Issue updated", body = IssueResponse),
+        (status = 400, description = "Invalid status, or no release to resolve in", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
@@ -702,6 +703,7 @@ pub async fn get_issue_aggregates(
     request_body = crate::models::BulkUpdateIssues,
     responses(
         (status = 200, description = "Number of issues updated", body = resp::BulkUpdateResponse),
+        (status = 400, description = "Invalid status or priority, too many ids, or no release to resolve in", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),

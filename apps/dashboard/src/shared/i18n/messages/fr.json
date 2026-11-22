@@ -454,7 +454,11 @@
       "placeholder": "Choisissez une version",
       "empty": "Ce projet n’a encore aucune version.",
       "confirm": "Résoudre",
-      "cancel": "Annuler"
+      "cancel": "Annuler",
+      "search": "Rechercher",
+      "searchPlaceholder": "Filtrer par version",
+      "loadFailed": "Impossible de charger les versions",
+      "noMatch": "Aucune version ne correspond."
     }
   },
   "roles": {
