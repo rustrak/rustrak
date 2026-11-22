@@ -11946,7 +11946,7 @@
                           "failure_rate": {
                             "type": "number",
                             "format": "double",
-                            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and not \"ok\"."
+                            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and\nneither `ok`, `cancelled` nor `unknown`."
                           },
                           "last_seen": {
                             "type": "string",
@@ -22361,7 +22361,7 @@
           "failure_rate": {
             "type": "number",
             "format": "double",
-            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and not \"ok\"."
+            "description": "Fraction (0.0–1.0) of transactions whose trace status is set and\nneither `ok`, `cancelled` nor `unknown`."
           },
           "last_seen": {
             "type": "string",

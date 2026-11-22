@@ -269,3 +269,64 @@ async fn samples_can_come_slowest_first() {
     assert_eq!(rows[0].duration_ms, Some(1100.0));
     assert_eq!(rows[0].status.as_deref(), Some("internal_error"));
 }
+
+/// `cancelled` and `unknown` are neither a success nor a failure, as in
+/// Sentry's `failure_rate()`, so they leave the failure figures alone.
+#[actix_web::test]
+async fn cancelled_and_unknown_do_not_count_as_failures() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool).await;
+    txn(&db.pool, p, "GET /pay", 10.0, "ok", "production", 1).await;
+    txn(
+        &db.pool,
+        p,
+        "GET /pay",
+        20.0,
+        "internal_error",
+        "production",
+        1,
+    )
+    .await;
+    txn(&db.pool, p, "GET /pay", 30.0, "cancelled", "production", 1).await;
+    txn(&db.pool, p, "GET /pay", 40.0, "unknown", "production", 1).await;
+    txn(
+        &db.pool,
+        p,
+        "GET /health",
+        5.0,
+        "cancelled",
+        "production",
+        1,
+    )
+    .await;
+
+    // The ranked list: one failure out of four samples, over both readings
+    // of a failure (the aggregate and the failure-rate sort).
+    let by_failure_rate = StatsFilter {
+        sort: StatsSort::FailureRate,
+        ..Default::default()
+    };
+    let (rows, _) = TransactionService::stats(&db.pool, p, 1, 20, &by_failure_rate)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].transaction_name, "GET /pay");
+    assert_eq!(rows[0].count, 4);
+    assert_eq!(rows[0].failure_rate, 0.25);
+    assert_eq!(rows[1].transaction_name, "GET /health");
+    assert_eq!(rows[1].failure_rate, 0.0);
+
+    // The trend over the window: the same one failure, from the same rule.
+    let points = TransactionService::group_timeseries(
+        &db.pool,
+        p,
+        "GET /pay",
+        Some("http.server"),
+        None,
+        Some(24),
+    )
+    .await
+    .unwrap();
+    assert_eq!(points.iter().map(|p| p.count).sum::<i64>(), 4);
+    assert_eq!(points.iter().map(|p| p.failures).sum::<i64>(), 1);
+}

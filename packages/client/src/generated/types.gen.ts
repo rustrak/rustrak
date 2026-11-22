@@ -2779,7 +2779,8 @@ export type TransactionStatsResponse = {
      */
     count: number;
     /**
-     * Fraction (0.0–1.0) of transactions whose trace status is set and not "ok".
+     * Fraction (0.0–1.0) of transactions whose trace status is set and
+     * neither `ok`, `cancelled` nor `unknown`.
      */
     failure_rate: number;
     last_seen: string;
@@ -8866,7 +8867,8 @@ export type TransactionsGetStatsResponses = {
              */
             count: number;
             /**
-             * Fraction (0.0–1.0) of transactions whose trace status is set and not "ok".
+             * Fraction (0.0–1.0) of transactions whose trace status is set and
+             * neither `ok`, `cancelled` nor `unknown`.
              */
             failure_rate: number;
             last_seen: string;

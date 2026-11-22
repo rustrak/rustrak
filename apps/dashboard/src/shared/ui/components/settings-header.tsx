@@ -37,8 +37,10 @@ export function SettingsHeader({
         tabs ? 'pb-0' : 'border-b border-border-divider pb-6',
       )}
     >
-      <div className="flex items-start justify-between gap-6">
-        <div className="flex min-w-0 items-center gap-3.5">
+      {/* Wraps instead of squeezing: on a phone the actions drop under the
+          title rather than crushing it to an ellipsis (#579). */}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <div className="flex min-w-0 max-w-full items-center gap-3.5">
           {leading}
           <div className="min-w-0">
             <h1 className="truncate text-page-title text-fg">{title}</h1>
@@ -50,7 +52,9 @@ export function SettingsHeader({
           </div>
         </div>
         {actions ? (
-          <div className="flex shrink-0 items-center gap-2">{actions}</div>
+          <div className="flex max-w-full flex-wrap items-center gap-2">
+            {actions}
+          </div>
         ) : null}
       </div>
       {tabs ? (
