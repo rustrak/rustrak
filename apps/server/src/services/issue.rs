@@ -691,7 +691,7 @@ impl IssueService {
         let issue = Self::get_by_id(pool, id).await?;
         // Reads the releases before it writes.
         let mut tx = crate::db::begin_write(pool).await?;
-        Self::lock_project_releases(&mut tx, issue.project_id).await?;
+        ResolutionService::lock_project(&mut tx, issue.project_id).await?;
         let releases = ResolutionService::project_releases(&mut tx, issue.project_id).await?;
         let resolved = Self::resolve_in_on(
             &mut tx,
@@ -709,21 +709,6 @@ impl IssueService {
             // Resolved meanwhile, or already: the issue as it stands now.
             None => (Self::get_by_id(pool, id).await?, false),
         })
-    }
-
-    /// Waits for the digest's project lock, under which it registers the
-    /// releases events name, so the releases read next include every one
-    /// committed before: none appears between the read and the resolution
-    /// anchored on it. SQLite's write lock already serializes the two.
-    async fn lock_project_releases(conn: &mut DbConn, project_id: i32) -> AppResult<()> {
-        #[cfg(feature = "postgres")]
-        sqlx::query("SELECT pg_advisory_xact_lock($1)")
-            .bind(project_id as i64)
-            .execute(&mut *conn)
-            .await?;
-        #[cfg(not(feature = "postgres"))]
-        let _ = (conn, project_id);
-        Ok(())
     }
 
     /// [`Self::resolve_in`] on the caller's transaction against the
@@ -902,7 +887,7 @@ impl IssueService {
         let mut tx = crate::db::begin_write(pool).await?;
         // The project before the issues, in the digest's order.
         if let Some(StatusChange::ResolveIn(_)) = change {
-            Self::lock_project_releases(&mut tx, project_id).await?;
+            ResolutionService::lock_project(&mut tx, project_id).await?;
         }
         // The issues first, in id order, as `ResolutionService::clear_expired`
         // locks them: in request order the two deadlock on Postgres.
@@ -961,7 +946,7 @@ impl IssueService {
         let mut updated = 0u64;
         match change {
             StatusChange::ResolveIn(target) => {
-                Self::lock_project_releases(tx, project_id).await?;
+                ResolutionService::lock_project(tx, project_id).await?;
                 let releases = ResolutionService::project_releases(tx, project_id).await?;
                 // Refused once for all of them, before any is changed.
                 resolution::target_release(&releases, target)

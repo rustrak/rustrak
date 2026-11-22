@@ -1200,3 +1200,65 @@ async fn resolving_waits_for_the_releases_the_digest_is_registering() {
         Some((IN_RELEASE, RESOLVED, "r2".into(), Some("r1".into())))
     );
 }
+
+/// A release created through the API while someone resolves in next release:
+/// the creation waits for the project lock the resolve holds, so it finds
+/// the pending resolution and resolves it in the new release.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn creating_a_release_waits_for_a_resolve_in_progress() {
+    use rustrak::models::resolution::{ResolutionPlan, ResolutionType};
+    use rustrak::services::{ReleaseService, ResolutionService};
+
+    let env = Env::new("Create Race").await;
+    env.events(0, &[Some("r1")]).await;
+    let issue = env.issue().await.id;
+    let r1 = sqlx::query_as(
+        "SELECT id, version, date_created, date_released FROM releases WHERE project_id = $1",
+    )
+    .bind(env.project.id)
+    .fetch_one(env.pool())
+    .await
+    .unwrap();
+
+    // The resolve's side: the project lock, then (later) the pending row.
+    let mut resolve = env.pool().begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(env.project.id as i64)
+        .execute(&mut *resolve)
+        .await
+        .unwrap();
+
+    let pool = env.pool().clone();
+    let project = env.project.id;
+    let create = tokio::spawn(async move {
+        ReleaseService::create(
+            &pool,
+            project,
+            rustrak::models::CreateRelease {
+                version: "r2".into(),
+                reference: None,
+                url: None,
+            },
+        )
+        .await
+    });
+    blocked_on_a_lock(env.pool()).await;
+
+    let plan = ResolutionPlan {
+        kind: ResolutionType::InNextRelease,
+        status: PENDING,
+        release: r1,
+        current_release_version: Some("r1".into()),
+    };
+    ResolutionService::write(&mut resolve, issue, env.project.id, &plan, None)
+        .await
+        .unwrap();
+    resolve.commit().await.unwrap();
+    create.await.unwrap().unwrap();
+
+    assert_eq!(
+        env.resolution().await,
+        Some((IN_RELEASE, RESOLVED, "r2".into(), Some("r1".into())))
+    );
+}

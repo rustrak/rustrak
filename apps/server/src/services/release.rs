@@ -79,6 +79,9 @@ impl ReleaseService {
 
         // Write-first (INSERT opens the tx) — deferred BEGIN deliberate, see db::begin_write.
         let mut tx = pool.begin().await?;
+        // A resolve in progress has read the releases: it writes its pending
+        // resolution before this one looks for pending resolutions.
+        ResolutionService::lock_project(&mut tx, project_id).await?;
         let created = sqlx::query_as::<_, Release>(sqlx::AssertSqlSafe(&*query))
             .bind(project_id)
             .bind(version)

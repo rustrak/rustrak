@@ -85,6 +85,22 @@ const RESOLUTION_COLUMNS: &str = "r.issue_id, r.type, r.status, r.current_releas
 pub struct ResolutionService;
 
 impl ResolutionService {
+    /// The project lock the digest registers releases under (its
+    /// `pg_advisory_xact_lock(project_id)`). Every path that creates a
+    /// release or reads them to resolve in one takes it first, before any
+    /// issue row, so none sees the catalog change halfway and the lock order
+    /// is the digest's. SQLite's write lock already serializes them.
+    pub async fn lock_project(conn: &mut DbConn, project_id: i32) -> AppResult<()> {
+        #[cfg(feature = "postgres")]
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(project_id as i64)
+            .execute(&mut *conn)
+            .await?;
+        #[cfg(not(feature = "postgres"))]
+        let _ = (conn, project_id);
+        Ok(())
+    }
+
     /// Every release of `project_id`.
     pub async fn project_releases(
         conn: &mut DbConn,
