@@ -3,6 +3,7 @@ import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
+import { ssoConfigPollInterval } from '@/features/user/model/sso';
 import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { LoginForm } from './-components/login-form';
@@ -36,13 +37,12 @@ function LoginPage() {
   // `enabled` follows the server's discovery, which may still be running: a
   // page opened while the provider is down would otherwise keep hiding the
   // SSO button after the provider comes back, since the answer is cached and
-  // nothing here would ask again. Poll while it is off, which is rare and
-  // only while someone is looking at the login page, and stop as soon as the
-  // server reports the provider.
+  // nothing here would ask again. Poll while a configured provider is off,
+  // which is rare and only while someone is looking at the login page, and
+  // stop as soon as the server reports the provider.
   const sso = useQuery({
     ...userQueries.ssoConfig(),
-    refetchInterval: (query) =>
-      query.state.data?.enabled === false ? 5000 : false,
+    refetchInterval: (query) => ssoConfigPollInterval(query.state.data),
   });
   const search = Route.useSearch();
   const ssoFailed = search.error === 'sso';
