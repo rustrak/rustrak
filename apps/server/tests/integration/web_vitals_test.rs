@@ -779,3 +779,60 @@ async fn a_breakdown_needs_a_vital_and_a_known_dimension() {
         assert_eq!(test::call_service(&app, req).await.status(), 400, "{query}");
     }
 }
+
+#[tokio::test]
+async fn overlong_and_nul_fields_are_cut_rather_than_failing_the_spans() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "web").await;
+    let mut span = standalone(
+        "a1a1a1a1a1a1a1a1",
+        "ui.webvital.lcp",
+        json!({ "lcp": { "value": 2100.0 } }),
+    );
+    span["data"]["environment"] = "e".repeat(70).into();
+    span["data"]["release"] = "r".repeat(250).into();
+    span["data"]["lcp.element"] = "body > img\u{0}.hero".into();
+
+    send_spans(&db.pool, project.id, vec![span]).await;
+
+    let (environment, release, target): (String, String, String) =
+        sqlx::query_as("SELECT environment, release, target FROM web_vitals WHERE project_id = $1")
+            .bind(project.id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(environment.chars().count(), 64);
+    assert_eq!(release.chars().count(), 200);
+    assert_eq!(target, "body > img.hero");
+}
+
+#[tokio::test]
+async fn a_standalone_vital_counts_with_the_page_load_it_names() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "web").await;
+    let token = create_test_token(&db.pool).await;
+    // The page load's FCP on its transaction, its LCP on a span of its own
+    // that names it, as `@sentry/browser` 10 sends them.
+    send_transaction(
+        &db.pool,
+        project.id,
+        pageload("/checkout", json!({ "fcp": { "value": 900.0 } })),
+    )
+    .await;
+    let mut lcp = standalone(
+        "b2b2b2b2b2b2b2b2",
+        "ui.webvital.lcp",
+        json!({ "lcp": { "value": 2100.0 } }),
+    );
+    lcp["data"]["sentry.pageload.span_id"] = "8632fabd5206435c".into();
+    send_spans(&db.pool, project.id, vec![lcp]).await;
+
+    let pages = get(
+        &db.pool,
+        &token,
+        format!("/api/projects/{}/web-vitals/pages", project.id),
+    )
+    .await;
+
+    assert_eq!(pages["items"][0]["pageloads"], 1);
+}

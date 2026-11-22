@@ -99,6 +99,7 @@ impl TransactionProcessor {
                 release: non_empty(&release).map(str::to_string),
                 trace_id: trace_id.clone(),
                 span_id: span_id.clone(),
+                pageload_span_id: Some(span_id.clone()),
                 transaction_id: Some(id),
                 timestamp,
                 vitals: Vital::from_measurements(&data["measurements"]),

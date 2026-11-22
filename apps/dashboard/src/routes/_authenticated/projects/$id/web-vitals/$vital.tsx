@@ -25,11 +25,11 @@ import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import {
   apiScope,
-  ScopeActions,
   scopeChange,
   validateScope,
   type WebVitalsScope,
-} from './-components/web-vitals-filters';
+} from './-components/scope';
+import { ScopeActions } from './-components/web-vitals-filters';
 
 interface MetricSearch extends WebVitalsScope {
   /** One page's, when opened from it. */

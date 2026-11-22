@@ -157,6 +157,16 @@ describe('firstFix', () => {
     ).toEqual({ page: '/a', vital: 'lcp', value: 3000 });
   });
 
+  it('passes over a costly page that is all good for the next that is not', () => {
+    // A busy page can cost more score than a quiet one that is poor.
+    expect(
+      firstFix([
+        page('/busy', [stats('lcp', 2000)]),
+        page('/quiet', [stats('lcp', 5000)]),
+      ]),
+    ).toEqual({ page: '/quiet', vital: 'lcp', value: 5000 });
+  });
+
   it('has nothing to fix when every vital is good', () => {
     expect(firstFix([page('/a', [stats('lcp', 1000)])])).toBeNull();
     expect(firstFix([])).toBeNull();

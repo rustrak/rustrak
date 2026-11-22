@@ -2783,7 +2783,7 @@ export class WebVitals extends HeyApiClient {
             requestValidator: async (data) => await z.object({
                 body: z.optional(z.never()),
                 path: zWebVitalsGetBreakdownPath,
-                query: z.optional(zWebVitalsGetBreakdownQuery)
+                query: zWebVitalsGetBreakdownQuery
             }).parseAsync(data),
             responseValidator: async (data) => await zWebVitalsGetBreakdownResponse.parseAsync(data),
             security: [{ scheme: 'bearer', type: 'http' }],

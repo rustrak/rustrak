@@ -3100,7 +3100,7 @@
       "label": "Par où commencer",
       "sentence": "{vital} sur <mono>{page}</mono> vaut <value></value> au 75e centile, la page qui coûte le plus au score.",
       "cause": " Surtout causé par <mono>{cause}</mono>.",
-      "none": "Rien d’urgent : aucune page n’a d’indicateur sous le seuil bon."
+      "none": "Rien d’urgent : {count, plural, =1 {la page qui coûte le plus au score a} other {les # pages qui coûtent le plus au score ont}} tous leurs indicateurs bons."
     },
     "guide": {
       "more": "Lire le guide complet sur web.dev",

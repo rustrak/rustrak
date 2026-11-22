@@ -3100,7 +3100,7 @@
       "label": "De unde să începi",
       "sentence": "{vital} pe <mono>{page}</mono> este <value></value> la percentila 75, pagina care costă cel mai mult scor.",
       "cause": " Cauzat mai ales de <mono>{cause}</mono>.",
-      "none": "Nimic urgent: nicio pagină nu are indicatori sub bun."
+      "none": "Nimic urgent: {count, plural, =1 {pagina care costă cel mai mult scor are} other {cele # pagini care costă cel mai mult scor au}} toți indicatorii buni."
     },
     "guide": {
       "more": "Citește ghidul complet pe web.dev",

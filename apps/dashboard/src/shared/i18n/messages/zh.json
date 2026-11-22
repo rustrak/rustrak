@@ -3100,7 +3100,7 @@
       "label": "从这里开始",
       "sentence": "<mono>{page}</mono> 的 {vital} 在第 75 百分位为 <value></value>，是对评分影响最大的页面。",
       "cause": " 主要由 <mono>{cause}</mono> 引起。",
-      "none": "没有紧急问题：所有页面的指标都达到良好。"
+      "none": "没有紧急问题：对评分影响最大的 {count} 个页面的所有指标都达到良好。"
     },
     "guide": {
       "more": "在 web.dev 阅读完整指南",

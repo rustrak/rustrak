@@ -13183,32 +13183,18 @@
             "name": "vital",
             "in": "query",
             "description": "The vital to break down.",
-            "required": false,
+            "required": true,
             "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Vital"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/components/schemas/Vital"
             }
           },
           {
             "name": "by",
             "in": "query",
-            "description": "`device` or `browser`.",
-            "required": false,
+            "description": "What to break it down by.",
+            "required": true,
             "schema": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/Breakdown"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/components/schemas/Breakdown"
             }
           },
           {
@@ -13282,7 +13268,7 @@
             }
           },
           "400": {
-            "description": "No vital, an unknown dimension or an unknown device",
+            "description": "No vital, no dimension or an unknown device",
             "content": {
               "application/json": {
                 "schema": {
@@ -17877,6 +17863,14 @@
             "type": "boolean"
           }
         }
+      },
+      "Breakdown": {
+        "type": "string",
+        "description": "The dimensions a vital breaks down by.",
+        "enum": [
+          "device",
+          "browser"
+        ]
       },
       "BulkDeleteIssues": {
         "oneOf": [

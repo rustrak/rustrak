@@ -23,6 +23,9 @@ CREATE TABLE web_vitals (
     connection     VARCHAR(16),
     trace_id       TEXT,
     span_id        TEXT NOT NULL,
+    -- The page load's own span: the vitals of one page load share it,
+    -- whichever span they came on.
+    pageload_span_id TEXT,
     -- The page load's transaction, when it is known.
     transaction_id TEXT,
     timestamp      TEXT NOT NULL

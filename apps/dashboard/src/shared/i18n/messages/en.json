@@ -3100,7 +3100,7 @@
       "label": "Where to start",
       "sentence": "{vital} on <mono>{page}</mono> is <value></value> at the 75th percentile, the page that costs the score the most.",
       "cause": " Mostly caused by <mono>{cause}</mono>.",
-      "none": "Nothing urgent: no page has a vital below good."
+      "none": "Nothing urgent: {count, plural, =1 {the page} other {the # pages}} costing the most score {count, plural, =1 {has} other {have}} every vital good."
     },
     "guide": {
       "more": "Read the full guide on web.dev",

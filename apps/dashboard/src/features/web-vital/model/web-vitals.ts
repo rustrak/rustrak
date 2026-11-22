@@ -165,28 +165,34 @@ export function metricHref(
 const SEVERITY = { poor: 2, meh: 1, good: 0 } as const;
 
 /**
- * Where to start: the page that costs the project the most score (the
- * first of `pages`, which come ranked by it) and its worst vital, poor
- * before improvable and, between two alike, the one that weighs more.
- * `null` when that page has nothing below good.
+ * Where to start: the costliest page (they come ranked by the score they
+ * cost) with a vital below good, and its worst vital, poor before
+ * improvable and, between two alike, the one that weighs more. A busy page
+ * whose vitals are all good can cost more than a quiet poor one, so it is
+ * passed over. `null` when none of `pages` has one.
  */
 export function firstFix(
   pages: readonly WebVitalsPage[],
 ): { page: string; vital: Vital; value: number } | null {
-  const [top] = pages;
-  if (!top) return null;
-  const worst = top.vitals
-    .map((stats) => ({
-      stats,
-      severity: SEVERITY[rateVital(stats.vital, stats.value) ?? 'good'],
-    }))
-    .filter(({ severity }) => severity > 0)
-    .sort(
-      (a, b) =>
-        b.severity - a.severity ||
-        VITAL_WEIGHTS[b.stats.vital] - VITAL_WEIGHTS[a.stats.vital],
-    )[0];
-  return worst
-    ? { page: top.page, vital: worst.stats.vital, value: worst.stats.value }
-    : null;
+  for (const page of pages) {
+    const worst = page.vitals
+      .map((stats) => ({
+        stats,
+        severity: SEVERITY[rateVital(stats.vital, stats.value) ?? 'good'],
+      }))
+      .filter(({ severity }) => severity > 0)
+      .sort(
+        (a, b) =>
+          b.severity - a.severity ||
+          VITAL_WEIGHTS[b.stats.vital] - VITAL_WEIGHTS[a.stats.vital],
+      )[0];
+    if (worst) {
+      return {
+        page: page.page,
+        vital: worst.stats.vital,
+        value: worst.stats.value,
+      };
+    }
+  }
+  return null;
 }

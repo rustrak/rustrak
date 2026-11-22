@@ -365,6 +365,9 @@ impl SpanProcessor {
             release: attribute("release"),
             trace_id: span["trace_id"].as_str().map(str::to_string),
             span_id: span["span_id"].as_str()?.to_string(),
+            // A standalone LCP or CLS names its page load; an interaction
+            // is none.
+            pageload_span_id: attribute("sentry.pageload.span_id"),
             transaction_id: None,
             timestamp,
             vitals: Vital::from_measurements(&span["measurements"]),

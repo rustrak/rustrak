@@ -14,11 +14,11 @@ import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { MetricCards } from './-components/metric-cards';
 import {
   apiScope,
-  ScopeActions,
   scopeChange,
   validateScope,
   type WebVitalsScope,
-} from './-components/web-vitals-filters';
+} from './-components/scope';
+import { ScopeActions } from './-components/web-vitals-filters';
 
 interface PageSearch extends WebVitalsScope {
   name?: string;

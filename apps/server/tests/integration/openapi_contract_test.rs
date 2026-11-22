@@ -295,6 +295,8 @@ fn param_value(name: &str, path: &str, schema: &Value, seed: &Seed) -> String {
         "org_slug" => "rustrak".into(),
         "key" => "level".into(),
         "page" if path.ends_with("/views") => "issues".into(),
+        "vital" => "lcp".into(),
+        "by" if path.ends_with("/web-vitals/breakdown") => "device".into(),
         "response_type" => "code".into(),
         "client_id" => CONTRACT_CLIENT.into(),
         "redirect_uri" => CONTRACT_REDIRECT.into(),

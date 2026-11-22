@@ -92,6 +92,7 @@ impl SpanV2Processor {
                     release: release.clone(),
                     trace_id: Some(clamp(&entry.trace_id, 64)),
                     span_id: clamp(&entry.span_id, 32),
+                    pageload_span_id: pageload.map(str::to_string),
                     transaction_id: pageload
                         .map(|span_id| SegmentRoot::id(ctx.project_id, &entry.trace_id, span_id)),
                     timestamp,

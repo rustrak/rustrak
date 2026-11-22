@@ -388,6 +388,11 @@ export type BookmarkResponse = {
 };
 
 /**
+ * The dimensions a vital breaks down by.
+ */
+export type Breakdown = 'device' | 'browser';
+
+/**
  * Bulk delete request: the listed `ids`, or every issue matching `filter`.
  * A body with neither or both matches no variant and is rejected, so an empty
  * body can never mean "all".
@@ -9620,15 +9625,15 @@ export type WebVitalsGetBreakdownData = {
          */
         project_id: number;
     };
-    query?: {
+    query: {
         /**
          * The vital to break down.
          */
-        vital?: Vital | null;
+        vital: Vital;
         /**
-         * `device` or `browser`.
+         * What to break it down by.
          */
-        by?: unknown | null;
+        by: Breakdown;
         environment?: string | null;
         browser?: string | null;
         device?: string | null;
@@ -9640,7 +9645,7 @@ export type WebVitalsGetBreakdownData = {
 
 export type WebVitalsGetBreakdownErrors = {
     /**
-     * No vital, an unknown dimension or an unknown device
+     * No vital, no dimension or an unknown device
      */
     400: ErrorResponse;
     /**

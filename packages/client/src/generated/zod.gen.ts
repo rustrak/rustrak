@@ -267,6 +267,11 @@ export const zBookmarkResponse = z.object({
     is_bookmarked: z.boolean()
 });
 
+/**
+ * The dimensions a vital breaks down by.
+ */
+export const zBreakdown = z.enum(['device', 'browser']);
+
 export const zBulkDeleteResponse = z.object({
     deleted: z.int()
 });
@@ -4486,8 +4491,8 @@ export const zWebVitalsGetBreakdownPath = z.object({
 });
 
 export const zWebVitalsGetBreakdownQuery = z.object({
-    vital: z.nullish(zVital),
-    by: z.nullish(z.unknown()),
+    vital: zVital,
+    by: zBreakdown,
     environment: z.nullish(z.string()),
     browser: z.nullish(z.string()),
     device: z.nullish(z.string()),

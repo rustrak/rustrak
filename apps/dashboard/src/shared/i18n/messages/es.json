@@ -3100,7 +3100,7 @@
       "label": "Por dónde empezar",
       "sentence": "{vital} en <mono>{page}</mono> es <value></value> en el percentil 75, la página que más puntuación cuesta.",
       "cause": " Lo causa sobre todo <mono>{cause}</mono>.",
-      "none": "Nada urgente: ninguna página tiene métricas por debajo de bueno."
+      "none": "Nada urgente: {count, plural, =1 {la página que más puntuación cuesta tiene} other {las # páginas que más puntuación cuestan tienen}} todas sus métricas en bueno."
     },
     "guide": {
       "more": "Leer la guía completa en web.dev",

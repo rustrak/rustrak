@@ -160,10 +160,9 @@ pub async fn list_web_vitals_pages(
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 pub struct WebVitalsBreakdownQuery {
     /// The vital to break down.
-    pub vital: Option<Vital>,
-    /// `device` or `browser`.
-    #[cfg_attr(feature = "openapi", param(value_type = Option<Breakdown>))]
-    pub by: Option<String>,
+    pub vital: Vital,
+    /// What to break it down by.
+    pub by: Breakdown,
     pub environment: Option<String>,
     pub browser: Option<String>,
     pub device: Option<String>,
@@ -182,7 +181,7 @@ pub struct WebVitalsBreakdownQuery {
     ),
     responses(
         (status = 200, description = "The vital on each device or browser, the most measured first", body = Vec<crate::models::web_vital::WebVitalsBreakdownRow>),
-        (status = 400, description = "No vital, an unknown dimension or an unknown device", body = crate::error::ErrorResponse),
+        (status = 400, description = "No vital, no dimension or an unknown device", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Not found", body = crate::error::ErrorResponse),
     ),
@@ -193,23 +192,13 @@ pub struct WebVitalsBreakdownQuery {
 pub async fn get_web_vitals_breakdown(
     pool: web::Data<DbPool>,
     path: web::Path<i32>,
-    query: web::Query<WebVitalsBreakdownQuery>,
+    // Before the query: a caller who may not read it hears 401, not that
+    // its query was malformed.
     actor: ApiActor,
+    query: web::Query<WebVitalsBreakdownQuery>,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
     actor.require(Resource::Performance, Action::Read, Some(project_id))?;
-    let vital = query
-        .vital
-        .ok_or_else(|| AppError::Validation("vital is required".to_string()))?;
-    let by = match query.by.as_deref() {
-        Some("device") => Breakdown::Device,
-        Some("browser") => Breakdown::Browser,
-        _ => {
-            return Err(AppError::Validation(
-                "by must be device or browser".to_string(),
-            ))
-        }
-    };
     let filter = WebVitalsQuery {
         environment: query.environment.clone(),
         browser: query.browser.clone(),
@@ -219,7 +208,9 @@ pub async fn get_web_vitals_breakdown(
         period: query.period.clone(),
     }
     .filter()?;
-    let rows = WebVitalsService::breakdown(pool.get_ref(), project_id, &filter, vital, by).await?;
+    let rows =
+        WebVitalsService::breakdown(pool.get_ref(), project_id, &filter, query.vital, query.by)
+            .await?;
     Ok(HttpResponse::Ok().json(rows))
 }
 

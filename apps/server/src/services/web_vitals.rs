@@ -112,6 +112,13 @@ impl Vital {
     }
 }
 
+/// `s` as a column of `max_chars` takes it: cut to fit, which Postgres
+/// would otherwise refuse, and without U+0000, which Postgres text cannot
+/// hold. Either would fail the whole batch of spans the vital came with.
+fn text(s: &str, max_chars: usize) -> String {
+    clamp(&s.replace('\0', ""), max_chars)
+}
+
 /// What each vital of a page load or interaction is about, as the browser
 /// SDK attributes it.
 #[derive(Default)]
@@ -162,6 +169,8 @@ pub(crate) struct PageVitals {
     pub trace_id: Option<String>,
     /// The span they came on: delivered again, it adds nothing.
     pub span_id: String,
+    /// The page load they belong to: its span. `None` for an interaction.
+    pub pageload_span_id: Option<String>,
     pub transaction_id: Option<Uuid>,
     pub timestamp: DateTime<Utc>,
     pub vitals: Vec<(Vital, f64)>,
@@ -191,28 +200,29 @@ impl PageVitals {
                 "INSERT INTO web_vitals ( \
                      project_id, page, vital, value, score, browser, environment, release, \
                      trace_id, span_id, transaction_id, timestamp, \
-                     target, resource, url, device, connection \
+                     target, resource, url, device, connection, pageload_span_id \
                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, \
-                           $13, $14, $15, $16, $17) \
+                           $13, $14, $15, $16, $17, $18) \
                  ON CONFLICT (project_id, span_id, vital) DO NOTHING",
             )
             .bind(project_id)
-            .bind(clamp(&self.page, 200))
+            .bind(text(&self.page, 200))
             .bind(vital.name())
             .bind(value)
             .bind(ratio)
-            .bind(self.browser.as_deref().map(|b| clamp(b, 64)))
-            .bind(&self.environment)
-            .bind(&self.release)
-            .bind(&self.trace_id)
-            .bind(&self.span_id)
+            .bind(self.browser.as_deref().map(|b| text(b, 64)))
+            .bind(self.environment.as_deref().map(|e| text(e, 64)))
+            .bind(self.release.as_deref().map(|r| text(r, 200)))
+            .bind(self.trace_id.as_deref().map(|t| text(t, 64)))
+            .bind(text(&self.span_id, 32))
             .bind(self.transaction_id)
             .bind(self.timestamp)
-            .bind(target.map(|t| clamp(t, 1024)))
-            .bind(resource.map(|r| clamp(r, 1024)))
-            .bind(self.url.as_deref().map(|u| clamp(u, 1024)))
+            .bind(target.map(|t| text(t, 1024)))
+            .bind(resource.map(|r| text(r, 1024)))
+            .bind(self.url.as_deref().map(|u| text(u, 1024)))
             .bind(device(self.browser.as_deref()))
-            .bind(self.connection.as_deref().map(|c| clamp(c, 16)))
+            .bind(self.connection.as_deref().map(|c| text(c, 16)))
+            .bind(self.pageload_span_id.as_deref().map(|p| text(p, 32)))
             .execute(&mut *conn)
             .await?;
         }
@@ -675,7 +685,7 @@ impl WebVitalsService {
             .sum();
 
         let mut qb = QueryBuilder::new(
-            "SELECT page, COUNT(DISTINCT COALESCE(CAST(transaction_id AS TEXT), span_id)) \
+            "SELECT page, COUNT(DISTINCT COALESCE(pageload_span_id, span_id)) \
              FROM web_vitals",
         );
         all.push_where(&mut qb, project_id);

@@ -28,13 +28,16 @@ import { useRouter } from '@/shared/ui/hooks/use-router';
 import { MetricCards } from './-components/metric-cards';
 import {
   apiScope,
-  ScopeActions,
   scopeChange,
   validateScope,
   type WebVitalsScope,
-} from './-components/web-vitals-filters';
+} from './-components/scope';
+import { ScopeActions } from './-components/web-vitals-filters';
 
 const PAGE_SIZE = 25;
+
+/** How many of the costliest pages "where to start" looks through. */
+const WHERE_TO_START = 25;
 
 /** Only pagination: the server ranks the pages, by opportunity. */
 const table = tableSearch({
@@ -56,8 +59,11 @@ function reads(projectId: number, search: WebVitalsSearch) {
       page: pagination.pageIndex + 1,
       per_page: pagination.pageSize,
     }),
-    // The costliest page, whichever page of the table is open.
-    top: webVitalQueries.pages(projectId, { ...scope, per_page: 1 }),
+    // The costliest pages, whichever page of the table is open.
+    top: webVitalQueries.pages(projectId, {
+      ...scope,
+      per_page: WHERE_TO_START,
+    }),
   };
 }
 
@@ -214,8 +220,9 @@ function WebVitalsScreen({
 }
 
 /**
- * The costliest page's worst vital and the element behind it, linking to
- * that vital on that page. Nothing when the costliest page is all good.
+ * The costliest page with a vital below good, its worst vital and the
+ * element behind it, linking to that vital on that page. When none of the
+ * costliest pages has one, says so, of those pages only.
  */
 function WhereToStart({
   projectId,
@@ -226,7 +233,10 @@ function WhereToStart({
 }) {
   const tFix = useTranslations('webVitals.firstFix');
   const top = useQuery(
-    webVitalQueries.pages(projectId, { ...apiScope(scope), per_page: 1 }),
+    webVitalQueries.pages(projectId, {
+      ...apiScope(scope),
+      per_page: WHERE_TO_START,
+    }),
   );
   const fix = top.data ? firstFix(top.data.items) : null;
   const causes = useQuery({
@@ -240,7 +250,7 @@ function WhereToStart({
   if (!fix) {
     return top.data ? (
       <p className="flex items-center px-5 py-4 text-fg-subtle text-meta">
-        {tFix('none')}
+        {tFix('none', { count: top.data.items.length })}
       </p>
     ) : null;
   }

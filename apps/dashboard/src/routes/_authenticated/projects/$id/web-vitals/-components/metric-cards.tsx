@@ -6,7 +6,7 @@ import {
   OTHER_VITALS,
 } from '@/features/web-vital/model/web-vitals';
 import { MetricCard } from '@/features/web-vital/ui/components/web-vitals';
-import type { WebVitalsScope } from './web-vitals-filters';
+import type { WebVitalsScope } from './scope';
 
 /**
  * The three Core Web Vitals, then the two that lead to them, as PageSpeed

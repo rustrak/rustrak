@@ -276,6 +276,7 @@ impl Modify for SecurityAddon {
         crate::models::AgentToolRow,
         crate::models::TransactionStatsResponse,
         crate::models::web_vital::WebVitalsPage,
+        crate::services::web_vitals::Breakdown,
         crate::models::LogResponse,
         crate::models::RetentionSettings,
         crate::models::RetentionWindows,
