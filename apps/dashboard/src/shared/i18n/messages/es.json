@@ -309,7 +309,9 @@
       "unsubscribe": "Cancelar suscripción",
       "deleteIssue": "Eliminar problema",
       "markSpam": "Marcar como spam",
-      "moveToInbox": "Mover a la bandeja de entrada"
+      "moveToInbox": "Mover a la bandeja de entrada",
+      "resolveInCurrentRelease": "Resolver en la release actual",
+      "resolveInAnotherRelease": "Resolver en otra release…"
     },
     "toasts": {
       "updateFailed": "No se pudieron actualizar los problemas",
@@ -364,7 +366,11 @@
       "reopenedOnGitHub": "reabrió el issue enlazado en GitHub",
       "githubCreated": "creó {ref} en GitHub",
       "githubLinked": "enlazó {ref}",
-      "githubUnlinked": "desenlazó {ref}"
+      "githubUnlinked": "desenlazó {ref}",
+      "resolvedInNextRelease": "marcó este problema como resuelto en la próxima release",
+      "resolvedInRelease": "marcó este problema como resuelto en {version}",
+      "resolvedAfterRelease": "marcó este problema como resuelto en las releases posteriores a {version}",
+      "regressionInRelease": "detectó una regresión en {version}"
     },
     "issueStatus": {
       "new": "Nuevo",
@@ -437,7 +443,18 @@
       "properties": "Propiedades",
       "tags": "Tags",
       "code": "Código",
-      "activity": "Actividad"
+      "activity": "Actividad",
+      "resolvedInNextRelease": "En la próxima release",
+      "resolvedInRelease": "En {version}"
+    },
+    "resolveInRelease": {
+      "title": "Resolver en una release",
+      "description": "Los eventos de esta release o de una posterior reabrirán el problema. Los de releases anteriores, no.",
+      "label": "Release",
+      "placeholder": "Elige una release",
+      "empty": "Este proyecto aún no tiene releases.",
+      "confirm": "Resolver",
+      "cancel": "Cancelar"
     }
   },
   "roles": {

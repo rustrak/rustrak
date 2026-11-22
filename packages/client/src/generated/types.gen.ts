@@ -409,6 +409,7 @@ export type BulkUpdateIssues = {
     ids: Array<string>;
     priority?: IssuePriority | null;
     status?: IssueStatusUpdate | null;
+    statusDetails?: StatusDetailsUpdate | null;
 };
 
 export type BulkUpdateResponse = {
@@ -1267,9 +1268,7 @@ export type IssueResponse = {
     project_id: number;
     short_id: string;
     status: IssueStatus;
-    status_details: {
-        [key: string]: unknown;
-    };
+    status_details: StatusDetails;
     substatus: string | null;
     title: string;
     /**
@@ -1362,6 +1361,7 @@ export type IssueUpdate = {
      * `resolved`, `unresolved`, `ignored`, `resolvedInNextRelease` or `muted`.
      */
     status?: string | null;
+    statusDetails?: StatusDetailsUpdate | null;
     substatus?: string | null;
 };
 
@@ -2255,9 +2255,7 @@ export type SentryIssue = {
         [key: string]: unknown;
     } | null;
     status: string;
-    statusDetails: {
-        [key: string]: unknown;
-    };
+    statusDetails: StatusDetails;
     substatus: string | null;
     title: string;
     /**
@@ -2581,6 +2579,32 @@ export type SsoStartResponse = {
 };
 
 /**
+ * Which release a resolved issue was resolved in, as Sentry's group
+ * serializer reports it: `inNextRelease` until the next release is known,
+ * then `inRelease`. Empty for any other status.
+ */
+export type StatusDetails = {
+    inNextRelease?: boolean | null;
+    inRelease?: string | null;
+};
+
+/**
+ * The release fields of Sentry's `StatusDetailsValidator`
+ * (`api/helpers/group_index/validators/status_details.py`): read with a
+ * `resolved` (or `resolvedInNextRelease`) status, ignored with any other.
+ */
+export type StatusDetailsUpdate = {
+    /**
+     * Resolve in the release that ships next. Needs a release in the project.
+     */
+    inNextRelease?: boolean | null;
+    /**
+     * Resolve in this release version, or `latest` for the most recent one.
+     */
+    inRelease?: string | null;
+};
+
+/**
  * The age of everything the instance holds, by project and kind, keyed on
  * ingest time like retention.
  */
@@ -2857,6 +2881,7 @@ export type UpdateIssueState = {
     assignee_type?: string | null;
     priority?: IssuePriority | null;
     status?: IssueStatusUpdate | null;
+    statusDetails?: StatusDetailsUpdate | null;
     substatus?: string | null;
 };
 
@@ -4733,9 +4758,7 @@ export type IssuesListAllResponses = {
             project_id: number;
             short_id: string;
             status: IssueStatus;
-            status_details: {
-                [key: string]: unknown;
-            };
+            status_details: StatusDetails;
             substatus: string | null;
             title: string;
             /**
@@ -6559,9 +6582,7 @@ export type IssuesListResponses = {
             project_id: number;
             short_id: string;
             status: IssueStatus;
-            status_details: {
-                [key: string]: unknown;
-            };
+            status_details: StatusDetails;
             substatus: string | null;
             title: string;
             /**

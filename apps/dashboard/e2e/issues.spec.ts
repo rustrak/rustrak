@@ -250,4 +250,79 @@ test.describe('issues', () => {
     await expect(page.getByText('first-user').first()).toBeVisible();
     await expect(page.getByText('second-user')).toHaveCount(0);
   });
+  test('resolved in the current release, only that release or a later one reopens it', async ({
+    page,
+    request,
+  }) => {
+    const project = await createProject(request);
+    const error = { type: 'TenantError', value: unique('staggered') };
+    await sendError(request, project.dsn, { ...error, release: 'app@1.0.0' });
+    const { issueId } = await sendError(request, project.dsn, {
+      ...error,
+      release: 'app@2.0.0',
+    });
+
+    await page.goto(`/projects/${project.id}/issues/${issueId}`);
+    await page.getByRole('button', { name: 'More resolve options' }).click();
+    await page
+      .getByRole('menuitem', { name: 'Resolve in current release' })
+      .click();
+    await expect(page.getByText('In app@2.0.0', { exact: true })).toBeVisible();
+
+    // A tenant still on the old build.
+    await sendError(request, project.dsn, { ...error, release: 'app@1.0.0' });
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: /^Unresolve/ }),
+    ).toBeVisible();
+    await expect(page.getByText('In app@2.0.0', { exact: true })).toBeVisible();
+
+    await sendError(request, project.dsn, { ...error, release: 'app@2.0.0' });
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Resolve', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('detected a regression in app@2.0.0'),
+    ).toBeVisible();
+  });
+
+  test('resolving in a release chosen from the list', async ({
+    page,
+    request,
+  }) => {
+    const project = await createProject(request);
+    const error = { type: 'PickedError', value: unique('picked') };
+    for (const release of ['app@1.0.0', 'app@2.0.0']) {
+      await sendError(request, project.dsn, { ...error, release });
+    }
+    const { issueId } = await sendError(request, project.dsn, {
+      ...error,
+      release: 'app@3.0.0',
+    });
+
+    await page.goto(`/projects/${project.id}/issues/${issueId}`);
+    await page.getByRole('button', { name: 'More resolve options' }).click();
+    await page
+      .getByRole('menuitem', { name: 'Resolve in another release…' })
+      .click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('combobox', { name: 'Release' }).click();
+    await page.getByRole('option', { name: 'app@2.0.0' }).click();
+    await dialog.getByRole('button', { name: 'Resolve' }).click();
+    await expect(page.getByText('In app@2.0.0', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('marked this issue as resolved in app@2.0.0'),
+    ).toBeVisible();
+
+    await sendError(request, project.dsn, { ...error, release: 'app@1.0.0' });
+    await page.reload();
+    await expect(page.getByText('In app@2.0.0', { exact: true })).toBeVisible();
+
+    await sendError(request, project.dsn, { ...error, release: 'app@3.0.0' });
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Resolve', exact: true }),
+    ).toBeVisible();
+  });
 });

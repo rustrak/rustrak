@@ -44,6 +44,7 @@ mod rate_limit_test;
 mod rbac_api_test;
 mod rbac_enforcement_test;
 mod rbac_service_test;
+mod release_resolution_test;
 mod release_summary_test;
 mod releases_api_test;
 mod saved_views_api_test;

@@ -4,6 +4,10 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
+import {
+  regressionMessage,
+  resolvedInReleaseMessage,
+} from '@/features/issue/model/resolution';
 import { useRelativeTime } from '@/shared/i18n/use-now';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
@@ -87,8 +91,14 @@ function describe(entry: ActivityEntry, t: Translate): string {
       return t('activity.priorityChanged', {
         priority: String(d.priority ?? '—'),
       });
-    case 'set_regression':
-      return t('activity.regression');
+    case 'set_resolved_in_release': {
+      const message = resolvedInReleaseMessage(d);
+      return t(message.key, message.values);
+    }
+    case 'set_regression': {
+      const message = regressionMessage(d);
+      return t(message.key, message.values);
+    }
     case 'first_seen':
       return t('activity.firstSeen');
     default:

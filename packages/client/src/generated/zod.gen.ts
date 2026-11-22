@@ -813,40 +813,6 @@ export const zFeedbackResponse = z.object({
 });
 
 /**
- * Response for API
- */
-export const zIssueResponse = z.object({
-    assigned_to: z.nullable(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))),
-    assignee_type: z.nullable(z.string()),
-    culprit: z.string(),
-    event_count: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
-    first_release: z.string(),
-    first_seen: z.iso.datetime({ offset: true }),
-    has_seen: z.nullish(z.boolean()),
-    id: z.uuid(),
-    is_bookmarked: z.nullish(z.boolean()),
-    is_subscribed: z.nullish(z.boolean()),
-    issue_category: z.string(),
-    issue_type: z.string(),
-    last_release: z.string(),
-    last_seen: z.iso.datetime({ offset: true }),
-    level: z.nullable(z.string()),
-    logger: z.string(),
-    platform: z.nullable(z.string()),
-    priority: z.nullable(zIssuePriority),
-    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
-    short_id: z.string(),
-    status: zIssueStatus,
-    status_details: z.record(z.string(), z.unknown()),
-    substatus: z.nullable(z.string()),
-    title: z.string(),
-    trend: z.nullish(z.array(z.int())),
-    user_count: z.nullish(z.int()),
-    user_report_count: z.nullish(z.int()),
-    value: z.string()
-});
-
-/**
  * The status an update may set: an [`IssueStatus`], or `resolvedInNextRelease`
  * to resolve until the next release ships.
  */
@@ -856,15 +822,6 @@ export const zIssueStatusUpdate = z.enum([
     'ignored',
     'resolvedInNextRelease'
 ]);
-
-/**
- * Bulk mutate request: apply a status (and/or priority) to many issues.
- */
-export const zBulkUpdateIssues = z.object({
-    ids: z.array(z.uuid()),
-    priority: z.nullish(zIssuePriority),
-    status: z.nullish(zIssueStatusUpdate)
-});
 
 /**
  * A single tag value's usage within an issue — the shape `GET
@@ -900,15 +857,6 @@ export const zGitHubStatus = z.object({
     installations: z.array(zGitHubInstallation),
     issue_template: zIssueTemplate,
     webhook_url: z.string()
-});
-
-/**
- * Body of an issue update: the fields of `GroupValidator`
- * (`api/helpers/group_index/validators/group.py`) Rustrak acts on.
- */
-export const zIssueUpdate = z.object({
-    status: z.nullish(z.string()),
-    substatus: z.nullish(z.string())
 });
 
 /**
@@ -1645,36 +1593,6 @@ export const zSentryGroupProject = z.object({
 });
 
 /**
- * Subset of `GroupSerializer` plus its seen stats
- * (`api/serializers/models/group.py`), and `stats` when the caller asked
- * for a series (`StreamGroupSerializer`, `group_stream.py`).
- */
-export const zSentryIssue = z.object({
-    annotations: z.array(z.record(z.string(), z.unknown())),
-    count: z.string(),
-    culprit: z.string(),
-    firstSeen: z.iso.datetime({ offset: true }),
-    id: z.string(),
-    issueCategory: z.string(),
-    issueType: z.string(),
-    lastSeen: z.iso.datetime({ offset: true }),
-    level: z.string(),
-    logger: z.nullable(z.string()),
-    metadata: z.record(z.string(), z.unknown()),
-    platform: z.nullable(z.string()),
-    priority: z.nullable(z.string()),
-    project: zSentryGroupProject,
-    shortId: z.string(),
-    stats: z.nullish(z.record(z.string(), z.unknown())),
-    status: z.string(),
-    statusDetails: z.record(z.string(), z.unknown()),
-    substatus: z.nullable(z.string()),
-    title: z.string(),
-    type: z.string(),
-    userCount: z.int()
-});
-
-/**
  * A release as `serialize_releases` (`api/helpers/group_index/index.py`)
  * falls back to it, with the serializer's `shortVersion`, which is the
  * version itself (`api/serializers/models/release.py`).
@@ -1683,16 +1601,6 @@ export const zSentryRelease = z.object({
     shortVersion: z.string(),
     version: z.string()
 });
-
-/**
- * Subset of `GroupDetailsEndpoint`'s response
- * (`issues/endpoints/group_details.py`).
- */
-export const zSentryIssueDetails = z.intersection(zSentryIssue, z.object({
-    firstRelease: z.nullable(zSentryRelease),
-    lastRelease: z.nullable(zSentryRelease),
-    userReportCount: z.int()
-}));
 
 /**
  * `{"id", "name"}` of a status, as Sentry nests it in an organization.
@@ -1929,6 +1837,120 @@ export const zSsoStartResponse = z.object({
 });
 
 /**
+ * Which release a resolved issue was resolved in, as Sentry's group
+ * serializer reports it: `inNextRelease` until the next release is known,
+ * then `inRelease`. Empty for any other status.
+ */
+export const zStatusDetails = z.object({
+    inNextRelease: z.nullish(z.boolean()),
+    inRelease: z.nullish(z.string())
+});
+
+/**
+ * Response for API
+ */
+export const zIssueResponse = z.object({
+    assigned_to: z.nullable(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))),
+    assignee_type: z.nullable(z.string()),
+    culprit: z.string(),
+    event_count: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
+    first_release: z.string(),
+    first_seen: z.iso.datetime({ offset: true }),
+    has_seen: z.nullish(z.boolean()),
+    id: z.uuid(),
+    is_bookmarked: z.nullish(z.boolean()),
+    is_subscribed: z.nullish(z.boolean()),
+    issue_category: z.string(),
+    issue_type: z.string(),
+    last_release: z.string(),
+    last_seen: z.iso.datetime({ offset: true }),
+    level: z.nullable(z.string()),
+    logger: z.string(),
+    platform: z.nullable(z.string()),
+    priority: z.nullable(zIssuePriority),
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
+    short_id: z.string(),
+    status: zIssueStatus,
+    status_details: zStatusDetails,
+    substatus: z.nullable(z.string()),
+    title: z.string(),
+    trend: z.nullish(z.array(z.int())),
+    user_count: z.nullish(z.int()),
+    user_report_count: z.nullish(z.int()),
+    value: z.string()
+});
+
+/**
+ * Subset of `GroupSerializer` plus its seen stats
+ * (`api/serializers/models/group.py`), and `stats` when the caller asked
+ * for a series (`StreamGroupSerializer`, `group_stream.py`).
+ */
+export const zSentryIssue = z.object({
+    annotations: z.array(z.record(z.string(), z.unknown())),
+    count: z.string(),
+    culprit: z.string(),
+    firstSeen: z.iso.datetime({ offset: true }),
+    id: z.string(),
+    issueCategory: z.string(),
+    issueType: z.string(),
+    lastSeen: z.iso.datetime({ offset: true }),
+    level: z.string(),
+    logger: z.nullable(z.string()),
+    metadata: z.record(z.string(), z.unknown()),
+    platform: z.nullable(z.string()),
+    priority: z.nullable(z.string()),
+    project: zSentryGroupProject,
+    shortId: z.string(),
+    stats: z.nullish(z.record(z.string(), z.unknown())),
+    status: z.string(),
+    statusDetails: zStatusDetails,
+    substatus: z.nullable(z.string()),
+    title: z.string(),
+    type: z.string(),
+    userCount: z.int()
+});
+
+/**
+ * Subset of `GroupDetailsEndpoint`'s response
+ * (`issues/endpoints/group_details.py`).
+ */
+export const zSentryIssueDetails = z.intersection(zSentryIssue, z.object({
+    firstRelease: z.nullable(zSentryRelease),
+    lastRelease: z.nullable(zSentryRelease),
+    userReportCount: z.int()
+}));
+
+/**
+ * The release fields of Sentry's `StatusDetailsValidator`
+ * (`api/helpers/group_index/validators/status_details.py`): read with a
+ * `resolved` (or `resolvedInNextRelease`) status, ignored with any other.
+ */
+export const zStatusDetailsUpdate = z.object({
+    inNextRelease: z.nullish(z.boolean()),
+    inRelease: z.nullish(z.string())
+});
+
+/**
+ * Bulk mutate request: apply a status (and/or priority) to many issues.
+ */
+export const zBulkUpdateIssues = z.object({
+    ids: z.array(z.uuid()),
+    priority: z.nullish(zIssuePriority),
+    status: z.nullish(zIssueStatusUpdate),
+    statusDetails: z.nullish(zStatusDetailsUpdate)
+});
+
+/**
+ * Body of an issue update: the fields of `GroupValidator`
+ * (`api/helpers/group_index/validators/group.py`) Rustrak acts on.
+ */
+export const zIssueUpdate = z.object({
+    status: z.nullish(z.string()),
+    statusDetails: z.nullish(zStatusDetailsUpdate),
+    substatus: z.nullish(z.string())
+});
+
+/**
  * The age of everything the instance holds, by project and kind, keyed on
  * ingest time like retention.
  */
@@ -2146,6 +2168,7 @@ export const zUpdateIssueState = z.object({
     assignee_type: z.nullish(z.string()),
     priority: z.nullish(zIssuePriority),
     status: z.nullish(zIssueStatusUpdate),
+    statusDetails: z.nullish(zStatusDetailsUpdate),
     substatus: z.nullish(z.string())
 });
 
@@ -2809,7 +2832,7 @@ export const zIssuesListAllResponse = z.object({
         project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
         short_id: z.string(),
         status: zIssueStatus,
-        status_details: z.record(z.string(), z.unknown()),
+        status_details: zStatusDetails,
         substatus: z.nullable(z.string()),
         title: z.string(),
         trend: z.nullish(z.array(z.int())),
@@ -3396,7 +3419,7 @@ export const zIssuesListResponse = z.object({
         project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
         short_id: z.string(),
         status: zIssueStatus,
-        status_details: z.record(z.string(), z.unknown()),
+        status_details: zStatusDetails,
         substatus: z.nullable(z.string()),
         title: z.string(),
         trend: z.nullish(z.array(z.int())),

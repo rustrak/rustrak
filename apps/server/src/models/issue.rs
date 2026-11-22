@@ -45,6 +45,18 @@ pub enum IssueStatusUpdate {
     ResolvedInNextRelease,
 }
 
+// Spec-only: what `status_details` holds.
+/// Which release a resolved issue was resolved in, as Sentry's group
+/// serializer reports it: `inNextRelease` until the next release is known,
+/// then `inRelease`. Empty for any other status.
+#[cfg(feature = "openapi")]
+#[derive(utoipa::ToSchema)]
+#[schema(rename_all = "camelCase")]
+pub struct StatusDetails {
+    pub in_next_release: Option<bool>,
+    pub in_release: Option<String>,
+}
+
 // Spec-only: the `window` query parameter of the issue stats endpoint.
 /// How far back issue stats reach.
 #[cfg(feature = "openapi")]
@@ -215,7 +227,7 @@ pub struct IssueResponse {
     pub issue_category: String,
     pub first_release: String,
     pub last_release: String,
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[cfg_attr(feature = "openapi", schema(value_type = StatusDetails))]
     pub status_details: serde_json::Value,
     /// Only populated by the single-issue GET endpoint.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -252,6 +264,64 @@ pub struct UpdateIssueState {
     pub assigned_to: Option<Option<i32>>,
     #[serde(default, deserialize_with = "deserialize_some")]
     pub assignee_type: Option<Option<String>>,
+    /// Which release a `resolved` status resolves the issue in.
+    #[serde(default, rename = "statusDetails")]
+    pub status_details: Option<StatusDetailsUpdate>,
+}
+
+/// The release fields of Sentry's `StatusDetailsValidator`
+/// (`api/helpers/group_index/validators/status_details.py`): read with a
+/// `resolved` (or `resolvedInNextRelease`) status, ignored with any other.
+#[derive(Debug, Default, Clone, Deserialize, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "camelCase")]
+pub struct StatusDetailsUpdate {
+    /// Resolve in the release that ships next. Needs a release in the project.
+    #[schemars(description = "Resolve in the release that ships next")]
+    pub in_next_release: Option<bool>,
+    /// Resolve in this release version, or `latest` for the most recent one.
+    #[schemars(description = "Resolve in this release version, or latest")]
+    pub in_release: Option<String>,
+}
+
+/// A status change, as Sentry's `update_groups` dispatches it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusChange<'a> {
+    /// `unresolved`, `resolved` (now) or `ignored`, with its substatus.
+    Set(&'static str, Option<&'a str>),
+    /// Resolved in a release: `handle_resolve_in_release`.
+    ResolveIn(crate::models::resolution::ResolveTarget<'a>),
+}
+
+/// The change `status` and `details` ask for: in a release when the status
+/// is `resolvedInNextRelease`, or `resolved` with `inNextRelease` or
+/// `inRelease` in its details; otherwise the plain status.
+pub fn status_change<'a>(
+    status: Option<&'a str>,
+    details: Option<&'a StatusDetailsUpdate>,
+    substatus: Option<&'a str>,
+) -> AppResult<Option<StatusChange<'a>>> {
+    use crate::models::resolution::ResolveTarget;
+    let Some(status) = status else {
+        return Ok(None);
+    };
+    // Sentry's validator turns any `inNextRelease`, `false` included, into a
+    // release, and `handle_resolve_in_release` only asks whether one is there.
+    let in_next = details.is_some_and(|d| d.in_next_release.is_some());
+    let in_release = details.and_then(|d| d.in_release.as_deref());
+    Ok(Some(match status {
+        crate::services::issue::RESOLVED_IN_NEXT_RELEASE => {
+            StatusChange::ResolveIn(ResolveTarget::NextRelease { explicit: in_next })
+        }
+        STATUS_RESOLVED => match in_release {
+            _ if in_next => StatusChange::ResolveIn(ResolveTarget::NextRelease { explicit: true }),
+            Some(version) => StatusChange::ResolveIn(ResolveTarget::Release(version)),
+            None => StatusChange::Set(STATUS_RESOLVED, substatus),
+        },
+        STATUS_IGNORED => StatusChange::Set(STATUS_IGNORED, substatus),
+        STATUS_UNRESOLVED => StatusChange::Set(STATUS_UNRESOLVED, substatus),
+        other => return Err(AppError::Validation(format!("Invalid status: {}", other))),
+    }))
 }
 
 /// Wraps a field's normal deserialization in `Some`, so a present JSON value
@@ -295,6 +365,10 @@ pub struct BulkUpdateIssues {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<IssuePriority>))]
     #[schemars(description = "low, medium or high")]
     pub priority: Option<String>,
+    /// Which release a `resolved` status resolves the issues in.
+    #[serde(default, rename = "statusDetails")]
+    #[schemars(description = "inNextRelease or inRelease, with a resolved status")]
+    pub status_details: Option<StatusDetailsUpdate>,
 }
 
 impl BulkUpdateIssues {
@@ -328,20 +402,6 @@ impl BulkDeleteIssues {
 }
 
 impl UpdateIssueState {
-    /// The requested status, if any. A `status` that is present but not one
-    /// of the recognized literals is a client error, not a no-op.
-    pub fn resolved_status(&self) -> AppResult<Option<&'static str>> {
-        self.status
-            .as_deref()
-            .map(|status| match status {
-                STATUS_RESOLVED => Ok(STATUS_RESOLVED),
-                STATUS_IGNORED => Ok(STATUS_IGNORED),
-                STATUS_UNRESOLVED => Ok(STATUS_UNRESOLVED),
-                other => Err(AppError::Validation(format!("Invalid status: {}", other))),
-            })
-            .transpose()
-    }
-
     /// Validates the requested substatus, if present, against the canonical
     /// set of allowed values (Sentry-compatible).
     pub fn validated_substatus(&self) -> AppResult<Option<&str>> {
@@ -484,8 +544,63 @@ mod tests {
             ids,
             status: None,
             priority: None,
+            status_details: None,
         };
         assert!(body.validate_size().is_ok());
+    }
+
+    /// Sentry's `update_groups`: a release resolution comes from
+    /// `resolvedInNextRelease`, or `resolved` with `inNextRelease` (which wins)
+    /// or `inRelease`; any other status ignores the details.
+    #[test]
+    fn test_status_change_reads_the_release_details() {
+        use crate::models::resolution::ResolveTarget;
+        let details = |next: Option<bool>, release: Option<&str>| StatusDetailsUpdate {
+            in_next_release: next,
+            in_release: release.map(str::to_string),
+        };
+        fn change<'a>(status: &'a str, d: Option<&'a StatusDetailsUpdate>) -> StatusChange<'a> {
+            status_change(Some(status), d, None).unwrap().unwrap()
+        }
+        let next = |explicit| StatusChange::ResolveIn(ResolveTarget::NextRelease { explicit });
+
+        assert_eq!(change("resolvedInNextRelease", None), next(false));
+        let explicit = details(Some(true), None);
+        assert_eq!(change("resolvedInNextRelease", Some(&explicit)), next(true));
+        assert_eq!(change("resolved", Some(&explicit)), next(true));
+        let both = details(Some(true), Some("1.0"));
+        assert_eq!(change("resolved", Some(&both)), next(true));
+        // Any `inNextRelease`, as Sentry's validator reads it.
+        let declined = details(Some(false), Some("1.0"));
+        assert_eq!(change("resolved", Some(&declined)), next(true));
+        let release = details(None, Some("1.0"));
+        assert_eq!(
+            change("resolved", Some(&release)),
+            StatusChange::ResolveIn(ResolveTarget::Release("1.0"))
+        );
+        assert_eq!(
+            change("resolved", Some(&details(None, None))),
+            StatusChange::Set("resolved", None)
+        );
+        assert_eq!(
+            change("unresolved", Some(&release)),
+            StatusChange::Set("unresolved", None)
+        );
+        assert_eq!(status_change(None, Some(&release), None).unwrap(), None);
+        assert!(status_change(Some("bogus"), None, None).is_err());
+    }
+
+    /// The body field is `statusDetails`, its keys camelCase as in Sentry.
+    #[test]
+    fn test_status_details_deserialize_from_sentrys_shape() {
+        let body: UpdateIssueState = serde_json::from_value(serde_json::json!({
+            "status": "resolved",
+            "statusDetails": { "inRelease": "app@1.0", "ignoreCount": 3 }
+        }))
+        .unwrap();
+        let details = body.status_details.unwrap();
+        assert_eq!(details.in_release.as_deref(), Some("app@1.0"));
+        assert_eq!(details.in_next_release, None);
     }
 
     #[test]
@@ -495,6 +610,7 @@ mod tests {
             ids,
             status: None,
             priority: None,
+            status_details: None,
         };
         assert!(body.validate_size().is_err());
     }

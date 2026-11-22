@@ -1161,7 +1161,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Sentry-compatible release creation. Idempotent: repeating the same\n`(project, version)` returns 208 rather than erroring — sentry-cli and JS\nbundler plugins call this on every build. Triggers date-based regression\nclearing (see [`crate::services::issue::IssueService::finalize_release`])\non every call, not just the new-row branch: `finalize_release`'s own\n`UPDATE ... WHERE` is idempotent (a repeat run affects 0 rows once nothing\nis left to clear), so this also self-heals a prior call that created the\nrow but failed before clearing ran — a plain `if created` gate would\notherwise skip clearing forever once a retry lands on the 208 branch.",
+        "summary": "Sentry-compatible release creation. Idempotent: repeating the same\n`(project, version)` returns 208 rather than erroring — sentry-cli and JS\nbundler plugins call this on every build. A new release resolves the\nissues waiting on \"resolved in next release\" (see\n[`crate::services::resolution::ResolutionService::clear_expired`]).",
         "operationId": "releases.create",
         "parameters": [
           {
@@ -3295,7 +3295,7 @@
                             "$ref": "#/components/schemas/IssueStatus"
                           },
                           "status_details": {
-                            "type": "object"
+                            "$ref": "#/components/schemas/StatusDetails"
                           },
                           "substatus": {
                             "type": [
@@ -7021,7 +7021,7 @@
                             "$ref": "#/components/schemas/IssueStatus"
                           },
                           "status_details": {
-                            "type": "object"
+                            "$ref": "#/components/schemas/StatusDetails"
                           },
                           "substatus": {
                             "type": [
@@ -16968,6 +16968,17 @@
                 "type": "null"
               }
             ]
+          },
+          "statusDetails": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusDetailsUpdate",
+                "description": "Which release a `resolved` status resolves the issues in."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -18821,7 +18832,7 @@
             "$ref": "#/components/schemas/IssueStatus"
           },
           "status_details": {
-            "type": "object"
+            "$ref": "#/components/schemas/StatusDetails"
           },
           "substatus": {
             "type": [
@@ -18987,6 +18998,17 @@
               "null"
             ],
             "description": "`resolved`, `unresolved`, `ignored`, `resolvedInNextRelease` or `muted`."
+          },
+          "statusDetails": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusDetailsUpdate",
+                "description": "With `resolved`: `inNextRelease` or `inRelease`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "substatus": {
             "type": [
@@ -21167,7 +21189,7 @@
             "type": "string"
           },
           "statusDetails": {
-            "type": "object"
+            "$ref": "#/components/schemas/StatusDetails"
           },
           "substatus": {
             "type": [
@@ -21938,6 +21960,44 @@
           }
         }
       },
+      "StatusDetails": {
+        "type": "object",
+        "description": "Which release a resolved issue was resolved in, as Sentry's group\nserializer reports it: `inNextRelease` until the next release is known,\nthen `inRelease`. Empty for any other status.",
+        "properties": {
+          "inNextRelease": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "inRelease": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "StatusDetailsUpdate": {
+        "type": "object",
+        "description": "The release fields of Sentry's `StatusDetailsValidator`\n(`api/helpers/group_index/validators/status_details.py`): read with a\n`resolved` (or `resolvedInNextRelease`) status, ignored with any other.",
+        "properties": {
+          "inNextRelease": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Resolve in the release that ships next. Needs a release in the project."
+          },
+          "inRelease": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Resolve in this release version, or `latest` for the most recent one."
+          }
+        }
+      },
       "StorageAge": {
         "type": "object",
         "description": "The age of everything the instance holds, by project and kind, keyed on\ningest time like retention.",
@@ -22542,6 +22602,17 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/IssueStatusUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statusDetails": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusDetailsUpdate",
+                "description": "Which release a `resolved` status resolves the issue in."
               },
               {
                 "type": "null"

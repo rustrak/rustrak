@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { PRIORITIES } from '@/features/issue/model/actions';
 import type { Assignable } from '@/features/issue/model/assignable';
+import { resolutionOf } from '@/features/issue/model/resolution';
 import { priorityDisplay, statusDisplay } from '@/features/issue/model/status';
 import { useRelativeTime } from '@/shared/i18n/use-now';
 import { useIssueChange } from './issue-actions';
@@ -42,6 +43,7 @@ export function IssueProperties({
   const relativeTime = useRelativeTime();
   const { isPending, update, canUpdate } = useIssueChange(projectId, issue);
   const status = statusDisplay(issue);
+  const resolution = resolutionOf(issue);
   const priority = priorityDisplay(issue.priority);
   const assignee = members.find((member) => member.id === issue.assigned_to);
 
@@ -105,6 +107,15 @@ export function IssueProperties({
             )}
           />
           {t(status.labelKey)}
+          {resolution ? (
+            <Text variant="meta" tone="subtle">
+              {resolution.kind === 'release'
+                ? t('detail.resolvedInRelease', {
+                    version: resolution.version,
+                  })
+                : t('detail.resolvedInNextRelease')}
+            </Text>
+          ) : null}
         </span>
       </Property>
 

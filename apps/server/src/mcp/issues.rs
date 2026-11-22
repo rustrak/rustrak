@@ -45,6 +45,9 @@ pub struct UpdateStatusArgs {
     status: String,
     /// low, medium or high
     priority: Option<String>,
+    /// With status resolved: inNextRelease, or inRelease (a version or latest)
+    #[serde(rename = "statusDetails")]
+    status_details: Option<crate::models::StatusDetailsUpdate>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -198,6 +201,7 @@ impl RustrakMcp {
         let body = UpdateIssueState {
             status: Some(a.status),
             priority: a.priority,
+            status_details: a.status_details,
             ..Default::default()
         };
         self.update_issue(&a.issue, body).await

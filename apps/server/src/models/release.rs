@@ -102,6 +102,16 @@ pub struct ReleaseSummary {
 }
 
 impl Release {
+    /// The columns the release ordering reads.
+    pub fn release_ref(&self) -> crate::models::resolution::ReleaseRef {
+        crate::models::resolution::ReleaseRef {
+            id: self.id,
+            version: self.version.clone(),
+            date_created: self.date_created,
+            date_released: self.date_released,
+        }
+    }
+
     pub fn to_response(&self) -> ReleaseResponse {
         ReleaseResponse {
             version: self.version.clone(),

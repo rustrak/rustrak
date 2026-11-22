@@ -403,13 +403,9 @@ export class Releases extends HeyApiClient {
     /**
      * Sentry-compatible release creation. Idempotent: repeating the same
      * `(project, version)` returns 208 rather than erroring — sentry-cli and JS
-     * bundler plugins call this on every build. Triggers date-based regression
-     * clearing (see [`crate::services::issue::IssueService::finalize_release`])
-     * on every call, not just the new-row branch: `finalize_release`'s own
-     * `UPDATE ... WHERE` is idempotent (a repeat run affects 0 rows once nothing
-     * is left to clear), so this also self-heals a prior call that created the
-     * row but failed before clearing ran — a plain `if created` gate would
-     * otherwise skip clearing forever once a retry lands on the 208 branch.
+     * bundler plugins call this on every build. A new release resolves the
+     * issues waiting on "resolved in next release" (see
+     * [`crate::services::resolution::ResolutionService::clear_expired`]).
      */
     public create<ThrowOnError extends boolean = false>(options: Options<ReleasesCreateData, ThrowOnError>): RequestResult<ReleasesCreateResponses, ReleasesCreateErrors, ThrowOnError> {
         return (options.client ?? this.client).post<ReleasesCreateResponses, ReleasesCreateErrors, ThrowOnError>({
