@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.31.0
+
+### Minor Changes
+
+- [`69d40a0`](https://github.com/rustrak/rustrak/commit/69d40a00187a6e03a119fd6610102eb25773555c) Thanks [@AbianS](https://github.com/AbianS)! - Release-aware resolutions: releases are ordered by semver (or by creation date when a project does not use semver) and created from the first event that names them, issues can be resolved in the current release or in a chosen one, and a regression reopens an issue only for an event from the fix release or later, so a staggered rollout no longer reopens it. `statusDetails` is now camelCase (`inNextRelease`, `inRelease`) on the issue API, bulk update and MCP tool. New declarative bootstrap file (`RUSTRAK_CONFIG=rustrak.toml`) that declares the superuser, projects with fixed ids and DSNs, and API tokens. OIDC discovery runs in the background with retries, so an unreachable provider no longer stops the server (@Goldloli). The transaction failure rate leaves out `cancelled` and `unknown`, as Sentry does (@Goldloli). Check-in ids that are not RFC 4122 UUIDs no longer break the Crons page (@HEOJUNFO). Settings header actions wrap on phones. `url` bumped to 2.5.9 for RUSTSEC-2026-0592.
+
 ## 0.30.1
 
 ### Patch Changes

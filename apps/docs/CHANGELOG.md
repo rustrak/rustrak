@@ -1,5 +1,11 @@
 # docs
 
+## 0.18.4
+
+### Patch Changes
+
+- [`69d40a0`](https://github.com/rustrak/rustrak/commit/69d40a00187a6e03a119fd6610102eb25773555c) Thanks [@AbianS](https://github.com/AbianS)! - New Bootstrap file page and `RUSTRAK_CONFIG` in the environment reference; the SSO page describes background discovery and its log lines; the Issues page explains resolving in a release and how releases are ordered.
+
 ## 0.18.3
 
 ### Patch Changes
