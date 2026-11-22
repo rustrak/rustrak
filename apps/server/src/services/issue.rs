@@ -884,6 +884,19 @@ impl IssueService {
     ) -> AppResult<u64> {
         // Resolving in a release reads the project's releases first.
         let mut tx = crate::db::begin_write(pool).await?;
+        // The issues first, in id order, as `ResolutionService::clear_expired`
+        // locks them: in request order the two deadlock on Postgres.
+        #[cfg(feature = "postgres")]
+        if !ids.is_empty() {
+            let mut lock = QueryBuilder::<Db>::new("SELECT id FROM issues WHERE project_id = ");
+            lock.push_bind(project_id).push(" AND id IN (");
+            let mut list = lock.separated(", ");
+            for id in ids {
+                list.push_bind(*id);
+            }
+            lock.push(") ORDER BY id FOR NO KEY UPDATE");
+            lock.build().execute(&mut *tx).await?;
+        }
         let mut updated = 0u64;
         if let Some(change) = change {
             updated = Self::bulk_set_status(&mut tx, project_id, ids, change, user_id).await?;

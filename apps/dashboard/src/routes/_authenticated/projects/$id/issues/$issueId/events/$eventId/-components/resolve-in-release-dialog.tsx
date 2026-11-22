@@ -56,9 +56,13 @@ export function ResolveInReleaseDialog({
     releases.data?.items.filter((r) => r.registered).map((r) => r.version) ??
     [];
 
+  // A choice the search has since hidden is no choice: nothing the reader
+  // cannot see is sent.
+  const chosen = version && versions.includes(version) ? version : null;
+
   const resolve = () => {
-    if (!version) return;
-    update({ status: 'resolved', statusDetails: { inRelease: version } });
+    if (!chosen) return;
+    update({ status: 'resolved', statusDetails: { inRelease: chosen } });
     onOpenChange(false);
   };
 
@@ -73,7 +77,10 @@ export function ResolveInReleaseDialog({
           <FieldLabel>{t('resolveInRelease.search')}</FieldLabel>
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setVersion(null);
+            }}
             placeholder={t('resolveInRelease.searchPlaceholder')}
           />
         </Field>
@@ -94,7 +101,7 @@ export function ResolveInReleaseDialog({
           <Field>
             <FieldLabel>{t('resolveInRelease.label')}</FieldLabel>
             <Select
-              value={version}
+              value={chosen}
               onValueChange={setVersion}
               placeholder={t('resolveInRelease.placeholder')}
               aria-label={t('resolveInRelease.label')}
@@ -115,7 +122,7 @@ export function ResolveInReleaseDialog({
         </Button>
         <Button
           variant="primary"
-          disabled={!version || isPending}
+          disabled={!chosen || isPending}
           onClick={resolve}
         >
           {t('resolveInRelease.confirm')}

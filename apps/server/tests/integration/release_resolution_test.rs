@@ -1074,3 +1074,60 @@ async fn completing_resolutions_and_reopening_do_not_deadlock() {
     assert_eq!(release.await.unwrap().expect("the release finishes"), 0);
     assert_eq!(env.status().await.2, json!({}));
 }
+
+/// A bulk status change named `[b, a]` while a release completes the pending
+/// `a` and `b`: both lock issues in id order, or Postgres aborts one of them.
+#[cfg(feature = "postgres")]
+#[actix_web::test]
+async fn completing_resolutions_and_a_bulk_change_do_not_deadlock() {
+    let env = Env::new("Bulk Deadlock").await;
+    for name in ["one", "two"] {
+        let e =
+            json!({ "platform": "rust", "message": name, "fingerprint": [name], "release": "r1" });
+        digest_in_order(
+            env.pool(),
+            env.dir.path(),
+            env.project.id,
+            vec![(env.start, e)],
+        )
+        .await;
+    }
+    let mut ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM issues WHERE project_id = $1")
+        .bind(env.project.id)
+        .fetch_all(env.pool())
+        .await
+        .unwrap();
+    ids.sort();
+    let (a, b) = (ids[0], ids[1]);
+
+    // The release's side, holding `a` as `clear_expired` does first.
+    let mut release = env.pool().begin().await.unwrap();
+    sqlx::query("SELECT id FROM issues WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(a)
+        .execute(&mut *release)
+        .await
+        .unwrap();
+
+    let pool = env.pool().clone();
+    let project = env.project.id;
+    let bulk = tokio::spawn(async move {
+        IssueService::bulk_update(
+            &pool,
+            project,
+            &[b, a],
+            Some(rustrak::models::StatusChange::Set("ignored", None)),
+            None,
+            None,
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    sqlx::query("SELECT id FROM issues WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(b)
+        .execute(&mut *release)
+        .await
+        .expect("the release reaches its second issue");
+    release.commit().await.unwrap();
+    assert_eq!(bulk.await.unwrap().expect("the bulk change finishes"), 2);
+}
