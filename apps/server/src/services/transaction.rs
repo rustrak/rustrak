@@ -772,13 +772,15 @@ impl TransactionService {
 /// computed by the database (Postgres path). `p50`/`p95`/`p99` are nullable in
 /// the row type only because `percentile_cont` is; the `duration_ms IS NOT
 /// NULL` filter means a group that produced a row always has values.
-/// A failed sample: a trace status other than `ok`. As SQL, [`FAILS`].
+/// A failed sample: a trace status other than the ones Sentry counts as
+/// neither a success nor a failure (`ok`, `cancelled`, `unknown`), so the
+/// **Failures** figures match Sentry's for the same data. As SQL, [`FAILS`].
 fn is_failure(status: Option<&str>) -> bool {
-    status.is_some_and(|s| s != "ok")
+    status.is_some_and(|s| !matches!(s, "ok" | "cancelled" | "unknown"))
 }
 
 /// How many samples failed, as an aggregate.
-const FAILS: &str = "SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END)";
+const FAILS: &str = "SUM(CASE WHEN status IS NOT NULL AND status NOT IN ('ok', 'cancelled', 'unknown') THEN 1 ELSE 0 END)";
 
 /// How the endpoints are ranked.
 #[derive(Debug, Default, Clone, Copy, serde::Deserialize, PartialEq, Eq, schemars::JsonSchema)]
@@ -802,7 +804,7 @@ impl StatsSort {
             Self::TimeSpent => "SUM(duration_ms)",
             Self::Count => "COUNT(*)",
             Self::Avg => "AVG(duration_ms)",
-            Self::FailureRate => "SUM(CASE WHEN status IS NOT NULL AND status <> 'ok' THEN 1 ELSE 0 END) * 1.0 / COUNT(*)",
+            Self::FailureRate => "SUM(CASE WHEN status IS NOT NULL AND status NOT IN ('ok', 'cancelled', 'unknown') THEN 1 ELSE 0 END) * 1.0 / COUNT(*)",
         }
     }
 }
