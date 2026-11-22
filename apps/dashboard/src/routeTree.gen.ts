@@ -61,6 +61,9 @@ import { Route as AuthenticatedProjectsIdSettingsGeneralRouteImport } from './ro
 import { Route as AuthenticatedProjectsIdSettingsGithubRouteImport } from './routes/_authenticated/projects/$id/settings/github';
 import { Route as AuthenticatedProjectsIdSettingsMembersRouteImport } from './routes/_authenticated/projects/$id/settings/members';
 import { Route as AuthenticatedProjectsIdSettingsProductsRouteImport } from './routes/_authenticated/projects/$id/settings/products';
+import { Route as AuthenticatedProjectsIdWebVitalsIndexRouteImport } from './routes/_authenticated/projects/$id/web-vitals/index';
+import { Route as AuthenticatedProjectsIdWebVitalsVitalRouteImport } from './routes/_authenticated/projects/$id/web-vitals/$vital';
+import { Route as AuthenticatedProjectsIdWebVitalsSummaryRouteImport } from './routes/_authenticated/projects/$id/web-vitals/summary';
 import { Route as AuthenticatedProjectsIdAgentsConversationsConversationIdRouteImport } from './routes/_authenticated/projects/$id/agents/conversations/$conversationId';
 import { Route as AuthenticatedProjectsIdAlertsRuleIdIndexRouteImport } from './routes/_authenticated/projects/$id/alerts/$ruleId/index';
 import { Route as AuthenticatedProjectsIdAlertsRuleIdEditRouteImport } from './routes/_authenticated/projects/$id/alerts/$ruleId/edit';
@@ -374,6 +377,24 @@ const AuthenticatedProjectsIdSettingsProductsRoute =
     path: '/products',
     getParentRoute: () => AuthenticatedProjectsIdSettingsRoute,
   } as any);
+const AuthenticatedProjectsIdWebVitalsIndexRoute =
+  AuthenticatedProjectsIdWebVitalsIndexRouteImport.update({
+    id: '/web-vitals/',
+    path: '/web-vitals/',
+    getParentRoute: () => AuthenticatedProjectsIdRoute,
+  } as any);
+const AuthenticatedProjectsIdWebVitalsVitalRoute =
+  AuthenticatedProjectsIdWebVitalsVitalRouteImport.update({
+    id: '/web-vitals/$vital',
+    path: '/web-vitals/$vital',
+    getParentRoute: () => AuthenticatedProjectsIdRoute,
+  } as any);
+const AuthenticatedProjectsIdWebVitalsSummaryRoute =
+  AuthenticatedProjectsIdWebVitalsSummaryRouteImport.update({
+    id: '/web-vitals/summary',
+    path: '/web-vitals/summary',
+    getParentRoute: () => AuthenticatedProjectsIdRoute,
+  } as any);
 const AuthenticatedProjectsIdAgentsConversationsConversationIdRoute =
   AuthenticatedProjectsIdAgentsConversationsConversationIdRouteImport.update({
     id: '/agents/conversations/$conversationId',
@@ -473,6 +494,8 @@ export interface FileRoutesByFullPath {
   '/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
   '/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
+  '/projects/$id/web-vitals/$vital': typeof AuthenticatedProjectsIdWebVitalsVitalRoute;
+  '/projects/$id/web-vitals/summary': typeof AuthenticatedProjectsIdWebVitalsSummaryRoute;
   '/projects/$id/agents/': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/projects/$id/alerts/': typeof AuthenticatedProjectsIdAlertsIndexRoute;
   '/projects/$id/crons/': typeof AuthenticatedProjectsIdCronsIndexRoute;
@@ -481,6 +504,7 @@ export interface FileRoutesByFullPath {
   '/projects/$id/performance/': typeof AuthenticatedProjectsIdPerformanceIndexRoute;
   '/projects/$id/releases/': typeof AuthenticatedProjectsIdReleasesIndexRoute;
   '/projects/$id/settings/': typeof AuthenticatedProjectsIdSettingsIndexRoute;
+  '/projects/$id/web-vitals/': typeof AuthenticatedProjectsIdWebVitalsIndexRoute;
   '/projects/$id/agents/conversations/$conversationId': typeof AuthenticatedProjectsIdAgentsConversationsConversationIdRoute;
   '/projects/$id/alerts/$ruleId/edit': typeof AuthenticatedProjectsIdAlertsRuleIdEditRoute;
   '/projects/$id/events/sentry/$eventId': typeof AuthenticatedProjectsIdEventsSentryEventIdRoute;
@@ -532,6 +556,8 @@ export interface FileRoutesByTo {
   '/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
   '/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
+  '/projects/$id/web-vitals/$vital': typeof AuthenticatedProjectsIdWebVitalsVitalRoute;
+  '/projects/$id/web-vitals/summary': typeof AuthenticatedProjectsIdWebVitalsSummaryRoute;
   '/projects/$id/agents': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/projects/$id/alerts': typeof AuthenticatedProjectsIdAlertsIndexRoute;
   '/projects/$id/crons': typeof AuthenticatedProjectsIdCronsIndexRoute;
@@ -540,6 +566,7 @@ export interface FileRoutesByTo {
   '/projects/$id/performance': typeof AuthenticatedProjectsIdPerformanceIndexRoute;
   '/projects/$id/releases': typeof AuthenticatedProjectsIdReleasesIndexRoute;
   '/projects/$id/settings': typeof AuthenticatedProjectsIdSettingsIndexRoute;
+  '/projects/$id/web-vitals': typeof AuthenticatedProjectsIdWebVitalsIndexRoute;
   '/projects/$id/agents/conversations/$conversationId': typeof AuthenticatedProjectsIdAgentsConversationsConversationIdRoute;
   '/projects/$id/alerts/$ruleId/edit': typeof AuthenticatedProjectsIdAlertsRuleIdEditRoute;
   '/projects/$id/events/sentry/$eventId': typeof AuthenticatedProjectsIdEventsSentryEventIdRoute;
@@ -596,6 +623,8 @@ export interface FileRoutesById {
   '/_authenticated/projects/$id/settings/github': typeof AuthenticatedProjectsIdSettingsGithubRoute;
   '/_authenticated/projects/$id/settings/members': typeof AuthenticatedProjectsIdSettingsMembersRoute;
   '/_authenticated/projects/$id/settings/products': typeof AuthenticatedProjectsIdSettingsProductsRoute;
+  '/_authenticated/projects/$id/web-vitals/$vital': typeof AuthenticatedProjectsIdWebVitalsVitalRoute;
+  '/_authenticated/projects/$id/web-vitals/summary': typeof AuthenticatedProjectsIdWebVitalsSummaryRoute;
   '/_authenticated/projects/$id/agents/': typeof AuthenticatedProjectsIdAgentsIndexRoute;
   '/_authenticated/projects/$id/alerts/': typeof AuthenticatedProjectsIdAlertsIndexRoute;
   '/_authenticated/projects/$id/crons/': typeof AuthenticatedProjectsIdCronsIndexRoute;
@@ -604,6 +633,7 @@ export interface FileRoutesById {
   '/_authenticated/projects/$id/performance/': typeof AuthenticatedProjectsIdPerformanceIndexRoute;
   '/_authenticated/projects/$id/releases/': typeof AuthenticatedProjectsIdReleasesIndexRoute;
   '/_authenticated/projects/$id/settings/': typeof AuthenticatedProjectsIdSettingsIndexRoute;
+  '/_authenticated/projects/$id/web-vitals/': typeof AuthenticatedProjectsIdWebVitalsIndexRoute;
   '/_authenticated/projects/$id/agents/conversations/$conversationId': typeof AuthenticatedProjectsIdAgentsConversationsConversationIdRoute;
   '/_authenticated/projects/$id/alerts/$ruleId/edit': typeof AuthenticatedProjectsIdAlertsRuleIdEditRoute;
   '/_authenticated/projects/$id/events/sentry/$eventId': typeof AuthenticatedProjectsIdEventsSentryEventIdRoute;
@@ -660,6 +690,8 @@ export interface FileRouteTypes {
     | '/projects/$id/settings/github'
     | '/projects/$id/settings/members'
     | '/projects/$id/settings/products'
+    | '/projects/$id/web-vitals/$vital'
+    | '/projects/$id/web-vitals/summary'
     | '/projects/$id/agents/'
     | '/projects/$id/alerts/'
     | '/projects/$id/crons/'
@@ -668,6 +700,7 @@ export interface FileRouteTypes {
     | '/projects/$id/performance/'
     | '/projects/$id/releases/'
     | '/projects/$id/settings/'
+    | '/projects/$id/web-vitals/'
     | '/projects/$id/agents/conversations/$conversationId'
     | '/projects/$id/alerts/$ruleId/edit'
     | '/projects/$id/events/sentry/$eventId'
@@ -719,6 +752,8 @@ export interface FileRouteTypes {
     | '/projects/$id/settings/github'
     | '/projects/$id/settings/members'
     | '/projects/$id/settings/products'
+    | '/projects/$id/web-vitals/$vital'
+    | '/projects/$id/web-vitals/summary'
     | '/projects/$id/agents'
     | '/projects/$id/alerts'
     | '/projects/$id/crons'
@@ -727,6 +762,7 @@ export interface FileRouteTypes {
     | '/projects/$id/performance'
     | '/projects/$id/releases'
     | '/projects/$id/settings'
+    | '/projects/$id/web-vitals'
     | '/projects/$id/agents/conversations/$conversationId'
     | '/projects/$id/alerts/$ruleId/edit'
     | '/projects/$id/events/sentry/$eventId'
@@ -782,6 +818,8 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$id/settings/github'
     | '/_authenticated/projects/$id/settings/members'
     | '/_authenticated/projects/$id/settings/products'
+    | '/_authenticated/projects/$id/web-vitals/$vital'
+    | '/_authenticated/projects/$id/web-vitals/summary'
     | '/_authenticated/projects/$id/agents/'
     | '/_authenticated/projects/$id/alerts/'
     | '/_authenticated/projects/$id/crons/'
@@ -790,6 +828,7 @@ export interface FileRouteTypes {
     | '/_authenticated/projects/$id/performance/'
     | '/_authenticated/projects/$id/releases/'
     | '/_authenticated/projects/$id/settings/'
+    | '/_authenticated/projects/$id/web-vitals/'
     | '/_authenticated/projects/$id/agents/conversations/$conversationId'
     | '/_authenticated/projects/$id/alerts/$ruleId/edit'
     | '/_authenticated/projects/$id/events/sentry/$eventId'
@@ -1176,6 +1215,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsIdSettingsProductsRouteImport;
       parentRoute: typeof AuthenticatedProjectsIdSettingsRoute;
     };
+    '/_authenticated/projects/$id/web-vitals/': {
+      id: '/_authenticated/projects/$id/web-vitals/';
+      path: '/web-vitals';
+      fullPath: '/projects/$id/web-vitals/';
+      preLoaderRoute: typeof AuthenticatedProjectsIdWebVitalsIndexRouteImport;
+      parentRoute: typeof AuthenticatedProjectsIdRoute;
+    };
+    '/_authenticated/projects/$id/web-vitals/$vital': {
+      id: '/_authenticated/projects/$id/web-vitals/$vital';
+      path: '/web-vitals/$vital';
+      fullPath: '/projects/$id/web-vitals/$vital';
+      preLoaderRoute: typeof AuthenticatedProjectsIdWebVitalsVitalRouteImport;
+      parentRoute: typeof AuthenticatedProjectsIdRoute;
+    };
+    '/_authenticated/projects/$id/web-vitals/summary': {
+      id: '/_authenticated/projects/$id/web-vitals/summary';
+      path: '/web-vitals/summary';
+      fullPath: '/projects/$id/web-vitals/summary';
+      preLoaderRoute: typeof AuthenticatedProjectsIdWebVitalsSummaryRouteImport;
+      parentRoute: typeof AuthenticatedProjectsIdRoute;
+    };
     '/_authenticated/projects/$id/agents/conversations/$conversationId': {
       id: '/_authenticated/projects/$id/agents/conversations/$conversationId';
       path: '/agents/conversations/$conversationId';
@@ -1336,6 +1396,8 @@ interface AuthenticatedProjectsIdRouteChildren {
   AuthenticatedProjectsIdPerformanceTxnIdRoute: typeof AuthenticatedProjectsIdPerformanceTxnIdRoute;
   AuthenticatedProjectsIdPerformanceSummaryRoute: typeof AuthenticatedProjectsIdPerformanceSummaryRoute;
   AuthenticatedProjectsIdReleasesReleaseRoute: typeof AuthenticatedProjectsIdReleasesReleaseRoute;
+  AuthenticatedProjectsIdWebVitalsVitalRoute: typeof AuthenticatedProjectsIdWebVitalsVitalRoute;
+  AuthenticatedProjectsIdWebVitalsSummaryRoute: typeof AuthenticatedProjectsIdWebVitalsSummaryRoute;
   AuthenticatedProjectsIdAgentsIndexRoute: typeof AuthenticatedProjectsIdAgentsIndexRoute;
   AuthenticatedProjectsIdAlertsIndexRoute: typeof AuthenticatedProjectsIdAlertsIndexRoute;
   AuthenticatedProjectsIdCronsIndexRoute: typeof AuthenticatedProjectsIdCronsIndexRoute;
@@ -1343,6 +1405,7 @@ interface AuthenticatedProjectsIdRouteChildren {
   AuthenticatedProjectsIdIssuesIndexRoute: typeof AuthenticatedProjectsIdIssuesIndexRoute;
   AuthenticatedProjectsIdPerformanceIndexRoute: typeof AuthenticatedProjectsIdPerformanceIndexRoute;
   AuthenticatedProjectsIdReleasesIndexRoute: typeof AuthenticatedProjectsIdReleasesIndexRoute;
+  AuthenticatedProjectsIdWebVitalsIndexRoute: typeof AuthenticatedProjectsIdWebVitalsIndexRoute;
   AuthenticatedProjectsIdAgentsConversationsConversationIdRoute: typeof AuthenticatedProjectsIdAgentsConversationsConversationIdRoute;
   AuthenticatedProjectsIdAlertsRuleIdEditRoute: typeof AuthenticatedProjectsIdAlertsRuleIdEditRoute;
   AuthenticatedProjectsIdEventsSentryEventIdRoute: typeof AuthenticatedProjectsIdEventsSentryEventIdRoute;
@@ -1371,6 +1434,10 @@ const AuthenticatedProjectsIdRouteChildren: AuthenticatedProjectsIdRouteChildren
       AuthenticatedProjectsIdPerformanceSummaryRoute,
     AuthenticatedProjectsIdReleasesReleaseRoute:
       AuthenticatedProjectsIdReleasesReleaseRoute,
+    AuthenticatedProjectsIdWebVitalsVitalRoute:
+      AuthenticatedProjectsIdWebVitalsVitalRoute,
+    AuthenticatedProjectsIdWebVitalsSummaryRoute:
+      AuthenticatedProjectsIdWebVitalsSummaryRoute,
     AuthenticatedProjectsIdAgentsIndexRoute:
       AuthenticatedProjectsIdAgentsIndexRoute,
     AuthenticatedProjectsIdAlertsIndexRoute:
@@ -1385,6 +1452,8 @@ const AuthenticatedProjectsIdRouteChildren: AuthenticatedProjectsIdRouteChildren
       AuthenticatedProjectsIdPerformanceIndexRoute,
     AuthenticatedProjectsIdReleasesIndexRoute:
       AuthenticatedProjectsIdReleasesIndexRoute,
+    AuthenticatedProjectsIdWebVitalsIndexRoute:
+      AuthenticatedProjectsIdWebVitalsIndexRoute,
     AuthenticatedProjectsIdAgentsConversationsConversationIdRoute:
       AuthenticatedProjectsIdAgentsConversationsConversationIdRoute,
     AuthenticatedProjectsIdAlertsRuleIdEditRoute:

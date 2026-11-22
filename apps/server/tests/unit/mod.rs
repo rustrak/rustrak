@@ -33,3 +33,4 @@ mod span_v2_test;
 mod storage_test;
 mod telemetry_test;
 mod transaction_processor_test;
+mod web_vitals_test;

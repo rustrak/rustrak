@@ -35,6 +35,7 @@ import {
   Eye,
   EyeOff,
   Folder,
+  Gauge,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
@@ -113,6 +114,7 @@ export const IssuesIcon = fromHugeicons('IssuesIcon', CircleAlert);
 export const ReleasesIcon = fromHugeicons('ReleasesIcon', Rocket);
 export const PerformanceIcon = fromHugeicons('PerformanceIcon', Zap);
 export const AgentsIcon = fromHugeicons('AgentsIcon', Bot);
+export const WebVitalsIcon = fromHugeicons('WebVitalsIcon', Gauge);
 export const LogsIcon = fromHugeicons('LogsIcon', ScrollText);
 export const CronsIcon = fromHugeicons('CronsIcon', CalendarClock);
 export const FeedbackIcon = fromHugeicons('FeedbackIcon', MessageSquare);

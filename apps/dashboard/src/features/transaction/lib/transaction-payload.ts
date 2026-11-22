@@ -2,6 +2,7 @@ import type { TransactionDetailResponse } from '@rustrak/client';
 import type { Span, TraceContext } from '@/features/transaction/model/span';
 import { parseEpochSeconds } from '@/shared/lib/protocol-timestamp';
 import { type WaterfallRow, waterfallRows } from '@/shared/lib/waterfall';
+import { rateVital, type VitalRating } from '@/shared/lib/web-vitals';
 
 function asObject(value: unknown): Record<string, unknown> | null {
   // `typeof [] === 'object'`, and a list is never one of the key/value panels
@@ -139,23 +140,13 @@ export function waterfallSpans(
   );
 }
 
-/** Web-vital thresholds (good up to, poor from) from web.dev, in ms but CLS. */
-const VITALS: Record<string, { good: number; poor: number }> = {
-  lcp: { good: 2500, poor: 4000 },
-  fcp: { good: 1800, poor: 3000 },
-  fid: { good: 100, poor: 300 },
-  inp: { good: 200, poor: 500 },
-  ttfb: { good: 800, poor: 1800 },
-  cls: { good: 0.1, poor: 0.25 },
-};
-
 export interface MeasurementRow {
   key: string;
   value: number;
   unit?: string;
   /** One of the web vitals, with a known label and thresholds. */
   vital: boolean;
-  rating: 'good' | 'meh' | 'poor' | null;
+  rating: VitalRating | null;
 }
 
 /** The numeric measurements, the web vitals first and rated. */
@@ -167,19 +158,16 @@ export function readMeasurements(
     ([key, raw]): MeasurementRow[] => {
       const m = asObject(raw);
       if (!m || typeof m.value !== 'number') return [];
-      // Own keys only: `constructor` is not a vital.
-      const vital = Object.hasOwn(VITALS, key.toLowerCase())
-        ? VITALS[key.toLowerCase()]
-        : undefined;
-      const value = m.value;
-      const rating: MeasurementRow['rating'] = vital
-        ? value <= vital.good
-          ? 'good'
-          : value <= vital.poor
-            ? 'meh'
-            : 'poor'
-        : null;
-      return [{ key, value, unit: asString(m.unit), vital: !!vital, rating }];
+      const rating = rateVital(key, m.value);
+      return [
+        {
+          key,
+          value: m.value,
+          unit: asString(m.unit),
+          vital: rating !== null,
+          rating,
+        },
+      ];
     },
   );
   return rows.sort((a, b) => Number(b.vital) - Number(a.vital));

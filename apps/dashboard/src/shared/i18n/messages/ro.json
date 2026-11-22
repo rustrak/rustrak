@@ -148,6 +148,7 @@
     "issuesDescription": "Erori și excepții, grupate după fingerprint.",
     "releasesDescription": "Implementările și starea fiecărei versiuni.",
     "performanceDescription": "Duratele tranzacțiilor și cascadele de span-uri.",
+    "webVitalsDescription": "Cât de repede se încarcă și răspunde fiecare pagină pentru utilizatori reali.",
     "agentsDescription": "Trace-urile agenților AI și span-urile din interiorul lor.",
     "logsDescription": "Fluxul brut de jurnale, exact cum sosesc.",
     "generalDescription": "Numele, slug-ul, platforma și zona de risc.",
@@ -684,6 +685,7 @@
       "issues": "Probleme",
       "releases": "Lansări",
       "performance": "Performanță",
+      "webVitals": "Web Vitals",
       "agents": "Agenți",
       "logs": "Jurnale",
       "settings": "Setări",
@@ -2999,5 +3001,139 @@
     "installStep1": "Atinge Partajează <share></share> în bara Safari",
     "installStep2": "Alege Adaugă pe ecranul principal",
     "installStep3": "Atinge Adaugă"
+  },
+  "webVitals": {
+    "title": "Web Vitals",
+    "meta": {
+      "title": "Web Vitals · {project}",
+      "pageTitle": "Web Vitals · {page}",
+      "metricTitle": "{vital} · Web Vitals"
+    },
+    "pages": "{count, plural, =1 {# pagină} few {# pagini} other {# de pagini}}",
+    "score": "Scor de performanță",
+    "bands": {
+      "good": "Bun",
+      "meh": "De îmbunătățit",
+      "poor": "Slab"
+    },
+    "noData": "Fără date",
+    "trend": "Evoluție",
+    "trendHint": "Ce parte din încărcări a fost bună, de îmbunătățit și slabă, perioadă cu perioadă.",
+    "browser": "Browser",
+    "allBrowsers": "Toate browserele",
+    "noBrowsers": "Încă niciun browser",
+    "columns": {
+      "page": "Pagină",
+      "opportunity": "Oportunitate",
+      "score": "Scor",
+      "pageloads": "Încărcări"
+    },
+    "emptyWindow": "Niciun web vital în această perioadă",
+    "pageloadsLink": "Încărcări",
+    "empty": {
+      "title": "Încă niciun web vital",
+      "description": "Adaugă <code>browserTracingIntegration()</code> în SDK-ul de browser ca să măsori cum se încarcă fiecare pagină pentru utilizatori reali."
+    },
+    "pageSpeedLink": "PageSpeed Insights",
+    "ratings": {
+      "good": "Bun",
+      "meh": "De îmbunătățit",
+      "poor": "Slab"
+    },
+    "assessment": {
+      "label": "Evaluarea Core Web Vitals",
+      "passed": "Promovată",
+      "failed": "Picată",
+      "passedHint": "LCP, INP și CLS sunt bune la percentila 75.",
+      "failedHint": "{count, plural, =1 {{vitals} nu este bun} other {{vitals} nu sunt bune}} la percentila 75."
+    },
+    "devices": {
+      "device": "Dispozitiv",
+      "all": "Toate dispozitivele",
+      "mobile": "Mobil",
+      "desktop": "Desktop",
+      "title": "Pe dispozitiv",
+      "hint": "Telefoanele și calculatoarele spun povești diferite.",
+      "unknown": "Necunoscut"
+    },
+    "detail": {
+      "causes": "Ce îl cauzează",
+      "causesHint": "Elementele pe care a fost măsurat, întâi cel care pierde cel mai mult scor.",
+      "pages": "Unde e cel mai rău",
+      "pagesHint": "Paginile care pierd cel mai mult scor la el.",
+      "samples": "Cele mai slabe măsurători",
+      "samplesHint": "Fiecare deschide trace-ul încărcării sale.",
+      "noTargets": "SDK-ul nu a raportat niciun element în această perioadă.",
+      "noTargetsForVital": "FCP și TTFB nu sunt cauzate de un element: verifică răspunsul serverului și resursele care blochează randarea.",
+      "noPages": "Nicio pagină nu îl are în această perioadă.",
+      "noSamples": "Nicio măsurătoare în această perioadă.",
+      "times": "{count, plural, =1 {o dată} few {de # ori} other {de # de ori}}",
+      "device": {
+        "mobile": "mobil",
+        "desktop": "desktop"
+      },
+      "reading": "Cum se citește",
+      "readingHint": "Percentila 75 contează pentru Core Web Vitals; celelalte arată dispersia.",
+      "measured": "{count, plural, =1 {o măsurătoare} few {# măsurători} other {# de măsurători}} în această perioadă.",
+      "howToFix": "Cum îl îmbunătățești",
+      "howToFixHint": "Ce îl rezolvă de obicei, după web.dev.",
+      "browsers": "Pe browser",
+      "browsersHint": "Fiecare browser are propria curbă de scor."
+    },
+    "vitals": {
+      "lcp": "Largest Contentful Paint: când s-a terminat de afișat cea mai mare imagine sau bloc de text. De obicei o imagine grea, un server lent sau CSS și JavaScript care blochează randarea.",
+      "inp": "Interaction to Next Paint: cât a durat până când pagina a răspuns la un clic, o atingere sau o tastă. De obicei sarcini JavaScript lungi pe firul principal.",
+      "cls": "Cumulative Layout Shift: cât s-a mișcat conținutul în timpul încărcării. De obicei imagini fără dimensiuni, reclame sau conținut inserat târziu.",
+      "fcp": "First Contentful Paint: când a apărut primul text sau prima imagine. Depinde mai ales de timpul de răspuns al serverului și de resursele care blochează randarea.",
+      "ttfb": "Time to First Byte: cât a durat până când serverul a început să răspundă. De obicei backend-ul, redirecționări sau lipsa cache-ului."
+    },
+    "coreTitle": "Core Web Vitals",
+    "otherTitle": "Alți indicatori",
+    "pagesTitle": "Pagini",
+    "noDataFor": "Nicio măsurătoare în această perioadă.",
+    "scoreHint": "Scor de performanță: {band}. Cântărește toți indicatorii, nu doar cele trei Core Web Vitals.",
+    "trendOf": "Evoluția {vital}",
+    "atP75": "la p75",
+    "analyse": "Analizează {vital}",
+    "allPages": "Toate paginile",
+    "firstFix": {
+      "label": "De unde să începi",
+      "sentence": "{vital} pe <mono>{page}</mono> este <value></value> la percentila 75, pagina care costă cel mai mult scor.",
+      "cause": " Cauzat mai ales de <mono>{cause}</mono>.",
+      "none": "Nimic urgent: nicio pagină nu are indicatori sub bun."
+    },
+    "guide": {
+      "more": "Citește ghidul complet pe web.dev",
+      "lcp": [
+        "Servește cea mai mare imagine într-un format modern (AVIF, WebP) și la dimensiunea afișată.",
+        "Preîncarc-o sau dă-i fetchpriority=\"high\"; nu o încărca niciodată leneș.",
+        "Redu timpul de răspuns al serverului și redirecționările dinaintea paginii.",
+        "Include CSS-ul critic în pagină și amână scripturile care blochează randarea."
+      ],
+      "inp": [
+        "Împarte sarcinile JavaScript lungi în unele mai mici care eliberează firul principal.",
+        "Amână sau elimină scripturile terțe care rulează în timpul interacțiunilor.",
+        "Fă mai puțin în handlerele de evenimente: actualizează întâi ecranul.",
+        "Evită re-randările mari și layout-urile forțate la fiecare interacțiune."
+      ],
+      "cls": [
+        "Dă imaginilor, videoclipurilor și iframe-urilor lățime și înălțime, sau un aspect-ratio.",
+        "Rezervă spațiu pentru reclame, embed-uri și bannere înainte să se încarce.",
+        "Nu insera conținut deasupra a ceea ce se citește, decât la cerere.",
+        "Încarcă fonturile web cu font-display și un font de rezervă asemănător."
+      ],
+      "fcp": [
+        "Redu timpul de răspuns al serverului (TTFB).",
+        "Include CSS-ul critic în pagină și amână restul.",
+        "Încarcă JavaScript-ul necritic cu defer sau async.",
+        "Folosește preconnect către originile resurselor critice, precum fonturile."
+      ],
+      "ttfb": [
+        "Pune răspunsurile în cache pe un CDN aproape de utilizatori.",
+        "Evită lanțurile de redirecționări dinaintea paginii.",
+        "Accelerează munca backend-ului și interogările bazei de date din spatele paginii.",
+        "Trimite HTML-ul în streaming sau servește-l static când poți."
+      ]
+    }
   }
 }

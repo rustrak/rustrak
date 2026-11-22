@@ -35,6 +35,7 @@ export {
   CommandLineIcon as Terminal,
   Copy01Icon as Copy,
   CursorPointer01Icon as MousePointerClick,
+  DashboardSpeed02Icon as Gauge,
   DashboardSquare01Icon as LayoutDashboard,
   Delete02Icon as Trash2,
   Download04Icon as Download,

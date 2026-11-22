@@ -1034,6 +1034,14 @@ export const zOrgDetails = z.object({
 });
 
 /**
+ * A vital's value at one percentile.
+ */
+export const zPercentileValue = z.object({
+    percentile: z.int().check(z.gte(0), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
+    value: z.number()
+});
+
+/**
  * Body of a template preview request.
  */
 export const zPreviewTemplateBody = z.object({
@@ -1222,6 +1230,15 @@ export const zCreateAlertIntegration = z.object({
 export const zRateLimitsResponse = z.object({
     project_per_hour: z.int(),
     project_per_minute: z.int()
+});
+
+/**
+ * How many measurements web.dev rates good, needing improvement and poor.
+ */
+export const zRatingCounts = z.object({
+    good: z.int(),
+    meh: z.int(),
+    poor: z.int()
 });
 
 export const zReadinessChecks = z.object({
@@ -2385,6 +2402,97 @@ export const zUpdateSavedView = z.object({
     name: z.nullish(z.string()),
     query: z.nullish(z.string()),
     visibility: z.nullish(zViewVisibility)
+});
+
+/**
+ * The vitals a performance score is made of.
+ */
+export const zVital = z.enum([
+    'fcp',
+    'lcp',
+    'cls',
+    'ttfb',
+    'inp'
+]);
+
+/**
+ * One vital over a window: its 75th percentile, the spread around it, its
+ * average score and how its measurements rate.
+ */
+export const zVitalStats = z.object({
+    count: z.int(),
+    distribution: zRatingCounts,
+    percentiles: z.array(zPercentileValue),
+    score: z.number(),
+    value: z.number(),
+    vital: zVital
+});
+
+/**
+ * One measurement of a vital, and where it happened.
+ */
+export const zWebVitalSample = z.object({
+    browser: z.nullable(z.string()),
+    connection: z.nullable(z.string()),
+    device: z.nullable(z.string()),
+    page: z.string(),
+    release: z.nullable(z.string()),
+    resource: z.nullable(z.string()),
+    score: z.number(),
+    target: z.nullable(z.string()),
+    timestamp: z.iso.datetime({ offset: true }),
+    transaction_id: z.nullable(z.uuid()),
+    url: z.nullable(z.string()),
+    value: z.number()
+});
+
+/**
+ * One element a vital was about (an LCP's image, an INP's button), and how
+ * it did.
+ */
+export const zWebVitalTarget = z.object({
+    count: z.int(),
+    distribution: zRatingCounts,
+    resource: z.nullable(z.string()),
+    score: z.number(),
+    target: z.string(),
+    value: z.number()
+});
+
+/**
+ * One vital on one device or one browser.
+ */
+export const zWebVitalsBreakdownRow = z.object({
+    key: z.nullable(z.string()),
+    stats: zVitalStats
+});
+
+/**
+ * One page's web vitals, and how much of the project's score it costs.
+ */
+export const zWebVitalsPage = z.object({
+    opportunity: z.number(),
+    page: z.string(),
+    pageloads: z.int(),
+    score: z.nullable(z.number()),
+    vitals: z.array(zVitalStats)
+});
+
+/**
+ * One bucket of the trend: how its measurements rate.
+ */
+export const zWebVitalsPoint = z.object({
+    bucket: z.iso.datetime({ offset: true }),
+    distribution: zRatingCounts
+});
+
+/**
+ * A project's, or one page's, web vitals over a window.
+ */
+export const zWebVitalsSummary = z.object({
+    browsers: z.array(z.string()),
+    score: z.nullable(z.number()),
+    vitals: z.array(zVitalStats)
 });
 
 export const zSentryGetIssuePath = z.object({
@@ -4354,6 +4462,128 @@ export const zSavedViewsUpdatePath = z.object({
  * View updated
  */
 export const zSavedViewsUpdateResponse = zSavedView;
+
+export const zWebVitalsGetSummaryPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zWebVitalsGetSummaryQuery = z.object({
+    environment: z.nullish(z.string()),
+    browser: z.nullish(z.string()),
+    device: z.nullish(z.string()),
+    page: z.nullish(z.string()),
+    vital: z.nullish(zVital),
+    period: z.nullish(z.string())
+});
+
+/**
+ * The performance score and each vital's value, score and ratings
+ */
+export const zWebVitalsGetSummaryResponse = zWebVitalsSummary;
+
+export const zWebVitalsGetBreakdownPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zWebVitalsGetBreakdownQuery = z.object({
+    vital: z.nullish(zVital),
+    by: z.nullish(z.unknown()),
+    environment: z.nullish(z.string()),
+    browser: z.nullish(z.string()),
+    device: z.nullish(z.string()),
+    page: z.nullish(z.string()),
+    period: z.nullish(z.string())
+});
+
+/**
+ * The vital on each device or browser, the most measured first
+ */
+export const zWebVitalsGetBreakdownResponse = z.array(zWebVitalsBreakdownRow);
+
+export const zWebVitalsListPagesPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zWebVitalsListPagesQuery = z.object({
+    page: z.optional(z.int().check(z.gte(1))),
+    per_page: z.optional(z.int().check(z.gte(1), z.lte(100))),
+    environment: z.nullish(z.string()),
+    browser: z.nullish(z.string()),
+    device: z.nullish(z.string()),
+    vital: z.nullish(zVital),
+    period: z.nullish(z.string())
+});
+
+/**
+ * Offset-based paginated response wrapper
+ */
+export const zWebVitalsListPagesResponse = z.object({
+    items: z.array(z.object({
+        opportunity: z.number(),
+        page: z.string(),
+        pageloads: z.int(),
+        score: z.nullable(z.number()),
+        vitals: z.array(zVitalStats)
+    })),
+    page: z.int(),
+    per_page: z.int(),
+    total_count: z.int(),
+    total_pages: z.int()
+});
+
+export const zWebVitalsListSamplesPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zWebVitalsListSamplesQuery = z.object({
+    environment: z.nullish(z.string()),
+    browser: z.nullish(z.string()),
+    device: z.nullish(z.string()),
+    page: z.nullish(z.string()),
+    vital: z.nullish(zVital),
+    period: z.nullish(z.string())
+});
+
+/**
+ * The worst measurements, the highest first
+ */
+export const zWebVitalsListSamplesResponse = z.array(zWebVitalSample);
+
+export const zWebVitalsListTargetsPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zWebVitalsListTargetsQuery = z.object({
+    environment: z.nullish(z.string()),
+    browser: z.nullish(z.string()),
+    device: z.nullish(z.string()),
+    page: z.nullish(z.string()),
+    vital: z.nullish(zVital),
+    period: z.nullish(z.string())
+});
+
+/**
+ * The elements the vitals were about, the one losing the most score first
+ */
+export const zWebVitalsListTargetsResponse = z.array(zWebVitalTarget);
+
+export const zWebVitalsGetTimeseriesPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zWebVitalsGetTimeseriesQuery = z.object({
+    environment: z.nullish(z.string()),
+    browser: z.nullish(z.string()),
+    device: z.nullish(z.string()),
+    page: z.nullish(z.string()),
+    vital: z.nullish(zVital),
+    period: z.nullish(z.string())
+});
+
+/**
+ * How the measurements rate per bucket, oldest first
+ */
+export const zWebVitalsGetTimeseriesResponse = z.array(zWebVitalsPoint);
 
 /**
  * The server's per-project limits

@@ -21,11 +21,13 @@ import {
   StorageIcon,
   TeamIcon,
   TokensIcon,
+  WebVitalsIcon,
 } from '@rustrak/ui';
 import {
   keepsProduct,
   orderedProducts,
 } from '@/features/project/model/products';
+import { reportsWebVitals } from '@/features/web-vital/model/web-vitals';
 import type { Permissions } from '@/shared/lib/permissions';
 
 /**
@@ -50,6 +52,8 @@ export interface NavPage {
   reads?: Resource;
   /** The product a project page shows, when a project can turn it off. */
   product?: Product;
+  /** Project pages: only for a project on a platform this page is about. */
+  platforms?: (platform: string | null) => boolean;
   command: {
     descriptionKey: string;
     keywords?: string[];
@@ -280,6 +284,27 @@ export const PROJECT_GROUPS: {
         },
       },
       {
+        key: 'webVitals',
+        icon: WebVitalsIcon,
+        href: '/web-vitals',
+        reads: 'performance',
+        product: 'performance',
+        // Only a browser measures them: a backend's or a phone's would be
+        // an empty page.
+        platforms: reportsWebVitals,
+        command: {
+          descriptionKey: 'commands.webVitalsDescription',
+          keywords: [
+            'web vitals',
+            'lcp',
+            'inp',
+            'cls',
+            'core web vitals',
+            'frontend',
+          ],
+        },
+      },
+      {
         key: 'logs',
         icon: LogsIcon,
         href: '/logs',
@@ -372,11 +397,16 @@ export function allowed(
 export function shownInProject(
   page: NavPage,
   permissions: Permissions,
-  project: { id: number; disabled_products: readonly Product[] },
+  project: {
+    id: number;
+    disabled_products: readonly Product[];
+    platform: string | null;
+  },
 ): boolean {
   return (
     allowed(page, permissions, project.id) &&
-    (!page.product || keepsProduct(project.disabled_products, page.product))
+    (!page.product || keepsProduct(project.disabled_products, page.product)) &&
+    (page.platforms?.(project.platform) ?? true)
   );
 }
 

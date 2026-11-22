@@ -148,6 +148,7 @@
     "issuesDescription": "Errors and exceptions, grouped by fingerprint.",
     "releasesDescription": "Deploys and the health of each version.",
     "performanceDescription": "Transaction timings and span waterfalls.",
+    "webVitalsDescription": "How fast each page loads and responds for real users.",
     "agentsDescription": "AI agent traces and the spans inside them.",
     "logsDescription": "The raw log stream as it arrives.",
     "generalDescription": "Name, slug, platform and the danger zone.",
@@ -684,6 +685,7 @@
       "issues": "Issues",
       "releases": "Releases",
       "performance": "Performance",
+      "webVitals": "Web Vitals",
       "agents": "Agents",
       "logs": "Logs",
       "settings": "Settings",
@@ -2999,5 +3001,139 @@
     "installStep1": "Tap Share <share></share> in Safari's toolbar",
     "installStep2": "Choose Add to Home Screen",
     "installStep3": "Tap Add"
+  },
+  "webVitals": {
+    "title": "Web Vitals",
+    "meta": {
+      "title": "Web Vitals · {project}",
+      "pageTitle": "Web Vitals · {page}",
+      "metricTitle": "{vital} · Web Vitals"
+    },
+    "pages": "{count, plural, =1 {# page} other {# pages}}",
+    "score": "Performance score",
+    "bands": {
+      "good": "Good",
+      "meh": "Needs improvement",
+      "poor": "Poor"
+    },
+    "noData": "No data",
+    "trend": "Trend",
+    "trendHint": "The share of page loads that were good, needed improvement and were poor, period by period.",
+    "browser": "Browser",
+    "allBrowsers": "All browsers",
+    "noBrowsers": "No browsers yet",
+    "columns": {
+      "page": "Page",
+      "opportunity": "Opportunity",
+      "score": "Score",
+      "pageloads": "Page loads"
+    },
+    "emptyWindow": "No web vitals in this window",
+    "pageloadsLink": "Page loads",
+    "empty": {
+      "title": "No web vitals yet",
+      "description": "Add <code>browserTracingIntegration()</code> to your browser SDK to measure how each page loads for real users."
+    },
+    "pageSpeedLink": "PageSpeed Insights",
+    "ratings": {
+      "good": "Good",
+      "meh": "Needs improvement",
+      "poor": "Poor"
+    },
+    "assessment": {
+      "label": "Core Web Vitals assessment",
+      "passed": "Passed",
+      "failed": "Failed",
+      "passedHint": "LCP, INP and CLS are good at the 75th percentile.",
+      "failedHint": "{count, plural, =1 {{vitals} is not good} other {{vitals} are not good}} at the 75th percentile."
+    },
+    "devices": {
+      "device": "Device",
+      "all": "All devices",
+      "mobile": "Mobile",
+      "desktop": "Desktop",
+      "title": "By device",
+      "hint": "Phones and computers tell different stories.",
+      "unknown": "Unknown"
+    },
+    "detail": {
+      "causes": "What causes it",
+      "causesHint": "The elements it was measured on, the one losing the most score first.",
+      "pages": "Where it is worst",
+      "pagesHint": "The pages that lose the most score on it.",
+      "samples": "Worst measurements",
+      "samplesHint": "Each opens its page load's trace.",
+      "noTargets": "The SDK reported no element for it in this window.",
+      "noTargetsForVital": "FCP and TTFB are not caused by one element: look at the server's response and the resources that block rendering.",
+      "noPages": "No page has it in this window.",
+      "noSamples": "No measurement in this window.",
+      "times": "{count, plural, =1 {# time} other {# times}}",
+      "device": {
+        "mobile": "mobile",
+        "desktop": "desktop"
+      },
+      "reading": "How it reads",
+      "readingHint": "The 75th percentile is what Core Web Vitals are judged by; the others show the spread.",
+      "measured": "{count, plural, =1 {# measurement} other {# measurements}} in this window.",
+      "howToFix": "How to improve it",
+      "howToFixHint": "What usually fixes it, from web.dev.",
+      "browsers": "By browser",
+      "browsersHint": "Each browser scores on its own curve."
+    },
+    "vitals": {
+      "lcp": "Largest Contentful Paint: when the largest image or text block finished painting. Usually a heavy image, a slow server or render-blocking CSS and JavaScript.",
+      "inp": "Interaction to Next Paint: how long the page took to respond to a click, tap or key. Usually long JavaScript tasks on the main thread.",
+      "cls": "Cumulative Layout Shift: how much the content moved while loading. Usually images without dimensions, ads or late-injected content.",
+      "fcp": "First Contentful Paint: when the first text or image appeared. Usually the server's response time and render-blocking resources.",
+      "ttfb": "Time to First Byte: how long the server took to start answering. Usually the backend, redirects or a missing cache."
+    },
+    "coreTitle": "Core Web Vitals",
+    "otherTitle": "Other metrics",
+    "pagesTitle": "Pages",
+    "noDataFor": "No measurements in this window.",
+    "scoreHint": "Performance score: {band}. It weighs every metric, not only the three Core Web Vitals.",
+    "trendOf": "{vital} trend",
+    "atP75": "at p75",
+    "analyse": "Analyse {vital}",
+    "allPages": "All pages",
+    "firstFix": {
+      "label": "Where to start",
+      "sentence": "{vital} on <mono>{page}</mono> is <value></value> at the 75th percentile, the page that costs the score the most.",
+      "cause": " Mostly caused by <mono>{cause}</mono>.",
+      "none": "Nothing urgent: no page has a vital below good."
+    },
+    "guide": {
+      "more": "Read the full guide on web.dev",
+      "lcp": [
+        "Serve the largest image in a modern format (AVIF, WebP) and at the size it is shown.",
+        "Preload it or give it fetchpriority=\"high\"; never lazy-load it.",
+        "Cut the server response time and any redirects before the page.",
+        "Inline critical CSS and defer scripts that block rendering."
+      ],
+      "inp": [
+        "Break long JavaScript tasks into smaller ones that yield to the main thread.",
+        "Defer or remove third-party scripts that run while people interact.",
+        "Do less in event handlers: update the screen first, the rest after.",
+        "Avoid large re-renders and forced layouts on each interaction."
+      ],
+      "cls": [
+        "Give images, videos and iframes a width and height, or an aspect-ratio.",
+        "Reserve space for ads, embeds and banners before they load.",
+        "Never insert content above what people are reading, unless they asked for it.",
+        "Load web fonts with font-display and a matching fallback."
+      ],
+      "fcp": [
+        "Reduce the server response time (TTFB).",
+        "Inline critical CSS and defer the rest.",
+        "Defer or async non-critical JavaScript.",
+        "Preconnect to the origins of critical resources, such as fonts."
+      ],
+      "ttfb": [
+        "Cache responses on a CDN close to your users.",
+        "Avoid redirect chains before the page.",
+        "Speed up the backend work and database queries behind the page.",
+        "Stream the HTML, or serve it statically when you can."
+      ]
+    }
   }
 }

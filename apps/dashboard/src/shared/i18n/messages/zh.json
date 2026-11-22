@@ -148,6 +148,7 @@
     "issuesDescription": "按指纹分组的错误与异常。",
     "releasesDescription": "部署记录及各版本的运行状况。",
     "performanceDescription": "事务耗时与 Span 瀑布图。",
+    "webVitalsDescription": "每个页面对真实用户的加载和响应速度。",
     "agentsDescription": "AI 智能体追踪及其内部 Span。",
     "logsDescription": "实时原始日志流。",
     "generalDescription": "名称、slug、平台与危险操作区。",
@@ -684,6 +685,7 @@
       "issues": "问题",
       "releases": "发布",
       "performance": "性能",
+      "webVitals": "Web Vitals",
       "agents": "智能体",
       "logs": "日志",
       "settings": "设置",
@@ -2999,5 +3001,139 @@
     "installStep1": "点按 Safari 工具栏中的分享 <share></share>",
     "installStep2": "选择“添加到主屏幕”",
     "installStep3": "点按“添加”"
+  },
+  "webVitals": {
+    "title": "Web Vitals",
+    "meta": {
+      "title": "Web Vitals · {project}",
+      "pageTitle": "Web Vitals · {page}",
+      "metricTitle": "{vital} · Web Vitals"
+    },
+    "pages": "{count, plural, other {# 个页面}}",
+    "score": "性能评分",
+    "bands": {
+      "good": "良好",
+      "meh": "需要改进",
+      "poor": "较差"
+    },
+    "noData": "无数据",
+    "trend": "趋势",
+    "trendHint": "每个时段中良好、需要改进和较差的页面加载所占比例。",
+    "browser": "浏览器",
+    "allBrowsers": "所有浏览器",
+    "noBrowsers": "暂无浏览器",
+    "columns": {
+      "page": "页面",
+      "opportunity": "提升空间",
+      "score": "评分",
+      "pageloads": "页面加载"
+    },
+    "emptyWindow": "此时间范围内没有 Web Vitals",
+    "pageloadsLink": "页面加载",
+    "empty": {
+      "title": "暂无 Web Vitals",
+      "description": "在浏览器 SDK 中添加 <code>browserTracingIntegration()</code>，即可衡量每个页面对真实用户的加载情况。"
+    },
+    "pageSpeedLink": "PageSpeed Insights",
+    "ratings": {
+      "good": "良好",
+      "meh": "需要改进",
+      "poor": "较差"
+    },
+    "assessment": {
+      "label": "Core Web Vitals 评估",
+      "passed": "通过",
+      "failed": "未通过",
+      "passedHint": "LCP、INP 和 CLS 在第 75 百分位均为良好。",
+      "failedHint": "{vitals} 在第 75 百分位不是良好。"
+    },
+    "devices": {
+      "device": "设备",
+      "all": "所有设备",
+      "mobile": "移动设备",
+      "desktop": "桌面设备",
+      "title": "按设备",
+      "hint": "手机和电脑的表现各不相同。",
+      "unknown": "未知"
+    },
+    "detail": {
+      "causes": "原因",
+      "causesHint": "测量到该指标的元素，失分最多的排在最前。",
+      "pages": "最差的页面",
+      "pagesHint": "在该指标上失分最多的页面。",
+      "samples": "最差的测量",
+      "samplesHint": "点击可打开其页面加载的 trace。",
+      "noTargets": "此时间范围内 SDK 未报告任何元素。",
+      "noTargetsForVital": "FCP 和 TTFB 不是由某个元素引起的：请检查服务器响应和阻塞渲染的资源。",
+      "noPages": "此时间范围内没有页面有该指标。",
+      "noSamples": "此时间范围内没有测量数据。",
+      "times": "{count, plural, other {# 次}}",
+      "device": {
+        "mobile": "移动设备",
+        "desktop": "桌面设备"
+      },
+      "reading": "如何解读",
+      "readingHint": "Core Web Vitals 以第 75 百分位为准；其他百分位显示分布情况。",
+      "measured": "此时间范围内共 {count, plural, other {# 次测量}}。",
+      "howToFix": "如何改进",
+      "howToFixHint": "根据 web.dev，通常的解决方法。",
+      "browsers": "按浏览器",
+      "browsersHint": "每个浏览器都有自己的评分曲线。"
+    },
+    "vitals": {
+      "lcp": "Largest Contentful Paint：最大的图片或文本块完成绘制的时间。通常是图片过大、服务器缓慢或 CSS 与 JavaScript 阻塞渲染。",
+      "inp": "Interaction to Next Paint：页面响应点击、触摸或按键所用的时间。通常是主线程上的长 JavaScript 任务。",
+      "cls": "Cumulative Layout Shift：加载过程中内容移动的程度。通常是没有尺寸的图片、广告或延迟插入的内容。",
+      "fcp": "First Contentful Paint：第一个文本或图片出现的时间。主要取决于服务器响应时间和阻塞渲染的资源。",
+      "ttfb": "Time to First Byte：服务器开始响应所用的时间。通常是后端、重定向或缺少缓存。"
+    },
+    "coreTitle": "Core Web Vitals",
+    "otherTitle": "其他指标",
+    "pagesTitle": "页面",
+    "noDataFor": "此时间范围内没有测量数据。",
+    "scoreHint": "性能评分：{band}。它综合了所有指标，而不仅是三项 Core Web Vitals。",
+    "trendOf": "{vital} 趋势",
+    "atP75": "p75",
+    "analyse": "分析 {vital}",
+    "allPages": "所有页面",
+    "firstFix": {
+      "label": "从这里开始",
+      "sentence": "<mono>{page}</mono> 的 {vital} 在第 75 百分位为 <value></value>，是对评分影响最大的页面。",
+      "cause": " 主要由 <mono>{cause}</mono> 引起。",
+      "none": "没有紧急问题：所有页面的指标都达到良好。"
+    },
+    "guide": {
+      "more": "在 web.dev 阅读完整指南",
+      "lcp": [
+        "以现代格式（AVIF、WebP）并按显示尺寸提供最大的图片。",
+        "预加载它或设置 fetchpriority=\"high\"；切勿延迟加载。",
+        "缩短服务器响应时间，减少页面之前的重定向。",
+        "内联关键 CSS，并延迟阻塞渲染的脚本。"
+      ],
+      "inp": [
+        "将长 JavaScript 任务拆分为会让出主线程的小任务。",
+        "延迟或移除在用户交互时运行的第三方脚本。",
+        "在事件处理程序中少做事：先更新界面，其余稍后再做。",
+        "避免每次交互时的大规模重新渲染和强制布局。"
+      ],
+      "cls": [
+        "为图片、视频和 iframe 设置宽高或 aspect-ratio。",
+        "在广告、嵌入内容和横幅加载前预留空间。",
+        "除非用户请求，否则不要在正在阅读的内容上方插入内容。",
+        "使用 font-display 和相近的后备字体加载网页字体。"
+      ],
+      "fcp": [
+        "缩短服务器响应时间（TTFB）。",
+        "内联关键 CSS，延迟加载其余部分。",
+        "对非关键 JavaScript 使用 defer 或 async。",
+        "对关键资源（如字体）的源使用 preconnect。"
+      ],
+      "ttfb": [
+        "在靠近用户的 CDN 上缓存响应。",
+        "避免页面之前的重定向链。",
+        "加快页面背后的后端处理和数据库查询。",
+        "尽可能流式传输 HTML 或静态提供。"
+      ]
+    }
   }
 }

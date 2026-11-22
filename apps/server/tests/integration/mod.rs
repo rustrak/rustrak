@@ -70,3 +70,4 @@ mod token_scopes_test;
 mod tokens_api_test;
 mod transaction_stats_test;
 mod transactions_api_test;
+mod web_vitals_test;

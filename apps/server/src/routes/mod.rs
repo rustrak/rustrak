@@ -30,6 +30,7 @@ pub mod team;
 pub mod telemetry;
 pub mod tokens;
 pub mod transactions;
+pub mod web_vitals;
 
 use actix_web::web;
 
@@ -74,6 +75,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .configure(sessions::configure_project)
                 .configure(spans::configure_project)
                 .configure(stats::configure_project)
-                .configure(transactions::configure_project),
+                .configure(transactions::configure_project)
+                .configure(web_vitals::configure_project),
         );
 }

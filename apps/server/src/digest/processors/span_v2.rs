@@ -5,6 +5,7 @@ use crate::error::AppResult;
 use crate::models::span_v2::{parse_span_v2_container, SpanV2Entry};
 use crate::protocol::{clamp, clamp_opt};
 use crate::services::gen_ai::extract_gen_ai_columns;
+use crate::services::web_vitals::{reports_vitals, span_browser, PageVitals, Targets, Vital};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
@@ -25,6 +26,7 @@ impl SpanV2Processor {
 
         let mut rows = Vec::with_capacity(entries.len());
         let mut roots = Vec::new();
+        let mut vitals = Vec::new();
         for entry in entries {
             // Mirrors the legacy SpanProcessor's validation (Relay's
             // DiscardReason::InvalidSpan/Timestamp) — skip only this entry,
@@ -71,6 +73,42 @@ impl SpanV2Processor {
             let platform = clamp_opt(SpanV2Entry::platform(&flat), 64);
             let release = clamp_opt(SpanV2Entry::release(&flat), 200);
             let environment = clamp_opt(SpanV2Entry::environment(&flat), 64);
+
+            if op.as_deref().is_some_and(reports_vitals) {
+                // The page load's transaction: this span's own, or the one
+                // a vital's span names.
+                let pageload = match (op.as_deref(), entry.is_segment) {
+                    (Some("pageload"), true) => Some(entry.span_id.as_str()),
+                    _ => flat["sentry.pageload.span_id"].as_str(),
+                };
+                vitals.push(PageVitals {
+                    page: flat["sentry.segment.name"]
+                        .as_str()
+                        .or(entry.name.as_deref())
+                        .unwrap_or_default()
+                        .to_string(),
+                    browser: span_browser(&flat),
+                    environment: environment.clone(),
+                    release: release.clone(),
+                    trace_id: Some(clamp(&entry.trace_id, 64)),
+                    span_id: clamp(&entry.span_id, 32),
+                    transaction_id: pageload
+                        .map(|span_id| SegmentRoot::id(ctx.project_id, &entry.trace_id, span_id)),
+                    timestamp,
+                    vitals: Vital::from_attributes(&flat),
+                    targets: Targets::read(
+                        &flat,
+                        "browser.web_vital.",
+                        op.as_deref()
+                            .filter(|op| op.starts_with("ui.interaction."))
+                            .and(entry.name.as_deref()),
+                    ),
+                    url: flat["url.full"].as_str().map(str::to_string),
+                    connection: flat["network.connection.effective_type"]
+                        .as_str()
+                        .map(str::to_string),
+                });
+            }
 
             if entry.is_segment && SegmentRoot::has(op.as_deref()) {
                 roots.push(SegmentRoot {
@@ -195,6 +233,9 @@ impl SpanV2Processor {
             .await?;
         }
         insert_span_rows(&mut tx, ctx.project_id, rows).await?;
+        for vitals in &vitals {
+            vitals.insert(&mut tx, ctx.project_id).await?;
+        }
         tx.commit().await?;
         Ok(())
     }
