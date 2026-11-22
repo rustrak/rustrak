@@ -32,7 +32,18 @@ function LoginPage() {
   // `useQuery`, not a suspending read: a failed lookup leaves the password
   // form, and the server decides whether it is allowed. The form waits for
   // the answer, though, so it does not reshape under the reader.
-  const sso = useQuery(userQueries.ssoConfig());
+  //
+  // `enabled` follows the server's discovery, which may still be running: a
+  // page opened while the provider is down would otherwise keep hiding the
+  // SSO button after the provider comes back, since the answer is cached and
+  // nothing here would ask again. Poll while it is off, which is rare and
+  // only while someone is looking at the login page, and stop as soon as the
+  // server reports the provider.
+  const sso = useQuery({
+    ...userQueries.ssoConfig(),
+    refetchInterval: (query) =>
+      query.state.data?.enabled === false ? 5000 : false,
+  });
   const search = Route.useSearch();
   const ssoFailed = search.error === 'sso';
 

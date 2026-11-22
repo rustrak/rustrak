@@ -108,7 +108,10 @@ INFO rustrak] OpenID Connect SSO enabled (Pocket ID)
 
 and the login page shows **Continue with Pocket ID** above the password form.
 If the provider cannot be reached or the configuration is incomplete, Rustrak
-refuses to start and says why, rather than showing a button that cannot work.
+keeps serving — error ingest and password login do not depend on it — and
+retries the discovery in the background with backoff. The log says why, and
+the login page shows the provider button once discovery succeeds, without a
+restart.
 
 ## Who can sign in
 
@@ -403,9 +406,9 @@ Rustrak's session cookie back on the callback. Check that:
 - `OIDC_CLIENT_ID is required when OIDC_ISSUER_URL is configured`: set all
   four of `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and
   `OIDC_REDIRECT_URL`, or none of them.
-- `must use HTTPS`: the issuer or one of its endpoints is plain HTTP on a
-  host other than `localhost`. This is checked before the server starts, since
-  no retry can fix it.
+- `must use HTTPS` for the issuer URL: it is plain HTTP on a host other than
+  `localhost`. The issuer is validated before the server starts, since no
+  retry can fix it.
 - `OIDC_DISABLE_PASSWORD_LOGIN is on, but SSO is not configured`: set
   `OIDC_ISSUER_URL` too, or turn the switch off. Password login would be the
   only way in and it is off.
@@ -413,13 +416,18 @@ Rustrak's session cookie back on the callback. Check that:
 **SSO is not offered on the login page:**
 
 - `OIDC discovery failed, retrying in ...s`: Rustrak could not read
-  `<OIDC_ISSUER_URL>/.well-known/openid-configuration`. It keeps serving
-  ingest and password login, and retries with a growing delay (30 seconds,
-  then up to 15 minutes), so the provider coming back needs no restart.
-  Check the URL and that the Rustrak container can reach the provider over
-  the network; the log line repeats until it succeeds. `/auth/sso/config`
-  reports `enabled: false` while discovery is failing, and the login page
-  hides the provider button.
+  `<OIDC_ISSUER_URL>/.well-known/openid-configuration`, or a discovery
+  attempt timed out. It keeps serving ingest and password login, and retries
+  with a growing delay (30 seconds, then up to 15 minutes), so the provider
+  coming back needs no restart. Check the URL and that the Rustrak container
+  can reach the provider over the network; the log line repeats until it
+  succeeds. `/auth/sso/config` reports `enabled: false` while discovery is
+  failing, and the login page hides the provider button.
+- `OIDC SSO is off: ... must use HTTPS` or `Invalid OIDC issuer URL`: the
+  provider advertises a plain-HTTP authorization or token endpoint, or the
+  issuer is malformed. These are checked during discovery, not at startup;
+  the entry is logged once and not retried, because no retry can fix it.
+  Fix the provider, then restart.
 
 ## Try it locally
 

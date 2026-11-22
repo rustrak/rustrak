@@ -209,6 +209,12 @@ impl OidcState {
 pub const DISCOVERY_RETRY_START: Duration = Duration::from_secs(30);
 pub const DISCOVERY_RETRY_MAX: Duration = Duration::from_secs(15 * 60);
 
+/// How long one discovery attempt may take, across the metadata fetch and
+/// both endpoint checks. The provider is a local or nearby endpoint in
+/// practice; ten seconds covers it, and bounding the attempt is what keeps a
+/// stalled connection from parking the retry loop forever.
+pub const DISCOVERY_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Start discovery on the runtime without waiting for it.
 ///
 /// `tokio::spawn` rather than [`crate::workers::supervise`]: discovery returns
@@ -241,13 +247,39 @@ pub enum DiscoveryError {
 /// loop after one attempt. Returns once discovery has succeeded, on a
 /// permanent failure, or never (the process is shutting down).
 pub async fn discover_with_retry(state: OidcState) {
+    discover_with_policy(state, DISCOVERY_RETRY_START, DISCOVERY_ATTEMPT_TIMEOUT).await
+}
+
+/// The retry loop, with the two delays supplied so a test can run it fast.
+///
+/// Same behaviour as [`discover_with_retry`]; the parameters exist because a
+/// test of the recovery path would otherwise wait out the production backoff.
+pub async fn discover_with_policy(
+    state: OidcState,
+    retry_start: Duration,
+    attempt_timeout: Duration,
+) {
     let Some(config) = state.config().cloned() else {
         return;
     };
 
-    let mut delay = DISCOVERY_RETRY_START;
+    let mut delay = retry_start;
     loop {
-        match OidcService::discover(config.clone()).await {
+        // A provider that sends response headers and then stalls would hold
+        // this await forever, and the retry delay below would never be
+        // reached. The attempt gets its own deadline; expiry is just another
+        // failure to retry, since the next attempt builds a fresh client.
+        let attempt =
+            tokio::time::timeout(attempt_timeout, OidcService::discover(config.clone())).await;
+        let outcome = match attempt {
+            Ok(result) => result,
+            Err(_) => Err(DiscoveryError::Retryable(format!(
+                "OIDC discovery attempt timed out after {}s",
+                attempt_timeout.as_secs()
+            ))),
+        };
+
+        match outcome {
             Ok(service) => {
                 log::info!("OpenID Connect SSO enabled ({})", service.provider_name());
                 state.install(service);
@@ -271,7 +303,6 @@ pub async fn discover_with_retry(state: OidcState) {
         delay = (delay * 2).min(DISCOVERY_RETRY_MAX);
     }
 }
-
 /// HTTP client that rejects cleartext requests (loopback aside) before any
 /// OIDC data is sent. It wraps the server's own `reqwest` rather than the one
 /// `openidconnect` would bring, so the binary carries one HTTP stack.

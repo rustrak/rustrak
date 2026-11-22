@@ -86,7 +86,15 @@ fn ed25519_key(kid: &str) -> CoreEdDsaPrivateSigningKey {
 
 impl FakeProvider {
     async fn start(user: ProviderUser) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        Self::start_on("127.0.0.1:0".parse().unwrap(), user).await
+    }
+
+    /// The same provider on a chosen address. A test that needs the provider
+    /// to appear late binds the port, drops it, and starts this on it: the
+    /// server's discovery has to fail first and succeed later against one
+    /// configured issuer URL.
+    async fn start_on(addr: std::net::SocketAddr, user: ProviderUser) -> Self {
+        let listener = TcpListener::bind(addr).unwrap();
         let issuer = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
         let state = Arc::new(Mutex::new(ProviderState {
             issuer: issuer.clone(),
@@ -497,17 +505,22 @@ fn undiscovered_settings(issuer_url: &str) -> OidcConfig {
 async fn test_startup_survives_a_provider_that_cannot_be_reached() {
     // Every other test's provider is up before its state is built. This is
     // the case from #360: a provider that is down at boot must not stop
-    // ingest, password login, or the dashboard.
+    // ingest, password login, or the dashboard. `AppState::build` is the
+    // function that used to return the error, so it is the one under test.
     let db = TestDb::new().await;
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let unreachable = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
     drop(listener);
 
-    let config = undiscovered_settings(&unreachable);
-    let mut state = crate::common::state(&db.pool, crate::common::config()).await;
-    state.oidc = web::Data::new(OidcState::configured(config));
-    // What main does after building the state: start discovery, which is
-    // still failing every time at this point, and carry on serving.
+    let mut config = crate::common::config();
+    config.oidc = Some(undiscovered_settings(&unreachable));
+    // The assertion is that this returns rather than erroring on the
+    // unreachable provider.
+    let state = rustrak::app::AppState::build(config, db.pool.clone())
+        .await
+        .expect("a configured but unreachable provider must not fail startup");
+    // What main does next: start discovery, which is failing here, and carry
+    // on serving.
     state.spawn_oidc_discovery();
     let app = crate::common::app_with(&state).await;
 
@@ -567,20 +580,55 @@ async fn test_a_discovery_failure_no_retry_can_fix_gives_up() {
 
 #[actix_web::test]
 async fn test_a_late_provider_enables_sso_without_a_restart() {
-    // The other half of #360: once the provider is reachable the server is
-    // already running, so discovery has to finish in the background and the
-    // handlers have to see the result.
+    // The other half of #360: the provider is down when the server starts and
+    // comes up after. One state, one retry loop, one running app: the handler
+    // must report the outage first and the recovered provider later, with no
+    // rebuild in between.
     let db = TestDb::new().await;
-    let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
+    // Hold the port, learn it, release it, so the issuer URL is known before
+    // the provider exists.
+    let reserved = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = reserved.local_addr().unwrap();
+    drop(reserved);
 
-    let state = OidcState::configured(provider.config());
-    // The same retry `main` starts in the background, awaited here so the
-    // test observes the settled state.
-    rustrak::auth::discover_with_retry(state.clone()).await;
+    let state = OidcState::configured(undiscovered_settings(&format!(
+        "http://127.0.0.1:{}",
+        addr.port()
+    )));
     let mut built = crate::common::state(&db.pool, crate::common::config()).await;
-    built.oidc = web::Data::new(state);
+    built.oidc = web::Data::new(state.clone());
     let app_state = crate::common::app_with(&built).await;
 
+    // Before anything is listening: SSO is off and its endpoints refuse.
+    let body: Value = test::call_and_read_body_json(
+        &app_state,
+        test::TestRequest::get()
+            .uri("/auth/sso/config")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(body["enabled"], false);
+    let start = test::call_service(
+        &app_state,
+        test::TestRequest::post()
+            .uri("/auth/sso/start")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(start.status(), 404);
+
+    // The provider arrives; the retry that `main` runs in the background
+    // finishes against it and installs the service on the same state. The
+    // backoff is shortened so the test does not wait out production's 30s.
+    let provider = FakeProvider::start_on(addr, person("sub-1", "owner@example.com")).await;
+    rustrak::auth::discover_with_policy(
+        state.clone(),
+        std::time::Duration::from_millis(1),
+        std::time::Duration::from_secs(10),
+    )
+    .await;
+
+    // The handler built before recovery now sees the provider.
     let body: Value = test::call_and_read_body_json(
         &app_state,
         test::TestRequest::get()
@@ -596,6 +644,7 @@ async fn test_a_late_provider_enables_sso_without_a_restart() {
     let resp = browser_callback(&app_state, login.cookie, &login.callback_query).await;
     assert_eq!(location(&resp), "/");
     assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 1);
+    drop(provider);
 }
 
 #[actix_web::test]
