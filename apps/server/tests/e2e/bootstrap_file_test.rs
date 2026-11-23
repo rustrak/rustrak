@@ -209,3 +209,47 @@ fn refuses_to_start_with_two_superusers_to_create() {
         "{stderr}"
     );
 }
+
+/// #356: `RUSTRAK_BOOTSTRAP_TOKEN` holds the token itself. The server stores
+/// that value on an instance with no tokens and never writes it out: stdout
+/// and stderr end up in `docker logs` and journald.
+#[tokio::test]
+async fn the_bootstrap_token_variable_sets_the_token_and_never_prints_it() {
+    let dir = TempDir::new().unwrap();
+    let port = free_port();
+    let stdout = std::fs::File::create(dir.path().join("stdout")).unwrap();
+    let stderr = std::fs::File::create(dir.path().join("stderr")).unwrap();
+    let mut command = server(dir.path(), &dir.path().join("unused.toml"), port);
+    command
+        .env_remove("RUSTRAK_CONFIG")
+        .env("RUSTRAK_BOOTSTRAP_TOKEN", TOKEN)
+        .stdout(stdout)
+        .stderr(stderr);
+    let mut child = Running(command.spawn().expect("spawn the server binary"));
+
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{port}/api/projects");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        if let Ok(Some(status)) = child.0.try_wait() {
+            panic!("the server exited ({status})");
+        }
+        if let Ok(r) = client.get(&url).bearer_auth(TOKEN).send().await {
+            if r.status().is_success() {
+                break;
+            }
+        }
+        assert!(Instant::now() < deadline, "the token never worked");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    drop(child);
+
+    for stream in ["stdout", "stderr"] {
+        let output = std::fs::read_to_string(dir.path().join(stream)).unwrap();
+        assert!(!output.contains(TOKEN), "the token is in {stream}");
+        assert!(
+            !output.contains(&TOKEN[..8]),
+            "a prefix of the token is in {stream}"
+        );
+    }
+}

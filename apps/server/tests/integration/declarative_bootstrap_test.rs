@@ -679,3 +679,45 @@ async fn a_declared_slug_wins_over_one_derived_from_another_projects_name() {
     assert_eq!(two.slug, "my-app");
     assert_eq!(one.slug, "my-app-1");
 }
+
+/// #356: a value that is not a token (the old `RUSTRAK_BOOTSTRAP_TOKEN=1`
+/// form) creates nothing, so no random token is minted and printed.
+#[actix_web::test]
+async fn a_bootstrap_token_that_is_not_a_token_creates_nothing() {
+    let db = TestDb::new().await;
+    for value in ["1", "", "0123456789ABCDEF0123456789abcdef01234567"] {
+        rustrak::bootstrap::bootstrap_token(&db.pool, value)
+            .await
+            .unwrap();
+    }
+    assert!(!AuthTokenService::has_any_token(&db.pool).await.unwrap());
+}
+
+/// The variable only seeds an instance with no tokens: once one exists it
+/// adds nothing, whatever value it holds.
+#[actix_web::test]
+async fn a_bootstrap_token_is_not_added_beside_existing_ones() {
+    let db = TestDb::new().await;
+    let existing = crate::common::create_test_token(&db.pool).await;
+    rustrak::bootstrap::bootstrap_token(&db.pool, TOKEN)
+        .await
+        .unwrap();
+
+    let app = crate::common::app(&db.pool).await;
+    let status = |token: String| {
+        let app = &app;
+        async move {
+            let req = actix_web::test::TestRequest::get()
+                .uri("/api/projects")
+                .insert_header(("Authorization", format!("Bearer {token}")))
+                .to_request();
+            actix_web::test::call_service(app, req).await.status()
+        }
+    };
+    assert_eq!(status(TOKEN.to_string()).await, 401);
+    assert_eq!(
+        status(existing).await,
+        200,
+        "the existing token still works"
+    );
+}

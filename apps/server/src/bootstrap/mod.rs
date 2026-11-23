@@ -12,6 +12,33 @@ use crate::services::project::ProjectRename;
 use crate::services::{AuthTokenService, DeclaredToken, ProjectService, UsersService};
 use file::{BootstrapFile, ProjectSpec, SuperuserSpec};
 
+/// Stores `RUSTRAK_BOOTSTRAP_TOKEN`'s value as the first API token of an
+/// instance that has none (#356). The operator chose the value, so nothing is
+/// printed: stdout and stderr end up in `docker logs` and journald. A value
+/// that is not a token creates nothing and says how to make one, without
+/// stopping a server that may have run with the old `=1` form for months.
+pub async fn bootstrap_token(pool: &DbPool, value: &str) -> AppResult<()> {
+    if !crate::models::token::is_valid_token_format(value) {
+        warn!(
+            "RUSTRAK_BOOTSTRAP_TOKEN is not a token, so none was created: set it to 40 \
+             lowercase hex characters, for example from `openssl rand -hex 20`"
+        );
+        return Ok(());
+    }
+    if AuthTokenService::has_any_token(pool).await? {
+        info!("Auth tokens already exist, skipping RUSTRAK_BOOTSTRAP_TOKEN");
+        return Ok(());
+    }
+    AuthTokenService::create_instance_token(
+        pool,
+        value,
+        "Bootstrap token (RUSTRAK_BOOTSTRAP_TOKEN)",
+    )
+    .await?;
+    info!("Bootstrap token created from RUSTRAK_BOOTSTRAP_TOKEN");
+    Ok(())
+}
+
 /// Bootstrap initial superuser from the CREATE_SUPERUSER env var, which the
 /// caller reads, so nothing here depends on process-wide state.
 /// Format: "email:password"

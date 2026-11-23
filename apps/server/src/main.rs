@@ -4,7 +4,6 @@ use rustrak::app::{app, AppState};
 use rustrak::bootstrap::{self, file::BootstrapFile};
 use rustrak::config;
 use rustrak::db;
-use rustrak::models;
 use rustrak::services::AuthTokenService;
 use rustrak::telemetry::TelemetryStatus;
 
@@ -113,11 +112,16 @@ async fn serve(
             std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
         })?;
     }
-    if config.bootstrap_token {
-        bootstrap_token(&db_pool).await;
+    if let Some(value) = &config.bootstrap_token {
+        if let Err(e) = bootstrap::bootstrap_token(&db_pool, value.expose()).await {
+            log::error!("Failed to create the bootstrap token: {e}");
+        }
     }
-    if let Err(e) =
-        bootstrap::create_superuser_if_needed(&db_pool, config.create_superuser.as_deref()).await
+    if let Err(e) = bootstrap::create_superuser_if_needed(
+        &db_pool,
+        config.create_superuser.as_ref().map(config::Secret::expose),
+    )
+    .await
     {
         log::error!("Failed to create superuser: {}", e);
     }
@@ -251,8 +255,8 @@ fn load_bootstrap_file(config: &config::Config) -> std::io::Result<Option<Bootst
     if file.superuser.is_some()
         && config
             .create_superuser
-            .as_deref()
-            .is_some_and(|s| !s.is_empty())
+            .as_ref()
+            .is_some_and(|s| !s.expose().is_empty())
     {
         return Err(refuse(format!(
             "{}: [bootstrap.superuser] and CREATE_SUPERUSER are both set; keep one",
@@ -261,39 +265,4 @@ fn load_bootstrap_file(config: &config::Config) -> std::io::Result<Option<Bootst
     }
     log::info!("Read {}", path.display());
     Ok(Some(file))
-}
-
-/// Creates a first API token when none exists.
-async fn bootstrap_token(pool: &db::DbPool) {
-    match AuthTokenService::has_any_token(pool).await {
-        Ok(true) => {
-            log::info!("Auth tokens already exist, skipping bootstrap");
-        }
-        Ok(false) => {
-            let input = models::CreateAuthToken {
-                description: Some("Bootstrap token (created automatically)".to_string()),
-                ..Default::default()
-            };
-
-            match AuthTokenService::create(pool, input).await {
-                Ok(token) => {
-                    // To stderr, not the log: log aggregators must never see it.
-                    eprintln!();
-                    eprintln!("==============================================");
-                    eprintln!("BOOTSTRAP TOKEN CREATED - SAVE THIS NOW!");
-                    eprintln!("Token: {}", token.token);
-                    eprintln!("This token will NOT be shown again.");
-                    eprintln!("==============================================");
-                    eprintln!();
-                    log::info!("Bootstrap token created successfully");
-                }
-                Err(e) => {
-                    log::error!("Failed to create bootstrap token: {}", e);
-                }
-            }
-        }
-        Err(e) => {
-            log::error!("Failed to check for existing tokens: {}", e);
-        }
-    }
 }

@@ -56,10 +56,10 @@ pub struct Config {
     pub smtp: SmtpSettings,
     /// `None` when SSO is not configured.
     pub oidc: Option<OidcConfig>,
-    /// `RUSTRAK_BOOTSTRAP_TOKEN` is set: mint a first API token on an empty install.
-    pub bootstrap_token: bool,
+    /// `RUSTRAK_BOOTSTRAP_TOKEN`: the first API token of an empty install.
+    pub bootstrap_token: Option<Secret>,
     /// `CREATE_SUPERUSER`, `email:password`.
-    pub create_superuser: Option<String>,
+    pub create_superuser: Option<Secret>,
     /// `RUSTRAK_CONFIG`: the path of `rustrak.toml`, the declarative bootstrap
     /// file. None when unset or blank.
     pub config_file: Option<std::path::PathBuf>,
@@ -113,6 +113,29 @@ pub struct SecurityConfig {
     /// Signs and encrypts session cookies: built from `SESSION_SECRET_KEY`,
     /// or random for this process when it is unset.
     pub session_key: Key,
+}
+
+/// A value from the environment that must not reach a log line through a
+/// derived `Debug`: it prints `<redacted>`.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(pub String);
+
+impl Secret {
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for Secret {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<redacted>")
+    }
 }
 
 impl std::fmt::Debug for SecurityConfig {
@@ -273,7 +296,7 @@ impl Default for Config {
             alerts_allow_private_networks: false,
             smtp: SmtpSettings::default(),
             oidc: None,
-            bootstrap_token: false,
+            bootstrap_token: None,
             create_superuser: None,
             config_file: None,
             github_api_url: "https://api.github.com".to_string(),
@@ -337,8 +360,8 @@ impl Config {
             )?,
             smtp: SmtpSettings::from_env()?,
             oidc: OidcConfig::from_env()?,
-            bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").is_ok(),
-            create_superuser: env::var("CREATE_SUPERUSER").ok(),
+            bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").ok().map(Secret),
+            create_superuser: env::var("CREATE_SUPERUSER").ok().map(Secret),
             config_file: non_empty("RUSTRAK_CONFIG").map(std::path::PathBuf::from),
             github_api_url: non_empty("GITHUB_API_URL").unwrap_or(defaults.github_api_url),
         })
@@ -518,7 +541,7 @@ impl SmtpTls {
 
 /// The global SMTP configuration, read from `SMTP_HOST`, `SMTP_PORT`,
 /// `SMTP_TLS`, `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SmtpSettings {
     pub host: Option<String>,
     pub port: u16,
@@ -527,6 +550,21 @@ pub struct SmtpSettings {
     pub username: Option<String>,
     pub password: Option<String>,
     pub from_address: String,
+}
+
+impl std::fmt::Debug for SmtpSettings {
+    /// Hand-written so the password cannot reach a log line through the
+    /// derived `Debug` on `Config`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SmtpSettings")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("tls", &self.tls)
+            .field("username", &self.username)
+            .field("password_set", &self.password.is_some())
+            .field("from_address", &self.from_address)
+            .finish()
+    }
 }
 
 impl Default for SmtpSettings {
@@ -780,6 +818,23 @@ impl SecurityConfig {
 
 #[cfg(test)]
 mod tests {
+    /// Like `SecurityConfig`'s key, the secrets `Config` carries must not
+    /// reach a log line through its derived `Debug`.
+    #[test]
+    fn debug_does_not_show_the_bootstrap_token_or_the_superuser_password() {
+        let config = Config {
+            bootstrap_token: Some("0123456789abcdef0123456789abcdef01234567".into()),
+            create_superuser: Some("admin@example.com:hunter2-secret".into()),
+            ..Config::default()
+        };
+        let mut config = config;
+        config.smtp.password = Some("smtp-secret-pass".into());
+        let shown = format!("{config:?}");
+        assert!(!shown.contains("0123456789abcdef"), "{shown}");
+        assert!(!shown.contains("hunter2-secret"), "{shown}");
+        assert!(!shown.contains("smtp-secret-pass"), "{shown}");
+    }
+
     use super::*;
 
     #[test]
