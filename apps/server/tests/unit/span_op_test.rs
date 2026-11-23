@@ -327,6 +327,7 @@ fn v2(n: usize, attributes: &Value) -> Value {
         "trace_id": "4c79f60c11214eb38604f4ae0781bfb2",
         "span_id": format!("{n:016x}"),
         "name": "render route (app) /items/[id]",
+        "status": "ok",
         "start_timestamp": 946684800.0,
         "end_timestamp": 946684810.0,
         "attributes": attributes,

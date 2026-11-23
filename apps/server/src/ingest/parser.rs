@@ -60,11 +60,11 @@ impl SizeLimit {
             "session" | "sessions" | "replay_recording" | "replay_video" => single(10 * MIB),
             "profile" | "profile_chunk" => single(50 * MIB),
             "check_in" | "client_report" => single(100 * KIB),
-            "log" if is_container(headers) => (CONTAINER, 2 * MIB),
-            "log" => single(2 * MIB),
+            "log" if is_container(headers) => (CONTAINER, crate::protocol::MAX_LOG_SIZE),
+            "log" => single(crate::protocol::MAX_LOG_SIZE),
             "trace_metric" => (CONTAINER, MIB),
-            "span" if is_container(headers) => (CONTAINER, 10 * MIB),
-            "span" => single(10 * MIB),
+            "span" if is_container(headers) => (CONTAINER, crate::protocol::MAX_SPAN_SIZE),
+            "span" => single(crate::protocol::MAX_SPAN_SIZE),
             // Relay forwards a type it does not know without a size check.
             _ => single(crate::ingest::decompression::MAX_DECOMPRESSED_SIZE),
         };

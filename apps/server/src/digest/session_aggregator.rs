@@ -90,10 +90,10 @@ pub struct AggregatorState {
     pub counts: HashMap<BucketKey, Counters>,
     /// Map of UserKey → crashed; TRUE means this user had a crash this flush cycle.
     pub users: HashMap<UserKey, bool>,
-    /// Sessions seen errored this flush cycle, by `(project, sid)`. Each adds
-    /// one to its bucket's `errored` at the flush, unless `session_errors`
-    /// already holds it.
-    pub errored: HashMap<(i32, String), BucketKey>,
+    /// Sessions seen errored this flush cycle, by `(project, sid)`, with
+    /// their bucket and exact start. Each adds one to its bucket's `errored`
+    /// at the flush, unless `session_errors` already holds it.
+    pub errored: HashMap<(i32, String), (BucketKey, DateTime<Utc>)>,
 }
 
 pub struct SessionAggregator {
@@ -159,8 +159,10 @@ impl SessionAggregator {
             let mut tx = self.pool.begin().await?;
             // A session is errored once, whichever flush first saw it so.
             let mut written = counts.clone();
-            for ((project_id, sid), key) in &errored {
-                if insert_errored_session(*project_id, sid, key.bucket, &mut *tx).await? {
+            for ((project_id, sid), (key, started)) in &errored {
+                // The exact start, not the bucket: the id must last as long as
+                // updates to its session are accepted.
+                if insert_errored_session(*project_id, sid, *started, &mut *tx).await? {
                     written.entry(key.clone()).or_default().errored += 1;
                 }
             }
@@ -482,10 +484,13 @@ pub fn apply_update(
             .sid
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        // Its bucket takes a slot of the cardinality cap now; the flush
+        // creates it anyway.
+        state.counts.entry(key.clone()).or_default();
         state
             .errored
             .entry((project_id, sid))
-            .or_insert_with(|| key.clone());
+            .or_insert_with(|| (key.clone(), started));
     }
     record_user(state, &key, update.did.as_deref(), crashed);
 }
@@ -873,6 +878,32 @@ mod tests {
             super::apply_update(&mut state, 1, &stamped(timestamp), 10, clock);
             assert_eq!(!state.counts.is_empty(), kept, "timestamp {timestamp}");
         }
+    }
+
+    /// A release reached only through an errored `ok` update still takes a
+    /// slot of the cardinality cap, so the deferred error cannot add a bucket
+    /// past it at the flush.
+    #[test]
+    fn a_deferred_error_counts_toward_the_release_cap() {
+        let mut state = AggregatorState::default();
+        for (sid, release) in [("s1", "1.0.0"), ("s2", "2.0.0")] {
+            let update = SessionUpdate {
+                sid: Some(sid.to_string()),
+                attrs: Some(SessionAttributes {
+                    release: Some(release.to_string()),
+                    environment: None,
+                }),
+                ..make_update(false, SessionStatus::Ok, 1, None)
+            };
+            super::apply_update(&mut state, 1, &update, 1, clock());
+        }
+        let mut releases: Vec<&str> = state
+            .errored
+            .values()
+            .map(|(key, _)| key.release.as_str())
+            .collect();
+        releases.sort();
+        assert_eq!(releases, vec!["1.0.0", OVERFLOW_RELEASE]);
     }
 
     /// Relay reads `did` on a pre-aggregated bucket too.

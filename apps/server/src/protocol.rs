@@ -4,6 +4,11 @@
 
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 
+/// Relay's `max_log_size`: one log, alone or in a container.
+pub(crate) const MAX_LOG_SIZE: usize = 2 * 1024 * 1024;
+/// Relay's `max_span_size`: one span, alone or in a v2 container.
+pub(crate) const MAX_SPAN_SIZE: usize = 10 * 1024 * 1024;
+
 /// Cuts `s` to the `max_chars` of the VARCHAR column it is bound to. Postgres
 /// rejects a longer value and fails the whole envelope, SQLite stores it, and
 /// Relay truncates to its own `max_chars` instead of rejecting.

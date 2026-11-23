@@ -191,7 +191,10 @@ impl SpanV2Container<'_> {
     pub fn parse(body: &[u8]) -> AppResult<Vec<SpanV2Entry>> {
         let container: SpanV2Container = serde_json::from_slice(body)
             .map_err(|e| AppError::Validation(format!("Invalid span v2 container JSON: {}", e)))?;
-        Ok(crate::models::container_entries(container.items))
+        Ok(crate::models::container_entries(
+            container.items,
+            crate::protocol::MAX_SPAN_SIZE,
+        ))
     }
 }
 
@@ -216,6 +219,25 @@ mod tests {
         );
 
         assert!(parse_span_v2_container(body.as_bytes()).is_err());
+    }
+
+    /// Relay checks each span against its own 10 MiB limit too.
+    #[test]
+    fn a_span_over_its_size_limit_is_dropped_alone() {
+        let span = |name: String| {
+            serde_json::json!({
+                "trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef",
+                "name": name
+            })
+        };
+        let body = serde_json::json!({ "items": [
+            span("x".repeat(10 * 1024 * 1024)),
+            span("small".to_string()),
+        ]})
+        .to_string();
+        let spans = parse_span_v2_container(body.as_bytes()).expect("the batch parses");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].name.as_deref(), Some("small"));
     }
 
     /// Relay reads each span on its own: a `null` or mistyped field leaves

@@ -84,13 +84,16 @@ where
 }
 
 /// The entries of an item container that read as `T`. Relay parses each one
-/// on its own, so an entry that is not an object is dropped alone. Each entry
+/// on its own, so an entry that is not an object, or is over `max_size` (the
+/// parser only checked the container's average), is dropped alone. Each entry
 /// is read straight from its slice of the body, with no tree in between.
 pub(crate) fn container_entries<T: serde::de::DeserializeOwned>(
     items: Vec<&serde_json::value::RawValue>,
+    max_size: usize,
 ) -> Vec<T> {
     items
         .into_iter()
+        .filter(|item| item.get().len() <= max_size)
         .filter_map(|item| serde_json::from_str(item.get()).ok())
         .collect()
 }

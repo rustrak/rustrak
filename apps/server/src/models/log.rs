@@ -52,7 +52,8 @@ impl LogContainer<'_> {
     pub fn parse(body: &[u8]) -> AppResult<Vec<LogItem>> {
         let container: LogContainer = serde_json::from_slice(body)
             .map_err(|e| AppError::Validation(format!("Invalid log container JSON: {}", e)))?;
-        let mut logs: Vec<LogItem> = crate::models::container_entries(container.items);
+        let mut logs: Vec<LogItem> =
+            crate::models::container_entries(container.items, crate::protocol::MAX_LOG_SIZE);
         // An empty trace id is no trace id, which Relay requires.
         logs.retain(|log| !log.trace_id.is_empty());
         Ok(logs)
@@ -77,6 +78,26 @@ mod tests {
         assert!(LogContainer::parse(body.as_bytes()).is_err());
     }
 
+    /// Relay checks a container by its average entry, then each entry once
+    /// parsed (`utils/sizes.rs`): a log over 2 MiB is dropped on its own.
+    #[test]
+    fn a_log_over_its_size_limit_is_dropped_alone() {
+        let log = |body: String| {
+            serde_json::json!({
+                "timestamp": 1781085600, "trace_id": "0123456789abcdef0123456789abcdef",
+                "level": "info", "body": body
+            })
+        };
+        let body = serde_json::json!({ "items": [
+            log("x".repeat(2 * 1024 * 1024)),
+            log("small".to_string()),
+        ]})
+        .to_string();
+        let logs = LogContainer::parse(body.as_bytes()).expect("the batch parses");
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].body, "small");
+    }
+
     /// Relay reads each log on its own (`DeleteParent`): a log whose
     /// `timestamp`, `trace_id`, `level` or `body` is missing, `null` or of
     /// the wrong type is dropped alone; a bad optional field is left empty.
@@ -88,6 +109,7 @@ mod tests {
             {"timestamp":1781085600,"trace_id":"0123456789abcdef0123456789abcdef","level":5,"body":"x"},
             {"timestamp":1781085600,"trace_id":"","level":"info","body":"x"},
             {"trace_id":"0123456789abcdef0123456789abcdef","level":"info","body":"x"},
+            {"timestamp":"garbage","trace_id":"0123456789abcdef0123456789abcdef","level":"info","body":"x"},
             42
         ]}"#;
         let logs = LogContainer::parse(body).expect("the batch parses");

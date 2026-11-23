@@ -1152,3 +1152,50 @@ async fn test_a_session_with_handled_errors_counts_as_errored_once() {
         "total, errored, crashed, healthy"
     );
 }
+
+/// The id of an errored session is kept until its exact start leaves Relay's
+/// window, not its minute bucket's: otherwise a flush in the last minute
+/// deletes it while updates are still accepted, and the session counts twice.
+#[actix_web::test]
+async fn test_an_errored_session_is_kept_by_its_exact_start() {
+    use rustrak::digest::session_aggregator::{SessionAggregator, SessionClock};
+    use rustrak::models::session::SessionUpdate;
+
+    let db = TestDb::new().await;
+    let project_id = create_test_project(&db.pool, "Exact Start").await.id;
+    let aggregator = SessionAggregator::new(db.pool.clone(), 3600, 1000);
+    use chrono::{SubsecRound, Timelike};
+    let started = (Utc::now() - chrono::Duration::hours(1))
+        .with_second(50)
+        .unwrap()
+        .trunc_subsecs(0);
+    let clock = SessionClock::new(Utc::now(), None);
+    let update: SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sid": "s1", "init": true, "status": "ok", "errors": 1,
+        "started": started.to_rfc3339(), "attrs": { "release": "5.0.0" }
+    }))
+    .unwrap();
+    aggregator.ingest_session(project_id, &update, clock).await;
+    aggregator.flush().await.unwrap();
+
+    #[cfg(feature = "postgres")]
+    let stored: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT started FROM session_errors WHERE project_id = $1")
+            .bind(project_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    #[cfg(not(feature = "postgres"))]
+    let stored: chrono::DateTime<Utc> = {
+        let raw: String =
+            sqlx::query_scalar("SELECT started FROM session_errors WHERE project_id = $1")
+                .bind(project_id)
+                .fetch_one(&db.pool)
+                .await
+                .unwrap();
+        chrono::NaiveDateTime::parse_from_str(&raw, "%Y-%m-%d %H:%M:%S%.f")
+            .unwrap()
+            .and_utc()
+    };
+    assert_eq!(stored, started);
+}
