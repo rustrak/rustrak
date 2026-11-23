@@ -482,10 +482,20 @@ Every method, grouped as it hangs off the client.
 | Method | Endpoint | Description |
 |---|---|---|
 | `releases.create({ path, body })` | `POST /api/0/projects/{org_slug}/{project_slug}/releases/` | Sentry-compatible release creation. |
+| `releases.createDeploy({ path, body })` | `POST /api/0/organizations/{org_slug}/releases/{version}/deploys/` | Records that a release went out to an environment, in each of its projects or the listed ones: `sentry-cli releases deploys new`. |
+| `releases.createInOrganization({ path, body })` | `POST /api/0/organizations/{org_slug}/releases/` | Creates a release in each listed project, as `sentry-cli releases new` does. |
+| `releases.deleteInOrganization({ path })` | `DELETE /api/0/organizations/{org_slug}/releases/{version}/` | Deletes a release from every project that has it, unless an issue started in it or it has health data, as Sentry refuses to. |
 | `releases.finalize({ path, body })` | `PUT /api/0/projects/{org_slug}/{project_slug}/releases/{version}/` | Generic partial update (`ref`, `url`, `dateReleased`). |
 | `releases.get({ path, query? })` | `GET /api/projects/{project_id}/releases/{release}` | Gets one release with its events, new issues, environments and session health. |
+| `releases.getInOrganization({ path })` | `GET /api/0/organizations/{org_slug}/releases/{version}/` | Across the projects the caller can read, as `sentry-cli releases info` reads it. |
 | `releases.list({ path, query? })` | `GET /api/projects/{project_id}/releases` | Lists a project's releases, newest first, with the events, new issues, environments and session health of each. |
+| `releases.listCommits({ path })` | `GET /api/0/organizations/{org_slug}/releases/{version}/commits/` | Commits in the order they were set: `sentry-cli releases info --show-commits`. |
+| `releases.listDeploys({ path })` | `GET /api/0/organizations/{org_slug}/releases/{version}/deploys/` | Deploys, the latest per project and environment: `sentry-cli releases deploys list`. |
+| `releases.listInOrganization({ path })` | `GET /api/0/organizations/{org_slug}/releases/` | The releases of every project the caller can read, newest first: `sentry-cli releases list` without a project. |
+| `releases.listInProject({ path })` | `GET /api/0/projects/{org_slug}/{project_slug}/releases/` | One project's releases, newest first: `sentry-cli releases list` with a project. |
 | `releases.newIssues({ path, query? })` | `GET /api/projects/{project_id}/releases/{release}/new-issues` | Lists the issues first seen in a release. |
+| `releases.previousWithCommits({ path })` | `GET /api/0/organizations/{org_slug}/releases/{version}/previous-with-commits/` | The release before this one that has commits, or `{}`: where `sentry-cli releases set-commits` starts reading git. |
+| `releases.updateInOrganization({ path, body })` | `PUT /api/0/organizations/{org_slug}/releases/{version}/` | Updates a release in every project that has it: `ref`, `url` and `dateReleased`, which is what `sentry-cli releases finalize` sends. |
 
 ### Saved Views
 
