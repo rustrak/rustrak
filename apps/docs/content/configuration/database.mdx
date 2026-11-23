@@ -218,6 +218,10 @@ DATABASE_URL=postgres://username:password@host:5432/database
 DATABASE_URL=postgres://username:password@host:5432/database?sslmode=require
 ```
 
+Characters such as `/ @ : # ? %` in the user name or password must be
+percent-encoded: a password `p@ss/word` is written `p%40ss%2Fword`. `rustrak
+check-config` reports a malformed URL without starting the server.
+
 ### Connection pool tuning
 
 ```bash

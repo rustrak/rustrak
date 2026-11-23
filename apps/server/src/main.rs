@@ -2,6 +2,7 @@ use actix_web::HttpServer;
 
 use rustrak::app::{app, AppState};
 use rustrak::bootstrap::{self, file::BootstrapFile};
+use rustrak::cli::{self, Command};
 use rustrak::config;
 use rustrak::db;
 use rustrak::services::AuthTokenService;
@@ -36,11 +37,40 @@ fn main() -> std::io::Result<()> {
         );
     }
 
-    let config = config::Config::from_env().map_err(|e| {
-        log::error!("Configuration error: {}", e);
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
-    })?;
-    let bootstrap_file = load_bootstrap_file(&config)?;
+    let command = match cli::parse(std::env::args().skip(1)) {
+        Ok(command) => command,
+        Err(e) => {
+            eprintln!("error: {e}\n\n{}", cli::USAGE);
+            std::process::exit(2);
+        }
+    };
+    match command {
+        Command::Serve => {}
+        Command::Help => {
+            println!("{}", cli::USAGE);
+            return Ok(());
+        }
+        Command::Version => {
+            println!("rustrak {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Command::Healthcheck => match cli::local_address().and_then(cli::healthcheck) {
+            Ok(()) => return Ok(()),
+            Err(e) => fail(&e),
+        },
+        _ => {}
+    }
+
+    let config = config::Config::from_env().unwrap_or_else(|e| fail(&e.to_string()));
+    let bootstrap_file = load_bootstrap_file(&config).unwrap_or_else(|e| fail(&e.to_string()));
+    match command {
+        Command::Serve => {}
+        Command::CheckConfig => {
+            println!("Configuration is valid");
+            return Ok(());
+        }
+        command => return run_admin(command, config),
+    }
 
     // Capped so Tokio does not start a thread whenever none is idle, each
     // holding an allocator heap. Room for the live digest's and recovery's
@@ -209,6 +239,45 @@ async fn serve(
     let result = server.await;
     state.shutdown().await;
     result
+}
+
+/// Reports a failed command and exits 1.
+fn fail(message: &str) -> ! {
+    eprintln!("error: {message}");
+    std::process::exit(1)
+}
+
+/// The commands that need the database: `migrate` and `createuser`.
+fn run_admin(command: Command, config: config::Config) -> std::io::Result<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = runtime.block_on(async {
+        let pool = db::create_pool(&config.database)
+            .await
+            .map_err(|e| format!("cannot open the database: {e}"))?;
+        match command {
+            Command::Migrate => {
+                db::run_migrations(&pool).await.map_err(|e| e.to_string())?;
+                println!("Migrations applied");
+            }
+            Command::CreateUser(spec) => {
+                db::run_migrations(&pool).await.map_err(|e| e.to_string())?;
+                let password = match &spec.password {
+                    Some(password) => password.clone(),
+                    None => cli::read_password().map_err(|e| e.to_string())?,
+                };
+                cli::create_user(&pool, &spec, &password)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                println!("User {} saved", spec.email);
+            }
+            _ => unreachable!("only database commands reach run_admin"),
+        }
+        Ok::<_, String>(())
+    });
+    result.unwrap_or_else(|e| fail(&e));
+    Ok(())
 }
 
 /// SIGTERM (what an orchestrator sends) or SIGINT (Ctrl-C), whichever comes

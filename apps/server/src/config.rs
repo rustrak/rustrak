@@ -479,6 +479,19 @@ impl DatabaseConfig {
         let url = env::var("DATABASE_URL").unwrap_or(defaults.url);
         #[cfg(not(feature = "sqlite"))]
         let url = env::var("DATABASE_URL").map_err(|_| ConfigError::MissingDatabaseUrl)?;
+        // Parsed here so a mistake names the variable, not just sqlx's
+        // complaint about it. The reason never quotes the URL's password.
+        #[cfg(feature = "postgres")]
+        let parsed = <sqlx::postgres::PgConnectOptions as std::str::FromStr>::from_str(&url);
+        #[cfg(feature = "sqlite")]
+        let parsed = <sqlx::sqlite::SqliteConnectOptions as std::str::FromStr>::from_str(&url);
+        if let Err(e) = parsed {
+            let reason = match e {
+                sqlx::Error::Configuration(inner) => inner.to_string(),
+                other => other.to_string(),
+            };
+            return Err(ConfigError::InvalidDatabaseUrl(reason));
+        }
         let secs = |name: &str, default: Duration| {
             env_number(name, default.as_secs()).map(Duration::from_secs)
         };
@@ -639,6 +652,7 @@ fn url_from_env(var: &str) -> Option<String> {
 pub enum ConfigError {
     InvalidPort,
     MissingDatabaseUrl,
+    InvalidDatabaseUrl(String),
     MissingSessionSecret,
     SessionSecretTooShort { len: usize },
     IncompleteOidcConfig(String),
@@ -659,6 +673,12 @@ impl std::fmt::Display for ConfigError {
             ConfigError::MissingDatabaseUrl => {
                 write!(f, "DATABASE_URL environment variable is required")
             }
+            ConfigError::InvalidDatabaseUrl(reason) => write!(
+                f,
+                "DATABASE_URL is not a valid database URL: {reason}. Characters such as \
+                 / @ : # ? % in the user name or password must be percent-encoded \
+                 (/ is %2F, @ is %40)"
+            ),
             ConfigError::MissingSessionSecret => {
                 write!(
                     f,

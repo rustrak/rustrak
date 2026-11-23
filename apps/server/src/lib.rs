@@ -33,6 +33,7 @@ pub mod allocator;
 pub mod app;
 pub mod auth;
 pub mod bootstrap;
+pub mod cli;
 pub mod config;
 pub mod db;
 pub mod digest;
