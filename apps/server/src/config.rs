@@ -56,8 +56,8 @@ pub struct Config {
     pub smtp: SmtpSettings,
     /// `None` when SSO is not configured.
     pub oidc: Option<OidcConfig>,
-    /// `RUSTRAK_BOOTSTRAP_TOKEN` is set: mint a first API token on an empty install.
-    pub bootstrap_token: bool,
+    /// `RUSTRAK_BOOTSTRAP_TOKEN`: the first API token of an empty install.
+    pub bootstrap_token: Option<String>,
     /// `CREATE_SUPERUSER`, `email:password`.
     pub create_superuser: Option<String>,
     /// `RUSTRAK_CONFIG`: the path of `rustrak.toml`, the declarative bootstrap
@@ -273,7 +273,7 @@ impl Default for Config {
             alerts_allow_private_networks: false,
             smtp: SmtpSettings::default(),
             oidc: None,
-            bootstrap_token: false,
+            bootstrap_token: None,
             create_superuser: None,
             config_file: None,
             github_api_url: "https://api.github.com".to_string(),
@@ -337,7 +337,7 @@ impl Config {
             )?,
             smtp: SmtpSettings::from_env()?,
             oidc: OidcConfig::from_env()?,
-            bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").is_ok(),
+            bootstrap_token: env::var("RUSTRAK_BOOTSTRAP_TOKEN").ok(),
             create_superuser: env::var("CREATE_SUPERUSER").ok(),
             config_file: non_empty("RUSTRAK_CONFIG").map(std::path::PathBuf::from),
             github_api_url: non_empty("GITHUB_API_URL").unwrap_or(defaults.github_api_url),

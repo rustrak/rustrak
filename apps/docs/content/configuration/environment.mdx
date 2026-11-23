@@ -333,7 +333,7 @@ Global SMTP settings for email notifications and team invitations. Alert channel
 | Variable | Description |
 |----------|-------------|
 | `CREATE_SUPERUSER` | Create admin user on startup (`email:password`) |
-| `RUSTRAK_BOOTSTRAP_TOKEN` | Set to anything to create an API token on startup |
+| `RUSTRAK_BOOTSTRAP_TOKEN` | The first API token: 40 lowercase hex characters (`openssl rand -hex 20`) |
 | `RUSTRAK_CONFIG` | Path of `rustrak.toml`, which declares the first owner, projects with fixed DSNs and API tokens. See [Bootstrap file](/configuration/bootstrap-file) |
 
 ```bash
@@ -342,7 +342,7 @@ CREATE_SUPERUSER="admin@example.com:secure-password"
 
 Only creates the user if the database has no users yet. After that it is ignored.
 
-`RUSTRAK_BOOTSTRAP_TOKEN` creates one API token when the instance has none, for automation that needs the API before anyone signs in. The token is printed once to the server's standard error, not to the log, so copy it from the first start's output.
+`RUSTRAK_BOOTSTRAP_TOKEN` holds the API token itself, for automation that needs the API before anyone signs in. Generate it with `openssl rand -hex 20` and give the same value to the server and to whatever calls the API. It is stored, hashed, only when the instance has no token yet, and never printed. Any other value creates nothing and logs a warning. To keep the token out of the environment, or to declare more than one, use `token_file` in the [bootstrap file](/configuration/bootstrap-file).
 
 ## Prometheus metrics
 

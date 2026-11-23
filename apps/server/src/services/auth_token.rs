@@ -314,6 +314,25 @@ impl AuthTokenService {
     }
 
     /// Checks if any tokens exist (for bootstrap check)
+    /// Stores `raw` as a token that acts on the whole instance with every
+    /// permission, owned by nobody. Only its hash and prefix are kept.
+    pub async fn create_instance_token(
+        pool: &DbPool,
+        raw: &str,
+        description: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO auth_tokens (token, token_prefix, description, user_id, all_permissions, all_projects) \
+             VALUES ($1, $2, $3, NULL, TRUE, TRUE)",
+        )
+        .bind(hash(raw))
+        .bind(&raw[..8])
+        .bind(description)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn has_any_token(pool: &DbPool) -> AppResult<bool> {
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM auth_tokens")
             .fetch_one(pool)
