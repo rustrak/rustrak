@@ -113,12 +113,15 @@ async fn serve(
         })?;
     }
     if let Some(value) = &config.bootstrap_token {
-        if let Err(e) = bootstrap::bootstrap_token(&db_pool, value).await {
+        if let Err(e) = bootstrap::bootstrap_token(&db_pool, value.expose()).await {
             log::error!("Failed to create the bootstrap token: {e}");
         }
     }
-    if let Err(e) =
-        bootstrap::create_superuser_if_needed(&db_pool, config.create_superuser.as_deref()).await
+    if let Err(e) = bootstrap::create_superuser_if_needed(
+        &db_pool,
+        config.create_superuser.as_ref().map(config::Secret::expose),
+    )
+    .await
     {
         log::error!("Failed to create superuser: {}", e);
     }
@@ -252,8 +255,8 @@ fn load_bootstrap_file(config: &config::Config) -> std::io::Result<Option<Bootst
     if file.superuser.is_some()
         && config
             .create_superuser
-            .as_deref()
-            .is_some_and(|s| !s.is_empty())
+            .as_ref()
+            .is_some_and(|s| !s.expose().is_empty())
     {
         return Err(refuse(format!(
             "{}: [bootstrap.superuser] and CREATE_SUPERUSER are both set; keep one",
