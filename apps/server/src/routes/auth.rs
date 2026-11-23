@@ -258,15 +258,28 @@ pub async fn login(
         .map_err(AppError::TooManyRequests)?;
 
     // Not normalized: the exact casing picks between legacy case-variant accounts
-    let Some(user) = UsersService::get_by_email(pool.get_ref(), req.email.trim()).await? else {
-        User::verify_dummy_password(&req.password);
-        return Err(AppError::Unauthorized("Invalid credentials".to_string()));
-    };
+    let found = UsersService::get_by_email(pool.get_ref(), req.email.trim()).await?;
 
+    // Argon2 off the Actix worker, as linking an SSO identity does. An unknown
+    // email spends the same work on a dummy hash, so it answers as slowly.
+    let password = req.password.clone();
+    let (found, matches) = tokio::task::spawn_blocking(move || match found {
+        Some(user) => {
+            let matches = user.verify_password(&password);
+            (Some(user), matches)
+        }
+        None => {
+            User::verify_dummy_password(&password);
+            (None, Ok(false))
+        }
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("Password check task failed: {e}")))?;
     // Password first: only someone who knows it learns the account is disabled.
-    if !user.verify_password(&req.password)? {
-        return Err(AppError::Unauthorized("Invalid credentials".to_string()));
-    }
+    let user = match (found, matches?) {
+        (Some(user), true) => user,
+        _ => return Err(AppError::Unauthorized("Invalid credentials".to_string())),
+    };
     user.ensure_active()?;
 
     // With OIDC_DISABLE_PASSWORD_LOGIN the provider is the only way in. The
