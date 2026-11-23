@@ -268,7 +268,7 @@ With `docker run`, the same is `--stop-timeout 30`; in Kubernetes,
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INGEST_DIR` | `/tmp/rustrak/ingest` | Temporary event storage |
+| `INGEST_DIR` | `/tmp/rustrak/ingest`; `/data/ingest` in the Docker image | Events accepted but not yet digested. Keep it on a persistent volume: the next start digests what is left there |
 | `SOURCEMAP_STORAGE_PATH` | `/data/sourcemaps` | Directory for source map chunk storage |
 | `SOURCEMAP_CACHE_MB` | `64` | Memory kept for parsed source maps across events |
 | `MAX_CHUNK_SIZE_BYTES` | `10485760` (10 MiB) | Largest single chunk a source map or debug file upload may send |
