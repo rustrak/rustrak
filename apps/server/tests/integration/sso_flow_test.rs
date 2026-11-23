@@ -335,6 +335,23 @@ fn person_in_groups(subject: &str, email: &str, groups: &[&str]) -> ProviderUser
     }
 }
 
+/// An instance that already has its owner, as one with SSO configured
+/// normally does: SSO never provisions the first owner on its own (#358).
+async fn db_with_owner() -> TestDb {
+    let db = TestDb::new().await;
+    rustrak::services::UsersService::create_user(
+        &db.pool,
+        &rustrak::models::CreateUserRequest {
+            email: "admin@example.com".to_string(),
+            password: "owner-password".to_string(),
+        },
+        rustrak::models::UserRole::Admin,
+    )
+    .await
+    .expect("the owner");
+    db
+}
+
 async fn rustrak_app(
     pool: &rustrak::db::DbPool,
     oidc: Option<OidcService>,
@@ -584,7 +601,7 @@ async fn test_a_late_provider_enables_sso_without_a_restart() {
     // comes up after. One state, one retry loop, one running app: the handler
     // must report the outage first and the recovered provider later, with no
     // rebuild in between.
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     // Hold the port, learn it, release it, so the issuer URL is known before
     // the provider exists.
     let reserved = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -674,13 +691,17 @@ async fn test_a_late_provider_enables_sso_without_a_restart() {
     let login = start_login(&app_state).await;
     let resp = browser_callback(&app_state, login.cookie, &login.callback_query).await;
     assert_eq!(location(&resp), "/");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 1);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        2,
+        "the owner and the account SSO provisioned"
+    );
     drop(provider);
 }
 
 #[actix_web::test]
 async fn test_sso_round_trip_provisions_the_account_and_signs_it_in() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
@@ -696,14 +717,14 @@ async fn test_sso_round_trip_provisions_the_account_and_signs_it_in() {
         .expect("the new session is authenticated");
     assert_eq!(me["email"], "owner@example.com");
     assert_eq!(
-        me["is_admin"], true,
-        "the first account bootstraps as admin"
+        me["is_admin"], false,
+        "an account SSO provisions joins as a member"
     );
 }
 
 #[actix_web::test]
 async fn test_sso_callback_answers_json_to_a_non_browser_client() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
@@ -726,7 +747,7 @@ async fn test_sso_callback_answers_json_to_a_non_browser_client() {
 
 #[actix_web::test]
 async fn test_sso_callback_rejects_a_state_it_did_not_issue() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
@@ -739,12 +760,16 @@ async fn test_sso_callback_rejects_a_state_it_did_not_issue() {
     assert_eq!(location(&resp), "/login?error=sso");
     let cookie = session_cookie(&resp).expect("the one-time values are cleared");
     assert!(current_user(&app, cookie).await.is_none());
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 #[actix_web::test]
 async fn test_sso_callback_cannot_be_replayed() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
@@ -760,7 +785,7 @@ async fn test_sso_callback_cannot_be_replayed() {
 
 #[actix_web::test]
 async fn test_sso_rejects_an_id_token_signed_for_another_login() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
@@ -770,7 +795,11 @@ async fn test_sso_rejects_an_id_token_signed_for_another_login() {
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
 
     assert_eq!(location(&resp), "/login?error=sso");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 async fn create_password_account(pool: &rustrak::db::DbPool, email: &str) -> rustrak::models::User {
@@ -889,7 +918,7 @@ async fn test_sso_links_an_existing_account_directly_when_the_operator_allows_it
 
 #[actix_web::test]
 async fn test_sso_keeps_working_after_the_provider_rotates_its_keys() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
@@ -909,7 +938,7 @@ async fn test_sso_keeps_working_after_the_provider_rotates_its_keys() {
 
 #[actix_web::test]
 async fn test_sso_turns_away_an_email_outside_the_allowed_domains() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "someone@elsewhere.org")).await;
     let mut config = provider.config();
     config.allowed_domains = vec!["example.com".to_string()];
@@ -927,7 +956,7 @@ async fn test_sso_turns_away_an_email_outside_the_allowed_domains() {
 
 #[actix_web::test]
 async fn test_sso_turns_away_an_unverified_email_when_verification_is_required() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(ProviderUser {
         email_verified: false,
         ..person("sub-1", "owner@example.com")
@@ -940,12 +969,16 @@ async fn test_sso_turns_away_an_unverified_email_when_verification_is_required()
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
 
     assert_eq!(location(&resp), "/login?error=sso");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 #[actix_web::test]
 async fn test_sso_callback_handles_the_provider_refusing_the_login() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
@@ -963,17 +996,24 @@ async fn test_sso_callback_handles_the_provider_refusing_the_login() {
 
 #[actix_web::test]
 async fn test_sso_does_not_sign_in_a_disabled_account() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     let service = OidcService::discover(provider.config()).await.unwrap();
     let app = rustrak_app(&db.pool, Some(service)).await;
 
     let login = start_login(&app).await;
-    browser_callback(&app, login.cookie, &login.callback_query).await;
-    sqlx::query("UPDATE users SET is_active = FALSE")
-        .execute(&db.pool)
-        .await
-        .unwrap();
+    let first = browser_callback(&app, login.cookie, &login.callback_query).await;
+    assert_eq!(
+        location(&first),
+        "/",
+        "the account signs in while it is active"
+    );
+    let disabled =
+        sqlx::query("UPDATE users SET is_active = FALSE WHERE email = 'owner@example.com'")
+            .execute(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(disabled.rows_affected(), 1);
 
     let login = start_login(&app).await;
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
@@ -1298,7 +1338,7 @@ async fn test_sso_config_says_password_login_is_available_by_default() {
 
 #[actix_web::test]
 async fn test_sso_rejects_an_id_token_with_an_audience_it_does_not_trust() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     provider.add_audience("trusted-audience");
     let service = OidcService::discover(provider.config()).await.unwrap();
@@ -1308,12 +1348,16 @@ async fn test_sso_rejects_an_id_token_with_an_audience_it_does_not_trust() {
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
 
     assert_eq!(location(&resp), "/login?error=sso");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 #[actix_web::test]
 async fn test_sso_accepts_an_additional_audience_it_is_told_to_trust() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     provider.add_audience("trusted-audience");
     let mut config = provider.config();
@@ -1334,7 +1378,7 @@ async fn test_sso_accepts_an_additional_audience_it_is_told_to_trust() {
 
 #[actix_web::test]
 async fn test_sso_trusting_one_audience_does_not_trust_another() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     provider.add_audience("trusted-audience");
     provider.add_audience("untrusted-audience");
@@ -1347,12 +1391,16 @@ async fn test_sso_trusting_one_audience_does_not_trust_another() {
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
 
     assert_eq!(location(&resp), "/login?error=sso");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 #[actix_web::test]
 async fn test_sso_rejects_a_trusted_audience_without_the_client_id() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     provider.omit_client_audience();
     provider.add_audience("trusted-audience");
@@ -1365,12 +1413,16 @@ async fn test_sso_rejects_a_trusted_audience_without_the_client_id() {
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
 
     assert_eq!(location(&resp), "/login?error=sso");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 #[actix_web::test]
 async fn test_sso_rejects_several_audiences_without_an_authorized_party() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     provider.add_audience("trusted-audience");
     provider.forge_authorized_party(None);
@@ -1383,12 +1435,16 @@ async fn test_sso_rejects_several_audiences_without_an_authorized_party() {
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
 
     assert_eq!(location(&resp), "/login?error=sso");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 #[actix_web::test]
 async fn test_sso_rejects_an_authorized_party_other_than_the_client() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     provider.add_audience("trusted-audience");
     provider.forge_authorized_party(Some("trusted-audience"));
@@ -1401,12 +1457,16 @@ async fn test_sso_rejects_an_authorized_party_other_than_the_client() {
     let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
 
     assert_eq!(location(&resp), "/login?error=sso");
-    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+    assert_eq!(
+        UsersService::user_count(&db.pool).await.unwrap(),
+        1,
+        "only the owner: the rejected login provisioned nobody"
+    );
 }
 
 #[actix_web::test]
 async fn test_sso_leaves_azp_alone_when_the_client_is_the_only_audience() {
-    let db = TestDb::new().await;
+    let db = db_with_owner().await;
     let provider = FakeProvider::start(person("sub-1", "owner@example.com")).await;
     provider.forge_authorized_party(Some("another-client"));
     let service = OidcService::discover(provider.config()).await.unwrap();

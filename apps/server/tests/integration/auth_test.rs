@@ -978,25 +978,64 @@ fn linking_with_admin_groups(
     }
 }
 
+/// #358: on an instance with no owner yet, SSO must not hand the instance to
+/// whoever signs in first. Like Sentry (SSO users join with the default role;
+/// the superuser comes from `sentry createuser`), the first owner comes from
+/// `CREATE_SUPERUSER`, the bootstrap file, or `OIDC_ADMIN_GROUPS`.
 #[actix_web::test]
-async fn test_oidc_first_login_provisions_admin_and_reuses_subject() {
+async fn test_oidc_first_login_is_refused_until_an_owner_exists() {
     let db = TestDb::new().await;
 
-    let first = oidc_login(
+    let refused = oidc_login(
         &db.pool,
-        "pocket-id-subject",
-        "Owner@Example.com",
+        "sub-1",
+        "first@example.com",
         true,
         linking(true, true),
     )
+    .await;
+
+    assert!(
+        matches!(refused, Err(rustrak::error::AppError::Forbidden(_))),
+        "got {refused:?}"
+    );
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+/// The groups the operator named for owners are the one SSO way to the first
+/// owner, and are honoured on the first login too.
+#[actix_web::test]
+async fn test_oidc_first_login_outside_the_admin_groups_is_refused() {
+    let db = TestDb::new().await;
+    let policy = linking_with_admin_groups(true, true, &["rustrak-admins"]);
+
+    let refused =
+        oidc_login_in_groups(&db.pool, "sub-1", "first@example.com", &["staff"], policy).await;
+
+    assert!(
+        matches!(refused, Err(rustrak::error::AppError::Forbidden(_))),
+        "got {refused:?}"
+    );
+    assert_eq!(UsersService::user_count(&db.pool).await.unwrap(), 0);
+}
+
+#[actix_web::test]
+async fn test_oidc_first_login_in_an_admin_group_becomes_the_owner_and_reuses_subject() {
+    let db = TestDb::new().await;
+    let policy = linking_with_admin_groups(true, true, &["rustrak-admins"]);
+
+    let first = oidc_login_in_groups(
+        &db.pool,
+        "pocket-id-subject",
+        "Owner@Example.com",
+        &["rustrak-admins"],
+        policy.clone(),
+    )
     .await
-    .expect("first OIDC login should provision a user");
+    .expect("an admin-group member provisions the first owner");
 
     assert_eq!(first.email, "owner@example.com");
-    assert!(
-        first.is_admin(),
-        "the first account must bootstrap as admin"
-    );
+    assert!(first.is_admin());
     let probe = uuid::Uuid::new_v4().to_string();
     assert!(
         !first
@@ -1005,12 +1044,12 @@ async fn test_oidc_first_login_provisions_admin_and_reuses_subject() {
         "an OIDC-provisioned account must not accept a password"
     );
 
-    let returning = oidc_login(
+    let returning = oidc_login_in_groups(
         &db.pool,
         "pocket-id-subject",
         "new-address@example.com",
-        true,
-        linking(true, true),
+        &["rustrak-admins"],
+        policy,
     )
     .await
     .expect("returning OIDC login should resolve its linked account");
@@ -1237,6 +1276,7 @@ async fn test_oidc_asks_for_the_password_when_the_email_is_unverified() {
 #[actix_web::test]
 async fn test_oidc_unverified_email_provisions_new_account_when_no_existing_account() {
     let db = TestDb::new().await;
+    create_test_user(&db.pool, "admin@example.com", "owner-password", true).await;
     let user = oidc_login(
         &db.pool,
         "new-subject",
@@ -1418,12 +1458,13 @@ async fn test_oidc_admin_groups_cannot_demote_the_primary_account() {
     let policy = linking_with_admin_groups(true, true, &["rustrak-admins"]);
 
     // The first account is the primary one. Its role is protected everywhere
-    // else, and a claim must not be the way around that.
+    // else, and a claim must not be the way around that. It comes in through
+    // the admin group: SSO provisions no first owner otherwise (#358).
     let first = oidc_login_in_groups(
         &db.pool,
         "sub-primary",
         "owner@example.com",
-        &[],
+        &["rustrak-admins"],
         policy.clone(),
     )
     .await

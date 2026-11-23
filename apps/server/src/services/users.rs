@@ -285,14 +285,19 @@ impl UsersService {
             let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
                 .fetch_one(&mut *tx)
                 .await?;
-            // The first account on an installation still bootstraps as admin:
-            // a mapping that nobody satisfies must not leave a fresh instance
-            // with no administrator at all.
-            let role = if count.0 == 0 {
-                UserRole::Admin
-            } else {
-                mapped_role.unwrap_or(UserRole::Member)
-            };
+            // An empty installation is not handed to whoever signs in first
+            // (#358). Like Sentry, whose SSO users join with the default role
+            // and whose superuser comes from `sentry createuser`, the first
+            // owner comes from CREATE_SUPERUSER, the bootstrap file, or a
+            // member of OIDC_ADMIN_GROUPS.
+            if count.0 == 0 && mapped_role != Some(UserRole::Admin) {
+                return Err(AppError::Forbidden(
+                    "Rustrak has no owner yet: create one with CREATE_SUPERUSER or the \
+                     bootstrap file, or sign in as a member of OIDC_ADMIN_GROUPS"
+                        .to_string(),
+                ));
+            }
+            let role = mapped_role.unwrap_or(UserRole::Member);
             Self::create_user_with_password_hash(&mut *tx, &normalized_email, &password_hash, role)
                 .await?
         };
