@@ -1,0 +1,103 @@
+---
+description: "See how fast each page of your site loads and responds for real users: LCP, INP, CLS, FCP and TTFB from the Sentry browser SDK, scored as Sentry scores them."
+---
+
+# Web Vitals
+
+Web Vitals shows how each page of your site loads and responds for the people using it, and which page to fix first. The numbers come from the browser SDK, measured in your users' browsers, not in a lab.
+
+The page appears in the sidebar of projects whose platform is JavaScript (`javascript` or `javascript-*`, such as `javascript-nextjs`). Servers and phones measure no web vitals, so other projects do not get it. Turning **Performance** off in the project's [products](/usage/projects) hides it too.
+
+## Send them
+
+Add `browserTracingIntegration()` to the browser SDK and set a sample rate:
+
+```javascript
+Sentry.init({
+  dsn: 'YOUR_DSN',
+  integrations: [Sentry.browserTracingIntegration()],
+  tracesSampleRate: 0.2,
+});
+```
+
+The SDK measures each page load and attaches the vitals to it. Rustrak reads them whichever way the SDK sends them: on the page load transaction, as standalone spans for LCP, CLS and each interaction's INP, or as [streamed spans](/usage/performance#sdks-that-stream-spans). No option is needed on either side.
+
+Rustrak stores vitals from the moment it is on v0.32.0. Page loads ingested before that have none.
+
+## The five vitals
+
+| Vital | What it measures | Good | Poor |
+|---|---|---|---|
+| **LCP**, Largest Contentful Paint | When the largest image or text block finished painting | up to 2.5 s | over 4 s |
+| **INP**, Interaction to Next Paint | How long the page took to respond to a click, tap or key | up to 200 ms | over 500 ms |
+| **CLS**, Cumulative Layout Shift | How much the content moved while loading | up to 0.1 | over 0.25 |
+| **FCP**, First Contentful Paint | When the first text or image appeared | up to 1.8 s | over 3 s |
+| **TTFB**, Time to First Byte | How long the server took to start answering | up to 800 ms | over 1.8 s |
+
+The thresholds are web.dev's. A value between the two is **Needs improvement**. LCP, INP and CLS are the three Core Web Vitals. FCP and TTFB come before LCP and explain it.
+
+Not every browser reports every vital. Safari reports no LCP, CLS or INP, and Firefox no CLS. Their page loads count for the vitals they do report.
+
+## The project's page
+
+**Web Vitals** opens with the **Core Web Vitals assessment**: **Passed** when LCP, INP and CLS are all good at the 75th percentile, **Failed** otherwise, naming the ones that are not. Next to it, **Where to start** names the costliest page with a vital below good, that vital (a poor one before one that needs improvement) and, when the SDK reported one, the element behind it. A busy page whose vitals are all good is passed over. Click it to open that vital on that page.
+
+Below, a card per vital gives its 75th percentile and the share of page loads that were good, needed improvement or were poor. Then the **Pages** table:
+
+| Column | What it is |
+|---|---|
+| **Page** | The page load's transaction name, as the SDK names the route (`/plants/[slug]`) |
+| **Opportunity** | The points of the project's score this page loses. The pages' opportunities add up to what the project is missing of 100, and the table is sorted by it |
+| **Score** | The page's performance score, 0 to 100 |
+| **Page loads** | Page loads in the window |
+| **LCP**, **INP**, **CLS**, **FCP**, **TTFB** | Each vital's 75th percentile on that page |
+
+Filter everything by environment, device (mobile or desktop), browser and window. The window is `14d` by default and goes up to 90 days.
+
+<InteractiveDemo src="/demos/web-vitals.openshowcase" />
+
+## The performance score
+
+Each measurement gets a score from 0 to 1 on a curve set per vital and per browser. A page's score weighs its vitals: LCP and INP 30% each, CLS and FCP 15% each, TTFB 10%. A vital with no data is left out of the weighting. The score reads as good from 90 and as poor below 50.
+
+This is Relay's performance score with Sentry's browser profiles, so a page scores the same in Rustrak as in Sentry. Phones are scored on a more lenient curve than computers.
+
+## A vital's page
+
+**Analyse** at the bottom of a vital's card opens it on its own:
+
+- **How it reads**: p50, p75, p90, p95 and p99. Core Web Vitals are judged at p75; the others show the spread.
+- **How to improve it**: what usually fixes it, from web.dev, with a link to the full guide.
+- **What causes it**: the elements it was measured on, the one losing the most score first. For LCP, the element and the image or resource it loaded; for CLS, the element that moved; for INP, the element the person clicked, tapped or typed in. FCP and TTFB have no element.
+- **Where it is worst**: the pages that lose the most score on it. Left out when you opened the vital for one page.
+- **By device** and **By browser**.
+- **Trend**: the share of page loads that were good, needed improvement and were poor, period by period.
+- **Worst measurements**: each one opens its page load's trace in [Performance](/usage/performance).
+
+<InteractiveDemo src="/demos/web-vitals-lcp.openshowcase" />
+
+Click a page in the **Pages** table for that page alone: its score and vitals, a **Page loads** link to its endpoint in Performance, and a **PageSpeed Insights** link to run a lab test on its URL.
+
+## Retention
+
+Vitals age out with the project's transactions, under the same setting in [Storage](/usage/storage).
+
+## API
+
+Read web vitals with an [API token](/usage/tokens). Every endpoint takes `environment`, `browser`, `device` (`mobile` or `desktop`) and `period` (`24h`, `7d`, `14d`; 90 days when absent, and at most):
+
+```bash
+curl -H "Authorization: Bearer $RUSTRAK_TOKEN" \
+  "$RUSTRAK_URL/api/projects/1/web-vitals/pages?vital=lcp&device=mobile&period=7d"
+```
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /api/projects/{id}/web-vitals` | The performance score, each vital's percentiles and rating counts, and the browsers seen |
+| `GET /api/projects/{id}/web-vitals/pages` | Pages by opportunity. `vital` ranks them by that vital alone. Paginated with `page` and `per_page` |
+| `GET /api/projects/{id}/web-vitals/breakdown` | One `vital` by `device` or `browser` (`by`) |
+| `GET /api/projects/{id}/web-vitals/targets` | The elements behind a vital |
+| `GET /api/projects/{id}/web-vitals/samples` | The worst measurements, with their transaction |
+| `GET /api/projects/{id}/web-vitals/timeseries` | Rating counts over time |
+
+The [client reference](/sdks/client) lists every parameter.

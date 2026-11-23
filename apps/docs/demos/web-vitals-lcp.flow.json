@@ -1,0 +1,27 @@
+{
+  "title": "Fix a slow LCP",
+  "url": "http://localhost:8090/projects/1/web-vitals",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "Where to start", "exact": false } },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Where to start", "exact": false },
+      "tooltip": "Where to start names the costliest page, its worst vital and the element behind it"
+    },
+    { "action": "wait", "for": { "role": "heading", "name": "What causes it" } },
+    { "action": "scroll", "target": { "role": "heading", "name": "What causes it" } },
+    {
+      "action": "click",
+      "target": { "css": "main a[href*='/performance/']", "nth": 0 },
+      "tooltip": "img.payment-badges is the LCP element. Open the slowest page load"
+    },
+    { "action": "wait", "for": { "role": "tree" } },
+    {
+      "action": "click",
+      "target": { "text": "/images/payment-badges.png", "exact": true },
+      "tooltip": "The image finishes loading right at the LCP. Shrink it or preload it"
+    },
+    { "action": "wait", "ms": 1200 }
+  ]
+}

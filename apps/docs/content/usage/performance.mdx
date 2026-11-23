@@ -21,7 +21,7 @@ Sentry.init({
 sentry_sdk.init(dsn="YOUR_DSN", traces_sample_rate=0.2)
 ```
 
-The SDK names each transaction after the route or page (`POST /api/orders`, `/checkout`) and records spans inside it: database queries, outgoing HTTP calls, cache reads. Rustrak also accepts spans sent on their own, outside a transaction.
+The SDK names each transaction after the route or page (`POST /api/orders`, `/checkout`) and records spans inside it: database queries, outgoing HTTP calls, cache reads. Rustrak also accepts spans sent on their own, outside a transaction. In a browser project, page loads also feed [Web Vitals](/usage/web-vitals).
 
 ### SDKs that stream spans
 

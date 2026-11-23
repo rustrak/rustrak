@@ -6,6 +6,7 @@ export default {
   'user-feedback': 'User Feedback',
   releases: 'Releases',
   performance: 'Performance',
+  'web-vitals': 'Web Vitals',
   logs: 'Logs',
   crons: 'Crons',
   agents: 'AI Agents',
