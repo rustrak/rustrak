@@ -7,6 +7,5 @@ import type { AlertType } from '@rustrak/client';
 export const alertTypes: { type: AlertType }[] = [
   { type: 'new_issue' },
   { type: 'regression' },
-  { type: 'unmute' },
   { type: 'new_feedback' },
 ];

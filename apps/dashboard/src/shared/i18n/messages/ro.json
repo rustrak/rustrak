@@ -1057,10 +1057,6 @@
         "name": "Regresie",
         "description": "O problemă rezolvată revine."
       },
-      "unmute": {
-        "name": "Reactivare",
-        "description": "O problemă arhivată reapare."
-      },
       "new_feedback": {
         "name": "Feedback nou",
         "description": "Un utilizator trimite feedback din aplicație."
@@ -1070,7 +1066,6 @@
       "when": {
         "new_issue": "Când apare <strong>o problemă nouă</strong>",
         "regression": "Când <strong>revine o problemă rezolvată</strong>",
-        "unmute": "Când <strong>se reactivează o problemă arhivată</strong>",
         "new_feedback": "Când <strong>un utilizator trimite feedback</strong>"
       },
       "inEnvironments": " în <strong>{envs}</strong>",
@@ -1180,7 +1175,6 @@
     "starters": {
       "new_issue": "Să aflu de probleme noi",
       "regression": "Să aflu de regresii",
-      "unmute": "Să aflu de probleme reactivate",
       "new_feedback": "Să aflu de feedback-ul utilizatorilor"
     },
     "table": {

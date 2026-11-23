@@ -251,7 +251,7 @@ export type AlertStatus = 'pending' | 'sent' | 'failed' | 'skipped';
 /**
  * Type of alert trigger
  */
-export type AlertType = 'new_issue' | 'regression' | 'unmute' | 'new_feedback';
+export type AlertType = 'new_issue' | 'regression' | 'new_feedback';
 
 export type AssembleBody = {
     checksum: string;

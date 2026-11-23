@@ -47,7 +47,6 @@ impl std::fmt::Display for ProviderType {
 pub enum AlertType {
     NewIssue,
     Regression,
-    Unmute,
     /// A user feedback was submitted (each feedback is its own issue).
     NewFeedback,
 }
@@ -57,7 +56,6 @@ impl std::fmt::Display for AlertType {
         match self {
             AlertType::NewIssue => write!(f, "new_issue"),
             AlertType::Regression => write!(f, "regression"),
-            AlertType::Unmute => write!(f, "unmute"),
             AlertType::NewFeedback => write!(f, "new_feedback"),
         }
     }
@@ -483,7 +481,7 @@ pub struct AlertHistoryDay {
 pub struct AlertPayload {
     /// Unique alert ID for idempotency
     pub alert_id: String,
-    /// Type of alert (new_issue, regression, unmute)
+    /// Type of alert (new_issue, regression, new_feedback)
     pub alert_type: String,
     /// Timestamp when alert was triggered
     pub triggered_at: DateTime<Utc>,

@@ -1057,10 +1057,6 @@
         "name": "Regresión",
         "description": "Vuelve un problema que habías resuelto."
       },
-      "unmute": {
-        "name": "Reactivación",
-        "description": "Un problema que archivaste vuelve a ocurrir."
-      },
       "new_feedback": {
         "name": "Feedback nuevo",
         "description": "Un usuario envía feedback desde tu app."
@@ -1070,7 +1066,6 @@
       "when": {
         "new_issue": "Cuando aparece <strong>un problema nuevo</strong>",
         "regression": "Cuando <strong>vuelve un problema resuelto</strong>",
-        "unmute": "Cuando <strong>se reactiva un problema archivado</strong>",
         "new_feedback": "Cuando <strong>un usuario envía feedback</strong>"
       },
       "inEnvironments": " en <strong>{envs}</strong>",
@@ -1180,7 +1175,6 @@
     "starters": {
       "new_issue": "Enterarme de problemas nuevos",
       "regression": "Enterarme de regresiones",
-      "unmute": "Enterarme de problemas reactivados",
       "new_feedback": "Enterarme del feedback de usuarios"
     },
     "table": {

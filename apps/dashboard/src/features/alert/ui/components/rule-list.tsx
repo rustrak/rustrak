@@ -198,12 +198,7 @@ function RuleRowsSkeleton() {
 /** Ways to start, for a project with no alert yet: one per trigger. */
 export function AlertStarters({ projectId }: { projectId: number }) {
   const t = useTranslations('alerts');
-  const starters: AlertType[] = [
-    'new_issue',
-    'regression',
-    'unmute',
-    'new_feedback',
-  ];
+  const starters: AlertType[] = ['new_issue', 'regression', 'new_feedback'];
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
@@ -212,7 +207,7 @@ export function AlertStarters({ projectId }: { projectId: number }) {
           {t('overview.emptyDescription')}
         </Text>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {starters.map((type) => (
           <Link
             key={type}

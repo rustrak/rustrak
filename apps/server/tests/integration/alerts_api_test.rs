@@ -1737,6 +1737,31 @@ mod rule_cache {
         rule["id"].as_i64().unwrap()
     }
 
+    /// #494: an archived issue never comes back on its own, so a rule that
+    /// waits for that ("Reactivated", `unmute`) could never fire. It is not
+    /// offered until archive conditions exist.
+    #[actix_web::test]
+    async fn a_reactivated_rule_cannot_be_created() {
+        let s = setup().await;
+        let app = crate::common::app(&s.db.pool).await;
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri(&format!("/api/projects/{}/alert-rules", s.project_id))
+                .insert_header(("Authorization", format!("Bearer {}", s.token)))
+                .set_json(json!({
+                    "name": "Reactivated",
+                    "alert_type": "unmute",
+                    "conditions": {},
+                    "cooldown_minutes": 0,
+                    "channels": [],
+                }))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), 400);
+    }
+
     fn rule_uri(s: &Setup, rule_id: i64) -> String {
         format!("/api/projects/{}/alert-rules/{rule_id}", s.project_id)
     }

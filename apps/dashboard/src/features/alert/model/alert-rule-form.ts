@@ -14,7 +14,7 @@ import { levels } from '@/shared/lib/rule-conditions';
 export function alertRuleFormSchema(t: Translate) {
   return z.object({
     name: z.string().min(1, t('validation.nameRequired')).max(255),
-    alert_type: z.enum(['new_issue', 'regression', 'unmute', 'new_feedback']),
+    alert_type: z.enum(['new_issue', 'regression', 'new_feedback']),
     selected_integration_ids: z.array(z.number()),
     routing_map: z
       .record(z.string(), z.record(z.string(), z.string()))

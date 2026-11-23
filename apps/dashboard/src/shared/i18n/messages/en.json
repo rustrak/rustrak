@@ -1057,10 +1057,6 @@
         "name": "Regression",
         "description": "An issue you resolved comes back."
       },
-      "unmute": {
-        "name": "Reactivated",
-        "description": "An issue you archived starts happening again."
-      },
       "new_feedback": {
         "name": "New feedback",
         "description": "A user sends feedback from your app."
@@ -1070,7 +1066,6 @@
       "when": {
         "new_issue": "When <strong>a new issue</strong> appears",
         "regression": "When <strong>a resolved issue comes back</strong>",
-        "unmute": "When <strong>an archived issue reactivates</strong>",
         "new_feedback": "When <strong>a user sends feedback</strong>"
       },
       "inEnvironments": " in <strong>{envs}</strong>",
@@ -1180,7 +1175,6 @@
     "starters": {
       "new_issue": "Hear about new issues",
       "regression": "Hear about regressions",
-      "unmute": "Hear about reactivated issues",
       "new_feedback": "Hear about user feedback"
     },
     "table": {

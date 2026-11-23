@@ -1057,10 +1057,6 @@
         "name": "回归",
         "description": "已解决的问题再次出现。"
       },
-      "unmute": {
-        "name": "重新激活",
-        "description": "已归档的问题再次发生。"
-      },
       "new_feedback": {
         "name": "新反馈",
         "description": "用户从你的应用发送了反馈。"
@@ -1070,7 +1066,6 @@
       "when": {
         "new_issue": "当出现<strong>新问题</strong>时",
         "regression": "当<strong>已解决的问题回归</strong>时",
-        "unmute": "当<strong>已归档的问题重新激活</strong>时",
         "new_feedback": "当<strong>用户发送反馈</strong>时"
       },
       "inEnvironments": "，在 <strong>{envs}</strong> 中",
@@ -1180,7 +1175,6 @@
     "starters": {
       "new_issue": "获知新问题",
       "regression": "获知回归",
-      "unmute": "获知重新激活的问题",
       "new_feedback": "获知用户反馈"
     },
     "table": {
