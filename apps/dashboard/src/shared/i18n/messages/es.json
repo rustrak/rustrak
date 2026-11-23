@@ -148,6 +148,7 @@
     "issuesDescription": "Errores y excepciones, agrupados por fingerprint.",
     "releasesDescription": "Despliegues y salud de cada versión.",
     "performanceDescription": "Duraciones de transacciones y cascadas de spans.",
+    "webVitalsDescription": "Cómo cargan y responden tus páginas para usuarios reales.",
     "agentsDescription": "Trazas de agentes de IA y los spans que contienen.",
     "logsDescription": "El flujo de registros tal como llega.",
     "generalDescription": "Nombre, slug, plataforma y zona de peligro.",
@@ -684,6 +685,7 @@
       "issues": "Problemas",
       "releases": "Versiones",
       "performance": "Rendimiento",
+      "webVitals": "Web Vitals",
       "agents": "Agentes",
       "logs": "Logs",
       "settings": "Configuración",
@@ -2999,5 +3001,139 @@
     "installStep1": "Toca Compartir <share></share> en la barra de Safari",
     "installStep2": "Elige Añadir a pantalla de inicio",
     "installStep3": "Toca Añadir"
+  },
+  "webVitals": {
+    "title": "Web Vitals",
+    "meta": {
+      "title": "Web Vitals · {project}",
+      "pageTitle": "Web Vitals · {page}",
+      "metricTitle": "{vital} · Web Vitals"
+    },
+    "pages": "{count, plural, =1 {# página} other {# páginas}}",
+    "score": "Puntuación de rendimiento",
+    "bands": {
+      "good": "Buena",
+      "meh": "Mejorable",
+      "poor": "Mala"
+    },
+    "noData": "Sin datos",
+    "trend": "Evolución",
+    "trendHint": "Qué parte de las cargas fue buena, necesitó mejorar o fue deficiente en cada periodo.",
+    "browser": "Navegador",
+    "allBrowsers": "Todos los navegadores",
+    "noBrowsers": "Aún no hay navegadores",
+    "columns": {
+      "page": "Página",
+      "opportunity": "Oportunidad",
+      "score": "Puntuación",
+      "pageloads": "Cargas"
+    },
+    "emptyWindow": "No hay web vitals en este periodo",
+    "pageloadsLink": "Cargas de página",
+    "empty": {
+      "title": "Aún no hay web vitals",
+      "description": "Añade <code>browserTracingIntegration()</code> al SDK de navegador para medir cómo carga cada página para usuarios reales."
+    },
+    "pageSpeedLink": "PageSpeed Insights",
+    "ratings": {
+      "good": "Bueno",
+      "meh": "Necesita mejorar",
+      "poor": "Deficiente"
+    },
+    "assessment": {
+      "label": "Evaluación de Core Web Vitals",
+      "passed": "Aprobada",
+      "failed": "Suspendida",
+      "passedHint": "LCP, INP y CLS son buenos en el percentil 75.",
+      "failedHint": "{count, plural, =1 {{vitals} no es bueno} other {{vitals} no son buenos}} en el percentil 75."
+    },
+    "devices": {
+      "device": "Dispositivo",
+      "all": "Todos los dispositivos",
+      "mobile": "Móvil",
+      "desktop": "Escritorio",
+      "title": "Por dispositivo",
+      "hint": "Móviles y ordenadores cuentan historias distintas.",
+      "unknown": "Desconocido"
+    },
+    "detail": {
+      "causes": "Qué lo causa",
+      "causesHint": "Los elementos en los que se midió, primero el que más puntuación pierde.",
+      "pages": "Dónde es peor",
+      "pagesHint": "Las páginas que más puntuación pierden en él.",
+      "samples": "Peores mediciones",
+      "samplesHint": "Cada una abre el trace de su carga.",
+      "noTargets": "El SDK no informó de ningún elemento en este periodo.",
+      "noTargetsForVital": "FCP y TTFB no los causa un elemento: revisa la respuesta del servidor y los recursos que bloquean el renderizado.",
+      "noPages": "Ninguna página lo tiene en este periodo.",
+      "noSamples": "No hay mediciones en este periodo.",
+      "times": "{count, plural, =1 {# vez} other {# veces}}",
+      "device": {
+        "mobile": "móvil",
+        "desktop": "escritorio"
+      },
+      "reading": "Cómo se lee",
+      "readingHint": "El percentil 75 es el que cuenta para Core Web Vitals; los demás muestran la dispersión.",
+      "measured": "{count, plural, =1 {# medición} other {# mediciones}} en este periodo.",
+      "howToFix": "Cómo mejorarlo",
+      "howToFixHint": "Lo que suele arreglarlo, según web.dev.",
+      "browsers": "Por navegador",
+      "browsersHint": "Cada navegador puntúa con su propia curva."
+    },
+    "vitals": {
+      "lcp": "Largest Contentful Paint: cuándo terminó de pintarse la imagen o el bloque de texto más grande. Suele ser una imagen pesada, un servidor lento o CSS y JavaScript que bloquean el renderizado.",
+      "inp": "Interaction to Next Paint: cuánto tardó la página en responder a un clic, toque o tecla. Suele ser JavaScript con tareas largas en el hilo principal.",
+      "cls": "Cumulative Layout Shift: cuánto se movió el contenido mientras cargaba. Suelen ser imágenes sin dimensiones, anuncios o contenido insertado tarde.",
+      "fcp": "First Contentful Paint: cuándo apareció el primer texto o imagen. Suele depender del tiempo de respuesta del servidor y de los recursos que bloquean el renderizado.",
+      "ttfb": "Time to First Byte: cuánto tardó el servidor en empezar a responder. Suele ser el backend, redirecciones o la falta de caché."
+    },
+    "coreTitle": "Core Web Vitals",
+    "otherTitle": "Otras métricas",
+    "pagesTitle": "Páginas",
+    "noDataFor": "No hay mediciones en este periodo.",
+    "scoreHint": "Puntuación de rendimiento: {band}. Pondera todas las métricas, no solo las tres Core Web Vitals.",
+    "trendOf": "Evolución de {vital}",
+    "atP75": "en el p75",
+    "analyse": "Analizar {vital}",
+    "allPages": "Todas las páginas",
+    "firstFix": {
+      "label": "Por dónde empezar",
+      "sentence": "{vital} en <mono>{page}</mono> es <value></value> en el percentil 75, la página que más puntuación cuesta.",
+      "cause": " Lo causa sobre todo <mono>{cause}</mono>.",
+      "none": "Nada urgente: {count, plural, =1 {la página que más puntuación cuesta tiene} other {las # páginas que más puntuación cuestan tienen}} todas sus métricas en bueno."
+    },
+    "guide": {
+      "more": "Leer la guía completa en web.dev",
+      "lcp": [
+        "Sirve la imagen más grande en un formato moderno (AVIF, WebP) y al tamaño en que se muestra.",
+        "Precárgala o dale fetchpriority=\"high\"; nunca la cargues en diferido.",
+        "Reduce el tiempo de respuesta del servidor y las redirecciones antes de la página.",
+        "Incluye en línea el CSS crítico y difiere los scripts que bloquean el renderizado."
+      ],
+      "inp": [
+        "Divide las tareas largas de JavaScript en otras más pequeñas que cedan el hilo principal.",
+        "Difiere o elimina scripts de terceros que se ejecutan mientras se interactúa.",
+        "Haz menos en los manejadores de eventos: actualiza primero la pantalla y el resto después.",
+        "Evita re-renderizados grandes y layouts forzados en cada interacción."
+      ],
+      "cls": [
+        "Da a imágenes, vídeos e iframes un ancho y un alto, o un aspect-ratio.",
+        "Reserva espacio para anuncios, embeds y banners antes de que carguen.",
+        "No insertes contenido encima de lo que se está leyendo, salvo que se haya pedido.",
+        "Carga las fuentes web con font-display y una fuente de respaldo parecida."
+      ],
+      "fcp": [
+        "Reduce el tiempo de respuesta del servidor (TTFB).",
+        "Incluye en línea el CSS crítico y difiere el resto.",
+        "Carga con defer o async el JavaScript no crítico.",
+        "Usa preconnect hacia los orígenes de recursos críticos, como las fuentes."
+      ],
+      "ttfb": [
+        "Cachea las respuestas en una CDN cerca de tus usuarios.",
+        "Evita cadenas de redirecciones antes de la página.",
+        "Acelera el trabajo del backend y las consultas a base de datos de la página.",
+        "Envía el HTML en streaming, o sírvelo estático cuando puedas."
+      ]
+    }
   }
 }

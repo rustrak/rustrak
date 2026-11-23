@@ -5,6 +5,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::SpanColumns;
 use crate::protocol::{clamp, extract_timestamp, is_stale, relay_level};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
+use crate::services::web_vitals::{event_browser, PageVitals, Targets, Vital};
 use bytes::Bytes;
 use uuid::Uuid;
 
@@ -83,6 +84,36 @@ impl TransactionProcessor {
         let sdk_version = extract_str(sdk, "version", 255);
 
         let id = Uuid::new_v4();
+
+        // A page load's vitals, the ones Sentry's Web Vitals reads from a
+        // transaction (`span.op:pageload`).
+        // The page load span's attributes: what the vitals were about.
+        let attributes = data
+            .pointer("/contexts/trace/data")
+            .unwrap_or(&serde_json::Value::Null);
+        let vitals = match (op.as_deref(), &span_id) {
+            (Some("pageload"), Some(span_id)) => Some(PageVitals {
+                page: transaction_name.clone(),
+                browser: event_browser(&data),
+                environment: non_empty(&environment).map(str::to_string),
+                release: non_empty(&release).map(str::to_string),
+                trace_id: trace_id.clone(),
+                span_id: span_id.clone(),
+                pageload_span_id: Some(span_id.clone()),
+                transaction_id: Some(id),
+                timestamp,
+                vitals: Vital::from_measurements(&data["measurements"]),
+                targets: Targets::read(attributes, "", None),
+                url: data
+                    .pointer("/request/url")
+                    .and_then(|url| url.as_str())
+                    .map(str::to_string),
+                connection: attributes["effectiveConnectionType"]
+                    .as_str()
+                    .map(str::to_string),
+            }),
+            _ => None,
+        };
 
         // The spans are stored once, as `spans` rows the transaction endpoint
         // rebuilds them from. They stay in the payload when there are none
@@ -250,6 +281,9 @@ impl TransactionProcessor {
         }
 
         insert_span_rows(&mut tx, ctx.project_id, rows).await?;
+        if let Some(vitals) = vitals {
+            vitals.insert(&mut tx, ctx.project_id).await?;
+        }
 
         tx.commit().await?;
 

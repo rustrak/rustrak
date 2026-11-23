@@ -40,6 +40,7 @@ pub mod stats;
 pub mod storage;
 pub mod transaction;
 pub mod users;
+pub mod web_vitals;
 
 pub use alert::AlertService;
 pub use attachment::AttachmentService;

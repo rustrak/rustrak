@@ -6,6 +6,7 @@ use crate::models::SpanColumns;
 use crate::protocol::{clamp_opt, extract_timestamp, infer_span_op, is_stale};
 use crate::services::gen_ai::{extract_gen_ai_columns, is_ai_span, GenAiColumns};
 use crate::services::span_description::hex_id;
+use crate::services::web_vitals::{reports_vitals, span_browser, PageVitals, Targets, Vital};
 use bytes::Bytes;
 use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 use uuid::Uuid;
@@ -280,7 +281,7 @@ const SPAN_BATCH_CHUNK: usize = 64;
 impl SpanProcessor {
     /// Parses and validates one standalone span payload (Relay's legacy
     /// "span" schema — one flat span object per envelope item).
-    fn parse_item(work: &[u8]) -> AppResult<SpanRow> {
+    fn parse_item(work: &[u8]) -> AppResult<(SpanRow, Option<PageVitals>)> {
         let mut data: serde_json::Value = serde_json::from_slice(work)
             .map_err(|e| AppError::Validation(format!("Invalid span JSON: {e}")))?;
 
@@ -340,14 +341,55 @@ impl SpanProcessor {
             ));
         }
 
-        Ok(SpanRow::from_span(data, 0))
+        let vitals = Self::vitals(&data, timestamp);
+        Ok((SpanRow::from_span(data, 0), vitals))
+    }
+
+    /// The INP of an interaction's span, or the LCP or CLS of a page's span
+    /// when the SDK sends those on their own, for the page in `transaction`.
+    fn vitals(span: &serde_json::Value, timestamp: DateTime<Utc>) -> Option<PageVitals> {
+        let op = span["op"].as_str()?;
+        if !reports_vitals(op) {
+            return None;
+        }
+        let interaction = op
+            .starts_with("ui.interaction.")
+            .then(|| span["description"].as_str())
+            .flatten();
+        let attributes = &span["data"];
+        let attribute = |name: &str| attributes[name].as_str().map(str::to_string);
+        Some(PageVitals {
+            page: attributes["transaction"].as_str()?.to_string(),
+            browser: span_browser(attributes),
+            environment: attribute("environment"),
+            release: attribute("release"),
+            trace_id: span["trace_id"].as_str().map(str::to_string),
+            span_id: span["span_id"].as_str()?.to_string(),
+            // A standalone LCP or CLS names its page load; an interaction
+            // is none.
+            pageload_span_id: attribute("sentry.pageload.span_id"),
+            transaction_id: None,
+            timestamp,
+            vitals: Vital::from_measurements(&span["measurements"]),
+            targets: Targets::read(attributes, "", interaction),
+            url: None,
+            connection: attribute("effectiveConnectionType"),
+        })
     }
 
     /// Writes one chunk in one transaction.
-    async fn insert_all(&self, ctx: &ProcessorCtx, parsed: Vec<SpanRow>) -> AppResult<()> {
-        let rows = encode_span_rows(&ctx.pool, ctx.project_id, ctx.keep_ai_spans, parsed).await?;
+    async fn insert_all(
+        &self,
+        ctx: &ProcessorCtx,
+        parsed: Vec<(SpanRow, Option<PageVitals>)>,
+    ) -> AppResult<()> {
+        let (spans, vitals): (Vec<_>, Vec<_>) = parsed.into_iter().unzip();
+        let rows = encode_span_rows(&ctx.pool, ctx.project_id, ctx.keep_ai_spans, spans).await?;
         let mut tx = ctx.pool.begin().await?;
         insert_span_rows(&mut tx, ctx.project_id, rows).await?;
+        for vitals in vitals.iter().flatten() {
+            vitals.insert(&mut tx, ctx.project_id).await?;
+        }
         tx.commit().await?;
         Ok(())
     }
@@ -356,7 +398,7 @@ impl SpanProcessor {
     /// interleaving parse and write so only one chunk's trees are alive;
     /// malformed items are skipped (the old per-item tolerance).
     pub async fn process_batch(&self, items: Vec<Bytes>, ctx: &ProcessorCtx) -> AppResult<()> {
-        let mut chunk: Vec<SpanRow> = Vec::with_capacity(SPAN_BATCH_CHUNK);
+        let mut chunk = Vec::with_capacity(SPAN_BATCH_CHUNK);
         for work in items {
             match Self::parse_item(&work) {
                 Ok(item) => {
@@ -405,7 +447,7 @@ mod tests {
             let item = format!(
                 r#"{{"span_id":"s","trace_id":"t","start_timestamp":1.0,"timestamp":2.0,"tags":{tags}}}"#
             );
-            SpanProcessor::parse_item(item.as_bytes()).unwrap().tags
+            SpanProcessor::parse_item(item.as_bytes()).unwrap().0.tags
         };
         assert_eq!(span(r#"[["k","v"]]"#), None);
         assert_eq!(span(r#"{"k":"v"}"#), Some(serde_json::json!({"k": "v"})));

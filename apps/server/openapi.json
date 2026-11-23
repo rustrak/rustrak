@@ -13017,6 +13017,955 @@
         ]
       }
     },
+    "/api/projects/{project_id}/web-vitals": {
+      "get": {
+        "tags": [
+          "Web Vitals"
+        ],
+        "summary": "Returns the project's performance score over the window, or one page's,\nwith each vital's 75th percentile and the spread around it, average\nscore and how many of its measurements rate good, needing improvement\nand poor.",
+        "operationId": "webVitals.getSummary",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only this environment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "description": "Only this browser, as the summary's `browsers` names it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "description": "Only phones (`mobile`) or only computers (`desktop`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Only this page.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "vital",
+            "in": "query",
+            "description": "Only this vital: the pages ranked by it, its causes, its samples.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Vital"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The performance score and each vital's value, score and ratings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebVitalsSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/web-vitals/breakdown": {
+      "get": {
+        "tags": [
+          "Web Vitals"
+        ],
+        "summary": "Returns one vital on each device or on each browser: where it is good\nand where it is not, the most measured first.",
+        "operationId": "webVitals.getBreakdown",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "vital",
+            "in": "query",
+            "description": "The vital to break down.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Vital"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "description": "What to break it down by.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Breakdown"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The vital on each device or browser, the most measured first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebVitalsBreakdownRow"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No vital, no dimension or an unknown device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/web-vitals/pages": {
+      "get": {
+        "tags": [
+          "Web Vitals"
+        ],
+        "summary": "Returns the pages with web vitals in the window, the one whose\nimprovement would raise the project's score the most first, or its\nscore for one vital when `vital` names it.",
+        "operationId": "webVitals.listPages",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-indexed, default: 1)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Items per page (default: 20, max: 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "vital",
+            "in": "query",
+            "description": "Rank the pages by this vital's score alone.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Vital"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pages by the score they cost the project, the most first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "Offset-based paginated response wrapper",
+                  "required": [
+                    "items",
+                    "total_count",
+                    "page",
+                    "per_page",
+                    "total_pages"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "One page's web vitals, and how much of the project's score it costs.",
+                        "required": [
+                          "page",
+                          "pageloads",
+                          "score",
+                          "opportunity",
+                          "vitals"
+                        ],
+                        "properties": {
+                          "opportunity": {
+                            "type": "number",
+                            "format": "double",
+                            "description": "The share of the project's score this page loses, from 0 to 1: the\npages' add up to one minus the project's score."
+                          },
+                          "page": {
+                            "type": "string",
+                            "description": "The route or URL the page loaded as (its transaction's name)."
+                          },
+                          "pageloads": {
+                            "type": "integer",
+                            "format": "int64",
+                            "description": "How many page loads reported a vital."
+                          },
+                          "score": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "format": "double"
+                          },
+                          "vitals": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/VitalStats"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "per_page": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_count": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "total_pages": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/web-vitals/samples": {
+      "get": {
+        "tags": [
+          "Web Vitals"
+        ],
+        "summary": "Returns the window's worst measurements, ten at most, with where each\nhappened: the page and its URL, the element, the browser, the device,\nthe network and the page load's transaction.",
+        "operationId": "webVitals.listSamples",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only this environment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "description": "Only this browser, as the summary's `browsers` names it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "description": "Only phones (`mobile`) or only computers (`desktop`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Only this page.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "vital",
+            "in": "query",
+            "description": "Only this vital: the pages ranked by it, its causes, its samples.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Vital"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The worst measurements, the highest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebVitalSample"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/web-vitals/targets": {
+      "get": {
+        "tags": [
+          "Web Vitals"
+        ],
+        "summary": "Returns what the window's vitals were about: an LCP's element and the\nresource it loaded, a layout shift's element, an interaction's target.\nThe one losing the most score comes first, ten at most.",
+        "operationId": "webVitals.listTargets",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only this environment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "description": "Only this browser, as the summary's `browsers` names it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "description": "Only phones (`mobile`) or only computers (`desktop`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Only this page.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "vital",
+            "in": "query",
+            "description": "Only this vital: the pages ranked by it, its causes, its samples.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Vital"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The elements the vitals were about, the one losing the most score first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebVitalTarget"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{project_id}/web-vitals/timeseries": {
+      "get": {
+        "tags": [
+          "Web Vitals"
+        ],
+        "summary": "Returns how the window's measurements rate bucket by bucket, every\nbucket present: how many were good, needed improvement and were poor.\nOne vital's when `vital` names it, as a trend is read.",
+        "operationId": "webVitals.getTimeseries",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only this environment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "description": "Only this browser, as the summary's `browsers` names it.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "description": "Only phones (`mobile`) or only computers (`desktop`).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Only this page.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "vital",
+            "in": "query",
+            "description": "Only this vital: the pages ranked by it, its causes, its samples.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Vital"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "description": "Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days\nif absent.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "How the measurements rate per bucket, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebVitalsPoint"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An unknown device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/rate-limits": {
       "get": {
         "tags": [
@@ -16915,6 +17864,14 @@
           }
         }
       },
+      "Breakdown": {
+        "type": "string",
+        "description": "The dimensions a vital breaks down by.",
+        "enum": [
+          "device",
+          "browser"
+        ]
+      },
       "BulkDeleteIssues": {
         "oneOf": [
           {
@@ -19724,6 +20681,25 @@
           }
         }
       },
+      "PercentileValue": {
+        "type": "object",
+        "description": "A vital's value at one percentile.",
+        "required": [
+          "percentile",
+          "value"
+        ],
+        "properties": {
+          "percentile": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "Permission": {
         "type": "object",
         "description": "One `(resource, action)` grant.",
@@ -20279,6 +21255,29 @@
             "format": "int64"
           },
           "project_per_minute": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RatingCounts": {
+        "type": "object",
+        "description": "How many measurements web.dev rates good, needing improvement and poor.",
+        "required": [
+          "good",
+          "meh",
+          "poor"
+        ],
+        "properties": {
+          "good": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "meh": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "poor": {
             "type": "integer",
             "format": "int64"
           }
@@ -23065,6 +24064,299 @@
           "owner",
           "project"
         ]
+      },
+      "Vital": {
+        "type": "string",
+        "description": "The vitals a performance score is made of.",
+        "enum": [
+          "fcp",
+          "lcp",
+          "cls",
+          "ttfb",
+          "inp"
+        ]
+      },
+      "VitalStats": {
+        "type": "object",
+        "description": "One vital over a window: its 75th percentile, the spread around it, its\naverage score and how its measurements rate.",
+        "required": [
+          "vital",
+          "value",
+          "percentiles",
+          "score",
+          "count",
+          "distribution"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many measurements."
+          },
+          "distribution": {
+            "$ref": "#/components/schemas/RatingCounts"
+          },
+          "percentiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PercentileValue"
+            },
+            "description": "The 50th, 75th, 90th, 95th and 99th percentiles."
+          },
+          "score": {
+            "type": "number",
+            "format": "double",
+            "description": "Average score ratio, from 0 to 1."
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "description": "The 75th percentile, which Core Web Vitals are judged by:\nmilliseconds, or unitless for CLS."
+          },
+          "vital": {
+            "$ref": "#/components/schemas/Vital"
+          }
+        }
+      },
+      "WebVitalSample": {
+        "type": "object",
+        "description": "One measurement of a vital, and where it happened.",
+        "required": [
+          "value",
+          "score",
+          "page",
+          "target",
+          "resource",
+          "url",
+          "browser",
+          "device",
+          "connection",
+          "release",
+          "transaction_id",
+          "timestamp"
+        ],
+        "properties": {
+          "browser": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The network's effective type (`4g`, `3g`...)."
+          },
+          "device": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`mobile` or `desktop`."
+          },
+          "page": {
+            "type": "string"
+          },
+          "release": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transaction_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The page load's transaction, when it is known."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The page's URL."
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "WebVitalTarget": {
+        "type": "object",
+        "description": "One element a vital was about (an LCP's image, an INP's button), and how\nit did.",
+        "required": [
+          "target",
+          "resource",
+          "count",
+          "value",
+          "score",
+          "distribution"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "distribution": {
+            "$ref": "#/components/schemas/RatingCounts"
+          },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The resource it loaded, for an LCP (an image's URL)."
+          },
+          "score": {
+            "type": "number",
+            "format": "double",
+            "description": "Average score ratio, from 0 to 1."
+          },
+          "target": {
+            "type": "string",
+            "description": "The element, as a CSS-like path (`body > img.hero`)."
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "description": "The 75th percentile."
+          }
+        }
+      },
+      "WebVitalsBreakdownRow": {
+        "type": "object",
+        "description": "One vital on one device or one browser.",
+        "required": [
+          "key",
+          "stats"
+        ],
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The device (`mobile`, `desktop`) or browser; `null` when the SDK\nsent nothing to tell it by."
+          },
+          "stats": {
+            "$ref": "#/components/schemas/VitalStats"
+          }
+        }
+      },
+      "WebVitalsPage": {
+        "type": "object",
+        "description": "One page's web vitals, and how much of the project's score it costs.",
+        "required": [
+          "page",
+          "pageloads",
+          "score",
+          "opportunity",
+          "vitals"
+        ],
+        "properties": {
+          "opportunity": {
+            "type": "number",
+            "format": "double",
+            "description": "The share of the project's score this page loses, from 0 to 1: the\npages' add up to one minus the project's score."
+          },
+          "page": {
+            "type": "string",
+            "description": "The route or URL the page loaded as (its transaction's name)."
+          },
+          "pageloads": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many page loads reported a vital."
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "vitals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalStats"
+            }
+          }
+        }
+      },
+      "WebVitalsPoint": {
+        "type": "object",
+        "description": "One bucket of the trend: how its measurements rate.",
+        "required": [
+          "bucket",
+          "distribution"
+        ],
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "distribution": {
+            "$ref": "#/components/schemas/RatingCounts"
+          }
+        }
+      },
+      "WebVitalsSummary": {
+        "type": "object",
+        "description": "A project's, or one page's, web vitals over a window.",
+        "required": [
+          "score",
+          "vitals",
+          "browsers"
+        ],
+        "properties": {
+          "browsers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The browsers the window's vitals came from, for the browser filter."
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The performance score, from 0 to 1: each vital's average score\nweighted as Sentry weighs them, over the vitals with data. `null`\nwithout any."
+          },
+          "vitals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VitalStats"
+            },
+            "description": "The vitals with data, in score weight order."
+          }
+        }
       }
     },
     "securitySchemes": {

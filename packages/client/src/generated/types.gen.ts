@@ -388,6 +388,11 @@ export type BookmarkResponse = {
 };
 
 /**
+ * The dimensions a vital breaks down by.
+ */
+export type Breakdown = 'device' | 'browser';
+
+/**
  * Bulk delete request: the listed `ids`, or every issue matching `filter`.
  * A body with neither or both matches no variant and is rejected, so an empty
  * body can never mean "all".
@@ -1657,6 +1662,14 @@ export type OrgDetails = {
 };
 
 /**
+ * A vital's value at one percentile.
+ */
+export type PercentileValue = {
+    percentile: number;
+    value: number;
+};
+
+/**
  * One `(resource, action)` grant.
  */
 export type Permission = {
@@ -1923,6 +1936,15 @@ export type ProviderType = 'webhook' | 'email' | 'slack' | 'custom_webhook';
 export type RateLimitsResponse = {
     project_per_hour: number;
     project_per_minute: number;
+};
+
+/**
+ * How many measurements web.dev rates good, needing improvement and poor.
+ */
+export type RatingCounts = {
+    good: number;
+    meh: number;
+    poor: number;
 };
 
 export type ReadinessChecks = {
@@ -3084,6 +3106,153 @@ export type VersionResponse = {
  * Sentry's `owner` / `organization`, with the project as the organization.
  */
 export type ViewVisibility = 'owner' | 'project';
+
+/**
+ * The vitals a performance score is made of.
+ */
+export type Vital = 'fcp' | 'lcp' | 'cls' | 'ttfb' | 'inp';
+
+/**
+ * One vital over a window: its 75th percentile, the spread around it, its
+ * average score and how its measurements rate.
+ */
+export type VitalStats = {
+    /**
+     * How many measurements.
+     */
+    count: number;
+    distribution: RatingCounts;
+    /**
+     * The 50th, 75th, 90th, 95th and 99th percentiles.
+     */
+    percentiles: Array<PercentileValue>;
+    /**
+     * Average score ratio, from 0 to 1.
+     */
+    score: number;
+    /**
+     * The 75th percentile, which Core Web Vitals are judged by:
+     * milliseconds, or unitless for CLS.
+     */
+    value: number;
+    vital: Vital;
+};
+
+/**
+ * One measurement of a vital, and where it happened.
+ */
+export type WebVitalSample = {
+    browser: string | null;
+    /**
+     * The network's effective type (`4g`, `3g`...).
+     */
+    connection: string | null;
+    /**
+     * `mobile` or `desktop`.
+     */
+    device: string | null;
+    page: string;
+    release: string | null;
+    resource: string | null;
+    score: number;
+    target: string | null;
+    timestamp: string;
+    /**
+     * The page load's transaction, when it is known.
+     */
+    transaction_id: string | null;
+    /**
+     * The page's URL.
+     */
+    url: string | null;
+    value: number;
+};
+
+/**
+ * One element a vital was about (an LCP's image, an INP's button), and how
+ * it did.
+ */
+export type WebVitalTarget = {
+    count: number;
+    distribution: RatingCounts;
+    /**
+     * The resource it loaded, for an LCP (an image's URL).
+     */
+    resource: string | null;
+    /**
+     * Average score ratio, from 0 to 1.
+     */
+    score: number;
+    /**
+     * The element, as a CSS-like path (`body > img.hero`).
+     */
+    target: string;
+    /**
+     * The 75th percentile.
+     */
+    value: number;
+};
+
+/**
+ * One vital on one device or one browser.
+ */
+export type WebVitalsBreakdownRow = {
+    /**
+     * The device (`mobile`, `desktop`) or browser; `null` when the SDK
+     * sent nothing to tell it by.
+     */
+    key: string | null;
+    stats: VitalStats;
+};
+
+/**
+ * One page's web vitals, and how much of the project's score it costs.
+ */
+export type WebVitalsPage = {
+    /**
+     * The share of the project's score this page loses, from 0 to 1: the
+     * pages' add up to one minus the project's score.
+     */
+    opportunity: number;
+    /**
+     * The route or URL the page loaded as (its transaction's name).
+     */
+    page: string;
+    /**
+     * How many page loads reported a vital.
+     */
+    pageloads: number;
+    score: number | null;
+    vitals: Array<VitalStats>;
+};
+
+/**
+ * One bucket of the trend: how its measurements rate.
+ */
+export type WebVitalsPoint = {
+    bucket: string;
+    distribution: RatingCounts;
+};
+
+/**
+ * A project's, or one page's, web vitals over a window.
+ */
+export type WebVitalsSummary = {
+    /**
+     * The browsers the window's vitals came from, for the browser filter.
+     */
+    browsers: Array<string>;
+    /**
+     * The performance score, from 0 to 1: each vital's average score
+     * weighted as Sentry weighs them, over the vitals with data. `null`
+     * without any.
+     */
+    score: number | null;
+    /**
+     * The vitals with data, in score weight order.
+     */
+    vitals: Array<VitalStats>;
+};
 
 export type SentryGetIssueData = {
     body?: never;
@@ -9383,6 +9552,391 @@ export type SavedViewsUpdateResponses = {
 };
 
 export type SavedViewsUpdateResponse = SavedViewsUpdateResponses[keyof SavedViewsUpdateResponses];
+
+export type WebVitalsGetSummaryData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: {
+        /**
+         * Only this environment.
+         */
+        environment?: string | null;
+        /**
+         * Only this browser, as the summary's `browsers` names it.
+         */
+        browser?: string | null;
+        /**
+         * Only phones (`mobile`) or only computers (`desktop`).
+         */
+        device?: string | null;
+        /**
+         * Only this page.
+         */
+        page?: string | null;
+        /**
+         * Only this vital: the pages ranked by it, its causes, its samples.
+         */
+        vital?: Vital | null;
+        /**
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
+         */
+        period?: string | null;
+    };
+    url: '/api/projects/{project_id}/web-vitals';
+};
+
+export type WebVitalsGetSummaryErrors = {
+    /**
+     * An unknown device
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WebVitalsGetSummaryError = WebVitalsGetSummaryErrors[keyof WebVitalsGetSummaryErrors];
+
+export type WebVitalsGetSummaryResponses = {
+    /**
+     * The performance score and each vital's value, score and ratings
+     */
+    200: WebVitalsSummary;
+};
+
+export type WebVitalsGetSummaryResponse = WebVitalsGetSummaryResponses[keyof WebVitalsGetSummaryResponses];
+
+export type WebVitalsGetBreakdownData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query: {
+        /**
+         * The vital to break down.
+         */
+        vital: Vital;
+        /**
+         * What to break it down by.
+         */
+        by: Breakdown;
+        environment?: string | null;
+        browser?: string | null;
+        device?: string | null;
+        page?: string | null;
+        period?: string | null;
+    };
+    url: '/api/projects/{project_id}/web-vitals/breakdown';
+};
+
+export type WebVitalsGetBreakdownErrors = {
+    /**
+     * No vital, no dimension or an unknown device
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WebVitalsGetBreakdownError = WebVitalsGetBreakdownErrors[keyof WebVitalsGetBreakdownErrors];
+
+export type WebVitalsGetBreakdownResponses = {
+    /**
+     * The vital on each device or browser, the most measured first
+     */
+    200: Array<WebVitalsBreakdownRow>;
+};
+
+export type WebVitalsGetBreakdownResponse = WebVitalsGetBreakdownResponses[keyof WebVitalsGetBreakdownResponses];
+
+export type WebVitalsListPagesData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: {
+        /**
+         * Page number (1-indexed, default: 1)
+         */
+        page?: number;
+        /**
+         * Items per page (default: 20, max: 100)
+         */
+        per_page?: number;
+        environment?: string | null;
+        browser?: string | null;
+        device?: string | null;
+        /**
+         * Rank the pages by this vital's score alone.
+         */
+        vital?: Vital | null;
+        period?: string | null;
+    };
+    url: '/api/projects/{project_id}/web-vitals/pages';
+};
+
+export type WebVitalsListPagesErrors = {
+    /**
+     * An unknown device
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WebVitalsListPagesError = WebVitalsListPagesErrors[keyof WebVitalsListPagesErrors];
+
+export type WebVitalsListPagesResponses = {
+    /**
+     * Offset-based paginated response wrapper
+     */
+    200: {
+        items: Array<{
+            /**
+             * The share of the project's score this page loses, from 0 to 1: the
+             * pages' add up to one minus the project's score.
+             */
+            opportunity: number;
+            /**
+             * The route or URL the page loaded as (its transaction's name).
+             */
+            page: string;
+            /**
+             * How many page loads reported a vital.
+             */
+            pageloads: number;
+            score: number | null;
+            vitals: Array<VitalStats>;
+        }>;
+        page: number;
+        per_page: number;
+        total_count: number;
+        total_pages: number;
+    };
+};
+
+export type WebVitalsListPagesResponse = WebVitalsListPagesResponses[keyof WebVitalsListPagesResponses];
+
+export type WebVitalsListSamplesData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: {
+        /**
+         * Only this environment.
+         */
+        environment?: string | null;
+        /**
+         * Only this browser, as the summary's `browsers` names it.
+         */
+        browser?: string | null;
+        /**
+         * Only phones (`mobile`) or only computers (`desktop`).
+         */
+        device?: string | null;
+        /**
+         * Only this page.
+         */
+        page?: string | null;
+        /**
+         * Only this vital: the pages ranked by it, its causes, its samples.
+         */
+        vital?: Vital | null;
+        /**
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
+         */
+        period?: string | null;
+    };
+    url: '/api/projects/{project_id}/web-vitals/samples';
+};
+
+export type WebVitalsListSamplesErrors = {
+    /**
+     * An unknown device
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WebVitalsListSamplesError = WebVitalsListSamplesErrors[keyof WebVitalsListSamplesErrors];
+
+export type WebVitalsListSamplesResponses = {
+    /**
+     * The worst measurements, the highest first
+     */
+    200: Array<WebVitalSample>;
+};
+
+export type WebVitalsListSamplesResponse = WebVitalsListSamplesResponses[keyof WebVitalsListSamplesResponses];
+
+export type WebVitalsListTargetsData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: {
+        /**
+         * Only this environment.
+         */
+        environment?: string | null;
+        /**
+         * Only this browser, as the summary's `browsers` names it.
+         */
+        browser?: string | null;
+        /**
+         * Only phones (`mobile`) or only computers (`desktop`).
+         */
+        device?: string | null;
+        /**
+         * Only this page.
+         */
+        page?: string | null;
+        /**
+         * Only this vital: the pages ranked by it, its causes, its samples.
+         */
+        vital?: Vital | null;
+        /**
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
+         */
+        period?: string | null;
+    };
+    url: '/api/projects/{project_id}/web-vitals/targets';
+};
+
+export type WebVitalsListTargetsErrors = {
+    /**
+     * An unknown device
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WebVitalsListTargetsError = WebVitalsListTargetsErrors[keyof WebVitalsListTargetsErrors];
+
+export type WebVitalsListTargetsResponses = {
+    /**
+     * The elements the vitals were about, the one losing the most score first
+     */
+    200: Array<WebVitalTarget>;
+};
+
+export type WebVitalsListTargetsResponse = WebVitalsListTargetsResponses[keyof WebVitalsListTargetsResponses];
+
+export type WebVitalsGetTimeseriesData = {
+    body?: never;
+    path: {
+        /**
+         * Project ID
+         */
+        project_id: number;
+    };
+    query?: {
+        /**
+         * Only this environment.
+         */
+        environment?: string | null;
+        /**
+         * Only this browser, as the summary's `browsers` names it.
+         */
+        browser?: string | null;
+        /**
+         * Only phones (`mobile`) or only computers (`desktop`).
+         */
+        device?: string | null;
+        /**
+         * Only this page.
+         */
+        page?: string | null;
+        /**
+         * Only this vital: the pages ranked by it, its causes, its samples.
+         */
+        vital?: Vital | null;
+        /**
+         * Only this window (`24h`, `7d`, `14d`...): 90 days at most, and 90 days
+         * if absent.
+         */
+        period?: string | null;
+    };
+    url: '/api/projects/{project_id}/web-vitals/timeseries';
+};
+
+export type WebVitalsGetTimeseriesErrors = {
+    /**
+     * An unknown device
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+};
+
+export type WebVitalsGetTimeseriesError = WebVitalsGetTimeseriesErrors[keyof WebVitalsGetTimeseriesErrors];
+
+export type WebVitalsGetTimeseriesResponses = {
+    /**
+     * How the measurements rate per bucket, oldest first
+     */
+    200: Array<WebVitalsPoint>;
+};
+
+export type WebVitalsGetTimeseriesResponse = WebVitalsGetTimeseriesResponses[keyof WebVitalsGetTimeseriesResponses];
 
 export type ProjectsGetRateLimitsData = {
     body?: never;

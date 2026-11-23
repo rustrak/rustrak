@@ -85,6 +85,7 @@ pub mod storage;
 pub mod token;
 pub mod transaction;
 pub mod user;
+pub mod web_vital;
 
 pub use alert::{
     AlertHistory, AlertHistoryDay, AlertIntegration, AlertPayload, AlertRule, AlertRuleChannel,

@@ -25,7 +25,9 @@ const project = (
   id: number,
   name: string,
   disabled_products: CommandProject['disabled_products'] = [],
-): CommandProject => ({ id, name, platform: null, disabled_products });
+  // A browser project, the one every project page is for.
+  platform: string | null = 'javascript',
+): CommandProject => ({ id, name, platform, disabled_products });
 
 // The bar and the sidebar read one table: every page the sidebar lists is a
 // command, under the sidebar's own words.
@@ -45,6 +47,16 @@ describe('commands', () => {
       ...PROJECT_PAGES.map((p) => `projects.nav.${p.key}`),
       ...PROJECT_SETTINGS.map((p) => `settings.nav.${p.key}`),
     ]);
+  });
+
+  it('offers Web Vitals only to a project that runs in a browser', () => {
+    const keys = (platform: string | null) =>
+      projectCommands(project(3, 'acme', [], platform), owner).map(
+        (c) => c.labelKey,
+      );
+    expect(keys('javascript-react')).toContain('projects.nav.webVitals');
+    expect(keys('node')).not.toContain('projects.nav.webVitals');
+    expect(keys(null)).not.toContain('projects.nav.webVitals');
   });
 
   it('lists project pages in the order the sidebar draws them', () => {

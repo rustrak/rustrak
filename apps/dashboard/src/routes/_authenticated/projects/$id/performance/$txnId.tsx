@@ -20,6 +20,7 @@ import {
 import { endpointHref } from '@/features/transaction/model/endpoints';
 import { useRelativeTime } from '@/shared/i18n/use-now';
 import type { WaterfallRow } from '@/shared/lib/waterfall';
+import { RATING_TEXT } from '@/shared/lib/web-vitals';
 import { DetailMain, DetailRail } from '@/shared/ui/components/detail-layout';
 import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { PageLoading } from '@/shared/ui/components/page-loading';
@@ -39,12 +40,6 @@ export const Route = createFileRoute(
   pendingComponent: TransactionLoading,
   component: TransactionPage,
 });
-
-const RATING_TEXT = {
-  good: 'text-success-fg',
-  meh: 'text-sev-warning-fg',
-  poor: 'text-sev-error-fg',
-} as const;
 
 /**
  * One transaction, laid out as the issue page is: what it was and how it

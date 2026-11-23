@@ -617,6 +617,17 @@ Every method, grouped as it hangs off the client.
 | `transactions.getStats({ path, query? })` | `GET /api/projects/{project_id}/transactions/stats` | Returns paginated aggregate performance stats (count, time spent, p50/p95/p99 latency, failure rate) grouped by transaction name + op, the most time spent first unless `sort` asks otherwise. |
 | `transactions.list({ path, query? })` | `GET /api/projects/{project_id}/transactions` | Lists transactions for a project with offset-based pagination (newest or slowest first), over a window of 90 days at most. |
 
+### Web Vitals
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `webVitals.getBreakdown({ path, query })` | `GET /api/projects/{project_id}/web-vitals/breakdown` | Returns one vital on each device or on each browser: where it is good and where it is not, the most measured first. |
+| `webVitals.getSummary({ path, query? })` | `GET /api/projects/{project_id}/web-vitals` | Returns the project's performance score over the window, or one page's, with each vital's 75th percentile and the spread around it, average score and how many of its measurements rate good, needing improvement and poor. |
+| `webVitals.getTimeseries({ path, query? })` | `GET /api/projects/{project_id}/web-vitals/timeseries` | Returns how the window's measurements rate bucket by bucket, every bucket present: how many were good, needed improvement and were poor. |
+| `webVitals.listPages({ path, query? })` | `GET /api/projects/{project_id}/web-vitals/pages` | Returns the pages with web vitals in the window, the one whose improvement would raise the project's score the most first, or its score for one vital when `vital` names it. |
+| `webVitals.listSamples({ path, query? })` | `GET /api/projects/{project_id}/web-vitals/samples` | Returns the window's worst measurements, ten at most, with where each happened: the page and its URL, the element, the browser, the device, the network and the page load's transaction. |
+| `webVitals.listTargets({ path, query? })` | `GET /api/projects/{project_id}/web-vitals/targets` | Returns what the window's vitals were about: an LCP's element and the resource it loaded, a layout shift's element, an interaction's target. |
+
 {/* api:end */}
 
 ## Related

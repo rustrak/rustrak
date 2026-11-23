@@ -923,6 +923,23 @@ impl StorageService {
                     on_batch(counts);
                     crate::db::maintenance::yield_to_writers().await;
                 }
+                // Web vitals age out with the transactions they were
+                // measured on, by when they were.
+                while sqlx::query(
+                    "DELETE FROM web_vitals WHERE id IN ( \
+                         SELECT id FROM web_vitals \
+                         WHERE project_id = $1 AND timestamp < $2 LIMIT $3)",
+                )
+                .bind(project_id)
+                .bind(cutoff)
+                .bind(batch_size)
+                .execute(pool)
+                .await?
+                .rows_affected()
+                    > 0
+                {
+                    crate::db::maintenance::yield_to_writers().await;
+                }
             }
 
             if filter.include_logs {
