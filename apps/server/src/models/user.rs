@@ -127,10 +127,11 @@ impl User {
     /// throwaway hash, so a login for an unknown email takes as long as a
     /// wrong password and response time does not reveal which accounts exist.
     pub fn verify_dummy_password(password: &str) {
-        // Hashing a constant with the default parameters cannot fail; if it
-        // ever did, a silent skip would reopen the timing gap, so it panics.
+        // A random value nobody knows, hashed once per process. Hashing with
+        // the default parameters cannot fail; if it ever did, a silent skip
+        // would reopen the timing gap, so it panics.
         static DUMMY_HASH: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            User::hash_password("rustrak-dummy-password").expect("hash a constant password")
+            User::hash_password(&uuid::Uuid::new_v4().to_string()).expect("hash a random value")
         });
         let hash = PasswordHash::new(&DUMMY_HASH).expect("parse our own Argon2 hash");
         let _ = Argon2::default().verify_password(password.as_bytes(), &hash);
