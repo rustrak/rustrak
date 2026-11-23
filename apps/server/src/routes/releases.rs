@@ -293,9 +293,12 @@ pub async fn finalize_release(
 /// Sentry's answer to a project the caller cannot create releases in, or
 /// that does not exist (`organization_releases.py`).
 fn invalid_projects() -> HttpResponse {
-    HttpResponse::BadRequest().json(serde_json::json!({
-        "projects": ["Invalid project ids or slugs"]
-    }))
+    field_error("projects", "Invalid project ids or slugs")
+}
+
+/// Sentry's 400 for one invalid field.
+fn field_error(field: &str, message: impl Into<String>) -> HttpResponse {
+    HttpResponse::BadRequest().json(crate::models::FieldErrors::one(field, message))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -308,7 +311,7 @@ fn invalid_projects() -> HttpResponse {
     responses(
         (status = 201, description = "Release created in at least one project", body = crate::models::OrgReleaseResponse),
         (status = 208, description = "Release already existed in every project", body = crate::models::OrgReleaseResponse),
-        (status = 400, description = "Missing or invalid projects, or an invalid version"),
+        (status = 400, description = "Missing or invalid projects, or an invalid version", body = crate::models::FieldErrors),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -323,9 +326,7 @@ pub async fn create_org_release(
 ) -> AppResult<HttpResponse> {
     let input = body.into_inner();
     let Some(refs) = input.projects.filter(|refs| !refs.is_empty()) else {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "projects": ["This field is required."]
-        })));
+        return Ok(field_error("projects", "This field is required."));
     };
     let version = input.version.trim().to_string();
     if !is_valid_version(&version) {
@@ -334,7 +335,7 @@ pub async fn create_org_release(
             input.version
         )));
     }
-    let mut project_ids = Vec::with_capacity(refs.len());
+    let mut project_ids = Vec::new();
     for project in &refs {
         match ProjectService::id_by_slug_or_id(pool.get_ref(), &project.as_key()).await? {
             Some(id)
@@ -389,11 +390,21 @@ async fn release_projects(
     version: &str,
     action: Action,
 ) -> AppResult<Vec<i32>> {
-    Ok(ReleaseService::projects_with(pool, version)
-        .await?
-        .into_iter()
-        .filter(|&id| actor.require(Resource::Releases, action, Some(id)).is_ok())
-        .collect())
+    let mut allowed = Vec::new();
+    let mut denied = None;
+    for id in ReleaseService::projects_with(pool, version).await? {
+        match actor.require(Resource::Releases, action, Some(id)) {
+            Ok(()) => allowed.push(id),
+            // Sees the project but lacks the permission: a 403 if that is
+            // all there is, not a 404 that hides the release.
+            Err(error) if matches!(error.kind(), AppError::Forbidden(_)) => denied = Some(error),
+            Err(_) => {}
+        }
+    }
+    match denied {
+        Some(error) if allowed.is_empty() => Err(error),
+        _ => Ok(allowed),
+    }
 }
 
 fn release_not_found(version: &str) -> AppError {
@@ -412,7 +423,9 @@ fn release_not_found(version: &str) -> AppError {
     request_body = UpdateOrgRelease,
     responses(
         (status = 200, description = "Release updated", body = crate::models::OrgReleaseResponse),
+        (status = 400, description = "Invalid commits, or refs to a repository Rustrak does not have", body = crate::models::FieldErrors),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Can see the project but lacks the releases permission", body = crate::error::ErrorResponse),
         (status = 404, description = "Release not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -433,9 +446,10 @@ pub async fn update_org_release(
     }
     if let Some(commits) = &input.commits {
         if !commits.iter().all(|c| c.is_valid()) {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "commits": ["Invalid commit: id (at most 64 characters) is required"]
-            })));
+            return Ok(field_error(
+                "commits",
+                "Invalid commit: id (at most 64 characters) is required",
+            ));
         }
     }
     for &project_id in &project_ids {
@@ -457,9 +471,10 @@ pub async fn update_org_release(
         // Refs need a repository integration, and Rustrak lists none.
         Some(refs) => {
             let names: Vec<&str> = refs.iter().map(|r| r.repository.as_str()).collect();
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "refs": [format!("Invalid repository names: {}", names.join(","))]
-            })));
+            return Ok(field_error(
+                "refs",
+                format!("Invalid repository names: {}", names.join(",")),
+            ));
         }
         None => {}
     }
@@ -480,8 +495,9 @@ pub async fn update_org_release(
     ),
     responses(
         (status = 204, description = "Release deleted"),
-        (status = 400, description = "An issue started in the release, or it has health data"),
+        (status = 400, description = "An issue started in the release, or it has health data", body = crate::models::Detail),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Can see the project but lacks the releases permission", body = crate::error::ErrorResponse),
         (status = 404, description = "Release not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -500,7 +516,9 @@ pub async fn delete_org_release(
     }
     match ReleaseService::delete(pool.get_ref(), &version, &project_ids).await? {
         Ok(()) => Ok(HttpResponse::NoContent().finish()),
-        Err(detail) => Ok(HttpResponse::BadRequest().json(serde_json::json!({ "detail": detail }))),
+        Err(detail) => Ok(HttpResponse::BadRequest().json(crate::models::Detail {
+            detail: detail.to_string(),
+        })),
     }
 }
 
@@ -516,8 +534,9 @@ pub async fn delete_org_release(
     request_body = crate::models::CreateDeploy,
     responses(
         (status = 201, description = "Deploy recorded", body = crate::models::DeployResponse),
-        (status = 400, description = "Missing or invalid environment, or a project the release is not in"),
+        (status = 400, description = "Missing or invalid environment or name, or a project the release is not in", body = crate::models::FieldErrors),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Can see the project but lacks the releases permission", body = crate::error::ErrorResponse),
         (status = 404, description = "Release not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -539,12 +558,28 @@ pub async fn create_deploy(
     }
     let environment = input.environment.clone().unwrap_or_default();
     if !crate::models::is_valid_environment(&environment) {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "environment": ["Enter a valid environment name."]
-        })));
+        return Ok(field_error(
+            "environment",
+            "Enter a valid environment name.",
+        ));
+    }
+    // Sentry's `DeploySerializer`: `name` at most 64 characters.
+    if input
+        .name
+        .as_deref()
+        .is_some_and(|n| n.chars().count() > 64)
+    {
+        return Ok(field_error(
+            "name",
+            "Ensure this field has no more than 64 characters.",
+        ));
     }
     if let Some(refs) = &input.projects {
-        let mut listed = Vec::with_capacity(refs.len());
+        // Sentry requires a non-empty list when one is given.
+        if refs.is_empty() {
+            return Ok(invalid_projects());
+        }
+        let mut listed = Vec::new();
         for project in refs {
             match ProjectService::id_by_slug_or_id(pool.get_ref(), &project.as_key()).await? {
                 Some(id) if project_ids.contains(&id) => listed.push(id),
@@ -573,6 +608,7 @@ pub async fn create_deploy(
     responses(
         (status = 200, description = "The latest deploy per project and environment", body = Vec<crate::models::DeployResponse>),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Can see the project but lacks the releases permission", body = crate::error::ErrorResponse),
         (status = 404, description = "Release not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -605,6 +641,7 @@ pub async fn list_deploys(
     responses(
         (status = 200, description = "The release's commits, newest first", body = Vec<crate::models::CommitResponse>),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Can see the project but lacks the releases permission", body = crate::error::ErrorResponse),
         (status = 404, description = "Release not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -644,6 +681,7 @@ pub async fn list_release_commits(
     responses(
         (status = 200, description = "The previous release with commits, or `{}`", body = Object),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Can see the project but lacks the releases permission", body = crate::error::ErrorResponse),
         (status = 404, description = "Release not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),
@@ -663,7 +701,7 @@ pub async fn previous_with_commits(
     Ok(
         match ReleaseService::previous_with_commits(pool.get_ref(), &version, &project_ids).await? {
             Some(release) => HttpResponse::Ok().json(release),
-            None => HttpResponse::Ok().json(serde_json::json!({})),
+            None => HttpResponse::Ok().json(serde_json::Map::new()),
         },
     )
 }
@@ -683,6 +721,7 @@ const RELEASE_LIST_LIMIT: i64 = 100;
     responses(
         (status = 200, description = "The release", body = crate::models::OrgReleaseResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Can see the project but lacks the releases permission", body = crate::error::ErrorResponse),
         (status = 404, description = "Release not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = [])),

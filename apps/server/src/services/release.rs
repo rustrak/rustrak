@@ -178,12 +178,21 @@ impl ReleaseService {
             query.push(")");
             query
         };
+        // The checks and the delete see one state: the digest takes the same
+        // project locks (ascending) before it writes an issue's
+        // `first_release`, and on SQLite the write lock serializes them.
+        let mut tx = crate::db::begin_write(pool).await?;
+        let mut locked = project_ids.to_vec();
+        locked.sort_unstable();
+        for project_id in locked {
+            ResolutionService::lock_project(&mut tx, project_id).await?;
+        }
         let mut referenced =
             in_projects("SELECT EXISTS(SELECT 1 FROM issues WHERE first_release = ");
         referenced.push(")");
         if referenced
             .build_query_scalar::<bool>()
-            .fetch_one(pool)
+            .fetch_one(&mut *tx)
             .await?
         {
             return Ok(Err(
@@ -192,13 +201,18 @@ impl ReleaseService {
         }
         let mut health = in_projects("SELECT EXISTS(SELECT 1 FROM session_counts WHERE release = ");
         health.push(")");
-        if health.build_query_scalar::<bool>().fetch_one(pool).await? {
+        if health
+            .build_query_scalar::<bool>()
+            .fetch_one(&mut *tx)
+            .await?
+        {
             return Ok(Err("This release has health data and cannot be removed."));
         }
         in_projects("DELETE FROM releases WHERE version = ")
             .build()
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(Ok(()))
     }
 
@@ -253,7 +267,9 @@ impl ReleaseService {
         project_ids: &[i32],
         commits: &[CommitInput],
     ) -> AppResult<()> {
-        let mut tx = pool.begin().await?;
+        // Reads the release, then writes: take the write lock first, or a
+        // writer committing in between fails this one on SQLite.
+        let mut tx = crate::db::begin_write(pool).await?;
         for &project_id in project_ids {
             let release_id: i32 = sqlx::query_scalar(
                 "SELECT id FROM releases WHERE project_id = $1 AND version = $2",

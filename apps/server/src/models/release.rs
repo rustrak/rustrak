@@ -71,8 +71,10 @@ impl ProjectRef {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateOrgRelease {
     pub version: String,
-    /// Required: the release is created in each of these projects.
+    /// Required: the release is created in each of these projects. Read as
+    /// optional so a missing list gets Sentry's field error, not a parse one.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(required, nullable = false))]
     pub projects: Option<Vec<ProjectRef>>,
     #[serde(default, rename = "ref")]
     pub reference: Option<String>,
@@ -179,7 +181,9 @@ pub struct CommitResponse {
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateDeploy {
+    /// Required. Read as optional so a missing one gets Sentry's field error.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(required, nullable = false))]
     pub environment: Option<String>,
     #[serde(default)]
     pub name: Option<String>,
@@ -220,6 +224,28 @@ pub fn is_valid_environment(name: &str) -> bool {
         && !name
             .chars()
             .any(|c| matches!(c, '\n' | '\r' | '\x0c' | '/'))
+}
+
+/// Sentry's 400 for invalid fields: each field with its messages, such as
+/// `{"projects": ["Invalid project ids or slugs"]}`.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FieldErrors(pub std::collections::BTreeMap<String, Vec<String>>);
+
+impl FieldErrors {
+    pub fn one(field: &str, message: impl Into<String>) -> Self {
+        Self(std::collections::BTreeMap::from([(
+            field.to_string(),
+            vec![message.into()],
+        )]))
+    }
+}
+
+/// Sentry's 400 that explains a refusal in one sentence.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Detail {
+    pub detail: String,
 }
 
 /// One of a release's projects, as sentry-cli reads it.

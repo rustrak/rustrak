@@ -99,6 +99,15 @@ fn sentry_cli_runs_every_releases_command() {
         eprintln!("skipped: set SENTRY_CLI to a sentry-cli binary to run this test");
         return;
     };
+    // The CLI runs inside a temporary checkout, so a relative path such as
+    // `node_modules/.bin/sentry-cli` is resolved here first. A bare name is
+    // left to the PATH.
+    let cli = std::path::PathBuf::from(cli);
+    let cli = if cli.is_relative() && cli.components().count() > 1 {
+        std::env::current_dir().unwrap().join(cli)
+    } else {
+        cli
+    };
     let server_dir = TempDir::new().unwrap();
     let repo = TempDir::new().unwrap();
     let port = free_port();

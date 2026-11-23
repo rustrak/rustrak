@@ -494,3 +494,80 @@ async fn previous_with_commits_finds_the_last_release_with_commits() {
     assert_eq!(status, 200);
     assert_eq!(none, json!({}));
 }
+
+/// `projects: []` names no project: Sentry requires a non-empty list, and a
+/// 201 must stand for a stored deploy.
+#[actix_web::test]
+async fn a_deploy_with_an_empty_project_list_is_refused() {
+    let s = setup().await;
+    new_release(&s, "1.0.0").await;
+    let (status, body) = call(
+        &s,
+        "POST",
+        "/api/0/organizations/acme/releases/1.0.0/deploys/",
+        Some(json!({ "environment": "production", "projects": [] })),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+}
+
+/// Sentry's `DeploySerializer` caps `name` at 64 characters; PostgreSQL's
+/// `VARCHAR(64)` would otherwise fail the insert with a 500.
+#[actix_web::test]
+async fn a_deploy_name_over_64_characters_is_refused() {
+    let s = setup().await;
+    new_release(&s, "1.0.0").await;
+    let (status, body) = call(
+        &s,
+        "POST",
+        "/api/0/organizations/acme/releases/1.0.0/deploys/",
+        Some(json!({ "environment": "production", "name": "n".repeat(65) })),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert!(body["name"].is_array(), "{body}");
+}
+
+/// Someone who can see the release's project but may not delete releases
+/// gets a 403, not a 404 that sentry-cli would read as "did nothing".
+#[actix_web::test]
+async fn deleting_without_the_permission_is_forbidden() {
+    use rustrak::models::rbac::{Action, Resource};
+    let s = setup().await;
+    new_release(&s, "1.0.0").await;
+    let owner = rustrak::services::UsersService::create_user(
+        &s.db.pool,
+        &rustrak::models::CreateUserRequest {
+            email: "owner@example.com".into(),
+            password: "pw".into(),
+        },
+        rustrak::models::UserRole::Admin,
+    )
+    .await
+    .unwrap();
+    let read_only = rustrak::services::AuthTokenService::create_for_user(
+        &s.db.pool,
+        rustrak::models::CreateAuthToken {
+            permissions: Some(vec![rustrak::models::Permission {
+                resource: Resource::Releases,
+                action: Action::Read,
+            }]),
+            ..Default::default()
+        },
+        Some(owner.id),
+    )
+    .await
+    .unwrap();
+    let limited = Setup {
+        token: read_only.token,
+        ..s
+    };
+    let (status, body) = call(
+        &limited,
+        "DELETE",
+        "/api/0/organizations/acme/releases/1.0.0/",
+        None,
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+}

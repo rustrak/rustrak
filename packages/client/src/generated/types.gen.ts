@@ -785,7 +785,10 @@ export type CreateDeploy = {
      */
     dateFinished?: string | null;
     dateStarted?: string | null;
-    environment?: string | null;
+    /**
+     * Required. Read as optional so a missing one gets Sentry's field error.
+     */
+    environment: string;
     name?: string | null;
     /**
      * Only these of the release's projects; all of them when absent.
@@ -862,9 +865,10 @@ export type CreateOrgRelease = {
      */
     dateReleased?: string | null;
     /**
-     * Required: the release is created in each of these projects.
+     * Required: the release is created in each of these projects. Read as
+     * optional so a missing list gets Sentry's field error, not a parse one.
      */
-    projects?: Array<ProjectRef> | null;
+    projects: Array<ProjectRef>;
     ref?: string | null;
     url?: string | null;
     version: string;
@@ -951,6 +955,13 @@ export type DeployResponse = {
     id: string;
     name: string | null;
     url: string | null;
+};
+
+/**
+ * Sentry's 400 that explains a refusal in one sentence.
+ */
+export type Detail = {
+    detail: string;
 };
 
 /**
@@ -1143,6 +1154,14 @@ export type FieldError = {
  * this enum out of this file.
  */
 export type FieldErrorCode = 'required' | 'invalid' | 'already_exists' | 'too_short' | 'too_long' | 'incorrect' | 'custom';
+
+/**
+ * Sentry's 400 for invalid fields: each field with its messages, such as
+ * `{"projects": ["Invalid project ids or slugs"]}`.
+ */
+export type FieldErrors = {
+    [key: string]: Array<string>;
+};
 
 /**
  * One row of a "top N by X" breakdown (model or tool name).
@@ -3770,7 +3789,7 @@ export type ReleasesCreateInOrganizationErrors = {
     /**
      * Missing or invalid projects, or an invalid version
      */
-    400: unknown;
+    400: FieldErrors;
     /**
      * Unauthorized
      */
@@ -3812,11 +3831,15 @@ export type ReleasesDeleteInOrganizationErrors = {
     /**
      * An issue started in the release, or it has health data
      */
-    400: unknown;
+    400: Detail;
     /**
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
     /**
      * Release not found
      */
@@ -3856,6 +3879,10 @@ export type ReleasesGetInOrganizationErrors = {
      */
     401: ErrorResponse;
     /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
      * Release not found
      */
     404: ErrorResponse;
@@ -3890,9 +3917,17 @@ export type ReleasesUpdateInOrganizationData = {
 
 export type ReleasesUpdateInOrganizationErrors = {
     /**
+     * Invalid commits, or refs to a repository Rustrak does not have
+     */
+    400: FieldErrors;
+    /**
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
     /**
      * Release not found
      */
@@ -3932,6 +3967,10 @@ export type ReleasesListCommitsErrors = {
      */
     401: ErrorResponse;
     /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
      * Release not found
      */
     404: ErrorResponse;
@@ -3970,6 +4009,10 @@ export type ReleasesListDeploysErrors = {
      */
     401: ErrorResponse;
     /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
      * Release not found
      */
     404: ErrorResponse;
@@ -4004,13 +4047,17 @@ export type ReleasesCreateDeployData = {
 
 export type ReleasesCreateDeployErrors = {
     /**
-     * Missing or invalid environment, or a project the release is not in
+     * Missing or invalid environment or name, or a project the release is not in
      */
-    400: unknown;
+    400: FieldErrors;
     /**
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
     /**
      * Release not found
      */
@@ -4049,6 +4096,10 @@ export type ReleasesPreviousWithCommitsErrors = {
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
     /**
      * Release not found
      */

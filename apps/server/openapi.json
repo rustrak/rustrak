@@ -721,7 +721,14 @@
             }
           },
           "400": {
-            "description": "Missing or invalid projects, or an invalid version"
+            "description": "Missing or invalid projects, or an invalid version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldErrors"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",
@@ -781,6 +788,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can see the project but lacks the releases permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -853,8 +870,28 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid commits, or refs to a repository Rustrak does not have",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldErrors"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can see the project but lacks the releases permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -911,10 +948,27 @@
             "description": "Release deleted"
           },
           "400": {
-            "description": "An issue started in the release, or it has health data"
+            "description": "An issue started in the release, or it has health data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Detail"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can see the project but lacks the releases permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -992,6 +1046,16 @@
               }
             }
           },
+          "403": {
+            "description": "Can see the project but lacks the releases permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Release not found",
             "content": {
@@ -1053,6 +1117,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can see the project but lacks the releases permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -1126,10 +1200,27 @@
             }
           },
           "400": {
-            "description": "Missing or invalid environment, or a project the release is not in"
+            "description": "Missing or invalid environment or name, or a project the release is not in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldErrors"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can see the project but lacks the releases permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -1196,6 +1287,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can see the project but lacks the releases permission",
             "content": {
               "application/json": {
                 "schema": {
@@ -19415,6 +19516,9 @@
       "CreateDeploy": {
         "type": "object",
         "description": "DTO for `POST .../releases/{version}/deploys/`, Sentry's\n`DeploySerializer`. `environment` is required.",
+        "required": [
+          "environment"
+        ],
         "properties": {
           "dateFinished": {
             "type": [
@@ -19432,10 +19536,8 @@
             "format": "date-time"
           },
           "environment": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "description": "Required. Read as optional so a missing one gets Sentry's field error."
           },
           "name": {
             "type": [
@@ -19560,7 +19662,8 @@
         "type": "object",
         "description": "DTO for `POST /api/0/organizations/{org}/releases/`, Sentry's\n`ReleaseWithVersionSerializer` plus `projects`. Fields Sentry ignores,\nsuch as sentry-cli's `dateStarted`, are ignored here too.",
         "required": [
-          "version"
+          "version",
+          "projects"
         ],
         "properties": {
           "dateReleased": {
@@ -19572,14 +19675,11 @@
             "description": "Applied only when the release is created, as Sentry does."
           },
           "projects": {
-            "type": [
-              "array",
-              "null"
-            ],
+            "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProjectRef"
             },
-            "description": "Required: the release is created in each of these projects."
+            "description": "Required: the release is created in each of these projects. Read as\noptional so a missing list gets Sentry's field error, not a parse one."
           },
           "ref": {
             "type": [
@@ -19786,6 +19886,18 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "Detail": {
+        "type": "object",
+        "description": "Sentry's 400 that explains a refusal in one sentence.",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
           }
         }
       },
@@ -20131,6 +20243,19 @@
           "incorrect",
           "custom"
         ]
+      },
+      "FieldErrors": {
+        "type": "object",
+        "description": "Sentry's 400 for invalid fields: each field with its messages, such as\n`{\"projects\": [\"Invalid project ids or slugs\"]}`.",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "propertyNames": {
+          "type": "string"
+        }
       },
       "GenAiBreakdownRow": {
         "type": "object",

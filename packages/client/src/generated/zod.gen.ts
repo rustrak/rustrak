@@ -561,6 +561,13 @@ export const zDeployResponse = z.object({
 });
 
 /**
+ * Sentry's 400 that explains a refusal in one sentence.
+ */
+export const zDetail = z.object({
+    detail: z.string()
+});
+
+/**
  * One file of a debug information file assemble request.
  */
 export const zDifAssembleFile = z.object({
@@ -690,6 +697,12 @@ export const zErrorDetail = z.object({
 export const zErrorResponse = z.object({
     error: zErrorDetail
 });
+
+/**
+ * Sentry's 400 for invalid fields: each field with its messages, such as
+ * `{"projects": ["Invalid project ids or slugs"]}`.
+ */
+export const zFieldErrors = z.record(z.string(), z.array(z.string()));
 
 /**
  * One row of a "top N by X" breakdown (model or tool name).
@@ -1171,7 +1184,7 @@ export const zProjectRef = z.union([
 export const zCreateDeploy = z.object({
     dateFinished: z.nullish(z.iso.datetime({ offset: true })),
     dateStarted: z.nullish(z.iso.datetime({ offset: true })),
-    environment: z.nullish(z.string()),
+    environment: z.string(),
     name: z.nullish(z.string()),
     projects: z.nullish(z.array(zProjectRef)),
     url: z.nullish(z.string())
@@ -1184,7 +1197,7 @@ export const zCreateDeploy = z.object({
  */
 export const zCreateOrgRelease = z.object({
     dateReleased: z.nullish(z.iso.datetime({ offset: true })),
-    projects: z.nullish(z.array(zProjectRef)),
+    projects: z.array(zProjectRef),
     ref: z.nullish(z.string()),
     url: z.nullish(z.string()),
     version: z.string()
