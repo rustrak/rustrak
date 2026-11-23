@@ -11230,6 +11230,10 @@ export type AuthLoginErrors = {
      * Password login is disabled; use SSO
      */
     403: ErrorResponse;
+    /**
+     * Ten attempts for this email in the last minute; `Retry-After` says when to try again
+     */
+    429: ErrorResponse;
 };
 
 export type AuthLoginError = AuthLoginErrors[keyof AuthLoginErrors];

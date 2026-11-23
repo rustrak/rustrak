@@ -123,6 +123,20 @@ impl User {
             .is_ok())
     }
 
+    /// Spends the same Argon2 verification as [`User::verify_password`] on a
+    /// throwaway hash, so a login for an unknown email takes as long as a
+    /// wrong password and response time does not reveal which accounts exist.
+    pub fn verify_dummy_password(password: &str) {
+        static DUMMY_HASH: std::sync::LazyLock<Option<String>> =
+            std::sync::LazyLock::new(|| User::hash_password("rustrak-dummy-password").ok());
+        if let Some(hash) = DUMMY_HASH
+            .as_deref()
+            .and_then(|h| PasswordHash::new(h).ok())
+        {
+            let _ = Argon2::default().verify_password(password.as_bytes(), &hash);
+        }
+    }
+
     /// Typed global role.
     pub fn role(&self) -> UserRole {
         UserRole::from_db(&self.role)
