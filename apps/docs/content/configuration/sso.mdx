@@ -128,12 +128,17 @@ account belongs to the person signing in, so this is safe whatever the
 provider.
 
 **Nobody has their email.** With `OIDC_AUTO_PROVISION=true` an account is
-created for them. The first account on an empty installation becomes an
-owner; every later one is a member who sees nothing until someone gives them a
+created for them as a member who sees nothing until someone gives them a
 [role](/usage/roles). With provisioning off, which is the default, they are
 turned away and someone has to invite them first. With
 `OIDC_ADMIN_GROUPS` set the provider decides the role instead; see
 [Roles from provider groups](#roles-from-provider-groups).
+
+SSO never hands an empty installation to whoever signs in first. Until it has
+an owner, SSO only creates accounts for members of `OIDC_ADMIN_GROUPS`, as
+owners, and turns everyone else away. Create the first owner with
+`CREATE_SUPERUSER` or the [bootstrap file](/configuration/bootstrap-file), or
+sign in first as a member of an admin group.
 
 ### Choosing the switches for your provider
 
@@ -184,10 +189,10 @@ Worth knowing:
   safeguard protects that account from demotion, and this must not be the way
   around it.
 - Leaving `OIDC_ADMIN_GROUPS` unset leaves every role exactly as it is.
-- The first account on an installation is created as an owner even when it is
-  in no group, so a fresh deployment cannot end up with no owner. After that, a
-  mapping nobody satisfies leaves only members: keep at least one person in an
-  admin group.
+- On an installation with no owner yet, a member of an admin group is the
+  only person SSO creates an account for, and that account is the owner.
+  After that, a mapping nobody satisfies leaves only members: keep at least
+  one person in an admin group.
 
 The claim may be a JSON array (`["rustrak-admins", "everyone"]`) or a
 comma-separated string, and group names are compared exactly, including case.
@@ -367,6 +372,7 @@ line that starts with `SSO browser callback failed:`.
 |---|---|---|
 | `SSO provider did not verify the email address` | The provider sent `email_verified: false` | Verify the email at the provider. In Pocket ID: **Users → edit → Mark as verified** |
 | `No Rustrak account is linked to this SSO identity` | Nobody has this email and provisioning is off | Invite the person, or set `OIDC_AUTO_PROVISION=true` |
+| `Rustrak has no owner yet` | The installation has no account and the person is in no `OIDC_ADMIN_GROUPS` group | Create the first owner with `CREATE_SUPERUSER` or the bootstrap file, or sign in first as a member of an admin group |
 | `Email domain is not allowed to use SSO` | The email is outside `OIDC_ALLOWED_DOMAINS` | Add the domain, or use an account at an allowed one |
 | `SSO provider did not supply an email address` | The provider returned no `email` claim | Make sure `OIDC_SCOPES` includes `email` and the provider releases it |
 | `SSO session expired; please try again` | The callback arrived without the values `/auth/sso/start` stored | See below |
