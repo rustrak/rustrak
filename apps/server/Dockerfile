@@ -61,8 +61,11 @@ WORKDIR /app
 COPY --from=builder /app/target/release/rustrak /app/rustrak
 COPY --chown=65532:65532 --from=builder /app/static /app/static
 COPY --chown=65532:65532 --from=builder /data /data
-# One volume. Source maps live under it, so the `-v rustrak_data:/data` the
-# installation guide gives keeps them across container upgrades.
+# One volume. Source maps and the ingest queue live under it, so the
+# `-v rustrak_data:/data` the installation guide gives keeps them across
+# container upgrades: an event answered with 200 but not yet digested is
+# replayed by the next container instead of lost with the old one (#359).
+ENV INGEST_DIR=/data/ingest
 VOLUME /data
 EXPOSE 8080
 USER nonroot
