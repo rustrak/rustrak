@@ -36,6 +36,12 @@ impl SpanV2Processor {
                 log::warn!("span v2 entry missing span_id/trace_id, skipping");
                 continue;
             }
+            // Relay requires both too (`SpanV2`, `DeleteParent`); a `null` or
+            // mistyped one reads as missing.
+            if entry.name.is_none() || entry.status.is_none() {
+                log::warn!("span v2 entry missing name/status, skipping");
+                continue;
+            }
             // Both timestamps are required on the wire, and start must not be
             // after end. Mirrors Relay's `validate_timestamps` exactly,
             // including that `start == end` is valid

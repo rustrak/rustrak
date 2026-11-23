@@ -95,6 +95,10 @@ pub async fn process_envelope(
     let mut check_in_seen = false;
     let envelope_len = parser.data().len();
     let delivery_id = stable_delivery_id(envelope.headers.event_id.as_deref(), parser.data());
+    let session_clock = crate::digest::session_aggregator::SessionClock::new(
+        ingested_at,
+        envelope.headers.sent_at.as_deref(),
+    );
     for item_kind in envelope.items {
         if item_kind.requires_event() {
             requires_event_id = true;
@@ -137,10 +141,16 @@ pub async fn process_envelope(
             // transaction per request against the same few minute rows, which
             // deadlocked on PostgreSQL and answered the SDK with a 500 (#390).
             EnvelopeItemKind::Session(s) => {
-                processors.sessions.ingest_session(project.id, &s).await;
+                processors
+                    .sessions
+                    .ingest_session(project.id, &s, session_clock)
+                    .await;
             }
             EnvelopeItemKind::Sessions(s) => {
-                processors.sessions.ingest_aggregates(project.id, &s).await;
+                processors
+                    .sessions
+                    .ingest_aggregates(project.id, &s, session_clock)
+                    .await;
             }
             EnvelopeItemKind::Log(payload) => {
                 // Logs are processed inline (parse container + store): the work is

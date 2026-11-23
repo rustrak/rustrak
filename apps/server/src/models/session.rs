@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +40,9 @@ pub struct SessionAggregates {
 #[derive(Debug, Deserialize)]
 pub struct SessionAggregateItem {
     pub started: Option<String>,
+    /// The user of this bucket, if the SDK aggregates per user.
+    #[serde(default)]
+    pub did: Option<String>,
     #[serde(default, deserialize_with = "de_non_negative_i64")]
     pub exited: i64,
     #[serde(default, deserialize_with = "de_non_negative_i64")]
@@ -165,16 +168,9 @@ pub fn crash_free_rate(crashed: i64, total: i64) -> Option<f64> {
     (total > 0).then(|| 1.0 - crashed as f64 / total as f64)
 }
 
-/// Parse an ISO-8601 timestamp string into a UTC DateTime, returning None on failure.
+/// Parse a timestamp string into a UTC DateTime, as Relay reads one.
 pub fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
-        .or_else(|| {
-            NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
-                .ok()
-                .map(|ndt| ndt.and_utc())
-        })
+    crate::protocol::parse_timestamp(s)
 }
 
 #[cfg(test)]

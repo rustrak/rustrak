@@ -11,6 +11,12 @@ type HealthRow = (String, String, i64, i64, i64, i64, i64, i64);
 
 pub struct SessionService;
 
+/// Sentry's errored sessions: every errored one (`session_counts.errored`,
+/// Relay's set) minus the crashed and abnormal ones, never below zero.
+fn non_fatal_errored(errored_all: i64, crashed: i64, abnormal: i64) -> i64 {
+    (errored_all - crashed - abnormal).max(0)
+}
+
 impl SessionService {
     /// Query one page of per-release health stats for a project, plus the total
     /// number of (release, environment) groups the filters match.
@@ -115,7 +121,7 @@ impl SessionService {
 
         Ok(SessionSummary {
             total,
-            errored,
+            errored: non_fatal_errored(errored, crashed, abnormal),
             crashed,
             abnormal,
             crash_free_sessions_rate: crash_free_rate(crashed, total),
@@ -276,13 +282,13 @@ async fn query_release_health(
                     release,
                     environment,
                     total,
-                    errored,
+                    errored: non_fatal_errored(errored, crashed, abnormal),
                     crashed,
                     abnormal,
                     // Sentry clamps healthy as max(0, init - errored_all), so an
                     // SDK that resends a terminal update cannot drive it
                     // negative (#388).
-                    healthy: (total - errored - crashed - abnormal).max(0),
+                    healthy: (total - errored).max(0),
                     crash_free_sessions_rate: crash_free_rate(crashed, total),
                     crash_free_users_rate: crash_free_rate(crashed_users, users),
                 }

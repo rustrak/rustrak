@@ -311,7 +311,6 @@ impl EventRow {
             last_frame_function: denormalized.last_frame_function.clone(),
             level: event_data
                 .get("level")
-                .and_then(|v| v.as_str())
                 .and_then(relay_level)
                 .unwrap_or("error"),
             platform: field(event_data.get("platform"), 64),

@@ -6,8 +6,8 @@ use crate::ingest::envelope::{EnvelopeHeaders, EnvelopeItemKind, ItemHeaders, Pa
 /// Maximum header size (8KB)
 const MAX_HEADER_SIZE: usize = 8 * 1024;
 
-/// Maximum size for non-"event" items (session, transaction, attachment, etc.)
-const MAX_ITEM_SIZE: usize = 1024 * 1024;
+const KIB: usize = 1024;
+const MIB: usize = 1024 * KIB;
 
 /// Bound per-envelope metadata amplification from many tiny items.
 const MAX_ITEM_COUNT: usize = 1024;
@@ -29,6 +29,71 @@ pub(crate) const TARGET_EVENT_SIZE: usize = 1024 * 1024;
 /// digest pipeline to trim it down, instead of being rejected outright for
 /// being over budget before anyone got a chance to shrink it.
 pub(crate) const MAX_RAW_EVENT_SIZE: usize = 4 * 1024 * 1024;
+
+/// An item type's size limit, as Relay's `check_envelope_size_limits`
+/// (relay-server/src/utils/sizes.rs) applies the relay-config defaults. One
+/// item over its limit rejects the envelope with a 413, as Relay does.
+struct SizeLimit {
+    /// The payload's own limit.
+    total: usize,
+    /// A container's limit per item it holds, on average; `total` otherwise.
+    per_item: usize,
+    item_count: usize,
+}
+
+impl SizeLimit {
+    fn of(headers: &ItemHeaders) -> Self {
+        // Relay's `max_container_size`.
+        const CONTAINER: usize = 12 * MIB;
+        let single = |size| (size, size);
+        let (total, per_item) = match headers.item_type.as_str() {
+            // Rustrak's relaxed ceiling, so the digest can trim a verbose
+            // event instead of the SDK losing it (see MAX_RAW_EVENT_SIZE).
+            "event" => single(MAX_RAW_EVENT_SIZE),
+            "transaction" | "feedback" | "security" | "raw_security" | "form_data"
+            | "replay_event" | "statsd" | "metric_buckets" => single(MIB),
+            // Relay allows 200 MiB; the envelope is bounded below that. An
+            // attachment over MAX_ATTACHMENT_SIZE is dropped later on its own.
+            "attachment" | "unreal_report" | "user_report" => {
+                single(crate::ingest::decompression::MAX_DECOMPRESSED_SIZE)
+            }
+            "session" | "sessions" | "replay_recording" | "replay_video" => single(10 * MIB),
+            "profile" | "profile_chunk" => single(50 * MIB),
+            "check_in" | "client_report" => single(100 * KIB),
+            "log" if is_container(headers) => (CONTAINER, crate::protocol::MAX_LOG_SIZE),
+            "log" => single(crate::protocol::MAX_LOG_SIZE),
+            "trace_metric" => (CONTAINER, MIB),
+            "span" if is_container(headers) => (CONTAINER, crate::protocol::MAX_SPAN_SIZE),
+            "span" => single(crate::protocol::MAX_SPAN_SIZE),
+            // Relay forwards a type it does not know without a size check.
+            _ => single(crate::ingest::decompression::MAX_DECOMPRESSED_SIZE),
+        };
+        Self {
+            total,
+            per_item,
+            item_count: headers.item_count.unwrap_or(1).max(1) as usize,
+        }
+    }
+
+    /// Relay checks a container by the average size of the items it holds,
+    /// and each item again once parsed.
+    fn average_exceeded(&self, len: usize) -> bool {
+        len / self.item_count > self.per_item
+    }
+}
+
+/// Relay's `ContentType::is_container`: the log, span v2 and trace metric
+/// item containers.
+fn is_container(headers: &ItemHeaders) -> bool {
+    headers.content_type.as_deref().is_some_and(|ct| {
+        matches!(
+            ct,
+            "application/vnd.sentry.items.log+json"
+                | "application/vnd.sentry.items.span.v2+json"
+                | "application/vnd.sentry.items.trace-metric+json"
+        )
+    })
+}
 
 /// Sentry envelope parser.
 ///
@@ -135,16 +200,9 @@ impl EnvelopeParser {
         let headers: ItemHeaders = serde_json::from_slice(&header_line)
             .map_err(|e| AppError::Validation(format!("Invalid item headers JSON: {}", e)))?;
 
-        // "event" items get the relaxed abuse ceiling — see MAX_RAW_EVENT_SIZE.
-        // An attachment is bounded by the envelope alone, as Relay's limit
-        // for one is far above its event limit: an oversized one is dropped
-        // later on its own, not with the envelope (see MAX_ATTACHMENT_SIZE).
         let is_attachment = headers.item_type == "attachment";
-        let max_size = match headers.item_type.as_str() {
-            "event" => MAX_RAW_EVENT_SIZE,
-            "attachment" => crate::ingest::decompression::MAX_DECOMPRESSED_SIZE,
-            _ => MAX_ITEM_SIZE,
-        };
+        let limit = SizeLimit::of(&headers);
+        let max_size = limit.total;
 
         // Read payload
         let payload = if let Some(length) = headers.length {
@@ -165,6 +223,12 @@ impl EnvelopeParser {
             // Read until newline
             self.read_line(max_size)?
         };
+        if limit.average_exceeded(payload.len()) {
+            return Err(AppError::PayloadTooLarge(format!(
+                "Items in a {} container exceed {} bytes each",
+                headers.item_type, limit.per_item
+            )));
+        }
         // Every item type is JSON except attachments, which are raw bytes.
         let payload = match is_attachment {
             true => payload,
@@ -280,15 +344,73 @@ mod tests {
         );
     }
 
+    const MIB: usize = 1024 * 1024;
+
+    /// One item with `headers` (its `length` added) and a payload of `len` bytes.
+    fn envelope_with(headers: serde_json::Value, len: usize) -> Bytes {
+        let mut headers = headers;
+        headers["length"] = serde_json::json!(len);
+        let mut data = format!("{{}}\n{headers}\n").into_bytes();
+        data.extend(std::iter::repeat_n(b'a', len));
+        Bytes::from(data)
+    }
+
+    fn accepted(headers: serde_json::Value, len: usize) -> bool {
+        match EnvelopeParser::new(envelope_with(headers, len)).parse() {
+            Ok(_) => true,
+            Err(AppError::PayloadTooLarge(_)) => false,
+            Err(e) => panic!("unexpected error: {e:?}"),
+        }
+    }
+
+    /// Relay's per-type limits (`check_envelope_size_limits`, relay-config
+    /// defaults): one item over its limit rejects the envelope with a 413.
     #[test]
-    fn non_event_item_over_1mb_is_still_rejected() {
-        let data = envelope_with_item("session", 2 * 1024 * 1024);
-        let result = EnvelopeParser::new(Bytes::from(data)).parse();
+    fn each_item_type_has_relays_size_limit() {
+        use serde_json::json;
+        let cases = [
+            (json!({"type": "transaction"}), MIB, true),
+            (json!({"type": "transaction"}), MIB + 1, false),
+            (json!({"type": "session"}), 10 * MIB, true),
+            (json!({"type": "session"}), 10 * MIB + 1, false),
+            (json!({"type": "sessions"}), 10 * MIB + 1, false),
+            (json!({"type": "check_in"}), 100 * 1024, true),
+            (json!({"type": "check_in"}), 100 * 1024 + 1, false),
+            (json!({"type": "span"}), 10 * MIB, true),
+            (json!({"type": "span"}), 10 * MIB + 1, false),
+            (json!({"type": "profile"}), 50 * MIB, true),
+            (json!({"type": "profile"}), 50 * MIB + 1, false),
+            (json!({"type": "replay_recording"}), 10 * MIB + 1, false),
+            (json!({"type": "client_report"}), 100 * 1024 + 1, false),
+            // Relay forwards item types it does not know without a size check.
+            (json!({"type": "from_the_future"}), 20 * MIB, true),
+        ];
+        for (headers, len, expected) in cases {
+            assert_eq!(
+                accepted(headers.clone(), len),
+                expected,
+                "{headers} with {len} bytes"
+            );
+        }
+    }
+
+    /// A container is checked by the average size of the items it holds, and
+    /// in total against Relay's 12 MiB `max_container_size`.
+    #[test]
+    fn containers_are_limited_per_item_on_average_and_in_total() {
+        use serde_json::json;
+        let logs = |count: u32| json!({"type": "log", "content_type": "application/vnd.sentry.items.log+json", "item_count": count});
+        let spans = |count: u32| json!({"type": "span", "content_type": "application/vnd.sentry.items.span.v2+json", "item_count": count});
+        assert!(accepted(logs(5), 10 * MIB), "2 MiB per log on average");
+        assert!(!accepted(logs(1), 2 * MIB + 1), "one log over 2 MiB");
         assert!(
-            matches!(result, Err(AppError::PayloadTooLarge(_))),
-            "non-event items must not get the relaxed event ceiling: {:?}",
-            result
+            !accepted(logs(100), 12 * MIB + 1),
+            "a container over 12 MiB"
         );
+        assert!(accepted(spans(2), 12 * MIB));
+        assert!(!accepted(spans(2), 12 * MIB + 1));
+        // A log item that is not a container is one log.
+        assert!(!accepted(json!({"type": "log"}), 2 * MIB + 1));
     }
 
     #[test]
@@ -320,8 +442,8 @@ mod tests {
 
     #[test]
     fn item_without_length_is_rejected_when_the_line_exceeds_the_limit() {
-        let mut data = b"{}\n{\"type\":\"session\"}\n".to_vec();
-        data.extend(std::iter::repeat_n(b'a', MAX_ITEM_SIZE + 1));
+        let mut data = b"{}\n{\"type\":\"check_in\"}\n".to_vec();
+        data.extend(std::iter::repeat_n(b'a', 100 * 1024 + 1));
 
         let result = EnvelopeParser::new(Bytes::from(data)).parse();
         assert!(matches!(result, Err(AppError::PayloadTooLarge(_))));

@@ -20,7 +20,9 @@ use rustrak::services::session::SessionService;
 // ── seed helpers ─────────────────────────────────────────────────────────────
 
 /// Insert one row into session_counts.
-/// `hours_ago` controls how old the bucket timestamp is.
+/// `hours_ago` controls how old the bucket timestamp is. `errored` is
+/// Sentry's (non-fatal) errored; the row stores every errored session,
+/// crashed and abnormal included, as the aggregator writes it.
 #[allow(clippy::too_many_arguments)]
 async fn seed_count(
     pool: &DbPool,
@@ -46,7 +48,7 @@ async fn seed_count(
     .bind(env)
     .bind(hours_ago.to_string())
     .bind(total)
-    .bind(errored)
+    .bind(errored + crashed + abnormal)
     .bind(crashed)
     .bind(abnormal)
     .execute(pool)
@@ -66,7 +68,7 @@ async fn seed_count(
     .bind(env)
     .bind(hours_ago.to_string())
     .bind(total)
-    .bind(errored)
+    .bind(errored + crashed + abnormal)
     .bind(crashed)
     .bind(abnormal)
     .execute(pool)
@@ -1095,4 +1097,105 @@ async fn test_project_summary_counts_only_the_asked_release() {
         .await
         .expect("query failed");
     assert_eq!(points.iter().map(|p| p.total).sum::<i64>(), 40);
+}
+
+/// Relay counts a session as errored once, by its id, on any update with
+/// `errors > 0` or an error status (`SessionUpdate::all_errors`), fatal ones
+/// included; Sentry's errored is that set minus crashed and abnormal. The
+/// browser SDK never sends `exited`, so its handled errors arrive only on
+/// `ok` updates.
+#[actix_web::test]
+async fn test_a_session_with_handled_errors_counts_as_errored_once() {
+    use rustrak::digest::session_aggregator::{SessionAggregator, SessionClock};
+    use rustrak::models::session::SessionUpdate;
+
+    let db = TestDb::new().await;
+    let project_id = create_test_project(&db.pool, "Errored Once").await.id;
+    let aggregator = SessionAggregator::new(db.pool.clone(), 3600, 1000);
+    let clock = SessionClock::new(Utc::now(), None);
+    let started = (Utc::now() - chrono::Duration::minutes(10)).to_rfc3339();
+    let update = |sid: &str, init: bool, status: &str, errors: i64| -> SessionUpdate {
+        serde_json::from_value(serde_json::json!({
+            "sid": sid, "init": init, "status": status, "errors": errors,
+            "started": started, "attrs": { "release": "4.0.0", "environment": "production" }
+        }))
+        .unwrap()
+    };
+
+    aggregator
+        .ingest_session(project_id, &update("s1", true, "ok", 0), clock)
+        .await;
+    aggregator
+        .ingest_session(project_id, &update("s1", false, "ok", 1), clock)
+        .await;
+    aggregator.flush().await.unwrap();
+    // Across flushes too.
+    aggregator
+        .ingest_session(project_id, &update("s1", false, "ok", 2), clock)
+        .await;
+    // An errored session that then crashes is crashed, not also errored.
+    aggregator
+        .ingest_session(project_id, &update("s2", true, "ok", 1), clock)
+        .await;
+    aggregator
+        .ingest_session(project_id, &update("s2", false, "crashed", 1), clock)
+        .await;
+    aggregator.flush().await.unwrap();
+
+    let (rows, _) = SessionService::release_health(&db.pool, project_id, Some(24), 1, 100)
+        .await
+        .expect("query failed");
+    let row = &rows[0];
+    assert_eq!(
+        (row.total, row.errored, row.crashed, row.healthy),
+        (2, 1, 1, 0),
+        "total, errored, crashed, healthy"
+    );
+}
+
+/// The id of an errored session is kept until its exact start leaves Relay's
+/// window, not its minute bucket's: otherwise a flush in the last minute
+/// deletes it while updates are still accepted, and the session counts twice.
+#[actix_web::test]
+async fn test_an_errored_session_is_kept_by_its_exact_start() {
+    use rustrak::digest::session_aggregator::{SessionAggregator, SessionClock};
+    use rustrak::models::session::SessionUpdate;
+
+    let db = TestDb::new().await;
+    let project_id = create_test_project(&db.pool, "Exact Start").await.id;
+    let aggregator = SessionAggregator::new(db.pool.clone(), 3600, 1000);
+    use chrono::{SubsecRound, Timelike};
+    let started = (Utc::now() - chrono::Duration::hours(1))
+        .with_second(50)
+        .unwrap()
+        .trunc_subsecs(0);
+    let clock = SessionClock::new(Utc::now(), None);
+    let update: SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sid": "s1", "init": true, "status": "ok", "errors": 1,
+        "started": started.to_rfc3339(), "attrs": { "release": "5.0.0" }
+    }))
+    .unwrap();
+    aggregator.ingest_session(project_id, &update, clock).await;
+    aggregator.flush().await.unwrap();
+
+    #[cfg(feature = "postgres")]
+    let stored: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT started FROM session_errors WHERE project_id = $1")
+            .bind(project_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    #[cfg(not(feature = "postgres"))]
+    let stored: chrono::DateTime<Utc> = {
+        let raw: String =
+            sqlx::query_scalar("SELECT started FROM session_errors WHERE project_id = $1")
+                .bind(project_id)
+                .fetch_one(&db.pool)
+                .await
+                .unwrap();
+        chrono::NaiveDateTime::parse_from_str(&raw, "%Y-%m-%d %H:%M:%S%.f")
+            .unwrap()
+            .and_utc()
+    };
+    assert_eq!(stored, started);
 }

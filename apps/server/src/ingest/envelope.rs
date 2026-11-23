@@ -39,6 +39,9 @@ pub struct ItemHeaders {
     /// Content type of the payload
     pub content_type: Option<String>,
 
+    /// How many items a container item (logs, span v2) holds
+    pub item_count: Option<u32>,
+
     /// File name of an attachment
     pub filename: Option<String>,
 

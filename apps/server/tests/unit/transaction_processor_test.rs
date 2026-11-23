@@ -12,6 +12,7 @@ fn test_enum_dispatch_transaction_maps_to_transaction_kind() {
         item_type: "transaction".into(),
         length: None,
         content_type: None,
+        item_count: None,
         filename: None,
         attachment_type: None,
     };
@@ -25,6 +26,7 @@ fn test_enum_dispatch_event_maps_to_event_kind() {
         item_type: "event".into(),
         length: None,
         content_type: None,
+        item_count: None,
         filename: None,
         attachment_type: None,
     };
@@ -646,7 +648,16 @@ mod level2 {
                 .unwrap()
         };
 
-        handle.ingest_session(project.id, &update).await;
+        handle
+            .ingest_session(
+                project.id,
+                &update,
+                rustrak::digest::session_aggregator::SessionClock::new(
+                    "2026-06-10T10:30:00Z".parse().unwrap(),
+                    None,
+                ),
+            )
+            .await;
         // Like Relay, which turns sessions into metric buckets and flushes them
         // on its own cycle, ingest only aggregates in memory: the database
         // write belongs to the aggregator's single flusher (#390).
@@ -689,7 +700,16 @@ mod level2 {
             "aggregates": aggregates,
         }))
         .unwrap();
-        handle.ingest_aggregates(project.id, &agg).await;
+        handle
+            .ingest_aggregates(
+                project.id,
+                &agg,
+                rustrak::digest::session_aggregator::SessionClock::new(
+                    "2026-06-10T10:30:00Z".parse().unwrap(),
+                    None,
+                ),
+            )
+            .await;
 
         // An open write transaction stalls the first flush mid-batch: on
         // PostgreSQL it holds the row lock, on SQLite the only connection.

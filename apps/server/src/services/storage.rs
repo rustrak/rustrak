@@ -824,7 +824,7 @@ impl StorageService {
         // one per user and day. The cleanup keeps them, having no window
         // for them; a deleted project's go here rather than in one
         // statement with the project row.
-        for table in ["session_counts", "session_users"] {
+        for table in ["session_counts", "session_users", "session_errors"] {
             Self::delete_rows(pool, table, project_id, batch_size, &mut on_batch).await?;
         }
         Ok(counts)

@@ -59,6 +59,45 @@ where
         .filter(|dt| *dt > chrono::DateTime::UNIX_EPOCH))
 }
 
+/// A timestamp Relay requires: missing, `null` or unreadable fails the entry
+/// it belongs to, which its container then drops alone.
+pub(crate) fn required_timestamp<'de, D>(
+    deserializer: D,
+) -> Result<chrono::DateTime<chrono::Utc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_timestamp(deserializer)?
+        .ok_or_else(|| serde::de::Error::custom("invalid timestamp"))
+}
+
+/// A field Relay reads leniently: `null` or a value of the wrong type leaves
+/// the field empty, the way `FromValue` records the error in meta, instead of
+/// failing the whole container it arrived in.
+pub(crate) fn lenient<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    let raw = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
+    Ok(serde_json::from_value(raw).unwrap_or_default())
+}
+
+/// The entries of an item container that read as `T`. Relay parses each one
+/// on its own, so an entry that is not an object, or is over `max_size` (the
+/// parser only checked the container's average), is dropped alone. Each entry
+/// is read straight from its slice of the body, with no tree in between.
+pub(crate) fn container_entries<T: serde::de::DeserializeOwned>(
+    items: Vec<&serde_json::value::RawValue>,
+    max_size: usize,
+) -> Vec<T> {
+    items
+        .into_iter()
+        .filter(|item| item.get().len() <= max_size)
+        .filter_map(|item| serde_json::from_str(item.get()).ok())
+        .collect()
+}
+
 pub mod alert;
 pub mod auth_token;
 pub mod event;

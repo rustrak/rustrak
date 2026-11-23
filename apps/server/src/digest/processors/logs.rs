@@ -54,7 +54,7 @@ impl LogsProcessor {
                         .push_bind(severity_number)
                         .push_bind(log.body)
                         .push_bind(attributes)
-                        .push_bind(log.timestamp.unwrap_or(ctx.ingested_at))
+                        .push_bind(log.timestamp)
                         .push_bind(ctx.ingested_at);
                 },
             );

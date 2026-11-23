@@ -4,6 +4,11 @@
 
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 
+/// Relay's `max_log_size`: one log, alone or in a container.
+pub(crate) const MAX_LOG_SIZE: usize = 2 * 1024 * 1024;
+/// Relay's `max_span_size`: one span, alone or in a v2 container.
+pub(crate) const MAX_SPAN_SIZE: usize = 10 * 1024 * 1024;
+
 /// Cuts `s` to the `max_chars` of the VARCHAR column it is bound to. Postgres
 /// rejects a longer value and fails the whole envelope, SQLite stores it, and
 /// Relay truncates to its own `max_chars` instead of rejecting.
@@ -36,17 +41,28 @@ pub(crate) fn epoch_to_utc(epoch: f64) -> Option<DateTime<Utc>> {
 pub(crate) fn is_stale(data: &serde_json::Value, key: &str) -> bool {
     match data.get(key) {
         Some(serde_json::Value::Number(n)) => n.as_f64().is_some_and(|epoch| epoch < 0.0),
-        Some(serde_json::Value::String(s)) => {
-            DateTime::parse_from_rfc3339(s).is_ok_and(|dt| dt.timestamp_millis() < 0)
+        Some(raw @ serde_json::Value::String(_)) => {
+            timestamp_from_value(raw).is_some_and(|dt| dt.timestamp_millis() < 0)
         }
         _ => false,
     }
 }
 
-/// `level` as Relay's `Level::from_str` reads it. Relay removes anything else,
-/// so the caller's default applies.
-pub(crate) fn relay_level(raw: &str) -> Option<&'static str> {
-    Some(match raw {
+/// `level` as Relay's `Level` reads it (`FromValue`). Relay removes anything
+/// else, so the caller's default applies.
+pub(crate) fn relay_level(raw: &serde_json::Value) -> Option<&'static str> {
+    // Python logging levels (`Level::from_python_level`).
+    if let Some(n) = raw.as_u64() {
+        return Some(match n {
+            10 => "debug",
+            20 => "info",
+            30 => "warning",
+            40 => "error",
+            50 => "fatal",
+            _ => return None,
+        });
+    }
+    Some(match raw.as_str()? {
         "debug" => "debug",
         "info" | "log" => "info",
         "warning" => "warning",
@@ -62,14 +78,21 @@ pub(crate) fn extract_timestamp(data: &serde_json::Value, key: &str) -> Option<D
 }
 
 /// Relay's `Timestamp` (relay-event-schema/src/protocol/types.rs): epoch
-/// seconds or an RFC 3339 string.
+/// seconds, a naive datetime read as UTC, or an RFC 3339 string.
 pub(crate) fn timestamp_from_value(raw: &serde_json::Value) -> Option<DateTime<Utc>> {
     if let Some(epoch) = raw.as_f64() {
         return epoch_to_utc(epoch);
     }
-    raw.as_str()
-        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-        .map(|dt| dt.with_timezone(&Utc))
+    parse_timestamp(raw.as_str()?)
+}
+
+/// A timestamp string as Relay reads one: a naive datetime first, as UTC,
+/// then RFC 3339.
+pub(crate) fn parse_timestamp(s: &str) -> Option<DateTime<Utc>> {
+    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+        .map(|naive| naive.and_utc())
+        .or_else(|_| DateTime::parse_from_rfc3339(s).map(|dt| dt.with_timezone(&Utc)))
+        .ok()
         .filter(|dt| (1..=9999).contains(&dt.year()))
 }
 
@@ -146,4 +169,55 @@ pub(crate) fn infer_span_op<'a>(
         text("faas.trigger").unwrap_or("default")
     };
     op.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn levels_read_as_relay_reads_them() {
+        assert_eq!(relay_level(&json!("log")), Some("info"));
+        assert_eq!(relay_level(&json!("critical")), Some("fatal"));
+        assert_eq!(relay_level(&json!("ERROR")), None);
+        // Python logging levels (`Level::from_python_level`).
+        assert_eq!(relay_level(&json!(10)), Some("debug"));
+        assert_eq!(relay_level(&json!(20)), Some("info"));
+        assert_eq!(relay_level(&json!(30)), Some("warning"));
+        assert_eq!(relay_level(&json!(40)), Some("error"));
+        assert_eq!(relay_level(&json!(50)), Some("fatal"));
+        assert_eq!(relay_level(&json!(35)), None);
+        assert_eq!(relay_level(&json!(-10)), None);
+    }
+
+    #[test]
+    fn a_naive_timestamp_reads_as_utc() {
+        let expected = Utc.with_ymd_and_hms(2026, 11, 23, 10, 0, 0).unwrap();
+        assert_eq!(
+            timestamp_from_value(&json!("2026-11-23T10:00:00")),
+            Some(expected)
+        );
+        assert_eq!(
+            timestamp_from_value(&json!("2026-11-23T10:00:00.250")),
+            Some(expected + chrono::Duration::milliseconds(250))
+        );
+        assert_eq!(
+            timestamp_from_value(&json!("2026-11-23T10:00:00Z")),
+            Some(expected)
+        );
+        assert_eq!(timestamp_from_value(&json!("yesterday")), None);
+    }
+
+    #[test]
+    fn a_naive_timestamp_before_1970_is_stale() {
+        assert!(is_stale(
+            &json!({"timestamp": "1969-12-31T23:00:00"}),
+            "timestamp"
+        ));
+        assert!(!is_stale(
+            &json!({"timestamp": "2026-11-23T10:00:00"}),
+            "timestamp"
+        ));
+    }
 }
