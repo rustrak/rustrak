@@ -2,7 +2,6 @@ import {
   FeedbackIcon,
   IssuesIcon,
   NotificationIcon,
-  UndoIcon,
   UnresolveIcon,
 } from '@rustrak/ui';
 
@@ -24,8 +23,6 @@ export function AlertTypeIcon({
       return <IssuesIcon className={className} />;
     case 'regression':
       return <UnresolveIcon className={className} />;
-    case 'unmute':
-      return <UndoIcon className={className} />;
     case 'new_feedback':
       return <FeedbackIcon className={className} />;
     default:

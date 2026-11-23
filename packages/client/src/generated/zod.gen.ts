@@ -170,7 +170,6 @@ export const zAlertHistory = z.object({
 export const zAlertType = z.enum([
     'new_issue',
     'regression',
-    'unmute',
     'new_feedback'
 ]);
 

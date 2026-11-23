@@ -51,7 +51,6 @@ impl SlackNotifier {
         let alert_emoji = match payload.alert_type.as_str() {
             "new_issue" => ":new:",
             "regression" => ":repeat:",
-            "unmute" => ":loud_sound:",
             "new_feedback" => ":speech_balloon:",
             _ => ":bell:",
         };

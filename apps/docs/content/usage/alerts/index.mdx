@@ -52,7 +52,7 @@ Rustrak POSTs a JSON payload to your URL. The URL is optional on the channel: le
 }
 ```
 
-`alert_type` is `new_issue`, `regression`, `unmute` or `new_feedback`. `issue.level` can be absent.
+`alert_type` is `new_issue`, `regression` or `new_feedback`. `issue.level` can be absent.
 
 Every request carries these headers:
 
@@ -104,7 +104,7 @@ Open a project, go to **Alerts** and click **New alert**:
 
 | Field | What it does |
 |---|---|
-| **When** | **New issue**, **Regression** (a resolved issue comes back), **Reactivated** or **New feedback** |
+| **When** | **New issue**, **Regression** (a resolved issue comes back) or **New feedback** |
 | **Environments** | Only events from these. **All** by default |
 | **Level** | Only events at this level or higher. An event with no level counts as `error` |
 | **After this many events** | New issues only: wait until the issue has this many events, then alert once |
@@ -114,8 +114,6 @@ Open a project, go to **Alerts** and click **New alert**:
 The summary on the right reads the alert back in a sentence before you save. **Send a test** sends a sample through the chosen channels.
 
 <InteractiveDemo src="/demos/alerts.openshowcase" />
-
-**Reactivated** is meant for an archived issue that starts happening again, but Rustrak never takes an issue out of the archive on its own yet, so this alert does not fire today.
 
 After this many events: `10` together with **production** keeps a one-off error on someone's laptop from paging anyone.
 

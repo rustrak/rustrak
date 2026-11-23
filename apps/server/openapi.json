@@ -17509,7 +17509,6 @@
         "enum": [
           "new_issue",
           "regression",
-          "unmute",
           "new_feedback"
         ]
       },
