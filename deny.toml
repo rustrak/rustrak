@@ -19,6 +19,11 @@ ignore = [
     # server's own date and timezone code to `jiff` once those crates allow it.
     { id = "RUSTSEC-2026-0543", reason = "unmaintained, no alternative reachable: required by sqlx, openidconnect, rmcp, croner" },
     { id = "RUSTSEC-2026-0555", reason = "unmaintained, no fixed release; timezone handling would move to jiff together with chrono" },
+    # `cookie` 0.16, pinned by actix-web 4.20 (`^0.16`): private cookie nonces
+    # can repeat in a process that calls fork(). Rustrak never forks; actix
+    # workers are threads. The fix is cookie 0.18.3: drop this once actix-web
+    # moves to it.
+    { id = "RUSTSEC-2026-0594", reason = "the server never forks; actix-web pins cookie ^0.16" },
     # `zip` 7, pulled in by `symbolic-debuginfo` (up to 13.9 it requires ^7.2):
     # all four are in `ZipArchive::extract` / `ZipStreamReader::extract`,
     # which neither symbolic nor Rustrak calls; both only read entries. Rustrak's
