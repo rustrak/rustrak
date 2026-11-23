@@ -1,5 +1,11 @@
 # docs
 
+## 0.18.5
+
+### Patch Changes
+
+- [`a33d324`](https://github.com/rustrak/rustrak/commit/a33d324891193646171b009e5f472f27574ed190) Thanks [@AbianS](https://github.com/AbianS)! - The `@rustrak/client` reference lists the `webVitals` methods.
+
 ## 0.18.4
 
 ### Patch Changes
