@@ -16276,6 +16276,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Ten attempts for this email in the last minute; `Retry-After` says when to try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [

@@ -123,6 +123,20 @@ impl User {
             .is_ok())
     }
 
+    /// Spends the same Argon2 verification as [`User::verify_password`] on a
+    /// throwaway hash, so a login for an unknown email takes as long as a
+    /// wrong password and response time does not reveal which accounts exist.
+    pub fn verify_dummy_password(password: &str) {
+        // A random value nobody knows, hashed once per process. Hashing with
+        // the default parameters cannot fail; if it ever did, a silent skip
+        // would reopen the timing gap, so it panics.
+        static DUMMY_HASH: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            User::hash_password(&uuid::Uuid::new_v4().to_string()).expect("hash a random value")
+        });
+        let hash = PasswordHash::new(&DUMMY_HASH).expect("parse our own Argon2 hash");
+        let _ = Argon2::default().verify_password(password.as_bytes(), &hash);
+    }
+
     /// Typed global role.
     pub fn role(&self) -> UserRole {
         UserRole::from_db(&self.role)

@@ -79,6 +79,111 @@ async fn test_login_wrong_password() {
     assert_eq!(resp.status(), 401);
 }
 
+async fn login_status(
+    app: &impl actix_web::dev::Service<
+        actix_http::Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    >,
+    email: &str,
+    password: &str,
+) -> actix_web::dev::ServiceResponse {
+    let req = test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(json!({ "email": email, "password": password }))
+        .to_request();
+    test::call_service(app, req).await
+}
+
+/// Ten attempts a minute per email, like Sentry's `auth:login:username`.
+#[actix_web::test]
+async fn test_login_is_rate_limited_per_email() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "brute@example.com", "correctpassword", false).await;
+    let app = crate::common::app(&db.pool).await;
+
+    for _ in 0..10 {
+        let resp = login_status(&app, "brute@example.com", "wrong").await;
+        assert_eq!(resp.status(), 401);
+    }
+
+    // Refused even with the right password, and whatever the casing.
+    let resp = login_status(&app, "Brute@Example.com", "correctpassword").await;
+    assert_eq!(resp.status(), 429);
+    let retry_after: u64 = resp
+        .headers()
+        .get("Retry-After")
+        .expect("Retry-After")
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((1..=60).contains(&retry_after), "Retry-After {retry_after}");
+
+    // Another account is not affected.
+    create_test_user(&db.pool, "other@example.com", "correctpassword", false).await;
+    let resp = login_status(&app, "other@example.com", "correctpassword").await;
+    assert_eq!(resp.status(), 200);
+}
+
+/// An unknown email answers no faster than a wrong password: both run
+/// Argon2, so response time does not tell which accounts exist. The
+/// fastest of three runs each, and a generous margin, keep it stable under
+/// load: without the dummy hash the unknown email is ~100× faster.
+#[actix_web::test]
+async fn test_login_unknown_email_takes_as_long_as_a_wrong_password() {
+    let db = TestDb::new().await;
+    create_test_user(&db.pool, "known@example.com", "correctpassword", false).await;
+    let app = crate::common::app(&db.pool).await;
+
+    let fastest = |email: &'static str| {
+        let app = &app;
+        async move {
+            let mut best = std::time::Duration::MAX;
+            for _ in 0..3 {
+                let start = std::time::Instant::now();
+                let resp = login_status(app, email, "wrong").await;
+                assert_eq!(resp.status(), 401);
+                best = best.min(start.elapsed());
+            }
+            best
+        }
+    };
+    let wrong_password = fastest("known@example.com").await;
+    let unknown_email = fastest("unknown@example.com").await;
+
+    assert!(
+        unknown_email * 4 >= wrong_password,
+        "unknown email {unknown_email:?}, wrong password {wrong_password:?}"
+    );
+}
+
+/// Only the right password learns that an account is disabled.
+#[actix_web::test]
+async fn test_login_disabled_account_with_wrong_password_reads_as_invalid_credentials() {
+    let db = TestDb::new().await;
+    let user = create_test_user(&db.pool, "disabled@example.com", "correctpassword", false).await;
+    sqlx::query("UPDATE users SET is_active = false WHERE id = $1")
+        .bind(user.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let app = crate::common::app(&db.pool).await;
+
+    let message = |resp| async move {
+        let body: Value = test::read_body_json(resp).await;
+        body["error"]["message"].as_str().unwrap().to_string()
+    };
+    let disabled = login_status(&app, "disabled@example.com", "wrong").await;
+    assert_eq!(disabled.status(), 401);
+    let unknown = login_status(&app, "nobody@example.com", "wrong").await;
+    assert_eq!(message(disabled).await, message(unknown).await);
+
+    let right = login_status(&app, "disabled@example.com", "correctpassword").await;
+    assert_eq!(right.status(), 401);
+    assert!(message(right).await.contains("disabled"));
+}
+
 #[actix_web::test]
 async fn test_login_nonexistent_user() {
     let db = TestDb::new().await;

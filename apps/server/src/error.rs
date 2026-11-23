@@ -236,12 +236,18 @@ pub enum AppError {
     #[error("Service unavailable: {0}")]
     Unavailable(String),
 
-    /// Any of the nine above, annotated with the fields it blames.
+    /// Too many attempts from one caller: 429 with `Retry-After` set to the
+    /// seconds left until the next attempt is allowed. The detail is that
+    /// number, last like every other variant's.
+    #[error("Too many requests, seconds to wait: {0}")]
+    TooManyRequests(u64),
+
+    /// Any of the ten above, annotated with the fields it blames.
     ///
-    /// A decorator, not a tenth kind of error: it has no status, no wire
+    /// A decorator, not an eleventh kind of error: it has no status, no wire
     /// `type` and no message of its own, and is only ever built through
     /// [`AppError::with_field`] / [`AppError::with_fields`]. That is what
-    /// keeps the nine the whole vocabulary, and what let the ~105 call sites
+    /// keeps the ten the whole vocabulary, and what let the ~105 call sites
     /// that have no field to name stay untouched.
     #[error(transparent)]
     WithFields(FieldedError),
@@ -381,6 +387,7 @@ impl AppError {
             AppError::Database(_) => "DatabaseError",
             AppError::Internal(_) => "InternalError",
             AppError::Unavailable(_) => "ServiceUnavailable",
+            AppError::TooManyRequests(_) => "TooManyRequests",
             AppError::WithFields(fielded) => fielded.inner.error_type(),
         }
     }
@@ -411,6 +418,7 @@ impl ResponseError for AppError {
             AppError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::WithFields(fielded) => fielded.inner.status_code(),
         }
     }
@@ -452,6 +460,10 @@ impl ResponseError for AppError {
                 "X-Sentry-Rate-Limits",
                 format!("{RETRY_AFTER_SECS}::organization:service_unavailable"),
             ));
+        }
+
+        if let AppError::TooManyRequests(seconds) = self.kind() {
+            builder.insert_header((actix_web::http::header::RETRY_AFTER, seconds.to_string()));
         }
 
         builder.json(ErrorResponse {

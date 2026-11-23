@@ -241,6 +241,7 @@ pub async fn get_invitation(
         (status = 200, description = "Logged in", body = AuthResponse),
         (status = 401, description = "Invalid credentials", body = crate::error::ErrorResponse),
         (status = 403, description = "Password login is disabled; use SSO", body = crate::error::ErrorResponse),
+        (status = 429, description = "Ten attempts for this email in the last minute; `Retry-After` says when to try again", body = crate::error::ErrorResponse),
     ),
     security(()),
 ))]
@@ -248,18 +249,38 @@ pub async fn get_invitation(
 pub async fn login(
     pool: web::Data<crate::db::DbPool>,
     oidc: web::Data<OidcState>,
+    limiter: web::Data<crate::services::LoginLimiter>,
     session: Session,
     req: web::Json<LoginRequest>,
 ) -> AppResult<impl Responder> {
-    // Not normalized: the exact casing picks between legacy case-variant accounts
-    let user = UsersService::get_by_email(pool.get_ref(), req.email.trim())
-        .await?
-        .ok_or_else(|| AppError::Unauthorized("Invalid credentials".to_string()))?;
+    limiter
+        .attempt(&req.email)
+        .map_err(AppError::TooManyRequests)?;
 
+    // Not normalized: the exact casing picks between legacy case-variant accounts
+    let found = UsersService::get_by_email(pool.get_ref(), req.email.trim()).await?;
+
+    // Argon2 off the Actix worker, as linking an SSO identity does. An unknown
+    // email spends the same work on a dummy hash, so it answers as slowly.
+    let password = req.password.clone();
+    let (found, matches) = tokio::task::spawn_blocking(move || match found {
+        Some(user) => {
+            let matches = user.verify_password(&password);
+            (Some(user), matches)
+        }
+        None => {
+            User::verify_dummy_password(&password);
+            (None, Ok(false))
+        }
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("Password check task failed: {e}")))?;
+    // Password first: only someone who knows it learns the account is disabled.
+    let user = match (found, matches?) {
+        (Some(user), true) => user,
+        _ => return Err(AppError::Unauthorized("Invalid credentials".to_string())),
+    };
     user.ensure_active()?;
-    if !user.verify_password(&req.password)? {
-        return Err(AppError::Unauthorized("Invalid credentials".to_string()));
-    }
 
     // With OIDC_DISABLE_PASSWORD_LOGIN the provider is the only way in. The
     // primary account stays as the documented break-glass: it is the one
