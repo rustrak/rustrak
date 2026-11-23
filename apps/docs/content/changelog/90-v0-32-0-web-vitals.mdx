@@ -1,0 +1,25 @@
+---
+version: v0.32.0
+title: Web Vitals
+description: Browser projects get a Web Vitals page that scores every page load as Sentry does and says which page to fix first
+date: 2026-11-23
+tags: [performance, web-vitals, dashboard, api]
+---
+
+## Upgrading
+
+- A migration adds a `web_vitals` table on PostgreSQL and SQLite. Vitals are recorded from this version on, so page loads ingested before the upgrade have none
+- `@rustrak/client` is regenerated with `client.webVitals`
+
+## Web Vitals
+
+Rustrak now keeps the LCP, INP, CLS, FCP and TTFB the browser SDK reports, whether they arrive on the page load transaction, as standalone spans or as streamed spans. Each one is scored with Relay's performance score and Sentry's per-browser profiles, and stored with what it was about: the LCP element and the resource it loaded, the element that shifted, the interaction's target, the page URL, the device and the network.
+
+- A **Web Vitals** page appears for browser projects, laid out like PageSpeed Insights field data: the Core Web Vitals verdict, where to start, a card per vital and the pages ranked by what improving them would add to the score
+- Each vital has its own page with how to fix it, the elements behind it, how it does per device and browser, its trend and its worst page loads, linked to their transactions
+- Values are rated good, needs improvement or poor by web.dev's thresholds, and filtered by environment, device, browser and period, up to 90 days
+- Vitals age out with the project's transactions
+
+## API
+
+Six endpoints under `/api/projects/{project_id}/web-vitals`: the summary, `pages`, `breakdown`, `targets`, `samples` and `timeseries`. See the [client reference](/sdks/client).
