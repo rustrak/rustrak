@@ -119,6 +119,7 @@ mod level2 {
             .map(|i| {
                 serde_json::json!({
                     "timestamp": 1704801600.0 + i as f64,
+                    "trace_id": "5b8efff798038103d269b633813fc60c",
                     "level": if i % 2 == 0 { "error" } else { "" },
                     "body": format!("line {i}"),
                     "attributes": { "i": { "value": i, "type": "integer" } },
@@ -216,17 +217,23 @@ fn test_parse_container_accepts_rfc3339_timestamp() {
         );
         let logs = LogContainer::parse(body.as_bytes()).expect(ts);
         let expected = chrono::DateTime::parse_from_rfc3339(ts).unwrap();
-        assert_eq!(logs[0].timestamp, Some(expected.to_utc()));
+        assert_eq!(logs[0].timestamp, expected.to_utc());
     }
 }
 
-/// Relay rejects a timestamp at or before the epoch, not one just after it.
+/// Relay rejects a timestamp at or before the epoch, not one just after it;
+/// the timestamp is required, so that log is dropped.
 #[test]
 fn test_parse_container_keeps_sub_millisecond_after_epoch() {
-    let logs =
-        LogContainer::parse(br#"{"items":[{"timestamp":0.0005},{"timestamp":0.0}]}"#).unwrap();
-    assert!(logs[0].timestamp.is_some());
-    assert!(logs[1].timestamp.is_none());
+    let log = |ts: &str| {
+        format!(
+            r#"{{"timestamp":{ts},"trace_id":"5b8efff798038103d269b633813fc60c","level":"info","body":"x"}}"#
+        )
+    };
+    let body = format!(r#"{{"items":[{},{}]}}"#, log("0.0005"), log("0.0"));
+    let logs = LogContainer::parse(body.as_bytes()).unwrap();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].timestamp.timestamp_micros(), 500);
 }
 
 #[test]

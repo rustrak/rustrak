@@ -953,13 +953,7 @@ impl ErrorProcessor {
         }
         // A feedback occurrence defaults to `info`, and the event, its issue
         // and its alert rules all read that level from here.
-        if feedback.is_some()
-            && event_data
-                .get("level")
-                .and_then(|v| v.as_str())
-                .and_then(relay_level)
-                .is_none()
-        {
+        if feedback.is_some() && event_data.get("level").and_then(relay_level).is_none() {
             event_data["level"] = serde_json::json!("info");
         }
         // Rewrite stack frames using source maps (non-fatal)
@@ -1053,10 +1047,7 @@ impl ErrorProcessor {
             denormalized.culprit = "user".to_string();
         }
         let facts = event_facts(&event_data);
-        let level = event_data
-            .get("level")
-            .and_then(|v| v.as_str())
-            .and_then(relay_level);
+        let level = event_data.get("level").and_then(relay_level);
         let row = EventRow::new(
             &event_data,
             metadata.ingested_at,
@@ -2124,10 +2115,7 @@ fn drop_stale_breadcrumbs(event_data: &mut serde_json::Value) {
 /// The fields an alert rule's filters read, straight from the event.
 fn event_facts(event_data: &serde_json::Value) -> crate::services::alert::EventFacts<'_> {
     crate::services::alert::EventFacts {
-        level: event_data
-            .get("level")
-            .and_then(|v| v.as_str())
-            .and_then(relay_level),
+        level: event_data.get("level").and_then(relay_level),
         environment: event_data.get("environment").and_then(|v| v.as_str()),
     }
 }

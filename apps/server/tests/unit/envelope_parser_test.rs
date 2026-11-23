@@ -351,6 +351,7 @@ fn test_attachment_and_security_items_require_event_id() {
                 item_type: item_type.to_string(),
                 length: None,
                 content_type: None,
+                item_count: None,
                 filename: None,
                 attachment_type: None,
             },
@@ -661,13 +662,12 @@ fn test_payload_size_exactly_at_limit() {
 
 #[test]
 fn test_payload_size_over_limit() {
-    // Non-"event" items keep the original 1MB limit — "event" items get a
-    // relaxed ceiling instead (see ingest::parser::MAX_RAW_EVENT_SIZE and
-    // its unit tests) so the digest pipeline's trimming pass has verbose-
-    // but-legitimate payloads to work with instead of just rejecting them.
+    // A transaction keeps Relay's 1 MiB event limit; "event" items get a
+    // relaxed ceiling instead (see ingest::parser::MAX_RAW_EVENT_SIZE), and
+    // every other type its own Relay limit (ingest::parser::SizeLimit).
     let payload_size = 1024 * 1024 + 1; // 1MB + 1 byte
     let header = format!(
-        "{{\"event_id\":\"abc\"}}\n{{\"type\":\"session\",\"length\":{}}}\n",
+        "{{\"event_id\":\"abc\"}}\n{{\"type\":\"transaction\",\"length\":{}}}\n",
         payload_size
     );
     let mut envelope = header.into_bytes();

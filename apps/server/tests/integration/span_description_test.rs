@@ -350,6 +350,7 @@ async fn streamed_spans_keep_their_names_once_too() {
             "trace_id": "dddddddddddddddddddddddddddddddd",
             "span_id": format!("{batch:016x}"),
             "name": SQL,
+            "status": "ok",
             "start_timestamp": now, "end_timestamp": now + 0.1,
             "attributes": { "sentry.op": { "value": "db", "type": "string" } },
         }]});

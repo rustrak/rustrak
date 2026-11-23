@@ -69,6 +69,7 @@ async fn a_transaction_sent_without_ops_reads_back_as_default_everywhere() {
         "trace_id": "5c79f60c11214eb38604f4ae0781bfb2",
         "span_id": "b000000000000001",
         "name": "start response",
+        "status": "ok",
         "start_timestamp": now(),
         "end_timestamp": now() + 1.0,
         "attributes": { "next.span_type": { "value": "NextNodeServer.startResponse", "type": "string" } },

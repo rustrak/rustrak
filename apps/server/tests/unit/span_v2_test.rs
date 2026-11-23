@@ -16,6 +16,7 @@ fn test_enum_dispatch_span_with_v2_content_type_maps_to_span_v2_batch() {
         item_type: "span".into(),
         length: None,
         content_type: Some("application/vnd.sentry.items.span.v2+json".into()),
+        item_count: None,
         filename: None,
         attachment_type: None,
     };
@@ -29,6 +30,7 @@ fn test_enum_dispatch_span_without_v2_content_type_stays_legacy() {
         item_type: "span".into(),
         length: None,
         content_type: None,
+        item_count: None,
         filename: None,
         attachment_type: None,
     };
@@ -389,12 +391,14 @@ mod level2 {
             "items": [
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "start_timestamp": 1.0,
                     "end_timestamp": 2.0,
                     "attributes": {}
                 },
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "span_id": "dddddddddddddddd",
                     "start_timestamp": 1.0,
                     "end_timestamp": 2.0,
@@ -424,6 +428,53 @@ mod level2 {
         );
     }
 
+    /// Relay requires `name` and `status` on a v2 span (`DeleteParent`): one
+    /// missing, `null` or of the wrong type drops that span alone.
+    #[tokio::test]
+    async fn test_v2_entry_missing_name_or_status_is_skipped() {
+        let db = TestDb::new().await;
+        let project = ProjectService::create(
+            &db.pool,
+            CreateProject {
+                name: "span-v2-required".to_string(),
+                slug: None,
+                platform: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let span = |span_id: &str, name: serde_json::Value, status: serde_json::Value| {
+            json!({
+                "trace_id": "d3d20f000885466b8c8f947c9b92b8d3", "span_id": span_id,
+                "name": name, "status": status,
+                "start_timestamp": 1781085600.0, "end_timestamp": 1781085601.0
+            })
+        };
+        let payload = json!({ "version": 2, "items": [
+            span("aaaaaaaaaaaaaaaa", json!(null), json!("ok")),
+            span("bbbbbbbbbbbbbbbb", json!("GET /"), json!(7)),
+            span("cccccccccccccccc", json!("GET /"), json!("ok")),
+        ]})
+        .to_string();
+
+        SpanV2Processor
+            .process(
+                bytes::Bytes::from(payload.into_bytes()),
+                &ctx(&db.pool, project.id),
+            )
+            .await
+            .unwrap();
+
+        let ids: Vec<String> =
+            sqlx::query_scalar("SELECT span_id FROM spans WHERE project_id = $1")
+                .bind(project.id)
+                .fetch_all(&db.pool)
+                .await
+                .unwrap();
+        assert_eq!(ids, vec!["cccccccccccccccc".to_string()]);
+    }
+
     #[tokio::test]
     async fn test_v2_is_segment_true_sets_segment_id_to_own_span_id() {
         let db = TestDb::new().await;
@@ -442,6 +493,7 @@ mod level2 {
             "version": 2,
             "items": [{
                 "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                "name": "GET /", "status": "ok",
                 "span_id": "eeeeeeeeeeeeeeee",
                 "start_timestamp": 1.0,
                 "end_timestamp": 2.0,
@@ -520,6 +572,7 @@ mod level2 {
             "version": 2,
             "items": [{
                 "trace_id": shared_trace,
+                "name": "GET /", "status": "ok",
                 "span_id": "2222222222222222",
                 "start_timestamp": 1.0,
                 "end_timestamp": 1.5,
@@ -599,17 +652,20 @@ mod level2 {
             "items": [
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "span_id": "aaaaaaaaaaaaaaaa",
                     "attributes": {}
                 },
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "span_id": "bbbbbbbbbbbbbbbb",
                     "start_timestamp": 1.0,
                     "attributes": {}
                 },
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "span_id": "cccccccccccccccc",
                     "start_timestamp": 1.0,
                     "end_timestamp": 2.0,
@@ -617,6 +673,7 @@ mod level2 {
                 },
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "span_id": "dddddddddddddddd",
                     "start_timestamp": -1.0,
                     "end_timestamp": 1.0,
@@ -624,6 +681,7 @@ mod level2 {
                 },
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "span_id": "eeeeeeeeeeeeeeee",
                     "start_timestamp": 1.0,
                     "end_timestamp": 1.7976931348623157e308,
@@ -631,6 +689,7 @@ mod level2 {
                 },
                 {
                     "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                    "name": "GET /", "status": "ok",
                     "span_id": "ffffffffffffffff",
                     "start_timestamp": 2.0,
                     "end_timestamp": 1.0,
@@ -683,6 +742,7 @@ mod level2 {
             "version": 2,
             "items": [{
                 "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                "name": "GET /", "status": "ok",
                 "span_id": "0f0f0f0f0f0f0f0f",
                 "start_timestamp": 1784231017.5,
                 "end_timestamp": 1784231017.5,
@@ -736,6 +796,7 @@ mod level2 {
             "version": 2,
             "items": [{
                 "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                "name": "GET /", "status": "ok",
                 "span_id": "1a1a1a1a1a1a1a1a",
                 "start_timestamp": 1.0,
                 "end_timestamp": 3.0,
@@ -801,6 +862,7 @@ mod level2 {
             "version": 2,
             "items": [{
                 "trace_id": "d3d20f000885466b8c8f947c9b92b8d3",
+                "name": "GET /", "status": "ok",
                 "span_id": "2b2b2b2b2b2b2b2b",
                 "parent_span_id": "9999999999999999",
                 "start_timestamp": 1.0,
@@ -861,6 +923,7 @@ fn test_flat_attributes_drops_a_value_that_contradicts_its_declared_type() {
         "version": 2,
         "items": [{
             "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "GET /", "status": "ok",
             "span_id": "1111111111111111",
             "start_timestamp": 1.0,
             "end_timestamp": 2.0,
@@ -890,6 +953,7 @@ fn test_flat_attributes_keeps_every_type_the_protocol_defines() {
         "version": 2,
         "items": [{
             "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "GET /", "status": "ok",
             "span_id": "1111111111111111",
             "start_timestamp": 1.0,
             "end_timestamp": 2.0,
@@ -925,6 +989,7 @@ fn test_flat_attributes_drops_an_unknown_declared_type() {
         "version": 2,
         "items": [{
             "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "GET /", "status": "ok",
             "span_id": "1111111111111111",
             "start_timestamp": 1.0,
             "end_timestamp": 2.0,

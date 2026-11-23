@@ -14,6 +14,47 @@ use crate::models::session::{
 
 const OVERFLOW_RELEASE: &str = "<overflow>";
 
+/// When an envelope's sessions arrived, and how far the device clock that
+/// stamped them is off (Relay's `ClockDriftProcessor`).
+#[derive(Debug, Clone, Copy)]
+pub struct SessionClock {
+    received_at: DateTime<Utc>,
+    drift: chrono::Duration,
+}
+
+impl SessionClock {
+    /// Relay's `MINIMUM_CLOCK_DRIFT`: less than this is not corrected.
+    const MIN_DRIFT: chrono::Duration = chrono::Duration::minutes(55);
+    /// Relay's `max_session_secs_in_past` and `max_secs_in_future` defaults.
+    pub(crate) const MAX_AGE: chrono::Duration = chrono::Duration::days(5);
+    const MAX_FUTURE: chrono::Duration = chrono::Duration::seconds(60);
+
+    pub fn new(received_at: DateTime<Utc>, sent_at: Option<&str>) -> Self {
+        let drift = sent_at
+            .and_then(parse_ts)
+            .map(|sent| received_at - sent)
+            .filter(|drift| drift.abs() >= Self::MIN_DRIFT)
+            .unwrap_or_default();
+        Self { received_at, drift }
+    }
+
+    /// `raw` read, corrected for drift, and kept only inside Relay's window
+    /// (`validate_session_timestamp`). Missing or unreadable is invalid.
+    fn read(&self, raw: Option<&str>) -> Option<DateTime<Utc>> {
+        self.correct(raw?).filter(|at| self.in_window(*at))
+    }
+
+    /// `raw` read and corrected for drift.
+    fn correct(&self, raw: &str) -> Option<DateTime<Utc>> {
+        Some(parse_ts(raw)? + self.drift)
+    }
+
+    fn in_window(&self, at: DateTime<Utc>) -> bool {
+        let age = self.received_at - at;
+        age <= Self::MAX_AGE && -age <= Self::MAX_FUTURE
+    }
+}
+
 /// Key identifying a minute-bucketed session count row.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BucketKey {
@@ -43,9 +84,16 @@ pub struct UserKey {
 
 #[derive(Debug, Default)]
 pub struct AggregatorState {
+    /// `errored` is every errored session, fatal ones included (Relay's
+    /// `session.error` set); Sentry's errored is that minus crashed and
+    /// abnormal.
     pub counts: HashMap<BucketKey, Counters>,
     /// Map of UserKey → crashed; TRUE means this user had a crash this flush cycle.
     pub users: HashMap<UserKey, bool>,
+    /// Sessions seen errored this flush cycle, by `(project, sid)`. Each adds
+    /// one to its bucket's `errored` at the flush, unless `session_errors`
+    /// already holds it.
+    pub errored: HashMap<(i32, String), BucketKey>,
 }
 
 pub struct SessionAggregator {
@@ -70,138 +118,57 @@ impl SessionAggregator {
     }
 
     /// Ingest a single `session` envelope item.
-    pub async fn ingest_session(&self, project_id: i32, update: &SessionUpdate) {
-        let attrs = match &update.attrs {
-            Some(a) => a,
-            None => {
-                log::warn!("session item missing attrs, dropping");
-                return;
-            }
-        };
-        let release = match &attrs.release {
-            Some(r) if !r.is_empty() => r.clone(),
-            _ => {
-                log::warn!("session item missing release, dropping");
-                return;
-            }
-        };
-        let environment = attrs.environment.clone().unwrap_or_default();
-
-        let started_str = update.started.as_deref().unwrap_or("");
-        let bucket = match parse_ts(started_str) {
-            Some(dt) => truncate_to_minute(dt),
-            None => truncate_to_minute(Utc::now()),
-        };
-
+    pub async fn ingest_session(
+        &self,
+        project_id: i32,
+        update: &SessionUpdate,
+        clock: SessionClock,
+    ) {
         let mut state = self.state.lock().await;
-        let release = apply_cardinality_cap(&state, project_id, release, self.cardinality_cap);
-
-        let key = BucketKey {
-            project_id,
-            release: release.clone(),
-            environment: environment.clone(),
-            bucket,
-        };
-
-        if update.init {
-            let entry = state.counts.entry(key).or_default();
-            entry.total += 1;
-
-            if let Some(did) = &update.did {
-                if !did.is_empty() {
-                    let day = bucket.date_naive();
-                    let ukey = UserKey {
-                        project_id,
-                        release: release.clone(),
-                        environment: environment.clone(),
-                        day,
-                        did: did.clone(),
-                    };
-                    state.users.entry(ukey).or_insert(false);
-                }
-            }
-        }
-
-        let status = update.status.as_ref().cloned().unwrap_or(SessionStatus::Ok);
-        if status.is_terminal() {
-            let outcome = classify(&status, update.errors);
-            let key = BucketKey {
-                project_id,
-                release: release.clone(),
-                environment: environment.clone(),
-                bucket,
-            };
-            let entry = state.counts.entry(key).or_default();
-            match outcome {
-                SessionOutcome::Crashed => {
-                    entry.crashed += 1;
-                    if let Some(did) = &update.did {
-                        if !did.is_empty() {
-                            let day = bucket.date_naive();
-                            let ukey = UserKey {
-                                project_id,
-                                release,
-                                environment,
-                                day,
-                                did: did.clone(),
-                            };
-                            state.users.insert(ukey, true);
-                        }
-                    }
-                }
-                SessionOutcome::Abnormal => entry.abnormal += 1,
-                SessionOutcome::Errored => entry.errored += 1,
-                SessionOutcome::Healthy => {}
-            }
-        }
+        apply_update(&mut state, project_id, update, self.cardinality_cap, clock);
     }
 
     /// Ingest a pre-aggregated `sessions` envelope item.
-    pub async fn ingest_aggregates(&self, project_id: i32, agg: &SessionAggregates) {
-        let attrs = match &agg.attrs {
-            Some(a) => a,
-            None => {
-                log::warn!("sessions item missing attrs, dropping");
-                return;
-            }
-        };
-        let release = match &attrs.release {
-            Some(r) if !r.is_empty() => r.clone(),
-            _ => {
-                log::warn!("sessions item missing release, dropping");
-                return;
-            }
-        };
-        let environment = attrs.environment.clone().unwrap_or_default();
-
+    pub async fn ingest_aggregates(
+        &self,
+        project_id: i32,
+        agg: &SessionAggregates,
+        clock: SessionClock,
+    ) {
         let mut state = self.state.lock().await;
-        let release = apply_cardinality_cap(&state, project_id, release, self.cardinality_cap);
-
-        for item in &agg.aggregates {
-            apply_aggregate_item(&mut state, project_id, &release, &environment, item);
-        }
+        apply_aggregates(&mut state, project_id, agg, self.cardinality_cap, clock);
     }
 
     /// Flush all in-memory counters to the DB via batched UPSERT.
     pub async fn flush(&self) -> AppResult<()> {
         let _flushing = self.flushing.lock().await;
-        let (counts, users) = {
+        let (counts, users, errored) = {
             let mut state = self.state.lock().await;
             let counts = std::mem::take(&mut state.counts);
             let users = std::mem::take(&mut state.users);
-            (counts, users)
+            let errored = std::mem::take(&mut state.errored);
+            (counts, users, errored)
         };
 
-        if counts.is_empty() && users.is_empty() {
+        if counts.is_empty() && users.is_empty() && errored.is_empty() {
             return Ok(());
         }
 
         let mut commit_started = false;
         let result = async {
             let mut tx = self.pool.begin().await?;
-            for (key, c) in &counts {
+            // A session is errored once, whichever flush first saw it so.
+            let mut written = counts.clone();
+            for ((project_id, sid), key) in &errored {
+                if insert_errored_session(*project_id, sid, key.bucket, &mut *tx).await? {
+                    written.entry(key.clone()).or_default().errored += 1;
+                }
+            }
+            for (key, c) in &written {
                 self.upsert_count(key, c, &mut *tx).await?;
             }
+            // A session older than Relay's window gets no more updates.
+            delete_expired_errored_sessions(Utc::now() - SessionClock::MAX_AGE, &mut *tx).await?;
             for (key, &crashed) in &users {
                 self.upsert_user(key, crashed, &mut *tx).await?;
             }
@@ -214,6 +181,9 @@ impl SessionAggregator {
             if !commit_started {
                 let mut state = self.state.lock().await;
                 merge_state(&mut state, counts, users);
+                for (id, key) in errored {
+                    state.errored.entry(id).or_insert(key);
+                }
             } else {
                 log::error!(
                     "session_aggregator: commit outcome unknown; counters will not be replayed"
@@ -398,6 +368,178 @@ pub fn apply_cardinality_cap(
     release
 }
 
+/// Records `sid` as errored; false when `session_errors` already holds it.
+async fn insert_errored_session<'e, E>(
+    project_id: i32,
+    sid: &str,
+    started: DateTime<Utc>,
+    executor: E,
+) -> Result<bool, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = crate::db::Db>,
+{
+    #[cfg(not(feature = "postgres"))]
+    let started = started.naive_utc().to_string();
+    let done = sqlx::query(
+        "INSERT INTO session_errors (project_id, sid, started) VALUES ($1, $2, $3) \
+         ON CONFLICT (project_id, sid) DO NOTHING",
+    )
+    .bind(project_id)
+    .bind(sid)
+    .bind(started)
+    .execute(executor)
+    .await?;
+    Ok(done.rows_affected() == 1)
+}
+
+async fn delete_expired_errored_sessions<'e, E>(
+    before: DateTime<Utc>,
+    executor: E,
+) -> Result<(), sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = crate::db::Db>,
+{
+    #[cfg(not(feature = "postgres"))]
+    let before = before.naive_utc().to_string();
+    sqlx::query("DELETE FROM session_errors WHERE started < $1")
+        .bind(before)
+        .execute(executor)
+        .await?;
+    Ok(())
+}
+
+/// Apply one `session` update into state (pure, no I/O).
+pub fn apply_update(
+    state: &mut AggregatorState,
+    project_id: i32,
+    update: &SessionUpdate,
+    cardinality_cap: usize,
+    clock: SessionClock,
+) {
+    let attrs = match &update.attrs {
+        Some(a) => a,
+        None => {
+            log::warn!("session item missing attrs, dropping");
+            return;
+        }
+    };
+    let release = match &attrs.release {
+        Some(r) if !r.is_empty() => r.clone(),
+        _ => {
+            log::warn!("session item missing release, dropping");
+            return;
+        }
+    };
+    let environment = attrs.environment.clone().unwrap_or_default();
+
+    let Some(started) = clock.read(update.started.as_deref()) else {
+        log::debug!("session outside the accepted time window, dropping");
+        return;
+    };
+    // Relay raises an earlier `timestamp` to `started`, then checks it too.
+    if let Some(raw) = update.timestamp.as_deref() {
+        if !clock
+            .correct(raw)
+            .is_some_and(|ts| clock.in_window(ts.max(started)))
+        {
+            log::debug!("session update stamped outside the accepted window, dropping");
+            return;
+        }
+    }
+    let bucket = truncate_to_minute(started);
+
+    let release = apply_cardinality_cap(state, project_id, release, cardinality_cap);
+
+    let key = BucketKey {
+        project_id,
+        release: release.clone(),
+        environment: environment.clone(),
+        bucket,
+    };
+
+    if update.init {
+        state.counts.entry(key.clone()).or_default().total += 1;
+    }
+
+    let status = update.status.as_ref().cloned().unwrap_or(SessionStatus::Ok);
+    let mut crashed = false;
+    if status.is_terminal() {
+        let entry = state.counts.entry(key.clone()).or_default();
+        match classify(&status, update.errors) {
+            SessionOutcome::Crashed => {
+                entry.crashed += 1;
+                crashed = true;
+            }
+            SessionOutcome::Abnormal => entry.abnormal += 1,
+            SessionOutcome::Errored | SessionOutcome::Healthy => {}
+        }
+    }
+    // Relay's `all_errors`: errors on any update, or any status but ok and
+    // exited, marks the session errored once, by its id.
+    if update.errors > 0 || !matches!(status, SessionStatus::Ok | SessionStatus::Exited) {
+        // Relay gives a session without an id a new one.
+        let sid = update
+            .sid
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        state
+            .errored
+            .entry((project_id, sid))
+            .or_insert_with(|| key.clone());
+    }
+    record_user(state, &key, update.did.as_deref(), crashed);
+}
+
+/// Counts `did` among the users of `key`'s day, as Relay does on every update
+/// (metrics_extraction/sessions/mod.rs). Relay's `nil_to_none`: an empty or
+/// nil-UUID `did` is no user.
+fn record_user(state: &mut AggregatorState, key: &BucketKey, did: Option<&str>, crashed: bool) {
+    let Some(did) = did.filter(|d| !d.is_empty()) else {
+        return;
+    };
+    if uuid::Uuid::parse_str(did).is_ok_and(|id| id.is_nil()) {
+        return;
+    }
+    let ukey = UserKey {
+        project_id: key.project_id,
+        release: key.release.clone(),
+        environment: key.environment.clone(),
+        day: key.bucket.date_naive(),
+        did: did.to_string(),
+    };
+    *state.users.entry(ukey).or_insert(false) |= crashed;
+}
+
+/// Apply a pre-aggregated `sessions` item into state (pure, no I/O).
+pub fn apply_aggregates(
+    state: &mut AggregatorState,
+    project_id: i32,
+    agg: &SessionAggregates,
+    cardinality_cap: usize,
+    clock: SessionClock,
+) {
+    let attrs = match &agg.attrs {
+        Some(a) => a,
+        None => {
+            log::warn!("sessions item missing attrs, dropping");
+            return;
+        }
+    };
+    let release = match &attrs.release {
+        Some(r) if !r.is_empty() => r.clone(),
+        _ => {
+            log::warn!("sessions item missing release, dropping");
+            return;
+        }
+    };
+    let environment = attrs.environment.clone().unwrap_or_default();
+    let release = apply_cardinality_cap(state, project_id, release, cardinality_cap);
+
+    for item in &agg.aggregates {
+        apply_aggregate_item(state, project_id, &release, &environment, item, clock);
+    }
+}
+
 /// Apply a pre-aggregated item into state (pure, no I/O).
 pub fn apply_aggregate_item(
     state: &mut AggregatorState,
@@ -405,12 +547,13 @@ pub fn apply_aggregate_item(
     release: &str,
     environment: &str,
     item: &SessionAggregateItem,
+    clock: SessionClock,
 ) {
-    let started_str = item.started.as_deref().unwrap_or("");
-    let bucket = match parse_ts(started_str) {
-        Some(dt) => truncate_to_minute(dt),
-        None => truncate_to_minute(Utc::now()),
+    let Some(started) = clock.read(item.started.as_deref()) else {
+        log::debug!("session bucket outside the accepted time window, dropping");
+        return;
     };
+    let bucket = truncate_to_minute(started);
 
     let key = BucketKey {
         project_id,
@@ -418,11 +561,13 @@ pub fn apply_aggregate_item(
         environment: environment.to_string(),
         bucket,
     };
+    record_user(state, &key, item.did.as_deref(), item.crashed > 0);
     let entry = state.counts.entry(key).or_default();
     entry.total += item.exited + item.errored + item.crashed + item.abnormal + item.unhandled;
-    // Protocol 1.6.0 `unhandled`: the process survived, so it is an errored
-    // session, not a crash.
-    entry.errored += item.errored + item.unhandled;
+    // Relay's `all_errors` for a bucket: errored, unhandled and the fatal
+    // ones. Protocol 1.6.0 `unhandled`: the process survived, so it is not a
+    // crash.
+    entry.errored += item.errored + item.unhandled + item.crashed + item.abnormal;
     entry.crashed += item.crashed;
     entry.abnormal += item.abnormal;
 }
@@ -455,65 +600,28 @@ mod tests {
         }
     }
 
-    /// Pure bucketing helper for tests — no DB pool needed.
+    /// Received a few minutes after `make_update`'s `started`, by a device
+    /// whose clock is right.
+    fn clock() -> SessionClock {
+        SessionClock::new(at("2026-06-10T10:05:00Z"), None)
+    }
+
+    fn at(s: &str) -> DateTime<Utc> {
+        parse_ts(s).unwrap()
+    }
+
     fn apply_update(state: &mut AggregatorState, project_id: i32, update: &SessionUpdate) {
-        let attrs = update.attrs.as_ref().unwrap();
-        let release = attrs.release.clone().unwrap();
-        let environment = attrs.environment.clone().unwrap_or_default();
-        let bucket = parse_ts(update.started.as_deref().unwrap_or(""))
-            .map(truncate_to_minute)
-            .unwrap_or_else(|| truncate_to_minute(Utc::now()));
+        super::apply_update(state, project_id, update, 10_000, clock());
+    }
 
-        let release = apply_cardinality_cap(state, project_id, release, 10_000);
-
-        let key = BucketKey {
-            project_id,
-            release: release.clone(),
-            environment: environment.clone(),
-            bucket,
-        };
-
-        if update.init {
-            state.counts.entry(key.clone()).or_default().total += 1;
-            if let Some(did) = &update.did {
-                if !did.is_empty() {
-                    let ukey = UserKey {
-                        project_id,
-                        release: release.clone(),
-                        environment: environment.clone(),
-                        day: bucket.date_naive(),
-                        did: did.clone(),
-                    };
-                    state.users.entry(ukey).or_insert(false);
-                }
-            }
-        }
-
-        let status = update.status.as_ref().cloned().unwrap_or(SessionStatus::Ok);
-        if status.is_terminal() {
-            let outcome = classify(&status, update.errors);
-            let entry = state.counts.entry(key).or_default();
-            match outcome {
-                SessionOutcome::Crashed => {
-                    entry.crashed += 1;
-                    if let Some(did) = &update.did {
-                        if !did.is_empty() {
-                            let ukey = UserKey {
-                                project_id,
-                                release,
-                                environment,
-                                day: bucket.date_naive(),
-                                did: did.clone(),
-                            };
-                            state.users.insert(ukey, true);
-                        }
-                    }
-                }
-                SessionOutcome::Abnormal => entry.abnormal += 1,
-                SessionOutcome::Errored => entry.errored += 1,
-                SessionOutcome::Healthy => {}
-            }
-        }
+    fn apply_aggregate_item(
+        state: &mut AggregatorState,
+        project_id: i32,
+        release: &str,
+        environment: &str,
+        item: &SessionAggregateItem,
+    ) {
+        super::apply_aggregate_item(state, project_id, release, environment, item, clock());
     }
 
     #[test]
@@ -588,9 +696,9 @@ mod tests {
             1,
             &make_update(false, SessionStatus::Exited, 3, None),
         );
-        let c = state.counts.values().next().unwrap();
-        assert_eq!(c.errored, 1);
-        assert_eq!(c.crashed, 0);
+        // Counted at the flush, once per session id.
+        assert_eq!(state.errored.len(), 1);
+        assert_eq!(state.counts.values().next().unwrap().crashed, 0);
     }
 
     #[test]
@@ -598,6 +706,7 @@ mod tests {
         let mut state = AggregatorState::default();
         let item = SessionAggregateItem {
             started: Some("2026-06-10T10:00:00.000Z".to_string()),
+            did: None,
             exited: 5,
             errored: 2,
             crashed: 1,
@@ -607,8 +716,175 @@ mod tests {
         apply_aggregate_item(&mut state, 1, "2.0.0", "staging", &item);
         let c = state.counts.values().next().unwrap();
         assert_eq!(c.total, 8); // 5+2+1+0
-        assert_eq!(c.errored, 2);
+        assert_eq!(
+            c.errored, 3,
+            "every errored session, the crashed one included"
+        );
         assert_eq!(c.crashed, 1);
+    }
+
+    fn users(state: &AggregatorState) -> Vec<(String, bool)> {
+        let mut users: Vec<_> = state
+            .users
+            .iter()
+            .map(|(k, crashed)| (k.did.clone(), *crashed))
+            .collect();
+        users.sort();
+        users
+    }
+
+    /// Relay records the user on every update, not only the first
+    /// (metrics_extraction/sessions/mod.rs), so a user set after the session
+    /// started is counted.
+    #[test]
+    fn the_user_is_recorded_on_any_update() {
+        let mut state = AggregatorState::default();
+        apply_update(
+            &mut state,
+            1,
+            &make_update(true, SessionStatus::Ok, 0, None),
+        );
+        apply_update(
+            &mut state,
+            1,
+            &make_update(false, SessionStatus::Ok, 0, Some("u1")),
+        );
+        assert_eq!(users(&state), vec![("u1".to_string(), false)]);
+    }
+
+    /// Relay's `nil_to_none`: a nil UUID, hyphenated or not, is no user.
+    #[test]
+    fn a_nil_uuid_is_no_user() {
+        let mut state = AggregatorState::default();
+        for did in [
+            "00000000-0000-0000-0000-000000000000",
+            "00000000000000000000000000000000",
+        ] {
+            apply_update(
+                &mut state,
+                1,
+                &make_update(true, SessionStatus::Crashed, 0, Some(did)),
+            );
+        }
+        assert!(users(&state).is_empty());
+    }
+
+    fn bucket_of(state: &AggregatorState) -> Vec<DateTime<Utc>> {
+        state.counts.keys().map(|k| k.bucket).collect()
+    }
+
+    fn started_at(started: &str) -> SessionUpdate {
+        SessionUpdate {
+            started: Some(started.to_string()),
+            ..make_update(true, SessionStatus::Ok, 0, None)
+        }
+    }
+
+    /// Relay's `ClockDriftProcessor`: a device clock 55 minutes or more off
+    /// (`received_at - sent_at`) is corrected on `started` before bucketing.
+    #[test]
+    fn a_drifted_device_clock_is_corrected() {
+        let received = at("2026-06-10T13:00:00Z");
+        let mut state = AggregatorState::default();
+        let clock = SessionClock::new(received, Some("2026-06-10T10:00:00Z"));
+        super::apply_update(
+            &mut state,
+            1,
+            &started_at("2026-06-10T09:50:00Z"),
+            10,
+            clock,
+        );
+        assert_eq!(bucket_of(&state), vec![at("2026-06-10T12:50:00Z")]);
+
+        // Under 55 minutes is not drift.
+        let mut state = AggregatorState::default();
+        let clock = SessionClock::new(received, Some("2026-06-10T12:10:00Z"));
+        super::apply_update(
+            &mut state,
+            1,
+            &started_at("2026-06-10T12:00:00Z"),
+            10,
+            clock,
+        );
+        assert_eq!(bucket_of(&state), vec![at("2026-06-10T12:00:00Z")]);
+    }
+
+    /// Relay drops a session that started more than 5 days before it arrived
+    /// or more than a minute after, and one with no `started` at all.
+    #[test]
+    fn a_session_outside_relays_window_is_dropped() {
+        let received = at("2026-06-10T10:00:00Z");
+        let clock = SessionClock::new(received, None);
+        for started in [
+            Some("2026-06-05T09:59:00Z"),
+            Some("2026-06-10T10:01:01Z"),
+            Some("not a date"),
+            None,
+        ] {
+            let mut state = AggregatorState::default();
+            let update = SessionUpdate {
+                started: started.map(str::to_string),
+                ..make_update(true, SessionStatus::Ok, 0, None)
+            };
+            super::apply_update(&mut state, 1, &update, 10, clock);
+            assert!(state.counts.is_empty(), "started {started:?} was kept");
+        }
+        let mut state = AggregatorState::default();
+        super::apply_update(
+            &mut state,
+            1,
+            &started_at("2026-06-05T10:01:00Z"),
+            10,
+            clock,
+        );
+        assert_eq!(state.counts.len(), 1, "4 days 23 hours old is kept");
+
+        // Each pre-aggregated bucket on its own.
+        let mut state = AggregatorState::default();
+        let agg: SessionAggregates = serde_json::from_value(serde_json::json!({
+            "attrs": { "release": "1.0.0" },
+            "aggregates": [
+                { "started": "2026-06-01T10:00:00Z", "exited": 1 },
+                { "started": "2026-06-10T09:00:00Z", "exited": 1 }
+            ]
+        }))
+        .unwrap();
+        super::apply_aggregates(&mut state, 1, &agg, 10, clock);
+        assert_eq!(bucket_of(&state), vec![at("2026-06-10T09:00:00Z")]);
+    }
+
+    /// Relay checks the update's `timestamp` against the same window, after
+    /// raising it to `started` if it is earlier (`normalize_update`).
+    #[test]
+    fn an_update_stamped_outside_the_window_is_dropped() {
+        let clock = SessionClock::new(at("2026-06-10T10:00:00Z"), None);
+        let stamped = |timestamp: &str| SessionUpdate {
+            timestamp: Some(timestamp.to_string()),
+            ..started_at("2026-06-10T09:50:00Z")
+        };
+        for (timestamp, kept) in [
+            ("2026-06-10T10:02:00Z", false),
+            ("not a date", false),
+            ("2026-06-10T09:55:00Z", true),
+            // Earlier than `started`: raised to it, so kept.
+            ("2026-06-01T00:00:00Z", true),
+        ] {
+            let mut state = AggregatorState::default();
+            super::apply_update(&mut state, 1, &stamped(timestamp), 10, clock);
+            assert_eq!(!state.counts.is_empty(), kept, "timestamp {timestamp}");
+        }
+    }
+
+    /// Relay reads `did` on a pre-aggregated bucket too.
+    #[test]
+    fn a_pre_aggregated_bucket_records_its_user() {
+        let mut state = AggregatorState::default();
+        let item: SessionAggregateItem = serde_json::from_value(serde_json::json!({
+            "started": "2026-06-10T10:00:00.000Z", "did": "u1", "exited": 1, "crashed": 1
+        }))
+        .unwrap();
+        apply_aggregate_item(&mut state, 1, "2.0.0", "staging", &item);
+        assert_eq!(users(&state), vec![("u1".to_string(), true)]);
     }
 
     #[test]
@@ -624,9 +900,8 @@ mod tests {
             1,
             &make_update(false, SessionStatus::Unhandled, 1, None),
         );
-        let c = state.counts.values().next().unwrap();
-        assert_eq!(c.errored, 1);
-        assert_eq!(c.crashed, 0);
+        assert_eq!(state.errored.len(), 1);
+        assert_eq!(state.counts.values().next().unwrap().crashed, 0);
     }
 
     #[test]
@@ -634,6 +909,7 @@ mod tests {
         let mut state = AggregatorState::default();
         let item = SessionAggregateItem {
             started: Some("2026-06-10T10:00:00.000Z".to_string()),
+            did: None,
             exited: 5,
             errored: 1,
             crashed: 0,
@@ -702,6 +978,7 @@ mod tests {
                 },
             )]),
             users: HashMap::from([(user.clone(), false)]),
+            errored: HashMap::new(),
         };
         merge_state(
             &mut state,

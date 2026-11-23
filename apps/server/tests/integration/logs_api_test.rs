@@ -106,7 +106,14 @@ async fn test_list_logs_filters_by_level() {
     assert_eq!(items[0]["level"], "error");
 }
 
-async fn store_logs(pool: &rustrak::db::DbPool, project_id: i32, items: Value) {
+/// Stores `items`, each given the trace id every SDK sends when it has none.
+async fn store_logs(pool: &rustrak::db::DbPool, project_id: i32, mut items: Value) {
+    for item in items.as_array_mut().expect("items is an array") {
+        item.as_object_mut()
+            .expect("a log is an object")
+            .entry("trace_id")
+            .or_insert("5b8efff798038103d269b633813fc60c".into());
+    }
     let ctx = ProcessorCtx {
         pool: pool.clone(),
         project_id,

@@ -1508,7 +1508,13 @@ async fn test_levels_are_normalized_like_relay() {
     let project = create_test_project(&db.pool, "Levels").await;
     let server = TestServer::new(&db).await;
 
-    for (sent, stored) in [("bogus", "error"), ("critical", "fatal"), ("log", "info")] {
+    for (sent, stored) in [
+        (serde_json::json!("bogus"), "error"),
+        (serde_json::json!("critical"), "fatal"),
+        (serde_json::json!("log"), "info"),
+        // Python logging levels (`Level::from_python_level`).
+        (serde_json::json!(30), "warning"),
+    ] {
         post_envelope(
             &server,
             &project,
@@ -1547,6 +1553,69 @@ async fn test_levels_are_normalized_like_relay() {
         .await
         .unwrap();
     assert_eq!(level, "info");
+
+    server.shutdown();
+}
+
+/// Relay limits each item type on its own (a profile up to 50 MiB), so a
+/// transaction is not lost because the profile beside it is over 1 MiB.
+#[actix_web::test]
+async fn test_a_transaction_with_a_large_profile_is_stored() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Profile").await;
+    let server = TestServer::new(&db).await;
+
+    let now = now_epoch();
+    let tx = serde_json::json!({
+        "type": "transaction", "transaction": "GET /profiled",
+        "start_timestamp": now - 1.0, "timestamp": now,
+        "contexts": { "trace": { "trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef" }}
+    });
+    let profile = serde_json::json!({ "samples": "x".repeat(2 * 1024 * 1024) });
+    let status = post_items(
+        &server,
+        &project,
+        &[
+            (serde_json::json!({ "type": "transaction" }), tx),
+            (serde_json::json!({ "type": "profile" }), profile),
+        ],
+    )
+    .await;
+    assert!(status.is_success(), "ingest returned {status}");
+    server.digested(project.id, 0).await;
+    assert_eq!(count_rows(&db.pool, "transactions", project.id).await, 1);
+
+    server.shutdown();
+}
+
+/// Relay reads a timestamp with no offset as UTC (`Timestamp::from_value`),
+/// so the event keeps the time the SDK gave it.
+#[actix_web::test]
+async fn test_a_naive_event_timestamp_is_read_as_utc() {
+    let db = TestDb::new().await;
+    let project = create_test_project(&db.pool, "Naive").await;
+    let server = TestServer::new(&db).await;
+
+    let sent = chrono::Utc::now() - chrono::Duration::hours(2);
+    let event = serde_json::json!({
+        "event_id": uuid::Uuid::new_v4().simple().to_string(),
+        "timestamp": sent.format("%Y-%m-%dT%H:%M:%S").to_string(),
+        "exception": { "values": [{ "type": "Naive", "value": "x" }] }
+    });
+    post_items(
+        &server,
+        &project,
+        &[(serde_json::json!({ "type": "event" }), event)],
+    )
+    .await;
+    server.digested(project.id, 0).await;
+    let stored: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT timestamp FROM events WHERE project_id = $1")
+            .bind(project.id)
+            .fetch_one(&db.pool)
+            .await
+            .expect("event stored");
+    assert_eq!(stored.timestamp(), sent.timestamp());
 
     server.shutdown();
 }
@@ -1696,6 +1765,7 @@ async fn test_spans_sent_without_an_op_are_stored_with_the_one_relay_gives_them(
             "trace_id": trace,
             "span_id": span_id,
             "name": "start response",
+            "status": "ok",
             "start_timestamp": now - 0.5,
             "end_timestamp": now,
             "attributes": attributes,

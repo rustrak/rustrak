@@ -42,8 +42,8 @@ async fn fill(pool: &DbPool, project_id: i32) {
         .await
         .unwrap();
     let logs = json!({ "items": [
-        { "timestamp": now, "level": "info", "body": "one" },
-        { "timestamp": now, "level": "error", "body": "two" },
+        { "timestamp": now, "trace_id": "5b8efff798038103d269b633813fc60c", "level": "info", "body": "one" },
+        { "timestamp": now, "trace_id": "5b8efff798038103d269b633813fc60c", "level": "error", "body": "two" },
     ]});
     LogsProcessor
         .process(serde_json::to_vec(&logs).unwrap().into(), &ctx)

@@ -74,11 +74,7 @@ impl TransactionProcessor {
         let release = extract_str(&data, "release", 200);
         let environment = extract_str(&data, "environment", 64);
         let server_name = extract_str(&data, "server_name", 255);
-        let level = data
-            .get("level")
-            .and_then(|v| v.as_str())
-            .and_then(relay_level)
-            .unwrap_or("info");
+        let level = data.get("level").and_then(relay_level).unwrap_or("info");
         let sdk = data.get("sdk").unwrap_or(&serde_json::Value::Null);
         let sdk_name = extract_str(sdk, "name", 255);
         let sdk_version = extract_str(sdk, "version", 255);

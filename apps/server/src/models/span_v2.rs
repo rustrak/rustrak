@@ -20,19 +20,19 @@ use serde_json::{Map, Value};
 /// One span entry from a Spans Protocol v2 container.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SpanV2Entry {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::models::lenient")]
     pub trace_id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::models::lenient")]
     pub span_id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::models::lenient")]
     pub parent_span_id: Option<String>,
     /// Human-readable span label (maps to Rustrak's `description` column —
     /// v2 has no separate `op`/`description` split at the top level).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::models::lenient")]
     pub name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::models::lenient")]
     pub status: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::models::lenient")]
     pub is_segment: bool,
     /// Required on the wire. `None` (absent) is a discard condition, not a
     /// default — mirrors Relay's `validate_timestamps`, which rejects a span
@@ -45,7 +45,7 @@ pub struct SpanV2Entry {
     /// Typed attribute map: `{"key": {"value": ..., "type": "string"|...}}`.
     /// Use [`Self::flat_attributes`] to unwrap into the plain `{key: value}`
     /// shape the rest of Rustrak's span-storage/gen_ai code expects.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::models::lenient")]
     pub attributes: Map<String, Value>,
 }
 
@@ -177,17 +177,21 @@ impl SpanV2Entry {
 /// (`application/vnd.sentry.items.span.v2+json`) is what pins this item to
 /// the v2 wire format, not the inner field.
 #[derive(Debug, Deserialize)]
-struct SpanV2Container {
-    #[serde(default, deserialize_with = "crate::models::deserialize_bounded_items")]
-    items: Vec<SpanV2Entry>,
+struct SpanV2Container<'a> {
+    #[serde(
+        borrow,
+        default,
+        deserialize_with = "crate::models::deserialize_bounded_items"
+    )]
+    items: Vec<&'a serde_json::value::RawValue>,
 }
 
-impl SpanV2Container {
+impl SpanV2Container<'_> {
     /// Parses a v2 container body into individual [`SpanV2Entry`]s.
     pub fn parse(body: &[u8]) -> AppResult<Vec<SpanV2Entry>> {
         let container: SpanV2Container = serde_json::from_slice(body)
             .map_err(|e| AppError::Validation(format!("Invalid span v2 container JSON: {}", e)))?;
-        Ok(container.items)
+        Ok(crate::models::container_entries(container.items))
     }
 }
 
@@ -212,5 +216,24 @@ mod tests {
         );
 
         assert!(parse_span_v2_container(body.as_bytes()).is_err());
+    }
+
+    /// Relay reads each span on its own: a `null` or mistyped field leaves
+    /// that field empty instead of failing the batch.
+    #[test]
+    fn a_bad_span_does_not_fail_its_batch() {
+        let body = br#"{"items":[
+            {"trace_id":"0123456789abcdef0123456789abcdef","span_id":123,"name":7},
+            {"trace_id":"0123456789abcdef0123456789abcdef","span_id":"0123456789abcdef","is_segment":null,"attributes":[]},
+            "not a span"
+        ]}"#;
+        let spans = parse_span_v2_container(body).expect("the batch parses");
+        assert_eq!(spans.len(), 2);
+        assert_eq!(
+            (spans[0].span_id.as_str(), spans[0].name.as_deref()),
+            ("", None)
+        );
+        assert!(!spans[1].is_segment);
+        assert!(spans[1].attributes.is_empty());
     }
 }
