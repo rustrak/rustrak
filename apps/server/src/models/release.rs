@@ -45,6 +45,218 @@ pub struct UpdateRelease {
     pub date_released: Option<DateTime<Utc>>,
 }
 
+/// A project named the way sentry-cli sends it: an all-digit value as a JSON
+/// number, anything else as a string (`api/serialization.rs`).
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(untagged)]
+pub enum ProjectRef {
+    Id(i64),
+    Slug(String),
+}
+
+impl ProjectRef {
+    pub fn as_key(&self) -> String {
+        match self {
+            ProjectRef::Id(id) => id.to_string(),
+            ProjectRef::Slug(slug) => slug.clone(),
+        }
+    }
+}
+
+/// DTO for `POST /api/0/organizations/{org}/releases/`, Sentry's
+/// `ReleaseWithVersionSerializer` plus `projects`. Fields Sentry ignores,
+/// such as sentry-cli's `dateStarted`, are ignored here too.
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CreateOrgRelease {
+    pub version: String,
+    /// Required: the release is created in each of these projects.
+    #[serde(default)]
+    pub projects: Option<Vec<ProjectRef>>,
+    #[serde(default, rename = "ref")]
+    pub reference: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Applied only when the release is created, as Sentry does.
+    #[serde(default, rename = "dateReleased")]
+    pub date_released: Option<DateTime<Utc>>,
+}
+
+/// DTO for `PUT /api/0/organizations/{org}/releases/{version}/`. Sentry
+/// applies `ref`, `url` and `dateReleased`; the `projects` sentry-cli sends
+/// are ignored, as Sentry's serializer has no such field.
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UpdateOrgRelease {
+    #[serde(default, rename = "ref")]
+    pub reference: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default, rename = "dateReleased")]
+    pub date_released: Option<DateTime<Utc>>,
+    /// Replaces the release's commits (`sentry-cli releases set-commits`
+    /// reading git), newest first.
+    #[serde(default)]
+    pub commits: Option<Vec<CommitInput>>,
+    /// Commits to fetch from a repository integration. Rustrak has none,
+    /// so any is refused as Sentry refuses an unknown repository; an empty
+    /// list clears the release's commits.
+    #[serde(default)]
+    pub refs: Option<Vec<RefInput>>,
+}
+
+/// One commit, Sentry's `CommitSerializer`. `patch_set` is accepted and not
+/// kept.
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CommitInput {
+    pub id: String,
+    #[serde(default)]
+    pub repository: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub author_name: Option<String>,
+    #[serde(default)]
+    pub author_email: Option<String>,
+    #[serde(default)]
+    pub timestamp: Option<DateTime<Utc>>,
+}
+
+impl CommitInput {
+    /// The limits of Sentry's `CommitSerializer`.
+    pub fn is_valid(&self) -> bool {
+        let fits = |value: &Option<String>, max: usize| {
+            value.as_deref().is_none_or(|v| v.chars().count() <= max)
+        };
+        !self.id.is_empty()
+            && self.id.chars().count() <= 64
+            && fits(&self.repository, 64)
+            && fits(&self.author_name, 128)
+            && fits(&self.author_email, 200)
+    }
+}
+
+/// A ref to a repository's commit range, Sentry's `ReleaseHeadCommitSerializer`.
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RefInput {
+    pub repository: String,
+    #[serde(default)]
+    pub commit: Option<String>,
+    #[serde(default, rename = "previousCommit")]
+    pub previous_commit: Option<String>,
+}
+
+/// A commit's author, as Sentry serializes it.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CommitAuthor {
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub name: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub email: Option<String>,
+}
+
+/// A release's commit, as Sentry's `CommitSerializer` answers it.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CommitResponse {
+    pub id: String,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub message: Option<String>,
+    #[serde(rename = "dateCreated")]
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub date_created: Option<DateTime<Utc>>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub repository: Option<String>,
+    pub author: CommitAuthor,
+}
+
+/// DTO for `POST .../releases/{version}/deploys/`, Sentry's
+/// `DeploySerializer`. `environment` is required.
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CreateDeploy {
+    #[serde(default)]
+    pub environment: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default, rename = "dateStarted")]
+    pub date_started: Option<DateTime<Utc>>,
+    /// Now when absent, as Sentry's `Deploy.date_finished` default.
+    #[serde(default, rename = "dateFinished")]
+    pub date_finished: Option<DateTime<Utc>>,
+    /// Only these of the release's projects; all of them when absent.
+    #[serde(default)]
+    pub projects: Option<Vec<ProjectRef>>,
+}
+
+/// A deploy as Sentry serializes it (`api/serializers/models/deploy.py`).
+#[derive(Debug, Serialize, FromRow)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeployResponse {
+    pub id: String,
+    pub environment: String,
+    #[serde(rename = "dateStarted")]
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub date_started: Option<DateTime<Utc>>,
+    #[serde(rename = "dateFinished")]
+    pub date_finished: DateTime<Utc>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub name: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub url: Option<String>,
+}
+
+/// Sentry's `Environment.is_valid_name`: at most 64 characters, none of
+/// them a line break or `/`. A deploy's environment cannot be blank.
+pub fn is_valid_environment(name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().count() <= 64
+        && !name
+            .chars()
+            .any(|c| matches!(c, '\n' | '\r' | '\x0c' | '/'))
+}
+
+/// One of a release's projects, as sentry-cli reads it.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReleaseProject {
+    pub id: i32,
+    pub slug: String,
+    pub name: String,
+}
+
+/// A release across the projects that have it: Sentry's organization-level
+/// release, which sentry-cli's `ReleaseInfo` reads (`version` and
+/// `dateCreated` are required).
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OrgReleaseResponse {
+    pub version: String,
+    #[serde(rename = "ref")]
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub reference: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub url: Option<String>,
+    #[serde(rename = "dateCreated")]
+    pub date_created: DateTime<Utc>,
+    #[serde(rename = "dateReleased")]
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub date_released: Option<DateTime<Utc>>,
+    pub projects: Vec<ReleaseProject>,
+    #[serde(rename = "commitCount")]
+    pub commit_count: i64,
+    /// The newest commit, which `set-commits` starts the next release from.
+    #[serde(rename = "lastCommit")]
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub last_commit: Option<CommitResponse>,
+}
+
 /// API response for a release.
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

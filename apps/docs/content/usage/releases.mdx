@@ -62,6 +62,18 @@ curl -X PUT "$RUSTRAK_URL/api/0/projects/_/storefront/releases/storefront@2.16.0
   -d '{"dateReleased": "2026-11-01T20:00:00Z"}'
 ```
 
-The commands `sentry-cli releases new`, `finalize`, `set-commits`, `deploys` and `list` do not work against Rustrak yet: they call Sentry's organization-level release endpoints, which Rustrak does not serve. `sentry-cli sourcemaps upload` does work; see [Source maps](/usage/source-maps).
+`sentry-cli` works too, with the same token. Point it at Rustrak and name the project; the organization is required by sentry-cli but ignored by Rustrak:
+
+```bash
+export SENTRY_URL="$RUSTRAK_URL" SENTRY_AUTH_TOKEN="$RUSTRAK_TOKEN"
+export SENTRY_ORG=_ SENTRY_PROJECT=storefront
+
+sentry-cli releases new storefront@2.16.0
+sentry-cli releases set-commits storefront@2.16.0 --local
+sentry-cli releases finalize storefront@2.16.0
+sentry-cli releases deploys storefront@2.16.0 new -e production
+```
+
+`releases list`, `info`, `delete` and `deploys list` work as well. Rustrak lists no repositories to sentry-cli, so `set-commits` always reads the commits from the local git checkout: sentry-cli ignores `--auto`, `--commit` and `--clear` when there are none. Like Sentry, `delete` refuses a release an issue started in or that has session data. For uploading source maps, see [Source maps](/usage/source-maps).
 
 A release also drives [Resolve in next release](/usage/issues#resolve-archive-reopen): an issue resolved that way reopens when an event arrives from a different release, or from any release once a newer one is created.

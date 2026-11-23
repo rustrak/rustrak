@@ -623,6 +623,605 @@
         ]
       }
     },
+    "/api/0/organizations/{org_slug}/releases/": {
+      "get": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "The releases of every project the caller can read, newest first:\n`sentry-cli releases list` without a project.",
+        "operationId": "releases.listInOrganization",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Releases, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrgReleaseResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Creates a release in each listed project, as `sentry-cli releases new`\ndoes. `url` and `dateReleased` apply only where the release is created.",
+        "operationId": "releases.createInOrganization",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrgRelease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Release created in at least one project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgReleaseResponse"
+                }
+              }
+            }
+          },
+          "208": {
+            "description": "Release already existed in every project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgReleaseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid projects, or an invalid version"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/0/organizations/{org_slug}/releases/{version}/": {
+      "get": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "A release across the projects the caller can read, as `sentry-cli\nreleases info` reads it.",
+        "operationId": "releases.getInOrganization",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Release version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The release",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgReleaseResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Updates a release in every project that has it: `ref`, `url` and\n`dateReleased`, which is what `sentry-cli releases finalize` sends.",
+        "operationId": "releases.updateInOrganization",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Release version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgRelease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Release updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgReleaseResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Deletes a release from every project that has it, unless an issue\nstarted in it or it has health data, as Sentry refuses to.",
+        "operationId": "releases.deleteInOrganization",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Release version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Release deleted"
+          },
+          "400": {
+            "description": "An issue started in the release, or it has health data"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/0/organizations/{org_slug}/releases/{version}/commits/": {
+      "get": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "A release's commits in the order they were set: `sentry-cli releases\ninfo --show-commits`.",
+        "operationId": "releases.listCommits",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Release version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The release's commits, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommitResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/0/organizations/{org_slug}/releases/{version}/deploys/": {
+      "get": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "A release's deploys, the latest per project and environment:\n`sentry-cli releases deploys list`.",
+        "operationId": "releases.listDeploys",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Release version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The latest deploy per project and environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeployResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Records that a release went out to an environment, in each of its\nprojects or the listed ones: `sentry-cli releases deploys new`.",
+        "operationId": "releases.createDeploy",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Release version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeploy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Deploy recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeployResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid environment, or a project the release is not in"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/0/organizations/{org_slug}/releases/{version}/previous-with-commits/": {
+      "get": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "The release before this one that has commits, or `{}`: where `sentry-cli\nreleases set-commits` starts reading git.",
+        "operationId": "releases.previousWithCommits",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Release version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The previous release with commits, or `{}`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Release not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/0/organizations/{org_slug}/repos/": {
       "get": {
         "tags": [
@@ -1157,6 +1756,73 @@
       }
     },
     "/api/0/projects/{org_slug}/{project_slug}/releases/": {
+      "get": {
+        "tags": [
+          "Releases"
+        ],
+        "summary": "One project's releases, newest first: `sentry-cli releases list` with\na project.",
+        "operationId": "releases.listInProject",
+        "parameters": [
+          {
+            "name": "org_slug",
+            "in": "path",
+            "description": "Organization slug (synthetic: accepted and ignored)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_slug",
+            "in": "path",
+            "description": "Project slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The project's releases, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrgReleaseResponse"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "Releases"
@@ -18340,6 +19006,109 @@
           }
         }
       },
+      "CommitAuthor": {
+        "type": "object",
+        "description": "A commit's author, as Sentry serializes it.",
+        "required": [
+          "name",
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CommitInput": {
+        "type": "object",
+        "description": "One commit, Sentry's `CommitSerializer`. `patch_set` is accepted and not\nkept.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "author_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "CommitResponse": {
+        "type": "object",
+        "description": "A release's commit, as Sentry's `CommitSerializer` answers it.",
+        "required": [
+          "id",
+          "message",
+          "dateCreated",
+          "repository",
+          "author"
+        ],
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/CommitAuthor"
+          },
+          "dateCreated": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CompactedTable": {
         "type": "object",
         "description": "One table a Postgres compaction rewrote. Sizes are heap, TOAST and\nindexes together (`pg_total_relation_size`).",
@@ -18643,6 +19412,55 @@
           }
         }
       },
+      "CreateDeploy": {
+        "type": "object",
+        "description": "DTO for `POST .../releases/{version}/deploys/`, Sentry's\n`DeploySerializer`. `environment` is required.",
+        "properties": {
+          "dateFinished": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Now when absent, as Sentry's `Deploy.date_finished` default."
+          },
+          "dateStarted": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projects": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ProjectRef"
+            },
+            "description": "Only these of the release's projects; all of them when absent."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CreateGitHubIssue": {
         "type": "object",
         "properties": {
@@ -18735,6 +19553,48 @@
               "null"
             ],
             "description": "Derived from `name` when left out. This is the slug SDKs check in with."
+          }
+        }
+      },
+      "CreateOrgRelease": {
+        "type": "object",
+        "description": "DTO for `POST /api/0/organizations/{org}/releases/`, Sentry's\n`ReleaseWithVersionSerializer` plus `projects`. Fields Sentry ignores,\nsuch as sentry-cli's `dateStarted`, are ignored here too.",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "dateReleased": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Applied only when the release is created, as Sentry does."
+          },
+          "projects": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ProjectRef"
+            },
+            "description": "Required: the release is created in each of these projects."
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
           }
         }
       },
@@ -18885,6 +19745,49 @@
           "user",
           "project"
         ]
+      },
+      "DeployResponse": {
+        "type": "object",
+        "description": "A deploy as Sentry serializes it (`api/serializers/models/deploy.py`).",
+        "required": [
+          "id",
+          "environment",
+          "dateStarted",
+          "dateFinished",
+          "name",
+          "url"
+        ],
+        "properties": {
+          "dateFinished": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dateStarted": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "DifAssembleFile": {
         "type": "object",
@@ -20691,6 +21594,69 @@
           }
         }
       },
+      "OrgReleaseResponse": {
+        "type": "object",
+        "description": "A release across the projects that have it: Sentry's organization-level\nrelease, which sentry-cli's `ReleaseInfo` reads (`version` and\n`dateCreated` are required).",
+        "required": [
+          "version",
+          "ref",
+          "url",
+          "dateCreated",
+          "dateReleased",
+          "projects",
+          "commitCount",
+          "lastCommit"
+        ],
+        "properties": {
+          "commitCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dateCreated": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dateReleased": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastCommit": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CommitResponse",
+                "description": "The newest commit, which `set-commits` starts the next release from."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseProject"
+            }
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
       "PercentileValue": {
         "type": "object",
         "description": "A vital's value at one percentile.",
@@ -20926,6 +21892,18 @@
             "format": "int32"
           }
         }
+      },
+      "ProjectRef": {
+        "oneOf": [
+          {
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "A project named the way sentry-cli sends it: an all-digit value as a JSON\nnumber, anything else as a string (`api/serialization.rs`)."
       },
       "ProjectRepository": {
         "type": "object",
@@ -21324,6 +22302,30 @@
           }
         }
       },
+      "RefInput": {
+        "type": "object",
+        "description": "A ref to a repository's commit range, Sentry's `ReleaseHeadCommitSerializer`.",
+        "required": [
+          "repository"
+        ],
+        "properties": {
+          "commit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previousCommit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository": {
+            "type": "string"
+          }
+        }
+      },
       "ReleaseHealthRow": {
         "type": "object",
         "description": "Per-release health row returned by the stats endpoint.",
@@ -21378,6 +22380,27 @@
           "total": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ReleaseProject": {
+        "type": "object",
+        "description": "One of a release's projects, as sentry-cli reads it.",
+        "required": [
+          "id",
+          "slug",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
           }
         }
       },
@@ -23687,6 +24710,51 @@
             ]
           },
           "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UpdateOrgRelease": {
+        "type": "object",
+        "description": "DTO for `PUT /api/0/organizations/{org}/releases/{version}/`. Sentry\napplies `ref`, `url` and `dateReleased`; the `projects` sentry-cli sends\nare ignored, as Sentry's serializer has no such field.",
+        "properties": {
+          "commits": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CommitInput"
+            },
+            "description": "Replaces the release's commits (`sentry-cli releases set-commits`\nreading git), newest first."
+          },
+          "dateReleased": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RefInput"
+            },
+            "description": "Commits to fetch from a repository integration. Rustrak has none,\nso any is refused as Sentry refuses an unknown repository; an empty\nlist clears the release's commits."
+          },
+          "url": {
             "type": [
               "string",
               "null"

@@ -290,7 +290,7 @@ fn param_value(name: &str, path: &str, schema: &Value, seed: &Seed) -> String {
         "log_id" => seed.log_id.to_string(),
         "rule_id" => seed.rule_id.to_string(),
         "slug" | "conversation_id" => "contract".into(),
-        "release" => CONTRACT_RELEASE.into(),
+        "release" | "version" => CONTRACT_RELEASE.into(),
         "project_slug" => seed.project_slug.clone(),
         "org_slug" => "rustrak".into(),
         "key" => "level".into(),
