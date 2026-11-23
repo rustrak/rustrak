@@ -3,7 +3,10 @@
   "url": "http://localhost:8090/projects/1/web-vitals",
   "viewport": { "width": 1440, "height": 900 },
   "steps": [
-    { "action": "wait", "for": { "role": "link", "name": "Where to start", "exact": false } },
+    {
+      "action": "wait",
+      "for": { "role": "link", "name": "Where to start", "exact": false }
+    },
     { "action": "wait", "ms": 1500 },
     { "action": "scroll", "target": { "role": "heading", "name": "Pages" } },
     {
@@ -11,7 +14,10 @@
       "target": { "role": "cell", "name": "/checkout", "exact": true },
       "tooltip": "Pages are ranked by opportunity, the score they cost. Open the costliest"
     },
-    { "action": "wait", "for": { "role": "link", "name": "PageSpeed Insights" } },
+    {
+      "action": "wait",
+      "for": { "role": "link", "name": "PageSpeed Insights" }
+    },
     {
       "action": "click",
       "target": { "role": "radio", "name": "Mobile" },
