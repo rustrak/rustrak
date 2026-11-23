@@ -4,7 +4,7 @@ import type { FieldError } from '../../src/errors.js';
 const BASE_URL = 'http://localhost:8080';
 
 /**
- * The nine `type` literals `AppError::error_response` can emit
+ * The ten `type` literals `AppError::error_response` can emit
  * (`apps/server/src/error.rs`). Declaring them as a union means a typo in a
  * fixture is a compile error rather than a body that silently stops matching
  * the server.
@@ -18,7 +18,8 @@ export type AppErrorType =
   | 'PayloadTooLarge'
   | 'DatabaseError'
   | 'InternalError'
-  | 'ServiceUnavailable';
+  | 'ServiceUnavailable'
+  | 'TooManyRequests';
 
 /**
  * The `Display` prefix `thiserror` puts in front of each variant's detail, from
@@ -38,6 +39,7 @@ export const APP_ERROR_PREFIXES = {
   DatabaseError: 'Database error: ',
   InternalError: 'Internal server error: ',
   ServiceUnavailable: 'Service unavailable: ',
+  TooManyRequests: 'Too many requests, seconds to wait: ',
 } as const satisfies Record<AppErrorType, string>;
 
 /**
@@ -56,6 +58,7 @@ export const APP_ERROR_STATUS = {
   DatabaseError: 500,
   InternalError: 500,
   ServiceUnavailable: 503,
+  TooManyRequests: 429,
 } as const satisfies Record<AppErrorType, number>;
 
 /**

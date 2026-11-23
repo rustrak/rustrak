@@ -237,8 +237,9 @@ pub enum AppError {
     Unavailable(String),
 
     /// Too many attempts from one caller: 429 with `Retry-After` set to the
-    /// seconds left until the next attempt is allowed.
-    #[error("Too many attempts; try again in {0} seconds")]
+    /// seconds left until the next attempt is allowed. The detail is that
+    /// number, last like every other variant's.
+    #[error("Too many requests, seconds to wait: {0}")]
     TooManyRequests(u64),
 
     /// Any of the ten above, annotated with the fields it blames.
