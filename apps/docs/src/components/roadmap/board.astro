@@ -1,0 +1,75 @@
+---
+import { Tag } from '@rustrak/ui';
+import { anchor, HORIZONS, type RoadmapItem } from '../../lib/roadmap';
+import Backdrop from '../backdrop.astro';
+import Reveal from '../reveal.astro';
+import ItemTitle from './item-title.astro';
+import LiveDot from './live-dot.astro';
+
+/**
+ * The whole roadmap as a board on the landing's photograph: a column per
+ * horizon, a card per item, read left to right from in flight to furthest
+ * out. A card jumps to its full entry below.
+ */
+interface Props {
+  items: RoadmapItem[];
+}
+const { items } = Astro.props;
+
+/** Cards shown per column before the rest folds into a count. */
+const PER_COLUMN = 4;
+let n = 0;
+---
+
+<Backdrop delay={0.6}>
+  <Reveal
+    y={40}
+    blur={0}
+    delay={0.85}
+    duration={1.5}
+    layer
+    class="m-3 grid gap-3 rounded-2xl border border-fg/15 bg-panel p-3 shadow-dialog sm:m-8 md:grid-cols-3 lg:m-12"
+  >
+    {
+      HORIZONS.map((horizon, h) => {
+        const column = items.filter((item) => item.horizon === horizon);
+        const rest = column.length - PER_COLUMN;
+        return (
+          <div class="flex flex-col gap-2 rounded-xl bg-aside p-3">
+            <div class="flex items-center gap-2 px-1 pb-1">
+              {h === 0 && <LiveDot />}
+              <span class="text-fg text-label">{horizon}</span>
+              <span class="text-fg-meta text-meta tabular-nums">
+                {column.length}
+              </span>
+            </div>
+            {column.slice(0, PER_COLUMN).map((item) => (
+              <Reveal y={16} blur={0} duration={0.9} delay={1.1 + n++ * 0.06}>
+                <a
+                  href={`#${anchor(item)}`}
+                  class="flex flex-col items-start gap-2 rounded-lg border border-border-subtle bg-surface p-3 transition-colors hover:border-border-strong hover:bg-surface-hover"
+                >
+                  <span class="line-clamp-2 text-fg text-control">
+                    <ItemTitle title={item.title} />
+                  </span>
+                  {item.area && <Tag variant="soft">{item.area}</Tag>}
+                </a>
+              </Reveal>
+            ))}
+            {rest > 0 && (
+              <a
+                href={`#horizon-${horizon}`}
+                class="rounded-lg px-1 py-1.5 text-fg-meta text-meta transition-colors hover:text-fg"
+              >
+                +{rest} more
+              </a>
+            )}
+            {column.length === 0 && (
+              <p class="px-1 py-2 text-fg-meta text-meta">Nothing here yet.</p>
+            )}
+          </div>
+        );
+      })
+    }
+  </Reveal>
+</Backdrop>

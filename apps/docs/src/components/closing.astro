@@ -1,0 +1,44 @@
+---
+import { StarIcon } from '@rustrak/ui';
+import { GITHUB, START } from '../site';
+import Backdrop from './backdrop.astro';
+import { LinkButton } from './link-button';
+import Reveal from './reveal.astro';
+import Words from './words.astro';
+---
+
+<!-- The way in, at the foot of the landing and of every post. -->
+<section class="py-24 sm:py-32">
+  <div class="mx-auto w-full max-w-7xl px-4 sm:px-6">
+    <Backdrop dim>
+      <div
+        class="flex flex-col items-center px-6 py-28 text-center sm:py-36"
+      >
+        <Words
+          text="Your errors, on your server."
+          delay={0.3}
+          class="max-w-[16ch] text-balance text-display text-fg"
+        />
+        <Reveal delay={0.6}>
+          <p class="mt-6 max-w-lg text-pretty text-fg-secondary text-lead">
+            Open source under AGPL-3.0. No per-event pricing, no sampling you
+            did not ask for.
+          </p>
+        </Reveal>
+        <Reveal delay={0.75} class="mt-10 flex items-center gap-3">
+          <LinkButton href={START} variant="primary" size="lg">
+            Get started
+          </LinkButton>
+          <LinkButton
+            href={GITHUB}
+            variant="secondary"
+            size="lg"
+            icon={StarIcon}
+          >
+            Star on GitHub
+          </LinkButton>
+        </Reveal>
+      </div>
+    </Backdrop>
+  </div>
+</section>

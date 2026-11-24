@@ -1,0 +1,112 @@
+---
+import { ArrowRightIcon } from '@rustrak/ui';
+import { CONTAINER } from '../site';
+import Reveal from './reveal.astro';
+import SectionHead from './section-head.astro';
+import Showcase from './showcase.astro';
+
+/**
+ * One feature, in one of three compositions so a run of them does not read
+ * as one block repeated: `wide` puts the product across the page with the
+ * points in a row beneath it; `left` and `right` set it beside a column that
+ * holds the heading and the points.
+ */
+interface Props {
+  index: number;
+  layout: 'wide' | 'left' | 'right';
+  designWidth?: number;
+  interactive?: boolean;
+  eyebrow: string;
+  title: string;
+  lead: string;
+  points: { title: string; body: string }[];
+  href: string;
+}
+const {
+  index,
+  layout,
+  designWidth,
+  interactive,
+  eyebrow,
+  title,
+  lead,
+  points,
+  href,
+} = Astro.props;
+const label = `${String(index).padStart(2, '0')} ${eyebrow}`;
+---
+
+{
+  layout === 'wide' ? (
+    <section class="py-16 sm:py-20">
+      <div class={CONTAINER}>
+        <div class="grid items-end gap-6 lg:grid-cols-2 lg:gap-14">
+          <SectionHead eyebrow={label} title={title} />
+          <Reveal delay={0.35} class="flex flex-col gap-4 lg:pb-1">
+            <p class="text-pretty text-fg-subtle text-lead">{lead}</p>
+            <a
+              href={href}
+              class="group inline-flex items-center gap-1.5 self-start text-control text-fg transition-colors hover:text-fg-brand"
+            >
+              Read the docs
+              <ArrowRightIcon className="size-3.5 transition-[translate] group-hover:translate-x-0.5" />
+            </a>
+          </Reveal>
+        </div>
+        <Showcase designWidth={designWidth} class="mt-12 aspect-[16/8]">
+          <slot />
+        </Showcase>
+        <div class="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {points.map((point, i) => (
+            <Reveal delay={i * 0.08} class="flex flex-col gap-1.5 border-border-subtle border-t pt-5">
+              <h3 class="text-fg text-section">{point.title}</h3>
+              <p class="text-fg-subtle text-value">{point.body}</p>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  ) : (
+    <section class="py-16 sm:py-20">
+      <div
+        class:list={[
+          CONTAINER,
+          'grid items-center gap-12 lg:gap-16',
+          layout === 'right'
+            ? 'lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]'
+            : 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]',
+        ]}
+      >
+        <Showcase
+          designWidth={designWidth}
+          interactive={interactive}
+          class:list={['aspect-[5/4]', layout === 'right' && 'lg:order-2']}
+        >
+          <slot />
+        </Showcase>
+        <div class="flex flex-col gap-8">
+          <SectionHead eyebrow={label} title={title} lead={lead} />
+          <div class="flex flex-col gap-5">
+            {points.map((point, i) => (
+              <Reveal delay={0.4 + i * 0.08} class="flex gap-3">
+                <span class="mt-2 size-1.5 shrink-0 rounded-pill bg-surface-brand" />
+                <p class="text-fg-subtle text-value">
+                  <span class="text-fg">{point.title}.</span> {point.body}
+                </p>
+              </Reveal>
+            ))}
+          </div>
+          <Reveal delay={0.7}>
+            <a
+              href={href}
+              class="group inline-flex items-center gap-1.5 self-start text-control text-fg transition-colors hover:text-fg-brand"
+            >
+              Read the docs
+              <ArrowRightIcon className="size-3.5 transition-[translate] group-hover:translate-x-0.5" />
+            </a>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  )
+}

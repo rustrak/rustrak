@@ -1,0 +1,134 @@
+/*
+ * The body of a release, rendered from Markdown at build time, so it arrives
+ * as bare tags. A step smaller than the blog's prose: a release note is a
+ * list of facts being scanned for one of them, not a page being read.
+ *
+ * The colour mixes towards the background from `--fg`, not `--fg-subtle`,
+ * which is the token for metadata and is chosen to recede; the body is the
+ * content of the page. 80% is a step firmer than the blog's 84% because this
+ * type is smaller and small type needs the contrast back.
+ */
+.changelog-prose :is(p, li) {
+  font-size: 15px;
+  line-height: 1.7;
+  color: color-mix(in oklab, var(--fg) 80%, var(--surface-canvas));
+}
+
+/* The release's one-line summary: the sentence that decides whether the
+   reader keeps going, a step above the body. */
+.changelog-lead {
+  max-width: 58ch;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: color-mix(in oklab, var(--fg) 88%, var(--surface-canvas));
+}
+
+.changelog-prose p + p {
+  margin-top: 0.9rem;
+}
+
+.changelog-prose :is(ul, ol) {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.changelog-prose p + :is(ul, ol) {
+  margin-top: 0.85rem;
+}
+
+.changelog-prose ul {
+  list-style: none;
+  padding: 0;
+}
+
+/* A short rule rather than a bullet: a rule in its own gutter gives every
+   item the same left edge, which is what makes a fifteen-item release
+   scannable at all. */
+.changelog-prose ul > li {
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.changelog-prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.82em;
+  width: 0.45rem;
+  height: 1px;
+  background: color-mix(in oklab, var(--fg) 32%, transparent);
+}
+
+.changelog-prose ol {
+  list-style: decimal;
+  padding-left: 1.15rem;
+}
+
+.changelog-prose ul ul {
+  margin-top: 0.5rem;
+}
+
+.changelog-prose strong {
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.changelog-prose a {
+  color: var(--fg-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, var(--fg-brand) 40%, transparent);
+}
+
+.changelog-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 0.12em 0.34em;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.changelog-prose pre {
+  margin-top: 0.9rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-code);
+  overflow-x: auto;
+}
+
+.changelog-prose pre code {
+  padding: 0;
+  background: none;
+  color: var(--code-fg);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Block + overflow so a wide table scrolls in place instead of pushing the
+   column sideways on a phone. */
+.changelog-prose table {
+  display: block;
+  overflow-x: auto;
+  margin-top: 0.9rem;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.changelog-prose :is(th, td) {
+  padding: 0.45rem 0.9rem 0.45rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: top;
+  color: color-mix(in oklab, var(--fg) 80%, var(--surface-canvas));
+}
+
+.changelog-prose th {
+  font-weight: 500;
+  color: var(--fg);
+}

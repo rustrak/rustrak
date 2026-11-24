@@ -1,0 +1,66 @@
+---
+import { Image } from 'astro:assets';
+import { cn } from '@rustrak/ui';
+import backdrop from '../assets/lime-swirl.jpg';
+import Reveal from './reveal.astro';
+import Scaled from './scaled.astro';
+
+/**
+ * The frame every product shot sits in: an abstract photo, blurred and pulled
+ * towards the canvas, with the UI set into it from the top left and running
+ * off the right and bottom edges.
+ */
+interface Props {
+  /** The width the UI is laid out at before it is scaled into the frame. */
+  designWidth?: number;
+  /** Leave the UI usable (the install command's tabs and copy button). */
+  interactive?: boolean;
+  class?: string;
+}
+const {
+  designWidth = 1040,
+  interactive = false,
+  class: className,
+} = Astro.props;
+---
+
+<Reveal
+  layer
+  y={48}
+  scale={0.96}
+  blur={0}
+  duration={1.3}
+  class={cn(
+    // `cn`, not `class:list`: the caller's aspect has to replace this one.
+    'relative aspect-[16/11] overflow-hidden rounded-3xl border border-border-subtle bg-panel',
+    className,
+  )}
+>
+  <Image
+    src={backdrop}
+    alt=""
+    widths={[480, 960]}
+    sizes="100vw"
+    class="absolute inset-0 size-full scale-110 object-cover blur-2xl saturate-[0.85]"
+  />
+  <div class="absolute inset-0 bg-canvas/20"></div>
+  <div
+    data-reveal
+    data-layer
+    inert={!interactive}
+    style="--x:48px;--y:48px;--blur:0px;--duration:1.5s;--delay:0.25s"
+    class="shot absolute top-[9%] right-0 bottom-0 left-[7%] overflow-hidden rounded-tl-2xl border-white/15 border-t border-l bg-panel shadow-dialog"
+  >
+    <Scaled width={designWidth} cropped class="size-full">
+      <slot />
+    </Scaled>
+  </div>
+</Reveal>
+
+<style>
+  /* Thousands of nodes in a screenshot: the browser skips laying them out and
+     painting them until the frame comes near the screen. */
+  .shot {
+    content-visibility: auto;
+  }
+</style>

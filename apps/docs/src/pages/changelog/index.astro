@@ -1,0 +1,163 @@
+---
+import { getReleases, ON_INDEX } from '../../changelog';
+import ReleaseEntry from '../../components/changelog/release-entry.astro';
+import ReleaseStrip from '../../components/changelog/release-strip.astro';
+import Timeline from '../../components/changelog/timeline.astro';
+import PageIntro from '../../components/page-intro.astro';
+import Reveal from '../../components/reveal.astro';
+import Page from '../../layouts/page.astro';
+import { CONTAINER } from '../../site';
+import '../../styles/changelog.css';
+
+const releases = await getReleases();
+const recent = releases.slice(0, ON_INDEX);
+const earlier = releases.slice(ON_INDEX);
+const latest = releases[0];
+
+/** The earlier releases by year, newest year first. */
+const years = Object.entries(
+  Object.groupBy(earlier, (r) => String(r.date.getUTCFullYear())),
+).sort(([a], [b]) => Number(b) - Number(a));
+
+/**
+ * Every anchor this page has ever answered to, for the releases no longer on
+ * it: `#v0-4-1` and the older filename anchors. A link shared when every
+ * release was on this page lands on the release's own page instead.
+ */
+const moved = Object.fromEntries(
+  earlier.flatMap((r) => [
+    [r.anchor, r.anchor],
+    [r.id, r.anchor],
+  ]),
+);
+
+const DATE = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+---
+
+<!--
+  The changelog: the whole history as one strip, the latest releases in full
+  on a timeline, and every earlier one a line in the archive, each with a
+  page of its own.
+-->
+<Page
+  title="Rustrak Changelog"
+  description="Release notes and version history for the Rustrak project."
+>
+  <link
+    slot="head"
+    rel="alternate"
+    type="application/rss+xml"
+    title="Rustrak Changelog"
+    href="/changelog/rss.xml"
+  />
+  <script slot="head" is:inline define:vars={{ moved }}>
+    // Before the first paint, so a moved release never flashes the top of
+    // the page first; and again if the hash changes on the page.
+    const go = () => {
+      const to = moved[decodeURIComponent(location.hash.slice(1))];
+      if (to) location.replace(`/changelog/${to}`);
+    };
+    go();
+    addEventListener('hashchange', go);
+  </script>
+
+  <PageIntro
+    eyebrow="Changelog"
+    title="What's new in Rustrak."
+    lead="What each version adds and fixes, and what to check before you upgrade."
+  >
+    <Fragment slot="meta">
+      {
+        latest && (
+          <>
+            <span class="text-fg-secondary">Latest {latest.version}</span>
+            <span aria-hidden="true">·</span>
+            <span>
+              {latest.date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                timeZone: 'UTC',
+              })}
+            </span>
+            <span aria-hidden="true">·</span>
+          </>
+        )
+      }
+      <a href="/changelog/rss.xml" class="transition-colors hover:text-fg">
+        RSS feed
+      </a>
+    </Fragment>
+  </PageIntro>
+
+  <div class:list={[CONTAINER, 'pt-16 pb-28']}>
+    <Reveal y={32} layer>
+      <ReleaseStrip
+        releases={releases}
+        onPage={new Set(recent.map((r) => r.anchor))}
+      />
+    </Reveal>
+
+    <div class="mt-12">
+      <Timeline>
+        {recent.map((release) => <ReleaseEntry release={release} />)}
+      </Timeline>
+    </div>
+
+    {
+      earlier.length > 0 && (
+        <section class="mt-16 border-border-subtle border-t pt-16">
+          <Reveal y={12}>
+            <h2 class="font-mono text-fg-meta text-mono uppercase tracking-wider">
+              Earlier releases
+            </h2>
+          </Reveal>
+          {years.map(([year, list]) => (
+            <div class="mt-10 grid gap-4 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-16">
+              <Reveal y={12}>
+                <h3 class="text-fg-subtle text-page-title tabular-nums">
+                  {year}
+                </h3>
+              </Reveal>
+              <ol class="border-border-subtle border-b">
+                {list?.map((release) => (
+                  // The row a release's page links back to.
+                  <li id={`archive-${release.anchor}`} class="scroll-mt-24">
+                    <a
+                      href={`/changelog/${release.anchor}`}
+                      class="group grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-baseline gap-4 border-border-subtle border-t py-3.5"
+                    >
+                      <span
+                        class:list={[
+                          'font-mono text-mono tabular-nums',
+                          release.channel === 'minor'
+                            ? 'text-fg'
+                            : 'text-fg-subtle',
+                        ]}
+                      >
+                        {release.version}
+                      </span>
+                      <span class="truncate text-fg-secondary text-value transition-colors group-hover:text-fg-brand">
+                        {release.title}
+                      </span>
+                      <time
+                        datetime={release.date.toISOString().slice(0, 10)}
+                        class="text-fg-meta text-meta tabular-nums"
+                      >
+                        {DATE.format(release.date)}
+                      </time>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+        </section>
+      )
+    }
+  </div>
+</Page>

@@ -1,0 +1,77 @@
+---
+import { label, mb, num, RUNS, type Run } from '../../lib/compare';
+
+/**
+ * One measure per run as horizontal bars, best first, Rustrak lit, the value
+ * written at the end of each bar. Plain HTML: every value is on the page, so
+ * there is nothing to hover for.
+ */
+interface Props {
+  metric: 'peak' | 'cpu' | 'stored';
+  unit?: string;
+  ids?: string[];
+}
+const { metric, unit = '', ids } = Astro.props;
+
+const value = (r: Run) =>
+  metric === 'peak'
+    ? r.ram.peak
+    : metric === 'cpu'
+      ? r.cpuMsPerEvent
+      : r.storedPerS;
+const format = (v: number) =>
+  metric === 'peak'
+    ? mb(v)
+    : metric === 'cpu'
+      ? `${v} ${unit}`
+      : `${num(v)} ${unit}`;
+const only = ids && new Set(ids);
+const rows = RUNS.filter((r) => !only || only.has(r.id))
+  .map((run) => ({ run, value: value(run) }))
+  .sort((a, b) =>
+    metric === 'stored' ? b.value - a.value : a.value - b.value,
+  );
+const max = Math.max(...rows.map((r) => r.value));
+---
+
+<!-- On a phone the labels alone would take the width: the panel scrolls
+     sideways instead of squeezing the bars. -->
+<div class="-mx-1 overflow-x-auto px-1">
+  <ol data-reveal="chart" class="flex min-w-[30rem] flex-col gap-3">
+    {
+      rows.map(({ run, value }, i) => (
+        <li class="grid grid-cols-[12rem_minmax(0,1fr)] items-center gap-4">
+          <span
+            class:list={[
+              'truncate text-[13px]',
+              run.rustrak ? 'text-fg' : 'text-fg-subtle',
+            ]}
+          >
+            {label(run)}
+          </span>
+          {/* The track leaves room on its right for the longest value, so
+              every bar is to scale and its value sits just past its end. */}
+          <span class="relative me-20 h-6">
+            <span
+              class:list={[
+                'hbar block h-full min-w-[3px] rounded-r-sm',
+                run.id === 'rustrak'
+                  ? 'bg-fg-brand'
+                  : run.rustrak
+                    ? 'bg-fg-brand/55'
+                    : 'bg-fg-meta',
+              ]}
+              style={`width:${(value / max) * 100}%;--delay:${0.2 + i * 0.06}s`}
+            />
+            <span
+              class="absolute top-1/2 -translate-y-1/2 ps-2 font-mono text-[11px] text-fg-secondary tabular-nums whitespace-nowrap"
+              style={`left:${(value / max) * 100}%`}
+            >
+              {format(value)}
+            </span>
+          </span>
+        </li>
+      ))
+    }
+  </ol>
+</div>

@@ -1,0 +1,20 @@
+---
+import Footer from '../components/footer.astro';
+import Nav from '../components/nav.astro';
+import Base from './base.astro';
+
+/**
+ * The frame around every page outside the docs: the nav and the footer on
+ * the product's canvas. `Base`'s props pass straight through.
+ */
+type Props = import('astro/types').ComponentProps<typeof Base>;
+---
+
+<Base {...Astro.props}>
+  <slot name="head" slot="head" />
+  <Nav />
+  <main>
+    <slot />
+  </main>
+  <Footer />
+</Base>

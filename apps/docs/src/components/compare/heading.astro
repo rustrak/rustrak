@@ -1,0 +1,29 @@
+---
+import Reveal from '../reveal.astro';
+
+/**
+ * A section heading inside a comparison page: a numbered eyebrow, an `h2`
+ * and an optional lead, as the landing opens its sections.
+ */
+interface Props {
+  id?: string;
+  eyebrow?: string;
+  title: string;
+  lead?: string;
+}
+const { id, eyebrow, title, lead } = Astro.props;
+---
+
+<Reveal y={16} class="flex max-w-2xl flex-col gap-4">
+  {
+    eyebrow && (
+      <p class="font-mono text-fg-brand text-mono uppercase tracking-wider">
+        {eyebrow}
+      </p>
+    )
+  }
+  <h2 id={id} class="scroll-mt-24 text-balance text-fg text-headline">
+    {title}
+  </h2>
+  {lead && <p class="text-pretty text-fg-subtle text-lead">{lead}</p>}
+</Reveal>

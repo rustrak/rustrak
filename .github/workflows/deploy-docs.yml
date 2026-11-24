@@ -109,13 +109,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Mermaid diagrams are drawn to SVG at build time in a headless browser.
+      - run: pnpm --filter docs exec playwright install --with-deps chromium
+
       - name: Build docs
         run: pnpm build:docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: apps/docs/out
+          path: apps/docs/dist
 
       - name: Deploy to GitHub Pages
         id: deployment
@@ -130,7 +133,7 @@ jobs:
         continue-on-error: true
         run: |
           KEY=$(ls apps/docs/public | sed -nE 's/^([0-9a-f]{32})\.txt$/\1/p')
-          URLS=$(grep -o '<loc>[^<]*' apps/docs/out/sitemap.xml | sed 's/<loc>//' | jq -R . | jq -sc .)
+          URLS=$(grep -o '<loc>[^<]*' apps/docs/dist/sitemap.xml | sed 's/<loc>//' | jq -R . | jq -sc .)
           curl -fsS -X POST https://api.indexnow.org/indexnow \
             -H 'Content-Type: application/json; charset=utf-8' \
             -d "{\"host\":\"rustrak.dev\",\"key\":\"$KEY\",\"urlList\":$URLS}" \

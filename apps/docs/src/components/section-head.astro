@@ -1,0 +1,27 @@
+---
+import Reveal from './reveal.astro';
+import Words from './words.astro';
+
+/** Eyebrow, headline and one paragraph: the opening of every section. */
+interface Props {
+  eyebrow: string;
+  title: string;
+  lead?: string;
+  center?: boolean;
+}
+const { eyebrow, title, lead, center } = Astro.props;
+---
+
+<div class:list={['flex max-w-2xl flex-col gap-5', center && 'mx-auto items-center text-center']}>
+  <Reveal y={12}>
+    <p class="font-mono text-fg-brand text-mono uppercase tracking-wider">{eyebrow}</p>
+  </Reveal>
+  <Words text={title} delay={0.1} class="text-balance text-fg text-headline" />
+  {
+    lead && (
+      <Reveal delay={0.35}>
+        <p class="text-pretty text-fg-subtle text-lead">{lead}</p>
+      </Reveal>
+    )
+  }
+</div>

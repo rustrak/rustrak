@@ -15,10 +15,10 @@
       "**",
       "!**/node_modules",
       "!**/dist",
-      "!**/.next",
+      "!**/.astro",
       "!**/logs",
       "!**/.turbo",
-      "!**/next-env.d.ts",
+      "!apps/docs/public",
       "!apps/dashboard/src/routeTree.gen.ts",
       "!packages/client/src/generated"
     ]
@@ -108,6 +108,17 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.astro"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off",
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["apps/dashboard/src/**"],
       "linter": {

@@ -1,0 +1,252 @@
+---
+import { linear, log as logScale, path } from '../../lib/chart';
+import { mb } from '../../lib/compare';
+
+/**
+ * A line chart drawn at build time: an SVG with its grid, axes, lines and
+ * labels already in place, the lines drawing themselves in as the chart
+ * scrolls into view. `chart-tooltip.ts` adds the readout under the pointer,
+ * from the points embedded beside it.
+ *
+ * Laid out on a fixed 1000-unit width and scaled to fit; on a phone the
+ * panel scrolls sideways instead of shrinking the text past reading.
+ */
+export interface Series {
+  id: string;
+  label: string;
+  color: string;
+  /** Rustrak's lines are thicker and its labels full-strength. */
+  strong: boolean;
+  /** Seconds the line takes to draw. */
+  duration: number;
+  points: [number, number][];
+  /** A label at the line's last point. */
+  end: {
+    text: string;
+    /** A figure after the text, in mono. */
+    figure?: string;
+    anchor: 'start' | 'middle' | 'end';
+    /** Above the point, in pixels; a hairline joins a lifted label to it. */
+    lift: number;
+    dx: number;
+    dy: number;
+    dot: boolean;
+  };
+  /** For the race: when the product finished, and how its finish reads. */
+  done?: number;
+  finish?: string;
+}
+
+interface Props {
+  series: Series[];
+  x: { scale: 'log' | 'linear'; domain: [number, number]; ticks: number[] };
+  y: { domain: [number, number]; ticks: number[]; format: 'k' | 'mb' };
+  height: number;
+  margin: { top: number; right: number; bottom: number; left: number };
+  /** `race`: who has finished and how far the rest are; `values`: each value. */
+  tooltip: 'race' | 'values';
+  /** A vertical marker with a label, such as when the burst started. */
+  marker?: { x: number; label: string };
+}
+const { series, x, y, height, margin, tooltip, marker } = Astro.props;
+
+const W = 1000;
+const range: [number, number] = [margin.left, W - margin.right];
+const sx = (x.scale === 'log' ? logScale : linear)(x.domain, range);
+const sy = linear(y.domain, [height - margin.bottom, margin.top]);
+const yLabel = (v: number) =>
+  y.format === 'k' ? (v ? `${v / 1000}k` : '0') : mb(v);
+
+const data = {
+  tooltip,
+  x: { scale: x.scale, domain: x.domain, range },
+  y: { domain: y.domain, range: [height - margin.bottom, margin.top] },
+  series: series.map(({ id, label, color, strong, points, done, finish }) => ({
+    id,
+    label,
+    color,
+    strong,
+    points,
+    done,
+    finish,
+  })),
+};
+---
+
+<div class="-mx-1 overflow-x-auto px-1">
+  <div data-line-chart class="relative min-w-[40rem]">
+    <script type="application/json" set:html={JSON.stringify(data)} />
+    <svg
+      data-reveal="chart"
+      viewBox={`0 0 ${W} ${height}`}
+      class="block w-full overflow-visible"
+      role="img"
+      aria-label="Chart; every value is also in the table further down"
+    >
+      {
+        y.ticks.map((v) => (
+          <g>
+            <line
+              x1={range[0]}
+              x2={range[1]}
+              y1={sy(v)}
+              y2={sy(v)}
+              stroke="var(--border-divider)"
+            />
+            <text
+              x={range[0] - 10}
+              y={sy(v)}
+              dy="4"
+              text-anchor="end"
+              class="fill-fg-meta font-mono text-[11px]"
+            >
+              {yLabel(v)}
+            </text>
+          </g>
+        ))
+      }
+      {
+        x.ticks.map((v) => (
+          <text
+            x={sx(v)}
+            y={height - margin.bottom + 20}
+            text-anchor="middle"
+            class="fill-fg-meta font-mono text-[11px]"
+          >
+            {v} s
+          </text>
+        ))
+      }
+      {
+        marker && (
+          <g>
+            <line
+              x1={sx(marker.x)}
+              x2={sx(marker.x)}
+              y1={margin.top}
+              y2={height - margin.bottom}
+              stroke="var(--fg-ghost)"
+            />
+            <text
+              x={sx(marker.x) + 6}
+              y={margin.top + 12}
+              class="fill-fg-meta text-[11px]"
+            >
+              {marker.label}
+            </text>
+          </g>
+        )
+      }
+
+      {
+        series.map((s) => {
+          const screen = s.points.map(([px, py]): [number, number] => [
+            sx(px),
+            sy(py),
+          ]);
+          const [lx, ly] = screen[screen.length - 1];
+          const { end } = s;
+          return (
+            <g>
+              <path
+                class="line"
+                d={path(screen)}
+                pathLength="1"
+                fill="none"
+                stroke={s.color}
+                stroke-width={s.strong ? 2.5 : 1.75}
+                stroke-linejoin="round"
+                stroke-linecap="round"
+                style={`--duration:${s.duration}s`}
+              />
+              <g class="after-draw" style={`--duration:${s.duration}s`}>
+                {end.lift > 8 && (
+                  <line
+                    x1={lx}
+                    x2={lx}
+                    y1={ly - end.lift + 4}
+                    y2={ly - 4}
+                    stroke="var(--fg-ghost)"
+                  />
+                )}
+                {end.dot && (
+                  <circle
+                    cx={lx}
+                    cy={ly}
+                    r="3.5"
+                    fill={s.color}
+                    stroke="var(--surface-panel)"
+                    stroke-width="2"
+                  />
+                )}
+                <text
+                  x={lx}
+                  y={ly - end.lift}
+                  dx={end.dx}
+                  dy={end.dy}
+                  text-anchor={end.anchor}
+                  class:list={[
+                    'text-[11px]',
+                    s.strong ? 'fill-fg' : 'fill-fg-subtle',
+                  ]}
+                >
+                  {end.text}
+                  {end.figure && (
+                    <tspan
+                      class:list={[
+                        'font-mono',
+                        s.strong ? 'fill-fg-brand' : 'fill-fg-secondary',
+                      ]}
+                    >
+                      {' '}
+                      {end.figure}
+                    </tspan>
+                  )}
+                </text>
+              </g>
+            </g>
+          );
+        })
+      }
+      <!-- What the pointer is on: a hairline at the second, and a dot where
+           each line crosses it. Hidden until the pointer is on the plot. -->
+      <g data-hover visibility="hidden" class="pointer-events-none">
+        <line
+          data-cursor
+          y1={margin.top}
+          y2={height - margin.bottom}
+          stroke="var(--fg-ghost)"></line>
+        {
+          series.map((s) => (
+            <circle
+              data-dot={s.id}
+              r="4"
+              fill={s.color}
+              stroke="var(--surface-panel)"
+              stroke-width="2"
+            />
+          ))
+        }
+      </g>
+      <!-- The plot area, which takes the pointer: the whole of it, not only
+           the strokes, so the readout follows anywhere inside. -->
+      <rect
+        data-plot
+        x={range[0]}
+        y={margin.top}
+        width={range[1] - range[0]}
+        height={height - margin.top - margin.bottom}
+        fill="transparent"
+        class="cursor-crosshair"></rect>
+    </svg>
+    <div
+      data-tip
+      class="pointer-events-none absolute top-0 left-0 z-10 rounded-xl border border-border-subtle bg-canvas/95 px-3 py-2 opacity-0 shadow-lg backdrop-blur transition-[opacity,translate] duration-150 ease-out"
+    >
+    </div>
+  </div>
+</div>
+
+<script>
+  import './chart-tooltip';
+</script>

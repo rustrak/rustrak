@@ -1,0 +1,33 @@
+---
+import { CONTAINER } from '../site';
+import Reveal from './reveal.astro';
+
+/** The SDKs that already talk to Rustrak, named rather than drawn as logos. */
+const SDKS = [
+  'JavaScript',
+  'Python',
+  'Go',
+  'Rust',
+  'Ruby',
+  'PHP',
+  'Java',
+  '.NET',
+];
+---
+
+<section class="py-16">
+  <div class:list={[CONTAINER, 'flex flex-col items-center gap-6 text-center']}>
+    <Reveal y={12}>
+      <p class="text-meta text-fg-meta">Works with the official Sentry SDKs for</p>
+    </Reveal>
+    <ul class="flex flex-wrap justify-center gap-x-10 gap-y-3">
+      {
+        SDKS.map((sdk, i) => (
+          <Reveal as="li" y={12} delay={0.1 + i * 0.05} class="text-section text-fg-subtle">
+            {sdk}
+          </Reveal>
+        ))
+      }
+    </ul>
+  </div>
+</section>

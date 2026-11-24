@@ -1,0 +1,122 @@
+---
+import type { Release } from '../../changelog';
+
+/**
+ * The whole history on one line: a bar per release, oldest on the left, as
+ * tall as the number of changes it carried, minors in lime. Each bar is a
+ * link to its release; pointing at one names it in the readout underneath.
+ */
+interface Props {
+  releases: Release[];
+  /** Releases shown in full on the page, which a bar links to in place. */
+  onPage: Set<string>;
+}
+const { releases, onPage } = Astro.props;
+const history = [...releases].reverse();
+const peak = Math.max(...history.map((r) => r.changes));
+const changes = history.reduce((sum, r) => sum + r.changes, 0);
+const stats = [
+  { label: 'Releases', value: history.length },
+  { label: 'Changes', value: changes },
+  { label: 'Latest', value: releases[0]?.version ?? 'None' },
+];
+const DATE = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+let year = '';
+const HINT = 'One bar per release, as tall as its changes. Lime is a minor.';
+---
+
+<div data-strip class="rounded-3xl border border-border-subtle bg-panel p-6 sm:p-8">
+  <dl class="mb-10 grid grid-cols-3 gap-6">
+    {
+      stats.map((stat) => (
+        <div class="flex flex-col gap-1.5">
+          <dd class="order-1 text-fg text-page-title tabular-nums">{stat.value}</dd>
+          <dt class="order-2 text-fg-meta text-meta">{stat.label}</dt>
+        </div>
+      ))
+    }
+  </dl>
+  <div data-reveal="bars" class="flex h-20 items-end gap-[2px] sm:h-28 sm:gap-[3px]">
+    {
+      history.map((release, i) => (
+        <a
+          href={
+            onPage.has(release.anchor)
+              ? `#${release.anchor}`
+              : `/changelog/${release.anchor}`
+          }
+          aria-label={`${release.version}: ${release.title}`}
+          data-readout={`${release.version}|${release.title}|${DATE.format(release.date)}|${release.changes} changes`}
+          class="group flex h-full min-w-0 flex-1 items-end"
+        >
+          <span
+            class:list={[
+              'bar block w-full rounded-xs transition-opacity duration-300 group-hover:opacity-100! group-focus-visible:opacity-100!',
+              release.channel === 'minor'
+                ? 'bg-surface-brand'
+                : release.channel === 'patch'
+                  ? 'bg-fg/35'
+                  : 'bg-fg/20',
+            ]}
+            style={`height:${Math.max(6, (release.changes / peak) * 100)}%;--delay:${0.3 + i * 0.015}s`}
+          />
+        </a>
+      ))
+    }
+  </div>
+  <!-- Years under the first release of each, on the same flex track. -->
+  <div aria-hidden="true" class="mt-3 flex gap-[2px] sm:gap-[3px]">
+    {
+      history.map((release) => {
+        const y = String(release.date.getUTCFullYear());
+        const starts = y !== year;
+        year = y;
+        return (
+          <span class="min-w-0 flex-1 overflow-visible whitespace-nowrap font-mono text-fg-meta text-mono-sm">
+            {starts ? y : null}
+          </span>
+        );
+      })
+    }
+  </div>
+  <p data-readout-text class="mt-5 h-5 truncate text-fg-meta text-meta">{HINT}</p>
+</div>
+
+<script>
+  // The readout names whichever bar is pointed at or focused, and the others
+  // step back so it stands out.
+  const strip = document.querySelector<HTMLElement>('[data-strip]');
+  const text = strip?.querySelector<HTMLElement>('[data-readout-text]');
+  const hint = text?.textContent ?? '';
+  const show = (bar: HTMLElement | null) => {
+    if (!strip || !text) return;
+    strip.toggleAttribute('data-pointing', !!bar);
+    if (!bar) {
+      text.textContent = hint;
+      return;
+    }
+    const [version, ...rest] = (bar.dataset.readout ?? '').split('|');
+    text.replaceChildren();
+    const strong = document.createElement('span');
+    strong.className = 'text-fg';
+    strong.textContent = version;
+    text.append(strong, ...rest.map((part) => `  /  ${part}`));
+  };
+  for (const bar of strip?.querySelectorAll<HTMLElement>('[data-readout]') ?? []) {
+    bar.addEventListener('pointerenter', () => show(bar));
+    bar.addEventListener('focus', () => show(bar));
+    bar.addEventListener('blur', () => show(null));
+  }
+  strip?.addEventListener('pointerleave', () => show(null));
+</script>
+
+<style>
+  [data-pointing] :global(.bar) {
+    opacity: 0.35;
+  }
+</style>

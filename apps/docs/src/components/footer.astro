@@ -1,0 +1,37 @@
+---
+import { Wordmark } from '@rustrak/ui';
+import { CONTAINER, GITHUB, LINKS } from '../site';
+
+const links = [
+  ...LINKS,
+  { href: '/vs/sentry', label: 'vs Sentry' },
+  { href: GITHUB, label: 'GitHub' },
+];
+---
+
+<footer class="border-border-subtle border-t">
+  <div
+    class:list={[
+      CONTAINER,
+      'flex flex-col gap-8 py-12 md:flex-row md:items-center md:justify-between',
+    ]}
+  >
+    <div class="flex flex-col gap-3">
+      <Wordmark still className="h-5 w-auto self-start text-fg" />
+      <p class="text-fg-meta text-meta">
+        AGPL-3.0 · Not affiliated with Sentry. Compatible with its SDKs.
+      </p>
+    </div>
+    <ul class="flex flex-wrap gap-6">
+      {
+        links.map((link) => (
+          <li>
+            <a href={link.href} class="text-control text-fg-subtle transition-colors hover:text-fg">
+              {link.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</footer>

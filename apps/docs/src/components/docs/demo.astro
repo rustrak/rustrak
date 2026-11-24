@@ -1,0 +1,16 @@
+---
+import { InteractiveDemo } from './interactive-demo';
+
+/**
+ * `<InteractiveDemo>` as the docs' Markdown writes it. MDX cannot set a
+ * hydration directive, so the pages get this wrapper, which hydrates the
+ * player only when it scrolls into view: the only React on a docs page.
+ */
+interface Props {
+  src: string;
+}
+---
+
+<div class="demo">
+  <InteractiveDemo client:visible src={Astro.props.src} />
+</div>

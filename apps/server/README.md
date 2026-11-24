@@ -121,7 +121,7 @@ git add openapi.json
 git commit -m "chore(openapi): update spec"
 ```
 
-The docs site copies the spec at CI build time; `apps/docs/public/openapi.json` is not committed.
+The docs site copies the spec at build time; `apps/docs/public/openapi.json` is not committed.
 
 To run the server with the interactive explorer at `/docs`:
 

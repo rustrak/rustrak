@@ -1,0 +1,93 @@
+---
+import { getReleases, ON_INDEX, type Release } from '../../changelog';
+import ReleaseEntry from '../../components/changelog/release-entry.astro';
+import Timeline from '../../components/changelog/timeline.astro';
+import Closing from '../../components/closing.astro';
+import Reveal from '../../components/reveal.astro';
+import Page from '../../layouts/page.astro';
+import { CONTAINER } from '../../site';
+import '../../styles/changelog.css';
+
+/** A page per release: `/changelog/v0-32-0`, the link to share. */
+export async function getStaticPaths() {
+  const releases = await getReleases();
+  // Newest first, so the next one in the list is the older release.
+  return releases.map((release, i) => ({
+    params: { anchor: release.anchor },
+    props: {
+      release,
+      newer: releases[i - 1],
+      older: releases[i + 1],
+      // Back to where it sits on the index: its entry among the latest, or
+      // its row in the archive. Not its version anchor for an archived one:
+      // the index sends that anchor straight back here.
+      back:
+        i < ON_INDEX
+          ? `/changelog#${release.anchor}`
+          : `/changelog#archive-${release.anchor}`,
+    },
+  }));
+}
+
+interface Props {
+  release: Release;
+  newer?: Release;
+  older?: Release;
+  back: string;
+}
+const { release, newer, older, back } = Astro.props;
+const neighbours = [
+  newer && { release: newer, label: 'Newer' },
+  older && { release: older, label: 'Older' },
+].filter(Boolean) as { release: Release; label: string }[];
+---
+
+<Page
+  title={`${release.version}: ${release.title} | Rustrak Changelog`}
+  description={release.description || `What changed in Rustrak ${release.version}.`}
+>
+  <div class:list={[CONTAINER, 'pt-28 sm:pt-32']}>
+    <Reveal y={12} onLoad>
+      <a
+        href={back}
+        class="font-mono text-fg-brand text-mono uppercase tracking-wider transition-colors hover:text-fg"
+      >
+        ← Changelog
+      </a>
+    </Reveal>
+    <div data-pagefind-body>
+      <Timeline>
+        <ReleaseEntry release={release} page={back} />
+      </Timeline>
+    </div>
+
+    {
+      neighbours.length > 0 && (
+        <nav
+          aria-label="Other releases"
+          class="grid gap-4 border-border-subtle border-t pt-12 sm:grid-cols-2"
+        >
+          {neighbours.map(({ release: other, label }, i) => (
+            <Reveal
+              delay={i * 0.08}
+              class={!newer && i === 0 ? 'sm:col-start-2' : undefined}
+            >
+              <a
+                href={`/changelog/${other.anchor}`}
+                class="group flex h-full flex-col gap-3 rounded-2xl border border-border-subtle bg-panel p-6 transition-colors hover:border-border"
+              >
+                <span class="font-mono text-fg-meta text-mono-sm uppercase tracking-wider">
+                  {label} · {other.version}
+                </span>
+                <span class="text-balance text-fg text-section transition-colors group-hover:text-fg-brand">
+                  {other.title}
+                </span>
+              </a>
+            </Reveal>
+          ))}
+        </nav>
+      )
+    }
+  </div>
+  <Closing />
+</Page>

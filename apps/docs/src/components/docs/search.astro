@@ -1,0 +1,174 @@
+---
+import { SearchIcon } from '@rustrak/ui';
+
+/**
+ * ⌘K search over the built site, with Pagefind's index (`pagefind --site
+ * dist` after the build) and our own dialog: the index is fetched the first
+ * time the dialog opens, and only the fragments a query touches after that.
+ * In `astro dev` there is no index, and the dialog says so.
+ */
+---
+
+<dialog
+  data-search
+  data-palette
+  aria-label="Search the documentation"
+  class="m-auto mt-[12vh] w-[min(40rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border-subtle bg-surface-floating p-0 text-fg shadow-overlay backdrop:bg-canvas/70 backdrop:backdrop-blur-sm"
+>
+  <div class="flex items-center gap-3 border-border-subtle border-b px-4">
+    <span class="text-fg-meta"><SearchIcon size="md" /></span>
+    <input
+      data-search-input
+      type="text"
+      role="combobox"
+      aria-expanded="true"
+      aria-controls="search-results"
+      aria-autocomplete="list"
+      aria-label="Search the documentation"
+      placeholder="Search the documentation"
+      autocomplete="off"
+      spellcheck="false"
+      class="h-14 flex-1 bg-transparent text-fg text-value outline-none placeholder:text-fg-meta"
+    />
+    <kbd class="rounded border border-border-subtle px-1.5 font-mono text-[11px] text-fg-meta">
+      Esc
+    </kbd>
+  </div>
+  <ul id="search-results" data-search-results class="max-h-[60vh] overflow-y-auto p-2" role="listbox"></ul>
+  <p data-search-status class="px-5 py-8 text-center text-fg-meta text-meta">
+    Type to search guides, configuration and the API.
+  </p>
+</dialog>
+
+<script>
+  type Result = {
+    url: string;
+    excerpt: string;
+    meta: { title?: string };
+    sub_results?: { url: string; title: string; excerpt: string }[];
+  };
+  type Pagefind = {
+    debouncedSearch: (
+      q: string,
+    ) => Promise<{ results: { data: () => Promise<Result> }[] } | null>;
+  };
+
+  const dialog = document.querySelector<HTMLDialogElement>('[data-search]');
+  const input = dialog?.querySelector<HTMLInputElement>('[data-search-input]');
+  const list = dialog?.querySelector<HTMLUListElement>('[data-search-results]');
+  const status = dialog?.querySelector<HTMLElement>('[data-search-status]');
+  let pagefind: Pagefind | null = null;
+  let active = 0;
+
+  const load = async () => {
+    if (pagefind) return pagefind;
+    const url = '/pagefind/pagefind.js';
+    pagefind = (await import(/* @vite-ignore */ url)) as Pagefind;
+    return pagefind;
+  };
+
+  const open = () => {
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    input?.select();
+    load().catch(() => {
+      if (status) {
+        status.hidden = false;
+        status.textContent =
+          'Search is built with the site. Run `pnpm build` to try it locally.';
+      }
+    });
+  };
+
+  // The input keeps focus; `aria-activedescendant` tells a screen reader
+  // which option Enter opens.
+  const highlight = (i: number) => {
+    const items = [...(list?.querySelectorAll('li') ?? [])];
+    active = Math.max(0, Math.min(i, items.length - 1));
+    items.forEach((li, n) => li.setAttribute('aria-selected', String(n === active)));
+    const current = items[active];
+    if (current) input?.setAttribute('aria-activedescendant', current.id);
+    else input?.removeAttribute('aria-activedescendant');
+    current?.scrollIntoView({ block: 'nearest' });
+  };
+
+  /** One result: the page, then the sections of it the query matched. */
+  const render = (results: Result[]) => {
+    if (!list || !status) return;
+    list.replaceChildren();
+    status.hidden = results.length > 0;
+    status.textContent = 'No results. Try fewer or other words.';
+    for (const result of results) {
+      const hits = result.sub_results?.length
+        ? result.sub_results.slice(0, 3)
+        : [{ url: result.url, title: result.meta.title ?? result.url, excerpt: result.excerpt }];
+      for (const hit of hits) {
+        const li = document.createElement('li');
+        li.id = `search-option-${list.childElementCount}`;
+        li.setAttribute('role', 'option');
+        const a = document.createElement('a');
+        a.href = hit.url;
+        a.className =
+          'flex flex-col gap-1 rounded-lg px-3 py-2.5 transition-colors in-aria-selected:bg-surface-hover hover:bg-surface-hover';
+        a.tabIndex = -1;
+        const title = document.createElement('span');
+        title.className = 'text-fg text-control';
+        const page = result.meta.title ?? '';
+        title.textContent = hit.title === page ? page : `${page} › ${hit.title}`;
+        const excerpt = document.createElement('span');
+        excerpt.className =
+          'line-clamp-2 text-fg-subtle text-meta [&_mark]:bg-transparent [&_mark]:text-fg-brand';
+        // Pagefind's excerpt is escaped text with <mark> around the matches.
+        excerpt.innerHTML = hit.excerpt;
+        a.append(title, excerpt);
+        li.append(a);
+        list.append(li);
+      }
+    }
+    highlight(0);
+  };
+
+  input?.addEventListener('input', async () => {
+    const q = input.value.trim();
+    if (!q) {
+      list?.replaceChildren();
+      highlight(0);
+      if (status) {
+        status.hidden = false;
+        status.textContent = 'Type to search guides, configuration and the API.';
+      }
+      return;
+    }
+    const engine = await load().catch(() => null);
+    const search = await engine?.debouncedSearch(q);
+    if (!search) return;
+    const results = await Promise.all(search.results.slice(0, 8).map((r) => r.data()));
+    // A newer query, or a cleared input, owns the list by now.
+    if (input.value.trim() !== q) return;
+    render(results);
+  });
+
+  input?.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') highlight(active + 1);
+    else if (event.key === 'ArrowUp') highlight(active - 1);
+    else if (event.key === 'Enter') {
+      list?.querySelectorAll('a')[active]?.click();
+    } else return;
+    event.preventDefault();
+  });
+
+  // Clicking the backdrop closes it, as every command palette does.
+  dialog?.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  for (const button of document.querySelectorAll('[data-open-search]')) {
+    button.addEventListener('click', open);
+  }
+  addEventListener('keydown', (event) => {
+    const typing = (event.target as HTMLElement).closest('input, textarea');
+    if ((event.key === 'k' && (event.metaKey || event.ctrlKey)) || (event.key === '/' && !typing)) {
+      event.preventDefault();
+      open();
+    }
+  });
+</script>

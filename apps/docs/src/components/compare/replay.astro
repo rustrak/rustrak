@@ -1,0 +1,165 @@
+---
+import { label, num, RUNS, SERIES, SETUP } from '../../lib/compare';
+
+/**
+ * The burst, replayed from the measurements: one lane per product, the bar
+ * the share of the 20,000 errors a query could find at that second. It plays
+ * when it scrolls into view and again on Replay. Without JavaScript it shows
+ * the finish.
+ */
+interface Props {
+  ids: string[];
+  speed?: number;
+}
+const { ids, speed = 1 } = Astro.props;
+const data = SERIES as unknown as Record<
+  string,
+  { stored: [number, number][] }
+>;
+// A product whose run was incomplete has no series: it is left out.
+const runs = RUNS.filter((r) => ids.includes(r.id) && data[r.id]);
+
+/** Each product's stored-count line, cut where it reached the last error. */
+const lines = runs.map((r) => {
+  const points = data[r.id].stored;
+  const total = points[points.length - 1][1];
+  const done = points.findIndex(([, n]) => n === total);
+  return {
+    id: r.id,
+    secs: r.storedSecs,
+    points: points.slice(0, done + 1),
+  };
+});
+const done = (secs: number) => `all ${num(SETUP.events)} in ${secs} s`;
+---
+
+<div
+  data-replay={JSON.stringify({ speed, total: SETUP.events, lines })}
+  class="flex flex-col gap-8"
+>
+  <div class="flex items-end justify-between gap-6">
+    <div class="flex flex-col gap-1">
+      <span class="font-mono text-fg-meta text-mono uppercase tracking-wider">
+        Since the first request{speed > 1 ? ` · ${speed}× speed` : ''}
+      </span>
+      <span data-clock class="text-fg text-headline tabular-nums">
+        {Math.max(...runs.map((r) => r.storedSecs)).toFixed(1)} s
+      </span>
+    </div>
+    <button
+      type="button"
+      data-again
+      class="rounded-pill border border-border-subtle px-4 py-2 text-control text-fg-subtle transition-colors hover:text-fg"
+    >
+      Replay
+    </button>
+  </div>
+  <ul class="flex flex-col gap-6">
+    {
+      runs.map((r) => (
+        <li data-lane={r.id} class="flex flex-col gap-2.5">
+          <div class="flex items-baseline justify-between gap-4">
+            <span
+              class:list={['text-value', r.rustrak ? 'text-fg' : 'text-fg-subtle']}
+            >
+              {label(r)}
+            </span>
+            <span
+              data-count
+              data-strong={r.rustrak ? '' : undefined}
+              class:list={[
+                'font-mono text-mono tabular-nums',
+                r.rustrak ? 'text-fg-brand' : 'text-fg-secondary',
+              ]}
+            >
+              {done(r.storedSecs)}
+            </span>
+          </div>
+          <div class="h-3 overflow-hidden rounded-pill bg-surface">
+            <div
+              data-bar
+              class:list={[
+                'h-full w-full origin-left rounded-pill',
+                r.rustrak ? 'bg-surface-brand' : 'bg-fg-ghost',
+              ]}
+            />
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+</div>
+
+<script>
+  import { valueAt } from '../../lib/chart';
+
+  type Replay = {
+    speed: number;
+    total: number;
+    lines: { id: string; secs: number; points: [number, number][] }[];
+  };
+
+  const format = (n: number) => n.toLocaleString('en-US');
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-replay]')) {
+    const replay: Replay | null = JSON.parse(root.dataset.replay ?? 'null');
+    if (!replay) continue;
+    const { speed, total, lines } = replay;
+    const clock = root.querySelector<HTMLElement>('[data-clock]');
+    const end = Math.max(...lines.map((l) => l.secs));
+    const lanes = lines.map((line) => {
+      const lane = root.querySelector(`[data-lane="${line.id}"]`);
+      return {
+        line,
+        bar: lane?.querySelector<HTMLElement>('[data-bar]'),
+        count: lane?.querySelector<HTMLElement>('[data-count]'),
+      };
+    });
+
+    /** The lanes at `t` seconds in. Scaled, not resized, so it stays off layout. */
+    const draw = (t: number) => {
+      if (clock) clock.textContent = `${t.toFixed(1)} s`;
+      for (const { line, bar, count } of lanes) {
+        const finished = t >= line.secs;
+        const n = finished ? total : (valueAt(line.points, t) ?? 0);
+        bar?.style.setProperty('scale', `${n / total} 1`);
+        if (count) {
+          count.textContent = finished
+            ? `all ${format(total)} in ${line.secs} s`
+            : `${format(Math.round(n))} stored`;
+          count.classList.toggle(
+            'text-fg-brand',
+            finished && count.hasAttribute('data-strong'),
+          );
+          count.classList.toggle(
+            'text-fg-secondary',
+            !(finished && count.hasAttribute('data-strong')),
+          );
+        }
+      }
+    };
+
+    let frame = 0;
+    const play = () => {
+      cancelAnimationFrame(frame);
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min(((now - start) / 1000) * speed, end);
+        draw(t);
+        if (t < end) frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+    };
+
+    root.querySelector('[data-again]')?.addEventListener('click', play);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) continue;
+    // Held at the start until it scrolls in, then played once.
+    draw(0);
+    const seen = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      seen.disconnect();
+      play();
+    }, { rootMargin: '-20% 0px' });
+    seen.observe(root);
+  }
+</script>

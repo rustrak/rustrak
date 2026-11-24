@@ -1,0 +1,79 @@
+---
+import Closing from '../components/closing.astro';
+import Compare from '../components/compare.astro';
+import Deploy from '../components/deploy.astro';
+import Features from '../components/features.astro';
+import Flow from '../components/flow.astro';
+import Hero from '../components/hero.astro';
+import Sdks from '../components/sdks.astro';
+import Page from '../layouts/page.astro';
+import { DEFINITION, jsonLd } from '../seo';
+import { GITHUB } from '../site';
+
+const SITE = Astro.site?.origin;
+
+/**
+ * Neither the title nor the description claims parity with Sentry: the
+ * brand's voice guide rules that phrasing out by name. They claim
+ * compatibility with the SDKs, which is true, and nothing more.
+ */
+const title =
+  'Rustrak: open-source, self-hosted error tracking for Sentry SDKs';
+const description =
+  'Self-hosted error tracking compatible with the official Sentry SDKs. One Rust container on SQLite or PostgreSQL, under 60 MB of memory. Open source, AGPL-3.0.';
+
+/**
+ * Who publishes the site and what the product is, for search engines and
+ * assistants that read structured data. `sameAs` ties the brand to its GitHub
+ * and Docker Hub pages, so "rustrak" resolves to one entity.
+ */
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE}/#organization`,
+      name: 'Rustrak',
+      url: SITE,
+      logo: `${SITE}/icon.png`,
+      sameAs: [GITHUB, 'https://hub.docker.com/r/rustrak/rustrak-server'],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE}/#website`,
+      name: 'Rustrak',
+      url: SITE,
+      publisher: { '@id': `${SITE}/#organization` },
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'Rustrak',
+      description: DEFINITION,
+      url: SITE,
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Linux, Docker',
+      license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      downloadUrl: 'https://hub.docker.com/r/rustrak/rustrak-server',
+      codeRepository: GITHUB,
+      publisher: { '@id': `${SITE}/#organization` },
+    },
+  ],
+};
+---
+
+<!--
+  The landing: the product on a real desk, the apps that report to it, five
+  features shown on abstract photographs, how it compares, how to run it, and
+  the way in. Everything enters once, as it scrolls in.
+-->
+<Page title={title} description={description}>
+  <script slot="head" type="application/ld+json" set:html={jsonLd(structuredData)} />
+  <Hero />
+  <Sdks />
+  <Flow />
+  <Features />
+  <Compare />
+  <Deploy />
+  <Closing />
+</Page>

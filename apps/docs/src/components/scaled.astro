@@ -1,0 +1,48 @@
+---
+/**
+ * Lays its content out at a desktop width and scales it down to whatever box
+ * it is given, so a shot of the product reads like a screenshot instead of a
+ * cramped, phone-width version of the app.
+ *
+ * `cropped` lays the UI out on a whole screen and lets the box cut it off at
+ * the bottom, instead of fitting the screen to the box: a cropped shot of the
+ * app, not an app that happens to end where the frame does.
+ */
+interface Props {
+  width: number;
+  cropped?: boolean;
+  class?: string;
+}
+const { width, cropped = false, class: className } = Astro.props;
+---
+
+<div
+  data-scaled={width}
+  data-cropped={cropped ? '' : undefined}
+  class:list={['overflow-hidden', className]}
+>
+  <div class="invisible flex origin-top-left flex-col" style={`width:${width}px`}>
+    <slot />
+  </div>
+</div>
+
+<script>
+  const fit = new ResizeObserver((entries) => {
+    for (const { target, contentRect } of entries) {
+      const box = target as HTMLElement;
+      const inner = box.firstElementChild as HTMLElement;
+      const width = Number(box.dataset.scaled);
+      const scale = contentRect.width / width;
+      const visible = contentRect.height / scale;
+      // A desktop screen is at least 16:10, and always taller than what
+      // shows, so its bottom edge is never in the shot.
+      const height = box.hasAttribute('data-cropped')
+        ? Math.max(width * 0.625, visible * 1.35)
+        : visible;
+      inner.style.transform = `scale(${scale})`;
+      inner.style.height = `${height}px`;
+      inner.classList.remove('invisible');
+    }
+  });
+  for (const el of document.querySelectorAll('[data-scaled]')) fit.observe(el);
+</script>

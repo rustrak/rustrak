@@ -190,3 +190,6 @@ export function times(a: number, b: number) {
   const r = a / b;
   return `${r >= 10 ? Math.round(r).toLocaleString('en-US') : r.toFixed(1)}×`;
 }
+
+/** Per-second samples of each run, for the replay chart. */
+export { default as SERIES } from './compare-series.json';

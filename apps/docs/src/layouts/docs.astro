@@ -1,0 +1,94 @@
+---
+import { fontData } from 'astro:assets';
+import { CloseIcon } from '@rustrak/ui';
+import DocsHeader from '../components/docs/docs-header.astro';
+import Search from '../components/docs/search.astro';
+import Sidebar from '../components/docs/sidebar.astro';
+import type { NavTab } from '../docs-nav';
+import Base from './base.astro';
+import '../styles/prose.css';
+import '../styles/docs.css';
+
+/**
+ * The documentation's frame: its own bar, the tab's sidebar on the left, the
+ * page in the middle at a reading measure, and the page's rail on the right
+ * (`rail` slot) from `xl` up. Below `lg` the sidebar is a drawer.
+ */
+interface Props {
+  title: string;
+  description: string;
+  markdown: string;
+  tab: NavTab;
+  current: string;
+}
+const { title, description, markdown, tab, current } = Astro.props;
+---
+
+<Base title={title} description={description} markdown={markdown}>
+  <slot name="head" slot="head" />
+  <!-- Most docs pages open on code: the mono face's Latin file comes with
+       the page, like Inter's in the base layout. -->
+  <link
+    slot="head"
+    rel="preload"
+    href={fontData['--font-geist-mono'][0].src[0].url}
+    as="font"
+    type="font/woff2"
+    crossorigin
+  />
+  <DocsHeader tab={tab.id} />
+
+  <div
+    class="mx-auto grid w-full max-w-[90rem] px-4 pt-14 sm:px-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-x-10 xl:grid-cols-[15rem_minmax(0,1fr)_15rem] xl:gap-x-14"
+  >
+    <aside
+      class="docs-sidebar sticky top-14 hidden h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain pt-8 pb-12 lg:block"
+    >
+      <Sidebar tab={tab} current={current} />
+    </aside>
+
+    <main class="min-w-0 pt-8 pb-24 sm:pt-10">
+      <slot />
+    </main>
+
+    <aside
+      class="sticky top-14 hidden h-[calc(100dvh-3.5rem)] overflow-y-auto pt-10 pb-12 xl:block"
+    >
+      <slot name="rail" />
+    </aside>
+  </div>
+
+  <dialog
+    data-nav
+    data-drawer
+    aria-label="Documentation"
+    class="m-0 h-dvh max-h-none w-[min(20rem,85vw)] overflow-y-auto border-border-subtle border-e bg-canvas p-6 text-fg backdrop:bg-canvas/70"
+  >
+    <div class="mb-8 flex justify-end">
+      <button
+        type="button"
+        data-close-nav
+        aria-label="Close navigation"
+        class="grid size-9 place-items-center rounded-md text-fg-subtle hover:text-fg"
+      >
+        <CloseIcon size="lg" />
+      </button>
+    </div>
+    <Sidebar tab={tab} current={current} drawer />
+  </dialog>
+
+  <Search />
+</Base>
+
+<script>
+  const nav = document.querySelector<HTMLDialogElement>('[data-nav]');
+  document
+    .querySelector('[data-open-nav]')
+    ?.addEventListener('click', () => nav?.showModal());
+  document
+    .querySelector('[data-close-nav]')
+    ?.addEventListener('click', () => nav?.close());
+  nav?.addEventListener('click', (event) => {
+    if (event.target === nav) nav.close();
+  });
+</script>

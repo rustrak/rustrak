@@ -1,0 +1,225 @@
+---
+import { CONTAINER } from '../site';
+import Reveal from './reveal.astro';
+import SectionHead from './section-head.astro';
+
+/**
+ * Facts only, each checkable:
+ * - Self-hosted Sentry's requirements: develop.sentry.dev/self-hosted
+ *   ("4 CPU Cores, 16 GB RAM + 16 GB swap, 20 GB Free Disk Space").
+ * - 53 services: the `services:` keys in getsentry/self-hosted's
+ *   docker-compose.yml (master, Nov 2026). Recount when it changes.
+ * - Sentry's Team plan: $26/mo billed annually, sentry.io/pricing.
+ * - Rustrak's memory: README's 20,000-event burst on 4 cores with SQLite.
+ */
+const SENTRY_SERVICES = 53;
+
+const COLUMNS = ['Rustrak', 'Self-hosted Sentry', 'Sentry cloud'];
+
+const ROWS: { label: string; values: string[] }[] = [
+  {
+    label: 'Where your data lives',
+    values: ['Your server', 'Your server', "Sentry's cloud"],
+  },
+  {
+    label: 'Storage',
+    values: [
+      'SQLite or PostgreSQL',
+      'PostgreSQL, ClickHouse, Kafka, Redis',
+      'Managed',
+    ],
+  },
+  {
+    label: 'Price',
+    values: [
+      'Free, AGPL-3.0',
+      'Free, plus the hardware',
+      'From $26/mo, by volume',
+    ],
+  },
+  { label: 'Works with the Sentry SDKs', values: ['Yes', 'Yes', 'Yes'] },
+];
+
+const BARS = [
+  {
+    label: 'Self-hosted Sentry, minimum',
+    value: '16 GB + 16 GB swap',
+    amount: 16_384,
+    hatched: 16_384,
+  },
+  {
+    label: 'Rustrak, peak under a 20,000-event burst',
+    value: '< 60 MB',
+    amount: 60,
+    brand: true,
+  },
+];
+const MAX = 32_768;
+
+const SERVICES = [
+  { label: 'Self-hosted Sentry', count: SENTRY_SERVICES },
+  { label: 'Rustrak', count: 1, brand: true },
+];
+
+const CARD =
+  'flex flex-col gap-6 rounded-3xl border border-border-subtle bg-panel p-6 sm:p-8';
+---
+
+<section class="py-16 sm:py-24">
+  <div class={CONTAINER}>
+    <SectionHead
+      eyebrow="Compare"
+      title="The same SDKs, a fraction of the machine."
+      lead="Sentry is a platform, and self-hosting it means running that platform. Rustrak is the part most teams use every day, built to run on the machine you already have."
+    />
+
+    <div class="mt-12 grid gap-4 lg:grid-cols-2">
+      <Reveal y={40} layer class={CARD}>
+        <div class="flex flex-col gap-1">
+          <h3 class="text-fg text-section">Memory</h3>
+          <p class="text-fg-subtle text-meta">What each needs to keep in RAM, drawn to the same scale.</p>
+        </div>
+        <div class="flex flex-col gap-5">
+          {
+            BARS.map((bar) => (
+              <div class="flex flex-col gap-2">
+                <div class="flex items-baseline justify-between gap-4">
+                  <span class:list={['text-value', bar.brand ? 'text-fg' : 'text-fg-subtle']}>
+                    {bar.label}
+                  </span>
+                  <span
+                    class:list={[
+                      'font-mono text-mono tabular-nums',
+                      bar.brand ? 'text-fg-brand' : 'text-fg-secondary',
+                    ]}
+                  >
+                    {bar.value}
+                  </span>
+                </div>
+                <div class="h-3 overflow-hidden rounded-pill bg-surface">
+                  <!-- Grows to its width after its card has settled. -->
+                  <Reveal class="grow flex h-full" delay={0.5} duration={1.6}>
+                    <span
+                      class:list={[
+                        'h-full min-w-1',
+                        bar.brand ? 'rounded-pill bg-surface-brand' : 'bg-fg-ghost',
+                      ]}
+                      style={`width:${(bar.amount / MAX) * 100}%`}
+                    />
+                    {bar.hatched && (
+                      <span
+                        class="h-full bg-[repeating-linear-gradient(135deg,var(--fg-ghost)_0_2px,transparent_2px_6px)]"
+                        style={`width:${(bar.hatched / MAX) * 100}%`}
+                      />
+                    )}
+                  </Reveal>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </Reveal>
+
+      <Reveal y={40} delay={0.12} layer class={CARD}>
+        <div class="flex flex-col gap-1">
+          <h3 class="text-fg text-section">Services to run</h3>
+          <p class="text-fg-subtle text-meta">
+            Every square is a container that has to be up, patched and backed up.
+          </p>
+        </div>
+        <div class="flex flex-col gap-5">
+          {
+            SERVICES.map((service) => (
+              <div class="flex flex-col gap-2.5">
+                <div class="flex items-baseline justify-between">
+                  <span class:list={['text-value', service.brand ? 'text-fg' : 'text-fg-subtle']}>
+                    {service.label}
+                  </span>
+                  <span
+                    class:list={[
+                      'font-mono text-mono tabular-nums',
+                      service.brand ? 'text-fg-brand' : 'text-fg-secondary',
+                    ]}
+                  >
+                    {service.count}
+                  </span>
+                </div>
+                <!-- Each square is one container the stack needs running. -->
+                <div class="flex flex-wrap gap-1.5">
+                  {Array.from({ length: service.count }, (_, index) => (
+                    <Reveal
+                      as="span"
+                      y={0}
+                      scale={0.4}
+                      blur={0}
+                      duration={0.6}
+                      delay={0.5 + index * 0.012}
+                      class:list={[
+                        'size-3.5 rounded-xs',
+                        service.brand ? 'bg-surface-brand' : 'bg-fg-ghost',
+                      ]}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </Reveal>
+    </div>
+
+    <Reveal y={40} layer class="mt-4 overflow-x-auto rounded-3xl border border-border-subtle">
+      <table class="w-full min-w-[44rem] border-collapse text-start">
+        <thead>
+          <tr class="border-border-subtle border-b">
+            <th class="w-[28%] p-5"></th>
+            {
+              COLUMNS.map((column, index) => (
+                <th
+                  scope="col"
+                  class:list={[
+                    'p-5 text-start text-section',
+                    index === 0 ? 'bg-surface text-fg-brand' : 'text-fg',
+                  ]}
+                >
+                  {column}
+                </th>
+              ))
+            }
+          </tr>
+        </thead>
+        <tbody>
+          {
+            ROWS.map((row) => (
+              <tr class="border-border-divider border-b last:border-b-0">
+                <th scope="row" class="p-5 text-start font-normal text-fg-meta text-value">
+                  {row.label}
+                </th>
+                {row.values.map((value, index) => (
+                  <td
+                    class:list={[
+                      'p-5 text-value',
+                      index === 0 ? 'bg-surface text-fg' : 'text-fg-subtle',
+                    ]}
+                  >
+                    {value}
+                  </td>
+                ))}
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </Reveal>
+    <p class="mt-4 text-fg-meta text-meta">
+      Sentry figures from its self-hosted documentation, docker-compose.yml and
+      pricing page. Rustrak measured on a 4-core machine with SQLite.{' '}
+      <a
+        href="/benchmarks"
+        class="text-fg-subtle underline decoration-fg-ghost underline-offset-4 transition-colors hover:text-fg"
+      >
+        Rustrak, Sentry, GlitchTip and Bugsink side by side →
+      </a>
+    </p>
+  </div>
+</section>

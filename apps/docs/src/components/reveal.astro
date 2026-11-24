@@ -1,0 +1,59 @@
+---
+/**
+ * A block that sharpens up out of a blur as it scrolls in. See `site.css`.
+ * The other props tune where it comes from, for the moves that are not the
+ * default one. `layer` keeps a large block on its own layer (see `site.css`).
+ */
+interface Props {
+  as?: 'div' | 'li' | 'span';
+  layer?: boolean;
+  /**
+   * Plays with the page rather than when it scrolls in: for what is on screen
+   * from the first frame, where waiting for the observer only delays it,
+   * by however long the first frame takes, and breaks the order of a
+   * sequence.
+   */
+  onLoad?: boolean;
+  class?: string;
+  delay?: number;
+  y?: number;
+  x?: number;
+  scale?: number;
+  blur?: number;
+  duration?: number;
+  style?: string;
+}
+const {
+  as: Tag = 'div',
+  layer = false,
+  onLoad = false,
+  class: className,
+  delay = 0,
+  y = 24,
+  x,
+  scale,
+  blur,
+  duration,
+  style,
+} = Astro.props;
+const vars = [
+  `--delay:${delay}s`,
+  `--y:${y}px`,
+  x !== undefined && `--x:${x}px`,
+  scale !== undefined && `--scale:${scale}`,
+  blur !== undefined && `--blur:${blur}px`,
+  duration !== undefined && `--duration:${duration}s`,
+  style,
+]
+  .filter(Boolean)
+  .join(';');
+---
+
+<Tag
+  data-reveal
+  data-layer={layer ? '' : undefined}
+  class:list={[className, onLoad && 'in']}
+  style={vars}
+>
+  <slot />
+</Tag>

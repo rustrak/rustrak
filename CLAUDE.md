@@ -26,7 +26,7 @@ who never installs Node.
 |---|---|
 | `apps/server` | Rust API server. The product. |
 | `apps/dashboard` | `@rustrak/dashboard`, the SPA the server serves |
-| `apps/docs` | Public documentation site (Nextra) |
+| `apps/docs` | Public website: landing, docs, blog, changelog (Astro) |
 | `packages/ui` | `@rustrak/ui`, the design system. Storybook only for now |
 | `packages/client` | `@rustrak/client`, the TypeScript API client |
 | `packages/test-sentry` | CLI to send test events to a DSN |
