@@ -15,16 +15,13 @@ import {
   Switch,
   Text,
 } from '@rustrak/ui';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlatformIcon } from 'platformicons';
 import { type PointerEvent, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
-import {
-  inManualOrder,
-  makeRoom,
-  moveTo,
-} from '@/features/project/model/sidebar';
+import { projectQueries } from '@/features/project/api/queries';
+import { makeRoom, moveTo } from '@/features/project/model/sidebar';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 const SORTS: SidebarSort[] = ['manual', 'name', 'activity'];
@@ -33,9 +30,10 @@ const SORTS: SidebarSort[] = ['manual', 'name', 'activity'];
  * The options button by the sidebar's "Projects": how the list is sorted,
  * and, project by project, whether it shows and where.
  *
- * Every change is saved the moment it is made, and the sidebar follows at
- * once (the cache takes it before the request). Reordering is by drag,
- * and only the manual sort has an order to change.
+ * Every change goes into the cache on the click itself, so the sidebar and
+ * this list follow in the same frame, and is then saved; the saves queue in
+ * the order they were made (`saveSidebar`). Reordering is by drag, and only
+ * the manual sort has an order to change.
  *
  * The drag is pointer events, not HTML drag and drop: Chrome draws the
  * native drag image wrong inside a transformed popup (it picked up the
@@ -52,26 +50,26 @@ export function SidebarOptions({
 }) {
   const t = useTranslations('projects');
   const toastFailure = useToastFailure();
-  const save = useMutation(projectMutations.saveSidebar());
+  const client = useQueryClient();
+  const save = useMutation(
+    projectMutations.saveSidebar((error) =>
+      toastFailure(t('sidebar.saveFailed'), error),
+    ),
+  );
   const [drag, setDrag] = useState<Drag | null>(null);
-  // The order just dropped, shown until its save settles (the cache has it
-  // by then), so the list does not flick back while the save is on its way.
-  const [dropped, setDropped] = useState<number[] | null>(null);
 
-  // In the sort the sidebar uses; a drop shows at once, before the save.
-  const listed =
-    prefs.sort === 'manual' && dropped
-      ? inManualOrder(projects, dropped)
-      : projects;
-  const order = listed.map((p) => p.id);
+  const order = projects.map((p) => p.id);
   const hidden = new Set(prefs.hidden);
   const manual = prefs.sort === 'manual';
 
-  const apply = (next: Partial<SidebarProjects>) =>
-    save.mutate(
-      { ...prefs, ...next },
-      { onError: (error) => toastFailure(t('sidebar.saveFailed'), error) },
-    );
+  const apply = (next: Partial<SidebarProjects>) => {
+    const body = { ...prefs, ...next };
+    const { queryKey } = projectQueries.sidebar();
+    // A read still on its way would land on top of this change.
+    void client.cancelQueries({ queryKey });
+    client.setQueryData(queryKey, body);
+    save.mutate(body);
+  };
 
   // Where the dragged row would land: as many places as the pointer has
   // moved whole rows, within the list.
@@ -110,15 +108,7 @@ export function SidebarOptions({
 
   const drop = () => {
     if (drag && target !== drag.from) {
-      const next = moveTo(order, drag.id, target);
-      setDropped(next);
-      save.mutate(
-        { ...prefs, order: next },
-        {
-          onError: (error) => toastFailure(t('sidebar.saveFailed'), error),
-          onSettled: () => setDropped(null),
-        },
-      );
+      apply({ order: moveTo(order, drag.id, target) });
     }
     setDrag(null);
   };
@@ -169,13 +159,13 @@ export function SidebarOptions({
         </Text>
         <Text variant="hint" tone="ghost">
           {t('sidebar.shown', {
-            shown: listed.filter((p) => !hidden.has(p.id)).length,
-            total: listed.length,
+            shown: projects.filter((p) => !hidden.has(p.id)).length,
+            total: projects.length,
           })}
         </Text>
       </div>
       <ul className="relative max-h-80 overflow-y-auto px-1 pb-1">
-        {listed.map((project, index) => (
+        {projects.map((project, index) => (
           <ProjectRow
             key={project.id}
             project={project}

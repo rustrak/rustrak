@@ -11,7 +11,7 @@ import type {
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
 import { projectScope } from '@/shared/api/keys';
-import { orThrow } from '@/shared/api/query';
+import { type ApiError, orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
 import { projectQueries } from './queries';
 
@@ -38,27 +38,26 @@ export const projectMutations = {
    * The sidebar follows a drag or a switch at once: the cache takes the new
    * value before the request, and the old one back if the server refuses it.
    */
-  saveSidebar: () =>
+  /**
+   * Saves the setup the caller has already put in the cache (see
+   * `SidebarOptions`). Not the usual `onMutate` and `meta.invalidates`, on
+   * purpose: the saves queue (`scope`), so each one runs in the order it was
+   * made, and a queued save's `onMutate` would wait its turn too, leaving the
+   * click unseen; and a refetch after each save could land between two of
+   * them and bring the older setup back. The cache is the truth until a save
+   * fails, and then the server's setup is read again.
+   */
+  saveSidebar: (onFailure: (error: ApiError) => void) =>
     mutationOptions({
-      // Each save sends the whole setup, so they run one after another, in
-      // the order they were made: two in flight could land out of order and
-      // the older one would win.
       scope: { id: 'sidebar-projects' },
       mutationFn: (body: SidebarProjects) =>
         orThrow(api().sidebar.updateProjects({ body })),
-      onMutate: async (body, { client }) => {
-        const { queryKey } = projectQueries.sidebar();
-        await client.cancelQueries({ queryKey });
-        const before = client.getQueryData(queryKey);
-        client.setQueryData(queryKey, body);
-        return { before };
+      onError: (error, _body, _result, { client }) => {
+        void client.invalidateQueries({
+          queryKey: projectQueries.sidebar().queryKey,
+        });
+        onFailure(error);
       },
-      onError: (_error, _body, saved, { client }) => {
-        if (saved?.before) {
-          client.setQueryData(projectQueries.sidebar().queryKey, saved.before);
-        }
-      },
-      meta: { invalidates: [projectQueries.sidebar().queryKey] },
     }),
   /**
    * The id is the mutation's variable: the projects grid deletes whichever
