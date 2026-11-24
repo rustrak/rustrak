@@ -576,7 +576,7 @@ pub fn get_denormalized_fields(event_data: &Value) -> DenormalizedFields {
     let (filename, module, function) = get_last_frame_info(event_data);
 
     let transaction = get_transaction(event_data);
-    let culprit = get_culprit(&function, &filename, &transaction);
+    let culprit = get_culprit(event_data);
     // Limits match Relay's exactly (relay-event-schema/src/protocol/event.rs
     // @97f9c4b): `logger` max_chars = 64, `release` max_chars = 200.
     let logger = event_data
@@ -603,19 +603,107 @@ pub fn get_denormalized_fields(event_data: &Value) -> DenormalizedFields {
     }
 }
 
-/// Derives the issue culprit — a short string identifying the error source.
-/// Prefers the relevant frame's function, then filename, then the transaction.
-fn get_culprit(function: &str, filename: &str, transaction: &str) -> String {
-    let chosen = if !function.is_empty() {
-        function
-    } else if !filename.is_empty() {
-        filename
-    } else if transaction != "<no transaction>" {
-        transaction
-    } else {
-        ""
+/// Sentry's `MAX_CULPRIT_LENGTH`, also Relay's `max_chars` for the `culprit`
+/// and `transaction` an SDK sends.
+const MAX_CULPRIT_LENGTH: usize = 200;
+
+/// Derives the issue culprit, a short string naming where the error came
+/// from, as Sentry's `get_culprit` does (event_manager.py @2458718b2c): the
+/// one the SDK sent, else the transaction, else one made from the stack trace.
+fn get_culprit(event_data: &Value) -> String {
+    let sent = |key: &str| non_empty_str(event_data, key);
+    match sent("culprit").or_else(|| sent("transaction")) {
+        Some(sent) => clamp(sent, MAX_CULPRIT_LENGTH),
+        None => generate_culprit(event_data),
+    }
+}
+
+/// Sentry's `generate_culprit` (culprit.py): the last stack trace of the
+/// exception chain, or the event's own when it has no exception, and failing
+/// that the request URL. A synthetic exception gets none.
+fn generate_culprit(event_data: &Value) -> String {
+    let platform = non_empty_str(event_data, "platform");
+    let exceptions: Vec<&Value> = exception_values(event_data)
+        .map(|values| values.iter().filter(|e| !e.is_null()).collect())
+        .unwrap_or_default();
+    let stacktrace = match exceptions.last() {
+        Some(last) if is_synthetic(last) => return String::new(),
+        Some(_) => exceptions
+            .iter()
+            .rev()
+            .find_map(|e| stacktrace_with_frames(e)),
+        None => stacktrace_with_frames(event_data),
     };
-    clamp(chosen, 255)
+
+    let culprit = stacktrace
+        .and_then(|stacktrace| stacktrace_culprit(stacktrace, platform))
+        .filter(|culprit| !culprit.is_empty())
+        .or_else(|| {
+            let url = non_empty_str(event_data.get("request")?, "url")?;
+            Some(url.to_string())
+        })
+        .unwrap_or_default();
+
+    // Sentry's `truncatechars`: the cut is marked.
+    if culprit.chars().count() > MAX_CULPRIT_LENGTH {
+        format!("{}...", clamp(&culprit, MAX_CULPRIT_LENGTH - 3))
+    } else {
+        culprit
+    }
+}
+
+/// The `stacktrace` of an exception or an event, if it has any frame.
+fn stacktrace_with_frames(holder: &Value) -> Option<&Value> {
+    let stacktrace = holder.get("stacktrace")?;
+    let frames = stacktrace.get("frames")?.as_array()?;
+    (!frames.is_empty()).then_some(stacktrace)
+}
+
+/// Sentry's `get_stacktrace_culprit`: from the innermost frame out, the first
+/// in-app frame that names something, else the innermost frame that is not
+/// in-app.
+fn stacktrace_culprit(stacktrace: &Value, platform: Option<&str>) -> Option<String> {
+    let mut default = None;
+    for frame in stacktrace.get("frames")?.as_array()?.iter().rev() {
+        if !frame.as_object().is_some_and(|f| !f.is_empty()) {
+            continue;
+        }
+        if frame.get("in_app").and_then(Value::as_bool) == Some(true) {
+            let culprit = frame_culprit(frame, platform);
+            if !culprit.is_empty() {
+                return Some(culprit);
+            }
+        } else if default.is_none() {
+            default = Some(frame_culprit(frame, platform));
+        }
+    }
+    default
+}
+
+/// Sentry's `get_frame_culprit`. The frame's own platform wins over the
+/// event's: a stack trace can cross languages.
+fn frame_culprit(frame: &Value, platform: Option<&str>) -> String {
+    let platform = non_empty_str(frame, "platform").or(platform);
+    let function = non_empty_str(frame, "function").unwrap_or("?");
+    if matches!(platform, Some("objc" | "cocoa" | "native")) {
+        return function.to_string();
+    }
+    let Some(location) =
+        non_empty_str(frame, "module").or_else(|| non_empty_str(frame, "filename"))
+    else {
+        return String::new();
+    };
+    if matches!(platform, Some("javascript" | "node")) {
+        format!("{function}({location})")
+    } else {
+        format!("{location} in {function}")
+    }
+}
+
+/// A string field, read as Python's `value.get(key) or ...` reads it: an
+/// empty one counts as missing.
+fn non_empty_str<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value.get(key)?.as_str().filter(|s| !s.is_empty())
 }
 
 /// Denormalized fields extracted from event data

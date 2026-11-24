@@ -405,6 +405,7 @@ impl IssueService {
                 OR LOWER(culprit) LIKE ${n} ESCAPE '\'
                 OR LOWER(last_frame_filename) LIKE ${n} ESCAPE '\'
                 OR LOWER(last_frame_module) LIKE ${n} ESCAPE '\'
+                OR LOWER(last_frame_function) LIKE ${n} ESCAPE '\'
             )"#
                 )
             }

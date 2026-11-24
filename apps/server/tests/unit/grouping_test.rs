@@ -1451,3 +1451,213 @@ fn grouping_key_on_a_bounded_stack(event: serde_json::Value) -> String {
         .join()
         .expect("the grouping walk aborted the process")
 }
+
+// =============================================================================
+// Culprit (#456). The first six are Sentry's `tests/sentry/test_culprit.py`
+// @2458718b2c, with the exception in the `values` shape Rustrak reads.
+// =============================================================================
+
+fn culprit(event: serde_json::Value) -> String {
+    get_denormalized_fields(&event).culprit
+}
+
+#[test]
+fn test_cocoa_culprit() {
+    let event = json!({
+        "platform": "cocoa",
+        "exception": { "values": [{
+            "type": "Crash",
+            "stacktrace": { "frames": [{
+                "filename": "foo/baz.c",
+                "package": "/foo/bar/baz.dylib",
+                "lineno": 1,
+                "in_app": true,
+                "function": "-[CRLCrashAsyncSafeThread crash]"
+            }]}
+        }]}
+    });
+    assert_eq!(culprit(event), "-[CRLCrashAsyncSafeThread crash]");
+}
+
+#[test]
+fn test_emoji_culprit() {
+    let event = json!({
+        "platform": "native",
+        "exception": { "values": [{
+            "type": "Crash",
+            "stacktrace": { "frames": [{
+                "filename": "foo/baz.c",
+                "package": "/foo/bar/baz.dylib",
+                "module": "\u{1f62d}",
+                "lineno": 1,
+                "in_app": true,
+                "function": "\u{1f60d}"
+            }]}
+        }]}
+    });
+    assert_eq!(culprit(event), "\u{1f60d}");
+}
+
+#[test]
+fn test_cocoa_strict_stacktrace() {
+    let event = json!({
+        "platform": "native",
+        "exception": { "values": [{
+            "type": "Crash",
+            "stacktrace": { "frames": [
+                {
+                    "filename": "foo/baz.c",
+                    "package": "/foo/bar/libswiftCore.dylib",
+                    "lineno": 1,
+                    "in_app": false,
+                    "function": "fooBar"
+                },
+                { "package": "/foo/bar/MyApp", "in_app": true, "function": "fooBar2" },
+                {
+                    "filename": "Mycontroller.swift",
+                    "package": "/foo/bar/MyApp",
+                    "in_app": true,
+                    "function": "-[CRLCrashAsyncSafeThread crash]"
+                }
+            ]}
+        }]}
+    });
+    assert_eq!(culprit(event), "-[CRLCrashAsyncSafeThread crash]");
+}
+
+#[test]
+fn test_culprit_for_synthetic_event() {
+    // Synthetic events do not generate a culprit
+    let event = json!({
+        "platform": "javascript",
+        "exception": { "values": [{
+            "type": "Error",
+            "value": "I threw up stringly",
+            "mechanism": { "type": "string-error", "synthetic": true },
+            "stacktrace": { "frames": [{
+                "filename": "foo/baz.js",
+                "package": "node_modules/blah/foo/bar.js",
+                "lineno": 42,
+                "in_app": true,
+                "function": "fooBar"
+            }]}
+        }]}
+    });
+    assert_eq!(culprit(event), "");
+}
+
+#[test]
+fn test_culprit_for_javascript_event() {
+    let event = json!({
+        "platform": "javascript",
+        "exception": { "values": [{
+            "type": "Error",
+            "value": "I fail hard",
+            "stacktrace": { "frames": [{
+                "filename": "foo/baz.js",
+                "package": "node_modules/blah/foo/bar.js",
+                "lineno": 42,
+                "in_app": true,
+                "function": "fooBar"
+            }]}
+        }]}
+    });
+    assert_eq!(culprit(event), "fooBar(foo/baz.js)");
+}
+
+#[test]
+fn test_culprit_for_python_event() {
+    let event = json!({
+        "platform": "python",
+        "exception": { "values": [{
+            "type": "ZeroDivisionError",
+            "value": "integer division or modulo by zero",
+            "stacktrace": { "frames": [{
+                "filename": "foo/baz.py",
+                "module": "foo.baz",
+                "package": "foo/baz.py",
+                "lineno": 23,
+                "in_app": true,
+                "function": "it_failed"
+            }]}
+        }]}
+    });
+    assert_eq!(culprit(event), "foo.baz in it_failed");
+}
+
+/// The crash from #456: a deobfuscated Android frame.
+fn java_event() -> serde_json::Value {
+    json!({
+        "platform": "java",
+        "exception": { "values": [{
+            "type": "IllegalStateException",
+            "value": "boom",
+            "stacktrace": { "frames": [
+                { "module": "android.os.Handler", "function": "dispatchMessage", "in_app": false },
+                { "module": "com.example.Greeter", "function": "greet", "in_app": true },
+                { "module": "kotlin.Preconditions", "function": "check", "in_app": false }
+            ]}
+        }]}
+    })
+}
+
+#[test]
+fn test_culprit_for_java_event() {
+    assert_eq!(culprit(java_event()), "com.example.Greeter in greet");
+}
+
+#[test]
+fn test_culprit_prefers_the_transaction_over_the_stack_trace() {
+    // Sentry's `get_culprit`: culprit, else transaction, else the frames.
+    let mut event = java_event();
+    event["transaction"] = json!("MainActivity");
+    assert_eq!(culprit(event.clone()), "MainActivity");
+
+    event["culprit"] = json!("sent by the SDK");
+    assert_eq!(culprit(event), "sent by the SDK");
+}
+
+#[test]
+fn test_culprit_without_an_in_app_frame_is_the_innermost_frame() {
+    let event = json!({
+        "platform": "python",
+        "exception": { "values": [{
+            "type": "Error",
+            "stacktrace": { "frames": [
+                { "module": "django.core", "function": "get_response" },
+                { "filename": "bundle.js", "function": "render", "platform": "javascript" }
+            ]}
+        }]}
+    });
+    // The frame's own platform decides the format.
+    assert_eq!(culprit(event), "render(bundle.js)");
+}
+
+#[test]
+fn test_culprit_falls_back_to_the_request_url() {
+    let event = json!({
+        "platform": "python",
+        "request": { "url": "https://example.com/checkout" },
+        "exception": { "values": [{
+            "type": "Error",
+            "stacktrace": { "frames": [{ "function": "handler", "in_app": true }] }
+        }]}
+    });
+    // A frame with neither module nor filename names nothing.
+    assert_eq!(culprit(event), "https://example.com/checkout");
+}
+
+#[test]
+fn test_generated_culprit_is_cut_to_200_characters() {
+    let event = json!({
+        "platform": "python",
+        "exception": { "values": [{
+            "type": "Error",
+            "stacktrace": { "frames": [{
+                "module": "m".repeat(300), "function": "f", "in_app": true
+            }]}
+        }]}
+    });
+    // Sentry's `truncatechars(culprit, MAX_CULPRIT_LENGTH)`.
+    assert_eq!(culprit(event), format!("{}...", "m".repeat(197)));
+}

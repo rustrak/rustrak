@@ -993,7 +993,7 @@ async fn test_issue_level_and_culprit_follow_the_latest_event() {
 
     let issue = only_issue(&db.pool, project.id).await;
     assert_eq!(issue.level.as_deref(), Some("error"));
-    assert_eq!(issue.culprit, "second_path");
+    assert_eq!(issue.culprit, "app.rs in second_path");
 }
 
 #[actix_web::test]
@@ -1139,15 +1139,15 @@ async fn test_an_ordinary_event_records_no_activity() {
 }
 
 #[actix_web::test]
-async fn test_issue_search_finds_the_frame_filename_and_module() {
+async fn test_issue_search_finds_the_frame_filename_module_and_function() {
     use rustrak::pagination::{IssueFilter, IssueSort, SortOrder};
     let db = TestDb::new().await;
     let project = create_test_project(&db.pool, "Search Frames").await;
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let dir = temp_dir.path();
 
-    // The frame carries a function, so the culprit takes it and neither the
-    // filename nor the module is reachable through any other column.
+    // The event has a transaction, so the culprit is that and nothing of the
+    // frame is reachable through any other column.
     digest(
         &db.pool,
         dir,
@@ -1155,6 +1155,7 @@ async fn test_issue_search_finds_the_frame_filename_and_module() {
         Utc::now(),
         json!({
             "platform": "rust",
+            "transaction": "POST /checkout",
             "exception": { "values": [{
                 "type": "PaymentError",
                 "value": "card declined",
@@ -1169,7 +1170,7 @@ async fn test_issue_search_finds_the_frame_filename_and_module() {
     )
     .await;
 
-    for term in ["billing/stripe.rs", "billing::stripe"] {
+    for term in ["billing/stripe.rs", "billing::stripe", "charge_customer"] {
         let (hits, total) = IssueService::list_offset(
             &db.pool,
             &rustrak::models::rbac::ProjectScope::Only(vec![project.id]),
@@ -2299,8 +2300,8 @@ async fn test_new_issue_has_status_priority_and_culprit() {
     assert_eq!(issue.substatus.as_deref(), Some("new"));
     // level "error" -> high priority
     assert_eq!(issue.priority.as_deref(), Some("high"));
-    // culprit derived from the in-app frame's function
-    assert_eq!(issue.culprit, "handle_request");
+    // The transaction comes before the stack trace.
+    assert_eq!(issue.culprit, "/api/users");
 }
 
 #[actix_web::test]
