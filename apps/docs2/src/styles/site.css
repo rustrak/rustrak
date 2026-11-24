@@ -111,6 +111,28 @@ html {
   animation-name: grow;
 }
 
+/* A chart's bars rise from the baseline as the chart comes in, one after
+   another (`--delay` on each). */
+@keyframes rise-bar {
+  from {
+    scale: 1 0;
+  }
+}
+
+[data-reveal="bars"] {
+  animation: none;
+}
+
+[data-reveal="bars"] .bar {
+  transform-origin: bottom;
+  animation: rise-bar 1s var(--ease-landing) var(--delay, 0s) both;
+  animation-play-state: paused;
+}
+
+[data-reveal="bars"].in .bar {
+  animation-play-state: running;
+}
+
 @keyframes rise {
   from {
     translate: 0 150%;
@@ -167,7 +189,8 @@ html {
     }
   }
 
-  .word {
+  .word,
+  [data-reveal="bars"] .bar {
     animation: none;
   }
 }

@@ -21,4 +21,21 @@ const blog = defineCollection({
   }),
 });
 
-export const collections = { blog };
+/**
+ * The changelog: one file per release, written when the release is cut
+ * (`NN-vX-Y-Z-slug.mdx`). Read from the current site's folder for the same
+ * reason as the blog. `release.yml` also reads these files, by their
+ * `version:` line, for the GitHub release body.
+ */
+const changelog = defineCollection({
+  loader: glob({ pattern: '*.mdx', base: '../docs/content/changelog' }),
+  schema: z.object({
+    version: z.string(),
+    title: z.string(),
+    description: z.string().default(''),
+    date: z.coerce.date(),
+    tags: z.array(z.string()).default([]),
+  }),
+});
+
+export const collections = { blog, changelog };

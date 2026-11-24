@@ -1,0 +1,119 @@
+---
+import { Tag, type TagTone } from '@rustrak/ui';
+import type { Release } from '../../changelog';
+import type { SectionKind } from '../../lib/release';
+import Reveal from '../reveal.astro';
+
+/**
+ * One release on the timeline: the version held on the left while its notes
+ * scroll past on the right, with a dot on the line that runs down the page
+ * (`timeline.astro`) riding along with it. A minor's dot is lime and its
+ * version full-strength; a patch is a step quieter, so the shape of the
+ * history shows while scrolling.
+ *
+ * On the index the title links to the release's own page; on that page it is
+ * the page's `h1`.
+ */
+interface Props {
+  release: Release;
+  /** On the release's own page: where its version links back to. */
+  page?: string;
+}
+const { release, page } = Astro.props;
+const minor = release.channel === 'minor';
+const Title = page ? 'h1' : 'h2';
+const Section = page ? 'h2' : 'h3';
+
+const KIND_TONE: Record<SectionKind, TagTone> = {
+  shipped: 'brand',
+  improved: 'neutral',
+  fixed: 'warning',
+  documented: 'info',
+};
+
+const DATE = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  // A release day, not a moment: in the reader's zone a morning release in
+  // Europe reads as the day before west of the Atlantic.
+  timeZone: 'UTC',
+});
+---
+
+<article
+  id={page ? undefined : release.anchor}
+  class="relative grid scroll-mt-24 gap-6 py-14 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-16"
+>
+  {
+    !page && (
+      // The filename, a second anchor so links made before the anchors were
+      // versions still land. It needs a box to scroll to, not a grid cell.
+      <span id={release.id} aria-hidden="true" class="absolute top-0 scroll-mt-24" />
+    )
+  }
+
+  <header class="flex flex-col gap-2 lg:sticky lg:top-28 lg:self-start">
+    <span
+      aria-hidden="true"
+      class:list={[
+        'absolute top-[0.8rem] left-[calc(14rem-5px)] hidden size-2.5 rounded-full ring-4 ring-canvas lg:block',
+        minor ? 'bg-surface-brand' : 'bg-fg/30',
+      ]}
+    ></span>
+    <Reveal y={16}>
+      <a
+        href={page ?? `/changelog/${release.anchor}`}
+        class:list={[
+          'font-mono text-page-title tabular-nums transition-colors hover:text-fg-brand',
+          minor ? 'text-fg' : 'text-fg-subtle',
+        ]}
+      >
+        {release.version}
+      </a>
+    </Reveal>
+    <Reveal delay={0.08} class="flex flex-wrap items-center gap-2.5">
+      <time datetime={release.date.toISOString().slice(0, 10)} class="text-fg-meta text-meta">
+        {DATE.format(release.date)}
+      </time>
+      <Tag variant="soft" tone={minor ? 'brand' : 'neutral'}>
+        {release.channel === 'seed' ? 'early' : release.channel}
+      </Tag>
+    </Reveal>
+  </header>
+
+  <Reveal y={32} delay={0.1} class="min-w-0">
+    <Title class="text-balance text-fg text-headline">
+      {
+        page ? (
+          release.title
+        ) : (
+          <a href={`/changelog/${release.anchor}`} class="transition-colors hover:text-fg-brand">
+            {release.title}
+          </a>
+        )
+      }
+    </Title>
+    {release.description && <p class="changelog-lead mt-4">{release.description}</p>}
+    {
+      release.tags.length > 0 && (
+        <p class="mt-4 font-mono text-fg-meta text-mono-sm">{release.tags.join(' · ')}</p>
+      )
+    }
+
+    {
+      release.sections.map((section) => (
+        <section class="mt-10">
+          {section.title && (
+            <Section class="mb-4">
+              <Tag tone={KIND_TONE[section.kind]}>{section.title}</Tag>
+            </Section>
+          )}
+          {/* Rendered from this repo's own Markdown at build time; nothing
+              here comes from a request. */}
+          <div class="changelog-prose max-w-[66ch]" set:html={section.html} />
+        </section>
+      ))
+    }
+  </Reveal>
+</article>
