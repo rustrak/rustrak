@@ -1,0 +1,133 @@
+---
+import Backdrop from '../components/backdrop.astro';
+import { LinkButton } from '../components/link-button';
+import PageIntro from '../components/page-intro.astro';
+import Reveal from '../components/reveal.astro';
+import Board from '../components/roadmap/board.astro';
+import Horizon from '../components/roadmap/horizon.astro';
+import Words from '../components/words.astro';
+import Page from '../layouts/page.astro';
+import { fetchRoadmap, HORIZONS, PROJECT_URL } from '../lib/roadmap';
+import { CONTAINER } from '../site';
+
+// A build that cannot reach GitHub still builds, with the fallback below.
+const items = await fetchRoadmap().catch(() => []);
+const open = items.filter((item) => item.status !== 'Shipped');
+
+/** The most recent shipped items; the rest are in the changelog. */
+const shipped = items
+  .filter((item) => item.status === 'Shipped')
+  .sort((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? ''))
+  .slice(0, 6);
+
+const COPY = {
+  Now: 'Being built right now.',
+  Next: 'Planned to follow.',
+  Later: 'Further out. Not decided yet.',
+};
+
+const UPDATED = new Date().toLocaleDateString('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+---
+
+<!--
+  The public roadmap: the intro, the whole plan as a board, each horizon in
+  full, what shipped lately, and a way to ask for what is missing. All of it
+  is the GitHub project (`lib/roadmap.ts`), read when the site is built.
+-->
+<Page
+  title="Rustrak Roadmap"
+  description="What the Rustrak team is building now, what comes next and what is still being explored."
+>
+  <PageIntro
+    eyebrow="Roadmap"
+    title="What we are building next."
+    lead="By priority, not by date: what is being built now, what follows it, and what we are still thinking about."
+  >
+    <Fragment slot="meta">
+      <a href={PROJECT_URL} class="transition-colors hover:text-fg">
+        From GitHub Projects ↗
+      </a>
+      <span aria-hidden="true">·</span>
+      <span>Updated {UPDATED}</span>
+    </Fragment>
+  </PageIntro>
+
+  {
+    items.length === 0 ? (
+      <p class:list={[CONTAINER, 'py-24 text-fg-subtle text-value']}>
+        The roadmap could not be loaded. It lives on{' '}
+        <a href={PROJECT_URL} class="text-fg-brand hover:underline">
+          GitHub Projects
+        </a>
+        .
+      </p>
+    ) : (
+      <>
+        <div class="mx-auto w-full max-w-7xl px-4 pt-16 pb-12 sm:px-6">
+          <Board items={open} />
+        </div>
+        <div class:list={[CONTAINER, 'flex flex-col']}>
+          {HORIZONS.map((horizon, index) => (
+            <Horizon
+              id={`horizon-${horizon}`}
+              eyebrow={`${String(index + 1).padStart(2, '0')} ${horizon}`}
+              title={COPY[horizon]}
+              live={index === 0}
+              quiet={horizon === 'Later'}
+              items={open.filter((item) => item.horizon === horizon)}
+            />
+          ))}
+          {shipped.length > 0 && (
+            <Horizon
+              id="shipped"
+              eyebrow="Shipped"
+              title="Recently shipped."
+              items={shipped}
+            >
+              <Reveal slot="head" delay={0.4}>
+                <a
+                  href="/changelog"
+                  class="text-fg-brand text-meta transition-colors hover:text-fg"
+                >
+                  Everything else is in the changelog →
+                </a>
+              </Reveal>
+            </Horizon>
+          )}
+        </div>
+      </>
+    )
+  }
+
+  <section class="mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 sm:py-32">
+    <Backdrop dim>
+      <div class="flex flex-col items-center px-6 py-24 text-center sm:py-28">
+        <Words
+          text="Missing something?"
+          delay={0.3}
+          class="text-balance text-fg text-headline"
+        />
+        <Reveal delay={0.55}>
+          <p class="mt-5 max-w-md text-pretty text-fg-secondary text-lead">
+            The roadmap follows what people running Rustrak ask for. Tell us
+            what you need.
+          </p>
+        </Reveal>
+        <Reveal delay={0.7} class="mt-8">
+          <LinkButton
+            href="https://github.com/rustrak/rustrak/issues/new"
+            variant="primary"
+            size="lg"
+          >
+            Open an issue
+          </LinkButton>
+        </Reveal>
+      </div>
+    </Backdrop>
+  </section>
+</Page>

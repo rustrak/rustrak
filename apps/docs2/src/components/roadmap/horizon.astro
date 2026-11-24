@@ -1,0 +1,114 @@
+---
+import { ArrowRightIcon, Tag, type TagTone } from '@rustrak/ui';
+import { anchor, type RoadmapItem } from '../../lib/roadmap';
+import Reveal from '../reveal.astro';
+import Words from '../words.astro';
+import ItemTitle from './item-title.astro';
+import LiveDot from './live-dot.astro';
+
+/**
+ * One horizon, laid out like a landing feature: the head on the left, held
+ * while its items scroll past on the right, each opening its issue on
+ * GitHub.
+ */
+interface Props {
+  id: string;
+  eyebrow: string;
+  title: string;
+  items: RoadmapItem[];
+  live?: boolean;
+  /** Drawn a step quieter: furthest out, not decided. */
+  quiet?: boolean;
+}
+const { id, eyebrow, title, items, live, quiet } = Astro.props;
+
+/** The project's Status options, coloured by how close to shipping they are. */
+const STATUS_TONE: Record<string, TagTone> = {
+  'In progress': 'brand',
+  'In review': 'info',
+  'In design': 'warning',
+  Exploring: 'neutral',
+  Shipped: 'brand',
+};
+---
+
+<section
+  id={id}
+  class="grid scroll-mt-24 gap-10 border-border-subtle border-t py-20 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-16"
+>
+  <header class="flex flex-col gap-5 lg:sticky lg:top-28 lg:self-start">
+    <Reveal y={12} class="flex items-center gap-2.5">
+      {live && <LiveDot />}
+      <p class="font-mono text-fg-brand text-mono uppercase tracking-wider">
+        {eyebrow}
+      </p>
+    </Reveal>
+    <Words
+      text={title}
+      delay={0.1}
+      class:list={[
+        'text-balance text-headline',
+        quiet ? 'text-fg-subtle' : 'text-fg',
+      ]}
+    />
+    <Reveal delay={0.3}>
+      <p class="text-fg-meta text-meta">
+        {items.length}
+        {items.length === 1 ? 'item' : 'items'}
+      </p>
+    </Reveal>
+    <slot name="head" />
+  </header>
+
+  {
+    items.length > 0 ? (
+      <ol class="flex flex-col gap-3">
+        {items.map((item, i) => (
+          <Reveal
+            as="li"
+            delay={0.15 + Math.min(i, 5) * 0.06}
+            class="rounded-2xl border border-border-subtle bg-panel transition-colors hover:border-border"
+          >
+            <a
+              id={anchor(item)}
+              href={item.url}
+              target="_blank"
+              rel="noreferrer"
+              class="group flex scroll-mt-32 items-start justify-between gap-6 p-6"
+            >
+              <span class="flex min-w-0 flex-col gap-3">
+                <span
+                  class:list={[
+                    'text-balance text-section transition-colors group-hover:text-fg-brand',
+                    quiet ? 'text-fg-subtle' : 'text-fg',
+                  ]}
+                >
+                  <ItemTitle title={item.title} />
+                </span>
+                <span class="flex flex-wrap items-center gap-3">
+                  {item.status && (
+                    <Tag tone={STATUS_TONE[item.status] ?? 'neutral'}>
+                      {item.status}
+                    </Tag>
+                  )}
+                  {item.area && <Tag variant="soft">{item.area}</Tag>}
+                  {item.number && (
+                    <span class="font-mono text-fg-meta text-mono-sm">
+                      #{item.number}
+                    </span>
+                  )}
+                </span>
+              </span>
+              <ArrowRightIcon
+                aria-hidden
+                className="mt-1 size-4 shrink-0 -rotate-45 text-fg-subtle transition-[color,translate] group-hover:translate-x-0.5 group-hover:text-fg-brand"
+              />
+            </a>
+          </Reveal>
+        ))}
+      </ol>
+    ) : (
+      <p class="text-fg-subtle text-value">Nothing here yet.</p>
+    )
+  }
+</section>

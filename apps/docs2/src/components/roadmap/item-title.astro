@@ -1,0 +1,20 @@
+---
+/**
+ * An issue's title, with the `code` GitHub writes between backticks set as
+ * code rather than shown with its backticks.
+ */
+interface Props {
+  title: string;
+}
+const parts = Astro.props.title.split('`');
+---
+
+{
+  parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <code class="rounded-sm bg-fg/6 px-1 font-mono text-[0.88em]">{part}</code>
+    ) : (
+      part
+    ),
+  )
+}

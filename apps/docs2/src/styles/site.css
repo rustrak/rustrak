@@ -194,3 +194,11 @@ html {
     animation: none;
   }
 }
+
+/* An in-page link (a roadmap card, a post's contents) glides to its target
+   instead of jumping, unless the reader asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
