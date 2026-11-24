@@ -757,6 +757,21 @@
     "summary": {
       "withFatal": "{count, plural, one {# cu erori fatale} few {# cu erori fatale} other {# cu erori fatale}}",
       "events24h": "{count, plural, one {{display} eveniment în 24 h} few {{display} evenimente în 24 h} other {{display} de evenimente în 24 h}}"
+    },
+    "sidebar": {
+      "title": "Bară laterală",
+      "options": "Opțiunile barei laterale",
+      "sortBy": "Sortează după",
+      "sort": {
+        "manual": "Manual",
+        "name": "Nume",
+        "activity": "Activitate"
+      },
+      "projects": "Proiecte",
+      "shown": "{shown} din {total} afișate",
+      "show": "Afișează {name} în bara laterală",
+      "drag": "Trage {name}",
+      "saveFailed": "Bara laterală nu a putut fi salvată"
     }
   },
   "alerts": {

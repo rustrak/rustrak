@@ -1888,6 +1888,27 @@ export const zSetProjectMember = z.object({
 });
 
 /**
+ * What the sidebar sorts the projects by.
+ */
+export const zSidebarSort = z.enum([
+    'manual',
+    'name',
+    'activity'
+]);
+
+/**
+ * How one reader's sidebar lists the projects.
+ *
+ * Ids are kept as given: a project deleted later stays in the lists and is
+ * skipped by whoever reads them, as it is no longer in the project list.
+ */
+export const zSidebarProjects = z.object({
+    hidden: z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))),
+    order: z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))),
+    sort: zSidebarSort
+});
+
+/**
  * Sort order direction
  */
 export const zSortOrder = z.enum(['asc', 'desc']);
@@ -4898,6 +4919,18 @@ export const zSettingsUpdateMcpBody = zMcpSettings;
  * The MCP endpoint's new state, and its URL
  */
 export const zSettingsUpdateMcpResponse = zMcpStatus;
+
+/**
+ * How the reader's sidebar lists the projects
+ */
+export const zSidebarGetProjectsResponse = zSidebarProjects;
+
+export const zSidebarUpdateProjectsBody = zSidebarProjects;
+
+/**
+ * Saved
+ */
+export const zSidebarUpdateProjectsResponse = zSidebarProjects;
 
 /**
  * How long ago each project's data arrived, per kind

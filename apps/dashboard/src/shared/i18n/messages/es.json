@@ -757,6 +757,21 @@
     "summary": {
       "withFatal": "{count, plural, one {# con errores fatales} other {# con errores fatales}}",
       "events24h": "{count, plural, one {{display} evento en 24 h} other {{display} eventos en 24 h}}"
+    },
+    "sidebar": {
+      "title": "Sidebar",
+      "options": "Opciones del sidebar",
+      "sortBy": "Ordenar por",
+      "sort": {
+        "manual": "Manual",
+        "name": "Nombre",
+        "activity": "Actividad"
+      },
+      "projects": "Proyectos",
+      "shown": "{shown} de {total} visibles",
+      "show": "Mostrar {name} en el sidebar",
+      "drag": "Arrastrar {name}",
+      "saveFailed": "No se pudo guardar el sidebar"
     }
   },
   "alerts": {

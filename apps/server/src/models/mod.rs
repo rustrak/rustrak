@@ -117,6 +117,7 @@ pub mod role;
 pub mod saved_view;
 pub mod schedule;
 pub mod session;
+pub mod sidebar;
 pub mod source_file;
 pub mod span_v2;
 pub mod stats;

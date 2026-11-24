@@ -548,6 +548,13 @@ Every method, grouped as it hangs off the client.
 | `settings.getMcp()` | `GET /api/settings/mcp` | Whether the MCP endpoint at `/mcp` is on. |
 | `settings.updateMcp({ body })` | `PUT /api/settings/mcp` | Turns the MCP endpoint at `/mcp` on or off (needs `mcp:update`). |
 
+### Sidebar
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `sidebar.getProjects()` | `GET /api/sidebar/projects` | How your sidebar lists the projects. |
+| `sidebar.updateProjects({ body })` | `PUT /api/sidebar/projects` | Replace how your sidebar lists the projects. |
+
 ### Source Maps
 
 | Method | Endpoint | Description |

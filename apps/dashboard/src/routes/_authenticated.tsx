@@ -53,6 +53,7 @@ export const Route = createFileRoute('/_authenticated')({
   loader: ({ context: { queryClient } }) => {
     void queryClient.query(accessQueries.me()).catch(noop);
     void queryClient.query(projectQueries.picker()).catch(noop);
+    void queryClient.query(projectQueries.sidebar()).catch(noop);
   },
   component: AuthenticatedLayout,
 });

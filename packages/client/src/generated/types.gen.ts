@@ -2587,6 +2587,29 @@ export type SetProjectMember = {
 };
 
 /**
+ * How one reader's sidebar lists the projects.
+ *
+ * Ids are kept as given: a project deleted later stays in the lists and is
+ * skipped by whoever reads them, as it is no longer in the project list.
+ */
+export type SidebarProjects = {
+    /**
+     * Project ids the sidebar leaves out.
+     */
+    hidden: Array<number>;
+    /**
+     * Project ids in the reader's order; projects missing from it follow.
+     */
+    order: Array<number>;
+    sort: SidebarSort;
+};
+
+/**
+ * What the sidebar sorts the projects by.
+ */
+export type SidebarSort = 'manual' | 'name' | 'activity';
+
+/**
  * Sort order direction
  */
 export type SortOrder = 'asc' | 'desc';
@@ -10789,6 +10812,64 @@ export type SettingsUpdateMcpResponses = {
 };
 
 export type SettingsUpdateMcpResponse = SettingsUpdateMcpResponses[keyof SettingsUpdateMcpResponses];
+
+export type SidebarGetProjectsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/sidebar/projects';
+};
+
+export type SidebarGetProjectsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type SidebarGetProjectsError = SidebarGetProjectsErrors[keyof SidebarGetProjectsErrors];
+
+export type SidebarGetProjectsResponses = {
+    /**
+     * How the reader's sidebar lists the projects
+     */
+    200: SidebarProjects;
+};
+
+export type SidebarGetProjectsResponse = SidebarGetProjectsResponses[keyof SidebarGetProjectsResponses];
+
+export type SidebarUpdateProjectsData = {
+    body: SidebarProjects;
+    path?: never;
+    query?: never;
+    url: '/api/sidebar/projects';
+};
+
+export type SidebarUpdateProjectsErrors = {
+    /**
+     * Invalid body, such as an unknown sort
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * A token without a user
+     */
+    403: ErrorResponse;
+};
+
+export type SidebarUpdateProjectsError = SidebarUpdateProjectsErrors[keyof SidebarUpdateProjectsErrors];
+
+export type SidebarUpdateProjectsResponses = {
+    /**
+     * Saved
+     */
+    200: SidebarProjects;
+};
+
+export type SidebarUpdateProjectsResponse = SidebarUpdateProjectsResponses[keyof SidebarUpdateProjectsResponses];
 
 export type StorageGetAgeData = {
     body?: never;
