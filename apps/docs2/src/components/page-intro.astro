@@ -5,13 +5,13 @@ import Words from './words.astro';
 
 /**
  * The opening of the blog, the changelog and the roadmap: the landing's
- * section head at page size. Eyebrow, a title rising word by word, the lead,
- * and an optional line of meta under it (the `meta` slot).
+ * section head at page size. Eyebrow, a title rising word by word, and an
+ * optional lead and line of meta under it (the `meta` slot).
  */
 interface Props {
   eyebrow: string;
   title: string;
-  lead: string;
+  lead?: string;
 }
 const { eyebrow, title, lead } = Astro.props;
 ---
@@ -28,9 +28,13 @@ const { eyebrow, title, lead } = Astro.props;
     delay={0.1}
     class="max-w-[16ch] text-balance text-display text-fg"
   />
-  <Reveal delay={0.35}>
-    <p class="max-w-xl text-pretty text-fg-subtle text-lead">{lead}</p>
-  </Reveal>
+  {
+    lead && (
+      <Reveal delay={0.35}>
+        <p class="max-w-xl text-pretty text-fg-subtle text-lead">{lead}</p>
+      </Reveal>
+    )
+  }
   {
     Astro.slots.has('meta') && (
       <Reveal
