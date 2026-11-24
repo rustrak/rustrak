@@ -37,7 +37,6 @@ function show(lang: string) {
     pres.forEach((pre, i) => {
       pre.hidden = i !== index;
       tabs[i].setAttribute('aria-selected', String(i === index));
-      tabs[i].tabIndex = i === index ? 0 : -1;
     });
   }
 }

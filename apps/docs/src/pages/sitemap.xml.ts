@@ -14,7 +14,7 @@ import { COMPETITORS } from '../lib/vs';
  * lastmod it learns not to trust.
  */
 const pages = Object.keys(import.meta.glob('./**/*.astro'))
-  .filter((file) => !file.includes('['))
+  .filter((file) => !file.includes('[') && file !== './404.astro')
   .map((file) => file.slice(1).replace(/(\/index)?\.astro$/, '') || '/');
 
 export const GET: APIRoute = async ({ site }) => {

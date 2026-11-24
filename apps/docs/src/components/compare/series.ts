@@ -94,7 +94,8 @@ const END_DY: Record<string, number> = { bugsink: -4, 'bugsink-sqlite': 12 };
 
 /** Stack memory second by second around the burst, up to a minute in. */
 export function memory(ids: string[]): Series[] {
-  return RUNS.filter((r) => ids.includes(r.id) && data[r.id]).map((run) => ({
+  const only = new Set(ids);
+  return RUNS.filter((r) => only.has(r.id) && data[r.id]).map((run) => ({
     id: run.id,
     label: label(run),
     color: colorOf(run),

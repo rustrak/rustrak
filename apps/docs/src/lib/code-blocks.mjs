@@ -66,7 +66,6 @@ function group(run) {
         role: 'tab',
         dataLang: langOf(pre),
         ariaSelected: String(i === 0),
-        tabIndex: i === 0 ? 0 : -1,
       },
       [text(NAMES[langOf(pre)])],
     ),

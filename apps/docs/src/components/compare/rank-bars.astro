@@ -25,7 +25,8 @@ const format = (v: number) =>
     : metric === 'cpu'
       ? `${v} ${unit}`
       : `${num(v)} ${unit}`;
-const rows = RUNS.filter((r) => !ids || ids.includes(r.id))
+const only = ids && new Set(ids);
+const rows = RUNS.filter((r) => !only || only.has(r.id))
   .map((run) => ({ run, value: value(run) }))
   .sort((a, b) =>
     metric === 'stored' ? b.value - a.value : a.value - b.value,

@@ -14,5 +14,5 @@ export const editUrl = (page: DocPage) =>
 /** The page's own `# Title`, which its header sets instead. */
 export const titleOf = (page: DocPage, fallback: string) =>
   page.data.title ??
-  /^#\s+(.+)$/m.exec(page.body ?? '')?.[1]?.trim() ??
+  /^#[ \t]+(\S.*)$/m.exec(page.body ?? '')?.[1]?.trim() ??
   fallback;

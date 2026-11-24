@@ -20,6 +20,11 @@ import { SearchIcon } from '@rustrak/ui';
     <input
       data-search-input
       type="text"
+      role="combobox"
+      aria-expanded="true"
+      aria-controls="search-results"
+      aria-autocomplete="list"
+      aria-label="Search the documentation"
       placeholder="Search the documentation"
       autocomplete="off"
       spellcheck="false"
@@ -29,7 +34,7 @@ import { SearchIcon } from '@rustrak/ui';
       Esc
     </kbd>
   </div>
-  <ul data-search-results class="max-h-[60vh] overflow-y-auto p-2" role="listbox"></ul>
+  <ul id="search-results" data-search-results class="max-h-[60vh] overflow-y-auto p-2" role="listbox"></ul>
   <p data-search-status class="px-5 py-8 text-center text-fg-meta text-meta">
     Type to search guides, configuration and the API.
   </p>
@@ -75,11 +80,16 @@ import { SearchIcon } from '@rustrak/ui';
     });
   };
 
+  // The input keeps focus; `aria-activedescendant` tells a screen reader
+  // which option Enter opens.
   const highlight = (i: number) => {
-    const items = [...(list?.querySelectorAll('a') ?? [])];
+    const items = [...(list?.querySelectorAll('li') ?? [])];
     active = Math.max(0, Math.min(i, items.length - 1));
-    items.forEach((a, n) => a.setAttribute('aria-selected', String(n === active)));
-    items[active]?.scrollIntoView({ block: 'nearest' });
+    items.forEach((li, n) => li.setAttribute('aria-selected', String(n === active)));
+    const current = items[active];
+    if (current) input?.setAttribute('aria-activedescendant', current.id);
+    else input?.removeAttribute('aria-activedescendant');
+    current?.scrollIntoView({ block: 'nearest' });
   };
 
   /** One result: the page, then the sections of it the query matched. */
@@ -94,10 +104,13 @@ import { SearchIcon } from '@rustrak/ui';
         : [{ url: result.url, title: result.meta.title ?? result.url, excerpt: result.excerpt }];
       for (const hit of hits) {
         const li = document.createElement('li');
+        li.id = `search-option-${list.childElementCount}`;
+        li.setAttribute('role', 'option');
         const a = document.createElement('a');
         a.href = hit.url;
         a.className =
-          'flex flex-col gap-1 rounded-lg px-3 py-2.5 transition-colors aria-selected:bg-surface-hover hover:bg-surface-hover';
+          'flex flex-col gap-1 rounded-lg px-3 py-2.5 transition-colors in-aria-selected:bg-surface-hover hover:bg-surface-hover';
+        a.tabIndex = -1;
         const title = document.createElement('span');
         title.className = 'text-fg text-control';
         const page = result.meta.title ?? '';
@@ -119,6 +132,7 @@ import { SearchIcon } from '@rustrak/ui';
     const q = input.value.trim();
     if (!q) {
       list?.replaceChildren();
+      highlight(0);
       if (status) {
         status.hidden = false;
         status.textContent = 'Type to search guides, configuration and the API.';
@@ -128,7 +142,10 @@ import { SearchIcon } from '@rustrak/ui';
     const engine = await load().catch(() => null);
     const search = await engine?.debouncedSearch(q);
     if (!search) return;
-    render(await Promise.all(search.results.slice(0, 8).map((r) => r.data())));
+    const results = await Promise.all(search.results.slice(0, 8).map((r) => r.data()));
+    // A newer query, or a cleared input, owns the list by now.
+    if (input.value.trim() !== q) return;
+    render(results);
   });
 
   input?.addEventListener('keydown', (event) => {

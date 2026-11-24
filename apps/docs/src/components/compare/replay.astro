@@ -102,9 +102,9 @@ const done = (secs: number) => `all ${num(SETUP.events)} in ${secs} s`;
   const format = (n: number) => n.toLocaleString('en-US');
 
   for (const root of document.querySelectorAll<HTMLElement>('[data-replay]')) {
-    const { speed, total, lines }: Replay = JSON.parse(
-      root.dataset.replay ?? '{}',
-    );
+    const replay: Replay | null = JSON.parse(root.dataset.replay ?? 'null');
+    if (!replay) continue;
+    const { speed, total, lines } = replay;
     const clock = root.querySelector<HTMLElement>('[data-clock]');
     const end = Math.max(...lines.map((l) => l.secs));
     const lanes = lines.map((line) => {

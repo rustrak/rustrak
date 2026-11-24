@@ -32,31 +32,13 @@
   ],
   "ignore": {
     "files": [
-      ".next/**",
-      "out/**",
-      "**/public/llms*.txt",
+      ".astro/**",
+      "dist/**",
       "**/shared/ui/components/shadcn/**",
       "**/src/components/ui/**",
-      "content/**/_meta.js",
       "**/*.stories.tsx"
     ],
     "overrides": [
-      {
-        "files": [
-          "**/landing/sections/sponsors.tsx"
-        ],
-        "rules": [
-          "react-doctor/nextjs-no-img-element"
-        ]
-      },
-      {
-        "files": [
-          "**/changelog/release-article.tsx"
-        ],
-        "rules": [
-          "react-doctor/dangerous-html-sink"
-        ]
-      },
       {
         "files": [
           "**/features/alert/ui/components/json-template-editor.tsx"
