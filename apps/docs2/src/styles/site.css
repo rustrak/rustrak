@@ -133,6 +133,65 @@ html {
   animation-play-state: running;
 }
 
+/* The same for a chart drawn sideways (`.hbar`, growing from the left) and
+   for a line chart, whose lines draw themselves from their first point
+   (`pathLength="1"` on each) and whose labels arrive once they have. */
+@keyframes grow-x {
+  from {
+    scale: 0 1;
+  }
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+[data-reveal="chart"] {
+  animation: none;
+}
+
+[data-reveal="chart"] .hbar {
+  transform-origin: left;
+  animation: grow-x 1.4s var(--ease-landing) var(--delay, 0.2s) both;
+}
+
+[data-reveal="chart"] .line {
+  stroke-dasharray: 1;
+  animation: draw var(--duration, 1.8s) ease-out 0.2s both;
+}
+
+[data-reveal="chart"] .after-draw {
+  animation: appear 0.6s ease-out var(--duration, 1.8s) both;
+}
+
+/* A square or dot in a count, popping in one after another. */
+@keyframes pop {
+  from {
+    opacity: 0;
+    scale: 0.3;
+  }
+}
+
+[data-reveal="chart"] .pop {
+  animation: pop 0.5s var(--ease-landing) var(--delay, 0.2s) both;
+}
+
+[data-reveal="chart"] :is(.hbar, .line, .after-draw, .pop) {
+  animation-play-state: paused;
+}
+
+[data-reveal="chart"].in :is(.hbar, .line, .after-draw, .pop) {
+  animation-play-state: running;
+}
+
 @keyframes rise {
   from {
     translate: 0 150%;
@@ -190,7 +249,8 @@ html {
   }
 
   .word,
-  [data-reveal="bars"] .bar {
+  [data-reveal="bars"] .bar,
+  [data-reveal="chart"] :is(.hbar, .line, .after-draw, .pop) {
     animation: none;
   }
 }

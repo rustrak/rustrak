@@ -1,0 +1,317 @@
+---
+import Backdrop from '../../components/backdrop.astro';
+import CoreBudget from '../../components/compare/core-budget.astro';
+import Figure from '../../components/compare/figure.astro';
+import Heading from '../../components/compare/heading.astro';
+import HowMany from '../../components/compare/how-many.astro';
+import Replay from '../../components/compare/replay.astro';
+import ResultsTable from '../../components/compare/results-table.astro';
+import SectionNav from '../../components/compare/section-nav.astro';
+import ServerFit from '../../components/compare/server-fit.astro';
+import SetupStrip from '../../components/compare/setup-strip.astro';
+import Stat from '../../components/compare/stat.astro';
+import { LinkButton } from '../../components/link-button';
+import PageIntro from '../../components/page-intro.astro';
+import Reveal from '../../components/reveal.astro';
+import Page from '../../layouts/page.astro';
+import { MEASURED, num, RUNS, run, SETUP } from '../../lib/compare';
+import {
+  COMPETITORS,
+  type Competitor,
+  FACT_LABELS,
+  type FactKey,
+  faqJsonLd,
+  RUSTRAK_FACTS,
+} from '../../lib/vs';
+import { jsonLd } from '../../seo';
+import { CONTAINER } from '../../site';
+
+/**
+ * Rustrak against one other product: the same benchmark as `/benchmarks`,
+ * cut down to the two of them, with the comparisons this product loses
+ * worst drawn on their own, what running each one takes, how to switch, and
+ * the questions people ask.
+ */
+export function getStaticPaths() {
+  return COMPETITORS.map((c) => ({ params: { slug: c.slug }, props: { c } }));
+}
+
+interface Props {
+  c: Competitor;
+}
+const { c } = Astro.props;
+const SITE = Astro.site?.origin;
+const runs = RUNS.filter((r) => c.runs.includes(r.id));
+const others = COMPETITORS.filter((o) => o.slug !== c.slug);
+const keys = Object.keys(FACT_LABELS) as FactKey[];
+const rustrak = run('rustrak');
+const against = run(c.against);
+
+const SECTION = `${CONTAINER} py-16 sm:py-24`;
+const stories = c.stories.map((story, i) => ({
+  ...story,
+  id: `story-${i + 1}`,
+}));
+const SECTIONS: [string, string][] = [
+  ...stories.map((s): [string, string] => [s.id, s.name]),
+  ['results', 'Full results'],
+  ['setup', 'Deployment'],
+  ['switch', 'Migration'],
+  ['faq', 'Questions'],
+];
+const number = (id: string) =>
+  String(SECTIONS.findIndex(([s]) => s === id) + 1).padStart(2, '0');
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'TechArticle',
+      headline: c.headline,
+      description: c.description,
+      url: `${SITE}/vs/${c.slug}`,
+      datePublished: MEASURED,
+      dateModified: MEASURED,
+      author: { '@id': `${SITE}/#organization` },
+      publisher: { '@id': `${SITE}/#organization` },
+      about: [
+        { '@type': 'SoftwareApplication', name: 'Rustrak', url: SITE },
+        { '@type': 'SoftwareApplication', name: c.name },
+      ],
+    },
+    faqJsonLd(c.faq),
+  ],
+};
+---
+
+<Page title={c.title} description={c.description}>
+  <script
+    slot="head"
+    type="application/ld+json"
+    set:html={jsonLd(structuredData)}
+  />
+  <PageIntro eyebrow="Comparison" title={c.headline} lead={c.lead}>
+    <Fragment slot="meta">
+      <span>Measured {MEASURED}</span>
+      <span aria-hidden="true">·</span>
+      <a href="/benchmarks#method" class="transition-colors hover:text-fg">
+        Methodology
+      </a>
+      <span aria-hidden="true">·</span>
+      <a href="/benchmarks" class="transition-colors hover:text-fg">
+        Full benchmark
+      </a>
+    </Fragment>
+  </PageIntro>
+
+  <section class:list={[CONTAINER, 'pt-16']}>
+    <SetupStrip
+      items={[
+        ['Load', `${num(SETUP.events)} errors, ${SETUP.concurrency} at a time`],
+        ['Machine', `${SETUP.cores} cores, the same for both`],
+        [
+          'Versions',
+          `Rustrak ${rustrak.version}, ${against.name} ${against.version}`,
+        ],
+        ['Counted', 'Errors stored and queryable, not only accepted'],
+      ]}
+    />
+  </section>
+
+  <section class:list={[CONTAINER, 'pt-4']}>
+    <div class="grid gap-4 md:grid-cols-3">
+      {
+        c.stats.map((s, i) => (
+          <Stat
+            value={s.value}
+            label={s.label}
+            others={s.others}
+            delay={i * 0.06}
+          />
+        ))
+      }
+    </div>
+  </section>
+
+  <SectionNav sections={SECTIONS} />
+
+  {
+    stories.map((story) => (
+      <section class={SECTION}>
+        <Heading
+          id={story.id}
+          eyebrow={`${number(story.id)} ${story.name}`}
+          title={story.title}
+          lead={story.lead}
+        />
+        <div class="mt-10">
+          <Figure>
+            {story.visual === 'fit' && (
+              <ServerFit ids={['rustrak', 'sentry-errors', 'sentry']} />
+            )}
+            {story.visual === 'howmany' && <HowMany other="sentry-errors" />}
+            {story.visual === 'replay' && (
+              <Replay ids={c.runs} speed={story.speed} />
+            )}
+            {story.visual === 'core' && <CoreBudget ids={c.runs} />}
+            <Fragment slot="caption">{story.caption}</Fragment>
+          </Figure>
+        </div>
+      </section>
+    ))
+  }
+
+  <section class={SECTION}>
+    <Heading
+      id="results"
+      eyebrow={`${number('results')} Full results`}
+      title="Full results"
+      lead="Same machine, same four cores, one product at a time. Every configuration stored every error."
+    />
+    <div class="mt-10">
+      <ResultsTable runs={runs} />
+      <p class="mt-4 text-fg-meta text-meta">
+        Lime marks the best value in each row, whoever it belongs to.
+      </p>
+    </div>
+  </section>
+
+  <section class={SECTION}>
+    <Heading
+      id="setup"
+      eyebrow={`${number('setup')} Deployment`}
+      title="Deployment and licensing"
+      lead={`What you would be running and maintaining with each, from ${c.name}'s own documentation and our run.`}
+    />
+    <Reveal
+      y={40}
+      class="mt-10 overflow-x-auto rounded-3xl border border-border-subtle"
+    >
+      <table class="w-full min-w-[36rem] border-collapse text-start">
+        <thead>
+          <tr class="border-border-subtle border-b">
+            <th class="w-[30%] p-4 sm:p-5"><span class="sr-only">Fact</span></th>
+            <th
+              scope="col"
+              class="bg-surface p-4 text-start text-fg-brand text-section sm:p-5"
+            >
+              Rustrak
+            </th>
+            <th scope="col" class="p-4 text-start text-fg text-section sm:p-5">
+              {c.name}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            keys.map((key) => (
+              <tr class="border-border-divider border-b last:border-b-0">
+                <th
+                  scope="row"
+                  class="p-4 text-start font-normal text-fg-meta text-value sm:p-5"
+                >
+                  {FACT_LABELS[key]}
+                </th>
+                <td class="bg-surface p-4 text-fg text-value sm:p-5">
+                  {RUSTRAK_FACTS[key]}
+                </td>
+                <td class="p-4 text-fg-subtle text-value sm:p-5">
+                  {c.facts[key]}
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </Reveal>
+  </section>
+
+  <section class={SECTION}>
+    <Heading
+      id="switch"
+      eyebrow={`${number('switch')} Migration`}
+      title={`Migrating from ${c.name}`}
+      lead="Your applications already speak the Sentry protocol. Start Rustrak, then change the DSN; nothing else in the SDK setup changes."
+    />
+    <div class="mt-10 grid gap-4 lg:grid-cols-2">
+      <Figure>
+        <p class="font-mono text-fg-brand text-mono uppercase tracking-wider">
+          1. Start Rustrak
+        </p>
+        <pre class="overflow-x-auto font-mono text-fg-secondary text-mono leading-relaxed"><span class="text-fg-meta"># one container, one volume</span>
+docker run -d --name rustrak -p 8080:8080 \
+  -v rustrak_data:/data \
+  -e SESSION_SECRET_KEY=$(openssl rand -hex 32) \
+  -e CREATE_SUPERUSER=you@example.com:change-me \
+  -e PUBLIC_URL=https://errors.example.com \
+  rustrak/rustrak-server:latest</pre>
+        <Fragment slot="caption">
+          The dashboard and the API answer on port 8080.
+        </Fragment>
+      </Figure>
+      <Figure>
+        <p class="font-mono text-fg-brand text-mono uppercase tracking-wider">
+          2. Change the DSN
+        </p>
+        <pre class="overflow-x-auto font-mono text-mono leading-relaxed"><span class="text-fg-meta">Sentry.init(&#123;</span>
+<span class="text-fg-ghost line-through">  dsn: "https://key@old-host/1",</span>
+<span class="text-fg-brand">  dsn: "https://key@errors.example.com/1",</span>
+<span class="text-fg-meta">  tracesSampleRate: 0.2,</span>
+<span class="text-fg-meta">&#125;);</span></pre>
+        <Fragment slot="caption">
+          Create a project in Rustrak and use its DSN.
+        </Fragment>
+      </Figure>
+    </div>
+  </section>
+
+  <section class={SECTION}>
+    <Heading
+      id="faq"
+      eyebrow={`${number('faq')} Questions`}
+      title="Frequently asked questions"
+    />
+    <dl class="mt-10 grid gap-4 md:grid-cols-2">
+      {
+        c.faq.map((item, i) => (
+          <Reveal
+            delay={i * 0.05}
+            class="rounded-3xl border border-border-subtle p-6 sm:p-8"
+          >
+            <dt class="text-fg text-section">{item.q}</dt>
+            <dd class="mt-3 text-pretty text-fg-subtle text-value">{item.a}</dd>
+          </Reveal>
+        ))
+      }
+    </dl>
+  </section>
+
+  <section class={SECTION}>
+    <Backdrop dim>
+      <div class="flex flex-col gap-8 px-6 py-16 sm:px-12 sm:py-20">
+        <h2 class="max-w-xl text-balance text-fg text-headline">
+          Run it on the server you already have
+        </h2>
+        <div class="flex flex-wrap items-center gap-3">
+          <LinkButton
+            href="/getting-started/installation"
+            variant="primary"
+            size="lg"
+          >
+            Install Rustrak
+          </LinkButton>
+          <LinkButton href="/benchmarks" variant="secondary" size="lg">
+            Full benchmark
+          </LinkButton>
+          {
+            others.map((o) => (
+              <LinkButton href={`/vs/${o.slug}`} variant="secondary" size="lg">
+                {o.headline}
+              </LinkButton>
+            ))
+          }
+        </div>
+      </div>
+    </Backdrop>
+  </section>
+</Page>

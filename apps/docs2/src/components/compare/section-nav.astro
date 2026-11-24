@@ -1,0 +1,29 @@
+---
+import { CONTAINER } from '../../site';
+
+/** The page's sections, numbered, for a reader who came for one of them. */
+interface Props {
+  sections: [string, string][];
+}
+const { sections } = Astro.props;
+---
+
+<nav aria-label="On this page" class:list={[CONTAINER, 'pt-16']}>
+  <ol class="flex flex-wrap gap-2">
+    {
+      sections.map(([id, name], i) => (
+        <li>
+          <a
+            href={`#${id}`}
+            class="flex items-center gap-2 rounded-full border border-border-subtle px-3.5 py-1.5 text-control text-fg-subtle transition-colors hover:border-border hover:text-fg"
+          >
+            <span class="font-mono text-fg-ghost text-mono-sm">
+              {String(i + 1).padStart(2, '0')}
+            </span>
+            {name}
+          </a>
+        </li>
+      ))
+    }
+  </ol>
+</nav>

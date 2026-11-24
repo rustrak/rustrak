@@ -1,0 +1,40 @@
+---
+import { label, mb, run } from '../../lib/compare';
+
+/** How many Rustrak instances at their peak fit in the memory another used. */
+interface Props {
+  other: string;
+}
+const rustrak = run('rustrak');
+const them = run(Astro.props.other);
+const count = Math.floor(them.ram.peak / rustrak.ram.peak);
+---
+
+<div class="flex flex-col gap-6">
+  <p class="max-w-2xl text-pretty text-fg-secondary text-lead">
+    <span class="text-fg-brand">{count} Rustrak instances</span>, each at its
+    busiest ({mb(rustrak.ram.peak)}), fit in the {mb(them.ram.peak)} that {
+      label(them)
+    } used for the same burst.
+  </p>
+  <div
+    class="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface/40 p-5"
+  >
+    <div class="flex items-baseline justify-between gap-4 text-meta">
+      <span class="text-fg-subtle">{label(them)}, at its busiest</span>
+      <span class="font-mono text-fg-secondary tabular-nums">
+        {mb(them.ram.peak)}
+      </span>
+    </div>
+    <div data-reveal="chart" class="flex flex-wrap gap-1.5" aria-hidden="true">
+      {
+        Array.from({ length: count }, (_, i) => (
+          <span
+            class="pop size-3.5 rounded-xs bg-surface-brand"
+            style={`--delay:${0.2 + i * 0.015}s`}
+          />
+        ))
+      }
+    </div>
+  </div>
+</div>

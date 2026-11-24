@@ -1,0 +1,69 @@
+---
+import { label, RUNS } from '../../lib/compare';
+
+/**
+ * Server sizes from 1 to 16 GB, each product's peak memory as a share of
+ * each: the server you would rent to run it. A product that does not fit is
+ * drawn hatched and full.
+ */
+interface Props {
+  ids: string[];
+}
+const runs = RUNS.filter((r) => Astro.props.ids.includes(r.id));
+const SIZES = [1, 2, 4, 8, 16];
+
+/** Names short enough for a fifth of the page. */
+const SHORT: Record<string, string> = {
+  rustrak: 'Rustrak',
+  'sentry-errors': 'Sentry, errors-only',
+  sentry: 'Sentry, full',
+};
+---
+
+<div data-reveal="chart" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+  {
+    SIZES.map((gb, i) => (
+      <div class="flex flex-col gap-5 rounded-2xl border border-border-subtle bg-canvas/40 p-5">
+        <span class="text-fg text-title">{gb} GB server</span>
+        <ul class="flex flex-col gap-4">
+          {runs.map((r) => {
+            const share = r.ram.peak / (gb * 1024);
+            const fits = share <= 1;
+            return (
+              <li class="flex flex-col gap-1.5">
+                <div class="flex items-baseline justify-between gap-2 text-meta">
+                  <span class={r.rustrak ? 'text-fg' : 'text-fg-subtle'}>
+                    {SHORT[r.id] ?? label(r)}
+                  </span>
+                  <span
+                    class:list={[
+                      'font-mono tabular-nums',
+                      fits ? 'text-fg-secondary' : 'text-fg-meta',
+                    ]}
+                  >
+                    {fits
+                      ? `${Math.max(1, Math.round(share * 100))}%`
+                      : 'does not fit'}
+                  </span>
+                </div>
+                <div class="h-2 overflow-hidden rounded-pill bg-surface">
+                  <div
+                    class:list={[
+                      'hbar h-full',
+                      r.rustrak
+                        ? 'rounded-pill bg-surface-brand'
+                        : fits
+                          ? 'bg-fg-ghost'
+                          : 'bg-[repeating-linear-gradient(135deg,var(--fg-ghost)_0_2px,transparent_2px_6px)]',
+                    ]}
+                    style={`width:${Math.max(Math.min(share, 1) * 100, 1.5)}%;--delay:${0.3 + i * 0.08}s`}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ))
+  }
+</div>

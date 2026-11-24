@@ -1,0 +1,20 @@
+---
+import type { Series } from './line-chart.astro';
+
+/** The lines of a chart, named, each with its stroke. */
+interface Props {
+  series: Series[];
+}
+const { series } = Astro.props;
+---
+
+<ul class="flex flex-wrap gap-x-5 gap-y-2 text-fg-subtle text-meta">
+  {
+    series.map((s) => (
+      <li class="flex items-center gap-2">
+        <span class="h-0.5 w-4 rounded-full" style={`background:${s.color}`} />
+        {s.label}
+      </li>
+    ))
+  }
+</ul>

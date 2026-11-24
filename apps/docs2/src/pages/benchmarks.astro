@@ -1,0 +1,395 @@
+---
+import Backdrop from '../components/backdrop.astro';
+import Figure from '../components/compare/figure.astro';
+import Heading from '../components/compare/heading.astro';
+import Legend from '../components/compare/legend.astro';
+import LineChart from '../components/compare/line-chart.astro';
+import RankBars from '../components/compare/rank-bars.astro';
+import ResultsTable from '../components/compare/results-table.astro';
+import SectionNav from '../components/compare/section-nav.astro';
+import { memory, race } from '../components/compare/series';
+import SetupStrip from '../components/compare/setup-strip.astro';
+import Stat from '../components/compare/stat.astro';
+import PageIntro from '../components/page-intro.astro';
+import Reveal from '../components/reveal.astro';
+import Page from '../layouts/page.astro';
+import { HARNESS, MEASURED, mb, num, RUNS, run, SETUP } from '../lib/compare';
+import { jsonLd } from '../seo';
+import { CONTAINER } from '../site';
+
+const SITE = Astro.site?.origin;
+const title = 'Benchmark: Rustrak vs Sentry, GlitchTip and Bugsink';
+const description =
+  'Rustrak, self-hosted Sentry, GlitchTip and Bugsink on the same machine and the same burst of 20,000 errors: time to store them, memory, CPU per event and disk.';
+
+const rustrak = run('rustrak');
+const rustrakPg = run('rustrak-pg');
+const glitchtip = run('glitchtip');
+const bugsink = run('bugsink');
+const bugsinkLite = run('bugsink-sqlite');
+const sentry = run('sentry-errors');
+const sentryFull = run('sentry');
+
+const racing = race();
+/** The products whose memory fits one scale; Sentry would flatten them. */
+const small = memory(
+  RUNS.filter((r) => !r.id.startsWith('sentry')).map((r) => r.id),
+);
+const memoryMax = Math.max(...small.flatMap((s) => s.points.map(([, v]) => v)));
+const memoryStep = 100;
+const memoryTop = Math.ceil(memoryMax / memoryStep) * memoryStep;
+
+const METHOD: [string, string][] = [
+  ['Machine', `${SETUP.host}. One product at a time, each from empty volumes.`],
+  [
+    'Cores',
+    `Every stack was pinned to the same ${SETUP.cores} cores. The load generator and the sampler ran on the other eight, so neither took CPU from the product.`,
+  ],
+  [
+    'Load',
+    `${num(SETUP.events)} gzipped Sentry envelopes of about ${SETUP.eventKb} KB, ${SETUP.concurrency} in flight, spread over ${num(SETUP.groups)} different issues, posted to each product's envelope endpoint with a real DSN.`,
+  ],
+  [
+    'Memory',
+    'The cgroup `anon` counter of every container in the stack, added up once a second. That is memory the processes allocated, without the page cache the kernel can take back.',
+  ],
+  [
+    'CPU',
+    'CPU time of the whole stack from the first request to the last event stored, divided by the number of events.',
+  ],
+  [
+    'Stored',
+    "A count of rows in each product's own events table (ClickHouse for Sentry), every 2 seconds once the burst ended. An event counts when a query can return it, not when the endpoint answers 200.",
+  ],
+  ['Disk', "The size of the stack's Docker volumes right after the run."],
+  [
+    'Configuration',
+    "Each product's own Docker Compose file. We changed only what would have dropped events: rate limits, raised for everyone, and Bugsink's per-project limit of 10,000 stored events.",
+  ],
+];
+
+const CAVEATS = [
+  `Sentry answers first. Relay accepted ${num(sentry.acceptPerS)} events a second because it replies as soon as an event is on Kafka. Writing them to ClickHouse is what took ${sentry.storedSecs} seconds.`,
+  'Sentry asks for 16 GB of swap and Docker Desktop gives its VM 1 GB. The feature-complete profile ran close to the edge, and in an earlier attempt ClickHouse was killed for lack of memory. Read the errors-only column as the fair one.',
+  `Rustrak left more on disk with SQLite (${mb(rustrak.diskMb)}) than with PostgreSQL (${mb(rustrakPg.diskMb)}). That is the volume size right after the run; we did not dig into why.`,
+  'One run, in a VM on a Mac. Your server will give different absolute numbers. The distance between products is what carries over.',
+  'Only ingestion was measured: no search, no dashboard, no features. Sentry does far more than the other three, and pays for it here.',
+];
+
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'TechArticle',
+      headline: title,
+      description,
+      url: `${SITE}/benchmarks`,
+      datePublished: MEASURED,
+      dateModified: MEASURED,
+      author: { '@id': `${SITE}/#organization` },
+      publisher: { '@id': `${SITE}/#organization` },
+    },
+    {
+      '@type': 'Dataset',
+      name: 'Self-hosted error tracker ingestion benchmark',
+      description,
+      url: `${SITE}/benchmarks`,
+      datePublished: MEASURED,
+      creator: { '@type': 'Organization', name: 'Rustrak', url: SITE },
+      license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+      measurementTechnique:
+        'cgroup v2 memory and CPU accounting under a fixed burst of Sentry envelopes',
+      variableMeasured: [
+        'Seconds to store 20,000 events',
+        'Memory (MB)',
+        'CPU milliseconds per event',
+        'Events accepted per second',
+        'Disk (MB)',
+      ],
+    },
+  ],
+};
+
+const SECTION = `${CONTAINER} py-16 sm:py-24`;
+
+/** The others, for the cards under each headline result. */
+const OTHERS = [glitchtip, bugsinkLite, sentry];
+const others = (pick: (r: (typeof RUNS)[number]) => string) =>
+  OTHERS.map((r): [string, string] => [r.name, pick(r)]);
+
+const SECTIONS: [string, string][] = [
+  ['race', 'Time to store'],
+  ['memory', 'Memory'],
+  ['cpu', 'CPU'],
+  ['results', 'Full results'],
+  ['caveats', 'Limitations'],
+  ['method', 'Methodology'],
+];
+
+const versions = [rustrak, glitchtip, bugsink, sentry]
+  .map((r) => `${r.name} ${r.version}`)
+  .join(', ');
+---
+
+<Page title={title} description={description}>
+  <script
+    slot="head"
+    type="application/ld+json"
+    set:html={jsonLd(structuredData)}
+  />
+  <PageIntro
+    eyebrow="Benchmark"
+    title="Ingestion performance of self-hosted error trackers"
+    lead="Rustrak, self-hosted Sentry, GlitchTip and Bugsink, each sent the same 20,000 errors on the same four CPU cores. We measured how long each took to store them, and the memory, CPU and disk it used to do so."
+  >
+    <Fragment slot="meta">
+      <span>Measured {MEASURED}</span>
+      <span aria-hidden="true">·</span>
+      <a href={HARNESS} class="transition-colors hover:text-fg">
+        Benchmark script on GitHub ↗
+      </a>
+    </Fragment>
+  </PageIntro>
+
+  <section class:list={[CONTAINER, 'pt-16']}>
+    <SetupStrip
+      items={[
+        ['Load', `${num(SETUP.events)} errors, ${SETUP.concurrency} at a time`],
+        ['Machine', `${SETUP.cores} cores, the same for every product`],
+        ['Products', versions],
+        ['Counted', 'Errors stored and queryable, not only accepted'],
+      ]}
+    />
+  </section>
+
+  <section class:list={[CONTAINER, 'pt-4']}>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Stat
+        value={`${rustrak.storedSecs} s`}
+        label={`to store all ${num(SETUP.events)} errors`}
+        others={others((r) => `${r.storedSecs} s`)}
+      />
+      <Stat
+        delay={0.06}
+        value={mb(rustrak.ram.peak)}
+        label="of memory at the busiest second"
+        others={others((r) => mb(r.ram.peak))}
+      />
+      <Stat
+        delay={0.12}
+        value={`${rustrak.cpuMsPerEvent} ms`}
+        label="of CPU per error, database included"
+        others={others((r) => `${r.cpuMsPerEvent} ms`)}
+      />
+      <Stat
+        delay={0.18}
+        value="1"
+        label="container to run"
+        others={others((r) => String(r.containers))}
+      />
+    </div>
+    <p class="mt-4 text-fg-meta text-meta">
+      Rustrak on SQLite, against GlitchTip, Bugsink on SQLite and Sentry's
+      errors-only profile. Every run is in <a
+        href="#results"
+        class="text-fg-subtle underline decoration-fg-ghost underline-offset-4 transition-colors hover:text-fg"
+        >the full table</a
+      >.
+    </p>
+  </section>
+
+  <SectionNav sections={SECTIONS} />
+
+  <section class={SECTION}>
+    <Heading
+      id="race"
+      eyebrow="01 Time to store"
+      title="Time to store 20,000 errors"
+      lead={`Errors queryable in each product's database, counted from the first request. Rustrak had stored all of them after ${rustrak.storedSecs} seconds. Sentry accepted the whole burst within 2 seconds, then took ${sentry.storedSecs - 2} more to write it to ClickHouse.`}
+    />
+    <div class="mt-10">
+      <Figure>
+        <Legend series={racing.series} />
+        <LineChart
+          series={racing.series}
+          x={{
+            scale: 'log',
+            domain: [1, racing.xMax],
+            ticks: [1, 2, 5, 10, 20, 50, 100, 200].filter(
+              (t) => t <= racing.xMax,
+            ),
+          }}
+          y={{
+            domain: [0, 20_000],
+            ticks: [0, 5_000, 10_000, 15_000, 20_000],
+            format: 'k',
+          }}
+          height={380}
+          margin={{ top: 72, right: 24, bottom: 28, left: 52 }}
+          tooltip="race"
+        />
+        <Fragment slot="caption">
+          Time runs on a log scale, so a 6-second finish and a 280-second one
+          fit on one chart. Counted every 2 seconds after the burst ended;
+          before the first count the line is drawn straight. Point at the chart
+          to read every product at any second.
+        </Fragment>
+      </Figure>
+    </div>
+  </section>
+
+  <section class={SECTION}>
+    <Heading
+      id="memory"
+      eyebrow="02 Memory"
+      title="Memory usage"
+      lead={`Memory of the whole stack (server, database and queues), sampled every second. Rustrak on SQLite used ${mb(rustrak.ram.idle)} at rest and ${mb(rustrak.ram.peak)} at its peak. GlitchTip went from ${mb(glitchtip.ram.idle)} to ${mb(glitchtip.ram.peak)}.`}
+    />
+    <div class="mt-10 grid gap-4">
+      <Figure>
+        <Legend series={small} />
+        <LineChart
+          series={small}
+          x={{ scale: 'linear', domain: [-20, 60], ticks: [-20, 0, 20, 40, 60] }}
+          y={{
+            domain: [0, memoryTop],
+            ticks: Array.from(
+              { length: memoryTop / memoryStep + 1 },
+              (_, i) => i * memoryStep,
+            ),
+            format: 'mb',
+          }}
+          height={320}
+          margin={{ top: 8, right: 160, bottom: 28, left: 64 }}
+          tooltip="values"
+          marker={{ x: 0, label: 'burst starts' }}
+        />
+        <Fragment slot="caption">
+          Sentry is left off this chart. It idled at {mb(sentry.ram.idle)} before
+          the first error arrived, and on the same scale every other line would
+          sit flat on the floor. It is in the chart below.
+        </Fragment>
+      </Figure>
+      <Figure>
+        <h3 class="text-fg text-section">Peak memory, all configurations</h3>
+        <RankBars metric="peak" />
+      </Figure>
+    </div>
+  </section>
+
+  <section class={SECTION}>
+    <div class="grid items-start gap-10 lg:grid-cols-[2fr_3fr]">
+      <Heading
+        id="cpu"
+        eyebrow="03 CPU"
+        title="CPU time per error"
+        lead={`Total CPU time of the stack from the first request to the last stored error, divided by ${num(SETUP.events)}. On a small server, it decides how large a burst can be absorbed.`}
+      />
+      <Figure>
+        <RankBars metric="cpu" unit="ms" />
+      </Figure>
+    </div>
+  </section>
+
+  <section class={SECTION}>
+    <Heading
+      id="results"
+      eyebrow="04 Full results"
+      title="Full results"
+      lead={`Seven configurations: Rustrak and Bugsink on SQLite and on PostgreSQL, GlitchTip, and Sentry with its errors-only profile and with every feature enabled (${sentryFull.containers} containers). Every configuration stored every error.`}
+    />
+    <div class="mt-10">
+      <ResultsTable runs={RUNS} />
+      <p class="mt-4 text-fg-meta text-meta">
+        Lime marks the best value in each row, whoever it belongs to.
+      </p>
+    </div>
+  </section>
+
+  <section class={SECTION}>
+    <Heading
+      id="caveats"
+      eyebrow="05 Limitations"
+      title="Limitations"
+      lead="What these numbers cover, and what they do not."
+    />
+    <ol class="mt-10 grid gap-4 md:grid-cols-2">
+      {
+        CAVEATS.map((text, i) => (
+          <Reveal
+            as="li"
+            delay={i * 0.04}
+            class="flex gap-4 rounded-2xl border border-border-subtle p-6"
+          >
+            <span class="font-mono text-fg-ghost text-mono-sm leading-6">
+              {String(i + 1).padStart(2, '0')}
+            </span>
+            <span class="text-pretty text-fg-secondary text-value">{text}</span>
+          </Reveal>
+        ))
+      }
+    </ol>
+  </section>
+
+  <section class={SECTION}>
+    <Heading
+      id="method"
+      eyebrow="06 Methodology"
+      title="Methodology"
+      lead="The benchmark script and its configuration are in the repository, so every run can be repeated."
+    />
+    <dl class="mt-10 grid gap-x-10 gap-y-8 md:grid-cols-2">
+      {
+        METHOD.map(([term, text]) => (
+          <Reveal class="flex flex-col gap-2 border-border-subtle border-t pt-5">
+            <dt class="font-mono text-fg-brand text-mono uppercase tracking-wider">
+              {term}
+            </dt>
+            <dd class="text-pretty text-fg-secondary text-value">
+              {text.split('`').map((part, i) =>
+                i % 2 ? <code class="font-mono text-fg">{part}</code> : part,
+              )}
+            </dd>
+          </Reveal>
+        ))
+      }
+    </dl>
+    <Reveal
+      class="mt-12 overflow-x-auto rounded-2xl border border-border-subtle bg-panel p-5 font-mono text-fg-secondary text-mono"
+    >
+      <pre><span class="text-fg-meta"># Docker, and about 16 GB free for Sentry</span>
+packages/benchmarks/compare/run.sh rustrak rustrak-pg glitchtip bugsink bugsink-sqlite sentry-errors sentry</pre>
+    </Reveal>
+  </section>
+
+  <section class={SECTION}>
+    <Backdrop dim>
+      <div class="flex flex-col gap-8 px-6 py-16 sm:px-12 sm:py-20">
+        <h2 class="max-w-xl text-balance text-fg text-headline">
+          Head-to-head comparisons
+        </h2>
+        <ul class="grid gap-4 md:grid-cols-3">
+          {
+            [
+              ['sentry', 'Rustrak vs self-hosted Sentry'],
+              ['glitchtip', 'Rustrak vs GlitchTip'],
+              ['bugsink', 'Rustrak vs Bugsink'],
+            ].map(([slug, text]) => (
+              <li>
+                <a
+                  href={`/vs/${slug}`}
+                  class="flex h-full items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-canvas/60 p-6 text-fg text-section transition-colors hover:border-border"
+                >
+                  {text}
+                  <span aria-hidden="true" class="text-fg-brand">
+                    →
+                  </span>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </Backdrop>
+  </section>
+</Page>

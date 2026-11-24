@@ -1,0 +1,52 @@
+---
+import { label, num, RUNS } from '../../lib/compare';
+
+/**
+ * Errors stored per second of CPU, from the measured CPU per error: what one
+ * fully busy core gets through. One dot is ten errors.
+ */
+interface Props {
+  ids: string[];
+}
+const runs = RUNS.filter((r) => Astro.props.ids.includes(r.id));
+const PER_DOT = 10;
+---
+
+<ul class="flex flex-col gap-8">
+  {
+    runs.map((r) => {
+      const perSecond = 1000 / r.cpuMsPerEvent;
+      const dots = Math.max(1, Math.round(perSecond / PER_DOT));
+      return (
+        <li class="flex flex-col gap-3">
+          <div class="flex items-baseline justify-between gap-4">
+            <span
+              class:list={['text-value', r.rustrak ? 'text-fg' : 'text-fg-subtle']}
+            >
+              {label(r)}
+            </span>
+            <span
+              class:list={[
+                'font-mono text-mono tabular-nums',
+                r.rustrak ? 'text-fg-brand' : 'text-fg-secondary',
+              ]}
+            >
+              {num(Math.round(perSecond))} errors per CPU-second
+            </span>
+          </div>
+          <div data-reveal="chart" class="flex flex-wrap gap-1" aria-hidden="true">
+            {Array.from({ length: dots }, (_, i) => (
+              <span
+                class:list={[
+                  'pop size-2 rounded-full',
+                  r.rustrak ? 'bg-surface-brand' : 'bg-fg-ghost',
+                ]}
+                style={`--delay:${0.2 + i * 0.006}s`}
+              />
+            ))}
+          </div>
+        </li>
+      );
+    })
+  }
+</ul>

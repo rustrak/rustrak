@@ -1,12 +1,13 @@
 import type { APIRoute } from 'astro';
 import { getPosts, isoDate } from '../blog';
 import { getReleases } from '../changelog';
+import { COMPETITORS } from '../lib/vs';
 
 /**
  * `/sitemap.xml`, at the URL the current site already gave search engines.
  *
- * Every static page under `src/pages`, found by its file, then the posts and
- * the releases. A new dynamic route (`[slug]`) lists nothing until its paths
+ * Every static page under `src/pages`, found by its file, then the
+ * comparisons, the posts and the releases. A new dynamic route (`[slug]`) lists nothing until its paths
  * are added here. Only posts and releases carry a `lastmod`: CI checks out
  * without history, so a page's would be the build date, and Google ignores a
  * lastmod it learns not to trust.
@@ -24,8 +25,9 @@ export const GET: APIRoute = async ({ site }) => {
   const releases = (await getReleases()).map((release) =>
     url(`/changelog/${release.anchor}`, isoDate(release.date)),
   );
+  const comparisons = COMPETITORS.map((c) => url(`/vs/${c.slug}`));
   return new Response(
-    `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[...pages.map((path) => url(path)), ...posts, ...releases].join('')}</urlset>`,
+    `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[...pages.map((path) => url(path)), ...comparisons, ...posts, ...releases].join('')}</urlset>`,
     { headers: { 'Content-Type': 'application/xml' } },
   );
 };

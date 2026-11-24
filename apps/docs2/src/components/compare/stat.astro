@@ -1,0 +1,35 @@
+---
+import Reveal from '../reveal.astro';
+
+/**
+ * A headline result: Rustrak's figure, what it measures, and the same
+ * figure for the others underneath, so the number is never read alone.
+ */
+interface Props {
+  value: string;
+  label: string;
+  others: [string, string][];
+  delay?: number;
+}
+const { value, label, others, delay } = Astro.props;
+---
+
+<Reveal
+  delay={delay}
+  class="flex flex-col rounded-3xl border border-border-subtle bg-panel p-6"
+>
+  <span class="whitespace-nowrap text-fg-brand text-headline tabular-nums">
+    {value}
+  </span>
+  <span class="mt-1 mb-6 text-pretty text-fg-secondary text-value">{label}</span>
+  <dl class="mt-auto flex flex-col gap-1.5 border-border-subtle border-t pt-4">
+    {
+      others.map(([name, figure]) => (
+        <div class="flex items-baseline justify-between gap-3 text-meta">
+          <dt class="text-fg-meta">{name}</dt>
+          <dd class="font-mono text-fg-subtle tabular-nums">{figure}</dd>
+        </div>
+      ))
+    }
+  </dl>
+</Reveal>

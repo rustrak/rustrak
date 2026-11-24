@@ -1,0 +1,28 @@
+---
+import Reveal from '../reveal.astro';
+
+/**
+ * The test in one line each, before any result: what a reader needs to judge
+ * the numbers that follow.
+ */
+interface Props {
+  items: [string, string][];
+}
+const { items } = Astro.props;
+---
+
+<Reveal
+  y={24}
+  class="grid gap-px overflow-hidden rounded-3xl border border-border-subtle bg-border-subtle sm:grid-cols-2 lg:grid-cols-4"
+>
+  {
+    items.map(([term, text]) => (
+      <div class="flex flex-col gap-1.5 bg-canvas p-5 sm:p-6">
+        <span class="font-mono text-fg-meta text-mono-sm uppercase tracking-wider">
+          {term}
+        </span>
+        <span class="text-pretty text-fg-secondary text-value">{text}</span>
+      </div>
+    ))
+  }
+</Reveal>

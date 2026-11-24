@@ -1,0 +1,166 @@
+---
+import { mb, num, type Run } from '../../lib/compare';
+import Reveal from '../reveal.astro';
+
+/**
+ * Metrics down the side, one column per run; Rustrak's columns lit, and the
+ * best value in each row in lime, whoever it belongs to.
+ */
+interface Props {
+  runs: Run[];
+}
+const { runs } = Astro.props;
+
+/** The best value of a row, or undefined for a row with no better way. */
+const bestOf = (row: Row) => {
+  if (!row.best) return undefined;
+  const values = runs.map(row.best.of);
+  return row.best.low ? Math.min(...values) : Math.max(...values);
+};
+
+type Row = {
+  label: string;
+  hint?: string;
+  cell: (r: Run) => string | number;
+  /** The measure behind the cell, and which way is better, to mark the best. */
+  best?: { of: (r: Run) => number; low: boolean };
+};
+
+const low = (of: (r: Run) => number) => ({ of, low: true });
+const high = (of: (r: Run) => number) => ({ of, low: false });
+
+const ROWS: Row[] = [
+  { label: 'Version', cell: (r) => r.version },
+  {
+    label: 'Containers',
+    cell: (r) => r.containers,
+    best: low((r) => r.containers),
+  },
+  {
+    label: 'Memory at rest',
+    hint: 'Median of the 15 s before the burst',
+    cell: (r) => mb(r.ram.idle),
+    best: low((r) => r.ram.idle),
+  },
+  {
+    label: 'Memory at peak',
+    hint: 'Highest second, burst to end',
+    cell: (r) => mb(r.ram.peak),
+    best: low((r) => r.ram.peak),
+  },
+  {
+    label: 'Accepted per second',
+    hint: '2xx answers over the burst',
+    cell: (r) => num(r.acceptPerS),
+    best: high((r) => r.acceptPerS),
+  },
+  {
+    label: 'p99 latency',
+    cell: (r) => `${r.p99Ms} ms`,
+    best: low((r) => r.p99Ms),
+  },
+  {
+    label: 'Stored per second',
+    hint: 'Queryable in the database',
+    cell: (r) => num(r.storedPerS),
+    best: high((r) => r.storedPerS),
+  },
+  {
+    label: 'All 20,000 stored after',
+    cell: (r) => `${r.storedSecs} s`,
+    best: low((r) => r.storedSecs),
+  },
+  {
+    label: 'CPU per event',
+    cell: (r) => `${r.cpuMsPerEvent} ms`,
+    best: low((r) => r.cpuMsPerEvent),
+  },
+  {
+    label: 'Disk after the run',
+    cell: (r) => mb(r.diskMb),
+    best: low((r) => r.diskMb),
+  },
+  {
+    label: 'Images to pull',
+    cell: (r) => mb(r.imageMb),
+    best: low((r) => r.imageMb),
+  },
+  {
+    label: 'Ready after start',
+    hint: 'Install and image pulls excluded',
+    cell: (r) => (r.readySecs < 1 ? '< 1 s' : `${r.readySecs} s`),
+    best: low((r) => r.readySecs),
+  },
+];
+---
+
+<Reveal y={40} class="overflow-x-auto rounded-3xl border border-border-subtle">
+  <table
+    class="w-full border-collapse text-start"
+    style={`min-width:${14 + runs.length * 9}rem`}
+  >
+    <thead>
+      <tr class="border-border-subtle border-b">
+        <th class="p-4 sm:p-5"><span class="sr-only">Measure</span></th>
+        {
+          runs.map((r) => (
+            <th
+              scope="col"
+              class:list={[
+                'p-4 text-start align-bottom sm:p-5',
+                r.rustrak && 'bg-surface',
+              ]}
+            >
+              <span
+                class:list={[
+                  'block text-section',
+                  r.rustrak ? 'text-fg-brand' : 'text-fg',
+                ]}
+              >
+                {r.name}
+              </span>
+              <span class="block font-normal text-fg-meta text-meta">
+                {r.variant}
+              </span>
+            </th>
+          ))
+        }
+      </tr>
+    </thead>
+    <tbody>
+      {
+        ROWS.map((row) => (
+          <tr class="border-border-divider border-b last:border-b-0">
+            <th scope="row" class="p-4 text-start font-normal sm:p-5">
+              <span class="block text-fg-secondary text-value">
+                {row.label}
+              </span>
+              {row.hint && (
+                <span class="block text-fg-meta text-meta">{row.hint}</span>
+              )}
+            </th>
+            {runs.map((r) => {
+              const best = !!row.best && row.best.of(r) === bestOf(row);
+              return (
+                <td
+                  class:list={[
+                    'p-4 font-mono text-mono tabular-nums sm:p-5',
+                    r.rustrak && 'bg-surface',
+                    best
+                      ? 'text-fg-brand'
+                      : r.rustrak
+                        ? 'text-fg'
+                        : 'text-fg-subtle',
+                  ]}
+                >
+                  {row.cell(r)}
+                  {best && <span class="sr-only"> (best)</span>}
+                </td>
+              );
+            })}
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</Reveal>
