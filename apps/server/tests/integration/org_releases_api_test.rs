@@ -132,7 +132,7 @@ async fn new_refuses_missing_or_unknown_projects() {
     .await;
     assert_eq!(status, 400);
     assert_eq!(body["projects"][0], "Invalid project ids or slugs");
-    let (status, _) = call(
+    let (status, body) = call(
         &s,
         "POST",
         uri,
@@ -140,6 +140,9 @@ async fn new_refuses_missing_or_unknown_projects() {
     )
     .await;
     assert_eq!(status, 400, "an invalid version");
+    // A field error, the shape the spec declares for this 400, with
+    // Sentry's message (`ReleaseWithVersionSerializer.validate_version`).
+    assert_eq!(body["version"][0], "Release with name a/b is not allowed");
 }
 
 async fn new_release(s: &Setup, version: &str) {

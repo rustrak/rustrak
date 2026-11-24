@@ -330,10 +330,10 @@ pub async fn create_org_release(
     };
     let version = input.version.trim().to_string();
     if !is_valid_version(&version) {
-        return Err(AppError::Validation(format!(
-            "Invalid release version: {:?}",
-            input.version
-        )));
+        return Ok(field_error(
+            "version",
+            format!("Release with name {} is not allowed", input.version),
+        ));
     }
     let mut project_ids = Vec::new();
     for project in &refs {
