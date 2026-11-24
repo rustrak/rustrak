@@ -188,7 +188,8 @@ This alert was sent by Rustrak for project {project_name}."#,
         let html_body = Self::format_html(payload);
         let text_body = Self::format_text(payload);
 
-        let mut sent_any = false;
+        let mut delivered = 0usize;
+        let mut refused: Vec<String> = Vec::new();
         for recipient in recipients {
             let email = match Message::builder()
                 .from(
@@ -239,8 +240,15 @@ This alert was sent by Rustrak for project {project_name}."#,
 
             match mailer.send(email).await {
                 Ok(_) => {
-                    sent_any = true;
+                    delivered += 1;
                     log::debug!("Email sent successfully to {}", recipient);
+                }
+                // A 5xx reply refuses this recipient for good, so the rest
+                // are still tried. Failing here would retry the delivery
+                // whole: everyone before this one gets the alert again on
+                // every attempt, and nobody after it ever gets it.
+                Err(e) if e.is_permanent() => {
+                    refused.push(format!("Failed to send email to {}: {}", recipient, e));
                 }
                 Err(e) => {
                     return NotificationResult::failure(
@@ -251,11 +259,23 @@ This alert was sent by Rustrak for project {project_name}."#,
             }
         }
 
-        if !sent_any {
-            return NotificationResult::failure("No valid email recipients".to_string(), None);
+        if delivered == 0 {
+            let message = if refused.is_empty() {
+                "No valid email recipients".to_string()
+            } else {
+                refused.join("; ")
+            };
+            return NotificationResult::failure(message, None);
         }
 
-        NotificationResult::success(None)
+        if !refused.is_empty() {
+            log::warn!(
+                "Alert email reached {} of its recipients: {}",
+                delivered,
+                refused.join("; ")
+            );
+        }
+        NotificationResult::success(None).with_response_body(refused.join("; "))
     }
 }
 

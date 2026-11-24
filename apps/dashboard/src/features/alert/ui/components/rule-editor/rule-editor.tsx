@@ -161,12 +161,19 @@ export function RuleEditor({
             })
             .then(
               (answer) => {
-                if (answer.success) {
-                  toast.success(t('editor.testSent', { channel }));
-                } else {
+                if (!answer.success) {
                   toast.error(t('editor.testFailed', { channel }), {
                     description: answer.message,
                   });
+                } else if (answer.response_body) {
+                  // What the channel answered is shown, and as neutral, as
+                  // on its integration page: an email that reached only
+                  // some of its recipients names the refused ones in here.
+                  toast.info(t('editor.testSent', { channel }), {
+                    description: answer.response_body,
+                  });
+                } else {
+                  toast.success(t('editor.testSent', { channel }));
                 }
               },
               (error: ApiError) =>

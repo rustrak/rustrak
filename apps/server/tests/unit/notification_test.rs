@@ -304,3 +304,139 @@ async fn webhook_to_a_host_resolving_to_loopback_is_refused_without_connecting()
     assert!(message.contains("not allowed"), "got: {message}");
     assert!(!reached.load(std::sync::atomic::Ordering::SeqCst));
 }
+
+// =============================================================================
+// Email: a recipient the SMTP server refuses
+// =============================================================================
+
+/// A plain SMTP server on loopback that answers `RCPT TO` with `reply` for
+/// any address containing `refused` and accepts everyone else. Returns its
+/// port and who each message it accepted was for, in order.
+async fn smtp_server(
+    refused: &'static str,
+    reply: &'static str,
+) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let accepted = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = accepted.clone();
+    tokio::spawn(async move {
+        while let Ok((socket, _)) = listener.accept().await {
+            let log = log.clone();
+            tokio::spawn(async move {
+                let (read, mut write) = socket.into_split();
+                let mut lines = BufReader::new(read).lines();
+                let _ = write.write_all(b"220 localhost ESMTP\r\n").await;
+                let mut recipient = String::new();
+                let mut in_data = false;
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let command = line.to_ascii_uppercase();
+                    let answer = if in_data {
+                        if line != "." {
+                            continue;
+                        }
+                        in_data = false;
+                        log.lock().unwrap().push(std::mem::take(&mut recipient));
+                        "250 queued"
+                    } else if command.starts_with("RCPT TO:") {
+                        if line.contains(refused) {
+                            reply
+                        } else {
+                            recipient = line["RCPT TO:".len()..]
+                                .trim_matches(|c| c == '<' || c == '>' || c == ' ')
+                                .to_string();
+                            "250 ok"
+                        }
+                    } else if command.starts_with("DATA") {
+                        in_data = true;
+                        "354 go ahead"
+                    } else if command.starts_with("QUIT") {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    } else {
+                        "250 ok"
+                    };
+                    if write
+                        .write_all(format!("{answer}\r\n").as_bytes())
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+        }
+    });
+    (port, accepted)
+}
+
+/// Sends the test alert by email through the server on `port`.
+async fn send_email(port: u16, recipients: &[&str]) -> rustrak::services::NotificationResult {
+    let smtp = SmtpSettings {
+        host: Some("127.0.0.1".to_string()),
+        port,
+        tls: Some(rustrak::config::SmtpTls::None),
+        ..SmtpSettings::default()
+    };
+    let integration = rustrak::models::AlertIntegration {
+        provider_type: ProviderType::Email,
+        ..webhook_integration(json!({}))
+    };
+    create_dispatcher(ProviderType::Email, &smtp)
+        .send(
+            &integration,
+            &json!({ "recipients": recipients }),
+            &test_payload(),
+        )
+        .await
+}
+
+const RECIPIENTS: [&str; 3] = ["first@example.com", "gone@example.com", "last@example.com"];
+
+#[tokio::test]
+async fn email_reaches_the_recipients_listed_after_a_refused_one() {
+    let (port, accepted) = smtp_server("gone@example.com", "550 5.1.1 no such user").await;
+
+    let result = send_email(port, &RECIPIENTS).await;
+
+    assert_eq!(
+        *accepted.lock().unwrap(),
+        ["first@example.com", "last@example.com"]
+    );
+    // A failure is retried, and a retry sends the alert again to everyone who
+    // already has it.
+    assert!(result.success, "got: {:?}", result.error_message);
+    let refused = result.response_body.unwrap_or_default();
+    assert!(refused.contains("gone@example.com"), "got: {refused}");
+    assert!(!refused.contains("last@example.com"), "got: {refused}");
+}
+
+#[tokio::test]
+async fn email_fails_when_the_server_refuses_every_recipient() {
+    let (port, accepted) = smtp_server("example.com", "550 5.1.1 no such user").await;
+
+    let result = send_email(port, &RECIPIENTS).await;
+
+    assert!(!result.success);
+    assert!(accepted.lock().unwrap().is_empty());
+    let message = result.error_message.unwrap_or_default();
+    for recipient in RECIPIENTS {
+        assert!(message.contains(recipient), "got: {message}");
+    }
+}
+
+#[tokio::test]
+async fn email_is_retried_when_the_server_defers_a_recipient() {
+    // A 4xx reply may pass, so the delivery fails and the retry worker
+    // sends it again.
+    let (port, accepted) = smtp_server("gone@example.com", "451 4.7.1 try again later").await;
+
+    let result = send_email(port, &RECIPIENTS).await;
+
+    assert!(!result.success);
+    assert_eq!(*accepted.lock().unwrap(), ["first@example.com"]);
+    let message = result.error_message.unwrap_or_default();
+    assert!(message.contains("gone@example.com"), "got: {message}");
+}
