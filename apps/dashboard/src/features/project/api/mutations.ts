@@ -4,7 +4,11 @@
  * The rate limits a project update can set are its own, read back through its
  * detail; the server-wide `rateLimits` read never changes from here.
  */
-import type { CreateProject, UpdateProject } from '@rustrak/client';
+import type {
+  CreateProject,
+  SidebarProjects,
+  UpdateProject,
+} from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
 import { projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
@@ -29,6 +33,28 @@ export const projectMutations = {
           projectQueries.lists(),
         ],
       },
+    }),
+  /**
+   * The sidebar follows a drag or a switch at once: the cache takes the new
+   * value before the request, and the old one back if the server refuses it.
+   */
+  saveSidebar: () =>
+    mutationOptions({
+      mutationFn: (body: SidebarProjects) =>
+        orThrow(api().sidebar.updateProjects({ body })),
+      onMutate: async (body, { client }) => {
+        const { queryKey } = projectQueries.sidebar();
+        await client.cancelQueries({ queryKey });
+        const before = client.getQueryData(queryKey);
+        client.setQueryData(queryKey, body);
+        return { before };
+      },
+      onError: (_error, _body, saved, { client }) => {
+        if (saved?.before) {
+          client.setQueryData(projectQueries.sidebar().queryKey, saved.before);
+        }
+      },
+      meta: { invalidates: [projectQueries.sidebar().queryKey] },
     }),
   /**
    * The id is the mutation's variable: the projects grid deletes whichever

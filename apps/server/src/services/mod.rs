@@ -32,6 +32,7 @@ pub mod role;
 pub mod saved_view;
 pub mod scope;
 pub mod session;
+pub mod sidebar;
 pub mod source_bundle;
 pub mod sourcemap;
 pub mod sourcemap_store;

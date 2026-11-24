@@ -15227,6 +15227,107 @@
         ]
       }
     },
+    "/api/sidebar/projects": {
+      "get": {
+        "tags": [
+          "Sidebar"
+        ],
+        "summary": "How your sidebar lists the projects.",
+        "description": "The default (manual order, nothing hidden) until you save one, and for a\ntoken without a user.",
+        "operationId": "sidebar.getProjects",
+        "responses": {
+          "200": {
+            "description": "How the reader's sidebar lists the projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SidebarProjects"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Sidebar"
+        ],
+        "summary": "Replace how your sidebar lists the projects.",
+        "operationId": "sidebar.updateProjects",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SidebarProjects"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SidebarProjects"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, such as an unknown sort",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A token without a user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/storage/age": {
       "get": {
         "tags": [
@@ -23797,6 +23898,45 @@
             "format": "int32"
           }
         }
+      },
+      "SidebarProjects": {
+        "type": "object",
+        "description": "How one reader's sidebar lists the projects.\n\nIds are kept as given: a project deleted later stays in the lists and is\nskipped by whoever reads them, as it is no longer in the project list.",
+        "required": [
+          "sort",
+          "order",
+          "hidden"
+        ],
+        "properties": {
+          "hidden": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Project ids the sidebar leaves out."
+          },
+          "order": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Project ids in the reader's order; projects missing from it follow."
+          },
+          "sort": {
+            "$ref": "#/components/schemas/SidebarSort"
+          }
+        }
+      },
+      "SidebarSort": {
+        "type": "string",
+        "description": "What the sidebar sorts the projects by.",
+        "enum": [
+          "manual",
+          "name",
+          "activity"
+        ]
       },
       "SortOrder": {
         "type": "string",

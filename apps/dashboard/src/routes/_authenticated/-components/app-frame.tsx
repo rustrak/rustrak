@@ -1,4 +1,8 @@
-import type { ProjectResponse, UserResponse } from '@rustrak/client';
+import type {
+  ProjectResponse,
+  SidebarProjects,
+  UserResponse,
+} from '@rustrak/client';
 import {
   BackIcon,
   Breadcrumbs,
@@ -28,6 +32,8 @@ import { useLocation, useMatch } from '@tanstack/react-router';
 import { PlatformIcon } from 'platformicons';
 import { useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
+import { sidebarProjects } from '@/features/project/model/sidebar';
+import { SidebarOptions } from '@/features/project/ui/components/sidebar-options';
 import { userMutations } from '@/features/user/api/mutations';
 import type { Permissions } from '@/shared/lib/permissions';
 import { Link } from '@/shared/ui/components/link';
@@ -69,9 +75,6 @@ import {
  * and settings (every settings page, the instance's and each project's).
  * Moving between them is a `SidebarScope` change, so it slides.
  */
-
-/** How many projects the workspace sidebar lists under its heading. */
-const SIDEBAR_PROJECTS = 5;
 
 export type FrameProject = Pick<
   ProjectResponse,
@@ -410,17 +413,40 @@ function ProjectNav({
   );
 }
 
+const DEFAULT_SIDEBAR: SidebarProjects = {
+  sort: 'manual',
+  order: [],
+  hidden: [],
+};
+
 /** Above any one project: the list of them, the team, and the projects. */
 function WorkspaceNav({
   projects,
   permissions,
 }: {
-  projects: ProjectOption[];
+  projects: ProjectResponse[];
   permissions: Permissions;
 }) {
   const t = useTranslations('projects');
   const tSettings = useTranslations('settings');
   const pathname = usePathname();
+  // Until the reader's own setup arrives, every project in the default
+  // order: the same thing the default setup says.
+  const prefs = useQuery(projectQueries.sidebar()).data ?? DEFAULT_SIDEBAR;
+  // ponytail: the picker's first 100 projects; the list endpoint's search
+  // when an instance has more.
+  const byActivity = useQuery({
+    ...projectQueries.pickerByActivity(),
+    enabled: prefs.sort === 'activity',
+  }).data?.items;
+  // Every project in the chosen sort, hidden ones too: the options list
+  // them all so a hidden one can be switched back on.
+  const sorted = sidebarProjects(
+    prefs.sort === 'activity' ? (byActivity ?? projects) : projects,
+    { ...prefs, hidden: [] },
+  );
+  const hidden = new Set(prefs.hidden);
+  const listed = sorted.filter((p) => !hidden.has(p.id));
   return (
     <>
       <SidebarItem
@@ -448,10 +474,11 @@ function WorkspaceNav({
         />
       ) : null}
       {projects.length > 0 ? (
-        <SidebarGroup label={t('switcher.projects')}>
-          {/* ponytail: the first few, until settings lets the reader
-                    choose which ones are pinned here. */}
-          {projects.slice(0, SIDEBAR_PROJECTS).map((option) => (
+        <SidebarGroup
+          label={t('switcher.projects')}
+          action={<SidebarOptions projects={sorted} prefs={prefs} />}
+        >
+          {listed.map((option) => (
             <SidebarItem
               key={option.id}
               leading={<ProjectLogo project={option} size={18} />}

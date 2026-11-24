@@ -757,6 +757,21 @@
     "summary": {
       "withFatal": "{count} 个有致命错误",
       "events24h": "24 小时内 {display} 个事件"
+    },
+    "sidebar": {
+      "title": "侧边栏",
+      "options": "侧边栏选项",
+      "sortBy": "排序方式",
+      "sort": {
+        "manual": "手动",
+        "name": "名称",
+        "activity": "活动"
+      },
+      "projects": "项目",
+      "shown": "显示 {shown}/{total}",
+      "show": "在侧边栏中显示 {name}",
+      "drag": "拖动 {name}",
+      "saveFailed": "无法保存侧边栏"
     }
   },
   "alerts": {

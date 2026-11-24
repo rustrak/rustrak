@@ -32,6 +32,15 @@ export const projectQueries = {
     }),
   /** The first projects, for every picker; one cache entry for all of them. */
   picker: () => projectQueries.list({ per_page: PICKER_LIMIT }),
+  /** The same projects, the one with the latest issue first. */
+  pickerByActivity: () =>
+    projectQueries.list({ per_page: PICKER_LIMIT, sort: 'last_seen' }),
+  /** How the reader's sidebar lists the projects: their own, not a project's. */
+  sidebar: () =>
+    queryOptions({
+      queryKey: ['sidebar', 'projects'] as const,
+      queryFn: ({ signal }) => orThrow(api().sidebar.getProjects({ signal })),
+    }),
   detail: (id: number) =>
     queryOptions({
       queryKey: [...projectScope(id), 'detail'],

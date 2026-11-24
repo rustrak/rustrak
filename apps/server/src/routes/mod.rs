@@ -22,6 +22,7 @@ pub mod saved_views;
 pub mod schedules;
 pub mod sentry_api;
 pub mod sessions;
+pub mod sidebar;
 pub mod sourcemaps;
 pub mod spans;
 pub mod stats;
@@ -50,6 +51,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .configure(invitations::configure)
         .configure(roles::configure)
         .configure(saved_views::configure)
+        .configure(sidebar::configure)
         .configure(alerts::configure)
         .configure(github::configure)
         .configure(releases::configure)

@@ -494,6 +494,11 @@ const groupRule = tv({
 export interface SidebarGroupProps {
   /** What the routes underneath have in common: Triage, Monitor. */
   label: string;
+  /**
+   * A control on the label's right, for the group as a whole: its options.
+   * Left out on the rail, where the label it belongs to is not shown.
+   */
+  action?: ReactNode;
   children: ReactNode;
 }
 
@@ -504,7 +509,11 @@ export interface SidebarGroupProps {
  * the same space: the rail still shows where one group ends, and nothing
  * below it moves up or down.
  */
-export function SidebarGroup({ label: text, children }: SidebarGroupProps) {
+export function SidebarGroup({
+  label: text,
+  action,
+  children,
+}: SidebarGroupProps) {
   const { collapsed } = useSidebar();
 
   return (
@@ -516,8 +525,9 @@ export function SidebarGroup({ label: text, children }: SidebarGroupProps) {
           scopeEnter,
         )}
       >
-        <span className={label({ collapsed })}>{text}</span>
+        <span className={cn('flex-1', label({ collapsed }))}>{text}</span>
         <Separator className={groupRule({ collapsed })} />
+        {collapsed ? null : action}
       </div>
       {children}
     </div>

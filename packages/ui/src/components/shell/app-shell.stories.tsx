@@ -663,3 +663,56 @@ export const ChangesScope: Story = {
     await expect(scope()).toHaveAttribute('data-direction', 'back');
   },
 };
+
+/** A group whose label carries an action on its right, like a list's options. */
+function OptionsSidebar({ defaultCollapsed }: { defaultCollapsed?: boolean }) {
+  return (
+    <AppShell
+      defaultCollapsed={defaultCollapsed}
+      sidebar={
+        <Sidebar aria-label="Main navigation">
+          <SidebarGroup
+            label="Projects"
+            action={
+              <button type="button" aria-label="Sidebar options">
+                <OverflowIcon size="md" />
+              </button>
+            }
+          >
+            {PROJECTS.map((name) => (
+              <SidebarItem
+                key={name}
+                leading={<Avatar shape="square" size="xs" name={name} />}
+                label={name}
+                href={`#${name}`}
+              />
+            ))}
+          </SidebarGroup>
+        </Sidebar>
+      }
+    >
+      <Topbar>
+        <Breadcrumbs items={[{ label: 'Projects' }]} />
+      </Topbar>
+    </AppShell>
+  );
+}
+
+/** The action sits by the label; on the rail, where the label is gone, so is it. */
+export const AGroupCarriesAnAction: Story = {
+  render: () => <OptionsSidebar />,
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).getByRole('button', { name: 'Sidebar options' }),
+    ).toBeInTheDocument();
+  },
+};
+
+export const TheRailDropsTheGroupAction: Story = {
+  render: () => <OptionsSidebar defaultCollapsed />,
+  play: async ({ canvasElement }) => {
+    await expect(
+      within(canvasElement).queryByRole('button', { name: 'Sidebar options' }),
+    ).not.toBeInTheDocument();
+  },
+};

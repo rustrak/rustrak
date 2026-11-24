@@ -757,6 +757,21 @@
     "summary": {
       "withFatal": "{count, plural, one {# avec erreurs fatales} other {# avec erreurs fatales}}",
       "events24h": "{count, plural, one {{display} événement en 24 h} other {{display} événements en 24 h}}"
+    },
+    "sidebar": {
+      "title": "Barre latérale",
+      "options": "Options de la barre latérale",
+      "sortBy": "Trier par",
+      "sort": {
+        "manual": "Manuel",
+        "name": "Nom",
+        "activity": "Activité"
+      },
+      "projects": "Projets",
+      "shown": "{shown} sur {total} affichés",
+      "show": "Afficher {name} dans la barre latérale",
+      "drag": "Déplacer {name}",
+      "saveFailed": "Impossible d'enregistrer la barre latérale"
     }
   },
   "alerts": {
