@@ -62,9 +62,15 @@ export function SidebarOptions({
   const hidden = new Set(prefs.hidden);
   const manual = prefs.sort === 'manual';
 
-  const apply = (next: Partial<SidebarProjects>) => {
-    const body = { ...prefs, ...next };
+  // Built from the cache, not from `prefs`: two clicks before the next
+  // render would otherwise both start from the same setup, and the second
+  // would undo the first.
+  const apply = (
+    change: (current: SidebarProjects) => Partial<SidebarProjects>,
+  ) => {
     const { queryKey } = projectQueries.sidebar();
+    const current = client.getQueryData(queryKey) ?? prefs;
+    const body = { ...current, ...change(current) };
     // A read still on its way would land on top of this change.
     void client.cancelQueries({ queryKey });
     client.setQueryData(queryKey, body);
@@ -108,7 +114,7 @@ export function SidebarOptions({
 
   const drop = () => {
     if (drag && target !== drag.from) {
-      apply({ order: moveTo(order, drag.id, target) });
+      apply(() => ({ order: moveTo(order, drag.id, target) }));
     }
     setDrag(null);
   };
@@ -143,7 +149,7 @@ export function SidebarOptions({
           aria-label={t('sidebar.sortBy')}
           className="w-full"
           value={prefs.sort}
-          onValueChange={(sort) => apply({ sort: sort as SidebarSort })}
+          onValueChange={(sort) => apply(() => ({ sort: sort as SidebarSort }))}
         >
           {SORTS.map((sort) => (
             <SegmentedItem key={sort} value={sort} className="flex-1">
@@ -179,11 +185,11 @@ export function SidebarOptions({
             onPointerUp={drop}
             onPointerCancel={() => setDrag(null)}
             onToggle={(checked) =>
-              apply({
+              apply((current) => ({
                 hidden: checked
-                  ? prefs.hidden.filter((id) => id !== project.id)
-                  : [...prefs.hidden, project.id],
-              })
+                  ? current.hidden.filter((id) => id !== project.id)
+                  : [...current.hidden, project.id],
+              }))
             }
           />
         ))}

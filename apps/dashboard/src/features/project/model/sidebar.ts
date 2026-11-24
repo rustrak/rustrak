@@ -57,3 +57,16 @@ export function makeRoom(index: number, from: number, to: number): number {
   if (to < from && index >= to && index < from) return 1;
   return 0;
 }
+
+/**
+ * What the sidebar shows after a save failed: the setup the server last
+ * confirmed, unless a newer change was made since (`current` is no longer
+ * what failed), whose own save, queued behind, carries this change too.
+ */
+export function afterFailedSave(
+  current: SidebarProjects | undefined,
+  failed: SidebarProjects,
+  confirmed: SidebarProjects | undefined,
+): SidebarProjects | undefined {
+  return current === failed && confirmed ? confirmed : current;
+}

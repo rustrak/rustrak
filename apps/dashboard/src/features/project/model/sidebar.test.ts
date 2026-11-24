@@ -1,6 +1,12 @@
 import type { SidebarProjects } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
-import { inManualOrder, makeRoom, moveTo, sidebarProjects } from './sidebar';
+import {
+  afterFailedSave,
+  inManualOrder,
+  makeRoom,
+  moveTo,
+  sidebarProjects,
+} from './sidebar';
 
 const p = (id: number, name: string) => ({ id, name });
 // Newest first, as the project list comes.
@@ -82,5 +88,27 @@ describe('makeRoom', () => {
 
   it('moves nothing while the row is over its own place', () => {
     expect([0, 1, 2].map((i) => makeRoom(i, 1, 1))).toEqual([0, 0, 0]);
+  });
+});
+
+describe('afterFailedSave', () => {
+  const confirmed = {
+    sort: 'manual',
+    order: [2, 1],
+    hidden: [],
+  } satisfies SidebarProjects;
+  const failed = { ...confirmed, hidden: [1] };
+
+  it('goes back to what the server confirmed when nothing newer was made', () => {
+    expect(afterFailedSave(failed, failed, confirmed)).toBe(confirmed);
+  });
+
+  it('keeps a newer change: its own save carries this one too', () => {
+    const newer = { ...failed, sort: 'name' as const };
+    expect(afterFailedSave(newer, failed, confirmed)).toBe(newer);
+  });
+
+  it('keeps what it shows when nothing was ever confirmed', () => {
+    expect(afterFailedSave(failed, failed, undefined)).toBe(failed);
   });
 });

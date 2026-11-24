@@ -10,10 +10,11 @@ import type {
   UpdateProject,
 } from '@rustrak/client';
 import { mutationOptions } from '@tanstack/react-query';
+import { afterFailedSave } from '@/features/project/model/sidebar';
 import { projectScope } from '@/shared/api/keys';
 import { type ApiError, orThrow } from '@/shared/api/query';
 import { api } from '@/shared/api/rustrak';
-import { projectQueries } from './queries';
+import { projectQueries, sidebarConfirmed } from './queries';
 
 export const projectMutations = {
   create: () =>
@@ -45,17 +46,28 @@ export const projectMutations = {
    * made, and a queued save's `onMutate` would wait its turn too, leaving the
    * click unseen; and a refetch after each save could land between two of
    * them and bring the older setup back. The cache is the truth until a save
-   * fails, and then the server's setup is read again.
+   * fails; then it goes back to the last confirmed setup and reads it again.
    */
   saveSidebar: (onFailure: (error: ApiError) => void) =>
     mutationOptions({
       scope: { id: 'sidebar-projects' },
       mutationFn: (body: SidebarProjects) =>
         orThrow(api().sidebar.updateProjects({ body })),
-      onError: (error, _body, _result, { client }) => {
-        void client.invalidateQueries({
-          queryKey: projectQueries.sidebar().queryKey,
-        });
+      onSuccess: (saved) => sidebarConfirmed.set(saved),
+      // Back to the last confirmed setup at once, so a server that is down
+      // does not leave unsaved clicks on screen, then read it again: a PUT
+      // that failed on the way back may still have been stored.
+      onError: (error, body, _result, { client }) => {
+        const { queryKey } = projectQueries.sidebar();
+        client.setQueryData(
+          queryKey,
+          afterFailedSave(
+            client.getQueryData(queryKey),
+            body,
+            sidebarConfirmed.get(),
+          ),
+        );
+        void client.invalidateQueries({ queryKey });
         onFailure(error);
       },
     }),

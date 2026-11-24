@@ -4,7 +4,7 @@
  * `stats` lives here rather than in a slice of its own: the aggregates are
  * *of a project*, not a concept a user manipulates.
  */
-import type { ProjectsListData } from '@rustrak/client';
+import type { ProjectsListData, SidebarProjects } from '@rustrak/client';
 import { queryOptions } from '@tanstack/react-query';
 import { allProjects, projectScope } from '@/shared/api/keys';
 import { orThrow } from '@/shared/api/query';
@@ -17,6 +17,22 @@ import { api } from '@/shared/api/rustrak';
  * server-side search, which is a different change to making this bigger.
  */
 const PICKER_LIMIT = 100;
+
+/**
+ * The sidebar setup the server last confirmed, by a read or a save: what a
+ * failed save goes back to when re-reading fails too. The cache cannot keep
+ * it, since it holds the reader's unsaved clicks. One reader per tab, so one
+ * value.
+ */
+let confirmedSidebar: SidebarProjects | undefined;
+
+export const sidebarConfirmed = {
+  get: () => confirmedSidebar,
+  set: (setup: SidebarProjects) => {
+    confirmedSidebar = setup;
+    return setup;
+  },
+};
 
 interface OverviewScope {
   environment?: string;
@@ -39,7 +55,10 @@ export const projectQueries = {
   sidebar: () =>
     queryOptions({
       queryKey: ['sidebar', 'projects'] as const,
-      queryFn: ({ signal }) => orThrow(api().sidebar.getProjects({ signal })),
+      queryFn: async ({ signal }) =>
+        sidebarConfirmed.set(
+          await orThrow(api().sidebar.getProjects({ signal })),
+        ),
     }),
   detail: (id: number) =>
     queryOptions({
