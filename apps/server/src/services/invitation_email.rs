@@ -51,7 +51,9 @@ impl InvitationMailer {
         if let Some(credentials) = first_enabled_email_integration(pool).await? {
             smtp = smtp.overridden_by(&credentials);
         }
-        let from_integration = smtp.host != config.smtp.host;
+        // The operator's own destination is host and port together: an
+        // integration that only changes the port picks a new destination.
+        let from_integration = (&smtp.host, smtp.port) != (&config.smtp.host, config.smtp.port);
         Ok(
             Self::new(smtp, config.public_dashboard_url()).map(|mailer| Self {
                 from_integration,
@@ -103,19 +105,23 @@ impl InvitationMailer {
     /// Hands the invitation email to SMTP.
     pub async fn send(&self, invitation: &Invitation, inviter_email: &str) -> Result<(), String> {
         let message = self.message(invitation, inviter_email)?;
-        let transport = mail::build_transport(
-            &self.host,
-            self.smtp.port,
-            self.smtp.tls,
-            self.smtp.username.as_ref(),
-            self.smtp.password.as_ref(),
-            self.from_integration,
-        )
-        .await?;
-        tokio::time::timeout(SEND_TIMEOUT, transport.send(message))
+        // Resolving an integration's host is part of the send, so one bound
+        // covers both.
+        let send = async {
+            let transport = mail::build_transport(
+                &self.host,
+                self.smtp.port,
+                self.smtp.tls,
+                self.smtp.username.as_ref(),
+                self.smtp.password.as_ref(),
+                self.from_integration,
+            )
+            .await?;
+            transport.send(message).await.map_err(|e| e.to_string())
+        };
+        tokio::time::timeout(SEND_TIMEOUT, send)
             .await
-            .map_err(|_| "Timed out sending the invitation email".to_string())?
-            .map_err(|e| e.to_string())?;
+            .map_err(|_| "Timed out sending the invitation email".to_string())??;
         Ok(())
     }
 }

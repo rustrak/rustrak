@@ -570,6 +570,14 @@ pub fn apply_aggregates(
         .clone()
         .filter(|e| is_valid_environment(e))
         .unwrap_or_default();
+    // Nothing in the window keeps nothing, so it takes no release slot.
+    if !agg
+        .aggregates
+        .iter()
+        .any(|item| clock.read(item.started.as_deref()).is_some())
+    {
+        return;
+    }
     let release = apply_cardinality_cap(state, project_id, release, cardinality_cap);
 
     for item in &agg.aggregates {
@@ -952,6 +960,23 @@ mod tests {
         }))
         .unwrap();
         (update, agg)
+    }
+
+    /// A sessions item whose buckets all fall outside the accepted window
+    /// keeps nothing, so it must not take a release slot from the cap.
+    #[test]
+    fn an_aggregate_with_nothing_in_the_window_takes_no_release_slot() {
+        let stale: SessionAggregates = serde_json::from_value(serde_json::json!({
+            "attrs": { "release": "stale", "environment": "production" },
+            "aggregates": [{ "started": "2020-01-01T00:00:00Z", "exited": 1 }]
+        }))
+        .unwrap();
+        let (_, fresh) = with_attrs("fresh", "production");
+        let mut state = AggregatorState::default();
+        super::apply_aggregates(&mut state, 1, &stale, 1, clock());
+        super::apply_aggregates(&mut state, 1, &fresh, 1, clock());
+        let releases: Vec<&str> = state.counts.keys().map(|k| k.release.as_str()).collect();
+        assert_eq!(releases, ["fresh"]);
     }
 
     /// Relay drops a session whose release `validate_release` refuses

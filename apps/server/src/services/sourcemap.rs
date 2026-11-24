@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Cursor, Read as _};
+use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
@@ -303,6 +304,19 @@ impl SourceMapProvider for DbSourceMapProvider {
 ///
 /// Returns `None` when lineno is `None` or `Some(0)` — both mean "unmapped" in
 /// the Sentry protocol. Never uses plain `-1` arithmetic (avoids u32 wraparound).
+/// A source's index in its map and the byte range of each of its lines.
+type SourceLines = (u32, Vec<Range<usize>>);
+
+/// The byte range of each line of `text`, as `str::lines` splits it.
+fn line_ranges(text: &str) -> Vec<Range<usize>> {
+    text.lines()
+        .map(|line| {
+            let start = line.as_ptr() as usize - text.as_ptr() as usize;
+            start..start + line.len()
+        })
+        .collect()
+}
+
 pub fn normalize_sentry_position(lineno: Option<u32>, colno: Option<u32>) -> Option<(u32, u32)> {
     match lineno {
         None | Some(0) => None,
@@ -903,10 +917,11 @@ async fn rewrite_frames_under(
     if value_count == 0 {
         return Ok(());
     }
-    // A source's lines, split once per map section and file rather than once
-    // per frame. Keyed by the section's address: every map stays alive in
-    // `parsed` until this event is done.
-    let mut source_lines: HashMap<(usize, String), Vec<String>> = HashMap::new();
+    // Where a source's lines are, found once per map section and file rather
+    // than once per frame: its index and each line's byte range in the map's
+    // own `sourcesContent`, never a copy of the text. Keyed by the section's
+    // address: every map stays alive in `parsed` until this event is done.
+    let mut source_lines: HashMap<(usize, String), Option<SourceLines>> = HashMap::new();
 
     for value_idx in 0..value_count {
         let frame_count = event_data[root_key]["values"][value_idx]["stacktrace"]["frames"]
@@ -989,20 +1004,27 @@ async fn rewrite_frames_under(
             let src_col = token.get_src_col();
             let token_name = token.get_name().map(|n| n.to_string());
 
-            let lines = source_lines
+            let located = source_lines
                 .entry((std::ptr::from_ref(sm) as usize, original_file.clone()))
                 .or_insert_with(|| {
                     // Find source index via linear search (NEVER assume sourcesContent[0])
-                    (0..sm.get_source_count())
-                        .find(|&i| sm.get_source(i) == Some(original_file.as_str()))
-                        .and_then(|i| sm.get_source_contents(i))
-                        .map(|s| s.lines().map(|l| l.to_string()).collect())
-                        .unwrap_or_default()
+                    let idx = (0..sm.get_source_count())
+                        .find(|&i| sm.get_source(i) == Some(original_file.as_str()))?;
+                    let text = sm.get_source_contents(idx)?;
+                    Some((idx, line_ranges(text)))
                 });
+            let (text, ranges) = match located {
+                Some((idx, ranges)) => (
+                    sm.get_source_contents(*idx).unwrap_or_default(),
+                    ranges.as_slice(),
+                ),
+                None => ("", &[][..]),
+            };
+            let context = |range: &Range<usize>| serde_json::Value::from(&text[range.clone()]);
 
             let l = src_line as usize;
             let pre_start = l.saturating_sub(3);
-            let post_end = lines.len().min(l + 4);
+            let post_end = ranges.len().min(l + 4);
 
             let existing_function = event_data[root_key]["values"][value_idx]["stacktrace"]
                 ["frames"][frame_idx]
@@ -1020,18 +1042,21 @@ async fn rewrite_frames_under(
                 .map(|n| n.to_string())
                 .or(token_name)
                 .unwrap_or(existing_function);
-            let context_line = lines.get(l).cloned().unwrap_or_default();
-            let pre_context: Vec<serde_json::Value> = lines
+            let context_line = ranges
+                .get(l)
+                .map(|range| text[range.clone()].to_string())
+                .unwrap_or_default();
+            let pre_context: Vec<serde_json::Value> = ranges
                 .get(pre_start..l)
                 .unwrap_or_default()
                 .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
+                .map(context)
                 .collect();
-            let post_context: Vec<serde_json::Value> = lines
+            let post_context: Vec<serde_json::Value> = ranges
                 .get(l + 1..post_end)
                 .unwrap_or_default()
                 .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
+                .map(context)
                 .collect();
 
             let frame =

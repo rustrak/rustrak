@@ -90,11 +90,16 @@ async fn ingest(
             .insert_header((header::ACCEPT_ENCODING, decompression::ACCEPT_ENCODING))
             .finish());
     }
-    if let Some(refused) = refuse_before_body(&processors, &config, &auth)? {
+    if let Some(refused) = refusal(&processors, &config, &auth)? {
         return Ok(refused);
     }
     // Held until the envelope is parsed: see `LARGE_BODY_SLOTS`.
     let (body, large_body) = read_body(auth.project.id, &req, payload).await?;
+    // Again now: requests that passed together may have used the last of
+    // the quota while this body arrived.
+    if let Some(refused) = refusal(&processors, &config, &auth)? {
+        return Ok(refused);
+    }
 
     let body = if is_event {
         event_envelope(body)?
@@ -137,9 +142,10 @@ async fn ingest(
     Ok(HttpResponse::Ok().json(IngestResponse { id }))
 }
 
-/// Shedding and the quota need no body: refused before reading up to
-/// 100 MiB of it, or holding a large-body slot for it.
-fn refuse_before_body(
+/// Shedding and the quota. They need no body, so they run before reading up
+/// to 100 MiB of it (or holding a large-body slot for it), and again once
+/// it has arrived.
+fn refusal(
     processors: &Processors,
     config: &Config,
     auth: &SentryAuth,

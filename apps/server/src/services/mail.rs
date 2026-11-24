@@ -58,10 +58,10 @@ pub async fn build_transport(
             .await
             .map_err(|e| format!("Invalid SMTP host: {e}"))?
             .collect();
-        match addrs.first() {
-            Some(addr) if addrs.iter().all(|a| oauth::is_public(a.ip())) => addr.ip().to_string(),
-            _ => return Err(notification::NotPublic.to_string()),
+        if addrs.is_empty() || !addrs.iter().all(|a| oauth::is_public(a.ip())) {
+            return Err(notification::NotPublic.to_string());
         }
+        first_reachable(&addrs).await.ip().to_string()
     } else {
         host.to_string()
     };
@@ -87,6 +87,23 @@ pub async fn build_transport(
         _ => builder,
     }
     .build())
+}
+
+/// The first of the checked addresses that accepts a connection, tried in
+/// resolved order as a connection by hostname would; the first one when none
+/// does, so the send reports that failure.
+///
+/// ponytail: probes with a throwaway TCP connect because lettre takes one
+/// server address; hand lettre the open stream if it ever accepts one.
+pub async fn first_reachable(addrs: &[std::net::SocketAddr]) -> std::net::SocketAddr {
+    const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+    for addr in addrs {
+        let probe = tokio::time::timeout(PROBE_TIMEOUT, tokio::net::TcpStream::connect(addr));
+        if matches!(probe.await, Ok(Ok(_))) {
+            return *addr;
+        }
+    }
+    addrs[0]
 }
 
 /// Simple HTML escaping for email content.

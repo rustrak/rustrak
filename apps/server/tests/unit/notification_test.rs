@@ -469,3 +469,46 @@ async fn email_to_an_integration_host_on_loopback_is_refused_without_connecting(
         assert!(!reached.load(std::sync::atomic::Ordering::SeqCst), "{host}");
     }
 }
+
+/// The operator's own destination is its host and port together: an
+/// integration that keeps `SMTP_HOST` but names another port picks a new
+/// destination, held to the same check.
+#[tokio::test]
+async fn email_to_another_port_on_the_operator_host_is_refused_without_connecting() {
+    let (addr, reached) = internal_service().await;
+    let operator = SmtpSettings {
+        host: Some("127.0.0.1".to_string()),
+        port: addr.port().wrapping_add(1),
+        ..SmtpSettings::default()
+    };
+    let integration = rustrak::models::AlertIntegration {
+        provider_type: ProviderType::Email,
+        ..webhook_integration(json!({ "smtp_port": addr.port() }))
+    };
+
+    let dispatcher = create_dispatcher(ProviderType::Email, &operator);
+    let (routing, payload) = (json!({ "recipients": ["ops@example.com"] }), test_payload());
+    let send = dispatcher.send(&integration, &routing, &payload);
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), send).await;
+    assert!(!reached.load(std::sync::atomic::Ordering::SeqCst));
+    let result = result.expect("refused at once");
+    assert_eq!(
+        result.error_message.as_deref(),
+        Some("Destination not allowed: it is not on the public internet")
+    );
+}
+
+/// An integration's SMTP host may resolve to several public addresses; the
+/// connection goes to the first one that answers, not blindly to the first.
+#[tokio::test]
+async fn the_first_reachable_smtp_address_is_used() {
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap()
+    };
+    let open = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let open_addr = open.local_addr().unwrap();
+
+    let picked = rustrak::services::mail::first_reachable(&[closed, open_addr]).await;
+    assert_eq!(picked, open_addr);
+}

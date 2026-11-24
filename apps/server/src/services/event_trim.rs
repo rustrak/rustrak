@@ -45,11 +45,17 @@ const MAX_NEWEST_FRAMES: usize = 200;
 pub fn cap_stack_frames(event_data: &mut serde_json::Value) {
     cap_container(event_data);
     for key in ["exception", "threads"] {
-        if let Some(values) = event_data
-            .get_mut(key)
-            .and_then(|v| v.get_mut("values"))
-            .and_then(serde_json::Value::as_array_mut)
-        {
+        let Some(root) = event_data.get_mut(key) else {
+            continue;
+        };
+        // Relay reads a bare array the same as `{"values": [...]}`.
+        let values = if root.is_array() {
+            root.as_array_mut()
+        } else {
+            root.get_mut("values")
+                .and_then(serde_json::Value::as_array_mut)
+        };
+        if let Some(values) = values {
             values.iter_mut().for_each(cap_container);
         }
     }
@@ -138,6 +144,28 @@ fn trim_frames_under(event_data: &mut serde_json::Value, root_key: &str) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Relay reads `exception` and `threads` given as a bare array the same
+    /// as `{"values": [...]}`, so the frame cap applies to both forms.
+    #[test]
+    fn the_frame_cap_applies_to_the_bare_array_form() {
+        let frames: Vec<serde_json::Value> = (0..300).map(|i| json!({ "lineno": i })).collect();
+        let mut event = json!({
+            "exception": [{ "type": "E", "stacktrace": { "frames": frames.clone() } }],
+            "threads": [{ "id": 1, "stacktrace": { "frames": frames } }],
+        });
+
+        cap_stack_frames(&mut event);
+
+        for key in ["exception", "threads"] {
+            let kept = event[key][0]["stacktrace"]["frames"].as_array().unwrap();
+            assert_eq!(kept.len(), 250, "{key}");
+            assert_eq!(
+                kept[50]["lineno"], 100,
+                "{key}: the 200 newest follow the 50 oldest"
+            );
+        }
+    }
 
     #[test]
     fn trim_frame_vars_uses_the_real_relay_budget_of_2048_bytes() {
