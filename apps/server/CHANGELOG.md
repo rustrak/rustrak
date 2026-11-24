@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.33.0
+
+### Minor Changes
+
+- [`c4d1b6c`](https://github.com/rustrak/rustrak/commit/c4d1b6c92bbc16a08eed4d062ccf714877a8a83d) Thanks [@AbianS](https://github.com/AbianS)! - Security audit fixes: password login is rate limited and no longer reveals which accounts exist, the first SSO login on an empty instance must come from `OIDC_ADMIN_GROUPS`, SSO auto-links only into verified emails, cross-site session requests are refused, frame and artifact-bundle limits, per-integration SMTP credentials and public SMTP hosts, and secrets kept out of logs. `RUSTRAK_BOOTSTRAP_TOKEN` takes its value and never prints it, and the Docker image keeps the ingest queue on `/data`. The projects list gets search, sort by recent activity, creation or name, and saved views; the sidebar shows every project, and each user can sort, hide and reorder them. sentry-cli's organization-level releases API (`releases new`, `finalize`, `set-commits`, `deploys`, `list`, `info`, `delete`) with release deploys and commits. The Reactivated alert, which could never fire, is removed. Ingestion matches Relay on item size limits, Python log levels, offset-less timestamps, per-entry log and span parsing, and session clock drift and errored counts. PostgreSQL hash columns become `VARCHAR` so their indexes are used. The issue culprit is computed as Sentry does (@HEOJUNFO), and an email alert still reaches the other recipients when one is refused (@HEOJUNFO).
+
 ## 0.32.0
 
 ### Minor Changes

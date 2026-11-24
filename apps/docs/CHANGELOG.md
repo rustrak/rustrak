@@ -1,5 +1,11 @@
 # docs
 
+## 0.19.0
+
+### Minor Changes
+
+- [`c4d1b6c`](https://github.com/rustrak/rustrak/commit/c4d1b6c92bbc16a08eed4d062ccf714877a8a83d) Thanks [@AbianS](https://github.com/AbianS)! - The website is rebuilt in Astro and replaces the Nextra app: static pages, a new docs layout with tabs, Pagefind search, an "On this page" rail, a Copy page menu and `llms.txt`, and every old URL kept.
+
 ## 0.18.5
 
 ### Patch Changes
