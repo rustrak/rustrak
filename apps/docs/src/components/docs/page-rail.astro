@@ -1,0 +1,126 @@
+---
+import type { MarkdownHeading } from 'astro';
+import { getReleases } from '../../changelog';
+
+/**
+ * The column beside the page: its contents, the one you are reading marked,
+ * and the release these docs describe with the image to run it, as Sentry
+ * puts the package's version beside its guides. A self-hoster can tell at a
+ * glance whether a page matches what they run.
+ */
+interface Props {
+  headings: MarkdownHeading[];
+  edit: string;
+}
+const { headings, edit } = Astro.props;
+const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const latest = (await getReleases())[0];
+const IMAGE = 'rustrak/rustrak-server:latest';
+const DATE = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+---
+
+<div class="flex flex-col gap-8">
+  {
+    items.length > 0 && (
+      <nav data-toc aria-label="On this page">
+        <p class="mb-3 font-mono text-[11px] text-fg-meta uppercase tracking-wider">
+          On this page
+        </p>
+        <ul class="flex flex-col border-border-subtle border-l">
+          {items.map((h) => (
+            <li>
+              <a
+                href={`#${h.slug}`}
+                class:list={[
+                  '-ms-px block border-transparent border-l py-1 text-[13px] text-fg-meta leading-snug transition-colors hover:text-fg aria-[current=location]:border-surface-brand aria-[current=location]:text-fg',
+                  h.depth === 3 ? 'ps-6' : 'ps-3',
+                ]}
+              >
+                {h.text}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )
+  }
+
+  {
+    latest && (
+      <div class="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-panel p-4">
+        <div class="flex items-baseline justify-between gap-2">
+          <span class="text-fg text-label">Rustrak {latest.version}</span>
+          <span class="text-fg-meta text-meta">{DATE.format(latest.date)}</span>
+        </div>
+        <button
+          type="button"
+          data-copy-text={`docker pull ${IMAGE}`}
+          class="group flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-surface-code px-2.5 py-1.5 text-start font-mono text-[11px] text-code-fg transition-colors hover:border-border"
+          title="Copy the pull command"
+        >
+          <span class="truncate">{IMAGE}</span>
+          <span data-copy-label class="shrink-0 font-sans text-fg-meta group-hover:text-fg">
+            Copy
+          </span>
+        </button>
+        <a href="/changelog" class="text-fg-brand text-meta transition-colors hover:text-fg">
+          What changed in {latest.version} →
+        </a>
+      </div>
+    )
+  }
+
+  <div class="flex flex-col gap-2 text-meta">
+    <a href={edit} class="text-fg-meta transition-colors hover:text-fg">
+      Edit this page on GitHub ↗
+    </a>
+    <a
+      href="https://github.com/rustrak/rustrak/issues/new"
+      class="text-fg-meta transition-colors hover:text-fg"
+    >
+      Report a problem with the docs ↗
+    </a>
+  </div>
+</div>
+
+<script>
+  // The heading being read is the last one to have passed under the bar.
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-toc] a')];
+  const headings = links.map((a) => document.getElementById(a.hash.slice(1)));
+  let frame = 0;
+  const mark = () => {
+    frame = 0;
+    let current = 0;
+    headings.forEach((h, i) => {
+      if (h && h.getBoundingClientRect().top <= 120) current = i;
+    });
+    links.forEach((a, i) => {
+      if (i === current) a.setAttribute('aria-current', 'location');
+      else a.removeAttribute('aria-current');
+    });
+  };
+  if (links.length) {
+    mark();
+    addEventListener('scroll', () => {
+      if (!frame) frame = requestAnimationFrame(mark);
+    }, { passive: true });
+  }
+
+  for (const button of document.querySelectorAll<HTMLElement>('[data-copy-text]')) {
+    const label = button.querySelector('[data-copy-label]');
+    button.addEventListener('click', () => {
+      navigator.clipboard?.writeText(button.dataset.copyText ?? '').then(() => {
+        if (!label) return;
+        label.textContent = 'Copied';
+        setTimeout(() => {
+          label.textContent = 'Copy';
+        }, 1600);
+      }, () => {});
+    });
+  }
+</script>

@@ -1,96 +1,99 @@
 /**
- * The shape of a release, and the two things that read it on both sides of the
- * network.
- *
- * Split out of `changelog.ts` because that module opens the filesystem: a
- * client component importing so much as a date formatter from it dragged
- * `node:fs` into the browser bundle, which Turbopack refuses outright. Nothing
- * here touches the filesystem, so the feed can import it freely.
+ * What a release is, read off its file: pure functions, no Astro, so the
+ * build and `release.test.ts` share them.
  */
 
 export type ReleaseChannel = 'minor' | 'patch' | 'seed';
 
-/** What a `##` block inside a release is about. Drives the accent only. */
+/** What a `##` block inside a release is about. Drives its label's tone. */
 export type SectionKind = 'shipped' | 'improved' | 'fixed' | 'documented';
-
-export type ReleaseSection = {
-  title: string;
-  kind: SectionKind;
-  /** Rendered Markdown. Authored in this repo, never user input. */
-  html: string;
-};
-
-export type Release = {
-  /** The filename, kept as a secondary anchor so old deep links still land. */
-  slug: string;
-  /** The stable anchor: `v0-13-0`. */
-  anchor: string;
-  version: string;
-  channel: ReleaseChannel;
-  title: string;
-  description: string;
-  /** ISO `YYYY-MM-DD`. */
-  date: string;
-  tags: string[];
-  sections: ReleaseSection[];
-};
-
-export type ReleaseChunk = {
-  releases: Release[];
-  hasMore: boolean;
-};
-
-/**
- * One release reduced to what the spectrum needs to draw it.
- *
- * The page ships ten releases and fetches the rest, but the spectrum has to
- * show the whole history from the first paint. A navigator that only knows
- * about the part of the archive already on screen is not a navigator. So every
- * release contributes this instead of its body: roughly 130 bytes, against the
- * ~15KB of a full entry. Forty-one of them cost less than a third of one
- * release, which is the same bargain the anchor map in `page.tsx` already
- * takes.
- */
-export type ReleasePulse = {
-  anchor: string;
-  version: string;
-  title: string;
-  /** ISO `YYYY-MM-DD`. */
-  date: string;
-  channel: ReleaseChannel;
-  /**
-   * Changes per kind. The counts are what give a column its height and its
-   * banding, so a reader can see that v0.12.3 was twenty-two changes of mostly
-   * new work and v0.10.2 was a two-line fix without opening either.
-   */
-  counts: Record<SectionKind, number>;
-  /** The sum, precomputed because every consumer wants it. */
-  total: number;
-};
 
 export function parseVersion(value: string): [number, number, number] | null {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(value);
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
-export function safeDate(value: string): Date | null {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+/** `v0.32.0` → `v0-32-0`: the anchor every link to a release already uses. */
+export const anchorOf = (version: string) =>
+  version.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'release';
+
+export function channelOf(version: string): ReleaseChannel {
+  const parsed = parseVersion(version);
+  if (!parsed) return 'seed';
+  return parsed[2] === 0 ? 'minor' : 'patch';
 }
 
 /**
- * `UTC` on purpose. The date is a release day, not a moment: rendered in the
- * reader's zone, a release cut in the morning in Europe reads as the previous
- * day west of the Atlantic, which puts entries out of order against the
- * version numbers beside them.
+ * Newest first, by version rather than by date: a patch backported after a
+ * later minor carries the later date. `v0.1.x` and friends predate the
+ * release line and can never be newest. Date and id only break ties between
+ * equal versions (two release candidates of one version).
  */
-export function formatReleaseDate(value: string): string {
-  const date = safeDate(value);
-  if (!date) return value;
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+export function byNewestFirst(
+  a: { id: string; version: string; date: Date },
+  b: { id: string; version: string; date: Date },
+): number {
+  const left = parseVersion(a.version);
+  const right = parseVersion(b.version);
+  if (left && right) {
+    for (let i = 0; i < 3; i += 1) {
+      if (left[i] !== right[i]) return right[i] - left[i];
+    }
+  } else if (left || right) {
+    return left ? -1 : 1;
+  }
+  return b.date.valueOf() - a.date.valueOf() || b.id.localeCompare(a.id);
+}
+
+/**
+ * Section headings are free text, so this reads intent rather than matching a
+ * fixed vocabulary. Anything it does not recognise is new work, which is the
+ * right default: those are the sections an entry writes a real title for.
+ */
+export function kindOf(title: string): SectionKind {
+  const text = title.toLowerCase();
+  if (/fix|bug|regression/.test(text)) return 'fixed';
+  if (/improv|polish|enhance|update|tweak/.test(text)) return 'improved';
+  if (/doc|guide|readme/.test(text)) return 'documented';
+  return 'shipped';
+}
+
+export type Section = { title: string; kind: SectionKind; markdown: string };
+
+/**
+ * A release body, split on its `##` headings: each block gets its own label
+ * and the entry reads as a short document rather than one run of prose.
+ * Anything above the first heading is an untitled lead section, so a file
+ * that opens with a paragraph is not dropped. A `##` inside a code fence is a
+ * comment in TOML or shell, not a heading.
+ */
+export function splitSections(body: string): Section[] {
+  const sections: { title: string; lines: string[] }[] = [
+    { title: '', lines: [] },
+  ];
+  let fenced = false;
+  for (const line of body.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    const heading = fenced ? null : /^##\s+(.*)$/.exec(line);
+    if (heading) sections.push({ title: heading[1].trim(), lines: [] });
+    else sections[sections.length - 1].lines.push(line);
+  }
+  return sections
+    .map(({ title, lines }) => ({
+      title,
+      kind: kindOf(title),
+      markdown: lines.join('\n').trim(),
+    }))
+    .filter((section) => section.title !== '' || section.markdown !== '');
+}
+
+/**
+ * How many changes a section describes: its list items, nested ones too (a
+ * sub-item still shipped), or its paragraphs when it is written as prose.
+ * A magnitude for the history strip, not an inventory.
+ */
+export function countChanges(html: string): number {
+  const items = html.match(/<li[\s>]/g)?.length ?? 0;
+  if (items > 0) return items;
+  return html.match(/<p[\s>]/g)?.length ?? 0;
 }

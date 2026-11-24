@@ -8,6 +8,28 @@ import { mb, num, run, SETUP, times } from './compare';
  */
 
 const rustrak = run('rustrak');
+const sentry = run('sentry-errors');
+const sentryFull = run('sentry');
+const glitchtip = run('glitchtip');
+const bugsink = run('bugsink');
+const bugsinkLite = run('bugsink-sqlite');
+
+export type Stat = {
+  value: string;
+  label: string;
+  /** The two figures the value compares, Rustrak first. */
+  others: [string, string][];
+};
+
+export type Story = {
+  visual: 'fit' | 'howmany' | 'replay' | 'core';
+  /** The eyebrow and the section nav's name for it. */
+  name: string;
+  title: string;
+  lead?: string;
+  caption: string;
+  speed?: number;
+};
 
 export type Competitor = {
   slug: string;
@@ -16,28 +38,21 @@ export type Competitor = {
   description: string;
   headline: string;
   lead: string;
-  /** Runs in the race, CPU and table. */
+  /** The run the headline figures compare against. */
+  against: string;
+  /** Runs in the visuals and the table. */
   runs: string[];
-  stats: { value: string; label: string }[];
+  stats: Stat[];
   /** The page's own visuals, each the one comparison this product loses worst. */
   stories: Story[];
   facts: Record<FactKey, string>;
   faq: { q: string; a: string }[];
 };
 
-export type Story = {
-  visual: 'fit' | 'howmany' | 'replay' | 'core';
-  title: string;
-  lead?: string;
-  caption: string;
-  ids?: string[];
-  speed?: number;
-};
-
 export const FACT_LABELS = {
   license: 'License',
   language: 'Written in',
-  storage: 'What it stores into',
+  storage: 'Storage',
   minimum: 'Published minimum',
   containers: 'Containers in our run',
 } as const;
@@ -52,11 +67,7 @@ export const RUSTRAK_FACTS: Record<FactKey, string> = {
   containers: '1 (2 with PostgreSQL)',
 };
 
-const sentry = run('sentry-errors');
-const sentryFull = run('sentry');
-const glitchtip = run('glitchtip');
-const bugsink = run('bugsink');
-const bugsinkLite = run('bugsink-sqlite');
+const R = `Rustrak (${rustrak.variant})`;
 
 export const COMPETITORS: Competitor[] = [
   {
@@ -65,35 +76,50 @@ export const COMPETITORS: Competitor[] = [
     title: 'Rustrak vs self-hosted Sentry: memory, speed and setup',
     description: `Self-hosted Sentry vs Rustrak on the same 4 cores and 20,000 errors: ${mb(sentry.ram.peak)} vs ${mb(rustrak.ram.peak)} of memory, ${sentry.containers} containers vs 1, ${sentry.storedSecs} s vs ${rustrak.storedSecs} s to store them.`,
     headline: 'Rustrak vs self-hosted Sentry',
-    lead: `Both take events from the official Sentry SDKs. Self-hosted Sentry is ${sentry.containers} containers before you switch everything on; Rustrak is one. We put them on the same four cores and sent both the same ${num(SETUP.events)} errors.`,
+    lead: `Both accept events from the official Sentry SDKs. Self-hosted Sentry runs as ${sentry.containers} containers in its smallest profile; Rustrak runs as one. We gave both the same ${num(SETUP.events)} errors on the same four CPU cores.`,
+    against: 'sentry-errors',
     runs: ['rustrak', 'rustrak-pg', 'sentry-errors', 'sentry'],
     stats: [
       {
         value: times(sentry.ram.peak, rustrak.ram.peak),
-        label: `less memory. ${mb(rustrak.ram.peak)} for Rustrak at its busiest, ${mb(sentry.ram.peak)} for Sentry's smallest profile.`,
+        label: 'less memory at peak',
+        others: [
+          [R, mb(rustrak.ram.peak)],
+          ['Sentry (errors-only)', mb(sentry.ram.peak)],
+        ],
       },
       {
-        value: `1 vs ${sentry.containers}`,
-        label: `containers to keep running. ${sentryFull.containers} with every Sentry feature on.`,
+        value: `${sentry.containers} to 1`,
+        label: 'containers to operate',
+        others: [
+          [R, '1'],
+          ['Sentry (errors-only)', String(sentry.containers)],
+        ],
       },
       {
-        value: `${rustrak.storedSecs} s`,
-        label: `for Rustrak to store all ${num(SETUP.events)}. Sentry needed ${sentry.storedSecs} s.`,
+        value: times(sentry.storedSecs, rustrak.storedSecs),
+        label: `faster to store ${num(SETUP.events)} errors`,
+        others: [
+          [R, `${rustrak.storedSecs} s`],
+          ['Sentry (errors-only)', `${sentry.storedSecs} s`],
+        ],
       },
     ],
     stories: [
       {
         visual: 'fit',
-        title: 'Where each one fits',
-        lead: `Peak memory under the same burst, against the size of the server you would rent. Sentry's errors-only profile needs the 16 GB box. Rustrak leaves more than nine tenths of a 1 GB one free.`,
+        name: 'Server size',
+        title: 'Peak memory against server size',
+        lead: `Peak memory under the same burst, as a share of the server it would run on. Sentry's errors-only profile needs a 16 GB server. Rustrak uses less than a tenth of a 1 GB one.`,
         caption:
           "The whole stack's peak memory in our run. Sentry's documentation asks for 16 GB of RAM plus 16 GB of swap.",
       },
       {
         visual: 'howmany',
-        title: 'One Sentry, a hundred Rustraks',
+        name: 'Memory',
+        title: `${Math.floor(sentry.ram.peak / rustrak.ram.peak)} Rustrak instances in the memory of one Sentry`,
         caption:
-          'Each square is one Rustrak at the busiest second of the same run.',
+          'Each square is one Rustrak instance at the busiest second of the same run.',
       },
     ],
     facts: {
@@ -106,15 +132,15 @@ export const COMPETITORS: Competitor[] = [
     faq: [
       {
         q: 'Can Rustrak replace self-hosted Sentry?',
-        a: 'For errors, tracing, logs, crons, releases, source maps and user feedback, yes: it takes the same SDKs and you switch by changing the DSN. Rustrak has no session replay, profiling, uptime checks or attachments.',
+        a: 'For errors, tracing, logs, crons, releases, source maps and user feedback, yes: it accepts the same SDKs, and you switch by changing the DSN. Rustrak has no session replay, profiling, uptime checks or attachments.',
       },
       {
         q: 'How much memory does self-hosted Sentry need?',
         a: `Sentry's documentation asks for 16 GB of RAM plus 16 GB of swap. In our run its errors-only profile peaked at ${mb(sentry.ram.peak)} and the full one at ${mb(sentryFull.ram.peak)}. Rustrak peaked at ${mb(rustrak.ram.peak)} under the same load.`,
       },
       {
-        q: 'Do my old events come with me?',
-        a: 'No. Point the SDKs at Rustrak and it starts from the next event. Keep Sentry running read-only for as long as you need the history.',
+        q: 'Do my existing events come with me?',
+        a: 'No. Once the SDKs point at Rustrak, it records from the next event on. Keep Sentry running read-only for as long as you need its history.',
       },
       {
         q: 'Is Rustrak made by Sentry?',
@@ -128,29 +154,43 @@ export const COMPETITORS: Competitor[] = [
     title: 'Rustrak vs GlitchTip: memory, speed and setup compared',
     description: `GlitchTip 7 vs Rustrak on the same 4 cores and 20,000 errors: ${mb(glitchtip.ram.peak)} vs ${mb(rustrak.ram.peak)} at peak, ${glitchtip.storedSecs} s vs ${rustrak.storedSecs} s to store them, ${glitchtip.cpuMsPerEvent} vs ${rustrak.cpuMsPerEvent} ms of CPU per event.`,
     headline: 'Rustrak vs GlitchTip',
-    lead: `Both take events from the Sentry SDKs and both are small next to Sentry. GlitchTip is a Django app on PostgreSQL and Valkey; Rustrak is one Rust process on SQLite. Same four cores, same ${num(SETUP.events)} errors.`,
+    lead: `Both accept events from the Sentry SDKs and both are lightweight next to Sentry. GlitchTip is a Django application on PostgreSQL and Valkey; Rustrak is a single Rust process on SQLite. We gave both the same ${num(SETUP.events)} errors on the same four CPU cores.`,
+    against: 'glitchtip',
     runs: ['rustrak', 'rustrak-pg', 'glitchtip'],
     stats: [
       {
         value: times(glitchtip.ram.peak, rustrak.ram.peak),
-        label: `less memory. ${mb(rustrak.ram.peak)} for Rustrak at its busiest, ${mb(glitchtip.ram.peak)} for GlitchTip's stack.`,
+        label: 'less memory at peak',
+        others: [
+          [R, mb(rustrak.ram.peak)],
+          ['GlitchTip', mb(glitchtip.ram.peak)],
+        ],
       },
       {
         value: times(glitchtip.cpuMsPerEvent, rustrak.cpuMsPerEvent),
-        label: `less CPU per event: ${rustrak.cpuMsPerEvent} ms against ${glitchtip.cpuMsPerEvent} ms, databases included.`,
+        label: 'less CPU per error, databases included',
+        others: [
+          [R, `${rustrak.cpuMsPerEvent} ms`],
+          ['GlitchTip', `${glitchtip.cpuMsPerEvent} ms`],
+        ],
       },
       {
-        value: `${rustrak.storedSecs} s`,
-        label: `for Rustrak to store all ${num(SETUP.events)}. GlitchTip needed ${glitchtip.storedSecs} s.`,
+        value: times(glitchtip.storedSecs, rustrak.storedSecs),
+        label: `faster to store ${num(SETUP.events)} errors`,
+        others: [
+          [R, `${rustrak.storedSecs} s`],
+          ['GlitchTip', `${glitchtip.storedSecs} s`],
+        ],
       },
     ],
     stories: [
       {
         visual: 'replay',
-        title: 'The burst, replayed',
-        lead: `GlitchTip stored as it received, about ${num(glitchtip.storedPerS)} events a second, and had the last one at ${glitchtip.storedSecs} seconds. Rustrak was done at ${rustrak.storedSecs}.`,
+        name: 'Time to store',
+        title: `Time to store ${num(SETUP.events)} errors`,
+        lead: `GlitchTip stored errors as it received them, about ${num(glitchtip.storedPerS)} a second, and had the last one after ${glitchtip.storedSecs} seconds. Rustrak had stored all of them after ${rustrak.storedSecs}.`,
         caption:
-          'Played back at twice the real speed from our measurements: counts every 2 seconds, a straight line in between.',
+          'Replayed at twice the real speed from our measurements: counts every 2 seconds, straight lines between them.',
         speed: 2,
       },
     ],
@@ -164,15 +204,15 @@ export const COMPETITORS: Competitor[] = [
     faq: [
       {
         q: 'Which uses less memory, GlitchTip or Rustrak?',
-        a: `Rustrak. Under the same 20,000-event burst it peaked at ${mb(rustrak.ram.peak)}; GlitchTip with its PostgreSQL and Valkey peaked at ${mb(glitchtip.ram.peak)}.`,
+        a: `Rustrak. Under the same 20,000-error burst it peaked at ${mb(rustrak.ram.peak)}; GlitchTip, with PostgreSQL and Valkey, peaked at ${mb(glitchtip.ram.peak)}.`,
       },
       {
-        q: 'Do I need PostgreSQL for Rustrak?',
-        a: 'No. Rustrak stores everything in one SQLite file by default. PostgreSQL is an option, with its own image.',
+        q: 'Do I need PostgreSQL to run Rustrak?',
+        a: 'No. By default Rustrak stores everything in a single SQLite file. PostgreSQL is supported, with its own image.',
       },
       {
         q: 'How do I move from GlitchTip to Rustrak?',
-        a: 'Change the DSN in your apps. Both speak the Sentry protocol, so the SDK code stays as it is. Past events stay where they were.',
+        a: 'Change the DSN in your applications. Both speak the Sentry protocol, so the SDK code stays as it is. Past events remain in GlitchTip.',
       },
     ],
   },
@@ -182,36 +222,51 @@ export const COMPETITORS: Competitor[] = [
     title: 'Rustrak vs Bugsink: memory, speed and setup compared',
     description: `Bugsink vs Rustrak, both one container on SQLite, same 4 cores and 20,000 errors: ${bugsinkLite.storedSecs} s vs ${rustrak.storedSecs} s to store them, ${bugsinkLite.cpuMsPerEvent} vs ${rustrak.cpuMsPerEvent} ms of CPU per event.`,
     headline: 'Rustrak vs Bugsink',
-    lead: 'Both install as one container on SQLite and take events from the Sentry SDKs. We ran both that way on the same four cores, then ran Bugsink again on PostgreSQL from its own Compose file.',
+    lead: 'Both install as a single container on SQLite and accept events from the Sentry SDKs. We ran both that way on the same four CPU cores, then ran Bugsink again on PostgreSQL from its own Compose file.',
+    against: 'bugsink-sqlite',
     runs: ['rustrak', 'rustrak-pg', 'bugsink-sqlite', 'bugsink'],
     stats: [
       {
         value: times(bugsinkLite.storedSecs, rustrak.storedSecs),
-        label: `faster to store ${num(SETUP.events)} events: ${rustrak.storedSecs} s against ${bugsinkLite.storedSecs} s, both on SQLite.`,
+        label: `faster to store ${num(SETUP.events)} errors, both on SQLite`,
+        others: [
+          [R, `${rustrak.storedSecs} s`],
+          ['Bugsink (SQLite)', `${bugsinkLite.storedSecs} s`],
+        ],
       },
       {
         value: times(bugsinkLite.cpuMsPerEvent, rustrak.cpuMsPerEvent),
-        label: `less CPU per event: ${rustrak.cpuMsPerEvent} ms against ${bugsinkLite.cpuMsPerEvent} ms.`,
+        label: 'less CPU per error',
+        others: [
+          [R, `${rustrak.cpuMsPerEvent} ms`],
+          ['Bugsink (SQLite)', `${bugsinkLite.cpuMsPerEvent} ms`],
+        ],
       },
       {
         value: times(bugsinkLite.ram.peak, rustrak.ram.peak),
-        label: `less memory: ${mb(rustrak.ram.peak)} against ${mb(bugsinkLite.ram.peak)}, one container each.`,
+        label: 'less memory at peak, one container each',
+        others: [
+          [R, mb(rustrak.ram.peak)],
+          ['Bugsink (SQLite)', mb(bugsinkLite.ram.peak)],
+        ],
       },
     ],
     stories: [
       {
         visual: 'core',
-        title: 'What one CPU core buys',
-        lead: `Divide a second of CPU by what each event cost. Rustrak gets through ${num(Math.round(1000 / rustrak.cpuMsPerEvent))} events; Bugsink on the same SQLite, ${num(Math.round(1000 / bugsinkLite.cpuMsPerEvent))}.`,
+        name: 'CPU',
+        title: 'Errors stored per second of CPU',
+        lead: `One second of CPU divided by what each error cost. Rustrak stores ${num(Math.round(1000 / rustrak.cpuMsPerEvent))} errors with it; Bugsink on the same SQLite, ${num(Math.round(1000 / bugsinkLite.cpuMsPerEvent))}.`,
         caption:
-          'From the CPU per event we measured, the whole stack counted. One dot is ten events.',
+          'From the CPU per error we measured, the whole stack counted. One dot is ten errors.',
       },
       {
         visual: 'replay',
-        title: 'The burst, replayed',
-        lead: `On SQLite Bugsink had the last event at ${bugsinkLite.storedSecs} seconds; on PostgreSQL at ${bugsink.storedSecs}. Rustrak was done at ${rustrak.storedSecs}.`,
+        name: 'Time to store',
+        title: `Time to store ${num(SETUP.events)} errors`,
+        lead: `On SQLite, Bugsink had stored the last error after ${bugsinkLite.storedSecs} seconds; on PostgreSQL, after ${bugsink.storedSecs}. Rustrak had stored all of them after ${rustrak.storedSecs}.`,
         caption:
-          'Played back at ten times the real speed from our measurements: counts every 2 seconds, a straight line in between.',
+          'Replayed at ten times the real speed from our measurements: counts every 2 seconds, straight lines between them.',
         speed: 10,
       },
     ],
@@ -229,11 +284,11 @@ export const COMPETITORS: Competitor[] = [
       },
       {
         q: 'Which is faster, Bugsink or Rustrak?',
-        a: `Both on SQLite, Rustrak stored a burst of 20,000 events in ${rustrak.storedSecs} seconds and Bugsink in ${bugsinkLite.storedSecs}, using ${rustrak.cpuMsPerEvent} ms and ${bugsinkLite.cpuMsPerEvent} ms of CPU per event.`,
+        a: `Both on SQLite, Rustrak stored a burst of 20,000 errors in ${rustrak.storedSecs} seconds and Bugsink in ${bugsinkLite.storedSecs}, using ${rustrak.cpuMsPerEvent} ms and ${bugsinkLite.cpuMsPerEvent} ms of CPU per error.`,
       },
       {
-        q: 'Does Rustrak do more than errors?',
-        a: 'Yes: tracing, logs, cron monitors, releases with crash-free sessions and user feedback, all from the same Sentry SDK you already send errors with.',
+        q: 'Does Rustrak do more than error tracking?',
+        a: 'Yes: tracing, logs, cron monitors, releases with crash-free sessions and user feedback, all from the Sentry SDK you already send errors with.',
       },
     ],
   },

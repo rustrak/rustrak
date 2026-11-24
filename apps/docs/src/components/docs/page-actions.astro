@@ -1,0 +1,79 @@
+---
+import { ChevronDownIcon, CopyIcon } from '@rustrak/ui';
+
+/**
+ * What a reader can do with the page as text: copy it as Markdown, open the
+ * Markdown, or hand it to an assistant. One button with a menu rather than a
+ * row of four, as Vercel, Bun and Resend do it. The menu is a native
+ * popover: no script for opening, closing or dismissing it.
+ */
+interface Props {
+  /** The page's `.md` URL, absolute. */
+  markdown: string;
+}
+const { markdown } = Astro.props;
+const prompt = encodeURIComponent(
+  `Read ${markdown} and help me with Rustrak, using it as the reference.`,
+);
+const ITEM =
+  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-start text-control text-fg-subtle transition-colors hover:bg-surface-hover hover:text-fg';
+---
+
+<div class="relative inline-flex">
+  <button
+    type="button"
+    data-copy-page={markdown}
+    class="flex h-8 items-center gap-2 rounded-s-lg border border-border-subtle bg-surface/60 ps-3 pe-3 text-control text-fg-secondary transition-colors hover:border-border hover:text-fg"
+  >
+    <CopyIcon size="sm" />
+    <span data-copy-page-label>Copy page</span>
+  </button>
+  <button
+    type="button"
+    popovertarget="page-actions"
+    aria-label="More ways to use this page"
+    class="grid h-8 w-8 place-items-center rounded-e-lg border border-border-subtle border-s-0 bg-surface/60 text-fg-subtle transition-colors hover:border-border hover:text-fg"
+    style="anchor-name: --page-actions"
+  >
+    <ChevronDownIcon size="sm" />
+  </button>
+  <div
+    id="page-actions"
+    popover
+    data-menu
+    class="m-0 w-64 rounded-xl border border-border-subtle bg-surface-floating p-1.5 text-fg shadow-overlay"
+    style="position-anchor: --page-actions; inset: auto; top: anchor(bottom); left: anchor(left); margin-top: 6px"
+  >
+    <button type="button" data-copy-page={markdown} class={ITEM}>
+      Copy page as Markdown
+    </button>
+    <a href={markdown} class={ITEM}>View as Markdown</a>
+    <a href={`https://chatgpt.com/?q=${prompt}`} class={ITEM} rel="noreferrer">
+      Open in ChatGPT
+    </a>
+    <a href={`https://claude.ai/new?q=${prompt}`} class={ITEM} rel="noreferrer">
+      Open in Claude
+    </a>
+  </div>
+</div>
+
+<script>
+  // Fetched on click rather than written into the page: the Markdown is a
+  // second copy of the page and most readers never ask for it.
+  for (const button of document.querySelectorAll<HTMLElement>('[data-copy-page]')) {
+    button.addEventListener('click', async () => {
+      const label = document.querySelector('[data-copy-page-label]');
+      try {
+        const text = await (await fetch(button.dataset.copyPage ?? '')).text();
+        await navigator.clipboard.writeText(text);
+        if (label) label.textContent = 'Copied';
+      } catch {
+        if (label) label.textContent = 'Could not copy';
+      }
+      document.getElementById('page-actions')?.hidePopover();
+      setTimeout(() => {
+        if (label) label.textContent = 'Copy page';
+      }, 1800);
+    });
+  }
+</script>

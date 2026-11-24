@@ -94,6 +94,7 @@ jobs:
       # `pnpm install` brings the `playwright` package but not the browser it
       # drives. `@rustrak/ui` runs every story as a component test in a real
       # Chromium, so without this the whole suite fails at `browserType.launch`.
+      # The docs build draws its Mermaid diagrams in the same Chromium.
       # `--with-deps` also installs the system libraries Chromium needs.
       - run: pnpm --filter @rustrak/ui exec playwright install --with-deps chromium
 

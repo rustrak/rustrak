@@ -1,0 +1,97 @@
+---
+import { hrefOf, type NavTab, TABS } from '../../docs-nav';
+
+/**
+ * The current tab's pages, in groups. On a wide screen it sits beside the
+ * page; below `lg` the same list opens as a drawer from the bar, with the
+ * tabs above it so the whole documentation is still reachable.
+ */
+interface Props {
+  tab: NavTab;
+  current: string;
+  /** The drawer's copy: lists every tab, not only the current one. */
+  drawer?: boolean;
+}
+const { tab, current, drawer = false } = Astro.props;
+const tabs = drawer ? TABS : [tab];
+---
+
+<nav
+  aria-label={drawer ? 'Documentation' : `${tab.title} pages`}
+  data-sidebar={drawer ? undefined : ''}
+>
+  {
+    tabs.map((t) => (
+      <div class:list={[drawer && 'mb-8']}>
+        {drawer && (
+          <p class="mb-4 text-fg text-section">{t.title}</p>
+        )}
+        {t.groups.map((group) => (
+          <div class="mb-7">
+            <p class="mb-2 px-3 font-mono text-[11px] text-fg-meta uppercase tracking-wider">
+              {group.title}
+            </p>
+            <ul class="flex flex-col gap-px">
+              {group.items.map((page) => {
+                const nested = group.items.some(
+                  (other) =>
+                    other !== page && page.slug.startsWith(`${other.slug}/`),
+                );
+                return (
+                  <li>
+                    <a
+                      href={hrefOf(page)}
+                      aria-current={page.slug === current ? 'page' : undefined}
+                      class:list={[
+                        // The current page is a surface and full-strength text,
+                        // the same weight as the rest: a bolder face is wider,
+                        // and the line would reflow the moment it is chosen.
+                        'block rounded-md py-1.5 pe-3 text-control text-fg-subtle transition-colors hover:bg-surface/60 hover:text-fg aria-[current=page]:bg-surface aria-[current=page]:text-fg',
+                        nested ? 'ps-6' : 'ps-3',
+                      ]}
+                    >
+                      {page.title}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
+    ))
+  }
+</nav>
+
+{
+  !drawer && (
+    // Inline and synchronous, right after the list: it runs while the page
+    // is being parsed, so the sidebar is painted where it was left and never
+    // seen at its top first. Every link is a full page load; without this
+    // the list would jump under the pointer on each one.
+    <script is:inline>
+      (() => {
+        const KEY = 'docs-sidebar-scroll';
+        const list = document.currentScript.parentElement;
+        let saved = 0;
+        try {
+          saved = Number(sessionStorage.getItem(KEY) || 0);
+        } catch {}
+        // Set now, then again before the first frame and once the faces are
+        // in: until the layout settles the list can measure shorter, and the
+        // browser clamps the scroll to that height.
+        const restore = () => {
+          list.scrollTop = saved;
+        };
+        restore();
+        requestAnimationFrame(restore);
+        document.fonts.ready.then(restore);
+        addEventListener('pagehide', () => {
+          try {
+            sessionStorage.setItem(KEY, String(list.scrollTop));
+          } catch {}
+        });
+      })();
+    </script>
+  )
+}

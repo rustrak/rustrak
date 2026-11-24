@@ -1,0 +1,22 @@
+---
+import { LinkButton } from '../components/link-button';
+import PageIntro from '../components/page-intro.astro';
+import Page from '../layouts/page.astro';
+import { CONTAINER } from '../site';
+---
+
+<Page title="Page not found" description="This page does not exist.">
+  <PageIntro
+    eyebrow="404"
+    title="Nothing here."
+    lead="The page moved or never existed."
+  />
+  <div class:list={[CONTAINER, 'flex flex-wrap gap-3 pt-10 pb-32']}>
+    <LinkButton href="/getting-started/overview" variant="primary" size="lg">
+      Read the docs
+    </LinkButton>
+    <LinkButton href="/" variant="secondary" size="lg">
+      Home
+    </LinkButton>
+  </div>
+</Page>

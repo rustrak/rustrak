@@ -1,13 +1,8 @@
 /**
- * The roadmap, read from the public GitHub project rather than written here.
- *
- * The project is public, and GitHub's REST API for Projects answers for a
- * public project with no token and with CORS open, so the same function runs
- * at build time (the HTML ships with the board already drawn) and in the
- * browser (the board is refreshed with what the project says right now).
- * Unauthenticated, that is 60 requests an hour per visitor's IP, and a visit
- * costs two. `GITHUB_TOKEN`, when the build has one, only lifts the build's
- * own limit; it is never in the browser bundle.
+ * The roadmap, read from the public GitHub project rather than written here,
+ * at build time: the page ships with the board drawn and no script. GitHub's
+ * REST API answers for a public project with no token; `GITHUB_TOKEN`, when
+ * the build has one, only lifts the build's rate limit.
  */
 
 export const PROJECT_URL = 'https://github.com/orgs/rustrak/projects/2';
@@ -90,8 +85,7 @@ export function toItem(raw: RawItem): RoadmapItem {
 
 /** Every item on the project. Throws on any failed request. */
 export async function fetchRoadmap(): Promise<RoadmapItem[]> {
-  const token =
-    typeof window === 'undefined' ? process.env.GITHUB_TOKEN : undefined;
+  const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',

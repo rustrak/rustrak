@@ -49,20 +49,13 @@ release-cards/
 __pycache__/
 *.pyc
 
-# Generated at docs build time by scripts/generate-versions.mjs
-apps/docs/public/versions.json
-# Copied from apps/server at docs build time
-apps/docs/public/openapi.json
-
 
 # Storybook static builds
 storybook-static/
 /.idea
 
+# Copied from apps/server at docs build time
+apps/docs/public/openapi.json
+
 # OpenShowcase editable recordings; the exported .openshowcase lives in apps/docs/public/demos
 *.osrec
-
-# Generated from apps/docs/content by apps/docs/scripts/generate-llms.mjs
-apps/docs/public/llms.txt
-apps/docs/public/llms-full.txt
-apps/docs/public/**/*.md

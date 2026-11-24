@@ -7,12 +7,12 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "out/**", "dist/**"]
+      "outputs": ["dist/**"]
     },
     "docs#build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*", "$TURBO_ROOT$/apps/server/openapi.json"],
-      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "out/**"]
+      "outputs": ["dist/**"]
     },
     "build:dev": {
       "dependsOn": ["^build:dev"],

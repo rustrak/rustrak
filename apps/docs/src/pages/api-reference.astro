@@ -1,0 +1,41 @@
+---
+import { ApiReference } from '../components/docs/api-reference';
+import DocsHeader from '../components/docs/docs-header.astro';
+import Search from '../components/docs/search.astro';
+import Base from '../layouts/base.astro';
+
+/**
+ * The interactive API reference, under the docs' own bar on the Developers
+ * tab. Scalar brings its own sidebar, so the page gives it the full width;
+ * it is the one docs page that is a client app rather than HTML.
+ */
+---
+
+<Base
+  title="API Reference | Rustrak Docs"
+  description="Every endpoint of the Rustrak REST API, with parameters, schemas and authentication, generated from the server's OpenAPI document."
+>
+  <DocsHeader tab="developers" menu={false} />
+  <main class="api-reference pt-14">
+    <ApiReference client:only="react" />
+  </main>
+  <Search />
+</Base>
+
+<style is:global>
+  /* Scalar on the product's surfaces and faces, so it reads as part of the
+     docs rather than an embed. */
+  .api-reference .scalar-app,
+  .api-reference .dark-mode {
+    --scalar-background-1: var(--surface-canvas);
+    --scalar-background-2: var(--surface-panel);
+    --scalar-background-3: var(--surface);
+    --scalar-border-color: var(--border-subtle);
+    --scalar-color-1: var(--fg);
+    --scalar-color-2: var(--fg-subtle);
+    --scalar-color-3: var(--fg-meta);
+    --scalar-color-accent: var(--fg-brand);
+    --scalar-font: var(--font-sans);
+    --scalar-font-code: var(--font-mono);
+  }
+</style>

@@ -1,0 +1,9 @@
+---
+/**
+ * `<A>` as the docs' Markdown writes it: a plain link, for the few that point
+ * at a file (`/usage/issues.md`) rather than a page.
+ */
+type Props = astroHTML.JSX.AnchorHTMLAttributes;
+---
+
+<a {...Astro.props}><slot /></a>

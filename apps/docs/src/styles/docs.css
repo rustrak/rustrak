@@ -1,0 +1,304 @@
+/*
+ * Documentation pages over the blog's prose (`prose.css`): a step smaller,
+ * since a docs page is scanned for the one setting a reader came for rather
+ * than read end to end, and with the pieces reference pages lean on, tables,
+ * notes and code, given more weight.
+ */
+.prose-docs {
+  font-size: 15.5px;
+  line-height: 1.7;
+}
+
+.prose-docs > * {
+  max-width: none;
+}
+
+/* A section is a rule and a heading, as in the blog, a little tighter. */
+.prose-docs h2 {
+  margin-top: 2.75rem;
+  padding-top: 1.5rem;
+  font-size: 1.3rem;
+}
+
+.prose-docs h3 {
+  margin-top: 2rem;
+}
+
+/* A blockquote is a note: the docs use them for warnings and asides. */
+.prose-docs blockquote {
+  margin-top: 1.5rem;
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--surface-brand);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  background: color-mix(in oklab, var(--surface-brand) 4%, transparent);
+  color: var(--fg-secondary);
+}
+
+.prose-docs blockquote > :first-child {
+  margin-top: 0;
+}
+
+/* Tables are reference material: full width, a quiet header row, and the
+   first column (the name being described) in mono when it is code. */
+.prose-docs table {
+  width: 100%;
+  font-size: 14px;
+}
+
+.prose-docs :is(th, td) {
+  border-width: 0 0 1px;
+  padding: 0.6rem 1rem 0.6rem 0;
+  vertical-align: top;
+}
+
+.prose-docs th {
+  background: none;
+  color: var(--fg-meta);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.prose-docs td code {
+  white-space: nowrap;
+}
+
+/* The language of a code block, beside its copy button. */
+.prose .code-lang {
+  position: absolute;
+  top: 0.65rem;
+  right: 4.25rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-ghost);
+  transition: opacity 0.15s;
+}
+
+.prose .code-block:hover .code-lang {
+  opacity: 0;
+}
+
+.prose-docs .demo {
+  margin: 1.75rem 0;
+}
+
+/* A walkthrough (`steps: true`): each section is a numbered step, as Clerk
+   and Tailwind draw their quickstarts.
+   The last section, "Next", is where the walkthrough ends, not a step. */
+.prose-docs.steps {
+  counter-reset: step;
+}
+
+.prose-docs.steps h2:not(#next) {
+  position: relative;
+  counter-increment: step;
+  border-top: none;
+  padding-top: 0;
+  padding-left: 2.75rem;
+}
+
+.prose-docs.steps h2:not(#next)::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -0.1rem;
+  display: grid;
+  place-items: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-brand);
+}
+
+/* The same example in several languages: one block, a tab per language. */
+.prose .code-group {
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-code);
+}
+
+.prose .code-group pre {
+  margin: 0;
+  border: none;
+  border-radius: 0 0 6px 6px;
+}
+
+.prose .code-tabs {
+  display: flex;
+  gap: 1.25rem;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+}
+
+.prose .code-tabs button {
+  position: relative;
+  padding: 0.6rem 0;
+  font-size: 13px;
+  color: var(--fg-meta);
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.prose .code-tabs button:hover {
+  color: var(--fg);
+}
+
+.prose .code-tabs button[aria-selected="true"] {
+  color: var(--fg);
+}
+
+.prose .code-tabs button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--fg-subtle);
+}
+
+/* In a group the copy button sits in the tab bar, always shown. */
+.prose .code-group .code-copy {
+  top: 0.4rem;
+  opacity: 1;
+}
+
+/* Pages of every length keep the scrollbar's room, so going from a short
+   page to a long one does not move the whole layout sideways. */
+html {
+  scrollbar-gutter: stable;
+}
+
+/*
+ * Moving between docs pages is a full page load. With a cross-document view
+ * transition the browser keeps showing the page being left until the next
+ * one is ready, then swaps them in one quick fade, instead of a blank frame
+ * and a repaint. The bar and the sidebar are named, so they are matched to
+ * themselves on the next page and stay put while only the page changes.
+ */
+@view-transition {
+  navigation: auto;
+}
+
+.docs-header {
+  view-transition-name: docs-header;
+}
+
+.docs-sidebar {
+  view-transition-name: docs-sidebar;
+}
+
+::view-transition-group(*) {
+  animation-duration: 0.18s;
+}
+
+/* Bar and sidebar swap in place, without a fade and without the group's
+   own animation: the browser otherwise eases the group between the size it
+   captured on each page and scales the text inside it as it goes. Only the
+   page moves. */
+::view-transition-group(docs-header),
+::view-transition-group(docs-sidebar),
+::view-transition-new(docs-header),
+::view-transition-new(docs-sidebar) {
+  animation: none;
+}
+
+::view-transition-old(docs-header),
+::view-transition-old(docs-sidebar) {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
+}
+
+/*
+ * The docs' overlays open and close with a short movement instead of
+ * appearing and vanishing: the drawer slides in from the edge it belongs to,
+ * the search palette and the menus settle into place. All in CSS: the
+ * browser animates `display` and the top layer out as well as in
+ * (`allow-discrete`), and `@starting-style` gives the way in its first frame.
+ */
+[data-drawer],
+[data-palette],
+[data-menu] {
+  transition-property: opacity, translate, scale, display, overlay;
+  transition-duration: 0.22s;
+  transition-timing-function: var(--ease-landing);
+  transition-behavior: allow-discrete;
+}
+
+[data-drawer] {
+  translate: -100% 0;
+}
+
+[data-drawer][open] {
+  translate: 0 0;
+}
+
+@starting-style {
+  [data-drawer][open] {
+    translate: -100% 0;
+  }
+}
+
+[data-palette],
+[data-menu] {
+  opacity: 0;
+  translate: 0 -6px;
+  scale: 0.98;
+}
+
+[data-palette][open],
+[data-menu]:popover-open {
+  opacity: 1;
+  translate: 0 0;
+  scale: 1;
+}
+
+@starting-style {
+  [data-palette][open],
+  [data-menu]:popover-open {
+    opacity: 0;
+    translate: 0 -6px;
+    scale: 0.98;
+  }
+}
+
+/* Their backdrops fade with them. */
+:is([data-drawer], [data-palette])::backdrop {
+  opacity: 0;
+  transition-property: opacity, display, overlay;
+  transition-duration: 0.22s;
+  transition-behavior: allow-discrete;
+}
+
+:is([data-drawer], [data-palette])[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  :is([data-drawer], [data-palette])[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-drawer],
+  [data-palette],
+  [data-menu],
+  :is([data-drawer], [data-palette])::backdrop {
+    transition-duration: 0s;
+  }
+}

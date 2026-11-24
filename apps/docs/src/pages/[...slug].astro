@@ -1,0 +1,138 @@
+---
+import { render } from 'astro:content';
+import A from '../components/docs/a.astro';
+import Demo from '../components/docs/demo.astro';
+import Empty from '../components/docs/empty.astro';
+import PageActions from '../components/docs/page-actions.astro';
+import PageRail from '../components/docs/page-rail.astro';
+import { type DocPage, editUrl, getDocs, slugOf, titleOf } from '../docs';
+import { findPage, hrefOf, PAGES } from '../docs-nav';
+import Docs from '../layouts/docs.astro';
+
+/**
+ * A documentation page, at the path it has always had
+ * (`/getting-started/installation`). Every page in `docs-nav.ts` must have a
+ * file and every file a place in the navigation: either missing fails the
+ * build rather than shipping an orphan or a dead link.
+ */
+export async function getStaticPaths() {
+  const docs = await getDocs();
+  const bySlug = new Map(docs.map((page) => [slugOf(page), page]));
+  for (const page of PAGES) {
+    if (page.href) continue;
+    if (!bySlug.has(page.slug))
+      throw new Error(`docs-nav: no page "${page.slug}"`);
+  }
+  for (const slug of bySlug.keys()) {
+    if (!findPage(slug)) throw new Error(`docs-nav: "${slug}" is not listed`);
+  }
+  return PAGES.flatMap((nav, i) =>
+    nav.href
+      ? []
+      : [
+          {
+            params: { slug: nav.slug },
+            props: {
+              page: bySlug.get(nav.slug) as DocPage,
+              previous: PAGES[i - 1],
+              next: PAGES[i + 1],
+            },
+          },
+        ],
+  );
+}
+
+interface Props {
+  page: DocPage;
+  previous?: (typeof PAGES)[number];
+  next?: (typeof PAGES)[number];
+}
+const { page, previous, next } = Astro.props;
+const slug = slugOf(page);
+const nav = findPage(slug);
+if (!nav) throw new Error(`docs-nav: "${slug}" is not listed`);
+const { Content, headings } = await render(page);
+const title = titleOf(page, nav.title);
+const markdown = new URL(`/${slug}.md`, Astro.site).href;
+---
+
+<Docs
+  title={`${title} | Rustrak Docs`}
+  description={page.data.description}
+  markdown={`/${slug}.md`}
+  tab={nav.tab}
+  current={slug}
+>
+  <article data-pagefind-body>
+    <header class="mb-10 flex flex-col gap-4 border-border-subtle border-b pb-8">
+      <p class="flex items-center gap-2 text-fg-meta text-meta" data-pagefind-ignore>
+        <a href={nav.tab.href} class="transition-colors hover:text-fg">
+          {nav.tab.title}
+        </a>
+        <span aria-hidden="true">/</span>
+        <span>{nav.group.title}</span>
+      </p>
+      <h1 class="text-balance font-semibold text-[2.25rem] text-fg leading-[1.1] tracking-[-0.03em]">
+        {title}
+      </h1>
+      <p class="max-w-[60ch] text-pretty text-fg-subtle text-lead">
+        {page.data.description}
+      </p>
+      <div class="mt-2" data-pagefind-ignore>
+        <PageActions markdown={markdown} />
+      </div>
+    </header>
+
+    <div class:list={['prose prose-docs', page.data.steps && 'steps']}>
+      <Content components={{ h1: Empty, InteractiveDemo: Demo, A }} />
+    </div>
+  </article>
+
+  <footer class="mt-16 flex flex-col gap-10" data-pagefind-ignore>
+    <nav aria-label="Previous and next pages" class="grid gap-4 sm:grid-cols-2">
+      {
+        previous && (
+          <a
+            href={hrefOf(previous)}
+            class="group flex flex-col gap-1 rounded-2xl border border-border-subtle p-5 transition-colors hover:border-border"
+          >
+            <span class="text-fg-meta text-meta">← Previous</span>
+            <span class="text-fg text-section transition-colors group-hover:text-fg-brand">
+              {previous.title}
+            </span>
+          </a>
+        )
+      }
+      {
+        next && (
+          <a
+            href={hrefOf(next)}
+            class="group flex flex-col items-end gap-1 rounded-2xl border border-border-subtle p-5 text-end transition-colors hover:border-border sm:col-start-2"
+          >
+            <span class="text-fg-meta text-meta">Next →</span>
+            <span class="text-fg text-section transition-colors group-hover:text-fg-brand">
+              {next.title}
+            </span>
+          </a>
+        )
+      }
+    </nav>
+    <p class="flex flex-wrap gap-x-6 gap-y-2 border-border-subtle border-t pt-6 text-fg-meta text-meta xl:hidden">
+      <a href={editUrl(page)} class="transition-colors hover:text-fg">
+        Edit this page on GitHub ↗
+      </a>
+      <a
+        href="https://github.com/rustrak/rustrak/issues/new"
+        class="transition-colors hover:text-fg"
+      >
+        Report a problem with the docs ↗
+      </a>
+    </p>
+  </footer>
+
+  <PageRail slot="rail" headings={headings} edit={editUrl(page)} />
+</Docs>
+
+<script>
+  import '../components/docs/code-blocks';
+</script>
