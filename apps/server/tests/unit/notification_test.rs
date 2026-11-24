@@ -440,3 +440,32 @@ async fn email_is_retried_when_the_server_defers_a_recipient() {
     let message = result.error_message.unwrap_or_default();
     assert!(message.contains("gone@example.com"), "got: {message}");
 }
+
+/// An SMTP host an integration names is a destination like a webhook URL
+/// (#504); only the operator's own `SMTP_HOST` may be private.
+#[tokio::test]
+async fn email_to_an_integration_host_on_loopback_is_refused_without_connecting() {
+    for host in ["127.0.0.1", "localhost"] {
+        let (addr, reached) = internal_service().await;
+        let integration = rustrak::models::AlertIntegration {
+            provider_type: ProviderType::Email,
+            ..webhook_integration(json!({ "smtp_host": host, "smtp_port": addr.port() }))
+        };
+
+        let dispatcher = create_dispatcher(ProviderType::Email, &SmtpSettings::default());
+        let (routing, payload) = (json!({ "recipients": ["ops@example.com"] }), test_payload());
+        let send = dispatcher.send(&integration, &routing, &payload);
+        // The service never greets, so a client that connected would wait.
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), send).await;
+        assert!(!reached.load(std::sync::atomic::Ordering::SeqCst), "{host}");
+        let result = result.expect("refused at once");
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error_message.as_deref(),
+            Some("Destination not allowed: it is not on the public internet"),
+            "{host}"
+        );
+        assert!(!reached.load(std::sync::atomic::Ordering::SeqCst), "{host}");
+    }
+}

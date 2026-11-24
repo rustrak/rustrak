@@ -32,6 +32,44 @@ const MODULES_MAX_DEPTH: usize = 7;
 const REQUEST_DATA_MAX_BYTES: usize = 8192;
 const REQUEST_DATA_MAX_DEPTH: usize = 7;
 
+/// `RawStacktrace::MAX_OLDEST_FRAMES` / `MAX_NEWEST_FRAMES` —
+/// relay-event-schema/src/protocol/stacktrace.rs:386-390.
+const MAX_OLDEST_FRAMES: usize = 50;
+const MAX_NEWEST_FRAMES: usize = 200;
+
+/// Relay's `enforce_frame_hard_limit` (relay-event-normalization/src/trimming.rs:377),
+/// which it applies to every stack trace of every event, whatever its size:
+/// keeps the 50 oldest and 200 newest frames. A frame that is not an object
+/// fails Relay's schema and is dropped here too. Runs before symbolication,
+/// so no stack trace costs more than 250 frames of work.
+pub fn cap_stack_frames(event_data: &mut serde_json::Value) {
+    cap_container(event_data);
+    for key in ["exception", "threads"] {
+        if let Some(values) = event_data
+            .get_mut(key)
+            .and_then(|v| v.get_mut("values"))
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            values.iter_mut().for_each(cap_container);
+        }
+    }
+}
+
+fn cap_container(container: &mut serde_json::Value) {
+    for key in ["stacktrace", "raw_stacktrace"] {
+        if let Some(frames) = container
+            .get_mut(key)
+            .and_then(|s| s.get_mut("frames"))
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            frames.retain(serde_json::Value::is_object);
+            if frames.len() > MAX_OLDEST_FRAMES + MAX_NEWEST_FRAMES {
+                frames.drain(MAX_OLDEST_FRAMES..frames.len() - MAX_NEWEST_FRAMES);
+            }
+        }
+    }
+}
+
 pub fn trim_oversized_event(event_data: &mut serde_json::Value) {
     trim_frames_under(event_data, "exception");
     trim_frames_under(event_data, "threads");

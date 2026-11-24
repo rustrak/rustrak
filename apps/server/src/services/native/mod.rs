@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
-use symbolic_common::{InstructionInfo, Name};
+use symbolic_common::{InstructionInfo, Language, Name};
 use symbolic_debuginfo::{Archive, FileFormat};
 use symbolic_demangle::{Demangle, DemangleOptions};
 use symbolic_symcache::{SymCache, SymCacheConverter};
@@ -644,6 +644,10 @@ fn normalize_debug_id(id: &str) -> String {
 struct ModuleLookup {
     /// Sorted by `image_addr`, sizes back-filled.
     modules: Vec<Module>,
+    /// Position in `modules`, by `Module::index`.
+    by_index: HashMap<usize, usize>,
+    /// `Module::index` of the first module in `modules` with this debug ID.
+    by_debug_id: HashMap<String, usize>,
 }
 
 impl ModuleLookup {
@@ -655,7 +659,20 @@ impl ModuleLookup {
                 modules[i].image_size = modules[i + 1].image_addr - modules[i].image_addr;
             }
         }
-        Self { modules }
+        let by_index = modules
+            .iter()
+            .enumerate()
+            .map(|(pos, m)| (m.index, pos))
+            .collect();
+        let mut by_debug_id = HashMap::new();
+        for m in &modules {
+            by_debug_id.entry(m.debug_id.clone()).or_insert(m.index);
+        }
+        Self {
+            modules,
+            by_index,
+            by_debug_id,
+        }
     }
 
     /// `get_module_by_addr`.
@@ -674,7 +691,7 @@ impl ModuleLookup {
                 }
                 Some(module)
             }
-            AddrMode::Rel(index) => self.modules.iter().find(|m| m.index == index),
+            AddrMode::Rel(index) => self.by_index.get(&index).map(|&pos| &self.modules[pos]),
         }
     }
 }
@@ -696,10 +713,9 @@ fn addr_mode(value: Option<&Value>, lookup: &ModuleLookup) -> AddrMode {
     };
     let id = normalize_debug_id(arg);
     lookup
-        .modules
-        .iter()
-        .find(|m| m.debug_id == id)
-        .map(|m| m.index)
+        .by_debug_id
+        .get(&id)
+        .copied()
         .or_else(|| arg.parse().ok())
         .map(AddrMode::Rel)
         .unwrap_or(AddrMode::Abs)
@@ -773,11 +789,17 @@ fn symbolicate_stacktrace(
                     (None, Some(s)) => Some(s),
                     _ => None,
                 };
-                let (function, symbol) =
-                    match mangled.and_then(|m| Name::from(m).demangle(DEMANGLE_OPTIONS)) {
-                        Some(demangled) => (Some(demangled), function.map(str::to_string)),
-                        None => (None, None),
-                    };
+                // Owner decision: a Swift name is kept as sent; only names
+                // from a stored debug file go through the Swift demangler.
+                let demangled = mangled.map(Name::from).and_then(|name| {
+                    (name.detect_language() != Language::Swift)
+                        .then(|| name.demangle(DEMANGLE_OPTIONS))
+                        .flatten()
+                });
+                let (function, symbol) = match demangled {
+                    Some(demangled) => (Some(demangled), function.map(str::to_string)),
+                    None => (None, None),
+                };
                 out.push(CompleteFrame {
                     original_index: index,
                     status,

@@ -892,3 +892,86 @@ async fn a_source_bundle_with_an_oversized_manifest_fails() {
     assert_eq!(done[&chunk]["state"], "error", "{done}");
     assert_eq!(file_types(&db, project_id).await, []);
 }
+
+/// A multipart POST is a CORS "simple" request: a page on a sibling site can
+/// send it with the session cookie and no preflight. A session-authenticated
+/// unsafe request from another origin is refused; the dashboard (same
+/// origin) and Bearer-token clients such as sentry-cli are not.
+#[actix_web::test]
+async fn a_cross_site_session_upload_is_forbidden() {
+    let db = TestDb::new().await;
+    let token = create_test_token(&db.pool).await;
+    let project_id = project(&db, "difs-csrf").await;
+    let user = crate::common::seed_user(
+        &db.pool,
+        "victim@csrf.test",
+        rustrak::models::UserRole::Member,
+    )
+    .await;
+    crate::common::grant_project_role(&db.pool, project_id, user.id, "Editor")
+        .await
+        .unwrap();
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
+    let cookie = crate::common::login(&app, "victim@csrf.test").await;
+
+    let zip = zip_of(&[(format!("proguard/{MAPPING_UUID}.txt"), MAPPING)]);
+    let boundary = "csrfboundary";
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"m.zip\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend(&zip);
+    body.extend(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    let post = |headers: Vec<(&'static str, String)>| {
+        let mut req = test::TestRequest::post()
+            .uri("/api/0/projects/my-org/difs-csrf/files/dsyms/")
+            .insert_header(("Host", "rustrak.test"))
+            .insert_header((
+                "Content-Type",
+                format!("multipart/form-data; boundary={boundary}"),
+            ))
+            .set_payload(body.clone());
+        for header in headers {
+            req = req.insert_header(header);
+        }
+        req.to_request()
+    };
+    let status = |req| {
+        let app = &app;
+        async move { test::call_service(app, req).await.status().as_u16() }
+    };
+
+    let cookie_header = || ("Cookie", format!("{}={}", cookie.name(), cookie.value()));
+    let foreign = |c: (&'static str, String)| {
+        vec![
+            c,
+            ("Origin", "https://sibling.attacker.test".to_string()),
+            ("Sec-Fetch-Site", "same-site".to_string()),
+        ]
+    };
+
+    assert_eq!(status(post(foreign(cookie_header()))).await, 403);
+    // Older browsers send Origin without Sec-Fetch-Site.
+    assert_eq!(
+        status(post(vec![
+            cookie_header(),
+            ("Origin", "https://sibling.attacker.test".to_string()),
+        ]))
+        .await,
+        403
+    );
+    assert_eq!(
+        status(post(vec![
+            cookie_header(),
+            ("Origin", "https://rustrak.test".to_string()),
+            ("Sec-Fetch-Site", "same-origin".to_string()),
+        ]))
+        .await,
+        201
+    );
+    assert_eq!(
+        status(post(foreign(("Authorization", format!("Bearer {token}"))))).await,
+        201
+    );
+}

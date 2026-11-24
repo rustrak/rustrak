@@ -270,9 +270,16 @@ impl UsersService {
 
         let mut user = if let Some(existing) = user {
             existing.ensure_active()?;
-            // Linking on the provider's word alone needs both the operator's
-            // consent and a verified email; otherwise the owner confirms.
-            if !policy.link_existing_accounts || !email_verified {
+            // Linking on the provider's word alone needs the operator's
+            // consent, a verified email, and an account whose owner proved
+            // they own that email (not one SSO provisioned from an unverified
+            // claim); otherwise the owner confirms.
+            let owner_verified: bool =
+                sqlx::query_scalar("SELECT email_verified FROM users WHERE id = $1")
+                    .bind(existing.id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if !policy.link_existing_accounts || !email_verified || !owner_verified {
                 return Ok(OidcOutcome::ConfirmWithPassword(existing));
             }
             existing
@@ -298,8 +305,20 @@ impl UsersService {
                 ));
             }
             let role = mapped_role.unwrap_or(UserRole::Member);
-            Self::create_user_with_password_hash(&mut *tx, &normalized_email, &password_hash, role)
-                .await?
+            let user = Self::create_user_with_password_hash(
+                &mut *tx,
+                &normalized_email,
+                &password_hash,
+                role,
+            )
+            .await?;
+            if !email_verified {
+                sqlx::query("UPDATE users SET email_verified = FALSE WHERE id = $1")
+                    .bind(user.id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            user
         };
         Self::apply_sso_role(&mut tx, &mut user, mapped_role).await?;
         RoleService::sync_sso_assignments(&mut tx, user.id, &policy.group_roles, &matched_roles)

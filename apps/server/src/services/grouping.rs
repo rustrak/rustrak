@@ -262,13 +262,16 @@ fn kotlin_diagnostic_wrapper(exceptions: &[&Value]) -> Option<u64> {
         .filter_map(|e| mechanism_id(e, "exception_id").map(|id| (id, e)))
         .collect();
 
+    // Shared by every walk: a parent an earlier walk passed through led to no
+    // real error then either, and a cycle stops on its first repeat. Each
+    // exception is visited once, so the walks are linear together.
+    let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
     for exception in exceptions.iter().filter(|e| is_wrapper(e)) {
-        // Bounded by the number of exceptions, so a malformed cycle terminates.
         let mut current = *exception;
-        for _ in 0..by_id.len() {
-            let Some(parent_id) = mechanism_id(current, "parent_id") else {
+        while let Some(parent_id) = mechanism_id(current, "parent_id") {
+            if !seen.insert(parent_id) {
                 break;
-            };
+            }
             let Some(parent) = by_id.get(&parent_id) else {
                 break;
             };

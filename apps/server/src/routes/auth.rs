@@ -347,6 +347,9 @@ pub async fn sso_start(oidc: web::Data<OidcState>, session: Session) -> AppResul
         .ok_or_else(|| AppError::NotFound("SSO is not configured or unreachable".to_string()))?;
     let authorization = service.authorization_url()?;
 
+    // A login attempt starts signed out: a renewal still in flight when the
+    // user's sessions are revoked must not save their identity again.
+    session.remove(crate::auth::session::SESSION_USER_ID_KEY);
     session.renew();
     session
         .insert(OIDC_STATE_KEY, authorization.state)

@@ -1477,3 +1477,81 @@ async fn test_sso_leaves_azp_alone_when_the_client_is_the_only_audience() {
 
     assert_eq!(location(&resp), "/");
 }
+
+/// An account provisioned from an unverified email never proved it owns that
+/// address, so a later verified identity for it is not linked on the
+/// provider's word: the attacker who claimed the address first stays a member
+/// and the victim's identity lands nowhere.
+#[actix_web::test]
+async fn test_sso_does_not_auto_link_into_an_account_provisioned_unverified() {
+    let db = TestDb::new().await;
+    create_password_account(&db.pool, "owner@example.com").await;
+    let provider = FakeProvider::start(ProviderUser {
+        subject: "att".to_string(),
+        email: "v@example.com".to_string(),
+        email_verified: false,
+        groups: Vec::new(),
+    })
+    .await;
+    let mut config = provider.config_with_admin_group("admins");
+    config.auto_provision = true;
+    config.link_existing_accounts = true;
+    config.require_email_verified = false;
+    let service = OidcService::discover(config).await.unwrap();
+    let app = rustrak_app(&db.pool, Some(service)).await;
+
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+    let attacker = session_cookie(&resp).expect("attacker signed in");
+
+    provider.set_user(person_in_groups("vic", "v@example.com", &["admins"]));
+    let login = start_login(&app).await;
+    let resp = browser_callback(&app, login.cookie, &login.callback_query).await;
+    assert_eq!(location(&resp), "/link-account");
+
+    let me = current_user(&app, attacker)
+        .await
+        .expect("attacker session");
+    assert_eq!(me["role"], "member");
+    let linked: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM oidc_identities WHERE subject = 'vic'")
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(linked, 0, "the victim's identity must not be linked");
+}
+
+/// `/auth/sso/start` renews whatever session the cookie names. The renewed
+/// session must not carry the signed-in identity: a renewal still in flight
+/// when the user changes their password would otherwise save it again under
+/// a fresh id, outliving the revocation.
+#[actix_web::test]
+async fn test_sso_start_renews_into_a_signed_out_session() {
+    let provider = FakeProvider::start(person("sub-1", "idp@example.com")).await;
+    let service = OidcService::discover(provider.config()).await.unwrap();
+    let db = TestDb::new().await;
+    let app = rustrak_app(&db.pool, Some(service)).await;
+    crate::common::seed_user(
+        &db.pool,
+        "victim@example.com",
+        rustrak::models::UserRole::Member,
+    )
+    .await;
+    let signed_in = crate::common::login(&app, "victim@example.com").await;
+
+    let resp = test::call_service(
+        &app,
+        test::TestRequest::post()
+            .uri("/auth/sso/start")
+            .cookie(signed_in)
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), 200);
+
+    let renewed = session_cookie(&resp).expect("renewed cookie");
+    assert!(
+        current_user(&app, renewed).await.is_none(),
+        "the renewed session must not be signed in"
+    );
+}

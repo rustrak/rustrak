@@ -39,6 +39,8 @@ pub struct InvitationMailer {
     smtp: SmtpSettings,
     host: String,
     dashboard_url: String,
+    /// The host is an integration's, not the operator's `SMTP_HOST`.
+    from_integration: bool,
 }
 
 impl InvitationMailer {
@@ -49,7 +51,13 @@ impl InvitationMailer {
         if let Some(credentials) = first_enabled_email_integration(pool).await? {
             smtp = smtp.overridden_by(&credentials);
         }
-        Ok(Self::new(smtp, config.public_dashboard_url()))
+        let from_integration = smtp.host != config.smtp.host;
+        Ok(
+            Self::new(smtp, config.public_dashboard_url()).map(|mailer| Self {
+                from_integration,
+                ..mailer
+            }),
+        )
     }
 
     /// `None` unless `smtp` names a host and there is a public dashboard
@@ -59,6 +67,7 @@ impl InvitationMailer {
             host: smtp.host.clone()?,
             dashboard_url: dashboard_url?.to_string(),
             smtp,
+            from_integration: false,
         })
     }
 
@@ -100,7 +109,9 @@ impl InvitationMailer {
             self.smtp.tls,
             self.smtp.username.as_ref(),
             self.smtp.password.as_ref(),
-        )?;
+            self.from_integration,
+        )
+        .await?;
         tokio::time::timeout(SEND_TIMEOUT, transport.send(message))
             .await
             .map_err(|_| "Timed out sending the invitation email".to_string())?

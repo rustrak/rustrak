@@ -967,3 +967,45 @@ async fn a_batch_past_the_installation_quota_admits_the_first_in_order() {
         .collect();
     assert_eq!(stored_ids(&db.pool).await, first);
 }
+
+/// A project over its quota is answered 429 before its envelope body is
+/// read: a body that would fail to decode is never looked at, so it cannot
+/// hold a large-body slot. The HTTP check-in endpoint is not held to the
+/// error-event quota (Relay limits check-ins by their own category), so it
+/// reads the body and refuses the bad encoding instead.
+#[actix_web::test]
+async fn a_project_over_its_quota_is_refused_before_its_body_is_read() {
+    let db = TestDb::new().await;
+    let project = create_project(&db.pool).await;
+    let ingest_dir = tempfile::tempdir().unwrap();
+    let state = ingest_state(&db.pool, ingest_dir.path(), project_minute_quota(1)).await;
+    let app = crate::common::app_with(&state).await;
+    wait_clear_of_minute_rollover().await;
+    let _paused = pause_digests(&state);
+    assert_eq!(send(&app, &project, error_envelope()).await.status(), 200);
+
+    let bad_gzip = |uri: String| {
+        actix_web::test::TestRequest::post()
+            .uri(&uri)
+            .insert_header((
+                "X-Sentry-Auth",
+                format!("Sentry sentry_key={}, sentry_version=7", project.sentry_key),
+            ))
+            .insert_header(("Content-Encoding", "gzip"))
+            .set_payload("not gzip")
+            .to_request()
+    };
+
+    let envelope = format!("/api/{}/envelope/", project.id);
+    let resp = actix_web::test::call_service(&app, bad_gzip(envelope)).await;
+    assert_eq!(resp.status(), 429);
+    assert!(resp.headers().contains_key("x-sentry-rate-limits"));
+
+    let check_in = format!("/api/{}/cron/nightly/{}/", project.id, project.sentry_key);
+    let resp = actix_web::test::call_service(&app, bad_gzip(check_in)).await;
+    assert_eq!(
+        resp.status(),
+        400,
+        "check-ins are not held to the error quota"
+    );
+}

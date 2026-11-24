@@ -74,7 +74,7 @@ pub async fn process_envelope(
     body: Bytes,
     remote_addr: Option<String>,
     ingested_at: chrono::DateTime<Utc>,
-    _large_body: crate::ingest::decompression::LargeBodySlot,
+    _large_body: impl Send,
     shed: &[&str],
 ) -> AppResult<(Option<String>, bool)> {
     let mut parser = EnvelopeParser::new(body);

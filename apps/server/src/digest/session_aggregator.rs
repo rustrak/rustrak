@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,8 +8,8 @@ use tokio::sync::Mutex;
 use crate::db::DbPool;
 use crate::error::AppResult;
 use crate::models::session::{
-    classify, parse_ts, SessionAggregateItem, SessionAggregates, SessionOutcome, SessionStatus,
-    SessionUpdate,
+    classify, is_valid_environment, is_valid_release, parse_ts, SessionAggregateItem,
+    SessionAggregates, SessionOutcome, SessionStatus, SessionUpdate,
 };
 
 const OVERFLOW_RELEASE: &str = "<overflow>";
@@ -94,6 +94,9 @@ pub struct AggregatorState {
     /// their bucket and exact start. Each adds one to its bucket's `errored`
     /// at the flush, unless `session_errors` already holds it.
     pub errored: HashMap<(i32, String), (BucketKey, DateTime<Utc>)>,
+    /// Each project's releases in `counts`, so the cardinality cap needs no
+    /// scan of every key per item.
+    pub releases: HashMap<i32, HashSet<String>>,
 }
 
 pub struct SessionAggregator {
@@ -147,6 +150,7 @@ impl SessionAggregator {
             let counts = std::mem::take(&mut state.counts);
             let users = std::mem::take(&mut state.users);
             let errored = std::mem::take(&mut state.errored);
+            state.releases.clear();
             (counts, users, errored)
         };
 
@@ -157,9 +161,29 @@ impl SessionAggregator {
         let mut commit_started = false;
         let result = async {
             let mut tx = self.pool.begin().await?;
+            // A project deleted since its sessions arrived takes them with it:
+            // written, they would fail every flush on its foreign key.
+            let mut gone = HashSet::new();
+            let projects: HashSet<i32> = (counts.keys().map(|k| k.project_id))
+                .chain(users.keys().map(|k| k.project_id))
+                .collect();
+            for project_id in projects {
+                let exists: bool =
+                    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1)")
+                        .bind(project_id)
+                        .fetch_one(&mut *tx)
+                        .await?;
+                if !exists {
+                    gone.insert(project_id);
+                }
+            }
             // A session is errored once, whichever flush first saw it so.
             let mut written = counts.clone();
+            written.retain(|key, _| !gone.contains(&key.project_id));
             for ((project_id, sid), (key, started)) in &errored {
+                if gone.contains(project_id) {
+                    continue;
+                }
                 // The exact start, not the bucket: the id must last as long as
                 // updates to its session are accepted.
                 if insert_errored_session(*project_id, sid, *started, &mut *tx).await? {
@@ -171,7 +195,7 @@ impl SessionAggregator {
             }
             // A session older than Relay's window gets no more updates.
             delete_expired_errored_sessions(Utc::now() - SessionClock::MAX_AGE, &mut *tx).await?;
-            for (key, &crashed) in &users {
+            for (key, &crashed) in users.iter().filter(|(k, _)| !gone.contains(&k.project_id)) {
                 self.upsert_user(key, crashed, &mut *tx).await?;
             }
             commit_started = true;
@@ -326,6 +350,11 @@ fn merge_state(
     users: HashMap<UserKey, bool>,
 ) {
     for (key, counters) in counts {
+        state
+            .releases
+            .entry(key.project_id)
+            .or_default()
+            .insert(key.release.clone());
         let current = state.counts.entry(key).or_default();
         current.total += counters.total;
         current.errored += counters.errored;
@@ -349,24 +378,19 @@ pub fn truncate_to_minute(dt: DateTime<Utc>) -> DateTime<Utc> {
 
 /// Apply cardinality cap: if the new release would exceed the per-project cap, use OVERFLOW_RELEASE.
 pub fn apply_cardinality_cap(
-    state: &AggregatorState,
+    state: &mut AggregatorState,
     project_id: i32,
     release: String,
     cap: usize,
 ) -> String {
-    let project_releases: std::collections::HashSet<&str> = state
-        .counts
-        .keys()
-        .filter(|k| k.project_id == project_id)
-        .map(|k| k.release.as_str())
-        .collect();
-
-    if project_releases.contains(release.as_str()) {
+    let releases = state.releases.entry(project_id).or_default();
+    if releases.contains(&release) {
         return release;
     }
-    if project_releases.len() >= cap {
+    if releases.len() >= cap {
         return OVERFLOW_RELEASE.to_string();
     }
+    releases.insert(release.clone());
     release
 }
 
@@ -426,13 +450,17 @@ pub fn apply_update(
         }
     };
     let release = match &attrs.release {
-        Some(r) if !r.is_empty() => r.clone(),
+        Some(r) if !r.is_empty() && is_valid_release(r) => r.clone(),
         _ => {
-            log::warn!("session item missing release, dropping");
+            log::warn!("session item without a valid release, dropping");
             return;
         }
     };
-    let environment = attrs.environment.clone().unwrap_or_default();
+    let environment = attrs
+        .environment
+        .clone()
+        .filter(|e| is_valid_environment(e))
+        .unwrap_or_default();
 
     let Some(started) = clock.read(update.started.as_deref()) else {
         log::debug!("session outside the accepted time window, dropping");
@@ -531,13 +559,17 @@ pub fn apply_aggregates(
         }
     };
     let release = match &attrs.release {
-        Some(r) if !r.is_empty() => r.clone(),
+        Some(r) if !r.is_empty() && is_valid_release(r) => r.clone(),
         _ => {
-            log::warn!("sessions item missing release, dropping");
+            log::warn!("sessions item without a valid release, dropping");
             return;
         }
     };
-    let environment = attrs.environment.clone().unwrap_or_default();
+    let environment = attrs
+        .environment
+        .clone()
+        .filter(|e| is_valid_environment(e))
+        .unwrap_or_default();
     let release = apply_cardinality_cap(state, project_id, release, cardinality_cap);
 
     for item in &agg.aggregates {
@@ -906,6 +938,71 @@ mod tests {
         assert_eq!(releases, vec!["1.0.0", OVERFLOW_RELEASE]);
     }
 
+    fn with_attrs(release: &str, environment: &str) -> (SessionUpdate, SessionAggregates) {
+        let update = SessionUpdate {
+            attrs: Some(SessionAttributes {
+                release: Some(release.to_string()),
+                environment: Some(environment.to_string()),
+            }),
+            ..make_update(true, SessionStatus::Ok, 0, None)
+        };
+        let agg = serde_json::from_value(serde_json::json!({
+            "attrs": { "release": release, "environment": environment },
+            "aggregates": [{ "started": "2026-06-10T10:00:00Z", "exited": 1 }]
+        }))
+        .unwrap();
+        (update, agg)
+    }
+
+    /// Relay drops a session whose release `validate_release` refuses
+    /// (processing/sessions/process.rs:200): over 200 bytes, `.`, `..`,
+    /// `latest`, or a `/`, `\` or control character.
+    #[test]
+    fn a_release_relay_refuses_drops_the_session() {
+        let long = "a".repeat(201);
+        for release in [
+            long.as_str(),
+            "latest",
+            "LATEST",
+            ".",
+            "..",
+            "a/b",
+            "a\\b",
+            "a\tb",
+            "a\u{7f}",
+        ] {
+            let (update, agg) = with_attrs(release, "production");
+            let mut state = AggregatorState::default();
+            super::apply_update(&mut state, 1, &update, 10, clock());
+            super::apply_aggregates(&mut state, 1, &agg, 10, clock());
+            assert!(state.counts.is_empty(), "release {release:?} was kept");
+        }
+        let (update, _) = with_attrs(&"a".repeat(200), "production");
+        let mut state = AggregatorState::default();
+        super::apply_update(&mut state, 1, &update, 10, clock());
+        assert_eq!(state.counts.len(), 1, "200 bytes is kept");
+    }
+
+    /// Relay keeps the session and drops only an environment
+    /// `validate_environment` refuses: over 64 bytes, `.`, `..`, `none`, or a
+    /// `/`, `\` or control character.
+    #[test]
+    fn an_environment_relay_refuses_is_dropped_from_the_session() {
+        let long = "e".repeat(65);
+        for environment in [long.as_str(), "none", "None", ".", "..", "a/b", "a\nb"] {
+            let (update, agg) = with_attrs("1.0.0", environment);
+            let mut state = AggregatorState::default();
+            super::apply_update(&mut state, 1, &update, 10, clock());
+            super::apply_aggregates(&mut state, 1, &agg, 10, clock());
+            let environments: Vec<&str> = state
+                .counts
+                .keys()
+                .map(|k| k.environment.as_str())
+                .collect();
+            assert_eq!(environments, vec![""], "environment {environment:?}");
+        }
+    }
+
     /// Relay reads `did` on a pre-aggregated bucket too.
     #[test]
     fn a_pre_aggregated_bucket_records_its_user() {
@@ -958,30 +1055,18 @@ mod tests {
     fn cardinality_cap_overflows() {
         let mut state = AggregatorState::default();
         for i in 0..3usize {
-            let key = BucketKey {
-                project_id: 1,
-                release: format!("v{i}"),
-                environment: "prod".to_string(),
-                bucket: Utc::now(),
-            };
-            state.counts.insert(key, Counters::default());
+            apply_cardinality_cap(&mut state, 1, format!("v{i}"), 3);
         }
         // Cap = 3; next release should overflow
-        let result = apply_cardinality_cap(&state, 1, "v99".to_string(), 3);
+        let result = apply_cardinality_cap(&mut state, 1, "v99".to_string(), 3);
         assert_eq!(result, OVERFLOW_RELEASE);
     }
 
     #[test]
     fn cardinality_cap_allows_existing_release() {
         let mut state = AggregatorState::default();
-        let key = BucketKey {
-            project_id: 1,
-            release: "v1.0.0".to_string(),
-            environment: "prod".to_string(),
-            bucket: Utc::now(),
-        };
-        state.counts.insert(key, Counters::default());
-        let result = apply_cardinality_cap(&state, 1, "v1.0.0".to_string(), 1);
+        apply_cardinality_cap(&mut state, 1, "v1.0.0".to_string(), 1);
+        let result = apply_cardinality_cap(&mut state, 1, "v1.0.0".to_string(), 1);
         assert_eq!(result, "v1.0.0");
     }
 
@@ -1010,6 +1095,7 @@ mod tests {
             )]),
             users: HashMap::from([(user.clone(), false)]),
             errored: HashMap::new(),
+            releases: HashMap::new(),
         };
         merge_state(
             &mut state,
@@ -1024,5 +1110,6 @@ mod tests {
         );
         assert_eq!(state.counts[&key].total, 3);
         assert!(state.users[&user]);
+        assert!(state.releases[&1].contains("v1"), "the cap still counts it");
     }
 }

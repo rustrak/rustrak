@@ -956,6 +956,7 @@ impl ErrorProcessor {
         if feedback.is_some() && event_data.get("level").and_then(relay_level).is_none() {
             event_data["level"] = serde_json::json!("info");
         }
+        crate::services::event_trim::cap_stack_frames(&mut event_data);
         // Rewrite stack frames using source maps (non-fatal)
         if let Err(e) = crate::services::sourcemap::rewrite_frames(
             self.sourcemap_provider.as_ref(),

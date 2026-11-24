@@ -880,14 +880,23 @@ fn frame_context(frame: &serde_json::Value) -> serde_json::Value {
         .collect()
 }
 
+/// Frames one event renders at most. Relay caps each stack trace at 250
+/// frames but not the exceptions of an event, and every rendered frame is a
+/// 15-key object, so the response is bounded here.
+// ponytail: frames past the budget are left out silently; Sentry has no such
+// limit, so raise it if a real event ever reaches it.
+const MAX_RENDERED_FRAMES: usize = 5_000;
+
 /// `Stacktrace.get_api_context` (`interfaces/stacktrace.py`), frames in
-/// camelCase and oldest first as stored.
-fn stacktrace_entry(stacktrace: &serde_json::Value) -> serde_json::Value {
+/// camelCase and oldest first as stored. Renders at most `budget` frames and
+/// takes them off it.
+fn stacktrace_entry(stacktrace: &serde_json::Value, budget: &mut usize) -> serde_json::Value {
     let frames: Vec<serde_json::Value> = stacktrace
         .get("frames")
         .and_then(|f| f.as_array())
         .into_iter()
         .flatten()
+        .take(*budget)
         .map(|f| {
             let get = |key: &str| f.get(key).cloned().unwrap_or(serde_json::Value::Null);
             serde_json::json!({
@@ -909,6 +918,7 @@ fn stacktrace_entry(stacktrace: &serde_json::Value) -> serde_json::Value {
             })
         })
         .collect();
+    *budget -= frames.len();
     let has_system_frames = frames.iter().any(|f| f["inApp"] == true);
     serde_json::json!({
         "frames": frames,
@@ -943,6 +953,7 @@ fn entries(data: &serde_json::Value) -> Vec<serde_json::Value> {
     }
 
     if let Some(values) = exception_values(data).filter(|v| !v.is_empty()) {
+        let mut budget = MAX_RENDERED_FRAMES;
         let values: Vec<serde_json::Value> = values
             .iter()
             .map(|v| {
@@ -953,8 +964,8 @@ fn entries(data: &serde_json::Value) -> Vec<serde_json::Value> {
                     "mechanism": v.get("mechanism"),
                     "threadId": v.get("thread_id"),
                     "module": v.get("module"),
-                    "stacktrace": stacktrace.map(stacktrace_entry),
-                    "rawStacktrace": v.get("raw_stacktrace").filter(|s| s.is_object()).map(stacktrace_entry),
+                    "stacktrace": stacktrace.map(|s| stacktrace_entry(s, &mut budget)),
+                    "rawStacktrace": v.get("raw_stacktrace").filter(|s| s.is_object()).map(|s| stacktrace_entry(s, &mut budget)),
                 })
             })
             .collect();

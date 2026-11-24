@@ -529,12 +529,28 @@ pub async fn create_rule(
             &integration.credentials,
             &ch.routing_override,
         )?;
+        require_redirect_allowed(&actor, &integration, &ch.routing_override)?;
     }
 
     let rule = AlertService::create_rule(pool.get_ref(), project_id, body).await?;
     processors.errors.alert_rules().invalidate(project_id);
 
     Ok(HttpResponse::Created().json(AlertService::rule_response(pool.get_ref(), rule).await?))
+}
+
+/// The integration's credential headers and signing secret travel with every
+/// delivery, so sending it to another URL is for whoever may change the
+/// integration (`integrations:update`), not for anyone who may write a rule.
+fn require_redirect_allowed(
+    actor: &ApiActor,
+    integration: &AlertIntegration,
+    routing: &serde_json::Value,
+) -> AppResult<()> {
+    let url = routing.get("url").and_then(|v| v.as_str());
+    if url.is_some() && url != integration.credentials.get("url").and_then(|v| v.as_str()) {
+        actor.require(Resource::Integrations, Action::Update, None)?;
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -625,6 +641,7 @@ pub async fn update_rule(
                 &integration.credentials,
                 &ch.routing_override,
             )?;
+            require_redirect_allowed(&actor, &integration, &ch.routing_override)?;
         }
     }
 

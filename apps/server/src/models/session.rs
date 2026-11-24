@@ -168,6 +168,31 @@ pub fn crash_free_rate(crashed: i64, total: i64) -> Option<f64> {
     (total > 0).then(|| 1.0 - crashed as f64 / total as f64)
 }
 
+/// Relay's `validate_release` (sentry-release-parser 1.4.0, parser.rs:416),
+/// which drops the session when it fails (sessions/process.rs:200).
+pub fn is_valid_release(release: &str) -> bool {
+    release.len() <= 200
+        && !matches!(release, "." | "..")
+        && !release.eq_ignore_ascii_case("latest")
+        && is_valid_api_attribute(release)
+}
+
+/// Relay's `validate_environment` (parser.rs:429); a session keeps going
+/// without an environment that fails it (sessions/process.rs:202).
+pub fn is_valid_environment(environment: &str) -> bool {
+    environment.len() <= 64
+        && !matches!(environment, "." | "..")
+        && !environment.eq_ignore_ascii_case("none")
+        && is_valid_api_attribute(environment)
+}
+
+/// `VALID_API_ATTRIBUTE_REGEX`: no `\`, `/`, DEL or C0 control character.
+fn is_valid_api_attribute(value: &str) -> bool {
+    !value
+        .chars()
+        .any(|c| matches!(c, '\\' | '/' | '\x7f' | '\x00'..='\x1f'))
+}
+
 /// Parse a timestamp string into a UTC DateTime, as Relay reads one.
 pub fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
     crate::protocol::parse_timestamp(s)

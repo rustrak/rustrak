@@ -1818,3 +1818,127 @@ mod rule_cache {
         digest_new_error(&s).await;
     }
 }
+
+/// An integration's credential headers and HMAC secret go wherever the
+/// delivery goes, so only someone who may change the integration may send it
+/// somewhere else: a rule's `routing_override.url` needs `integrations:update`.
+#[actix_web::test]
+async fn a_rule_redirecting_an_integration_needs_integrations_update() {
+    use actix_web::test;
+    use rustrak::models::rbac::{Action, Resource};
+    use rustrak::models::{CreateAuthToken, CreateUserRequest, Permission, UserRole};
+    use rustrak::services::{AuthTokenService, RoleService, UsersService};
+
+    let db = TestDb::new().await;
+    let pool = &db.pool;
+    let channel = AlertService::create_channel(
+        pool,
+        &Default::default(),
+        CreateAlertIntegration {
+            name: "Ops webhook".into(),
+            provider_type: ProviderType::Webhook,
+            credentials: json!({
+                "url": "https://example.com/hook",
+                "secret": "s",
+                "headers": {"Authorization": "Bearer SECRET"}
+            }),
+            is_enabled: true,
+        },
+    )
+    .await
+    .unwrap();
+    let project_id = create_test_project(pool).await;
+    let rule = AlertService::create_rule(
+        pool,
+        project_id,
+        CreateAlertRule {
+            name: "existing".into(),
+            alert_type: AlertType::NewIssue,
+            conditions: json!({}),
+            cooldown_minutes: 0,
+            channels: vec![],
+        },
+    )
+    .await
+    .unwrap();
+
+    let token_with = |email: &'static str, permissions: Vec<Permission>| async move {
+        let user = UsersService::create_user(
+            pool,
+            &CreateUserRequest {
+                email: email.into(),
+                password: "password123".into(),
+            },
+            UserRole::Member,
+        )
+        .await
+        .unwrap();
+        let role = RoleService::create(pool, email, "", permissions)
+            .await
+            .unwrap();
+        RoleService::assign(pool, user.id, role.id, Some(project_id))
+            .await
+            .unwrap();
+        AuthTokenService::create_for_user(pool, CreateAuthToken::default(), Some(user.id))
+            .await
+            .unwrap()
+            .token
+    };
+    let rule_perms = vec![
+        Permission {
+            resource: Resource::AlertRules,
+            action: Action::Create,
+        },
+        Permission {
+            resource: Resource::AlertRules,
+            action: Action::Update,
+        },
+    ];
+    let rules_only = token_with("rules@example.com", rule_perms.clone()).await;
+    let mut manager_perms = rule_perms;
+    manager_perms.push(Permission {
+        resource: Resource::Integrations,
+        action: Action::Update,
+    });
+    let manager = token_with("manager@example.com", manager_perms).await;
+
+    let app = crate::common::app(pool).await;
+    let channels =
+        |url: &str| json!([{ "integration_id": channel.id, "routing_override": { "url": url } }]);
+    let create = |token: &str, channels: serde_json::Value| {
+        test::TestRequest::post()
+            .uri(&format!("/api/projects/{project_id}/alert-rules"))
+            .insert_header(("Authorization", format!("Bearer {token}")))
+            .set_json(json!({ "name": "r", "alert_type": "new_issue", "channels": channels }))
+            .to_request()
+    };
+    let update = |token: &str, channels: serde_json::Value| {
+        test::TestRequest::patch()
+            .uri(&format!(
+                "/api/projects/{project_id}/alert-rules/{}",
+                rule.id
+            ))
+            .insert_header(("Authorization", format!("Bearer {token}")))
+            .set_json(json!({ "channels": channels }))
+            .to_request()
+    };
+    let elsewhere = channels("http://attacker.example/x");
+    let own = channels("https://example.com/hook");
+    let status = |r: actix_web::dev::ServiceResponse| r.status().as_u16();
+
+    // Alert rules only: the integration's own URL, never another one.
+    let r = test::call_service(&app, create(&rules_only, elsewhere.clone())).await;
+    assert_eq!(status(r), 403);
+    let r = test::call_service(&app, update(&rules_only, elsewhere.clone())).await;
+    assert_eq!(status(r), 403);
+    let r = test::call_service(&app, create(&rules_only, own.clone())).await;
+    assert_eq!(status(r), 201);
+    let r = test::call_service(&app, update(&rules_only, own)).await;
+    assert_eq!(status(r), 200);
+
+    // Whoever manages the integration still may.
+    let r = test::call_service(&app, create(&manager, elsewhere.clone())).await;
+    assert_eq!(status(r), 201);
+    let r = test::call_service(&app, update(&manager, elsewhere)).await;
+    assert_eq!(status(r), 200);
+}
