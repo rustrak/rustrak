@@ -1,0 +1,117 @@
+---
+import type { MarkdownHeading } from 'astro';
+
+/**
+ * Where you are in the post: a hairline of progress under the navbar, and the
+ * post's own headings pinned beside the text from `xl` up.
+ *
+ * Both answer the same question ("how much of this is left, and what is
+ * coming"), the one a reader asks four screens into an eight-minute piece.
+ * Third-level headings and deeper would turn the rail into an outline of an
+ * outline; two levels is what fits beside the text without scrolling.
+ */
+interface Props {
+  headings: MarkdownHeading[];
+  /** The element the progress is measured against. */
+  bodyId: string;
+}
+const { headings, bodyId } = Astro.props;
+const items = headings.filter((h) => h.depth <= 3);
+---
+
+<!-- Decorative: the same information is in the scrollbar, and a screen reader
+     announcing a percentage on every scroll tick would be noise. Scaled, not
+     resized, so it stays off layout. -->
+<div
+  aria-hidden="true"
+  class="pointer-events-none fixed inset-x-0 top-16 z-30 h-px"
+>
+  <div
+    data-progress
+    class="h-full origin-left scale-x-0 bg-surface-brand"
+  >
+  </div>
+</div>
+
+{
+  items.length > 0 && (
+    <nav
+      data-rail={bodyId}
+      aria-label="On this page"
+      class="sticky top-[7.5rem] hidden max-h-[calc(100vh-9rem)] overflow-y-auto xl:block"
+    >
+      <p class="font-mono text-fg-meta text-mono uppercase tracking-wider">
+        Contents
+      </p>
+      {/* One short rule under the label anchors the block. A bar down the
+          list would be a third vertical rule beside a page already framed by
+          two, and stop reading as structure. */}
+      <span aria-hidden="true" class="mt-3 block h-px w-8 bg-surface-brand" />
+      <ul class="mt-4 space-y-0.5">
+        {items.map((item) => (
+          <li>
+            <a
+              href={`#${item.slug}`}
+              class:list={[
+                'group/toc relative block py-1.5 pl-4 text-fg-subtle text-meta transition-colors hover:text-fg aria-[current=location]:text-fg',
+                item.depth > 2 && 'pl-7',
+              ]}
+            >
+              {/* A dot, not a bar: it marks one line without joining the next
+                  one into a rule. */}
+              <span
+                aria-hidden="true"
+                class="absolute top-[0.95em] left-0 size-1.5 rounded-full bg-transparent transition-colors group-hover/toc:bg-fg/25 group-aria-[current=location]/toc:bg-surface-brand"
+              />
+              {item.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
+<script>
+  /** How far below the navbar a heading counts as "the one being read". */
+  const ACTIVE_MARGIN = 96;
+
+  const bar = document.querySelector<HTMLElement>('[data-progress]');
+  const rail = document.querySelector<HTMLElement>('[data-rail]');
+  const body = document.getElementById(rail?.dataset.rail ?? 'post-body');
+  const links = [...(rail?.querySelectorAll('a') ?? [])];
+  const headings = links.map((a) =>
+    document.getElementById(a.hash.slice(1)),
+  );
+
+  // One rAF-throttled pass measures both readings from the same scroll
+  // position.
+  let frame = 0;
+  const measure = () => {
+    frame = 0;
+    if (!body) return;
+    const rect = body.getBoundingClientRect();
+    // Zero when the top of the post reaches the top of the viewport, one when
+    // its last line does. `max(1, …)` keeps a short post from dividing by 0.
+    const scrollable = Math.max(1, rect.height - innerHeight);
+    const progress = Math.min(1, Math.max(0, -rect.top / scrollable));
+    bar?.style.setProperty('scale', `${progress} 1`);
+
+    let current = -1;
+    headings.forEach((heading, i) => {
+      if (heading && heading.getBoundingClientRect().top <= ACTIVE_MARGIN) {
+        current = i;
+      }
+    });
+    links.forEach((link, i) => {
+      if (i === current) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+  };
+  const onScroll = () => {
+    if (!frame) frame = requestAnimationFrame(measure);
+  };
+  measure();
+  addEventListener('scroll', onScroll, { passive: true });
+  addEventListener('resize', onScroll);
+</script>

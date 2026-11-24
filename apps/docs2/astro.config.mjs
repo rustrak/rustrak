@@ -1,6 +1,10 @@
+import { rehypeHeadingIds, unified } from '@astrojs/markdown-remark';
+import mdx from '@astrojs/mdx';
 import react from '@astrojs/react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, fontProviders } from 'astro/config';
+import rehypeAutolinkHeadings from 'rehype-autolink-headings';
+import rehypeMermaid from 'rehype-mermaid';
 
 const LATIN =
   'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
@@ -29,11 +33,77 @@ const font = (name, cssVariable, dir, file) => ({
   },
 });
 
+/**
+ * Puts each diagram in a `<figure class="diagram">`, the frame that scrolls a
+ * wide one (`prose.css`). An `<svg>` cannot scroll itself.
+ */
+const wrapDiagrams = () => (tree) => {
+  const walk = (node) => {
+    node.children?.forEach((child, i) => {
+      if (child.tagName === 'svg' && child.properties?.ariaRoleDescription) {
+        node.children[i] = {
+          type: 'element',
+          tagName: 'figure',
+          properties: { className: ['diagram'] },
+          children: [child],
+        };
+      } else walk(child);
+    });
+  };
+  walk(tree);
+};
+
 // Static output only. React renders the product shots at build time; nothing
 // ships to the browser unless a component asks for it with `client:*`.
 export default defineConfig({
   site: 'https://rustrak.dev',
-  integrations: [react()],
+  integrations: [react(), mdx()],
+  markdown: {
+    // Code is coloured with the product's own code tokens (`--code-*`), read
+    // through Shiki's `css-variables` theme and mapped in `prose.css`: the
+    // same palette as the landing's snippets and the dashboard. Mermaid
+    // blocks are left alone for the plugin below.
+    syntaxHighlight: { type: 'shiki', excludeLangs: ['mermaid'] },
+    shikiConfig: { theme: 'css-variables' },
+    // `unified`, not the default Sätteri, for the two rehype plugins.
+    processor: unified({
+      rehypePlugins: [
+        // Diagrams are drawn at build time, in the Chromium Playwright
+        // installs, and land in the page as SVG: no Mermaid in the browser.
+        // `useMaxWidth: false` keeps the size they were laid out at, so a
+        // wide one scrolls in its frame instead of shrinking past legibility.
+        [
+          rehypeMermaid,
+          {
+            strategy: 'inline-svg',
+            // The posts' own `classDef`s colour their nodes for the light
+            // default theme, which is how the current site shows them.
+            mermaidConfig: {
+              theme: 'default',
+              flowchart: { useMaxWidth: false },
+            },
+          },
+        ],
+        wrapDiagrams,
+        // A permalink after every heading, shown on hover (`prose.css`). The
+        // ids come first, from Astro's own slugger, so the links and the
+        // contents beside the post agree.
+        rehypeHeadingIds,
+        [
+          rehypeAutolinkHeadings,
+          {
+            behavior: 'append',
+            properties: {
+              class: 'heading-anchor',
+              ariaHidden: true,
+              tabIndex: -1,
+            },
+            content: { type: 'text', value: '#' },
+          },
+        ],
+      ],
+    }),
+  },
   fonts: [
     // Inter with its optical-size axis, as the dashboard draws it.
     font(

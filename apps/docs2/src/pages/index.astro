@@ -4,11 +4,9 @@ import Compare from '../components/compare.astro';
 import Deploy from '../components/deploy.astro';
 import Features from '../components/features.astro';
 import Flow from '../components/flow.astro';
-import Footer from '../components/footer.astro';
 import Hero from '../components/hero.astro';
-import Nav from '../components/nav.astro';
 import Sdks from '../components/sdks.astro';
-import Home from '../layouts/home.astro';
+import Page from '../layouts/page.astro';
 import { DEFINITION, jsonLd } from '../seo';
 import { GITHUB } from '../site';
 
@@ -69,17 +67,13 @@ const structuredData = {
   features shown on abstract photographs, how it compares, how to run it, and
   the way in. Everything enters once, as it scrolls in.
 -->
-<Home title={title} description={description}>
+<Page title={title} description={description}>
   <script slot="head" type="application/ld+json" set:html={jsonLd(structuredData)} />
-  <Nav />
-  <main>
-    <Hero />
-    <Sdks />
-    <Flow />
-    <Features />
-    <Compare />
-    <Deploy />
-    <Closing />
-  </main>
-  <Footer />
-</Home>
+  <Hero />
+  <Sdks />
+  <Flow />
+  <Features />
+  <Compare />
+  <Deploy />
+  <Closing />
+</Page>

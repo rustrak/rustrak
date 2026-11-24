@@ -7,7 +7,7 @@ import { ICONS, PLATFORMS } from './icons';
  * to the wall in the middle of the section, in its own colour; they hit the
  * wall at their own height with a lime flash, and leave as Rustrak's lime
  * through the narrow bundle under the words. The tile flashes as its streak
- * leaves (`flow-ping` in home.css, on the same clock as the canvas). Every
+ * leaves (`flow-ping` in site.css, on the same clock as the canvas). Every
  * second and a half one app goes quiet and another starts near it.
  *
  * The grid, the wall and the first twenty tiles are HTML from the build

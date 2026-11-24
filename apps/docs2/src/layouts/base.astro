@@ -1,18 +1,22 @@
 ---
 import { Font, fontData } from 'astro:assets';
 import { OG_IMAGE } from '../seo';
-import '../styles/home.css';
+import '../styles/site.css';
 
 /**
- * The landing's root: the design system's tokens, Inter, and everything a
+ * Every page's root: the design system's tokens, Inter, and everything a
  * crawler or a link preview reads. The canonical is the page's own path on
- * `site`, so it never points a page at another.
+ * `site`, so it never points a page at another. A post passes `article`,
+ * which makes the card an article and says who wrote it and when, and
+ * `markdown`, the plain copy of itself an assistant can read.
  */
 interface Props {
   title: string;
   description: string;
+  article?: { published: Date; author: string; tags: string[] };
+  markdown?: string;
 }
-const { title, description } = Astro.props;
+const { title, description, article, markdown } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const ogImage = new URL(OG_IMAGE.url, Astro.site);
 ---
@@ -28,8 +32,15 @@ const ogImage = new URL(OG_IMAGE.url, Astro.site);
     <link rel="icon" href="/icon.png" type="image/png" sizes="256x256" />
     <link rel="apple-touch-icon" href="/apple-icon.png" sizes="180x180" />
     <link rel="sitemap" href="/sitemap.xml" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="Rustrak Blog"
+      href={new URL('/rss.xml', Astro.site)}
+    />
+    {markdown && <link rel="alternate" type="text/markdown" href={markdown} />}
 
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={article ? 'article' : 'website'} />
     <meta property="og:site_name" content="Rustrak" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:title" content={title} />
@@ -39,6 +50,20 @@ const ogImage = new URL(OG_IMAGE.url, Astro.site);
     <meta property="og:image:width" content={String(OG_IMAGE.width)} />
     <meta property="og:image:height" content={String(OG_IMAGE.height)} />
     <meta property="og:image:alt" content={OG_IMAGE.alt} />
+    {
+      article && (
+        <>
+          <meta
+            property="article:published_time"
+            content={article.published.toISOString()}
+          />
+          <meta property="article:author" content={article.author} />
+          {article.tags.map((tag) => (
+            <meta property="article:tag" content={tag} />
+          ))}
+        </>
+      )
+    }
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />

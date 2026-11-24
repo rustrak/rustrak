@@ -1,0 +1,40 @@
+---
+import { Image } from 'astro:assets';
+import backdrop from '../assets/lime-swirl.jpg';
+import Reveal from './reveal.astro';
+
+/**
+ * The landing's frame without the product: the blurred lime photograph,
+ * pulled towards the canvas, with whatever sits on it in front. `dim` pulls
+ * it further, for text set straight on it.
+ */
+interface Props {
+  class?: string;
+  dim?: boolean;
+  delay?: number;
+}
+const { class: className, dim = false, delay = 0 } = Astro.props;
+---
+
+<Reveal
+  y={48}
+  delay={delay}
+  layer
+  class:list={[
+    'relative overflow-hidden rounded-3xl border border-border-subtle',
+    className,
+  ]}
+>
+  <Image
+    src={backdrop}
+    alt=""
+    widths={[480, 960]}
+    sizes="100vw"
+    class="absolute inset-0 size-full scale-110 object-cover blur-2xl saturate-[0.85]"
+  />
+  <div
+    class:list={['absolute inset-0', dim ? 'bg-canvas/55' : 'bg-canvas/30']}
+  >
+  </div>
+  <div class="relative"><slot /></div>
+</Reveal>
