@@ -210,10 +210,13 @@ pub fn symbolicate_event(event: &mut Value, files: &JvmFiles<'_>, release_packag
         }
 
         let raw_frames = frames_of(info).to_vec();
+        let mut by_index: HashMap<usize, Vec<&JvmFrame>> = HashMap::new();
+        for frame in &remapped {
+            by_index.entry(frame.index).or_default().push(frame);
+        }
         let mut new_frames = Vec::with_capacity(raw_frames.len());
         for (index, raw) in raw_frames.iter().enumerate() {
-            let matching: Vec<&JvmFrame> = remapped.iter().filter(|f| f.index == index).collect();
-            if !matching.is_empty() {
+            if let Some(matching) = by_index.remove(&index) {
                 for symbolicated in matching {
                     let mut frame = raw.clone();
                     merge_frame(&mut frame, symbolicated);

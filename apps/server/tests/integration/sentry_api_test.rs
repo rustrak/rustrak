@@ -737,6 +737,93 @@ async fn latest_event_frame_without_source_has_an_empty_context() {
     assert_eq!(frame["context"], json!([]));
 }
 
+/// Relay's `enforce_frame_hard_limit` (relay-event-normalization
+/// trimming.rs:377) keeps the 50 oldest and 200 newest frames of every stack
+/// trace; a frame that is not an object fails Relay's schema and goes too.
+#[actix_web::test]
+async fn digest_keeps_the_oldest_50_and_newest_200_frames() {
+    let db = TestDb::new().await;
+    let p = project(&db.pool, "Frames").await;
+    let mut frames: Vec<Value> = (0..300)
+        .map(|i| json!({"function": format!("f{i}"), "lineno": i}))
+        .collect();
+    frames.insert(10, json!(0));
+    let st = json!({ "frames": frames });
+    let issue = ingest_with(
+        &db.pool,
+        p.id,
+        "E",
+        "x",
+        Utc::now(),
+        json!({
+            "exception": {"values": [{"type": "E", "value": "x", "stacktrace": st, "raw_stacktrace": st}]},
+            "threads": {"values": [{"id": 1, "stacktrace": st}]},
+            "stacktrace": st,
+        }),
+    )
+    .await;
+    let ev = EventService::latest_for_issue(&db.pool, issue.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let stored = crate::common::stored_json(&db.pool, "events", ev.id).await;
+
+    let expected: Vec<i64> = (0..50).chain(100..300).collect();
+    for path in [
+        "/exception/values/0/stacktrace/frames",
+        "/exception/values/0/raw_stacktrace/frames",
+        "/threads/values/0/stacktrace/frames",
+        "/stacktrace/frames",
+    ] {
+        let linenos: Vec<i64> = stored
+            .pointer(path)
+            .and_then(Value::as_array)
+            .unwrap()
+            .iter()
+            .map(|f| f["lineno"].as_i64().unwrap())
+            .collect();
+        assert_eq!(linenos, expected, "{path}");
+    }
+}
+
+/// Relay limits frames per stack trace but not exceptions per event, so the
+/// latest event renders a bounded number of frames whatever the event holds.
+#[actix_web::test]
+async fn latest_event_renders_a_bounded_number_of_frames() {
+    let db = TestDb::new().await;
+    let token = admin_token(&db.pool).await;
+    let p = project(&db.pool, "Many").await;
+    let values: Vec<Value> = (0..30)
+        .map(|_| json!({"type": "E", "value": "x", "stacktrace": {"frames": vec![json!({"function": "f"}); 250]}}))
+        .collect();
+    let issue = ingest_with(
+        &db.pool,
+        p.id,
+        "E",
+        "x",
+        Utc::now(),
+        json!({"exception": {"values": values}}),
+    )
+    .await;
+    let app = crate::common::app_with_config(&db.pool, config()).await;
+
+    let (status, body) = get_json(
+        &app,
+        &format!("/api/0/issues/{}/events/latest/", issue.numeric_id),
+        &token,
+    )
+    .await;
+
+    assert_eq!(status, 200);
+    let values = body["entries"][0]["data"]["values"].as_array().unwrap();
+    assert_eq!(values.len(), 30, "every exception is still listed");
+    let rendered: usize = values
+        .iter()
+        .map(|v| v["stacktrace"]["frames"].as_array().unwrap().len())
+        .sum();
+    assert_eq!(rendered, 5_000);
+}
+
 async fn put_status(
     app: &impl actix_web::dev::Service<
         actix_http::Request,

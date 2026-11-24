@@ -394,3 +394,33 @@ fn detects_jvm_events_like_sentry() {
 fn rejects_an_invalid_mapping() {
     assert!(build_proguard_cache(b"this is not a proguard mapping").is_err());
 }
+
+/// Merging remapped frames back is linear in the frame count: eight times
+/// the frames must not cost sixty-four times as much.
+#[test]
+fn merging_frames_is_linear_in_the_frame_count() {
+    let best = |n: usize| {
+        (0..3)
+            .map(|_| {
+                let frames: Vec<Value> = (0..n)
+                    .map(|_| json!({"function": 0, "module": 0}))
+                    .collect();
+                let mut event = json!({"platform": "java",
+                    "exception": {"values": [{"type": "E", "stacktrace": {"frames": frames}}]}});
+                let files = JvmFiles {
+                    proguard: vec![],
+                    source_bundles: vec![],
+                };
+                let t = std::time::Instant::now();
+                symbolicate_event(&mut event, &files, None);
+                t.elapsed().as_secs_f64()
+            })
+            .fold(f64::MAX, f64::min)
+    };
+    let (small, large) = (best(1_000), best(8_000));
+    assert!(
+        large < small * 24.0,
+        "8x the frames took {:.1}x the time",
+        large / small
+    );
+}

@@ -2286,3 +2286,86 @@ async fn the_migration_keeps_stored_maps_and_queued_chunk_lists() {
     .unwrap();
     assert_eq!(chunks, [a.clone(), b, a]);
 }
+
+/// A bundle within `max_bundle_size_bytes` that inflates far past it (a zip
+/// bomb) fails its job instead of being extracted, read and stored whole.
+/// Sentry rejects an entry over `MAX_SOURCE_FILE_SIZE` the same way
+/// (src/sentry/tasks/assemble.py:494).
+#[actix_web::test]
+async fn an_artifact_bundle_that_inflates_past_the_limit_fails() {
+    use rustrak::services::sourcemap::{list_files, store_chunks};
+    use serde_json::json;
+    use std::io::Write as _;
+    use zip::write::SimpleFileOptions;
+
+    const ENTRY: usize = 64 << 20;
+    let db = TestDb::new().await;
+    let store_dir = tempfile::tempdir().unwrap();
+    let mut config = crate::common::config();
+    config.max_chunk_size_bytes = 16 << 10;
+    config.sourcemap_storage_path = store_dir.path().to_string_lossy().into();
+    let max_bundle = config.max_bundle_size_bytes();
+    let state = crate::common::state(&db.pool, config).await;
+    let token = create_test_token(&db.pool).await;
+    let project_id = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "bomb".into(),
+            slug: Some("bomb".into()),
+            platform: None,
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    state.spawn_assembly_worker();
+
+    // 64 MiB of zeros deflates to ~64 KiB, well under the 1 MiB bundle limit.
+    let mut buf = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut buf);
+    let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("~/big.js.map", opts).unwrap();
+    let zeros = vec![0u8; 1 << 20];
+    for _ in 0..(ENTRY >> 20) {
+        zip.write_all(&zeros).unwrap();
+    }
+    zip.start_file("manifest.json", opts).unwrap();
+    zip.write_all(
+        json!({"files": {"~/big.js.map": {"type": "source_map",
+            "headers": {"debug-id": "33333333-3333-3333-3333-333333333333"}}}})
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    zip.finish().unwrap();
+    let bundle = buf.into_inner();
+    assert!(bundle.len() <= max_bundle);
+
+    let chunk_size = 16 << 10;
+    let chunks: Vec<(String, Vec<u8>)> = bundle
+        .chunks(chunk_size)
+        .map(|c| (sha1_hex(c), c.to_vec()))
+        .collect();
+    let chunk_ids: Vec<String> = chunks.iter().map(|(k, _)| k.clone()).collect();
+    store_chunks(&db.pool, chunks, chunk_size).await.unwrap();
+
+    let checksum = sha1_hex(&bundle);
+    let poll = || async {
+        let app = crate::common::app_with(&state).await;
+        let req = test::TestRequest::post()
+            .uri("/api/0/organizations/my-org/artifactbundle/assemble/")
+            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .set_json(json!({"checksum": checksum, "chunks": chunk_ids, "projects": ["bomb"]}))
+            .to_request();
+        test::call_and_read_body_json::<_, _, Value>(&app, req).await
+    };
+    poll().await;
+    let done = crate::common::eventually(|| async {
+        let a = poll().await;
+        (!matches!(a["state"].as_str(), Some("created" | "assembling"))).then_some(a)
+    })
+    .await;
+
+    assert_eq!(done["state"], "error", "{done}");
+    assert!(list_files(&db.pool, project_id).await.unwrap().is_empty());
+}

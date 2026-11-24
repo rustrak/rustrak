@@ -27,10 +27,47 @@ pub const LARGE_BODY_BYTES: usize = 1024 * 1024;
 /// uploads must run beside many 2 MiB ones.
 pub const LARGE_BODY_SLOTS: usize = 2;
 
-static LARGE_BODIES: Semaphore = Semaphore::const_new(LARGE_BODY_SLOTS);
+static LARGE_BODIES: LargeBodies = LargeBodies {
+    slots: Semaphore::const_new(LARGE_BODY_SLOTS),
+    projects: std::sync::Mutex::new(std::collections::BTreeSet::new()),
+};
+
+/// The large-body slots, and the projects that hold or wait for one: a
+/// project gets one at a time, so one DSN cannot take every slot.
+#[derive(Debug)]
+struct LargeBodies {
+    slots: Semaphore,
+    projects: std::sync::Mutex<std::collections::BTreeSet<i32>>,
+}
+
+impl LargeBodies {
+    fn projects(&self) -> std::sync::MutexGuard<'_, std::collections::BTreeSet<i32>> {
+        self.projects.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
 
 /// Held for as long as a large body is: drop it once the body is parsed.
-pub type LargeBodySlot = Option<SemaphorePermit<'static>>;
+pub type LargeBodySlot = Option<LargeBodyPermit>;
+
+/// A large-body slot, taken for one project.
+#[derive(Debug)]
+pub struct LargeBodyPermit {
+    _slot: SemaphorePermit<'static>,
+    _turn: ProjectTurn,
+}
+
+/// A project's turn at the large-body slots, given back when dropped.
+#[derive(Debug)]
+struct ProjectTurn {
+    large: &'static LargeBodies,
+    project: i32,
+}
+
+impl Drop for ProjectTurn {
+    fn drop(&mut self) {
+        self.large.projects().remove(&self.project);
+    }
+}
 
 /// How long a request body may take.
 #[derive(Debug, Clone, Copy)]
@@ -58,6 +95,7 @@ const BODY_TIMEOUTS: BodyTimeouts = BodyTimeouts {
 /// Takes [`web::Payload`], never `Bytes`: actix's `Bytes` extractor decodes
 /// the body itself and caps the decoded size, not the bytes on the wire.
 pub async fn read_body(
+    project: i32,
     req: &HttpRequest,
     payload: web::Payload,
 ) -> AppResult<(Bytes, LargeBodySlot)> {
@@ -69,6 +107,7 @@ pub async fn read_body(
         .get(actix_web::http::header::CONTENT_LENGTH)
         .and_then(|v| v.to_str().ok()?.trim().parse().ok());
     let (raw, slot) = collect_body(
+        project,
         payload,
         declared,
         MAX_COMPRESSED_SIZE,
@@ -77,18 +116,27 @@ pub async fn read_body(
     )
     .await?;
     crate::middleware::telemetry::mark_body_received(req);
-    decode_body(raw, coding, slot, BODY_TIMEOUTS.slot_wait, &LARGE_BODIES).await
+    decode_body(
+        project,
+        raw,
+        coding,
+        slot,
+        BODY_TIMEOUTS.slot_wait,
+        &LARGE_BODIES,
+    )
+    .await
 }
 
 /// Decodes `raw`, taking a slot from `large` first if the output passes
 /// [`LARGE_BODY_BYTES`]: without one, it is decoded up to that size, and
 /// decoded again in full once a slot is free.
 async fn decode_body(
+    project: i32,
     raw: Bytes,
     coding: Option<String>,
     mut slot: LargeBodySlot,
     slot_wait: std::time::Duration,
-    large: &'static Semaphore,
+    large: &'static LargeBodies,
 ) -> AppResult<(Bytes, LargeBodySlot)> {
     if matches!(coding.as_deref(), None | Some("identity")) {
         return Ok((raw, slot));
@@ -96,7 +144,9 @@ async fn decode_body(
     if slot.is_none() {
         let inline = raw.len() <= INLINE_DECODE_LIMIT;
         match run_decode(raw.clone(), coding.clone(), LARGE_BODY_BYTES, inline).await {
-            Err(AppError::PayloadTooLarge(_)) => slot = Some(acquire(large, slot_wait).await?),
+            Err(AppError::PayloadTooLarge(_)) => {
+                slot = Some(acquire(large, project, slot_wait).await?)
+            }
             small => return Ok((small?, None)),
         }
     }
@@ -124,15 +174,26 @@ async fn run_decode(
 
 /// A large-body slot, or 503 once `wait` passes without one.
 async fn acquire(
-    large: &'static Semaphore,
+    large: &'static LargeBodies,
+    project: i32,
     wait: std::time::Duration,
-) -> AppResult<SemaphorePermit<'static>> {
-    tokio::time::timeout(wait, large.acquire())
+) -> AppResult<LargeBodyPermit> {
+    if !large.projects().insert(project) {
+        return Err(AppError::Unavailable(
+            "a large upload from this project is in progress; retry later".to_string(),
+        ));
+    }
+    let turn = ProjectTurn { large, project };
+    let slot = tokio::time::timeout(wait, large.slots.acquire())
         .await
         .map_err(|_| {
             AppError::Unavailable("too many large uploads at once; retry later".to_string())
         })?
-        .map_err(|e| AppError::Internal(format!("Large body slots closed: {e}")))
+        .map_err(|e| AppError::Internal(format!("Large body slots closed: {e}")))?;
+    Ok(LargeBodyPermit {
+        _slot: slot,
+        _turn: turn,
+    })
 }
 
 /// Longest wait for the next piece of a request body. Actix times out only
@@ -149,11 +210,12 @@ pub const BODY_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 /// the body. `declared` (`Content-Length`) sizes the buffer up front, see
 /// [`body_reserve`].
 async fn collect_body<S>(
+    project: i32,
     mut body: S,
     declared: Option<usize>,
     limit: usize,
     timeouts: BodyTimeouts,
-    large: &'static Semaphore,
+    large: &'static LargeBodies,
 ) -> AppResult<(Bytes, LargeBodySlot)>
 where
     S: futures_util::Stream<Item = Result<Bytes, actix_web::error::PayloadError>> + Unpin,
@@ -188,7 +250,7 @@ where
             )));
         }
         if slot.is_none() && raw.len() + chunk.len() > LARGE_BODY_BYTES {
-            slot = Some(acquire(large, timeouts.slot_wait).await?);
+            slot = Some(acquire(large, project, timeouts.slot_wait).await?);
             deadline = Some(tokio::time::Instant::now() + timeouts.large_body);
             raw.reserve(body_reserve(declared, limit, true).saturating_sub(raw.len()));
         }
@@ -311,7 +373,7 @@ mod tests {
         ))])
         .chain(stream::pending::<Chunk>());
 
-        let result = collect_body(stalled, None, 1024, idle(50), slots(1)).await;
+        let result = collect_body(1, stalled, None, 1024, idle(50), slots(1)).await;
 
         assert!(matches!(result, Err(AppError::Validation(_))), "{result:?}");
     }
@@ -325,7 +387,7 @@ mod tests {
             Ok::<_, actix_web::error::PayloadError>(Bytes::from_static(b"ab"))
         }));
 
-        let (body, _) = collect_body(slow, None, 1024, idle(50), slots(1))
+        let (body, _) = collect_body(1, slow, None, 1024, idle(50), slots(1))
             .await
             .unwrap();
 
@@ -338,7 +400,7 @@ mod tests {
             b"0123456789",
         ))]);
 
-        let result = collect_body(big, None, 4, idle(1000), slots(1)).await;
+        let result = collect_body(1, big, None, 4, idle(1000), slots(1)).await;
 
         assert!(
             matches!(result, Err(AppError::PayloadTooLarge(_))),
@@ -347,8 +409,11 @@ mod tests {
     }
 
     /// A semaphore of its own per test, like the process-wide one.
-    fn slots(n: usize) -> &'static Semaphore {
-        Box::leak(Box::new(Semaphore::new(n)))
+    fn slots(n: usize) -> &'static LargeBodies {
+        Box::leak(Box::new(LargeBodies {
+            slots: Semaphore::new(n),
+            projects: Default::default(),
+        }))
     }
 
     fn chunks(n: usize, size: usize) -> impl futures_util::Stream<Item = Chunk> + Unpin {
@@ -383,13 +448,13 @@ mod tests {
 
         let result = tokio::time::timeout(
             Duration::from_secs(5),
-            collect_body(trickle, None, usize::MAX, timeouts, large),
+            collect_body(1, trickle, None, usize::MAX, timeouts, large),
         )
         .await
         .expect("held the slot past its deadline");
 
         assert!(matches!(result, Err(AppError::Validation(_))), "{result:?}");
-        assert_eq!(large.available_permits(), 1, "the slot is free again");
+        assert_eq!(large.slots.available_permits(), 1, "the slot is free again");
     }
 
     /// Waiting for a large-body slot is bounded, and the refusal is a 503
@@ -397,13 +462,14 @@ mod tests {
     #[tokio::test]
     async fn waiting_for_a_large_body_slot_is_bounded() {
         let large = slots(1);
-        let _held = large.acquire().await.unwrap();
+        let _held = large.slots.acquire().await.unwrap();
         let timeouts = BodyTimeouts {
             slot_wait: Duration::from_millis(50),
             ..idle(1000)
         };
 
         let result = collect_body(
+            1,
             chunks(2, LARGE_BODY_BYTES),
             None,
             usize::MAX,
@@ -424,6 +490,7 @@ mod tests {
             Bytes::from(gzip.finish().unwrap())
         };
         let result = decode_body(
+            1,
             gzip,
             Some("gzip".to_string()),
             None,
@@ -442,27 +509,75 @@ mod tests {
     #[tokio::test]
     async fn a_large_body_waits_for_a_slot() {
         let large = slots(1);
-        let held = large.acquire().await.unwrap();
+        let held = large.slots.acquire().await.unwrap();
         let half = LARGE_BODY_BYTES / 2 + 1;
 
         let waiting = tokio::time::timeout(
             Duration::from_millis(100),
-            collect_body(chunks(2, half), None, usize::MAX, idle(1000), large),
+            collect_body(1, chunks(2, half), None, usize::MAX, idle(1000), large),
         )
         .await;
         assert!(waiting.is_err(), "read a large body without a slot");
 
         drop(held);
-        let (body, slot) = collect_body(chunks(2, half), None, usize::MAX, idle(1000), large)
+        let (body, slot) = collect_body(1, chunks(2, half), None, usize::MAX, idle(1000), large)
             .await
             .unwrap();
         assert_eq!(body.len(), 2 * half);
         assert!(slot.is_some());
     }
 
+    /// Two slow large bodies from one project hold one slot, not both: the
+    /// second is refused with the slot wait's 503, and another project's
+    /// large body still gets the other slot.
+    #[tokio::test]
+    async fn one_project_holds_one_large_body_slot_at_a_time() {
+        let large = slots(2);
+        let stalled = || Box::pin(chunks(1, LARGE_BODY_BYTES + 1).chain(stream::pending()));
+        let timeouts = BodyTimeouts {
+            slot_wait: Duration::from_millis(50),
+            ..idle(10_000)
+        };
+        let first = tokio::spawn(collect_body(
+            1,
+            stalled(),
+            None,
+            usize::MAX,
+            timeouts,
+            large,
+        ));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let second = collect_body(1, stalled(), None, usize::MAX, timeouts, large).await;
+        assert!(
+            matches!(second, Err(AppError::Unavailable(_))),
+            "{second:?}"
+        );
+        let (_, slot) = collect_body(
+            2,
+            chunks(2, LARGE_BODY_BYTES),
+            None,
+            usize::MAX,
+            timeouts,
+            large,
+        )
+        .await
+        .expect("another project's large body gets a slot");
+        assert!(slot.is_some());
+
+        first.abort();
+        let _ = first.await;
+        drop(slot);
+        assert_eq!(large.slots.available_permits(), 2);
+        assert!(
+            large.projects.lock().unwrap().is_empty(),
+            "a project's turn ends with its body"
+        );
+    }
+
     #[tokio::test]
     async fn a_small_body_needs_no_slot() {
-        let (body, slot) = collect_body(chunks(4, 1024), None, usize::MAX, idle(1000), slots(0))
+        let (body, slot) = collect_body(1, chunks(4, 1024), None, usize::MAX, idle(1000), slots(0))
             .await
             .unwrap();
         assert_eq!(body.len(), 4096);
@@ -484,6 +599,7 @@ mod tests {
         let waiting = tokio::time::timeout(
             Duration::from_millis(100),
             decode_body(
+                1,
                 raw.clone(),
                 Some("gzip".to_string()),
                 None,
@@ -495,6 +611,7 @@ mod tests {
         assert!(waiting.is_err(), "decoded a large body without a slot");
 
         let (body, slot) = decode_body(
+            1,
             raw,
             Some("gzip".to_string()),
             None,

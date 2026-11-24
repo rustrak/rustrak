@@ -1199,3 +1199,87 @@ async fn test_an_errored_session_is_kept_by_its_exact_start() {
     };
     assert_eq!(stored, started);
 }
+
+async fn session_rows(pool: &DbPool, project_id: i32) -> (i64, i64) {
+    sqlx::query_as(
+        "SELECT COUNT(*), COALESCE(SUM(LENGTH(release)), 0) FROM session_counts WHERE project_id = $1",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+/// A release Relay's `validate_release` refuses (here 64 KiB, past its 200
+/// bytes) drops the session, instead of being copied into one key per
+/// minute bucket of the item.
+#[actix_web::test]
+async fn test_a_release_over_relays_limit_is_not_retained() {
+    use actix_web::test;
+    let db = TestDb::new().await;
+    let (project_id, sentry_key) =
+        crate::common::create_ingest_project(&db.pool, "Sessions Amp").await;
+    let state = crate::common::state(&db.pool, crate::common::config()).await;
+    let app = crate::common::app_with(&state).await;
+
+    let now = Utc::now();
+    let aggregates: Vec<_> = (1..=10)
+        .map(|i| {
+            serde_json::json!({
+                "started": (now - chrono::Duration::minutes(i)).to_rfc3339(),
+                "exited": 1
+            })
+        })
+        .collect();
+    let payload = serde_json::json!({
+        "attrs": { "release": "a".repeat(64 * 1024), "environment": "production" },
+        "aggregates": aggregates
+    })
+    .to_string();
+    let envelope = format!(
+        "{{}}\n{{\"type\":\"sessions\",\"length\":{}}}\n{payload}",
+        payload.len()
+    );
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/{project_id}/envelope/"))
+        .insert_header((
+            "X-Sentry-Auth",
+            format!("Sentry sentry_key={sentry_key}, sentry_version=7"),
+        ))
+        .set_payload(envelope)
+        .to_request();
+    assert!(test::call_service(&app, req).await.status().is_success());
+    state.session_aggregator.flush().await.unwrap();
+
+    assert_eq!(session_rows(&db.pool, project_id).await, (0, 0));
+}
+
+/// A project deleted with sessions still buffered does not block the flush
+/// of every other project's sessions.
+#[actix_web::test]
+async fn test_a_deleted_projects_buffered_sessions_do_not_block_the_flush() {
+    use rustrak::digest::session_aggregator::{SessionAggregator, SessionClock};
+    use rustrak::models::session::SessionUpdate;
+    use rustrak::services::{ProjectDeletions, ProjectService};
+
+    let db = TestDb::new().await;
+    let doomed = create_test_project(&db.pool, "Doomed").await;
+    let bystander = create_test_project(&db.pool, "Bystander").await;
+    let aggregator = SessionAggregator::new(db.pool.clone(), 3600, 10_000);
+    let update: SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sid": "s1", "init": true, "status": "exited",
+        "started": Utc::now().to_rfc3339(), "attrs": {"release": "r1"}
+    }))
+    .unwrap();
+    let clock = SessionClock::new(Utc::now(), None);
+    aggregator.ingest_session(doomed.id, &update, clock).await;
+    aggregator
+        .ingest_session(bystander.id, &update, clock)
+        .await;
+
+    ProjectService::delete(&db.pool, doomed.id).await.unwrap();
+    ProjectDeletions::default().drain(&db.pool).await.unwrap();
+
+    aggregator.flush().await.unwrap();
+    assert_eq!(session_rows(&db.pool, bystander.id).await.0, 1);
+}

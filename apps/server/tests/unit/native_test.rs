@@ -301,3 +301,61 @@ fn detects_native_events_and_their_images() {
 fn rejects_what_is_not_a_debug_file() {
     assert!(build_symcaches(b"\xcf\xfa\xed\xfe not really mach-o").is_err());
 }
+
+/// `rel:<debug id>` frames find their image without scanning every image:
+/// eight times the images and frames must not cost sixty-four times as much.
+#[test]
+fn relative_lookups_are_linear_in_frames_and_images() {
+    let id = |i: usize| format!("00000000-0000-0000-0000-{i:012x}");
+    let best = |n: usize| {
+        (0..3)
+            .map(|_| {
+                let images: Vec<Value> = (0..n)
+                    .map(|i| json!({"type": "macho", "debug_id": id(i)}))
+                    .collect();
+                let frames: Vec<Value> = (0..n)
+                    .map(|_| json!({"instruction_addr": 1, "addr_mode": format!("rel:{}", id(n - 1))}))
+                    .collect();
+                let mut event = json!({"platform": "native", "debug_meta": {"images": images},
+                    "exception": {"values": [{"type": "E", "stacktrace": {"frames": frames}}]}});
+                let files = NativeFiles {
+                    symcaches: (0..n).map(|i| (id(i), None)).collect(),
+                    source_bundles: vec![],
+                };
+                let t = std::time::Instant::now();
+                symbolicate_event(&mut event, &files);
+                t.elapsed().as_secs_f64()
+            })
+            .fold(f64::MAX, f64::min)
+    };
+    let (small, large) = (best(500), best(4_000));
+    assert!(
+        large < small * 24.0,
+        "8x the frames and images took {:.1}x the time",
+        large / small
+    );
+}
+
+/// Owner decision: a Swift name the client sent is not demangled when no
+/// debug file symbolicates its frame; it stays as sent.
+#[test]
+fn an_unsymbolicated_swift_name_stays_as_sent() {
+    let swift = "$s8mangling12GenericUnionO3FooyACyxGSicAEmlF";
+    let mut event = event(json!([{"instruction_addr": "0x10400041c", "function": swift}]));
+
+    symbolicate_event(&mut event, &files(None, None));
+
+    assert_eq!(frames(&event)[0]["data"]["symbolicator_status"], "missing");
+    assert_eq!(frames(&event)[0]["function"], swift);
+}
+
+/// C++ names keep Symbolicator's demangling, whose output is bounded.
+#[test]
+fn an_unsymbolicated_cpp_name_is_still_demangled() {
+    let mut event =
+        event(json!([{"instruction_addr": "0x10400041c", "function": "_ZN3foo3barEv"}]));
+
+    symbolicate_event(&mut event, &files(None, None));
+
+    assert_eq!(frames(&event)[0]["function"], "foo::bar");
+}

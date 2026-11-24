@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::io::Cursor;
+use std::io::{Cursor, Read as _};
+use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
@@ -303,6 +304,19 @@ impl SourceMapProvider for DbSourceMapProvider {
 ///
 /// Returns `None` when lineno is `None` or `Some(0)` — both mean "unmapped" in
 /// the Sentry protocol. Never uses plain `-1` arithmetic (avoids u32 wraparound).
+/// A source's index in its map and the byte range of each of its lines.
+type SourceLines = (u32, Vec<Range<usize>>);
+
+/// The byte range of each line of `text`, as `str::lines` splits it.
+fn line_ranges(text: &str) -> Vec<Range<usize>> {
+    text.lines()
+        .map(|line| {
+            let start = line.as_ptr() as usize - text.as_ptr() as usize;
+            start..start + line.len()
+        })
+        .collect()
+}
+
 pub fn normalize_sentry_position(lineno: Option<u32>, colno: Option<u32>) -> Option<(u32, u32)> {
     match lineno {
         None | Some(0) => None,
@@ -448,6 +462,23 @@ async fn assemble_bundle_inner(
         std::fs::create_dir_all(&extract_dir_owned)
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
+        // Zip-bomb bounds. Sentry rejects an entry over MAX_SOURCE_FILE_SIZE
+        // = 1 GiB (src/sentry/models/artifactbundle.py:32, tasks/assemble.py:494);
+        // we also cap the whole extraction at 4× the compressed bundle limit
+        // and the entry count. Every file the manifest loop reads below was
+        // written here, so this also bounds those reads.
+        // ponytail: fixed 4× ratio and 100k entries, a config knob if real bundles hit them.
+        const MAX_SOURCE_FILE_SIZE: u64 = 1 << 30;
+        const MAX_ENTRIES: usize = 100_000;
+        let total_limit = (max_bundle_size_bytes as u64).saturating_mul(4);
+        if archive.len() > MAX_ENTRIES {
+            return Err(AppError::Validation(format!(
+                "artifact bundle has too many files ({} > {MAX_ENTRIES})",
+                archive.len()
+            )));
+        }
+        let mut extracted: u64 = 0;
+
         for i in 0..archive.len() {
             let mut file = archive
                 .by_index(i)
@@ -489,10 +520,24 @@ async fn assemble_bundle_inner(
             }
 
             if !name.ends_with('/') {
+                let limit = MAX_SOURCE_FILE_SIZE.min(total_limit - extracted);
+                let too_large = || {
+                    AppError::Validation(format!(
+                        "file {name} in artifact bundle exceeds the size limit"
+                    ))
+                };
+                if file.size() > limit {
+                    return Err(too_large());
+                }
                 let mut out = std::fs::File::create(&resolved)
                     .map_err(|e| AppError::Internal(e.to_string()))?;
-                std::io::copy(&mut file, &mut out)
+                // The declared size is the uploader's word; the copy enforces it.
+                let copied = std::io::copy(&mut (&mut file).take(limit + 1), &mut out)
                     .map_err(|e| AppError::Internal(e.to_string()))?;
+                if copied > limit {
+                    return Err(too_large());
+                }
+                extracted += copied;
             }
         }
         Ok(())
@@ -872,6 +917,11 @@ async fn rewrite_frames_under(
     if value_count == 0 {
         return Ok(());
     }
+    // Where a source's lines are, found once per map section and file rather
+    // than once per frame: its index and each line's byte range in the map's
+    // own `sourcesContent`, never a copy of the text. Keyed by the section's
+    // address: every map stays alive in `parsed` until this event is done.
+    let mut source_lines: HashMap<(usize, String), Option<SourceLines>> = HashMap::new();
 
     for value_idx in 0..value_count {
         let frame_count = event_data[root_key]["values"][value_idx]["stacktrace"]["frames"]
@@ -954,19 +1004,27 @@ async fn rewrite_frames_under(
             let src_col = token.get_src_col();
             let token_name = token.get_name().map(|n| n.to_string());
 
-            // Find source index via linear search (NEVER assume sourcesContent[0])
-            let source_idx = (0..sm.get_source_count())
-                .find(|&i| sm.get_source(i) == Some(original_file.as_str()));
-
-            // Get source lines as owned Strings (sm is dropped after this loop body)
-            let lines: Vec<String> = source_idx
-                .and_then(|i| sm.get_source_contents(i))
-                .map(|s| s.lines().map(|l| l.to_string()).collect())
-                .unwrap_or_default();
+            let located = source_lines
+                .entry((std::ptr::from_ref(sm) as usize, original_file.clone()))
+                .or_insert_with(|| {
+                    // Find source index via linear search (NEVER assume sourcesContent[0])
+                    let idx = (0..sm.get_source_count())
+                        .find(|&i| sm.get_source(i) == Some(original_file.as_str()))?;
+                    let text = sm.get_source_contents(idx)?;
+                    Some((idx, line_ranges(text)))
+                });
+            let (text, ranges) = match located {
+                Some((idx, ranges)) => (
+                    sm.get_source_contents(*idx).unwrap_or_default(),
+                    ranges.as_slice(),
+                ),
+                None => ("", &[][..]),
+            };
+            let context = |range: &Range<usize>| serde_json::Value::from(&text[range.clone()]);
 
             let l = src_line as usize;
             let pre_start = l.saturating_sub(3);
-            let post_end = lines.len().min(l + 4);
+            let post_end = ranges.len().min(l + 4);
 
             let existing_function = event_data[root_key]["values"][value_idx]["stacktrace"]
                 ["frames"][frame_idx]
@@ -984,18 +1042,21 @@ async fn rewrite_frames_under(
                 .map(|n| n.to_string())
                 .or(token_name)
                 .unwrap_or(existing_function);
-            let context_line = lines.get(l).cloned().unwrap_or_default();
-            let pre_context: Vec<serde_json::Value> = lines
+            let context_line = ranges
+                .get(l)
+                .map(|range| text[range.clone()].to_string())
+                .unwrap_or_default();
+            let pre_context: Vec<serde_json::Value> = ranges
                 .get(pre_start..l)
                 .unwrap_or_default()
                 .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
+                .map(context)
                 .collect();
-            let post_context: Vec<serde_json::Value> = lines
+            let post_context: Vec<serde_json::Value> = ranges
                 .get(l + 1..post_end)
                 .unwrap_or_default()
                 .iter()
-                .map(|s| serde_json::Value::String(s.clone()))
+                .map(context)
                 .collect();
 
             let frame =
@@ -1427,5 +1488,42 @@ mod tests {
     fn invalid_manifest_files_are_treated_as_empty() {
         assert!(manifest_files(&serde_json::json!({})).is_empty());
         assert!(manifest_files(&serde_json::json!({"files": []})).is_empty());
+    }
+
+    /// A source's lines are split once per event, not once per frame: 1000
+    /// frames into a 1 MiB `sourcesContent` cost about what one frame does.
+    #[tokio::test]
+    async fn source_lines_are_split_once_per_event() {
+        let src = format!("{}\n", "x".repeat(63)).repeat(16 * 1024);
+        let map = serde_json::json!({
+            "version": 3, "sources": ["src/app.ts"], "sourcesContent": [src],
+            "names": [], "mappings": "AAAA"
+        });
+        let provider = mock_provider(&map.to_string());
+        let event = |n: usize| {
+            let frames: Vec<_> = (0..n)
+                .map(|_| serde_json::json!({"abs_path": "a", "lineno": 1, "colno": 1}))
+                .collect();
+            serde_json::json!({
+                "debug_meta": {"images": [{"type": "sourcemap", "code_file": "a", "debug_id": "d"}]},
+                "exception": {"values": [{"type": "E", "stacktrace": {"frames": frames}}]}
+            })
+        };
+        let mut best = [f64::MAX; 2];
+        for _ in 0..3 {
+            for (slot, n) in [(0, 1), (1, 1_000)] {
+                let mut ev = event(n);
+                let t = std::time::Instant::now();
+                rewrite_frames(&provider, 1, &mut ev).await.unwrap();
+                best[slot] = best[slot].min(t.elapsed().as_secs_f64());
+                let last = &ev["exception"]["values"][0]["stacktrace"]["frames"][n - 1];
+                assert!(last["context_line"].as_str().unwrap().starts_with("xxx"));
+            }
+        }
+        assert!(
+            best[1] < best[0] * 4.0,
+            "1000 frames took {:.1}x one frame",
+            best[1] / best[0]
+        );
     }
 }

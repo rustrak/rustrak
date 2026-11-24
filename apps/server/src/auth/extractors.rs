@@ -279,6 +279,41 @@ impl ApiActor {
     }
 }
 
+/// An unsafe-method request a browser sent from another site. A multipart or
+/// bodyless POST needs no CORS preflight, so the session cookie alone would
+/// let a sibling site act as the signed-in user. `Sec-Fetch-Site` decides when
+/// present (a page cannot set it); else `Origin` must be this server's own
+/// host or the configured `PUBLIC_URL`/`DASHBOARD_URL`. Neither header means a
+/// non-browser client, which is let through.
+/// ponytail: Origin is compared by host[:port] only, not scheme.
+fn cross_site(req: &HttpRequest) -> bool {
+    if req.method().is_safe() {
+        return false;
+    }
+    let header = |name| req.headers().get(name).and_then(|v| v.to_str().ok());
+    if let Some(site) = header("sec-fetch-site") {
+        return !matches!(site, "same-origin" | "none");
+    }
+    let Some(origin) = header("origin") else {
+        return false;
+    };
+    let authority = |url: &str| {
+        let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+        rest.split('/').next().unwrap_or(rest).to_ascii_lowercase()
+    };
+    let origin = authority(origin);
+    if origin == req.connection_info().host().to_ascii_lowercase() {
+        return false;
+    }
+    let configured = req.app_data::<web::Data<crate::config::Config>>();
+    !configured.is_some_and(|c| {
+        [c.public_url.as_deref(), c.dashboard.url.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|url| authority(url) == origin)
+    })
+}
+
 /// A Bearer token first, then the session cookie. A browser carrying a stale
 /// `Authorization` header beside a valid session is the ordinary case for the
 /// fall-through; only a genuine `Internal`/`Database` failure propagates.
@@ -306,6 +341,11 @@ impl FromRequest for ApiActor {
                 }
             })?;
 
+            if cross_site(&req) {
+                return Err(AppError::Forbidden(
+                    "Cross-origin request with a session cookie".to_string(),
+                ));
+            }
             let actor = ApiActor::for_user(pool.get_ref(), authed.0).await?;
             Ok(ApiActor {
                 via_session: true,

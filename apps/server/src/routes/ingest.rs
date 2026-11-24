@@ -90,35 +90,15 @@ async fn ingest(
             .insert_header((header::ACCEPT_ENCODING, decompression::ACCEPT_ENCODING))
             .finish());
     }
-    // Shedding needs no body: refuse before reading up to 100 MiB of it.
-    processors.admit(
-        processors
-            .errors
-            .pending()
-            .counts(auth.project.id)
-            .installation,
-    )?;
+    if let Some(refused) = refusal(&processors, &config, &auth)? {
+        return Ok(refused);
+    }
     // Held until the envelope is parsed: see `LARGE_BODY_SLOTS`.
-    let (body, large_body) = read_body(&req, payload).await?;
-    let pending = processors.errors.pending().counts(auth.project.id);
-    if let Some(exceeded) = RateLimitService::check_quota(
-        &auth.installation_quota,
-        &auth.project,
-        &config.rate_limit,
-        pending,
-    ) {
-        log::warn!(
-            "Rate limit exceeded for project {}: retry_after={}s",
-            auth.project.id,
-            exceeded.retry_after
-        );
-        return Ok(HttpResponse::TooManyRequests()
-            .insert_header(("Retry-After", exceeded.retry_after.to_string()))
-            .insert_header(("X-Sentry-Rate-Limits", exceeded.sentry_rate_limits_header()))
-            .json(serde_json::json!({
-                "error": "rate_limit_exceeded",
-                "retry_after": exceeded.retry_after
-            })));
+    let (body, large_body) = read_body(auth.project.id, &req, payload).await?;
+    // Again now: requests that passed together may have used the last of
+    // the quota while this body arrived.
+    if let Some(refused) = refusal(&processors, &config, &auth)? {
+        return Ok(refused);
     }
 
     let body = if is_event {
@@ -160,6 +140,40 @@ async fn ingest(
             .json(IngestResponse { id }));
     }
     Ok(HttpResponse::Ok().json(IngestResponse { id }))
+}
+
+/// Shedding and the quota. They need no body, so they run before reading up
+/// to 100 MiB of it (or holding a large-body slot for it), and again once
+/// it has arrived.
+fn refusal(
+    processors: &Processors,
+    config: &Config,
+    auth: &SentryAuth,
+) -> AppResult<Option<HttpResponse>> {
+    let pending = processors.errors.pending().counts(auth.project.id);
+    processors.admit(pending.installation)?;
+    let Some(exceeded) = RateLimitService::check_quota(
+        &auth.installation_quota,
+        &auth.project,
+        &config.rate_limit,
+        pending,
+    ) else {
+        return Ok(None);
+    };
+    log::warn!(
+        "Rate limit exceeded for project {}: retry_after={}s",
+        auth.project.id,
+        exceeded.retry_after
+    );
+    Ok(Some(
+        HttpResponse::TooManyRequests()
+            .insert_header(("Retry-After", exceeded.retry_after.to_string()))
+            .insert_header(("X-Sentry-Rate-Limits", exceeded.sentry_rate_limits_header()))
+            .json(serde_json::json!({
+                "error": "rate_limit_exceeded",
+                "retry_after": exceeded.retry_after
+            })),
+    ))
 }
 
 /// OPTIONS for CORS preflight (handled by middleware, but kept for explicit routing)
@@ -210,9 +224,18 @@ pub async fn cron_check_in(
     auth: SentryAuth,
     payload: web::Payload,
 ) -> AppResult<HttpResponse> {
+    // Shedding only: Relay limits check-ins by their own monitor category,
+    // never by the error-event quota.
+    processors.admit(
+        processors
+            .errors
+            .pending()
+            .counts(auth.project.id)
+            .installation,
+    )?;
     // The envelope endpoint's reader: the same size caps, and a body that
     // stops arriving is refused instead of holding the request open.
-    let (body, large_body) = read_body(&req, payload).await?;
+    let (body, large_body) = read_body(auth.project.id, &req, payload).await?;
     let slug = req.match_info().get("monitor_slug").unwrap_or_default();
     let is_json = req
         .headers()

@@ -233,7 +233,10 @@ This alert was sent by Rustrak for project {project_name}."#,
                 smtp.tls,
                 smtp.username.as_ref(),
                 smtp.password.as_ref(),
-            ) {
+                (&smtp.host, smtp.port) != (&self.global.host, self.global.port),
+            )
+            .await
+            {
                 Ok(mailer) => mailer,
                 Err(e) => return NotificationResult::failure(e, None),
             };

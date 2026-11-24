@@ -1661,3 +1661,35 @@ fn test_generated_culprit_is_cut_to_200_characters() {
     // Sentry's `truncatechars(culprit, MAX_CULPRIT_LENGTH)`.
     assert_eq!(culprit(event), format!("{}...", "m".repeat(197)));
 }
+
+/// A chain of Kotlin diagnostic wrappers with no real parent: each node is
+/// walked once, not once per wrapper. Eight times the chain must not cost
+/// sixty-four times as much.
+#[test]
+fn test_kotlin_wrapper_walk_is_linear_in_the_chain() {
+    let chain = |n: u64| {
+        let values: Vec<serde_json::Value> = (1..=n)
+            .map(|i| {
+                json!({"type": "DiagnosticComposeException",
+                       "module": "androidx.compose.runtime.tooling",
+                       "mechanism": {"exception_id": i, "parent_id": i - 1}})
+            })
+            .collect();
+        json!({"exception": {"values": values}})
+    };
+    let best = |event: &serde_json::Value| {
+        (0..3)
+            .map(|_| {
+                let t = std::time::Instant::now();
+                std::hint::black_box(get_denormalized_fields(event));
+                t.elapsed().as_secs_f64()
+            })
+            .fold(f64::MAX, f64::min)
+    };
+    let (small, large) = (best(&chain(500)), best(&chain(4_000)));
+    assert!(
+        large < small * 24.0,
+        "8x the wrappers took {:.1}x the time",
+        large / small
+    );
+}

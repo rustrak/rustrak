@@ -183,6 +183,9 @@ async fn fetch_metadata(client_id: &str) -> AppResult<ClientMetadata> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .resolve(host, addr)
+        // A proxy would resolve the host again, out of `is_public`'s reach,
+        // and reqwest reads HTTP(S)_PROXY / ALL_PROXY by default.
+        .no_proxy()
         .build()
         .map_err(|e| AppError::Internal(format!("HTTP client: {e}")))?;
     let mut response = client

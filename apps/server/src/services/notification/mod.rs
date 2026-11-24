@@ -130,7 +130,7 @@ pub fn allow_private_destinations(allowed: bool) {
     shared_http_client();
 }
 
-fn private_destinations_allowed() -> bool {
+pub(crate) fn private_destinations_allowed() -> bool {
     PRIVATE_DESTINATIONS_ALLOWED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -138,7 +138,7 @@ fn private_destinations_allowed() -> bool {
 /// configures an integration picks the URL, so without this the server would
 /// reach, and echo back, anything on its own network.
 #[derive(Debug)]
-struct NotPublic;
+pub(crate) struct NotPublic;
 
 impl std::fmt::Display for NotPublic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
