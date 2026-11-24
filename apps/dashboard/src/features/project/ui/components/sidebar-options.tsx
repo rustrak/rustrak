@@ -53,17 +53,9 @@ export function SidebarOptions({
   const t = useTranslations('projects');
   const toastFailure = useToastFailure();
   const save = useMutation(projectMutations.saveSidebar());
-  // The row being dragged: where it started, how far the pointer has moved
-  // it, and one row's pitch, which is how far the others slide.
-  const [drag, setDrag] = useState<{
-    id: number;
-    from: number;
-    startY: number;
-    dy: number;
-    pitch: number;
-  } | null>(null);
-  // The order just dropped, shown until the saved one replaces it, so the
-  // list does not flick back while the save is on its way.
+  const [drag, setDrag] = useState<Drag | null>(null);
+  // The order just dropped, shown until its save settles (the cache has it
+  // by then), so the list does not flick back while the save is on its way.
   const [dropped, setDropped] = useState<number[] | null>(null);
 
   // In the sort the sidebar uses; a drop shows at once, before the save.
@@ -123,10 +115,8 @@ export function SidebarOptions({
       save.mutate(
         { ...prefs, order: next },
         {
-          onError: (error) => {
-            setDropped(null);
-            toastFailure(t('sidebar.saveFailed'), error);
-          },
+          onError: (error) => toastFailure(t('sidebar.saveFailed'), error),
+          onSettled: () => setDropped(null),
         },
       );
     }
@@ -185,70 +175,121 @@ export function SidebarOptions({
         </Text>
       </div>
       <ul className="relative max-h-80 overflow-y-auto px-1 pb-1">
-        {listed.map((project, index) => {
-          const on = !hidden.has(project.id);
-          const held = drag?.id === project.id;
-          const offset = !drag
-            ? 0
-            : held
-              ? drag.dy
-              : makeRoom(index, drag.from, target) * drag.pitch;
-          return (
-            <li
-              key={project.id}
-              onPointerDown={(event) => grab(event, project.id, index)}
-              onPointerMove={follow}
-              onPointerUp={drop}
-              onPointerCancel={() => setDrag(null)}
-              style={offset ? { translate: `0 ${offset}px` } : undefined}
-              className={cn(
-                'relative flex items-center gap-2 rounded-md px-2 py-1.5',
-                manual && 'cursor-grab touch-none select-none',
-                // The rows it passes glide; the held one sticks to the
-                // pointer, and nothing animates back once it lands.
-                drag && !held
-                  ? 'transition-[translate] duration-fast ease-standard motion-reduce:transition-none'
-                  : null,
-                held
-                  ? 'z-10 cursor-grabbing bg-surface-floating shadow-raised'
-                  : 'hover:bg-surface-hover',
-              )}
-            >
-              {manual ? (
-                <DragIcon
-                  size="md"
-                  aria-label={t('sidebar.drag', { name: project.name })}
-                  className="shrink-0 text-fg-ghost"
-                />
-              ) : null}
-              <PlatformIcon
-                platform={project.platform ?? 'other'}
-                size={18}
-                format="lg"
-                className="shrink-0 rounded-md"
-              />
-              <Text
-                variant="value"
-                truncate
-                className={cn('flex-1', !on && 'text-fg-subtle')}
-              >
-                {project.name}
-              </Text>
-              <Switch
-                aria-label={t('sidebar.show', { name: project.name })}
-                checked={on}
-                onCheckedChange={(checked) =>
-                  apply({
-                    hidden: checked
-                      ? prefs.hidden.filter((id) => id !== project.id)
-                      : [...prefs.hidden, project.id],
-                  })
-                }
-              />
-            </li>
-          );
-        })}
+        {listed.map((project, index) => (
+          <ProjectRow
+            key={project.id}
+            project={project}
+            on={!hidden.has(project.id)}
+            manual={manual}
+            held={drag?.id === project.id}
+            dragging={drag !== null}
+            offset={rowOffset(drag, project.id, index, target)}
+            onPointerDown={(event) => grab(event, project.id, index)}
+            onPointerMove={follow}
+            onPointerUp={drop}
+            onPointerCancel={() => setDrag(null)}
+            onToggle={(checked) =>
+              apply({
+                hidden: checked
+                  ? prefs.hidden.filter((id) => id !== project.id)
+                  : [...prefs.hidden, project.id],
+              })
+            }
+          />
+        ))}
       </ul>
     </Popover>
+  );
+}
+
+/** The row being dragged: where it started, how far the pointer has moved
+ * it, and one row's pitch, which is how far the others slide. */
+interface Drag {
+  id: number;
+  from: number;
+  startY: number;
+  dy: number;
+  pitch: number;
+}
+
+/** How far a row is drawn from its place: the held one with the pointer,
+ * the ones it passes by a row's pitch, the rest not at all. */
+function rowOffset(
+  drag: Drag | null,
+  id: number,
+  index: number,
+  target: number,
+): number {
+  if (!drag) return 0;
+  if (drag.id === id) return drag.dy;
+  return makeRoom(index, drag.from, target) * drag.pitch;
+}
+
+function ProjectRow({
+  project,
+  on,
+  manual,
+  held,
+  dragging,
+  offset,
+  onToggle,
+  ...pointer
+}: {
+  project: ProjectResponse;
+  on: boolean;
+  manual: boolean;
+  held: boolean;
+  dragging: boolean;
+  offset: number;
+  onToggle: (checked: boolean) => void;
+  onPointerDown: (event: PointerEvent<HTMLLIElement>) => void;
+  onPointerMove: (event: PointerEvent<HTMLLIElement>) => void;
+  onPointerUp: () => void;
+  onPointerCancel: () => void;
+}) {
+  const t = useTranslations('projects');
+  return (
+    <li
+      {...pointer}
+      style={offset ? { translate: `0 ${offset}px` } : undefined}
+      className={cn(
+        'relative flex items-center gap-2 rounded-md px-2 py-1.5',
+        manual && 'cursor-grab touch-none select-none',
+        // The rows it passes glide; the held one sticks to the pointer, and
+        // nothing animates back once it lands.
+        dragging && !held
+          ? 'transition-[translate] duration-fast ease-standard motion-reduce:transition-none'
+          : null,
+        held
+          ? 'z-10 cursor-grabbing bg-surface-floating shadow-raised'
+          : 'hover:bg-surface-hover',
+      )}
+    >
+      {manual ? (
+        <DragIcon
+          size="md"
+          aria-label={t('sidebar.drag', { name: project.name })}
+          className="shrink-0 text-fg-ghost"
+        />
+      ) : null}
+      <PlatformIcon
+        platform={project.platform ?? 'other'}
+        size={18}
+        format="lg"
+        className="shrink-0 rounded-md"
+      />
+      <Text
+        variant="value"
+        truncate
+        className={cn('flex-1', !on && 'text-fg-subtle')}
+      >
+        {project.name}
+      </Text>
+      <Switch
+        aria-label={t('sidebar.show', { name: project.name })}
+        checked={on}
+        onCheckedChange={onToggle}
+      />
+    </li>
   );
 }

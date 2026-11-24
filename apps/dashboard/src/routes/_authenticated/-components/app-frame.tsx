@@ -432,7 +432,8 @@ function WorkspaceNav({
   const pathname = usePathname();
   // Until the reader's own setup arrives, every project in the default
   // order: the same thing the default setup says.
-  const prefs = useQuery(projectQueries.sidebar()).data ?? DEFAULT_SIDEBAR;
+  const saved = useQuery(projectQueries.sidebar());
+  const prefs = saved.data ?? DEFAULT_SIDEBAR;
   // ponytail: the picker's first 100 projects; the list endpoint's search
   // when an instance has more.
   const byActivity = useQuery({
@@ -476,7 +477,13 @@ function WorkspaceNav({
       {projects.length > 0 ? (
         <SidebarGroup
           label={t('switcher.projects')}
-          action={<SidebarOptions projects={sorted} prefs={prefs} />}
+          // Only once the saved setup is here: each change sends it whole,
+          // and one sent from the default would overwrite it.
+          action={
+            saved.data ? (
+              <SidebarOptions projects={sorted} prefs={saved.data} />
+            ) : null
+          }
         >
           {listed.map((option) => (
             <SidebarItem

@@ -46,11 +46,13 @@ pub async fn get_projects(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult
 /// Replace how your sidebar lists the projects.
 pub async fn update_projects(
     pool: web::Data<DbPool>,
-    body: web::Json<SidebarProjects>,
     actor: ApiActor,
+    // Read after the caller: an anonymous request is a 401 whatever it sent,
+    // and a body that does not parse is an `ErrorResponse`, not plain text.
+    body: AppResult<web::Json<SidebarProjects>>,
 ) -> AppResult<HttpResponse> {
     let user_id = actor.require_user()?.id;
-    let sidebar = body.into_inner();
+    let sidebar = body?.into_inner();
     SidebarService::save_projects(pool.get_ref(), user_id, &sidebar).await?;
     Ok(HttpResponse::Ok().json(sidebar))
 }

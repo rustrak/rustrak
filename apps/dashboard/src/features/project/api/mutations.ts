@@ -40,6 +40,10 @@ export const projectMutations = {
    */
   saveSidebar: () =>
     mutationOptions({
+      // Each save sends the whole setup, so they run one after another, in
+      // the order they were made: two in flight could land out of order and
+      // the older one would win.
+      scope: { id: 'sidebar-projects' },
       mutationFn: (body: SidebarProjects) =>
         orThrow(api().sidebar.updateProjects({ body })),
       onMutate: async (body, { client }) => {

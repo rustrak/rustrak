@@ -82,6 +82,9 @@ async fn test_saving_needs_a_reader_and_a_known_sort() {
     let body = json!({ "sort": "manual", "order": [], "hidden": [] });
 
     assert_eq!(call(&db, &userless, Some(body)).await.0, 403);
+    // Refused as the documented ErrorResponse, not Actix's plain text.
     let bad = json!({ "sort": "random", "order": [], "hidden": [] });
-    assert_eq!(call(&db, &ana, Some(bad)).await.0, 400);
+    let (status, body) = call(&db, &ana, Some(bad)).await;
+    assert_eq!(status, 400);
+    assert!(body.is_object(), "a JSON error body, got {body}");
 }
