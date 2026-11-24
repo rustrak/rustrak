@@ -97,18 +97,17 @@ describe('afterFailedSave', () => {
     order: [2, 1],
     hidden: [],
   } satisfies SidebarProjects;
-  const failed = { ...confirmed, hidden: [1] };
+  const shown = { ...confirmed, hidden: [1] };
 
-  it('goes back to what the server confirmed when nothing newer was made', () => {
-    expect(afterFailedSave(failed, failed, confirmed)).toBe(confirmed);
+  it('goes back to what the server confirmed when no save is queued behind', () => {
+    expect(afterFailedSave(shown, confirmed, false)).toBe(confirmed);
   });
 
-  it('keeps a newer change: its own save carries this one too', () => {
-    const newer = { ...failed, sort: 'name' as const };
-    expect(afterFailedSave(newer, failed, confirmed)).toBe(newer);
+  it('keeps what it shows while a later save is queued: that one carries it', () => {
+    expect(afterFailedSave(shown, confirmed, true)).toBe(shown);
   });
 
   it('keeps what it shows when nothing was ever confirmed', () => {
-    expect(afterFailedSave(failed, failed, undefined)).toBe(failed);
+    expect(afterFailedSave(shown, undefined, false)).toBe(shown);
   });
 });
