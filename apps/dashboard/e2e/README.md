@@ -65,6 +65,7 @@ watching that test, and only that test, go red.
 | An API token works until revoked | `settings` | A revoke that never reaches the server |
 | A changed password replaces the old one | `settings` | The old password kept |
 | The chosen language is kept on the account | `settings` | The language not saved |
+| The logo reopens a page on its default view, a different order picked on the page stays | `saved-views` | The default skipped on a second visit, or forced over the reader's pick |
 | An invited member sets a password and is signed in | `team` | Accepting that does not sign in |
 | On a phone, the tab bar reaches an issue | `mobile` | The tab pointing elsewhere |
 | On a phone, a settings header keeps its title whole | `mobile` | Actions crushing the title to an ellipsis (#579) |

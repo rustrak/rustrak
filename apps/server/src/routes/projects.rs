@@ -6,7 +6,7 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::rbac::{Action, ProjectScope, Resource};
 use crate::models::{CreateProject, ProjectResponse, UpdateProject};
-use crate::pagination::{OffsetPaginatedResponse, SortOrder};
+use crate::pagination::{OffsetPaginatedResponse, ProjectSort, SortOrder};
 use crate::routes::period::parse_period_hours;
 use crate::services::stats::StatsService;
 use crate::services::{CleanupJob, ProjectDeletions, ProjectService, RoleService};
@@ -40,9 +40,16 @@ pub struct ListProjectsQuery {
     #[cfg_attr(feature = "openapi", param(minimum = 1, maximum = 100))]
     pub per_page: i64,
 
+    /// What the list is sorted by (default: created)
+    #[serde(default)]
+    pub sort: ProjectSort,
+
     /// Sort order direction (default: desc = newest first)
     #[serde(default)]
     pub order: SortOrder,
+
+    /// Matches the name or slug, case-insensitively
+    pub query: Option<String>,
 
     /// Window for the per-project stats on each row (e.g. `24h`, `7d`).
     ///
@@ -78,21 +85,20 @@ pub async fn list_projects(
     actor: ApiActor,
 ) -> AppResult<HttpResponse> {
     let per_page = crate::pagination::per_page(query.per_page)?;
-    let (projects, total_count) = match actor.visible_projects() {
-        ProjectScope::All => {
-            ProjectService::list_offset(pool.get_ref(), query.order, query.page, per_page).await?
-        }
-        ProjectScope::Only(ids) => {
-            ProjectService::list_offset_for_ids(
-                pool.get_ref(),
-                &ids,
-                query.order,
-                query.page,
-                per_page,
-            )
-            .await?
-        }
+    let ids = match actor.visible_projects() {
+        ProjectScope::All => None,
+        ProjectScope::Only(ids) => Some(ids),
     };
+    let (projects, total_count) = ProjectService::list_offset(
+        pool.get_ref(),
+        ids.as_deref(),
+        query.sort,
+        query.order,
+        query.query.as_deref(),
+        query.page,
+        per_page,
+    )
+    .await?;
 
     let base_url = config.base_url();
     let mut responses: Vec<_> = projects

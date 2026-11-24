@@ -656,7 +656,8 @@
     "empty": {
       "title": "No projects yet",
       "hint": "Create your first project to start tracking errors",
-      "noAccessHint": "Contact an owner to request access to a project."
+      "noAccessHint": "Contact an owner to request access to a project.",
+      "noMatches": "No projects match this search"
     },
     "newProject": "New Project",
     "delete": "Delete",
@@ -1865,7 +1866,14 @@
       },
       "title": "Projects",
       "subtitle": "Manage your error tracking projects",
-      "newProject": "New Project"
+      "newProject": "New Project",
+      "search": "Search projects",
+      "sort": {
+        "newest": "Newest",
+        "recent": "Recent activity",
+        "oldest": "Oldest",
+        "name": "Name"
+      }
     },
     "newProject": {
       "meta": {

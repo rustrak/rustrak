@@ -656,7 +656,8 @@
     "empty": {
       "title": "Aún no hay proyectos",
       "hint": "Crea tu primer proyecto para empezar a seguir errores",
-      "noAccessHint": "Contacta con un propietario para solicitar acceso a un proyecto."
+      "noAccessHint": "Contacta con un propietario para solicitar acceso a un proyecto.",
+      "noMatches": "Ningún proyecto coincide con la búsqueda"
     },
     "newProject": "Nuevo proyecto",
     "delete": "Eliminar",
@@ -1865,7 +1866,14 @@
       },
       "title": "Proyectos",
       "subtitle": "Gestiona tus proyectos de seguimiento de errores",
-      "newProject": "Nuevo proyecto"
+      "newProject": "Nuevo proyecto",
+      "search": "Buscar proyectos",
+      "sort": {
+        "newest": "Más recientes",
+        "recent": "Actividad reciente",
+        "oldest": "Más antiguos",
+        "name": "Nombre"
+      }
     },
     "newProject": {
       "meta": {

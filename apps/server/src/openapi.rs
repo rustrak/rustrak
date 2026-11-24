@@ -246,6 +246,7 @@ impl Modify for SecurityAddon {
         crate::services::oauth::OAuthGrant,
         crate::pagination::SortOrder,
         crate::pagination::IssueSort,
+        crate::pagination::ProjectSort,
         crate::pagination::IssueCategory,
         crate::models::issue::IssueStatsWindow,
         crate::routes::auth::UpdatePreferencesRequest,

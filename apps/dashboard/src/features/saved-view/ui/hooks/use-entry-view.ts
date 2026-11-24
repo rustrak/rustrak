@@ -7,6 +7,7 @@ import {
   searchOf,
   viewQuery,
 } from '@/features/saved-view/model/saved-view';
+import { useEntered } from '@/shared/ui/hooks/use-router';
 
 /**
  * Where a page entered with nothing in its address goes: its default view
@@ -16,8 +17,9 @@ import {
  * `search` is the whole address: an asked-for page or an open line is a
  * destination of its own, not a bare visit. Only until the address first
  * changes on this project and page, since clearing the filters later is a
- * choice; and never to a default that validates to nothing, which would
- * send the page to itself forever.
+ * choice, unless the reader comes back in by a link (the logo, the sidebar):
+ * that is a new visit. Never to a default that validates to nothing, which
+ * would send the page to itself forever.
  */
 export function useEntryView<T extends object>(
   projectId: number | undefined,
@@ -29,9 +31,12 @@ export function useEntryView<T extends object>(
   const scope = `${projectId ?? 'workspace'}:${page}`;
   const [moved, setMoved] = useState<string>();
   if (!bare && moved !== scope) setMoved(scope);
+  const entered = useEntered();
   const views = useQuery(savedViewQueries.list(projectId, page)).data;
   const view =
-    moved !== scope && bare && views ? defaultView(views) : undefined;
+    (moved !== scope || entered) && bare && views
+      ? defaultView(views)
+      : undefined;
   if (!view) return undefined;
   const target = validate(searchOf(view.query));
   return viewQuery(target as Record<string, unknown>) === ''

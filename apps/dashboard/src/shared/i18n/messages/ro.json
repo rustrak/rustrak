@@ -656,7 +656,8 @@
     "empty": {
       "title": "Încă nu există proiecte",
       "hint": "Creează primul proiect pentru a începe urmărirea erorilor",
-      "noAccessHint": "Contactează un proprietar pentru a solicita acces la un proiect."
+      "noAccessHint": "Contactează un proprietar pentru a solicita acces la un proiect.",
+      "noMatches": "Niciun proiect nu se potrivește căutării"
     },
     "newProject": "Proiect nou",
     "delete": "Șterge",
@@ -1865,7 +1866,14 @@
       },
       "title": "Proiecte",
       "subtitle": "Administrează proiectele tale de urmărire a erorilor",
-      "newProject": "Proiect nou"
+      "newProject": "Proiect nou",
+      "search": "Caută proiecte",
+      "sort": {
+        "newest": "Cele mai noi",
+        "recent": "Activitate recentă",
+        "oldest": "Cele mai vechi",
+        "name": "Nume"
+      }
     },
     "newProject": {
       "meta": {

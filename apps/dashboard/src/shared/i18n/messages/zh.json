@@ -656,7 +656,8 @@
     "empty": {
       "title": "还没有项目",
       "hint": "创建您的第一个项目以开始跟踪错误",
-      "noAccessHint": "请联系所有者申请项目访问权限。"
+      "noAccessHint": "请联系所有者申请项目访问权限。",
+      "noMatches": "没有与搜索匹配的项目"
     },
     "newProject": "新建项目",
     "delete": "删除",
@@ -1865,7 +1866,14 @@
       },
       "title": "项目",
       "subtitle": "管理您的错误跟踪项目",
-      "newProject": "新建项目"
+      "newProject": "新建项目",
+      "search": "搜索项目",
+      "sort": {
+        "newest": "最新",
+        "recent": "最近活动",
+        "oldest": "最早",
+        "name": "名称"
+      }
     },
     "newProject": {
       "meta": {

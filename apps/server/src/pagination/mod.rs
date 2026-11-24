@@ -153,6 +153,20 @@ impl std::fmt::Display for IssueSort {
     }
 }
 
+/// Sort mode for the projects list
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectSort {
+    /// When the project was created
+    #[default]
+    Created,
+    /// When its most recent issue was last seen; projects with none come last
+    LastSeen,
+    /// Its name, case-insensitively
+    Name,
+}
+
 /// Sort order direction
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

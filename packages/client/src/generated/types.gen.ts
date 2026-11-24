@@ -1994,6 +1994,11 @@ export type ProjectRetention = {
 };
 
 /**
+ * Sort mode for the projects list
+ */
+export type ProjectSort = 'created' | 'last_seen' | 'name';
+
+/**
  * Project-wide counters for the overview page, each with its previous-period
  * comparison.
  */
@@ -5674,9 +5679,17 @@ export type ProjectsListData = {
          */
         per_page?: number;
         /**
+         * What the list is sorted by (default: created)
+         */
+        sort?: ProjectSort;
+        /**
          * Sort order direction (default: desc = newest first)
          */
         order?: SortOrder;
+        /**
+         * Matches the name or slug, case-insensitively
+         */
+        query?: string | null;
         /**
          * Window for the per-project stats on each row (e.g. `24h`, `7d`).
          *

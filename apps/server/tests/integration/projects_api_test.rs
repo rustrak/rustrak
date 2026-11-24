@@ -822,3 +822,71 @@ async fn test_a_slug_derived_from_a_long_name_fits_the_column() {
     assert!(second.slug.len() <= 100, "{}", second.slug);
     assert_ne!(first.slug, second.slug);
 }
+
+/// One issue on `project_id`, last seen `hours_ago` hours ago.
+async fn seed_issue_seen(db: &TestDb, project_id: i32, hours_ago: i64) {
+    sqlx::query(
+        "INSERT INTO issues (id, project_id, digest_order, first_seen, last_seen, status) \
+         VALUES ($1, $2, \
+                 (SELECT COALESCE(MAX(digest_order), 0) + 1 FROM issues WHERE project_id = $2), \
+                 $3, $3, 'unresolved')",
+    )
+    .bind(uuid::Uuid::new_v4())
+    .bind(project_id)
+    .bind(chrono::Utc::now() - chrono::Duration::hours(hours_ago))
+    .execute(&db.pool)
+    .await
+    .expect("seed issue failed");
+}
+
+fn names(body: &serde_json::Value) -> Vec<&str> {
+    body["items"]
+        .as_array()
+        .expect("items must be an array")
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect()
+}
+
+/// #597: the projects with recent errors come first, the quiet ones last
+/// whichever way the list runs.
+#[actix_web::test]
+async fn test_list_projects_sorts_by_last_seen_with_quiet_projects_last() {
+    let db = TestDb::new().await;
+    let old = crate::common::create_test_project(&db.pool, "Old").await;
+    let recent = crate::common::create_test_project(&db.pool, "Recent").await;
+    crate::common::create_test_project(&db.pool, "Quiet").await;
+    seed_issue_seen(&db, old.id, 5).await;
+    seed_issue_seen(&db, recent.id, 1).await;
+    // Older than Old's: a project is as recent as its newest issue.
+    seed_issue_seen(&db, recent.id, 10).await;
+
+    let desc = list_projects_json(&db, "/api/projects?sort=last_seen").await;
+    assert_eq!(names(&desc), ["Recent", "Old", "Quiet"]);
+
+    let asc = list_projects_json(&db, "/api/projects?sort=last_seen&order=asc").await;
+    assert_eq!(names(&asc), ["Old", "Recent", "Quiet"]);
+}
+
+#[actix_web::test]
+async fn test_list_projects_sorts_by_name() {
+    let db = TestDb::new().await;
+    for name in ["beta", "Alpha", "gamma"] {
+        crate::common::create_test_project(&db.pool, name).await;
+    }
+
+    let asc = list_projects_json(&db, "/api/projects?sort=name&order=asc").await;
+    assert_eq!(names(&asc), ["Alpha", "beta", "gamma"]);
+}
+
+#[actix_web::test]
+async fn test_list_projects_filters_by_query() {
+    let db = TestDb::new().await;
+    for name in ["Checkout API", "Billing", "checkout-web"] {
+        crate::common::create_test_project(&db.pool, name).await;
+    }
+
+    let body = list_projects_json(&db, "/api/projects?query=CHECKOUT&sort=name&order=asc").await;
+    assert_eq!(names(&body), ["Checkout API", "checkout-web"]);
+    assert_eq!(body["total_count"], 2);
+}

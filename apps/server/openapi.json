@@ -4412,12 +4412,33 @@
             }
           },
           {
+            "name": "sort",
+            "in": "query",
+            "description": "What the list is sorted by (default: created)",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectSort"
+            }
+          },
+          {
             "name": "order",
             "in": "query",
             "description": "Sort order direction (default: desc = newest first)",
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Matches the name or slug, case-insensitively",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -22245,6 +22266,15 @@
             "format": "int64"
           }
         }
+      },
+      "ProjectSort": {
+        "type": "string",
+        "description": "Sort mode for the projects list",
+        "enum": [
+          "created",
+          "last_seen",
+          "name"
+        ]
       },
       "ProjectStatsSummary": {
         "type": "object",

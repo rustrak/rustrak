@@ -1,14 +1,33 @@
 import type { ProjectsListResponse } from '@rustrak/client';
-import { Button, cn, NewIcon, Page, PageHeader, Skeleton } from '@rustrak/ui';
+import {
+  Button,
+  cn,
+  NewIcon,
+  Page,
+  PageHeader,
+  QueryBar,
+  type QueryField,
+  SelectorIcon,
+  Skeleton,
+} from '@rustrak/ui';
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Navigate } from '@tanstack/react-router';
+import type { ColumnFiltersState } from '@tanstack/react-table';
 import { type ReactNode, useDeferredValue } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectQueries } from '@/features/project/api/queries';
 import { ProjectsGrid } from '@/features/project/ui/components/projects-grid';
-import { searchPage } from '@/shared/lib/search-params';
+import { savedViewQueries } from '@/features/saved-view/api/queries';
+import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
+import { useEntryView } from '@/features/saved-view/ui/hooks/use-entry-view';
+import {
+  searchOneOf,
+  searchPage,
+  searchString,
+} from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
+import { ScopeBar, ScopeSegment } from '@/shared/ui/components/scope-bar';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 
 /**
@@ -19,26 +38,60 @@ import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
  */
 const STATS_PERIOD = '24h';
 
-export const Route = createFileRoute('/_authenticated/projects/')({
-  validateSearch: (search: Record<string, unknown>) => ({
+/**
+ * One choice of the sort control, each a `sort` and `order` the API takes.
+ * The first is the API's own default, which the address leaves out.
+ */
+const SORTS = {
+  newest: { sort: 'created', order: 'desc' },
+  recent: { sort: 'last_seen', order: 'desc' },
+  oldest: { sort: 'created', order: 'asc' },
+  name: { sort: 'name', order: 'asc' },
+} as const;
+type ProjectsSort = keyof typeof SORTS;
+const SORT_CHOICES = Object.keys(SORTS) as ProjectsSort[];
+
+interface ProjectsSearch {
+  page?: number;
+  sort?: Exclude<ProjectsSort, 'newest'>;
+  query?: string;
+}
+
+/** The address as typed search; a saved view's text goes through it too. */
+function validateProjectsSearch(
+  search: Record<string, unknown>,
+): ProjectsSearch {
+  const sort = searchOneOf(search.sort, SORT_CHOICES);
+  return {
     page: searchPage(search.page),
-  }),
-  loaderDeps: ({ search }) => ({ page: search.page ?? 1 }),
+    sort: sort === 'newest' ? undefined : sort,
+    query: searchString(search.query),
+  };
+}
+
+export const Route = createFileRoute('/_authenticated/projects/')({
+  validateSearch: validateProjectsSearch,
+  loaderDeps: ({ search }) => search,
   // One request, stats included: the server aggregates the whole page in two
   // queries. Asking per row would be 20 round trips for a table that renders
   // above the fold.
   loader: ({ context: { queryClient }, deps }) => {
-    void queryClient.query(projectsPage(deps.page)).catch(noop);
+    void queryClient.query(projectsPage(deps)).catch(noop);
+    void queryClient
+      .query(savedViewQueries.list(undefined, 'projects'))
+      .catch(noop);
   },
   pendingComponent: ProjectsLoading,
   component: ProjectsPage,
 });
 
-function projectsPage(page: number) {
+function projectsPage(search: ProjectsSearch) {
   return projectQueries.list({
-    page,
+    page: search.page ?? 1,
     per_page: 20,
     stats_period: STATS_PERIOD,
+    ...SORTS[search.sort ?? 'newest'],
+    query: search.query,
   });
 }
 
@@ -49,41 +102,127 @@ function projectsPage(page: number) {
 function ProjectsPage() {
   const tProjects = useTranslations('projects');
   const format = useFormatter();
-  const live = Route.useSearch({ select: (search) => search.page ?? 1 });
-  const page = useDeferredValue(live);
-  const { data: projects } = useSuspenseQuery(projectsPage(page));
+  const live = Route.useSearch();
+  const search = useDeferredValue(live);
+  const navigate = Route.useNavigate();
+  const { data: projects } = useSuspenseQuery(projectsPage(search));
+  const entry = useEntryView(
+    undefined,
+    'projects',
+    live,
+    validateProjectsSearch,
+  );
+  if (entry) {
+    return <Navigate to="/projects" search={entry} replace />;
+  }
 
   // Deleting the last card on the last page leaves that page empty, and an
   // empty page renders "no projects" with no way back. Send the browser to
   // the last page that exists, as the releases list does. Only once the
   // cards on screen are the address's: an older page's answer must not
   // overrule a page the reader has since asked for.
-  if (page === live && page > 1 && page > projects.total_pages) {
+  const page = search.page ?? 1;
+  if (search === live && page > 1 && page > projects.total_pages) {
     return (
       <Navigate
         to="/projects"
-        search={{ page: Math.max(projects.total_pages, 1) }}
+        search={{ ...search, page: Math.max(projects.total_pages, 1) }}
         replace
       />
     );
   }
 
   return (
-    <ProjectsScreen summary={projectsSummary(projects, tProjects, format)}>
+    <ProjectsScreen
+      summary={projectsSummary(projects, tProjects, format)}
+      toolbar={<ProjectsToolbar search={live} />}
+      views={<ProjectsViews search={live} />}
+    >
       <div
-        aria-busy={page !== live}
+        aria-busy={search !== live}
         className={cn(
           'flex flex-1 flex-col gap-4',
-          page !== live && 'opacity-60',
+          search !== live && 'opacity-60',
         )}
       >
         <ProjectsGrid
           page={projects}
           currentPage={page}
-          loading={page !== live}
+          loading={search !== live}
+          searching={search.query !== undefined}
+          onPageChange={(next) =>
+            navigate({ search: (previous) => ({ ...previous, page: next }) })
+          }
         />
       </div>
     </ProjectsScreen>
+  );
+}
+
+/** The workspace's saved views of this page. */
+function ProjectsViews({ search }: { search: ProjectsSearch }) {
+  const navigate = Route.useNavigate();
+  return (
+    <SavedViews
+      page="projects"
+      search={{ ...search }}
+      onApply={(next) => navigate({ search: validateProjectsSearch(next) })}
+    />
+  );
+}
+
+const NO_FIELDS: QueryField[] = [];
+const NO_FILTERS: ColumnFiltersState = [];
+
+/** Search by name or slug, and the order the cards come in. */
+function ProjectsToolbar({ search }: { search: ProjectsSearch }) {
+  const t = useTranslations('projectPages');
+  const navigate = Route.useNavigate();
+  const sortLabels: Record<ProjectsSort, string> = {
+    newest: t('projectsList.sort.newest'),
+    recent: t('projectsList.sort.recent'),
+    oldest: t('projectsList.sort.oldest'),
+    name: t('projectsList.sort.name'),
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <QueryBar
+        className="min-w-0 max-sm:basis-full"
+        fields={NO_FIELDS}
+        filters={NO_FILTERS}
+        search={search.query ?? ''}
+        placeholder={t('projectsList.search')}
+        onChange={(next) =>
+          navigate({
+            search: (previous) => ({
+              ...previous,
+              query: next.search || undefined,
+              page: undefined,
+            }),
+          })
+        }
+      />
+      <ScopeBar>
+        <ScopeSegment
+          icon={SelectorIcon}
+          label={sortLabels[search.sort ?? 'newest']}
+          actions={SORT_CHOICES.map((choice) => ({
+            id: choice,
+            label: sortLabels[choice],
+            selected: choice === (search.sort ?? 'newest'),
+            onSelect: () =>
+              navigate({
+                search: (previous) => ({
+                  ...previous,
+                  sort: choice === 'newest' ? undefined : choice,
+                  page: undefined,
+                }),
+              }),
+          }))}
+        />
+      </ScopeBar>
+    </div>
   );
 }
 
@@ -108,9 +247,13 @@ function ProjectsLoading() {
 
 function ProjectsScreen({
   summary,
+  toolbar,
+  views,
   children,
 }: {
   summary: ReactNode[];
+  toolbar?: ReactNode;
+  views?: ReactNode;
   children: ReactNode;
 }) {
   const t = useTranslations('projectPages');
@@ -122,18 +265,24 @@ function ProjectsScreen({
         title={t('projectsList.title')}
         summary={summary}
         actions={
-          canCreate ? (
-            <Button
-              variant="primary"
-              icon={NewIcon}
-              render={<Link href="/projects/new" />}
-            >
-              {t('projectsList.newProject')}
-            </Button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            {views}
+            {canCreate ? (
+              <Button
+                variant="primary"
+                icon={NewIcon}
+                render={<Link href="/projects/new" />}
+              >
+                {t('projectsList.newProject')}
+              </Button>
+            ) : null}
+          </div>
         }
       />
-      <Page>{children}</Page>
+      <Page>
+        {toolbar}
+        {children}
+      </Page>
     </div>
   );
 }
