@@ -598,6 +598,38 @@ export type CommentRequest = {
 };
 
 /**
+ * A commit's author, as Sentry serializes it.
+ */
+export type CommitAuthor = {
+    email: string | null;
+    name: string | null;
+};
+
+/**
+ * One commit, Sentry's `CommitSerializer`. `patch_set` is accepted and not
+ * kept.
+ */
+export type CommitInput = {
+    author_email?: string | null;
+    author_name?: string | null;
+    id: string;
+    message?: string | null;
+    repository?: string | null;
+    timestamp?: string | null;
+};
+
+/**
+ * A release's commit, as Sentry's `CommitSerializer` answers it.
+ */
+export type CommitResponse = {
+    author: CommitAuthor;
+    dateCreated: string | null;
+    id: string;
+    message: string | null;
+    repository: string | null;
+};
+
+/**
  * One table a Postgres compaction rewrote. Sizes are heap, TOAST and
  * indexes together (`pg_total_relation_size`).
  */
@@ -743,6 +775,28 @@ export type CreateAuthToken = {
     project_ids?: Array<number> | null;
 };
 
+/**
+ * DTO for `POST .../releases/{version}/deploys/`, Sentry's
+ * `DeploySerializer`. `environment` is required.
+ */
+export type CreateDeploy = {
+    /**
+     * Now when absent, as Sentry's `Deploy.date_finished` default.
+     */
+    dateFinished?: string | null;
+    dateStarted?: string | null;
+    /**
+     * Required. Read as optional so a missing one gets Sentry's field error.
+     */
+    environment: string;
+    name?: string | null;
+    /**
+     * Only these of the release's projects; all of them when absent.
+     */
+    projects?: Array<ProjectRef> | null;
+    url?: string | null;
+};
+
 export type CreateGitHubIssue = {
     /**
      * A GitHub login. Defaults to the Rustrak assignee's; `""` sends none.
@@ -798,6 +852,26 @@ export type CreateMonitor = {
      * Derived from `name` when left out. This is the slug SDKs check in with.
      */
     slug?: string | null;
+};
+
+/**
+ * DTO for `POST /api/0/organizations/{org}/releases/`, Sentry's
+ * `ReleaseWithVersionSerializer` plus `projects`. Fields Sentry ignores,
+ * such as sentry-cli's `dateStarted`, are ignored here too.
+ */
+export type CreateOrgRelease = {
+    /**
+     * Applied only when the release is created, as Sentry does.
+     */
+    dateReleased?: string | null;
+    /**
+     * Required: the release is created in each of these projects. Read as
+     * optional so a missing list gets Sentry's field error, not a parse one.
+     */
+    projects: Array<ProjectRef>;
+    ref?: string | null;
+    url?: string | null;
+    version: string;
 };
 
 /**
@@ -870,6 +944,25 @@ export type DebugFileResponse = {
  * Whose default a [`SetDefaultView`] sets.
  */
 export type DefaultScope = 'user' | 'project';
+
+/**
+ * A deploy as Sentry serializes it (`api/serializers/models/deploy.py`).
+ */
+export type DeployResponse = {
+    dateFinished: string;
+    dateStarted: string | null;
+    environment: string;
+    id: string;
+    name: string | null;
+    url: string | null;
+};
+
+/**
+ * Sentry's 400 that explains a refusal in one sentence.
+ */
+export type Detail = {
+    detail: string;
+};
 
 /**
  * One file of a debug information file assemble request.
@@ -1061,6 +1154,14 @@ export type FieldError = {
  * this enum out of this file.
  */
 export type FieldErrorCode = 'required' | 'invalid' | 'already_exists' | 'too_short' | 'too_long' | 'incorrect' | 'custom';
+
+/**
+ * Sentry's 400 for invalid fields: each field with its messages, such as
+ * `{"projects": ["Invalid project ids or slugs"]}`.
+ */
+export type FieldErrors = {
+    [key: string]: Array<string>;
+};
 
 /**
  * One row of a "top N by X" breakdown (model or tool name).
@@ -1662,6 +1763,22 @@ export type OrgDetails = {
 };
 
 /**
+ * A release across the projects that have it: Sentry's organization-level
+ * release, which sentry-cli's `ReleaseInfo` reads (`version` and
+ * `dateCreated` are required).
+ */
+export type OrgReleaseResponse = {
+    commitCount: number;
+    dateCreated: string;
+    dateReleased: string | null;
+    lastCommit: CommitResponse | null;
+    projects: Array<ReleaseProject>;
+    ref: string | null;
+    url: string | null;
+    version: string;
+};
+
+/**
  * A vital's value at one percentile.
  */
 export type PercentileValue = {
@@ -1790,6 +1907,12 @@ export type ProjectPermissions = {
     permissions: Array<Permission>;
     project_id: number;
 };
+
+/**
+ * A project named the way sentry-cli sends it: an all-digit value as a JSON
+ * number, anything else as a string (`api/serialization.rs`).
+ */
+export type ProjectRef = number | string;
 
 export type ProjectRepository = {
     auto_create_conditions: {
@@ -1963,6 +2086,15 @@ export type ReadinessResponse = {
 };
 
 /**
+ * A ref to a repository's commit range, Sentry's `ReleaseHeadCommitSerializer`.
+ */
+export type RefInput = {
+    commit?: string | null;
+    previousCommit?: string | null;
+    repository: string;
+};
+
+/**
  * Per-release health row returned by the stats endpoint.
  */
 export type ReleaseHealthRow = {
@@ -1975,6 +2107,15 @@ export type ReleaseHealthRow = {
     healthy: number;
     release: string;
     total: number;
+};
+
+/**
+ * One of a release's projects, as sentry-cli reads it.
+ */
+export type ReleaseProject = {
+    id: number;
+    name: string;
+    slug: string;
 };
 
 /**
@@ -2923,6 +3064,28 @@ export type UpdateMonitor = {
 };
 
 /**
+ * DTO for `PUT /api/0/organizations/{org}/releases/{version}/`. Sentry
+ * applies `ref`, `url` and `dateReleased`; the `projects` sentry-cli sends
+ * are ignored, as Sentry's serializer has no such field.
+ */
+export type UpdateOrgRelease = {
+    /**
+     * Replaces the release's commits (`sentry-cli releases set-commits`
+     * reading git), newest first.
+     */
+    commits?: Array<CommitInput> | null;
+    dateReleased?: string | null;
+    ref?: string | null;
+    /**
+     * Commits to fetch from a repository integration. Rustrak has none,
+     * so any is refused as Sentry refuses an unknown repository; an empty
+     * list clears the release's commits.
+     */
+    refs?: Array<RefInput> | null;
+    url?: string | null;
+};
+
+/**
  * What a reader may change about how the dashboard is presented to them.
  *
  * Every field is doubly optional, and both levels are used: absent means
@@ -3580,6 +3743,382 @@ export type SentryListOrganizationIssuesResponses = {
 
 export type SentryListOrganizationIssuesResponse = SentryListOrganizationIssuesResponses[keyof SentryListOrganizationIssuesResponses];
 
+export type ReleasesListInOrganizationData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/';
+};
+
+export type ReleasesListInOrganizationErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type ReleasesListInOrganizationError = ReleasesListInOrganizationErrors[keyof ReleasesListInOrganizationErrors];
+
+export type ReleasesListInOrganizationResponses = {
+    /**
+     * Releases, newest first
+     */
+    200: Array<OrgReleaseResponse>;
+};
+
+export type ReleasesListInOrganizationResponse = ReleasesListInOrganizationResponses[keyof ReleasesListInOrganizationResponses];
+
+export type ReleasesCreateInOrganizationData = {
+    body: CreateOrgRelease;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/';
+};
+
+export type ReleasesCreateInOrganizationErrors = {
+    /**
+     * Missing or invalid projects, or an invalid version
+     */
+    400: FieldErrors;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type ReleasesCreateInOrganizationError = ReleasesCreateInOrganizationErrors[keyof ReleasesCreateInOrganizationErrors];
+
+export type ReleasesCreateInOrganizationResponses = {
+    /**
+     * Release created in at least one project
+     */
+    201: OrgReleaseResponse;
+    /**
+     * Release already existed in every project
+     */
+    208: OrgReleaseResponse;
+};
+
+export type ReleasesCreateInOrganizationResponse = ReleasesCreateInOrganizationResponses[keyof ReleasesCreateInOrganizationResponses];
+
+export type ReleasesDeleteInOrganizationData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Release version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/{version}/';
+};
+
+export type ReleasesDeleteInOrganizationErrors = {
+    /**
+     * An issue started in the release, or it has health data
+     */
+    400: Detail;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
+     * Release not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesDeleteInOrganizationError = ReleasesDeleteInOrganizationErrors[keyof ReleasesDeleteInOrganizationErrors];
+
+export type ReleasesDeleteInOrganizationResponses = {
+    /**
+     * Release deleted
+     */
+    204: void;
+};
+
+export type ReleasesDeleteInOrganizationResponse = ReleasesDeleteInOrganizationResponses[keyof ReleasesDeleteInOrganizationResponses];
+
+export type ReleasesGetInOrganizationData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Release version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/{version}/';
+};
+
+export type ReleasesGetInOrganizationErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
+     * Release not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesGetInOrganizationError = ReleasesGetInOrganizationErrors[keyof ReleasesGetInOrganizationErrors];
+
+export type ReleasesGetInOrganizationResponses = {
+    /**
+     * The release
+     */
+    200: OrgReleaseResponse;
+};
+
+export type ReleasesGetInOrganizationResponse = ReleasesGetInOrganizationResponses[keyof ReleasesGetInOrganizationResponses];
+
+export type ReleasesUpdateInOrganizationData = {
+    body: UpdateOrgRelease;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Release version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/{version}/';
+};
+
+export type ReleasesUpdateInOrganizationErrors = {
+    /**
+     * Invalid commits, or refs to a repository Rustrak does not have
+     */
+    400: FieldErrors;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
+     * Release not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesUpdateInOrganizationError = ReleasesUpdateInOrganizationErrors[keyof ReleasesUpdateInOrganizationErrors];
+
+export type ReleasesUpdateInOrganizationResponses = {
+    /**
+     * Release updated
+     */
+    200: OrgReleaseResponse;
+};
+
+export type ReleasesUpdateInOrganizationResponse = ReleasesUpdateInOrganizationResponses[keyof ReleasesUpdateInOrganizationResponses];
+
+export type ReleasesListCommitsData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Release version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/{version}/commits/';
+};
+
+export type ReleasesListCommitsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
+     * Release not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesListCommitsError = ReleasesListCommitsErrors[keyof ReleasesListCommitsErrors];
+
+export type ReleasesListCommitsResponses = {
+    /**
+     * The release's commits, newest first
+     */
+    200: Array<CommitResponse>;
+};
+
+export type ReleasesListCommitsResponse = ReleasesListCommitsResponses[keyof ReleasesListCommitsResponses];
+
+export type ReleasesListDeploysData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Release version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/{version}/deploys/';
+};
+
+export type ReleasesListDeploysErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
+     * Release not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesListDeploysError = ReleasesListDeploysErrors[keyof ReleasesListDeploysErrors];
+
+export type ReleasesListDeploysResponses = {
+    /**
+     * The latest deploy per project and environment
+     */
+    200: Array<DeployResponse>;
+};
+
+export type ReleasesListDeploysResponse = ReleasesListDeploysResponses[keyof ReleasesListDeploysResponses];
+
+export type ReleasesCreateDeployData = {
+    body: CreateDeploy;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Release version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/{version}/deploys/';
+};
+
+export type ReleasesCreateDeployErrors = {
+    /**
+     * Missing or invalid environment or name, or a project the release is not in
+     */
+    400: FieldErrors;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
+     * Release not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesCreateDeployError = ReleasesCreateDeployErrors[keyof ReleasesCreateDeployErrors];
+
+export type ReleasesCreateDeployResponses = {
+    /**
+     * Deploy recorded
+     */
+    201: DeployResponse;
+};
+
+export type ReleasesCreateDeployResponse = ReleasesCreateDeployResponses[keyof ReleasesCreateDeployResponses];
+
+export type ReleasesPreviousWithCommitsData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Release version
+         */
+        version: string;
+    };
+    query?: never;
+    url: '/api/0/organizations/{org_slug}/releases/{version}/previous-with-commits/';
+};
+
+export type ReleasesPreviousWithCommitsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Can see the project but lacks the releases permission
+     */
+    403: ErrorResponse;
+    /**
+     * Release not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesPreviousWithCommitsError = ReleasesPreviousWithCommitsErrors[keyof ReleasesPreviousWithCommitsErrors];
+
+export type ReleasesPreviousWithCommitsResponses = {
+    /**
+     * The previous release with commits, or `{}`
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type ReleasesPreviousWithCommitsResponse = ReleasesPreviousWithCommitsResponses[keyof ReleasesPreviousWithCommitsResponses];
+
 export type SentryListReposData = {
     body?: never;
     path: {
@@ -3845,6 +4384,44 @@ export type SentryListIssuesResponses = {
 };
 
 export type SentryListIssuesResponse = SentryListIssuesResponses[keyof SentryListIssuesResponses];
+
+export type ReleasesListInProjectData = {
+    body?: never;
+    path: {
+        /**
+         * Organization slug (synthetic: accepted and ignored)
+         */
+        org_slug: string;
+        /**
+         * Project slug
+         */
+        project_slug: string;
+    };
+    query?: never;
+    url: '/api/0/projects/{org_slug}/{project_slug}/releases/';
+};
+
+export type ReleasesListInProjectErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Project not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReleasesListInProjectError = ReleasesListInProjectErrors[keyof ReleasesListInProjectErrors];
+
+export type ReleasesListInProjectResponses = {
+    /**
+     * The project's releases, newest first
+     */
+    200: Array<OrgReleaseResponse>;
+};
+
+export type ReleasesListInProjectResponse = ReleasesListInProjectResponses[keyof ReleasesListInProjectResponses];
 
 export type ReleasesCreateData = {
     body: CreateRelease;

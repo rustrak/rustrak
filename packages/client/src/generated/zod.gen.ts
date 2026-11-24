@@ -400,6 +400,38 @@ export const zCommentRequest = z.object({
 });
 
 /**
+ * A commit's author, as Sentry serializes it.
+ */
+export const zCommitAuthor = z.object({
+    email: z.nullable(z.string()),
+    name: z.nullable(z.string())
+});
+
+/**
+ * One commit, Sentry's `CommitSerializer`. `patch_set` is accepted and not
+ * kept.
+ */
+export const zCommitInput = z.object({
+    author_email: z.nullish(z.string()),
+    author_name: z.nullish(z.string()),
+    id: z.string(),
+    message: z.nullish(z.string()),
+    repository: z.nullish(z.string()),
+    timestamp: z.nullish(z.iso.datetime({ offset: true }))
+});
+
+/**
+ * A release's commit, as Sentry's `CommitSerializer` answers it.
+ */
+export const zCommitResponse = z.object({
+    author: zCommitAuthor,
+    dateCreated: z.nullable(z.iso.datetime({ offset: true })),
+    id: z.string(),
+    message: z.nullable(z.string()),
+    repository: z.nullable(z.string())
+});
+
+/**
  * One table a Postgres compaction rewrote. Sizes are heap, TOAST and
  * indexes together (`pg_total_relation_size`).
  */
@@ -514,6 +546,25 @@ export const zDebugFileResponse = z.object({
  * Whose default a [`SetDefaultView`] sets.
  */
 export const zDefaultScope = z.enum(['user', 'project']);
+
+/**
+ * A deploy as Sentry serializes it (`api/serializers/models/deploy.py`).
+ */
+export const zDeployResponse = z.object({
+    dateFinished: z.iso.datetime({ offset: true }),
+    dateStarted: z.nullable(z.iso.datetime({ offset: true })),
+    environment: z.string(),
+    id: z.string(),
+    name: z.nullable(z.string()),
+    url: z.nullable(z.string())
+});
+
+/**
+ * Sentry's 400 that explains a refusal in one sentence.
+ */
+export const zDetail = z.object({
+    detail: z.string()
+});
 
 /**
  * One file of a debug information file assemble request.
@@ -645,6 +696,12 @@ export const zErrorDetail = z.object({
 export const zErrorResponse = z.object({
     error: zErrorDetail
 });
+
+/**
+ * Sentry's 400 for invalid fields: each field with its messages, such as
+ * `{"projects": ["Invalid project ids or slugs"]}`.
+ */
+export const zFieldErrors = z.record(z.string(), z.array(z.string()));
 
 /**
  * One row of a "top N by X" breakdown (model or tool name).
@@ -1110,6 +1167,41 @@ export const zProjectMember = z.object({
     user_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
 });
 
+/**
+ * A project named the way sentry-cli sends it: an all-digit value as a JSON
+ * number, anything else as a string (`api/serialization.rs`).
+ */
+export const zProjectRef = z.union([
+    z.int(),
+    z.string()
+]);
+
+/**
+ * DTO for `POST .../releases/{version}/deploys/`, Sentry's
+ * `DeploySerializer`. `environment` is required.
+ */
+export const zCreateDeploy = z.object({
+    dateFinished: z.nullish(z.iso.datetime({ offset: true })),
+    dateStarted: z.nullish(z.iso.datetime({ offset: true })),
+    environment: z.string(),
+    name: z.nullish(z.string()),
+    projects: z.nullish(z.array(zProjectRef)),
+    url: z.nullish(z.string())
+});
+
+/**
+ * DTO for `POST /api/0/organizations/{org}/releases/`, Sentry's
+ * `ReleaseWithVersionSerializer` plus `projects`. Fields Sentry ignores,
+ * such as sentry-cli's `dateStarted`, are ignored here too.
+ */
+export const zCreateOrgRelease = z.object({
+    dateReleased: z.nullish(z.iso.datetime({ offset: true })),
+    projects: z.array(zProjectRef),
+    ref: z.nullish(z.string()),
+    url: z.nullish(z.string()),
+    version: z.string()
+});
+
 export const zProjectRepository = z.object({
     auto_create_conditions: z.record(z.string(), z.unknown()),
     auto_create_issues: z.boolean(),
@@ -1256,6 +1348,15 @@ export const zReadinessResponse = z.object({
 });
 
 /**
+ * A ref to a repository's commit range, Sentry's `ReleaseHeadCommitSerializer`.
+ */
+export const zRefInput = z.object({
+    commit: z.nullish(z.string()),
+    previousCommit: z.nullish(z.string()),
+    repository: z.string()
+});
+
+/**
  * Per-release health row returned by the stats endpoint.
  */
 export const zReleaseHealthRow = z.object({
@@ -1268,6 +1369,31 @@ export const zReleaseHealthRow = z.object({
     healthy: z.int(),
     release: z.string(),
     total: z.int()
+});
+
+/**
+ * One of a release's projects, as sentry-cli reads it.
+ */
+export const zReleaseProject = z.object({
+    id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
+    name: z.string(),
+    slug: z.string()
+});
+
+/**
+ * A release across the projects that have it: Sentry's organization-level
+ * release, which sentry-cli's `ReleaseInfo` reads (`version` and
+ * `dateCreated` are required).
+ */
+export const zOrgReleaseResponse = z.object({
+    commitCount: z.int(),
+    dateCreated: z.iso.datetime({ offset: true }),
+    dateReleased: z.nullable(z.iso.datetime({ offset: true })),
+    lastCommit: z.nullable(zCommitResponse),
+    projects: z.array(zReleaseProject),
+    ref: z.nullable(z.string()),
+    url: z.nullable(z.string()),
+    version: z.string()
 });
 
 /**
@@ -2205,6 +2331,19 @@ export const zUpdateMonitor = z.object({
 });
 
 /**
+ * DTO for `PUT /api/0/organizations/{org}/releases/{version}/`. Sentry
+ * applies `ref`, `url` and `dateReleased`; the `projects` sentry-cli sends
+ * are ignored, as Sentry's serializer has no such field.
+ */
+export const zUpdateOrgRelease = z.object({
+    commits: z.nullish(z.array(zCommitInput)),
+    dateReleased: z.nullish(z.iso.datetime({ offset: true })),
+    ref: z.nullish(z.string()),
+    refs: z.nullish(z.array(zRefInput)),
+    url: z.nullish(z.string())
+});
+
+/**
  * What a reader may change about how the dashboard is presented to them.
  *
  * Every field is doubly optional, and both levels are used: absent means
@@ -2590,6 +2729,100 @@ export const zSentryListOrganizationIssuesQuery = z.object({
  */
 export const zSentryListOrganizationIssuesResponse = z.array(zSentryIssue);
 
+export const zReleasesListInOrganizationPath = z.object({
+    org_slug: z.string()
+});
+
+/**
+ * Releases, newest first
+ */
+export const zReleasesListInOrganizationResponse = z.array(zOrgReleaseResponse);
+
+export const zReleasesCreateInOrganizationBody = zCreateOrgRelease;
+
+export const zReleasesCreateInOrganizationPath = z.object({
+    org_slug: z.string()
+});
+
+/**
+ * Release created in at least one project
+ */
+export const zReleasesCreateInOrganizationResponse = zOrgReleaseResponse;
+
+export const zReleasesDeleteInOrganizationPath = z.object({
+    org_slug: z.string(),
+    version: z.string()
+});
+
+/**
+ * Release deleted
+ */
+export const zReleasesDeleteInOrganizationResponse = z.void();
+
+export const zReleasesGetInOrganizationPath = z.object({
+    org_slug: z.string(),
+    version: z.string()
+});
+
+/**
+ * The release
+ */
+export const zReleasesGetInOrganizationResponse = zOrgReleaseResponse;
+
+export const zReleasesUpdateInOrganizationBody = zUpdateOrgRelease;
+
+export const zReleasesUpdateInOrganizationPath = z.object({
+    org_slug: z.string(),
+    version: z.string()
+});
+
+/**
+ * Release updated
+ */
+export const zReleasesUpdateInOrganizationResponse = zOrgReleaseResponse;
+
+export const zReleasesListCommitsPath = z.object({
+    org_slug: z.string(),
+    version: z.string()
+});
+
+/**
+ * The release's commits, newest first
+ */
+export const zReleasesListCommitsResponse = z.array(zCommitResponse);
+
+export const zReleasesListDeploysPath = z.object({
+    org_slug: z.string(),
+    version: z.string()
+});
+
+/**
+ * The latest deploy per project and environment
+ */
+export const zReleasesListDeploysResponse = z.array(zDeployResponse);
+
+export const zReleasesCreateDeployBody = zCreateDeploy;
+
+export const zReleasesCreateDeployPath = z.object({
+    org_slug: z.string(),
+    version: z.string()
+});
+
+/**
+ * Deploy recorded
+ */
+export const zReleasesCreateDeployResponse = zDeployResponse;
+
+export const zReleasesPreviousWithCommitsPath = z.object({
+    org_slug: z.string(),
+    version: z.string()
+});
+
+/**
+ * The previous release with commits, or `{}`
+ */
+export const zReleasesPreviousWithCommitsResponse = z.record(z.string(), z.unknown());
+
 export const zSentryListReposPath = z.object({
     org_slug: z.string()
 });
@@ -2664,6 +2897,16 @@ export const zSentryListIssuesQuery = z.object({
  * Issues; paginated by the `Link` header
  */
 export const zSentryListIssuesResponse = z.array(zSentryIssue);
+
+export const zReleasesListInProjectPath = z.object({
+    org_slug: z.string(),
+    project_slug: z.string()
+});
+
+/**
+ * The project's releases, newest first
+ */
+export const zReleasesListInProjectResponse = z.array(zOrgReleaseResponse);
 
 export const zReleasesCreateBody = zCreateRelease;
 

@@ -156,7 +156,10 @@ pub use project::{
     VALID_PLATFORMS,
 };
 pub use release::{
-    is_valid_version, CreateRelease, Release, ReleaseResponse, ReleaseSummary, UpdateRelease,
+    is_valid_environment, is_valid_version, CommitAuthor, CommitInput, CommitResponse,
+    CreateDeploy, CreateOrgRelease, CreateRelease, DeployResponse, Detail, FieldErrors,
+    OrgReleaseResponse, ProjectRef, RefInput, Release, ReleaseProject, ReleaseResponse,
+    ReleaseSummary, UpdateOrgRelease, UpdateRelease,
 };
 pub use role::{Permission, PersonalAccess, Role, RoleAssignment};
 pub use span_v2::{parse_span_v2_container, SpanV2Entry};

@@ -36,6 +36,7 @@ mod monitors_api_test;
 mod monitors_service_test;
 mod oauth_test;
 mod openapi_contract_test;
+mod org_releases_api_test;
 mod payload_storage_test;
 #[cfg(feature = "postgres")]
 mod pg_schema_test;

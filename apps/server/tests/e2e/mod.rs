@@ -6,4 +6,6 @@
 mod bootstrap_file_test;
 #[cfg(all(feature = "sqlite", unix))]
 mod crash_test;
+#[cfg(all(feature = "sqlite", unix))]
+mod sentry_cli_test;
 mod sentry_sdk_test;

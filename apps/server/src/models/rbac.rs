@@ -105,7 +105,7 @@ catalog! {
     Logs = "logs", "monitoring", Project, [R];
     Sessions = "sessions", "monitoring", Project, [R];
     // Project: releases
-    Releases = "releases", "releases", Project, [R, C, U];
+    Releases = "releases", "releases", Project, [R, C, U, D];
     SourceMaps = "source-maps", "releases", Project, [R, C];
     // Project: alerting
     AlertRules = "alert-rules", "alerts", Project, [R, C, U, D];

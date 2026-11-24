@@ -6,7 +6,10 @@ use crate::db::dialect::{since, since_day, since_utc};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::session::crash_free_rate;
-use crate::models::{is_valid_version, CreateRelease, Release, ReleaseSummary, UpdateRelease};
+use crate::models::{
+    is_valid_version, CommitAuthor, CommitInput, CommitResponse, CreateDeploy, CreateRelease,
+    DeployResponse, OrgReleaseResponse, Release, ReleaseProject, ReleaseSummary, UpdateRelease,
+};
 use crate::services::ResolutionService;
 
 const RELEASE_COLUMNS: &str = "id, project_id, version, ref, url, date_created, date_released";
@@ -98,6 +101,347 @@ impl ReleaseService {
         ResolutionService::clear_expired(&mut tx, project_id, &release.release_ref()).await?;
         tx.commit().await?;
         Ok((release, true))
+    }
+
+    /// A release across the given projects that have it, as Sentry's
+    /// organization-level release: the earliest creation, the latest release
+    /// date, and its projects. `None` when none of them has it.
+    pub async fn org_release(
+        pool: &DbPool,
+        version: &str,
+        project_ids: &[i32],
+    ) -> AppResult<Option<OrgReleaseResponse>> {
+        if project_ids.is_empty() {
+            return Ok(None);
+        }
+        let mut query = sqlx::QueryBuilder::new(
+            "SELECT p.id, p.slug, p.name, r.ref, r.url, r.date_created, r.date_released, r.id \
+             FROM releases r JOIN projects p ON p.id = r.project_id WHERE r.version = ",
+        );
+        query
+            .push_bind(version.trim())
+            .push(" AND r.project_id IN (");
+        let mut ids = query.separated(", ");
+        for id in project_ids {
+            ids.push_bind(*id);
+        }
+        query.push(") ORDER BY p.slug");
+        type Row = (
+            i32,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            DateTime<Utc>,
+            Option<DateTime<Utc>>,
+            i32,
+        );
+        let rows: Vec<Row> = query.build_query_as().fetch_all(pool).await?;
+        let Some(first) = rows.first() else {
+            return Ok(None);
+        };
+        let release_ids: Vec<i32> = rows.iter().map(|r| r.7).collect();
+        let commits = Self::commits(pool, &release_ids).await?;
+        Ok(Some(OrgReleaseResponse {
+            commit_count: commits.len() as i64,
+            last_commit: commits.into_iter().next(),
+            version: version.trim().to_string(),
+            reference: rows.iter().find_map(|r| r.3.clone()),
+            url: rows.iter().find_map(|r| r.4.clone()),
+            date_created: rows.iter().map(|r| r.5).min().unwrap_or(first.5),
+            date_released: rows.iter().filter_map(|r| r.6).max(),
+            projects: rows
+                .into_iter()
+                .map(|(id, slug, name, ..)| ReleaseProject { id, slug, name })
+                .collect(),
+        }))
+    }
+
+    /// Deletes a release from these projects, unless Sentry's
+    /// `Release.safe_delete` would refuse: an issue started in it
+    /// (`first_release`), or it has health data. `Err` holds Sentry's reason.
+    pub async fn delete(
+        pool: &DbPool,
+        version: &str,
+        project_ids: &[i32],
+    ) -> AppResult<Result<(), &'static str>> {
+        let version = version.trim();
+        let in_projects = |sql: &str| {
+            let mut query = sqlx::QueryBuilder::new(sql);
+            query
+                .push_bind(version.to_string())
+                .push(" AND project_id IN (");
+            let mut list = query.separated(", ");
+            for id in project_ids {
+                list.push_bind(*id);
+            }
+            query.push(")");
+            query
+        };
+        // The checks and the delete see one state: the digest takes the same
+        // project locks (ascending) before it writes an issue's
+        // `first_release`, and on SQLite the write lock serializes them.
+        let mut tx = crate::db::begin_write(pool).await?;
+        let mut locked = project_ids.to_vec();
+        locked.sort_unstable();
+        for project_id in locked {
+            ResolutionService::lock_project(&mut tx, project_id).await?;
+        }
+        let mut referenced =
+            in_projects("SELECT EXISTS(SELECT 1 FROM issues WHERE first_release = ");
+        referenced.push(")");
+        if referenced
+            .build_query_scalar::<bool>()
+            .fetch_one(&mut *tx)
+            .await?
+        {
+            return Ok(Err(
+                "This release is referenced by active issues and cannot be removed.",
+            ));
+        }
+        let mut health = in_projects("SELECT EXISTS(SELECT 1 FROM session_counts WHERE release = ");
+        health.push(")");
+        if health
+            .build_query_scalar::<bool>()
+            .fetch_one(&mut *tx)
+            .await?
+        {
+            return Ok(Err("This release has health data and cannot be removed."));
+        }
+        in_projects("DELETE FROM releases WHERE version = ")
+            .build()
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(Ok(()))
+    }
+
+    /// The commits of the first of these project releases that has any, in
+    /// the order they were set. Every project of a release gets the same list.
+    pub async fn commits(pool: &DbPool, release_ids: &[i32]) -> AppResult<Vec<CommitResponse>> {
+        if release_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut query = sqlx::QueryBuilder::new(
+            "SELECT release_id, sha, message, date_created, repository, author_name, author_email \
+             FROM release_commits WHERE release_id IN (",
+        );
+        let mut list = query.separated(", ");
+        for id in release_ids {
+            list.push_bind(*id);
+        }
+        query.push(") ORDER BY release_id, position");
+        type Row = (
+            i32,
+            String,
+            Option<String>,
+            Option<DateTime<Utc>>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        );
+        let rows: Vec<Row> = query.build_query_as().fetch_all(pool).await?;
+        let Some(first) = rows.first().map(|r| r.0) else {
+            return Ok(Vec::new());
+        };
+        Ok(rows
+            .into_iter()
+            .take_while(|r| r.0 == first)
+            .map(
+                |(_, id, message, date_created, repository, name, email)| CommitResponse {
+                    id,
+                    message,
+                    date_created,
+                    repository,
+                    author: CommitAuthor { name, email },
+                },
+            )
+            .collect())
+    }
+
+    /// Replaces the commits of `version` in each of these projects, in the
+    /// given order: Sentry's `set_commits`. An empty list clears them.
+    pub async fn set_commits(
+        pool: &DbPool,
+        version: &str,
+        project_ids: &[i32],
+        commits: &[CommitInput],
+    ) -> AppResult<()> {
+        // Reads the release, then writes: take the write lock first, or a
+        // writer committing in between fails this one on SQLite.
+        let mut tx = crate::db::begin_write(pool).await?;
+        for &project_id in project_ids {
+            let release_id: i32 = sqlx::query_scalar(
+                "SELECT id FROM releases WHERE project_id = $1 AND version = $2",
+            )
+            .bind(project_id)
+            .bind(version.trim())
+            .fetch_one(&mut *tx)
+            .await?;
+            sqlx::query("DELETE FROM release_commits WHERE release_id = $1")
+                .bind(release_id)
+                .execute(&mut *tx)
+                .await?;
+            for (position, commit) in commits.iter().enumerate() {
+                sqlx::query(
+                    "INSERT INTO release_commits \
+                     (release_id, position, sha, repository, author_name, author_email, message, date_created) \
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                )
+                .bind(release_id)
+                .bind(position as i32)
+                .bind(&commit.id)
+                .bind(&commit.repository)
+                .bind(&commit.author_name)
+                .bind(&commit.author_email)
+                .bind(&commit.message)
+                .bind(commit.timestamp)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// The release before `version`, by creation, among these projects that
+    /// has commits: where `set-commits` starts reading git
+    /// (`organization_release_previous_commits.py`).
+    pub async fn previous_with_commits(
+        pool: &DbPool,
+        version: &str,
+        project_ids: &[i32],
+    ) -> AppResult<Option<OrgReleaseResponse>> {
+        if project_ids.is_empty() {
+            return Ok(None);
+        }
+        let mut query =
+            sqlx::QueryBuilder::new("SELECT r.version FROM releases r WHERE r.project_id IN (");
+        let mut list = query.separated(", ");
+        for id in project_ids {
+            list.push_bind(*id);
+        }
+        query
+            .push(") AND r.version <> ")
+            .push_bind(version.trim())
+            .push(
+                " AND r.date_created < (SELECT MIN(cur.date_created) FROM releases cur WHERE cur.version = ",
+            )
+            .push_bind(version.trim())
+            .push(
+                ") AND EXISTS (SELECT 1 FROM release_commits c WHERE c.release_id = r.id) \
+                 ORDER BY r.date_created DESC LIMIT 1",
+            );
+        let previous: Option<String> = query.build_query_scalar().fetch_optional(pool).await?;
+        match previous {
+            Some(previous) => Self::org_release(pool, &previous, project_ids).await,
+            None => Ok(None),
+        }
+    }
+
+    /// Records a deploy of `version` in each of these projects.
+    pub async fn create_deploy(
+        pool: &DbPool,
+        version: &str,
+        project_ids: &[i32],
+        environment: &str,
+        input: &CreateDeploy,
+    ) -> AppResult<DeployResponse> {
+        let date_finished = input.date_finished.unwrap_or_else(Utc::now);
+        let mut tx = pool.begin().await?;
+        let mut first: Option<i32> = None;
+        for &project_id in project_ids {
+            let id: i32 = sqlx::query_scalar(
+                "INSERT INTO release_deploys (release_id, environment, name, url, date_started, date_finished) \
+                 SELECT id, $3, $4, $5, $6, $7 FROM releases WHERE project_id = $1 AND version = $2 \
+                 RETURNING id",
+            )
+            .bind(project_id)
+            .bind(version.trim())
+            .bind(environment)
+            .bind(&input.name)
+            .bind(&input.url)
+            .bind(input.date_started)
+            .bind(date_finished)
+            .fetch_one(&mut *tx)
+            .await?;
+            first.get_or_insert(id);
+        }
+        tx.commit().await?;
+        Ok(DeployResponse {
+            id: first.unwrap_or_default().to_string(),
+            environment: environment.to_string(),
+            date_started: input.date_started,
+            date_finished,
+            name: input.name.clone(),
+            url: input.url.clone(),
+        })
+    }
+
+    /// The latest deploy of `version` per project and environment, newest
+    /// first, as Sentry lists a release's deploys.
+    pub async fn deploys(
+        pool: &DbPool,
+        version: &str,
+        project_ids: &[i32],
+    ) -> AppResult<Vec<DeployResponse>> {
+        if project_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut query = sqlx::QueryBuilder::new(
+            "SELECT CAST(d.id AS TEXT) AS id, d.environment, d.date_started, d.date_finished, d.name, d.url \
+             FROM release_deploys d JOIN releases r ON r.id = d.release_id \
+             WHERE r.version = ",
+        );
+        query
+            .push_bind(version.trim())
+            .push(" AND r.project_id IN (");
+        let mut list = query.separated(", ");
+        for id in project_ids {
+            list.push_bind(*id);
+        }
+        query.push(
+            ") AND NOT EXISTS (SELECT 1 FROM release_deploys newer \
+               WHERE newer.release_id = d.release_id AND newer.environment = d.environment \
+               AND (newer.date_finished > d.date_finished \
+                    OR (newer.date_finished = d.date_finished AND newer.id > d.id))) \
+             ORDER BY d.date_finished DESC, d.id DESC",
+        );
+        Ok(query.build_query_as().fetch_all(pool).await?)
+    }
+
+    /// Release versions, newest first, in the given projects or in all.
+    pub async fn latest_versions(
+        pool: &DbPool,
+        project_ids: Option<&[i32]>,
+        limit: i64,
+    ) -> AppResult<Vec<String>> {
+        let mut query = sqlx::QueryBuilder::new("SELECT version FROM releases");
+        if let Some(ids) = project_ids {
+            if ids.is_empty() {
+                return Ok(Vec::new());
+            }
+            query.push(" WHERE project_id IN (");
+            let mut list = query.separated(", ");
+            for id in ids {
+                list.push_bind(*id);
+            }
+            query.push(")");
+        }
+        query
+            .push(" GROUP BY version ORDER BY MAX(date_created) DESC, version DESC LIMIT ")
+            .push_bind(limit);
+        Ok(query.build_query_scalar().fetch_all(pool).await?)
+    }
+
+    /// The projects that have a release with this version.
+    pub async fn projects_with(pool: &DbPool, version: &str) -> AppResult<Vec<i32>> {
+        Ok(sqlx::query_scalar(
+            "SELECT project_id FROM releases WHERE version = $1 ORDER BY project_id",
+        )
+        .bind(version.trim())
+        .fetch_all(pool)
+        .await?)
     }
 
     /// Fetches a release by `(project_id, version)`.

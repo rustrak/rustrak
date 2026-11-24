@@ -63,7 +63,6 @@ fn grants_drop_actions_a_resource_does_not_accept() {
 fn the_catalog_only_offers_permissions_an_endpoint_enforces() {
     for (resource, action) in [
         (Resource::ClientKeys, Action::Update),
-        (Resource::Releases, Action::Delete),
         (Resource::SourceMaps, Action::Delete),
         (Resource::Telemetry, Action::Update),
         (Resource::Mcp, Action::Read),
