@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@import "@rustrak/ui/tokens.css";
+@import "@rustrak/ui/base.css";
+@import "./display.css";
+
+/* The design system's classes are read from its source, as the dashboard does. */
+@source "../../../../packages/ui/src";
+
+@theme {
+  /* The faces from Astro's font API (`astro.config.mjs`): the same families
+     the tokens name, plus fallbacks sized to match them, so text does not
+     shift when the face arrives. */
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+
+  --color-code-fg: var(--code-fg);
+  --color-code-comment: var(--code-comment);
+  --color-code-keyword: var(--code-keyword);
+  --color-code-string: var(--code-string);
+  --color-code-function: var(--code-function);
+  --color-code-punctuation: var(--code-punctuation);
+}
+
+html {
+  background: var(--surface-canvas);
+}
+
+/*
+ * `SegmentedControl` slides a chip under the checked item once it has
+ * measured it, which a page rendered at build time never does. Here the
+ * checked item wears the chip itself.
+ */
+[role="radiogroup"] > [data-checked] {
+  @apply bg-surface-floating shadow-raised;
+}
+
+/* An app joining the flow fades in where it lands. */
+@keyframes flow-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+.flow-enter {
+  animation: flow-enter 0.6s ease-out both;
+}
+
+/*
+ * The app's tile flashes the moment its pulse leaves it. Same duration and
+ * delay as that pulse (set inline), so the flash and the light are one event.
+ */
+@keyframes flow-ping {
+  0% {
+    border-color: var(--sev-error);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--sev-error) 22%, transparent);
+  }
+  14%,
+  100% {
+    border-color: var(--border);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.flow-enter.flow-ping {
+  animation-name: flow-enter, flow-ping;
+  animation-timing-function: ease-out, linear;
+  animation-iteration-count: 1, infinite;
+  animation-fill-mode: both, none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-enter,
+  .flow-enter.flow-ping {
+    animation: none;
+  }
+}
+
+/*
+ * The landing's motion, without a library.
+ *
+ * One curve for everything (slow on purpose, the page should feel spacious).
+ * `[data-reveal]` blocks wait, held on their first frame, until `reveal.ts`
+ * marks them `.in` as they scroll in; `.enter` plays on load. A headline's
+ * `.word`s rise out of their masks as their heading comes in. The delay is
+ * set per element in `--delay`.
+ */
+:root {
+  --ease-landing: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Every move is this one, tuned per element: `--x`, `--y`, `--scale` and
+   `--blur` say where it comes from. */
+@keyframes reveal {
+  from {
+    opacity: 0;
+    translate: var(--x, 0) var(--y, 24px);
+    scale: var(--scale, 1);
+    filter: blur(var(--blur, 8px));
+  }
+}
+
+/* A bar uncovered left to right: a clip animates without relayout, where a
+   width would reflow every frame. */
+@keyframes grow {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+}
+
+[data-reveal].grow {
+  animation-name: grow;
+}
+
+@keyframes rise {
+  from {
+    translate: 0 150%;
+  }
+}
+
+[data-reveal],
+.enter {
+  animation: reveal var(--duration, 1.1s) var(--ease-landing) var(--delay, 0s)
+    both;
+}
+
+[data-reveal="words"] {
+  animation: none;
+}
+
+.word {
+  display: inline-block;
+  animation: rise 1.2s var(--ease-landing) var(--delay, 0s) both;
+}
+
+/*
+ * The large moving blocks keep their own layer before, during and after the
+ * move. Without it the browser drops the layer the moment the animation ends
+ * and paints the block again in place, and on a big block that repaint is a
+ * visible hitch at the tail of the entrance. Every layer costs GPU memory, so
+ * only the blocks where the hitch shows ask for one (`layer` on `Reveal`);
+ * on a line of text or a small square it goes unseen.
+ */
+[data-layer],
+.enter {
+  will-change: opacity, translate, filter;
+}
+
+.word {
+  will-change: translate;
+}
+
+[data-reveal],
+[data-reveal] .word {
+  animation-play-state: paused;
+}
+
+[data-reveal].in,
+[data-reveal].in .word {
+  animation-play-state: running;
+}
+
+/* Reduced motion keeps the fades and drops the moves. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes reveal {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .word {
+    animation: none;
+  }
+}

@@ -1,0 +1,7 @@
+# Everything is open to every crawler, AI ones included: being retrievable is
+# what gets a page cited by ChatGPT, Claude or Perplexity, and a docs site has
+# nothing to hide from them.
+User-agent: *
+Allow: /
+
+Sitemap: https://rustrak.dev/sitemap.xml

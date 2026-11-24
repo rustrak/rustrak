@@ -1,0 +1,134 @@
+---
+import { ICONS } from './flow/icons';
+import {
+  BEAM_Y,
+  CELL,
+  COLS,
+  cellX,
+  cellY,
+  colOf,
+  H,
+  INITIAL,
+  ROWS,
+  rowOf,
+  SEAM,
+  tileStyle,
+  W,
+  WALL_BOTTOM,
+  WALL_TOP,
+} from './flow/scene';
+import Reveal from './reveal.astro';
+import Words from './words.astro';
+
+const TILE =
+  'flow-enter flow-ping absolute flex aspect-square w-[2.5%] items-center justify-center rounded-md border border-border bg-canvas';
+const ICON = 'w-[56%] rounded-sm';
+---
+
+<!-- Many apps in, one stream out. The light is drawn by `flow/scene.ts`. -->
+<section class="overflow-hidden py-16 sm:py-24">
+  <!-- Wider than the rest of the page: the drawing needs the room. -->
+  <Reveal y={48} layer class="mx-auto w-full max-w-[96rem] px-6">
+    <!--
+      On a phone the drawing is cropped rather than shrunk: shown at well over
+      twice the screen's width, with the reporting apps, the wall and the start
+      of the bundle in view.
+    -->
+    <div
+      data-flow
+      class="relative aspect-[1200/440] w-full max-lg:-ml-[60%] max-lg:w-[240%] sm:max-lg:-ml-[25%] sm:max-lg:w-[150%]"
+    >
+      <svg
+        aria-hidden="true"
+        viewBox={`0 0 ${W} ${H}`}
+        class="absolute inset-0 size-full overflow-visible"
+      >
+        <defs>
+          <!-- In user space: a vertical line has no width, so a gradient sized
+               to its bounding box would not paint at all. -->
+          <linearGradient
+            id="flow-wall"
+            gradientUnits="userSpaceOnUse"
+            x1={SEAM}
+            x2={SEAM}
+            y1={WALL_TOP}
+            y2={WALL_BOTTOM}
+          >
+            <stop offset="0" stop-color="var(--fg)" stop-opacity="0"></stop>
+            <stop offset="0.5" stop-color="var(--fg)" stop-opacity="0.3"></stop>
+            <stop offset="1" stop-color="var(--fg)" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
+        {
+          Array.from({ length: COLS * ROWS }, (_, cell) => (
+            <rect
+              x={cellX(colOf(cell))}
+              y={cellY(rowOf(cell))}
+              width={CELL}
+              height={CELL}
+              rx={7}
+              class="fill-none stroke-fg"
+              stroke-opacity={0.04 + (colOf(cell) / (COLS - 1)) * 0.1}
+              vector-effect="non-scaling-stroke"
+            />
+          ))
+        }
+        <line
+          x1={SEAM}
+          x2={SEAM}
+          y1={WALL_TOP}
+          y2={WALL_BOTTOM}
+          stroke="url(#flow-wall)"
+          stroke-width="1"
+          vector-effect="non-scaling-stroke"></line>
+      </svg>
+
+      <canvas aria-hidden="true" class="pointer-events-none absolute inset-0 size-full"></canvas>
+
+      {
+        INITIAL.map((source) => (
+          <span data-tile class={TILE} style={tileStyle(source)}>
+            <img src={ICONS[source.platform]} alt="" width="16" height="16" class={ICON} />
+          </span>
+        ))
+      }
+      <!-- What an app that joins later is made from. -->
+      <template>
+        <span data-tile class={TILE}><img alt="" width="16" height="16" class={ICON} /></span>
+      </template>
+
+      <div
+        class="absolute right-0 left-[56%] max-lg:hidden"
+        style={`bottom:calc(${((H - BEAM_Y) / H) * 100}% + 3rem)`}
+      >
+        <Words text="Every app. One place." delay={0.4} class="text-balance text-fg text-headline" />
+      </div>
+      <div
+        class="absolute right-0 left-[56%] max-lg:hidden"
+        style={`top:calc(${(BEAM_Y / H) * 100}% + 3rem)`}
+      >
+        <Reveal delay={0.7}>
+          <p class="max-w-md text-pretty text-fg-subtle text-lead">
+            Your frontends, APIs, workers and mobile apps report to one Rustrak.
+            Thousands of events go in; a short list of issues comes out.
+          </p>
+        </Reveal>
+      </div>
+    </div>
+
+    <div class="mt-6 flex flex-col gap-4 lg:hidden">
+      <Words text="Every app. One place." class="text-balance text-fg text-headline" />
+      <p class="text-pretty text-fg-subtle text-lead">
+        Your frontends, APIs, workers and mobile apps report to one Rustrak.
+        Thousands of events go in; a short list of issues comes out.
+      </p>
+    </div>
+  </Reveal>
+</section>
+
+<script>
+  import { startFlow } from './flow/scene';
+
+  const stage = document.querySelector<HTMLElement>('[data-flow]');
+  if (stage) startFlow(stage);
+</script>

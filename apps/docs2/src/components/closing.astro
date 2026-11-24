@@ -1,0 +1,43 @@
+---
+import { Image } from 'astro:assets';
+import { StarIcon } from '@rustrak/ui';
+import backdrop from '../assets/lime-swirl.jpg';
+import { GITHUB, START } from '../site';
+import { LinkButton } from './link-button';
+import Reveal from './reveal.astro';
+import Words from './words.astro';
+---
+
+<section class="py-24 sm:py-32">
+  <div class="mx-auto w-full max-w-7xl px-4 sm:px-6">
+    <Reveal y={48} layer class="relative overflow-hidden rounded-3xl border border-border-subtle">
+      <Image
+        src={backdrop}
+        alt=""
+        widths={[480, 960]}
+        sizes="100vw"
+        class="absolute inset-0 size-full scale-110 object-cover blur-2xl saturate-[0.85]"
+      />
+      <div class="absolute inset-0 bg-canvas/55"></div>
+      <div class="relative flex flex-col items-center px-6 py-28 text-center sm:py-36">
+        <Words
+          text="Your errors, on your server."
+          delay={0.3}
+          class="max-w-[16ch] text-balance text-display text-fg"
+        />
+        <Reveal delay={0.6}>
+          <p class="mt-6 max-w-lg text-pretty text-fg-secondary text-lead">
+            Open source under AGPL-3.0. No per-event pricing, no sampling you did
+            not ask for.
+          </p>
+        </Reveal>
+        <Reveal delay={0.75} class="mt-10 flex items-center gap-3">
+          <LinkButton href={START} variant="primary" size="lg">Get started</LinkButton>
+          <LinkButton href={GITHUB} variant="secondary" size="lg" icon={StarIcon}>
+            Star on GitHub
+          </LinkButton>
+        </Reveal>
+      </div>
+    </Reveal>
+  </div>
+</section>

@@ -1,0 +1,91 @@
+---
+import { Font, fontData } from 'astro:assets';
+import { OG_IMAGE } from '../seo';
+import '../styles/home.css';
+
+/**
+ * The landing's root: the design system's tokens, Inter, and everything a
+ * crawler or a link preview reads. The canonical is the page's own path on
+ * `site`, so it never points a page at another.
+ */
+interface Props {
+  title: string;
+  description: string;
+}
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL(OG_IMAGE.url, Astro.site);
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/icon.png" type="image/png" sizes="256x256" />
+    <link rel="apple-touch-icon" href="/apple-icon.png" sizes="180x180" />
+    <link rel="sitemap" href="/sitemap.xml" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Rustrak" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content={String(OG_IMAGE.width)} />
+    <meta property="og:image:height" content={String(OG_IMAGE.height)} />
+    <meta property="og:image:alt" content={OG_IMAGE.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    <!-- Inter is the headline's face, so its Latin file is fetched with the
+         page; Latin Extended and the mono face wait until something uses
+         them. `<Font preload>` cannot pick a subset out of local files, so
+         the link is written here: the first variant in `astro.config.mjs`. -->
+    <link
+      rel="preload"
+      href={fontData['--font-inter'][0].src[0].url}
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <Font cssVariable="--font-inter" />
+    <Font cssVariable="--font-geist-mono" />
+    <slot name="head" />
+
+    <!-- Without JavaScript nothing would ever mark a block as scrolled in. -->
+    <noscript>
+      <style>
+        [data-reveal],
+        [data-reveal] .word {
+          animation: none;
+        }
+      </style>
+    </noscript>
+  </head>
+  <body class="bg-canvas text-fg">
+    <slot />
+    <script>
+      // Plays each `[data-reveal]` block once, a little past the fold.
+      const seen = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('in');
+            seen.unobserve(entry.target);
+          }
+        },
+        { rootMargin: '-12% 0px' },
+      );
+      for (const el of document.querySelectorAll('[data-reveal]')) {
+        seen.observe(el);
+      }
+    </script>
+  </body>
+</html>

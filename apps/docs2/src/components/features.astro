@@ -1,0 +1,164 @@
+---
+import { DsnDiff } from './dsn-diff';
+import Feature from './feature.astro';
+import {
+  AlertsScreen,
+  AppFrame,
+  IssueScreen,
+  IssuesScreen,
+  PerformanceScreen,
+} from './product';
+---
+
+<Feature
+  index={1}
+  layout="wide"
+  eyebrow="Issues"
+  title="Every error, grouped and ranked."
+  lead="Thousands of events become a short list of issues, with how often each one happens, who it reaches and whether it is new."
+  href="/usage/issues"
+  points={[
+    {
+      title: 'Grouped by fingerprint',
+      body: 'Events with the same cause land on one issue instead of a thousand rows.',
+    },
+    {
+      title: 'New, regressed, escalating',
+      body: 'What changed since you last looked is flagged on the row.',
+    },
+    {
+      title: 'Trends at a glance',
+      body: 'A 24-hour sparkline on every issue, without opening anything.',
+    },
+    {
+      title: 'Assign and resolve',
+      body: 'Hand an issue to a teammate, or resolve it in the next release.',
+    },
+  ]}
+>
+  <AppFrame section="issues">
+    <IssuesScreen />
+  </AppFrame>
+</Feature>
+
+<Feature
+  index={2}
+  layout="left"
+  eyebrow="Debug"
+  title="The line that broke, and why."
+  lead="Stack traces open on your own code, with the source around the failing line, the breadcrumbs before it and the release it shipped in."
+  designWidth={1280}
+  href="/usage/issues"
+  points={[
+    {
+      title: 'Your frames first',
+      body: 'Application code is expanded; library frames step back.',
+    },
+    {
+      title: 'Source maps',
+      body: 'Upload them and minified JavaScript reads as the code you wrote.',
+    },
+    {
+      title: 'Breadcrumbs and context',
+      body: 'The clicks, requests and logs that led up to the error.',
+    },
+    {
+      title: 'Release health',
+      body: 'Crash-free sessions per release, so a bad deploy shows up fast.',
+    },
+  ]}
+>
+  <AppFrame section="issues" trail={[{ label: 'CHECKOUT-API-4F', mono: true }]}>
+    <IssueScreen at="stack" rail="folded" />
+  </AppFrame>
+</Feature>
+
+<Feature
+  index={3}
+  layout="right"
+  eyebrow="Performance"
+  title="See where the time goes."
+  lead="Transactions and spans from the same SDKs: latency over time for every endpoint, and the waterfall of one slow request down to the query that held it up."
+  designWidth={1280}
+  href="/getting-started/overview"
+  points={[
+    {
+      title: 'Ranked by time spent',
+      body: 'Every endpoint by its share of total time, with p95 and failure rate beside it.',
+    },
+    {
+      title: 'Span waterfall',
+      body: 'Every database call, request and render inside one trace.',
+    },
+    {
+      title: 'Any window',
+      body: 'The last day, two weeks or all time, per environment.',
+    },
+    {
+      title: 'Linked to errors',
+      body: 'An error inside a trace opens on the request it broke.',
+    },
+  ]}
+>
+  <AppFrame section="performance">
+    <PerformanceScreen />
+  </AppFrame>
+</Feature>
+
+<Feature
+  index={4}
+  layout="wide"
+  eyebrow="Alerts"
+  title="Only what is worth a message."
+  lead="Alert rules decide what fires, check it before firing and route it to the people who can fix it. Nobody acknowledges it, it escalates."
+  designWidth={1280}
+  href="/usage/alerts"
+  points={[
+    {
+      title: 'Conditions',
+      body: 'New issues, regressions, or a level and a rate you choose.',
+    },
+    {
+      title: 'Channels',
+      body: 'Slack, email and webhooks, one rule to as many as you need.',
+    },
+    {
+      title: 'Digests',
+      body: 'A daily summary for what does not need anyone right now.',
+    },
+    {
+      title: 'Escalation',
+      body: 'Unacknowledged alerts move on to the next person on their own.',
+    },
+  ]}
+>
+  <AppFrame section="alerts">
+    <AlertsScreen />
+  </AppFrame>
+</Feature>
+
+<Feature
+  index={5}
+  layout="left"
+  eyebrow="Migrate"
+  title="Keep your SDK. Change one line."
+  lead="Rustrak speaks the Sentry protocol, so the official SDKs you already ship talk to it as they are. Point the DSN at your server; point it back to roll back."
+  designWidth={600}
+  interactive
+  href="/getting-started/quickstart"
+  points={[
+    {
+      title: 'Official SDKs',
+      body: 'JavaScript, Python, Go, Rust, Ruby, PHP, Java and more.',
+    },
+    { title: 'No code changes', body: 'The DSN is the only line that moves.' },
+    { title: 'Reversible', body: 'Switching back is the same one-line change.' },
+    { title: 'Your data stays', body: 'Events never leave the server you run.' },
+  ]}
+>
+  <DsnDiff />
+</Feature>
+
+<script>
+  import './controls';
+</script>

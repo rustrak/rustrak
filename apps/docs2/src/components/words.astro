@@ -1,0 +1,35 @@
+---
+/**
+ * A headline that rises word by word out of a mask as it scrolls in.
+ *
+ * The heading watches the viewport, not the words: a word sitting below its
+ * mask is clipped out of view, so it would never see itself scroll in.
+ */
+interface Props {
+  text: string;
+  as?: 'h1' | 'h2';
+  class?: string;
+  delay?: number;
+}
+const { text, as: Tag = 'h2', class: className, delay = 0 } = Astro.props;
+const words = text.split(' ');
+---
+
+<Tag data-reveal="words" aria-label={text} class={className}>
+  {
+    words.map((word, i) => (
+      <Fragment>
+        {i > 0 && ' '}
+        {/* Clip only vertically, padded so descenders and tracking survive. */}
+        <span
+          aria-hidden="true"
+          class="-my-[0.25em] inline-block overflow-y-clip py-[0.25em] align-bottom"
+        >
+          <span class="word" style={`--delay:${delay + i * 0.06}s`}>
+            {word}
+          </span>
+        </span>
+      </Fragment>
+    ))
+  }
+</Tag>

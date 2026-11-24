@@ -1,0 +1,47 @@
+---
+import { CONTAINER } from '../site';
+import { DeployShot } from './deploy-shot';
+import Reveal from './reveal.astro';
+import SectionHead from './section-head.astro';
+import Showcase from './showcase.astro';
+
+/**
+ * Measured, not promised: README's burst test, 20,000 events on a 4-core box
+ * with SQLite.
+ */
+const STATS = [
+  { value: '<60 MB', label: 'Peak memory under a 20,000-event burst' },
+  { value: '5k/s', label: 'Events accepted per second on 4 cores' },
+  { value: '1', label: 'Process for the API, ingestion and dashboard' },
+];
+---
+
+<section class="py-24 sm:py-32">
+  <div class:list={[CONTAINER, 'grid items-center gap-14 lg:grid-cols-2']}>
+    <div class="flex flex-col gap-12">
+      <SectionHead
+        eyebrow="06 Deploy"
+        title="Up in one command."
+        lead="One container, SQLite by default or PostgreSQL when you want it. The first boot creates your admin user, and the dashboard is served from the same port."
+      />
+      <dl class="grid grid-cols-3 gap-6 border-border-subtle border-t pt-8">
+        {
+          STATS.map((stat, i) => (
+            <Reveal delay={0.45 + i * 0.1} class="flex flex-col gap-1.5">
+              <dd class="order-1 text-fg text-page-title tabular-nums">{stat.value}</dd>
+              <dt class="order-2 text-fg-meta text-meta">{stat.label}</dt>
+            </Reveal>
+          ))
+        }
+      </dl>
+    </div>
+
+    <Showcase designWidth={620} interactive class="aspect-[5/4]">
+      <DeployShot />
+    </Showcase>
+  </div>
+</section>
+
+<script>
+  import './controls';
+</script>
