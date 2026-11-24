@@ -150,11 +150,10 @@ export function RuleEditor({
         routing.routingMap,
         integrations,
       );
-      const byId = new Map(integrations.map((i) => [i.id, i]));
+      const names = new Map(integrations.map((i) => [i.id, i.name]));
       await Promise.all(
         payload.map(({ integration_id, routing_override }) => {
-          const integration = byId.get(integration_id);
-          const channel = integration?.name ?? String(integration_id);
+          const channel = names.get(integration_id) ?? String(integration_id);
           return test
             .mutateAsync({
               id: integration_id,
@@ -166,13 +165,10 @@ export function RuleEditor({
                   toast.error(t('editor.testFailed', { channel }), {
                     description: answer.message,
                   });
-                } else if (
-                  integration?.provider_type === 'email' &&
-                  answer.response_body
-                ) {
-                  // An email that reached only some of its recipients names
-                  // the refused ones here. Other channels' bodies are what
-                  // the remote answered, which the integration page shows.
+                } else if (answer.response_body) {
+                  // What the channel answered is shown, and as neutral, as
+                  // on its integration page: an email that reached only
+                  // some of its recipients names the refused ones in here.
                   toast.info(t('editor.testSent', { channel }), {
                     description: answer.response_body,
                   });
