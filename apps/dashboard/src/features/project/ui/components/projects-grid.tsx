@@ -6,7 +6,6 @@ import { useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
 import { Link } from '@/shared/ui/components/link';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
-import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { ProjectCard } from './project-card';
 import { TablePagination } from './table-pagination';
@@ -16,6 +15,8 @@ interface ProjectsGridProps {
   currentPage: number;
   /** The next page is on its way: the pager waits for it. */
   loading?: boolean;
+  /** Goes to another page, keeping the order and search on screen. */
+  onPageChange: (page: number) => void;
 }
 
 /** Every project the reader can see, one card each, a page at a time. */
@@ -23,12 +24,12 @@ export function ProjectsGrid({
   page,
   currentPage,
   loading = false,
+  onPageChange,
 }: ProjectsGridProps) {
   const t = useTranslations('projects');
   const toastFailure = useToastFailure();
   const permissions = usePermissionsLater();
   const canCreate = permissions.can('projects', 'create');
-  const router = useRouter();
   const remove = useMutation(projectMutations.delete());
   const { items, total_count, total_pages, per_page } = page;
 
@@ -100,7 +101,7 @@ export function ProjectsGrid({
           totalCount={total_count}
           perPage={per_page}
           disabled={isPending || loading}
-          onPageChange={(page) => router.push(`/projects?page=${page}`)}
+          onPageChange={onPageChange}
         />
       ) : null}
     </>

@@ -59,5 +59,13 @@ export function Link({ href, scroll, ...props }: LinkProps) {
     );
   }
 
-  return <RouterLink {...props} href={href} resetScroll={scroll} />;
+  // A link is a way in: see `useEntered`. A caller's own `state` wins.
+  return (
+    <RouterLink
+      state={{ entry: true }}
+      {...props}
+      href={href}
+      resetScroll={scroll}
+    />
+  );
 }

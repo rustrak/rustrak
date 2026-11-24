@@ -1865,7 +1865,14 @@
       },
       "title": "Proiecte",
       "subtitle": "Administrează proiectele tale de urmărire a erorilor",
-      "newProject": "Proiect nou"
+      "newProject": "Proiect nou",
+      "search": "Caută proiecte",
+      "sort": {
+        "newest": "Cele mai noi",
+        "recent": "Activitate recentă",
+        "oldest": "Cele mai vechi",
+        "name": "Nume"
+      }
     },
     "newProject": {
       "meta": {

@@ -1865,7 +1865,14 @@
       },
       "title": "Projects",
       "subtitle": "Manage your error tracking projects",
-      "newProject": "New Project"
+      "newProject": "New Project",
+      "search": "Search projects",
+      "sort": {
+        "newest": "Newest",
+        "recent": "Recent activity",
+        "oldest": "Oldest",
+        "name": "Name"
+      }
     },
     "newProject": {
       "meta": {

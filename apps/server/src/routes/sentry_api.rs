@@ -23,7 +23,7 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::rbac::{Action, ProjectScope, Resource};
 use crate::models::{Event, Issue, Project, UpdateIssueState};
-use crate::pagination::{IssueCategory, IssueFilter, SortOrder};
+use crate::pagination::{IssueCategory, IssueFilter, ProjectSort, SortOrder};
 use crate::services::grouping::exception_values;
 use crate::services::scope::Scope;
 
@@ -136,22 +136,20 @@ pub async fn list_projects(
 ) -> AppResult<HttpResponse> {
     let limit = crate::pagination::per_page(query.per_page.unwrap_or(MAX_PER_PAGE))?;
     let page = Page::from_cursor(query.cursor.as_deref(), limit)?;
-    let (projects, total) = match actor.visible_projects() {
-        ProjectScope::All => {
-            ProjectService::list_offset(pool.get_ref(), SortOrder::Desc, page.number + 1, page.size)
-                .await?
-        }
-        ProjectScope::Only(ids) => {
-            ProjectService::list_offset_for_ids(
-                pool.get_ref(),
-                &ids,
-                SortOrder::Desc,
-                page.number + 1,
-                page.size,
-            )
-            .await?
-        }
+    let ids = match actor.visible_projects() {
+        ProjectScope::All => None,
+        ProjectScope::Only(ids) => Some(ids),
     };
+    let (projects, total) = ProjectService::list_offset(
+        pool.get_ref(),
+        ids.as_deref(),
+        ProjectSort::Created,
+        SortOrder::Desc,
+        None,
+        page.number + 1,
+        page.size,
+    )
+    .await?;
 
     let body: Vec<SentryProject> = projects.iter().map(SentryProject::from).collect();
     let has_more = page.start + (projects.len() as i64) < total;

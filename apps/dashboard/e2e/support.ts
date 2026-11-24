@@ -297,18 +297,19 @@ export async function sendFeedback(
 }
 
 /**
- * A second person with no access to anything, created the way a real one is:
+ * A second person, with no access to anything unless `role` gives it, created the way a real one is:
  * invited by the admin, then accepting with a password. Returns a page in
  * their own browser, signed in by the acceptance.
  */
 export async function createMember(
   request: APIRequestContext,
   browser: Browser,
+  role = 'member',
 ) {
   const email = `${unique('member')}@e2e.test`;
   const password = 'member-password';
   const invitation = await request.post('/api/invitations', {
-    data: { email, role: 'member' },
+    data: { email, role },
   });
   expect(invitation.status()).toBe(201);
   const { token } = await invitation.json();

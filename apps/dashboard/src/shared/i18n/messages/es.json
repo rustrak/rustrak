@@ -1865,7 +1865,14 @@
       },
       "title": "Proyectos",
       "subtitle": "Gestiona tus proyectos de seguimiento de errores",
-      "newProject": "Nuevo proyecto"
+      "newProject": "Nuevo proyecto",
+      "search": "Buscar proyectos",
+      "sort": {
+        "newest": "Más recientes",
+        "recent": "Actividad reciente",
+        "oldest": "Más antiguos",
+        "name": "Nombre"
+      }
     },
     "newProject": {
       "meta": {

@@ -1,12 +1,13 @@
 use slug::slugify;
 
+use crate::db::dialect::like_pattern;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{
     CreateProject, Product, Project, QuotaWindows, UpdateProject, SELECTABLE_PLATFORMS,
     VALID_PLATFORMS,
 };
-use crate::pagination::SortOrder;
+use crate::pagination::{ProjectSort, SortOrder};
 
 /// Whether [`ProjectService::update_inner`] runs the slug availability
 /// pre-check before the UPDATE.
@@ -61,91 +62,62 @@ impl ProjectService {
         Ok(rows.into_iter().collect())
     }
 
-    /// Lists projects with offset-based pagination
+    /// Lists projects with offset-based pagination.
+    ///
+    /// `ids` restricts the list to those projects (a member's); `None` is
+    /// every project. `query` matches the name or slug, case-insensitively.
     pub async fn list_offset(
         pool: &DbPool,
+        ids: Option<&[i32]>,
+        sort: ProjectSort,
         order: SortOrder,
+        query: Option<&str>,
         page: i64,
         per_page: i64,
     ) -> AppResult<(Vec<Project>, i64)> {
-        let offset = crate::pagination::offset(page, per_page);
-
-        let total_count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL")
-                .fetch_one(pool)
-                .await?;
-
-        let order_clause = match order {
-            SortOrder::Asc => "ORDER BY created_at ASC",
-            SortOrder::Desc => "ORDER BY created_at DESC",
-        };
-
-        let query = format!(
-            r#"
-            SELECT id, name, slug, sentry_key, stored_event_count,
-                   digested_event_count, created_at, updated_at, platform,
-                   quota_exceeded_until, quota_exceeded_reason, next_quota_check,
-                   quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
-                   rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
-                   disabled_products, product_order
-            FROM projects
-            WHERE deleted_at IS NULL
-            {}
-            LIMIT $1 OFFSET $2
-            "#,
-            order_clause
-        );
-
-        let projects = sqlx::query_as::<_, Project>(sqlx::AssertSqlSafe(&*query))
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(pool)
-            .await?;
-
-        Ok((projects, total_count.0))
-    }
-
-    /// Lists projects with offset-based pagination, restricted to the given ids.
-    ///
-    /// Used to scope the project list for non-admin members to only the projects
-    /// they belong to. If `ids` is empty, returns `(vec![], 0)` without issuing a
-    /// query (avoids an invalid `IN ()` clause).
-    pub async fn list_offset_for_ids(
-        pool: &DbPool,
-        ids: &[i32],
-        order: SortOrder,
-        page: i64,
-        per_page: i64,
-    ) -> AppResult<(Vec<Project>, i64)> {
-        if ids.is_empty() {
+        if ids.is_some_and(|ids| ids.is_empty()) {
             return Ok((Vec::new(), 0));
         }
-
         let offset = crate::pagination::offset(page, per_page);
+        let ids = ids.unwrap_or_default();
+        let pattern = like_pattern(query);
 
-        // Build a parameterized IN list ($1, $2, ...). Bind params start at $1
-        // for the ids; LIMIT/OFFSET come after.
-        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${}", i)).collect();
-        let in_clause = placeholders.join(", ");
-        let limit_param = ids.len() + 1;
-        let offset_param = ids.len() + 2;
+        // Binds: the ids ($1..$n), then the pattern, then LIMIT and OFFSET.
+        let mut filter = String::from("deleted_at IS NULL");
+        if !ids.is_empty() {
+            let list: Vec<String> = (1..=ids.len()).map(|i| format!("${i}")).collect();
+            filter += &format!(" AND id IN ({})", list.join(", "));
+        }
+        let mut n = ids.len();
+        if pattern.is_some() {
+            n += 1;
+            filter += &format!(
+                " AND (LOWER(name) LIKE ${n} ESCAPE '\\' OR LOWER(slug) LIKE ${n} ESCAPE '\\')"
+            );
+        }
 
-        let order_clause = match order {
-            SortOrder::Asc => "ORDER BY created_at ASC",
-            SortOrder::Desc => "ORDER BY created_at DESC",
+        let dir = order.as_str();
+        // A project with no issue has nothing to be recent about: last either way.
+        let order_clause = match sort {
+            ProjectSort::Created => format!("created_at {dir}, id {dir}"),
+            ProjectSort::Name => format!("LOWER(name) {dir}, id {dir}"),
+            ProjectSort::LastSeen => format!(
+                "(SELECT MAX(i.last_seen) FROM issues i WHERE i.project_id = projects.id) \
+                 {dir} NULLS LAST, id {dir}"
+            ),
         };
 
-        let count_query = format!(
-            "SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL AND id IN ({})",
-            in_clause
-        );
-        let mut count_q = sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(&*count_query));
+        let count_sql = format!("SELECT COUNT(*) FROM projects WHERE {filter}");
+        let mut count_q = sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(&*count_sql));
         for id in ids {
             count_q = count_q.bind(id);
         }
-        let total_count: (i64,) = count_q.fetch_one(pool).await?;
+        if let Some(pattern) = &pattern {
+            count_q = count_q.bind(pattern);
+        }
+        let total_count = count_q.fetch_one(pool).await?.0;
 
-        let query = format!(
+        let sql = format!(
             r#"
             SELECT id, name, slug, sentry_key, stored_event_count,
                    digested_event_count, created_at, updated_at, platform,
@@ -154,20 +126,23 @@ impl ProjectService {
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
                    disabled_products, product_order
             FROM projects
-            WHERE deleted_at IS NULL AND id IN ({})
-            {}
+            WHERE {filter}
+            ORDER BY {order_clause}
             LIMIT ${} OFFSET ${}
             "#,
-            in_clause, order_clause, limit_param, offset_param
+            n + 1,
+            n + 2
         );
-
-        let mut q = sqlx::query_as::<_, Project>(sqlx::AssertSqlSafe(&*query));
+        let mut q = sqlx::query_as::<_, Project>(sqlx::AssertSqlSafe(&*sql));
         for id in ids {
             q = q.bind(id);
         }
+        if let Some(pattern) = &pattern {
+            q = q.bind(pattern);
+        }
         let projects = q.bind(per_page).bind(offset).fetch_all(pool).await?;
 
-        Ok((projects, total_count.0))
+        Ok((projects, total_count))
     }
 
     pub async fn get_by_id(pool: &DbPool, id: i32) -> AppResult<Project> {

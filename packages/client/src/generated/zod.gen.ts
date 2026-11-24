@@ -1250,6 +1250,15 @@ export const zProjectRetention = z.object({
 });
 
 /**
+ * Sort mode for the projects list
+ */
+export const zProjectSort = z.enum([
+    'created',
+    'last_seen',
+    'name'
+]);
+
+/**
  * Project-wide counters for the overview page, each with its previous-period
  * comparison.
  */
@@ -3241,7 +3250,9 @@ export const zOauthRevokeGrantResponse = z.void();
 export const zProjectsListQuery = z.object({
     page: z.optional(z.int().check(z.gte(1))),
     per_page: z.optional(z.int().check(z.gte(1), z.lte(100))),
+    sort: z.optional(zProjectSort),
     order: z.optional(zSortOrder),
+    query: z.nullish(z.string()),
     stats_period: z.nullish(z.string())
 });
 

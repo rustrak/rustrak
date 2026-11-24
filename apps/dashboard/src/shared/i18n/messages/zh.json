@@ -1865,7 +1865,14 @@
       },
       "title": "项目",
       "subtitle": "管理您的错误跟踪项目",
-      "newProject": "新建项目"
+      "newProject": "新建项目",
+      "search": "搜索项目",
+      "sort": {
+        "newest": "最新",
+        "recent": "最近活动",
+        "oldest": "最早",
+        "name": "名称"
+      }
     },
     "newProject": {
       "meta": {
