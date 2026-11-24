@@ -1,0 +1,60 @@
+---
+version: v0.33.0
+title: Security Hardening
+description: Login, SSO, alerts and ingest are hardened after a security audit, projects can be searched and sorted by activity, and every sentry-cli releases command works against Rustrak
+date: 2026-11-24
+tags: [security, sso, projects, releases, sentry-cli, ingest, api]
+---
+
+## Upgrading
+
+- **`RUSTRAK_BOOTSTRAP_TOKEN` is now the token itself**: 40 lowercase hex characters, for example from `openssl rand -hex 20`. It is never printed. The old `RUSTRAK_BOOTSTRAP_TOKEN=1` form creates nothing and logs how to set it ([#356](https://github.com/rustrak/rustrak/issues/356))
+- **Email integrations with their own SMTP host** no longer borrow `SMTP_USERNAME` and `SMTP_PASSWORD`, and that host must resolve to a public address unless `RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS` is set. Give such an integration its own login, or it stops sending
+- **Reactivated alert rules are deleted.** Rustrak never takes an issue out of the archive on its own, so they could never fire. Their history is kept, and the API answers `400` to `alert_type: "unmute"`
+- **SSO on an instance with no accounts** only creates the first one, as owner, for a member of `OIDC_ADMIN_GROUPS`. Otherwise create the owner with `CREATE_SUPERUSER` or the bootstrap file ([#358](https://github.com/rustrak/rustrak/issues/358))
+- Accounts already linked to an SSO identity are marked unverified. Their logins keep working; SSO just no longer links another identity into them automatically
+- The Docker image sets `INGEST_DIR=/data/ingest`, so the ingest queue lives on the `/data` volume ([#359](https://github.com/rustrak/rustrak/issues/359))
+- Migrations on PostgreSQL and SQLite add `release_deploys`, `release_commits`, `session_errors`, `user_sidebar_projects` and `users.email_verified`. On PostgreSQL, eleven `CHAR` hash columns become `VARCHAR` so their indexes are used ([#329](https://github.com/rustrak/rustrak/issues/329))
+- `@rustrak/client` is regenerated with the organization releases, `sidebar` and project `sort` and `query`
+
+## Security
+
+Every finding of a security audit of the server is fixed, each with a regression test seen failing before the change.
+
+- **Login:** ten attempts a minute per email, then `429` with `Retry-After`. An unknown email takes as long as a wrong password, and "Account is disabled" only appears with the right password, so login no longer reveals which accounts exist ([#47](https://github.com/rustrak/rustrak/issues/47))
+- **SSO:** a fresh instance can no longer be taken by the first person to sign in, and SSO only links an identity automatically into an account whose email is verified
+- **Cross-site requests:** requests authenticated by the session cookie are refused when they come from another site. Bearer tokens are unaffected
+- **Alerts:** an alert rule can only point an integration at a URL other than its own with `integrations:update`, and an integration's SMTP host is checked like any other alert destination
+- **Ingest and uploads:** stack traces are cut to Relay's 50 oldest and 200 newest frames, artifact bundles are bounded per entry, in total and in entry count, and shedding and the project quota run before an envelope body is read
+- **Secrets:** the bootstrap token, the superuser password and the SMTP password never reach a log line
+
+## Projects
+
+- `/projects` has a search bar and sorts by recent activity, creation date or name. Projects with no issues come last. Save "Recent activity" as your default view to always open it that way ([#597](https://github.com/rustrak/rustrak/issues/597))
+- The sidebar no longer stops at five projects. The options button next to **Projects** sorts them by manual order, name or activity, hides the ones you don't want and lets you drag them into your own order. It is saved per user, and a new project appears at the end ([#598](https://github.com/rustrak/rustrak/issues/598))
+
+## Releases from sentry-cli
+
+`sentry-cli releases new`, `finalize`, `set-commits`, `deploys new` and `list`, `list`, `info --show-commits` and `delete` used to fail, and the bundler plugins logged errors on every build. Rustrak now serves Sentry's organization-level releases API ([#91](https://github.com/rustrak/rustrak/issues/91)).
+
+- A release spans the projects that have it. The organization slug is accepted and ignored
+- Deploys are listed as the latest per project and environment
+- `set-commits` reads commits from the local git checkout, and the list sent replaces the release's commits
+- `delete` refuses a release that is an issue's first release or has health data, as Sentry does, and needs the new `releases:delete` permission
+
+See [Releases](/usage/releases).
+
+## Ingest
+
+Each gap was checked against Relay ([#385](https://github.com/rustrak/rustrak/issues/385)).
+
+- Every item type has Relay's size limit instead of 1 MiB, so a large log or span batch no longer drops the error travelling with it
+- One bad entry in a log or span batch is skipped on its own instead of failing the whole batch
+- Python log levels map to debug through fatal, and a timestamp with no offset reads as UTC instead of the ingest time
+- Sessions: device clock drift is corrected, sessions outside Relay's window are dropped, and a session with errors counts as errored once, crashed and abnormal included. The browser SDK's handled errors no longer show as healthy sessions
+
+## Fixes
+
+- The issue culprit is computed as Sentry does: the SDK's culprit, else the transaction, else the in-app frame in each platform's format ([#456](https://github.com/rustrak/rustrak/issues/456), [@HEOJUNFO](https://github.com/HEOJUNFO))
+- An email alert still reaches the other recipients when the SMTP server refuses one ([@HEOJUNFO](https://github.com/HEOJUNFO))
+- Returning to a page with saved views through a link applies its default view again
