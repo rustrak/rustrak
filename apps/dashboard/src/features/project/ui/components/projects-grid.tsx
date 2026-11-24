@@ -17,6 +17,8 @@ interface ProjectsGridProps {
   loading?: boolean;
   /** Goes to another page, keeping the order and search on screen. */
   onPageChange: (page: number) => void;
+  /** A search narrows the list: none found is no match, not no projects. */
+  searching?: boolean;
 }
 
 /** Every project the reader can see, one card each, a page at a time. */
@@ -25,6 +27,7 @@ export function ProjectsGrid({
   currentPage,
   loading = false,
   onPageChange,
+  searching = false,
 }: ProjectsGridProps) {
   const t = useTranslations('projects');
   const toastFailure = useToastFailure();
@@ -55,6 +58,15 @@ export function ProjectsGrid({
       onError: (error) => toastFailure(t('toasts.deleteFailed'), error),
     });
   };
+
+  if (projects.length === 0 && searching) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-1.5 py-24 text-center">
+        <EmptyIcon size="2xl" className="mb-2 text-fg-ghost" />
+        <Text variant="card-title">{t('empty.noMatches')}</Text>
+      </div>
+    );
+  }
 
   if (projects.length === 0) {
     return (

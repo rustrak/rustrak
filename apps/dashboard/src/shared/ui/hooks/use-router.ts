@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useMemo } from 'react';
 
 /** Navigation by `href`, for the call sites that build one. */
@@ -29,7 +29,13 @@ declare module '@tanstack/react-router' {
  * Whether the reader came in through a link (the logo, the sidebar, a
  * `push`), as opposed to the page rewriting its own address: a filter
  * cleared on the page and a visit by its link can be the same address.
+ *
+ * Read from the location on screen (`resolvedLocation`), not the one being
+ * loaded: a page on its way out must not take the next page's link for its
+ * own arrival.
  */
 export function useEntered(): boolean {
-  return useLocation({ select: (location) => location.state.entry === true });
+  return useRouterState({
+    select: (state) => state.resolvedLocation?.state.entry === true,
+  });
 }

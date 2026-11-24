@@ -827,7 +827,9 @@ async fn test_a_slug_derived_from_a_long_name_fits_the_column() {
 async fn seed_issue_seen(db: &TestDb, project_id: i32, hours_ago: i64) {
     sqlx::query(
         "INSERT INTO issues (id, project_id, digest_order, first_seen, last_seen, status) \
-         VALUES ($1, $2, 1, $3, $3, 'unresolved')",
+         VALUES ($1, $2, \
+                 (SELECT COALESCE(MAX(digest_order), 0) + 1 FROM issues WHERE project_id = $2), \
+                 $3, $3, 'unresolved')",
     )
     .bind(uuid::Uuid::new_v4())
     .bind(project_id)
@@ -856,6 +858,8 @@ async fn test_list_projects_sorts_by_last_seen_with_quiet_projects_last() {
     crate::common::create_test_project(&db.pool, "Quiet").await;
     seed_issue_seen(&db, old.id, 5).await;
     seed_issue_seen(&db, recent.id, 1).await;
+    // Older than Old's: a project is as recent as its newest issue.
+    seed_issue_seen(&db, recent.id, 10).await;
 
     let desc = list_projects_json(&db, "/api/projects?sort=last_seen").await;
     assert_eq!(names(&desc), ["Recent", "Old", "Quiet"]);

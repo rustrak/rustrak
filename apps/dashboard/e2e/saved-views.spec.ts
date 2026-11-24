@@ -1,7 +1,7 @@
 import { createMember, expect, test, unique } from './support';
 
 // A member of their own, so their default view moves no other test's page.
-test('a page reopens on its default view from the sidebar, but not after the reader picks another order', async ({
+test('a page reopens on its default view from the logo, but not after the reader picks another order or leaves', async ({
   request,
   browser,
 }) => {
@@ -28,4 +28,12 @@ test('a page reopens on its default view from the sidebar, but not after the rea
   // Coming back in through the logo is a new visit: the default again.
   await page.getByRole('link', { name: 'Rustrak' }).first().click();
   await expect(page).toHaveURL(/\/projects\?sort=recent$/);
+
+  // Leaving by a link goes where it points: the page on its way out must not
+  // take that link's arrival for its own and send the reader back.
+  await page.getByRole('button', { name: 'Recent activity' }).click();
+  await page.getByRole('menuitem', { name: 'Newest' }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await page.getByRole('link', { name: 'Settings' }).first().click();
+  await expect(page).toHaveURL(/\/settings/);
 });

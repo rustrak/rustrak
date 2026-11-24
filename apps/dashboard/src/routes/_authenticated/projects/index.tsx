@@ -149,6 +149,7 @@ function ProjectsPage() {
           page={projects}
           currentPage={page}
           loading={search !== live}
+          searching={search.query !== undefined}
           onPageChange={(next) =>
             navigate({ search: (previous) => ({ ...previous, page: next }) })
           }

@@ -656,7 +656,8 @@
     "empty": {
       "title": "Aucun projet pour le moment",
       "hint": "Créez votre premier projet pour commencer à suivre les erreurs",
-      "noAccessHint": "Contactez un propriétaire pour demander l’accès à un projet."
+      "noAccessHint": "Contactez un propriétaire pour demander l’accès à un projet.",
+      "noMatches": "Aucun projet ne correspond à cette recherche"
     },
     "newProject": "Nouveau projet",
     "delete": "Supprimer",

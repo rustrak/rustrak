@@ -656,7 +656,8 @@
     "empty": {
       "title": "Încă nu există proiecte",
       "hint": "Creează primul proiect pentru a începe urmărirea erorilor",
-      "noAccessHint": "Contactează un proprietar pentru a solicita acces la un proiect."
+      "noAccessHint": "Contactează un proprietar pentru a solicita acces la un proiect.",
+      "noMatches": "Niciun proiect nu se potrivește căutării"
     },
     "newProject": "Proiect nou",
     "delete": "Șterge",
