@@ -117,8 +117,15 @@ describe('new', () => {
     writeFileSync(join(dir, 'tool.rs'), 'fn main() {}\n');
     writeFileSync(
       join(dir, 'Cargo.toml'),
-      `${readFileSync(join(dir, 'Cargo.toml'), 'utf8')}\n[[bin]]\nname = "tool"\npath = "tool.rs"\n`,
+      `${readFileSync(join(dir, 'Cargo.toml'), 'utf8')}\n[[bin]]\nname = "tool"\npath = "tool.rs"\n\n[dependencies.helper]\npath = "helper"\n`,
     );
+    // So is a dependency that is a cdylib too, reported before the plugin.
+    mkdirSync(join(dir, 'helper/src'), { recursive: true });
+    writeFileSync(
+      join(dir, 'helper/Cargo.toml'),
+      '[package]\nname = "helper"\nversion = "0.1.0"\nedition = "2024"\n\n[lib]\ncrate-type = ["rlib", "cdylib"]\n',
+    );
+    writeFileSync(join(dir, 'helper/src/lib.rs'), 'pub fn help() {}\n');
     // The environment outranks the config file: clear it for this build.
     const inherited = {
       CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR,

@@ -4,7 +4,13 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { strToU8, zipSync } from 'fflate';
@@ -28,6 +34,7 @@ const TARGET = 'wasm32-wasip2';
 /** A line of cargo's `--message-format=json`, as far as it is read here. */
 interface Artifact {
   reason?: string;
+  manifest_path?: string;
   target?: { kind: string[] };
   filenames?: string[];
 }
@@ -69,14 +76,20 @@ function compileServer(dir: string): string {
     ],
     { cwd: dir, env: { ...process.env, ...PROFILE } },
   );
+  // Real paths both: cargo reports /private/var for macOS's /var.
+  const manifest = realpathSync(join(dir, 'Cargo.toml'));
   const wasm = out
     .split('\n')
     .filter((line) => line.startsWith('{'))
     .map((line) => JSON.parse(line) as Artifact)
-    // The library, not a binary the author added: both are a `.wasm`.
+    // The plugin's own library: not a binary the author added, nor a
+    // dependency that is a cdylib too. All of them are a `.wasm`.
     .filter(
       (m) =>
-        m.reason === 'compiler-artifact' && m.target?.kind.includes('cdylib'),
+        m.reason === 'compiler-artifact' &&
+        m.target?.kind.includes('cdylib') &&
+        m.manifest_path !== undefined &&
+        realpathSync(m.manifest_path) === manifest,
     )
     .flatMap((m) => m.filenames ?? [])
     .find((f) => f.endsWith('.wasm'));
