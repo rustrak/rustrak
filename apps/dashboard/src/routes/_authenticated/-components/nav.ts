@@ -15,6 +15,7 @@ import {
   NotificationIcon,
   OverviewIcon,
   PerformanceIcon,
+  PluginsIcon,
   ReleasesIcon,
   SecurityIcon,
   SettingsIcon,
@@ -58,6 +59,36 @@ export interface NavPage {
     descriptionKey: string;
     keywords?: string[];
   };
+  /** Where a workspace settings page is listed: see `workspaceGroups`. */
+  group?: WorkspaceGroup;
+  /** Still in beta: the sidebar says so beside its name. */
+  beta?: boolean;
+}
+
+type WorkspaceGroup = 'access' | 'connections' | 'system';
+
+const GROUPS: { group: WorkspaceGroup; label: string }[] = [
+  // Who gets in and what they may do.
+  { group: 'access', label: 'groupAccess' },
+  // What connects to Rustrak or extends it.
+  { group: 'connections', label: 'groupConnections' },
+  // The instance itself.
+  { group: 'system', label: 'groupSystem' },
+];
+
+/**
+ * The workspace settings the reader may open, by group, leaving out a group
+ * with none: the sidebar and the phone's sheet both list these.
+ */
+export function workspaceGroups(
+  permissions: Permissions,
+): { label: string; pages: NavPage[] }[] {
+  return GROUPS.map(({ group, label }) => ({
+    label,
+    pages: WORKSPACE_SETTINGS.filter(
+      (page) => page.group === group && allowed(page, permissions),
+    ),
+  })).filter((g) => g.pages.length > 0);
 }
 
 export const canSeeTeam = (p: Permissions) =>
@@ -87,6 +118,7 @@ export const ACCOUNT_SETTINGS: NavPage[] = [
 export const WORKSPACE_SETTINGS: NavPage[] = [
   {
     key: 'team',
+    group: 'access',
     icon: TeamIcon,
     href: '/settings/team',
     visible: canSeeTeam,
@@ -97,6 +129,7 @@ export const WORKSPACE_SETTINGS: NavPage[] = [
   },
   {
     key: 'roles',
+    group: 'access',
     icon: SecurityIcon,
     href: '/settings/roles',
     visible: (p) => p.can('roles', 'read'),
@@ -106,7 +139,18 @@ export const WORKSPACE_SETTINGS: NavPage[] = [
     },
   },
   {
+    key: 'apiTokens',
+    group: 'access',
+    icon: TokensIcon,
+    href: '/settings/tokens',
+    command: {
+      descriptionKey: 'commands.apiTokensDescription',
+      keywords: ['auth', 'bearer', 'secret'],
+    },
+  },
+  {
     key: 'integrations',
+    group: 'connections',
     icon: IntegrationsIcon,
     href: '/settings/integrations',
     visible: (p) => p.can('integrations', 'read'),
@@ -116,16 +160,20 @@ export const WORKSPACE_SETTINGS: NavPage[] = [
     },
   },
   {
-    key: 'apiTokens',
-    icon: TokensIcon,
-    href: '/settings/tokens',
+    key: 'plugins',
+    group: 'connections',
+    beta: true,
+    icon: PluginsIcon,
+    href: '/settings/plugins',
+    visible: (p) => p.isOwner,
     command: {
-      descriptionKey: 'commands.apiTokensDescription',
-      keywords: ['auth', 'bearer', 'secret'],
+      descriptionKey: 'commands.pluginsDescription',
+      keywords: ['plugins', 'extensions', 'install', 'analytics'],
     },
   },
   {
     key: 'mcp',
+    group: 'connections',
     icon: AgentsIcon,
     href: '/settings/mcp',
     command: {
@@ -135,6 +183,7 @@ export const WORKSPACE_SETTINGS: NavPage[] = [
   },
   {
     key: 'storage',
+    group: 'system',
     icon: StorageIcon,
     href: '/settings/storage',
     visible: (p) => p.can('storage', 'read'),
@@ -145,6 +194,7 @@ export const WORKSPACE_SETTINGS: NavPage[] = [
   },
   {
     key: 'instance',
+    group: 'system',
     icon: InfoIcon,
     href: '/settings/instance',
     command: {

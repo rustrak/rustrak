@@ -44,6 +44,12 @@ export const storageMutations = {
     mutationOptions({
       mutationFn: (body: RetentionSettings) =>
         orThrow(api().storage.updateRetention({ body })),
-      meta: { invalidates: [storageQueries.retention().queryKey] },
+      meta: {
+        invalidates: [
+          storageQueries.retention().queryKey,
+          // What expires in each plugin follows its window.
+          storageQueries.plugins().queryKey,
+        ],
+      },
     }),
 };

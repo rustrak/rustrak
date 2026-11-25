@@ -70,7 +70,7 @@ describe('access rows', () => {
   it('sends personal permissions only when a row uses them', () => {
     expect(
       toSetAccess([{ role: 'personal', projects: [7] }], logs).personal,
-    ).toEqual({ permissions: logs, project_ids: [7] });
+    ).toEqual({ permissions: logs, plugin_permissions: [], project_ids: [7] });
   });
 
   it('compares regardless of order', () => {

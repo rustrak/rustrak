@@ -28,6 +28,7 @@ export const Route = createFileRoute('/_authenticated/settings/storage')({
         void queryClient.query(storageQueries.projects()).catch(noop);
         void queryClient.query(storageQueries.age()).catch(noop);
         void queryClient.query(storageQueries.compaction()).catch(noop);
+        void queryClient.query(storageQueries.plugins()).catch(noop);
       },
     );
   },

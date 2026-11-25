@@ -4,6 +4,7 @@ import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { PlatformIcon } from 'platformicons';
 import { useFormatter, useTranslations } from 'use-intl';
+import { PluginWidgets } from '@/features/plugin/ui/components/plugin-widgets';
 import { projectQueries } from '@/features/project/api/queries';
 import { savedViewQueries } from '@/features/saved-view/api/queries';
 import { SavedViews } from '@/features/saved-view/ui/components/saved-views';
@@ -240,6 +241,12 @@ function ProjectScreen({ project }: { project?: ProjectResponse }) {
         </div>
 
         <LatencyPanel reads={reads} projectId={projectId} />
+
+        <PluginWidgets
+          zone="project.overview.after"
+          projectId={projectId}
+          props={{ projectId }}
+        />
       </Page>
     </div>
   );

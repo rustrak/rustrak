@@ -21,6 +21,10 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
+import {
+  joinPermissions,
+  splitPermissions,
+} from '@/shared/lib/permission-matrix';
 import { Link } from '@/shared/ui/components/link';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
@@ -109,7 +113,9 @@ function NewRoleForm({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
   const reader = usePermissionsLater();
   // A copy needs every permission of the original, wherever it reaches.
   const copyable = roles.filter((r) =>
-    r.permissions.every((p) => reader.canEverywhere(p.resource, p.action)),
+    joinPermissions(r.permissions, r.plugin_permissions).every((p) =>
+      reader.canEverywhere(p.resource, p.action),
+    ),
   );
 
   const submit = () => {
@@ -118,7 +124,11 @@ function NewRoleForm({ roles, onDone }: { roles: Role[]; onDone: () => void }) {
       {
         name: name.trim(),
         description: '',
-        permissions: source?.permissions ?? [],
+        ...splitPermissions(
+          source
+            ? joinPermissions(source.permissions, source.plugin_permissions)
+            : [],
+        ),
       },
       {
         onSuccess: (role) => {

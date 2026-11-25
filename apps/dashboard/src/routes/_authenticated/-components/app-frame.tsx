@@ -25,12 +25,19 @@ import {
   SidebarSubmenu,
   SidebarUser,
   SignOutIcon,
+  Tag,
   TeamIcon,
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation, useMatch } from '@tanstack/react-router';
 import { PlatformIcon } from 'platformicons';
 import { useTranslations } from 'use-intl';
+import { pluginIcon } from '@/features/plugin/model/icon';
+import {
+  activeEntry,
+  type PluginNavGroup,
+  usePluginNav,
+} from '@/features/plugin/ui/hooks/use-plugin-nav';
 import { projectQueries } from '@/features/project/api/queries';
 import { sidebarProjects } from '@/features/project/model/sidebar';
 import { SidebarOptions } from '@/features/project/ui/components/sidebar-options';
@@ -60,6 +67,7 @@ import {
   PROJECT_SETTINGS,
   shownInProject,
   WORKSPACE_SETTINGS,
+  workspaceGroups,
 } from './nav';
 
 /**
@@ -331,13 +339,13 @@ function SettingsNav({
           <SettingsLink key={entry.key} entry={entry} pathname={pathname} />
         ))}
       </SidebarGroup>
-      <SidebarGroup label={tSettings('nav.groupWorkspace')}>
-        {WORKSPACE_SETTINGS.filter((e) => allowed(e, permissions)).map(
-          (entry) => (
+      {workspaceGroups(permissions).map((group) => (
+        <SidebarGroup key={group.label} label={tSettings(`nav.${group.label}`)}>
+          {group.pages.map((entry) => (
             <SettingsLink key={entry.key} entry={entry} pathname={pathname} />
-          ),
-        )}
-      </SidebarGroup>
+          ))}
+        </SidebarGroup>
+      ))}
       {listed.length > 0 ? (
         <SidebarGroup label={t('switcher.projects')}>
           {listed.map((option) => {
@@ -383,6 +391,7 @@ function ProjectNav({
   const base = `/projects/${project.id}`;
   const active = activePage(pathname, base);
   const shown = (page: NavPage) => shownInProject(page, permissions, project);
+  const pluginPages = usePluginNav(project.id);
   return (
     <>
       <SidebarItem
@@ -409,6 +418,7 @@ function ProjectNav({
           </SidebarGroup>
         ),
       )}
+      <PluginGroups groups={pluginPages} pathname={pathname} />
     </>
   );
 }
@@ -448,6 +458,7 @@ function WorkspaceNav({
   );
   const hidden = new Set(prefs.hidden);
   const listed = sorted.filter((p) => !hidden.has(p.id));
+  const pluginPages = usePluginNav();
   return (
     <>
       <SidebarItem
@@ -474,6 +485,7 @@ function WorkspaceNav({
           render={<Link href="/settings/team" />}
         />
       ) : null}
+      <PluginGroups groups={pluginPages} pathname={pathname} />
       {projects.length > 0 ? (
         <SidebarGroup
           label={t('switcher.projects')}
@@ -535,6 +547,13 @@ function SettingsLink({
       label={tSettings(`nav.${entry.key}` as 'nav.account')}
       // A page with pages under it -- an integration's own -- stays marked.
       active={isUnder(pathname, entry.href)}
+      badge={
+        entry.beta ? (
+          <Tag tone="brand" variant="soft">
+            {tSettings('nav.beta')}
+          </Tag>
+        ) : undefined
+      }
       render={<Link href={entry.href} />}
     />
   );
@@ -612,6 +631,9 @@ export function AppBreadcrumbs() {
       },
       ...trailCrumbs(trail),
     ];
+  } else if (isUnder(pathname, `${base}/plugins`)) {
+    // A plugin's page names its whole trail (usePluginPageTrail).
+    items = [...projectCrumb, ...trailCrumbs(trail)];
   } else if (project) {
     const page = activePage(pathname, base);
     items = [
@@ -712,4 +734,30 @@ function backFrom(
   return linked?.href
     ? { label: linked.label, href: linked.href }
     : { label: sectionLabel, href: sectionHref };
+}
+
+/** Each plugin's pages, under the plugin's own name. */
+function PluginGroups({
+  groups,
+  pathname,
+}: {
+  groups: readonly PluginNavGroup[];
+  pathname: string;
+}) {
+  return groups.map((group) => {
+    const active = activeEntry(group.entries, pathname);
+    return (
+      <SidebarGroup key={group.id} label={group.name}>
+        {group.entries.map((page) => (
+          <SidebarItem
+            key={page.key}
+            icon={pluginIcon(page.icon)}
+            label={page.label}
+            active={page.key === active}
+            render={<Link href={page.href} />}
+          />
+        ))}
+      </SidebarGroup>
+    );
+  });
 }

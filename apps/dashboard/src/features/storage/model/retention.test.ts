@@ -15,6 +15,8 @@ import {
   estimateSize,
   impactOf,
   nextReadIn,
+  pluginFrees,
+  pluginRowBytes,
   presetsWith,
   removedParts,
   summarize,
@@ -112,6 +114,10 @@ describe('deletesAnything', () => {
   it('is false only while every kind of every project is kept forever', () => {
     expect(deletesAnything(settings)).toBe(true);
     expect(deletesAnything(keepAll)).toBe(false);
+  });
+
+  it("counts a plugin's history window, as the server's cleanup does", () => {
+    expect(deletesAnything({ ...keepAll, plugins: { hello: 30 } })).toBe(true);
   });
 });
 
@@ -324,5 +330,57 @@ describe('compactedBytes', () => {
     });
     expect(compactedBytes([table(1_000, 200), table(500, 100)])).toBe(1_200);
     expect(compactedBytes([])).toBe(0);
+  });
+});
+
+describe('pluginRowBytes', () => {
+  it("prices a plugin's history row at its file over its rows", () => {
+    expect(
+      pluginRowBytes([
+        {
+          id: 'a',
+          name: 'A',
+          bytes: 1000,
+          quota_bytes: 0,
+          retention_days: null,
+          history: [{ table: 't', rows: 10, expired: 0 }],
+        },
+        {
+          id: 'b',
+          name: 'B',
+          bytes: 3000,
+          quota_bytes: 0,
+          retention_days: null,
+          history: [{ table: 't', rows: 10, expired: 0 }],
+        },
+      ]),
+    ).toBe(200);
+    expect(pluginRowBytes(undefined)).toBe(0);
+    expect(pluginRowBytes([])).toBe(0);
+  });
+});
+
+describe('pluginFrees', () => {
+  it("is what the next cleanup frees in plugins: each one's expired share of its file", () => {
+    expect(
+      pluginFrees([
+        {
+          id: 'a',
+          name: 'A',
+          bytes: 1000,
+          quota_bytes: 0,
+          retention_days: 30,
+          history: [{ table: 't', rows: 10, expired: 4 }],
+        },
+        {
+          id: 'b',
+          name: 'B',
+          bytes: 500,
+          quota_bytes: 0,
+          retention_days: null,
+          history: [],
+        },
+      ]),
+    ).toBe(400);
   });
 });

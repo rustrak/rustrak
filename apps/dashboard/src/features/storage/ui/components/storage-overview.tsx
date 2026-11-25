@@ -1,8 +1,11 @@
 import type { CleanupStatus, RetentionResponse } from '@rustrak/client';
 import { cn, SpinnerIcon } from '@rustrak/ui';
+import { useQuery } from '@tanstack/react-query';
 import { useFormatter, useTranslations } from 'use-intl';
+import { storageQueries } from '@/features/storage/api/queries';
 import {
   deletesAnything,
+  pluginFrees,
   removedParts,
   type Summary,
 } from '@/features/storage/model/retention';
@@ -94,6 +97,7 @@ export function CleanupLine({
 }) {
   const t = useTranslations('storage');
   const relativeTime = useRelativeTime();
+  const plugins = useQuery(storageQueries.plugins()).data;
 
   if (job?.state === 'running' && job.kind === 'compaction') {
     return (
@@ -137,7 +141,7 @@ export function CleanupLine({
         {retention.next_run_at
           ? t('overview.next', {
               when: relativeTime(new Date(retention.next_run_at)),
-              size: formatBytes(summary.frees),
+              size: formatBytes(summary.frees + pluginFrees(plugins)),
             })
           : t('overview.scheduling')}
       </p>

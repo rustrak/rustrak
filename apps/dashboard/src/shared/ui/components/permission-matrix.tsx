@@ -1,8 +1,9 @@
-import type { CatalogResource, Permission } from '@rustrak/client';
+import type { Permission } from '@rustrak/client';
 import { Checkbox } from '@rustrak/ui';
-import { useTranslations } from 'use-intl';
+import { useLocale, useTranslations } from 'use-intl';
 import {
   ACTIONS,
+  type EditorResource,
   hasPermission,
   rowState,
   toggle,
@@ -11,7 +12,7 @@ import {
 
 interface PermissionMatrixProps {
   /** One module's resources: the rows. */
-  resources: CatalogResource[];
+  resources: EditorResource[];
   value: Permission[];
   onChange: (next: Permission[]) => void;
   readOnly?: boolean;
@@ -30,6 +31,9 @@ export function PermissionMatrix({
   readOnly = false,
 }: PermissionMatrixProps) {
   const t = useTranslations('access');
+  const locale = useLocale();
+  // A plugin's row brings its own texts; Rustrak's come from the messages.
+  const own = (texts?: Record<string, string>) => texts?.[locale] ?? texts?.en;
   return (
     <table className="w-full text-body">
       <thead className="sticky top-0 bg-surface">
@@ -45,7 +49,12 @@ export function PermissionMatrix({
       <tbody>
         {resources.map((resource) => {
           const state = rowState(value, resource);
-          const name = t(`resources.${resource.key}`);
+          const name = resource.label
+            ? (own(resource.label) ?? resource.key)
+            : t(`resources.${resource.key}`);
+          const help = resource.label
+            ? own(resource.help)
+            : t(`resourceHelp.${resource.key}`);
           return (
             <tr
               key={resource.key}
@@ -66,9 +75,9 @@ export function PermissionMatrix({
                   </span>
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="text-body text-fg">{name}</span>
-                    <span className="text-fg-subtle text-meta">
-                      {t(`resourceHelp.${resource.key}`)}
-                    </span>
+                    {help ? (
+                      <span className="text-fg-subtle text-meta">{help}</span>
+                    ) : null}
                   </span>
                 </span>
               </th>

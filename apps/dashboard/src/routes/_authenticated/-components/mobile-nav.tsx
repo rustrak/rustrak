@@ -31,6 +31,11 @@ import {
   useState,
 } from 'react';
 import { useTranslations } from 'use-intl';
+import { pluginIcon } from '@/features/plugin/model/icon';
+import {
+  activeEntry,
+  usePluginNav,
+} from '@/features/plugin/ui/hooks/use-plugin-nav';
 import { projectQueries } from '@/features/project/api/queries';
 import { userMutations } from '@/features/user/api/mutations';
 import type { Permissions } from '@/shared/lib/permissions';
@@ -59,7 +64,7 @@ import {
   PROJECT_GROUPS,
   PROJECT_SETTINGS,
   shownInProject,
-  WORKSPACE_SETTINGS,
+  workspaceGroups,
 } from './nav';
 
 /**
@@ -404,6 +409,7 @@ function RootView({
   const shown = (page: NavPage) =>
     project ? shownInProject(page, permissions, project) : false;
   const current = project ? activePage(pathname, base) : undefined;
+  const pluginGroups = usePluginNav(project?.id);
 
   const link = (href: string) => (
     <Link href={href} onClick={onNavigate} activeOptions={{ exact: true }} />
@@ -448,6 +454,23 @@ function RootView({
             ) : null;
           })
         : null}
+
+      {pluginGroups.map((group) => {
+        const active = activeEntry(group.entries, pathname);
+        return (
+          <SheetSection key={group.id} label={group.name}>
+            {group.entries.map((page) => (
+              <SheetRow
+                key={page.key}
+                icon={pluginIcon(page.icon)}
+                label={page.label}
+                active={page.key === active}
+                render={link(page.href)}
+              />
+            ))}
+          </SheetSection>
+        );
+      })}
 
       <SheetSection label={tMobile('workspace')}>
         {project ? (
@@ -613,11 +636,11 @@ function SettingsView({ onNavigate }: { onNavigate: () => void }) {
       <SheetSection label={tSettings('nav.groupAccount')}>
         {ACCOUNT_SETTINGS.map((entry) => row(entry, entry.href))}
       </SheetSection>
-      <SheetSection label={tSettings('nav.groupWorkspace')}>
-        {WORKSPACE_SETTINGS.filter((e) => allowed(e, permissions)).map(
-          (entry) => row(entry, entry.href),
-        )}
-      </SheetSection>
+      {workspaceGroups(permissions).map((group) => (
+        <SheetSection key={group.label} label={tSettings(`nav.${group.label}`)}>
+          {group.pages.map((entry) => row(entry, entry.href))}
+        </SheetSection>
+      ))}
     </>
   );
 }

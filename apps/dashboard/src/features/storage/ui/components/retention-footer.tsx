@@ -7,11 +7,14 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@rustrak/ui';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { storageQueries } from '@/features/storage/api/queries';
 import {
   estimateSize,
   impactState,
+  pluginRowBytes,
   removedParts,
 } from '@/features/storage/model/retention';
 import { ImpactLine } from './impact-line';
@@ -41,7 +44,10 @@ export function RetentionFooter({
   const [confirming, setConfirming] = useState(false);
   const known = impact === null || impact === 'failed' ? null : impact;
   const parts = known ? removedParts(known, t) : [];
-  const size = known ? estimateSize(known, projects) : '';
+  const plugins = useQuery(storageQueries.plugins()).data;
+  const size = known
+    ? estimateSize(known, projects, known.plugin_rows * pluginRowBytes(plugins))
+    : '';
 
   return (
     <>

@@ -10,6 +10,7 @@
    its source, not its bundle: the source is what the dev server watches, so a
    change there regenerates the CSS without a rebuild. */
 @source "../../../packages/ui/src";
+@source "../../../packages/plugin/src/ui";
 
 @custom-variant dark (&:is(.dark *));
 

@@ -35,7 +35,7 @@ import {
   sameAccess,
   toSetAccess,
 } from '@/features/user/model/assignments';
-import { grantable } from '@/shared/lib/permission-matrix';
+import { grantable, joinPermissions } from '@/shared/lib/permission-matrix';
 import { PermissionEditor } from '@/shared/ui/components/permission-editor';
 import { ProjectsPicker } from '@/shared/ui/components/projects-picker';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
@@ -83,9 +83,11 @@ export function UserAssignments({
   const [rows, setRows] = useState<AccessRow[]>(() =>
     rowsFrom(access.assignments),
   );
-  const [personal, setPersonal] = useState<Permission[]>(
-    () => access.personal_permissions,
+  const saved = joinPermissions(
+    access.personal_permissions,
+    access.personal_plugin_permissions,
   );
+  const [personal, setPersonal] = useState<Permission[]>(() => saved);
   const choices = roleChoices(roles, access.assignments, (p) =>
     reader.canAnywhere(p.resource, p.action),
   );
@@ -95,7 +97,7 @@ export function UserAssignments({
   const body = toSetAccess(rows, personal);
   const dirty = !sameAccess(
     body,
-    toSetAccess(rowsFrom(access.assignments), access.personal_permissions),
+    toSetAccess(rowsFrom(access.assignments), saved),
   );
   const hasPersonalRow = rows.some((r) => r.role === 'personal');
   // With no roles to choose from, a line can only be custom permissions.
@@ -105,7 +107,10 @@ export function UserAssignments({
   const permissionsOf = (role: RoleChoice): Permission[] =>
     role === 'personal'
       ? personal
-      : (roles.find((r) => r.id === role)?.permissions ?? []);
+      : (() => {
+          const r = roles.find((r) => r.id === role);
+          return r ? joinPermissions(r.permissions, r.plugin_permissions) : [];
+        })();
 
   const setRow = (index: number, next: Partial<AccessRow>) =>
     setRows((all) =>

@@ -1,12 +1,12 @@
-import type { CatalogResource, Permission } from '@rustrak/client';
+import type { Permission } from '@rustrak/client';
 import { Count, cn, Tab, TabList, TabPanel, Tabs } from '@rustrak/ui';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import { modulesOf } from '@/shared/lib/permission-matrix';
+import { type EditorResource, modulesOf } from '@/shared/lib/permission-matrix';
 import { PermissionMatrix } from './permission-matrix';
 
 interface PermissionEditorProps {
-  catalog: CatalogResource[];
+  catalog: EditorResource[];
   value: Permission[];
   onChange: (next: Permission[]) => void;
   readOnly?: boolean;
@@ -33,7 +33,7 @@ export function PermissionEditor({
 }: PermissionEditorProps) {
   const t = useTranslations('access');
   const modules = modulesOf(catalog);
-  const granted = (resources: CatalogResource[]) =>
+  const granted = (resources: EditorResource[]) =>
     value.filter((p) =>
       resources.some(
         (r) => r.key === p.resource && r.actions.includes(p.action),
@@ -49,7 +49,7 @@ export function PermissionEditor({
       ))}
       {modules.map(({ module, resources }) => (
         <Tab key={module} value={module}>
-          {t(`modules.${module}`)}
+          {resources[0]?.moduleName ?? t(`modules.${module}`)}
           <Count>{granted(resources)}</Count>
         </Tab>
       ))}

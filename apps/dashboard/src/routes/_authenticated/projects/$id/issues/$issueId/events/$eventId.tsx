@@ -24,6 +24,7 @@ import { frameSourceUrl } from '@/features/github/lib/source-url';
 import { IssueGitHubButton } from '@/features/github/ui/components/issue-github-button';
 import { issueQueries } from '@/features/issue/api/queries';
 import { useAssignable } from '@/features/issue/ui/hooks/use-assignable';
+import { PluginWidgets } from '@/features/plugin/ui/components/plugin-widgets';
 import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
 import { startIfAllowed } from '@/shared/api/permissions';
@@ -200,6 +201,12 @@ function EventView() {
         <main className="min-w-0 flex-1 lg:overflow-y-auto">
           <div className="flex flex-col gap-5 px-page-gutter pb-8 pt-5">
             <EventTrends stats={stats30d} />
+
+            <PluginWidgets
+              zone="issue.details.after"
+              projectId={projectId}
+              props={{ projectId, issue: { id: issueId, title: issue.title } }}
+            />
 
             <EventNavigator
               projectId={projectId}

@@ -1,6 +1,6 @@
 import type { MyAccess } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
-import { permissionsFrom } from './permissions';
+import { NO_PERMISSIONS, permissionsFrom } from './permissions';
 
 const none: MyAccess = {
   is_owner: false,
@@ -146,6 +146,36 @@ describe('canEverywhere', () => {
       permissionsFrom({ ...empty, is_owner: true }).canEverywhere(
         'logs',
         'read',
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("a plugin's permission", () => {
+  const me = {
+    ...NO_PERMISSIONS,
+    plugins: {
+      everywhere: [{ resource: 'hello:reports', action: 'read' as const }],
+      projects: [
+        {
+          project_id: 7,
+          permissions: [{ resource: 'hello:hits', action: 'delete' as const }],
+        },
+      ],
+    },
+  };
+
+  it('holds where the roles give it, writing implying reading', () => {
+    const p = permissionsFrom(me);
+    expect(p.canPlugin('hello:hits', 'delete', 7)).toBe(true);
+    expect(p.canPlugin('hello:hits', 'read', 7)).toBe(true);
+    expect(p.canPlugin('hello:hits', 'delete', 8)).toBe(false);
+    expect(p.canPlugin('hello:reports', 'read')).toBe(true);
+    expect(
+      permissionsFrom({ ...NO_PERMISSIONS, is_owner: true }).canPlugin(
+        'x:y',
+        'delete',
+        1,
       ),
     ).toBe(true);
   });

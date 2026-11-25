@@ -188,7 +188,8 @@
     "rolesDescription": "Define what each role may do",
     "mcpDescription": "Connect AI assistants over MCP",
     "dataDescription": "Event limits and what the project stores",
-    "githubDescription": "Link a GitHub repository"
+    "githubDescription": "Link a GitHub repository",
+    "pluginsDescription": "Install plugins and choose where they run"
   },
   "charts": {
     "errors": "Errors",
@@ -696,7 +697,8 @@
       "groupMonitor": "Monitor",
       "alerts": "Alerts",
       "docs": "Docs",
-      "jumpTo": "Jump to"
+      "jumpTo": "Jump to",
+      "plugins": "Plugins"
     },
     "collapse": {
       "expand": "Expand",
@@ -1713,7 +1715,8 @@
       "spans": "{count, plural, =1 {# span} other {# spans}}",
       "logs": "{count, plural, =1 {# log} other {# logs}}",
       "emptyIssues": "{count, plural, =1 {# empty issue} other {# empty issues}}",
-      "sourceMaps": "{count, plural, =1 {# unused source map} other {# unused source maps}}"
+      "sourceMaps": "{count, plural, =1 {# unused source map} other {# unused source maps}}",
+      "pluginRows": "{count, plural, =1 {# plugin row} other {# plugin rows}}"
     },
     "deleteAction": "Delete data now",
     "kindHint": {
@@ -1734,7 +1737,8 @@
       "action": "Delete ≈ {size}",
       "actionIdle": "Delete",
       "sourceMaps": "Unused source maps",
-      "sourceMapsHint": "Files no upload references any more; referenced ones are never touched"
+      "sourceMapsHint": "Files no upload references any more; referenced ones are never touched",
+      "plugin": "{plugin}'s history"
     },
     "compaction": {
       "title": "This database was created by an earlier version of Rustrak",
@@ -1758,6 +1762,15 @@
       "disk": "Needs about {required} free on the PostgreSQL server’s disk while it runs, the size of the largest table, plus about as much again for the write-ahead log if it is on the same disk. Rustrak cannot see that disk: check it first.",
       "lock": "Each table is locked while it is rewritten, a few seconds per GB it keeps. Errors keep being accepted and are stored once their table is done. Transactions, spans and logs sent while their table is rewritten are turned away and lost (SDKs pause sending them for 10 seconds), and pages showing that table show an error until it is done.",
       "duration": "The largest table takes longest. Run it at a quiet time, or use pg_repack, which only locks each table briefly at the start and the end."
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "Each plugin's own data. Its history, the tables with created_at, is cleared by the same cleanup as Rustrak's.",
+      "none": "No plugins installed",
+      "size": "{used} of {quota}",
+      "history": "{rows} rows of history in {tables}",
+      "noHistory": "Nothing it keeps expires",
+      "historyHint": "Its history: {tables}"
     }
   },
   "errors": {
@@ -2106,12 +2119,16 @@
       "github": "Repository",
       "products": "Products",
       "groupAccount": "Account",
-      "groupWorkspace": "Workspace",
       "profile": "Profile",
       "preferences": "Preferences",
       "instance": "Instance",
       "data": "Data",
-      "roles": "Roles"
+      "roles": "Roles",
+      "plugins": "Plugins",
+      "groupAccess": "Access",
+      "groupConnections": "Connections",
+      "groupSystem": "System",
+      "beta": "Beta"
     },
     "loadProjectFailed": "Could not load project",
     "loadProjectsFailed": "Could not load projects",
@@ -2365,7 +2382,102 @@
       "subtitle": "What this project keeps, and how much it accepts."
     },
     "projectNotAuthorizedDescription": "Your access does not include this section of the project. Contact an owner to request it.",
-    "workspaceNotAuthorizedDescription": "Your access does not include this section. Contact an owner to request it."
+    "workspaceNotAuthorizedDescription": "Your access does not include this section. Contact an owner to request it.",
+    "plugins": {
+      "meta": {
+        "title": "Plugins"
+      },
+      "title": "Plugins",
+      "subtitle": "Extend Rustrak with plugins. Each one runs sandboxed, with its own database.",
+      "install": "Install plugin",
+      "installing": "Installing…",
+      "installed": "{name} {version} installed",
+      "installFailed": "The plugin could not be installed",
+      "configureFailed": "The plugin could not be updated",
+      "empty": "No plugins installed",
+      "emptyHint": "Install one from a .rtp file to add pages, widgets and features to Rustrak.",
+      "active": "Active",
+      "inactive": "Inactive",
+      "versionBy": "{version} · by {author}",
+      "failed": "The plugin {plugin} failed to show this part.",
+      "pageMissing": "This plugin page does not exist",
+      "pageMissingHint": "The plugin is not installed, not active in this project, or has no page here.",
+      "detail": {
+        "projects": "Projects",
+        "projectsHint": "Turn it on in each project, and open one to set it up there: its install guide and its own values.",
+        "allProjects": "All projects",
+        "allProjectsHint": "Every project, the ones created later included.",
+        "runIn": "Run in {project}",
+        "configuration": "Configuration",
+        "nothingToConfigure": "This plugin has nothing to configure",
+        "access": "Access",
+        "accessHint": "What the plugin may do on this server.",
+        "database": "Its own database",
+        "permissions": "Permissions it adds",
+        "none": "None",
+        "yes": "Yes",
+        "about": "About",
+        "danger": "Danger zone",
+        "uninstall": "Uninstall",
+        "uninstallPurge": "Uninstall and delete data",
+        "uninstallHint": "Removing it keeps its data for a reinstall, unless you delete it too.",
+        "uninstallTitle": "Uninstall {name}?",
+        "keepConfirm": "Its pages and routes stop at once. Its data is kept, so reinstalling picks it up again.",
+        "purgeConfirm": "Its pages, routes and all its data are deleted. This cannot be undone.",
+        "cancel": "Cancel",
+        "uninstalled": "{name} uninstalled",
+        "uninstallFailed": "The plugin could not be uninstalled",
+        "runs": "Running",
+        "off": "Off",
+        "defaults": "Defaults",
+        "defaultsHint": "For the whole instance. A project's own settings, above, take precedence.",
+        "project": "Project",
+        "status": "Status",
+        "active": "Active",
+        "details": "Details",
+        "version": "Version",
+        "author": "Author",
+        "source": "Source",
+        "verified": "Verified",
+        "unverified": "Not verified",
+        "runsIn": "Runs in",
+        "everyProject": "Every project",
+        "someProjects": "{count} of {total} projects",
+        "pages": "Pages",
+        "widgets": "Widgets",
+        "repository": "Repository",
+        "openSetup": "Setup and settings"
+      },
+      "form": {
+        "save": "Save",
+        "saved": "Settings saved",
+        "saveFailed": "The settings could not be saved",
+        "secretSet": "Set. Type to replace it",
+        "secretNotSet": "Not set",
+        "missing": "Set {fields} before the plugin can run."
+      },
+      "verified": "✓ Verified by the registry",
+      "notVerified": "Not verified: uploaded by hand",
+      "available": "Available",
+      "availableHint": "Published in Rustrak's plugin registry, signed and checked when installed.",
+      "registryUnavailable": "The plugin registry is not available",
+      "registryUpToDate": "Everything published is installed",
+      "update": "{from} → {to}",
+      "updateButton": "Update",
+      "installButton": "Install",
+      "setup": {
+        "title": "{plugin} in {project}",
+        "where": "In this project",
+        "runs": "Runs here",
+        "runsHint": "Its pages, widgets and routes exist only in the projects it runs in.",
+        "everywhere": "On in every project: change it in the plugin's settings.",
+        "install": "Setup",
+        "installHint": "What this project needs for the plugin to work.",
+        "settings": "Project settings",
+        "settingsHint": "This project's own values: they take precedence over the instance's defaults.",
+        "offHint": "Turn it on in this project to set it up."
+      }
+    }
   },
   "github": {
     "section": {

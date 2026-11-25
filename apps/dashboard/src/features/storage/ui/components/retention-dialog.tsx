@@ -11,7 +11,9 @@ import {
   Select,
   SelectItem,
 } from '@rustrak/ui';
+import { useQuery } from '@tanstack/react-query';
 import { useFormatter, useTranslations } from 'use-intl';
+import { storageQueries } from '@/features/storage/api/queries';
 import { KINDS, WINDOW_FIELD } from '@/features/storage/model/retention';
 import { useRetentionDraft } from '../hooks/use-retention-draft';
 import { KeepForSelect } from './keep-for-select';
@@ -121,6 +123,12 @@ function Editor({
           {t('dialog.foreverHint')}
         </p>
 
+        <PluginWindows
+          windows={draft.plugins}
+          onChange={(plugins) => setDraft((d) => ({ ...d, plugins }))}
+          disabled={isPending}
+        />
+
         <div className="space-y-1.5">
           <p className="text-value font-medium text-fg">{t('dialog.runs')}</p>
           <Schedule
@@ -145,6 +153,64 @@ function Editor({
         onSave={save}
       />
     </>
+  );
+}
+
+/**
+ * How long each plugin keeps its history (its tables with `created_at`):
+ * the same choice as Rustrak's kinds, cleared by the same cleanup.
+ */
+function PluginWindows({
+  windows,
+  onChange,
+  disabled,
+}: {
+  windows: Record<string, number>;
+  onChange: (windows: Record<string, number>) => void;
+  disabled?: boolean;
+}) {
+  const t = useTranslations('storage');
+  const plugins = useQuery(storageQueries.plugins());
+  const withHistory = (plugins.data ?? []).filter((p) => p.history.length > 0);
+  if (withHistory.length === 0) return null;
+  const keep = (id: string, days: number | null) => {
+    const next = { ...windows };
+    if (days === null) delete next[id];
+    else next[id] = days;
+    onChange(next);
+  };
+  return (
+    <div className="divide-y divide-border-divider rounded-md border border-border-subtle">
+      <div className="flex items-center justify-between gap-4 bg-surface-hover px-3 py-2 text-label text-fg-meta">
+        <span>{t('plugins.title')}</span>
+        <span className="w-44">{t('dialog.keepColumn')}</span>
+      </div>
+      {withHistory.map((plugin) => (
+        <div
+          key={plugin.id}
+          className="flex items-center justify-between gap-4 px-3 py-2.5"
+        >
+          <label htmlFor={`keep-plugin-${plugin.id}`} className="min-w-0">
+            <span className="block text-value font-medium text-fg">
+              {plugin.name}
+            </span>
+            <span className="block text-hint text-fg-subtle">
+              {t('plugins.historyHint', {
+                tables: plugin.history.map((h) => h.table).join(', '),
+              })}
+            </span>
+          </label>
+          <div className="w-44 shrink-0">
+            <KeepForSelect
+              id={`keep-plugin-${plugin.id}`}
+              value={windows[plugin.id] ?? null}
+              onChange={(days) => keep(plugin.id, days)}
+              disabled={disabled}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
