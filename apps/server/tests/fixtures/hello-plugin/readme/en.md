@@ -24,4 +24,4 @@ curl -X POST "https://rustrak.example.com/api/projects/1/plugins/hello/hit?sentr
 | Signing token | Instance | not set |
 | Longest path | Each project | `200` |
 
-> Hits are history: how long they are kept is set in Rustrak's Storage page.
+> Hits are kept: the retention on Rustrak's Storage page does not reach a plugin's own data.

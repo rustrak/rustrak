@@ -21,7 +21,7 @@ async function main(argv: string[]): Promise<number> {
   if (command === 'new' && arg) {
     scaffold(resolve(arg));
     console.log(
-      `Created ${arg}. Next:\n  cd ${arg}\n  npm install\n  npm run build`,
+      `Created ${arg}. Next:\n  rustup target add wasm32-wasip2\n  cd ${arg}\n  npm install\n  npm run build`,
     );
     return 0;
   }

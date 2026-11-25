@@ -35,6 +35,7 @@ function run(
       cwd: opts.cwd,
       env: opts.env,
       encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (e) {
@@ -45,26 +46,33 @@ function run(
   }
 }
 
-function crateName(dir: string): string {
-  const cargo = readFileSync(join(dir, 'Cargo.toml'), 'utf8');
-  const name = /\[package\][^[]*?^name\s*=\s*"([^"]+)"/ms.exec(cargo)?.[1];
-  if (!name) throw new Error('Cargo.toml has no [package] name');
-  return name;
-}
-
-/** Compiles server/ to a component and returns its path. */
+/**
+ * Compiles server/ to a component and returns its path, as cargo reports it:
+ * a `target-dir` in a Cargo config or a `[lib] name` moves the file.
+ */
 function compileServer(dir: string): string {
-  run('cargo', ['build', '--release', '--target', TARGET], {
-    cwd: dir,
-    env: { ...process.env, ...PROFILE },
-  });
-  const targetDir = process.env.CARGO_TARGET_DIR ?? join(dir, 'target');
-  return join(
-    targetDir,
-    TARGET,
-    'release',
-    `${crateName(dir).replaceAll('-', '_')}.wasm`,
+  const out = run(
+    'cargo',
+    [
+      'build',
+      '--release',
+      '--target',
+      TARGET,
+      '--message-format=json-render-diagnostics',
+    ],
+    { cwd: dir, env: { ...process.env, ...PROFILE } },
   );
+  const wasm = out
+    .split('\n')
+    .filter((line) => line.startsWith('{'))
+    .map(
+      (line) => JSON.parse(line) as { reason?: string; filenames?: string[] },
+    )
+    .filter((m) => m.reason === 'compiler-artifact')
+    .flatMap((m) => m.filenames ?? [])
+    .findLast((f) => f.endsWith('.wasm'));
+  if (!wasm) throw new Error('cargo built no .wasm: is the crate a cdylib?');
+  return wasm;
 }
 
 /** The `.rtp`: the files plus the MANIFEST of their sha256 hashes. */

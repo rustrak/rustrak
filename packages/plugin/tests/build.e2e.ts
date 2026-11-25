@@ -1,7 +1,13 @@
 // End to end: `build` compiles a real plugin and packs it, needing nothing
 // but cargo and node. Rustrak's own tests install what it packs.
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
@@ -101,7 +107,14 @@ describe('new', () => {
       expect(existsSync(join(dir, file)), file).toBe(true);
     }
 
+    // Cargo puts the component where its config says, not in target/.
+    mkdirSync(join(dir, '.cargo'));
+    writeFileSync(
+      join(dir, '.cargo/config.toml'),
+      '[build]\ntarget-dir = "elsewhere"\n',
+    );
     const { rtp, manifest } = await build(dir, { outDir: join(dir, 'dist') });
+    expect(existsSync(join(dir, 'elsewhere'))).toBe(true);
     expect(manifest).toContain('[ui]');
     const wasm = strFromU8(unzipSync(readFileSync(rtp))['server.wasm']!, true);
     expect(wasm).toContain('"path":"/visits"');
