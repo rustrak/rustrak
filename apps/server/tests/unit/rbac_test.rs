@@ -1,7 +1,7 @@
 //! The permission catalog and how assignments combine into access.
 
 use rustrak::models::rbac::{
-    Access, Action, Assignment, Grants, ProjectScope, Resource, Scope, TokenScope,
+    self as rbac, Access, Action, Assignment, Grants, ProjectScope, Resource, Scope, TokenScope,
 };
 
 fn grants(pairs: &[(Resource, Action)]) -> Grants {
@@ -383,4 +383,58 @@ fn projects_where_a_grant_holds() {
         token.projects_where(Resource::Issues, Action::Read),
         ProjectScope::Only(vec![5])
     );
+}
+
+// Plugins' permissions: `<plugin>:<resource>`, declared in their
+// rustrak.config.ts, granted in roles like Rustrak's own.
+
+fn plugin(pairs: &[(&str, Action)]) -> Grants {
+    Grants::of([]).with_plugins(pairs.iter().map(|(k, a)| (k.to_string(), *a)))
+}
+
+#[test]
+fn a_plugin_permission_holds_where_its_role_does() {
+    let access = Access::new(vec![on_project(
+        7,
+        plugin(&[("hello:hits", Action::Delete)]),
+    )]);
+    assert!(access.can_plugin("hello:hits", Scope::Project, Action::Delete, Some(7)));
+    // Writing implies reading, as for Rustrak's own.
+    assert!(access.can_plugin("hello:hits", Scope::Project, Action::Read, Some(7)));
+    assert!(!access.can_plugin("hello:hits", Scope::Project, Action::Delete, Some(8)));
+    assert!(!access.can_plugin("hello:stats", Scope::Project, Action::Read, Some(7)));
+}
+
+#[test]
+fn an_instance_plugin_permission_holds_wherever_its_role_is_held() {
+    let access = Access::new(vec![on_project(
+        7,
+        plugin(&[("hello:reports", Action::Read)]),
+    )]);
+    assert!(access.can_plugin("hello:reports", Scope::Instance, Action::Read, None));
+}
+
+#[test]
+fn an_owner_holds_every_plugin_permission() {
+    let access = Access::new(vec![instance(Grants::all())]);
+    assert!(access.can_plugin("anything:at-all", Scope::Project, Action::Delete, Some(1)));
+}
+
+#[test]
+fn a_plugin_permission_is_handed_out_only_by_who_holds_it() {
+    let access = Access::new(vec![instance(plugin(&[("hello:hits", Action::Read)]))]);
+    assert!(access.covers(&plugin(&[("hello:hits", Action::Read)]), None));
+    assert!(!access.covers(&plugin(&[("hello:hits", Action::Delete)]), None));
+}
+
+#[test]
+fn a_plugin_key_names_a_plugin_and_one_of_its_resources() {
+    assert!(rbac::is_plugin_key("hello:hits"));
+    assert!(rbac::is_plugin_key(&rbac::plugin_key(
+        "web-traffic",
+        "visitors"
+    )));
+    for not in ["hits", "Hello:x", "hello:", ":hits", "h:hits"] {
+        assert!(!rbac::is_plugin_key(not), "{not}");
+    }
 }

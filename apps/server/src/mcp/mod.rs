@@ -80,6 +80,7 @@ pub struct RustrakMcp {
     actor: Arc<ApiActor>,
     cleanup_job: web::Data<CleanupJob>,
     sourcemap_store: web::Data<Arc<dyn SourceMapStore>>,
+    plugins: web::Data<crate::plugins::host::PluginHost>,
     processors: web::Data<Processors>,
 }
 
@@ -129,6 +130,10 @@ impl RustrakMcp {
                 .app_data::<web::Data<Arc<dyn SourceMapStore>>>()
                 .cloned()
                 .ok_or_else(|| missing("Source map store"))?,
+            plugins: req
+                .app_data::<web::Data<crate::plugins::host::PluginHost>>()
+                .cloned()
+                .ok_or_else(|| missing("Plugins"))?,
             processors: req
                 .app_data::<web::Data<Processors>>()
                 .cloned()
@@ -163,6 +168,10 @@ impl RustrakMcp {
 
     fn sourcemap_store(&self) -> web::Data<Arc<dyn SourceMapStore>> {
         self.sourcemap_store.clone()
+    }
+
+    fn plugins(&self) -> web::Data<crate::plugins::host::PluginHost> {
+        self.plugins.clone()
     }
 }
 

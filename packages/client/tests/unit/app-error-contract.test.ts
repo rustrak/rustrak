@@ -50,6 +50,7 @@ const STATUS_CODE_NUMBERS: Record<string, number> = {
   TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER_ERROR: 500,
   SERVICE_UNAVAILABLE: 503,
+  BAD_GATEWAY: 502,
 };
 
 /** `#[error("<display>")]` immediately above `VariantName(`. */
@@ -134,12 +135,12 @@ describe.skipIf(source === null)(
     const literals = parseTypeLiterals(rust);
     const statuses = parseStatusCodes(rust);
 
-    it('parses all ten variants out of the Rust enum', () => {
+    it('parses all eleven variants out of the Rust enum', () => {
       // If the parse silently matches nothing, every table comparison below
       // would trivially pass, so assert the parse itself first.
-      expect(displays.size).toBe(10);
-      expect(literals.size).toBe(10);
-      expect(statuses.size).toBe(10);
+      expect(displays.size).toBe(11);
+      expect(literals.size).toBe(11);
+      expect(statuses.size).toBe(11);
       expect([...literals.keys()].sort()).toEqual([...displays.keys()].sort());
       expect([...statuses.keys()].sort()).toEqual([...displays.keys()].sort());
     });

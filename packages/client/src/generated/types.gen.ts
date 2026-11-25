@@ -422,7 +422,37 @@ export type BulkUpdateResponse = {
 };
 
 export type Catalog = {
+    /**
+     * What installed plugins add, granted the same way.
+     */
+    plugins: Array<CatalogPluginPermission>;
     resources: Array<CatalogResource>;
+};
+
+/**
+ * One permission a plugin adds, in the catalog Roles is built from.
+ */
+export type CatalogPluginPermission = {
+    actions: Array<Action>;
+    /**
+     * By language.
+     */
+    description: {
+        [key: string]: string;
+    };
+    /**
+     * `<plugin>:<resource>`, as roles store it.
+     */
+    key: string;
+    /**
+     * By language.
+     */
+    label: {
+        [key: string]: string;
+    };
+    plugin: string;
+    plugin_name: string;
+    scope: Scope;
 };
 
 export type CatalogResource = {
@@ -502,6 +532,10 @@ export type CleanupCounts = {
     issues_removed: number;
     logs: number;
     /**
+     * Plugins' history rows deleted; only a retention cleanup removes them.
+     */
+    plugin_rows: number;
+    /**
      * Unused source maps deleted; only a retention cleanup removes them.
      */
     source_maps: number;
@@ -543,6 +577,12 @@ export type CleanupRequest = {
      */
     include_transactions?: boolean;
     older_than_days: number;
+    /**
+     * Plugins whose history (their tables with `created_at`) goes too, older
+     * than the same window. Only for every project: their history has no
+     * project Rustrak knows.
+     */
+    plugins?: Array<string>;
     project_id?: number | null;
 };
 
@@ -691,6 +731,17 @@ export type Compaction = {
      * Empty on SQLite, which compacts one file.
      */
     tables: Array<TableSize>;
+};
+
+export type ConfigurePlugin = {
+    /**
+     * Active in every project, those created later included.
+     */
+    allProjects: boolean;
+    /**
+     * The projects it runs in one by one; left out, they stay as they are.
+     */
+    projects?: Array<number>;
 };
 
 export type ConfirmSsoLinkRequest = {
@@ -1257,6 +1308,15 @@ export type Grouping = {
     project_id: number;
 };
 
+/**
+ * One history table of a plugin and how much of it is past the window.
+ */
+export type HistoryTable = {
+    expired: number;
+    rows: number;
+    table: string;
+};
+
 export type IntervalUnit = 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
 
 /**
@@ -1736,10 +1796,19 @@ export type MyAccess = {
      */
     instance: Array<Permission>;
     is_owner: boolean;
+    plugins: MyPluginAccess;
     /**
      * Project permissions held on one project.
      */
     projects: Array<ProjectPermissions>;
+};
+
+/**
+ * Plugins' permissions the caller holds: everywhere, and per project.
+ */
+export type MyPluginAccess = {
+    everywhere: Array<PluginGrant>;
+    projects: Array<ProjectPluginPermissions>;
 };
 
 /**
@@ -1794,15 +1863,161 @@ export type Permission = {
     resource: Resource;
 };
 
+export type PermissionSpec = {
+    actions: Array<Action>;
+    resource: string;
+    scope: Scope;
+};
+
 /**
  * Permissions given to one person directly, without a role of the list.
  */
 export type PersonalAccess = {
     permissions: Array<Permission>;
+    plugin_permissions?: Array<PluginGrant>;
     /**
      * Where its project permissions apply. Omitted or `null`: every project.
      */
     project_ids?: Array<number> | null;
+};
+
+/**
+ * One grant of a plugin's permission: `hello:hits`, as its manifest
+ * declares it. Kept apart from `Permission`, whose resource is Rustrak's own.
+ */
+export type PluginGrant = {
+    action: Action;
+    /**
+     * `<plugin>:<resource>`.
+     */
+    resource: string;
+};
+
+/**
+ * A `.rtp` file's bytes. Opaque in the spec, like an attachment: the client
+ * validates bodies with zod, which has no type for a binary one.
+ */
+export type PluginPackage = unknown;
+
+/**
+ * One plugin's settings at one level, for the form Rustrak draws.
+ */
+export type PluginSettingsView = {
+    /**
+     * Required settings nothing sets yet: the plugin answers 503 until then.
+     */
+    missing: Array<string>;
+    /**
+     * What the plugin reads here: this level, then the instance, then the
+     * defaults. No secrets.
+     */
+    resolved: {
+        [key: string]: unknown;
+    };
+    /**
+     * Whether each secret is set; their values never leave the server.
+     */
+    secrets: {
+        [key: string]: boolean;
+    };
+    /**
+     * Set at this level (the instance, or this project). No secrets.
+     */
+    values: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * One plugin's data, in the Storage page.
+ */
+export type PluginStorage = {
+    /**
+     * Its SQLite file, write-ahead log included.
+     */
+    bytes: number;
+    /**
+     * Its tables with `created_at`, the ones retention clears.
+     */
+    history: Array<HistoryTable>;
+    id: string;
+    name: string;
+    quota_bytes: number;
+    /**
+     * The admin's window for its history; `null` keeps everything.
+     */
+    retention_days: number | null;
+};
+
+/**
+ * What the dashboard needs to know about one installed plugin.
+ */
+export type PluginSummary = {
+    /**
+     * Active in every project, those created later included.
+     */
+    allProjects: boolean;
+    author: string | null;
+    /**
+     * Whether it keeps its own database.
+     */
+    database: boolean;
+    description: string | null;
+    /**
+     * A `@rustrak/ui` icon name.
+     */
+    icon: string | null;
+    id: string;
+    /**
+     * Its own logo (`logo.svg` in its package), shown instead of `icon`.
+     */
+    logo: string | null;
+    /**
+     * Its texts, by language (`messages/<locale>.json`): they label its
+     * settings and permissions, and its pages.
+     */
+    messages: {
+        [key: string]: unknown;
+    };
+    name: string;
+    /**
+     * The permissions it adds to roles.
+     */
+    permissions: Array<PermissionSpec>;
+    /**
+     * Projects it was turned on in one by one.
+     */
+    projects: Array<number>;
+    /**
+     * Its page in the catalog, Markdown, by language: English always.
+     */
+    readme: {
+        [key: string]: string;
+    };
+    repository: string | null;
+    /**
+     * What its settings form is drawn from.
+     */
+    settings: Array<SettingSpec>;
+    ui: PluginUi | null;
+    /**
+     * Installed from the signed registry; `false` for one uploaded by hand.
+     */
+    verified: boolean;
+    version: string;
+};
+
+export type PluginUi = {
+    /**
+     * The bundle to load, a script that registers the plugin.
+     */
+    entry: string;
+    pages: Array<UiPage>;
+    /**
+     * Its stylesheet, when it has one.
+     */
+    styles: string | null;
+    widgets: Array<UiWidget>;
 };
 
 /**
@@ -1905,6 +2120,11 @@ export type ProjectMember = {
 
 export type ProjectPermissions = {
     permissions: Array<Permission>;
+    project_id: number;
+};
+
+export type ProjectPluginPermissions = {
+    permissions: Array<PluginGrant>;
     project_id: number;
 };
 
@@ -2100,6 +2320,38 @@ export type RefInput = {
 };
 
 /**
+ * The registry's plugins, or why there are none.
+ */
+export type RegistryListing = {
+    available: boolean;
+    error: string | null;
+    plugins: Array<RegistryPlugin>;
+};
+
+/**
+ * One published plugin, as the catalog lists it.
+ */
+export type RegistryPlugin = {
+    author: string | null;
+    description: string | null;
+    icon: string | null;
+    id: string;
+    /**
+     * What is installed now, if any.
+     */
+    installed_version: string | null;
+    /**
+     * Its logo, served by Rustrak once checked against the index.
+     */
+    logo: string | null;
+    name: string;
+    /**
+     * The newest version this Rustrak runs.
+     */
+    version: string;
+};
+
+/**
  * Per-release health row returned by the stats endpoint.
  */
 export type ReleaseHealthRow = {
@@ -2231,6 +2483,13 @@ export type RetentionSettings = {
     hour: number;
     overrides: Array<ProjectRetention>;
     /**
+     * Days each plugin keeps its history (its tables with `created_at`),
+     * by plugin id. A plugin left out keeps everything.
+     */
+    plugins: {
+        [key: string]: number;
+    };
+    /**
      * Day a weekly cleanup runs, 0 = Sunday.
      */
     weekday: number;
@@ -2264,6 +2523,10 @@ export type Role = {
     id: number;
     name: string;
     permissions: Array<Permission>;
+    /**
+     * Plugins' permissions it gives.
+     */
+    plugin_permissions: Array<PluginGrant>;
 };
 
 /**
@@ -2287,6 +2550,7 @@ export type RoleInput = {
     description?: string;
     name: string;
     permissions: Array<Permission>;
+    plugin_permissions?: Array<PluginGrant>;
 };
 
 export type RoleRef = {
@@ -2584,6 +2848,43 @@ export type SetProjectMember = {
      */
     role_ids: Array<number>;
     user_id: number;
+};
+
+export type SettingSpec = {
+    /**
+     * A string, a number or a boolean, as the type says.
+     */
+    default?: unknown;
+    integer?: boolean | null;
+    key: string;
+    max?: number | null;
+    min?: number | null;
+    options?: Array<string> | null;
+    required?: boolean;
+    scope?: Scope;
+    type: SettingType;
+};
+
+export type SettingType = 'text' | 'url' | 'secret' | 'number' | 'boolean' | 'select';
+
+/**
+ * Values for a plugin's settings: a value sets, `null` clears, a key left
+ * out stays as it is.
+ */
+export type SettingsPatch = {
+    [key: string]: unknown;
+};
+
+export type Sidebar = {
+    /**
+     * A `@rustrak/ui` icon name.
+     */
+    icon?: string | null;
+    /**
+     * A key of the plugin's messages.
+     */
+    label: string;
+    rank?: number | null;
 };
 
 /**
@@ -3038,6 +3339,24 @@ export type TransactionTimeseriesPoint = {
     p95_ms: number;
 };
 
+export type UiPage = {
+    /**
+     * Under the plugin's own URL: "" is its first page, "funnels/:funnelId" a deeper one.
+     */
+    path: string;
+    /**
+     * One of the plugin's permissions, `resource:action`: the page, and its
+     * place in the sidebar, are only for whoever holds it.
+     */
+    requires?: string | null;
+    scope: Scope;
+    sidebar?: Sidebar | null;
+};
+
+export type UiWidget = {
+    zone: string;
+};
+
 /**
  * DTO for updating an alert integration
  */
@@ -3231,6 +3550,7 @@ export type UserAccess = {
      * What their personal role holds; its places are in `assignments`.
      */
     personal_permissions: Array<Permission>;
+    personal_plugin_permissions: Array<PluginGrant>;
 };
 
 /**
@@ -5688,6 +6008,31 @@ export type OauthRevokeGrantResponses = {
 };
 
 export type OauthRevokeGrantResponse = OauthRevokeGrantResponses[keyof OauthRevokeGrantResponses];
+
+export type PluginsListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins';
+};
+
+export type PluginsListErrors = {
+    /**
+     * Not signed in
+     */
+    401: ErrorResponse;
+};
+
+export type PluginsListError = PluginsListErrors[keyof PluginsListErrors];
+
+export type PluginsListResponses = {
+    /**
+     * Installed plugins
+     */
+    200: Array<PluginSummary>;
+};
+
+export type PluginsListResponse = PluginsListResponses[keyof PluginsListResponses];
 
 export type ProjectsListData = {
     body?: never;
@@ -8965,6 +9310,82 @@ export type MonitorsListCheckinsResponses = {
 
 export type MonitorsListCheckinsResponse = MonitorsListCheckinsResponses[keyof MonitorsListCheckinsResponses];
 
+export type PluginsProjectSettingsData = {
+    body?: never;
+    path: {
+        /**
+         * Project id
+         */
+        project_id: number;
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/plugin-settings/{plugin}';
+};
+
+export type PluginsProjectSettingsErrors = {
+    /**
+     * Not installed, or no such project
+     */
+    404: ErrorResponse;
+};
+
+export type PluginsProjectSettingsError = PluginsProjectSettingsErrors[keyof PluginsProjectSettingsErrors];
+
+export type PluginsProjectSettingsResponses = {
+    /**
+     * Its settings in this project
+     */
+    200: PluginSettingsView;
+};
+
+export type PluginsProjectSettingsResponse = PluginsProjectSettingsResponses[keyof PluginsProjectSettingsResponses];
+
+export type PluginsSetProjectSettingsData = {
+    body: SettingsPatch;
+    path: {
+        /**
+         * Project id
+         */
+        project_id: number;
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: never;
+    url: '/api/projects/{project_id}/plugin-settings/{plugin}';
+};
+
+export type PluginsSetProjectSettingsErrors = {
+    /**
+     * A value its schema refuses
+     */
+    400: ErrorResponse;
+    /**
+     * May not change this project
+     */
+    403: ErrorResponse;
+    /**
+     * Not installed, or no such project
+     */
+    404: ErrorResponse;
+};
+
+export type PluginsSetProjectSettingsError = PluginsSetProjectSettingsErrors[keyof PluginsSetProjectSettingsErrors];
+
+export type PluginsSetProjectSettingsResponses = {
+    /**
+     * Saved
+     */
+    200: PluginSettingsView;
+};
+
+export type PluginsSetProjectSettingsResponse = PluginsSetProjectSettingsResponses[keyof PluginsSetProjectSettingsResponses];
+
 export type ReleasesListData = {
     body?: never;
     path: {
@@ -10813,6 +11234,246 @@ export type SettingsUpdateMcpResponses = {
 
 export type SettingsUpdateMcpResponse = SettingsUpdateMcpResponses[keyof SettingsUpdateMcpResponses];
 
+export type PluginsInstallData = {
+    /**
+     * The plugin package, a .rtp file
+     */
+    body: PluginPackage;
+    path?: never;
+    query?: never;
+    url: '/api/settings/plugins';
+};
+
+export type PluginsInstallErrors = {
+    /**
+     * Not a valid package for this server
+     */
+    400: ErrorResponse;
+    /**
+     * Not an owner
+     */
+    403: ErrorResponse;
+};
+
+export type PluginsInstallError = PluginsInstallErrors[keyof PluginsInstallErrors];
+
+export type PluginsInstallResponses = {
+    /**
+     * Installed
+     */
+    201: PluginSummary;
+};
+
+export type PluginsInstallResponse = PluginsInstallResponses[keyof PluginsInstallResponses];
+
+export type PluginsRegistryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/plugins/registry';
+};
+
+export type PluginsRegistryErrors = {
+    /**
+     * Not an owner
+     */
+    403: ErrorResponse;
+};
+
+export type PluginsRegistryError = PluginsRegistryErrors[keyof PluginsRegistryErrors];
+
+export type PluginsRegistryResponses = {
+    /**
+     * The published plugins this Rustrak runs, or why there are none
+     */
+    200: RegistryListing;
+};
+
+export type PluginsRegistryResponse = PluginsRegistryResponses[keyof PluginsRegistryResponses];
+
+export type PluginsInstallFromRegistryData = {
+    body?: never;
+    path: {
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: never;
+    url: '/api/settings/plugins/registry/{plugin}';
+};
+
+export type PluginsInstallFromRegistryErrors = {
+    /**
+     * Not a package this Rustrak can run
+     */
+    400: ErrorResponse;
+    /**
+     * Not an owner
+     */
+    403: ErrorResponse;
+    /**
+     * The registry could not be read, or what it served does not verify
+     */
+    502: ErrorResponse;
+};
+
+export type PluginsInstallFromRegistryError = PluginsInstallFromRegistryErrors[keyof PluginsInstallFromRegistryErrors];
+
+export type PluginsInstallFromRegistryResponses = {
+    /**
+     * Installed, verified
+     */
+    201: PluginSummary;
+};
+
+export type PluginsInstallFromRegistryResponse = PluginsInstallFromRegistryResponses[keyof PluginsInstallFromRegistryResponses];
+
+export type PluginsUninstallData = {
+    body?: never;
+    path: {
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: {
+        /**
+         * Delete the plugin's database too. Without it, reinstalling finds it.
+         */
+        purge?: boolean;
+    };
+    url: '/api/settings/plugins/{plugin}';
+};
+
+export type PluginsUninstallErrors = {
+    /**
+     * Not an owner
+     */
+    403: ErrorResponse;
+    /**
+     * Not installed
+     */
+    404: ErrorResponse;
+};
+
+export type PluginsUninstallError = PluginsUninstallErrors[keyof PluginsUninstallErrors];
+
+export type PluginsUninstallResponses = {
+    /**
+     * Uninstalled
+     */
+    204: void;
+};
+
+export type PluginsUninstallResponse = PluginsUninstallResponses[keyof PluginsUninstallResponses];
+
+export type PluginsConfigureData = {
+    body: ConfigurePlugin;
+    path: {
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: never;
+    url: '/api/settings/plugins/{plugin}';
+};
+
+export type PluginsConfigureErrors = {
+    /**
+     * Not an owner
+     */
+    403: ErrorResponse;
+    /**
+     * Not installed
+     */
+    404: ErrorResponse;
+};
+
+export type PluginsConfigureError = PluginsConfigureErrors[keyof PluginsConfigureErrors];
+
+export type PluginsConfigureResponses = {
+    /**
+     * Updated
+     */
+    200: PluginSummary;
+};
+
+export type PluginsConfigureResponse = PluginsConfigureResponses[keyof PluginsConfigureResponses];
+
+export type PluginsSettingsData = {
+    body?: never;
+    path: {
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: never;
+    url: '/api/settings/plugins/{plugin}/settings';
+};
+
+export type PluginsSettingsErrors = {
+    /**
+     * Not signed in
+     */
+    401: ErrorResponse;
+    /**
+     * Not installed
+     */
+    404: ErrorResponse;
+};
+
+export type PluginsSettingsError = PluginsSettingsErrors[keyof PluginsSettingsErrors];
+
+export type PluginsSettingsResponses = {
+    /**
+     * Its settings for the whole instance
+     */
+    200: PluginSettingsView;
+};
+
+export type PluginsSettingsResponse = PluginsSettingsResponses[keyof PluginsSettingsResponses];
+
+export type PluginsSetSettingsData = {
+    body: SettingsPatch;
+    path: {
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: never;
+    url: '/api/settings/plugins/{plugin}/settings';
+};
+
+export type PluginsSetSettingsErrors = {
+    /**
+     * A value its schema refuses
+     */
+    400: ErrorResponse;
+    /**
+     * Not an owner
+     */
+    403: ErrorResponse;
+    /**
+     * Not installed
+     */
+    404: ErrorResponse;
+};
+
+export type PluginsSetSettingsError = PluginsSetSettingsErrors[keyof PluginsSetSettingsErrors];
+
+export type PluginsSetSettingsResponses = {
+    /**
+     * Saved
+     */
+    200: PluginSettingsView;
+};
+
+export type PluginsSetSettingsResponse = PluginsSetSettingsResponses[keyof PluginsSetSettingsResponses];
+
 export type SidebarGetProjectsData = {
     body?: never;
     path?: never;
@@ -11036,6 +11697,35 @@ export type StorageCompactResponses = {
 };
 
 export type StorageCompactResponse = StorageCompactResponses[keyof StorageCompactResponses];
+
+export type StorageGetPluginsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/storage/plugins';
+};
+
+export type StorageGetPluginsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Missing storage:read
+     */
+    403: ErrorResponse;
+};
+
+export type StorageGetPluginsError = StorageGetPluginsErrors[keyof StorageGetPluginsErrors];
+
+export type StorageGetPluginsResponses = {
+    /**
+     * Each installed plugin's file, quota and history against its retention
+     */
+    200: Array<PluginStorage>;
+};
+
+export type StorageGetPluginsResponse = StorageGetPluginsResponses[keyof StorageGetPluginsResponses];
 
 export type StorageGetProjectsData = {
     body?: never;

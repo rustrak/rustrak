@@ -95,12 +95,15 @@ function request(path: string, op: Operation) {
   }
   const json = op.requestBody?.content['application/json'];
   const multipart = op.requestBody?.content['multipart/form-data'];
+  const bytes = op.requestBody?.content['application/octet-stream'];
   const options = {
     ...(Object.keys(pathParams).length && { path: pathParams }),
     ...(Object.keys(query).length && { query }),
     ...(json && { body: sample(json.schema) }),
     // A sentry-cli chunk: the part's field name is its SHA-1.
     ...(multipart && { body: { [CHUNK_NAME]: new Blob(['chunk']) } }),
+    // A file uploaded as it is: a plugin package.
+    ...(bytes && { body: new Blob(['package']) }),
   };
   return { options, url, query };
 }

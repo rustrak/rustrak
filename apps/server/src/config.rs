@@ -36,6 +36,15 @@ pub struct Config {
     pub public_url: Option<String>,
     /// Directory where assembled source map files are stored on disk (CAS layout).
     pub sourcemap_storage_path: String,
+    /// `RUSTRAK_PLUGINS_DIR`: installed plugin packages, their compiled code
+    /// and each plugin's own SQLite file. State to back up, like the database.
+    pub plugins_dir: PathBuf,
+    /// The signed index of published plugins (`RUSTRAK_PLUGIN_REGISTRY`;
+    /// `off` turns it off). `https://` or `file://`.
+    pub plugin_registry: Option<String>,
+    /// Keys an index's signature may be made with (minisign, base64): the
+    /// official one, and any in `RUSTRAK_PLUGIN_REGISTRY_KEYS`.
+    pub plugin_registry_keys: Vec<String>,
     /// Budget for parsed source maps kept in memory across events, in bytes.
     pub sourcemap_cache_bytes: usize,
     pub max_chunk_size_bytes: usize,
@@ -279,6 +288,12 @@ impl Default for Config {
             digest_memory_bytes: 16 * 1024 * 1024,
             public_url: None,
             sourcemap_storage_path: "/data/sourcemaps".to_string(),
+            plugins_dir: PathBuf::from("./plugin-data"),
+            plugin_registry: Some(crate::plugins::registry::OFFICIAL_INDEX.to_string()),
+            plugin_registry_keys: crate::plugins::registry::OFFICIAL_KEYS
+                .iter()
+                .map(|k| k.to_string())
+                .collect(),
             sourcemap_cache_bytes: DEFAULT_SOURCEMAP_CACHE_BYTES,
             max_chunk_size_bytes: 10 * 1024 * 1024,
             session_flush_interval_secs: 30,
@@ -333,6 +348,28 @@ impl Config {
             digest_memory_bytes: defaults.digest_memory_bytes,
             sourcemap_storage_path: env::var("SOURCEMAP_STORAGE_PATH")
                 .unwrap_or(defaults.sourcemap_storage_path),
+            plugins_dir: non_empty("RUSTRAK_PLUGINS_DIR")
+                .map(PathBuf::from)
+                .unwrap_or(defaults.plugins_dir),
+            plugin_registry: match non_empty("RUSTRAK_PLUGIN_REGISTRY") {
+                Some(off) if off.eq_ignore_ascii_case("off") => None,
+                Some(url) => Some(url),
+                None => defaults.plugin_registry,
+            },
+            plugin_registry_keys: defaults
+                .plugin_registry_keys
+                .into_iter()
+                .chain(
+                    non_empty("RUSTRAK_PLUGIN_REGISTRY_KEYS")
+                        .into_iter()
+                        .flat_map(|keys| {
+                            keys.split(',')
+                                .map(|k| k.trim().to_string())
+                                .collect::<Vec<_>>()
+                        })
+                        .filter(|k| !k.is_empty()),
+                )
+                .collect(),
             sourcemap_cache_bytes: env_number(
                 "SOURCEMAP_CACHE_MB",
                 defaults.sourcemap_cache_bytes / (1024 * 1024),

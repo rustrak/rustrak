@@ -34,6 +34,7 @@ const SERVER_PREFIXES = [
   '/api-docs',
   '/metrics',
   '/mcp',
+  '/public',
   '/.well-known',
 ];
 

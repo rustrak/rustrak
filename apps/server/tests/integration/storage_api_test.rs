@@ -199,7 +199,7 @@ async fn execute_cleanup_refuses_a_second_run_while_one_is_running() {
         .unwrap();
     let held = blocked.acquire().await.unwrap();
     let job = web::Data::new(CleanupJob::default());
-    job.start(blocked.clone(), 30, None, CleanupFilter::all())
+    job.start(blocked.clone(), 30, None, CleanupFilter::all(), &[])
         .unwrap();
     let app = storage_app(&db.pool, Some(job.clone())).await;
 
@@ -476,6 +476,7 @@ async fn retention_keeps_everything_forever_by_default() {
             "frequency": "daily",
             "hour": 3,
             "weekday": 0,
+            "plugins": {},
         })
     );
     assert_eq!(body["next_run_at"], Value::Null);
@@ -498,6 +499,7 @@ async fn retention_settings_are_saved() {
         "frequency": "weekly",
         "hour": 4,
         "weekday": 6,
+        "plugins": {},
     });
     assert_eq!(put_retention(&app, &token, &settings).await.status(), 200);
 

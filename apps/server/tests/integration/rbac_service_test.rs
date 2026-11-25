@@ -254,7 +254,7 @@ async fn rolling_the_migration_back_restores_only_complete_levels() {
                     action: Action::parse(a).unwrap(),
                 })
                 .collect();
-            let role = RoleService::create(&pool, &format!("r{roles}"), "", permissions)
+            let role = RoleService::create(&pool, &format!("r{roles}"), "", permissions, vec![])
                 .await
                 .unwrap();
             RoleService::assign(&pool, who.id, role.id, place)

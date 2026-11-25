@@ -45,6 +45,7 @@ pub mod models;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 pub mod pagination;
+pub mod plugins;
 pub mod protocol;
 pub mod routes;
 pub mod scheduler;

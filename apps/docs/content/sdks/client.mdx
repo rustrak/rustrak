@@ -591,6 +591,7 @@ Every method, grouped as it hangs off the client.
 | `storage.getAge()` | `GET /api/storage/age` | Rows per age bucket, per project and kind. |
 | `storage.getCleanupStatus()` | `GET /api/storage/cleanup/status` | Progress of the running cleanup, or the outcome of the last one. |
 | `storage.getCompaction()` | `GET /api/storage/compaction` | Whether the database file shrinks when data is deleted, and the disk a one-off compaction needs. |
+| `storage.getPlugins()` | `GET /api/storage/plugins` | Lists each installed plugin's data: its file, its quota, and its history (the tables with `created_at`) against its retention. |
 | `storage.getProjects()` | `GET /api/storage/projects` | Per-project counts and estimated weight. |
 | `storage.getRetention()` | `GET /api/storage/retention` | Gets the retention settings and the cleanup schedule. |
 | `storage.getSummary()` | `GET /api/storage/summary` | Row counts, DB size, and source-map weight. |
@@ -644,6 +645,21 @@ Every method, grouped as it hangs off the client.
 | `webVitals.listPages({ path, query? })` | `GET /api/projects/{project_id}/web-vitals/pages` | Returns the pages with web vitals in the window, the one whose improvement would raise the project's score the most first, or its score for one vital when `vital` names it. |
 | `webVitals.listSamples({ path, query? })` | `GET /api/projects/{project_id}/web-vitals/samples` | Returns the window's worst measurements, ten at most, with where each happened: the page and its URL, the element, the browser, the device, the network and the page load's transaction. |
 | `webVitals.listTargets({ path, query? })` | `GET /api/projects/{project_id}/web-vitals/targets` | Returns what the window's vitals were about: an LCP's element and the resource it loaded, a layout shift's element, an interaction's target. |
+
+### plugins
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `plugins.configure({ path, body })` | `PUT /api/settings/plugins/{plugin}` | Chooses where an installed plugin runs. |
+| `plugins.install({ body })` | `POST /api/settings/plugins` | Installs a plugin package, or replaces the installed version of it. |
+| `plugins.installFromRegistry({ path })` | `POST /api/settings/plugins/registry/{plugin}` | Installs a published plugin, its newest version this Rustrak runs, verified against the signed index. |
+| `plugins.list()` | `GET /api/plugins` | Lists the installed plugins and what each adds to the dashboard. |
+| `plugins.projectSettings({ path })` | `GET /api/projects/{project_id}/plugin-settings/{plugin}` | Reads a plugin's settings in one project, without its secrets. |
+| `plugins.registry()` | `GET /api/settings/plugins/registry` | Lists the plugins the signed registry publishes, with the version this Rustrak runs. |
+| `plugins.setProjectSettings({ path, body })` | `PUT /api/projects/{project_id}/plugin-settings/{plugin}` | Writes a plugin's settings in one project: only its project settings. |
+| `plugins.setSettings({ path, body })` | `PUT /api/settings/plugins/{plugin}/settings` | Writes a plugin's settings for the whole instance, checked against its schema. |
+| `plugins.settings({ path })` | `GET /api/settings/plugins/{plugin}/settings` | Reads a plugin's settings for the whole instance, without its secrets. |
+| `plugins.uninstall({ path, query? })` | `DELETE /api/settings/plugins/{plugin}` | Uninstalls a plugin, keeping its data unless `purge`. |
 
 {/* api:end */}
 

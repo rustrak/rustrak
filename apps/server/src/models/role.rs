@@ -17,6 +17,22 @@ impl Permission {
     }
 }
 
+/// One grant of a plugin's permission: `hello:hits`, as its manifest
+/// declares it. Kept apart from `Permission`, whose resource is Rustrak's own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PluginGrant {
+    /// `<plugin>:<resource>`.
+    pub resource: String,
+    pub action: Action,
+}
+
+/// Rustrak's grants and the plugins' ones, as one.
+pub fn grants_of(permissions: &[Permission], plugins: &[PluginGrant]) -> Grants {
+    Permission::grants(permissions)
+        .with_plugins(plugins.iter().map(|p| (p.resource.clone(), p.action)))
+}
+
 /// A named set of permissions, given to users by an assignment.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -25,6 +41,8 @@ pub struct Role {
     pub name: String,
     pub description: String,
     pub permissions: Vec<Permission>,
+    /// Plugins' permissions it gives.
+    pub plugin_permissions: Vec<PluginGrant>,
     /// How many assignments use this role.
     pub assignment_count: i64,
     pub created_at: DateTime<Utc>,
@@ -51,6 +69,8 @@ pub struct RoleAssignment {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PersonalAccess {
     pub permissions: Vec<Permission>,
+    #[serde(default)]
+    pub plugin_permissions: Vec<PluginGrant>,
     /// Where its project permissions apply. Omitted or `null`: every project.
     #[serde(default)]
     pub project_ids: Option<Vec<i32>>,

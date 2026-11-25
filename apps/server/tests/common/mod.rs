@@ -6,6 +6,7 @@
 
 pub mod db;
 pub mod fixtures;
+pub mod plugins;
 pub mod telemetry;
 
 pub use db::TestDb;
@@ -45,6 +46,7 @@ pub fn config() -> Config {
         port: 0,
         rate_limit: rate_limit(),
         sourcemap_storage_path: "/tmp/test_sourcemaps".to_string(),
+        plugins_dir: std::env::temp_dir().join(format!("rustrak-test-plugins-{}", Uuid::new_v4())),
         telemetry: TelemetryConfig {
             enabled: false,
             do_not_track: false,
@@ -263,7 +265,7 @@ pub async fn ensure_role(pool: &DbPool, name: &str) -> i32 {
         .filter(|&(r, a)| keep(r, a))
         .map(|(resource, action)| Permission { resource, action })
         .collect();
-    RoleService::create(pool, name, "", permissions)
+    RoleService::create(pool, name, "", permissions, vec![])
         .await
         .unwrap()
         .id
@@ -501,4 +503,24 @@ pub async fn stored_json(pool: &DbPool, table: &str, id: Uuid) -> serde_json::Va
             .unwrap(),
     )
     .unwrap()
+}
+
+/// The `Authorization` header of an API token.
+pub fn bearer(token: &str) -> (&'static str, String) {
+    ("Authorization", format!("Bearer {token}"))
+}
+
+/// Calls the app with a `TestRequest`: its status and its body as JSON
+/// (`Null` when it is not JSON).
+#[macro_export]
+macro_rules! call_json {
+    ($app:expr, $req:expr) => {{
+        let resp = actix_web::test::call_service($app, $req.to_request()).await;
+        let status = resp.status();
+        let body = actix_web::test::read_body(resp).await;
+        (
+            status,
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap_or(serde_json::Value::Null),
+        )
+    }};
 }

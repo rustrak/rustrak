@@ -40,6 +40,15 @@ mod org_releases_api_test;
 mod payload_storage_test;
 #[cfg(feature = "postgres")]
 mod pg_schema_test;
+mod plugin_api_test;
+mod plugin_http_test;
+mod plugin_inspect_test;
+mod plugin_rbac_test;
+mod plugin_registry_test;
+mod plugin_runtime_test;
+mod plugin_sdk_test;
+mod plugin_settings_test;
+mod plugin_storage_test;
 mod products_test;
 mod project_delete_test;
 mod projects_api_test;

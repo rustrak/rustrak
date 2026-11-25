@@ -31,6 +31,7 @@ const settings: RetentionSettings = {
   frequency: 'daily',
   hour: 3,
   weekday: 0,
+  plugins: {},
 };
 
 const keepAll: RetentionSettings = {
@@ -198,6 +199,7 @@ describe('estimateSize', () => {
     logs: 3,
     issues_removed: 0,
     source_maps: 0,
+    plugin_rows: 0,
   };
 
   it('is not guessed before the figures to price it are in', () => {
@@ -223,6 +225,7 @@ describe('estimateBytes', () => {
           logs: 3,
           issues_removed: 0,
           source_maps: 0,
+          plugin_rows: 0,
         },
         projects,
       ),
@@ -239,6 +242,7 @@ describe('removedParts', () => {
       logs: 3,
       issues_removed: 1,
       source_maps: 4,
+      plugin_rows: 0,
     };
     expect(removedParts(counts, (key) => key)).toEqual([
       'unit.errors',

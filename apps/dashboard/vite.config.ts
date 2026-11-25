@@ -71,6 +71,7 @@ export default defineConfig(({ mode }) => {
     '/api-docs',
     '/metrics',
     '/mcp',
+    '/public',
     '/.well-known',
   ];
 

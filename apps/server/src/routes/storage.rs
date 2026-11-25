@@ -19,6 +19,7 @@ use crate::models::{
 use crate::models::{
     CleanupRequest, CleanupState, RetentionResponse, RetentionRun, RetentionSettings,
 };
+use crate::plugins::host::PluginHost;
 use crate::scheduler::engine::{JobRunStatus, Scheduler};
 use crate::scheduler::jobs::StorageCleanupJob;
 use crate::services::sourcemap_store::SourceMapStore;
@@ -86,17 +87,19 @@ pub async fn get_projects(
 /// Dry-run count, mutates nothing.
 pub async fn preview_cleanup(
     pool: web::Data<DbPool>,
+    plugins: web::Data<PluginHost>,
     actor: ApiActor,
     body: web::Json<CleanupRequest>,
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Storage, Action::Read, None)?;
-    let counts = StorageService::preview_cleanup(
+    let mut counts = StorageService::preview_cleanup(
         pool.get_ref(),
         body.older_than_days,
         body.project_id,
         body.filter(),
     )
     .await?;
+    counts.plugin_rows = plugins.expired_rows(&body.plugin_windows()).await?;
     Ok(HttpResponse::Ok().json(counts))
 }
 
@@ -129,6 +132,7 @@ pub async fn execute_cleanup(
         body.older_than_days,
         body.project_id,
         body.filter(),
+        &body.plugins,
     )?;
     Ok(HttpResponse::Accepted().json(status))
 }
@@ -369,11 +373,13 @@ pub async fn update_retention(
 /// delete on the next cleanup, without saving or deleting anything.
 pub async fn preview_retention(
     pool: web::Data<DbPool>,
+    plugins: web::Data<PluginHost>,
     actor: ApiActor,
     body: web::Json<RetentionSettings>,
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Storage, Action::Read, None)?;
-    let counts = StorageService::preview_retention(pool.get_ref(), &body).await?;
+    let mut counts = StorageService::preview_retention(pool.get_ref(), &body).await?;
+    counts.plugin_rows = plugins.expired_rows(&body.plugins).await?;
     Ok(HttpResponse::Ok().json(counts))
 }
 
@@ -452,6 +458,33 @@ pub async fn get_age(
     Ok(HttpResponse::Ok().json(&job.snapshot(pool.get_ref()).await?.age))
 }
 
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/storage/plugins",
+    operation_id = "storage.getPlugins",
+    tag = "Storage",
+    responses(
+        (status = 200, description = "Each installed plugin's file, quota and history against its retention", body = Vec<crate::plugins::host::PluginStorage>),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Missing storage:read", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Lists each installed plugin's data: its file, its quota, and its history (the tables with `created_at`) against its retention.
+pub async fn get_plugins(
+    pool: web::Data<DbPool>,
+    job: web::Data<CleanupJob>,
+    plugins: web::Data<PluginHost>,
+    actor: ApiActor,
+) -> AppResult<HttpResponse> {
+    actor.require(Resource::Storage, Action::Read, None)?;
+    let retention = retention_response(pool.get_ref(), &job)
+        .await?
+        .settings
+        .plugins;
+    Ok(HttpResponse::Ok().json(plugins.storage(&retention).await?))
+}
+
 async fn retention_response(pool: &DbPool, job: &CleanupJob) -> AppResult<RetentionResponse> {
     let state = match Scheduler::job(pool, StorageCleanupJob::KEY).await {
         Ok(state) => Some(state),
@@ -466,8 +499,12 @@ async fn retention_response(pool: &DbPool, job: &CleanupJob) -> AppResult<Retent
         });
     };
     // An unfinished run with no cleanup running was cut short by a restart.
-    let running = job.status().state == CleanupState::Running;
+    // One this process finished whose end is still being recorded is not:
+    // until it is, it reads as running.
+    let status = job.status();
     let last_run = state.last_started_at.map(|started_at| {
+        let running = status.state == CleanupState::Running
+            || status.finished_at.is_some_and(|f| f >= started_at);
         let finished = state.last_finished_at.filter(|f| *f >= started_at);
         RetentionRun {
             started_at,
@@ -510,6 +547,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/retention/preview", web::post().to(preview_retention))
             .route("/retention/run", web::post().to(run_retention))
             .route("/age", web::get().to(get_age))
+            .route("/plugins", web::get().to(get_plugins))
             .route(
                 "/source-maps/gc/preview",
                 web::post().to(preview_source_map_gc),

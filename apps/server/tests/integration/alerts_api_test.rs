@@ -1873,7 +1873,7 @@ async fn a_rule_redirecting_an_integration_needs_integrations_update() {
         )
         .await
         .unwrap();
-        let role = RoleService::create(pool, email, "", permissions)
+        let role = RoleService::create(pool, email, "", permissions, vec![])
             .await
             .unwrap();
         RoleService::assign(pool, user.id, role.id, Some(project_id))

@@ -61,6 +61,7 @@ impl RustrakMcp {
     ) -> CallToolResult {
         reply(storage::preview_cleanup(
             self.pool(),
+            self.plugins(),
             self.actor(),
             web::Json(a),
         ))
@@ -154,6 +155,7 @@ impl RustrakMcp {
     ) -> CallToolResult {
         reply(storage::preview_retention(
             self.pool(),
+            self.plugins(),
             self.actor(),
             web::Json(a),
         ))

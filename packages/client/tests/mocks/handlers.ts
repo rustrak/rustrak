@@ -19,6 +19,7 @@ export type AppErrorType =
   | 'DatabaseError'
   | 'InternalError'
   | 'ServiceUnavailable'
+  | 'BadGateway'
   | 'TooManyRequests';
 
 /**
@@ -39,6 +40,7 @@ export const APP_ERROR_PREFIXES = {
   DatabaseError: 'Database error: ',
   InternalError: 'Internal server error: ',
   ServiceUnavailable: 'Service unavailable: ',
+  BadGateway: 'Bad gateway: ',
   TooManyRequests: 'Too many requests, seconds to wait: ',
 } as const satisfies Record<AppErrorType, string>;
 
@@ -58,6 +60,7 @@ export const APP_ERROR_STATUS = {
   DatabaseError: 500,
   InternalError: 500,
   ServiceUnavailable: 503,
+  BadGateway: 502,
   TooManyRequests: 429,
 } as const satisfies Record<AppErrorType, number>;
 
