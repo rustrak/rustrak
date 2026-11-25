@@ -5,3 +5,8 @@
 fn macro_misuse_fails_to_compile() {
     trybuild::TestCases::new().compile_fail("tests/ui/*.rs");
 }
+
+#[test]
+fn routes_build_natively() {
+    trybuild::TestCases::new().pass("tests/pass/*.rs");
+}

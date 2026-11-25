@@ -212,8 +212,14 @@ fn route_impl(method: &str, args: &Args, func: &ItemFn) -> syn::Result<Tokens> {
             }
         }
         const _: () = {
+            // Evaluated in every build, so `requires` is checked (and its
+            // `Perm` used) in the plugin's native unit tests too.
+            #[allow(dead_code)]
             const PARTS: &[&str] = &[#head, #requires, "}\n"];
+            #[allow(dead_code)]
             const LEN: usize = ::rustrak_plugin::__private::joined_len(PARTS);
+            // The section is the component's: a native build has none.
+            #[cfg(target_arch = "wasm32")]
             #[unsafe(link_section = "rustrak:routes")]
             #[used]
             static ROUTE: [u8; LEN] = ::rustrak_plugin::__private::joined::<LEN>(PARTS);
