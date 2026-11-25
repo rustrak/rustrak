@@ -1,4 +1,10 @@
-import { Skeleton } from '@rustrak/ui';
+import {
+  SettingRow,
+  SettingSection,
+  SettingsHeader,
+  SettingsListSkeleton,
+  Skeleton,
+} from '@rustrak/ui';
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -7,12 +13,6 @@ import { ConnectedApps } from '@/features/mcp/ui/components/connected-apps';
 import { McpSettings } from '@/features/mcp/ui/components/mcp-settings';
 import { accessQueries } from '@/shared/api/permissions';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import {
-  SettingRow,
-  SettingSection,
-  SettingsListSkeleton,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute('/_authenticated/settings/mcp')({

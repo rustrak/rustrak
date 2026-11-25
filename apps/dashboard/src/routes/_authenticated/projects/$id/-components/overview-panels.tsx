@@ -3,6 +3,8 @@ import {
   Button,
   CompareIcon,
   cn,
+  Panel,
+  PanelPlaceholder,
   SegmentedControl,
   SegmentedItem,
   Sparkline,
@@ -17,7 +19,6 @@ import { overviewInterval } from '@/shared/lib/period';
 import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { MetricDeltaText } from '@/shared/ui/components/metric-delta';
-import { Panel, PanelPlaceholder } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 import type {

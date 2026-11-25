@@ -3,6 +3,11 @@ import {
   confirm,
   DeleteIcon,
   EditIcon,
+  FactList,
+  Figure,
+  FigureStrip,
+  Panel,
+  RailBlock,
   Skeleton,
   Switch,
 } from '@rustrak/ui';
@@ -38,10 +43,8 @@ import {
   DetailMain,
   DetailRail,
 } from '@/shared/ui/components/detail-layout';
-import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { Link } from '@/shared/ui/components/link';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { Panel, RailBlock } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';

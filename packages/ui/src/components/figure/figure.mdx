@@ -1,0 +1,55 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import { Cover, DocPage, Guarantee, Guarantees, Place, Rule, Section, Stage, UsedIn } from '../../docs/blocks';
+import { Figure, FigureStrip } from './figure';
+import * as Stories from './figure.stories';
+
+<Meta of={Stories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="Figure"
+  lede="A page's headline numbers, in one strip split by hairlines."
+  note="With FigureStrip around them, and FactList for label and value pairs in a rail."
+/>
+
+<Section n="01" title="Anatomy" intro="A label, the number, and an optional footnote under it.">
+
+<Stage>
+  <FigureStrip className="grid-cols-2">
+    <Figure label="Events" value="1,204" footnote="+12% vs last week" />
+    <Figure label="Users" value="87" footnote={null} />
+  </FigureStrip>
+</Stage>
+
+<Rule>A footnote of null still takes its line, so the strip stays level.</Rule>
+
+</Section>
+
+<Section n="02" title="Where it is used">
+
+<UsedIn>
+  <Place at="Overviews">The figures above a project's, a release's or a monitor's charts.</Place>
+  <Place at="Plugins">A plugin's headline numbers.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="03" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="ItIsATermAndItsValue">Label and value are a term and its description.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="04" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

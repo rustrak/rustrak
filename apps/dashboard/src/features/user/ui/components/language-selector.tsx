@@ -1,4 +1,4 @@
-import { Select, SelectItem } from '@rustrak/ui';
+import { Select, SelectItem, SettingRow } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useId } from 'react';
 import { toast } from 'sonner';
@@ -6,7 +6,6 @@ import { useLocale, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { isLocale, LOCALES } from '@/shared/i18n/config';
 import { intl } from '@/shared/i18n/intl';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 
 /**
  * The language control. It does not change the URL: a link to an issue is a

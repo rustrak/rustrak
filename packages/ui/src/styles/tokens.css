@@ -797,6 +797,9 @@
   --spacing-row-head: 38px;
   --spacing-page-gutter: 28px;
   --spacing-search: 260px;
+  /* A setting row's control column: one input, or a wider list of them. */
+  --spacing-setting-control: 288px;
+  --spacing-setting-control-wide: 416px;
   /* Dialog widths, by purpose rather than by content: confirming what is
      reversible, unlocking what is not, a short form, choosing in a table. */
   --spacing-dialog-sm: 420px;

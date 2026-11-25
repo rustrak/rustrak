@@ -1,12 +1,11 @@
 import type { ProjectResponse, RateLimitsResponse } from '@rustrak/client';
-import { Button, Input } from '@rustrak/ui';
+import { Button, Input, SettingRow, SettingSection } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
 import { parseRateLimit } from '@/features/project/model/rate-limit';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 type LimitField = 'rate_limit_per_minute' | 'rate_limit_per_hour';

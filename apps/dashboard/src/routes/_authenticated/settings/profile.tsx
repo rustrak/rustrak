@@ -1,8 +1,7 @@
+import { SettingRow, SettingSection, SettingsHeader } from '@rustrak/ui';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { ChangePasswordDialog } from '@/features/user/ui/components/change-password-dialog';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
 
 export const Route = createFileRoute('/_authenticated/settings/profile')({

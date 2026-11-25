@@ -1,5 +1,11 @@
 import type { SpanDetailResponse } from '@rustrak/client';
-import { cn, formatSpanDuration, Tag, type TagTone } from '@rustrak/ui';
+import {
+  cn,
+  FactList,
+  formatSpanDuration,
+  Tag,
+  type TagTone,
+} from '@rustrak/ui';
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import {
@@ -11,7 +17,6 @@ import {
   type SpanAttributes,
   tokenBreakdown,
 } from '@/features/agent-trace/model/gen-ai';
-import { FactList } from '@/shared/ui/components/figures';
 
 /** The four kinds of AI span, in the waterfall's colours. */
 const OPERATION_TONE: Record<string, TagTone> = {

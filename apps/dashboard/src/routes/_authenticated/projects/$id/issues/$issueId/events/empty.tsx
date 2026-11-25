@@ -1,9 +1,8 @@
-import { PageHeader, Skeleton } from '@rustrak/ui';
+import { EmptyState, PageHeader, Skeleton } from '@rustrak/ui';
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { issueQueries } from '@/features/issue/api/queries';
-import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 

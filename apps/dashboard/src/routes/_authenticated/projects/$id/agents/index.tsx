@@ -6,9 +6,12 @@ import type {
   ProjectResponse,
 } from '@rustrak/client';
 import {
+  EmptyState,
   type FilterVariants,
   Page,
   PageHeader,
+  Panel,
+  PanelPlaceholder,
   Skeleton,
   Tab,
   TabList,
@@ -50,9 +53,7 @@ import {
   type TableSearch,
   tableSearch,
 } from '@/shared/lib/table-search';
-import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { Panel, PanelPlaceholder } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 

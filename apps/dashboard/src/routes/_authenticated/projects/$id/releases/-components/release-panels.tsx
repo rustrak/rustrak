@@ -11,6 +11,11 @@ import {
   Button,
   CopyIcon,
   ExternalLinkIcon,
+  FactList,
+  Figure,
+  FigureStrip,
+  Panel,
+  PanelPlaceholder,
   Skeleton,
   Tag,
 } from '@rustrak/ui';
@@ -26,9 +31,7 @@ import {
 import type { ApiError } from '@/shared/api/query';
 import { useRelativeTime } from '@/shared/i18n/use-now';
 import { DetailHeader } from '@/shared/ui/components/detail-layout';
-import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { Link } from '@/shared/ui/components/link';
-import { Panel, PanelPlaceholder } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 import { useCopy } from '@/shared/ui/hooks/use-copy';

@@ -6,6 +6,9 @@ import {
   CopyIcon,
   EmptyIcon,
   RefreshIcon,
+  SettingSection,
+  SettingsEmpty,
+  SettingsListItem,
   Tag,
   Tooltip,
 } from '@rustrak/ui';
@@ -15,11 +18,6 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { copyToClipboard } from '@/shared/lib/clipboard';
 import { type Translate } from '@/shared/lib/error-copy';
-import {
-  SettingSection,
-  SettingsEmpty,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface PendingInvitationsProps {

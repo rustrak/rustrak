@@ -1,4 +1,13 @@
-import { Button, Dialog, NewIcon, TeamIcon } from '@rustrak/ui';
+import {
+  Button,
+  Dialog,
+  NewIcon,
+  SettingSection,
+  SettingsEmpty,
+  SettingsHeader,
+  SettingsListSkeleton,
+  TeamIcon,
+} from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -10,12 +19,6 @@ import { PendingInvitations } from '@/features/user/ui/components/pending-invita
 import { TeamMembersList } from '@/features/user/ui/components/team-members-list';
 import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import {
-  SettingSection,
-  SettingsEmpty,
-  SettingsListSkeleton,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
 

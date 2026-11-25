@@ -14,6 +14,9 @@ import {
   SecurityIcon,
   Select,
   SelectItem,
+  SettingSection,
+  SettingsEmpty,
+  SettingsHeader,
   Tag,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
@@ -35,11 +38,6 @@ import {
 import { grantable } from '@/shared/lib/permission-matrix';
 import { PermissionEditor } from '@/shared/ui/components/permission-editor';
 import { ProjectsPicker } from '@/shared/ui/components/projects-picker';
-import {
-  SettingSection,
-  SettingsEmpty,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 

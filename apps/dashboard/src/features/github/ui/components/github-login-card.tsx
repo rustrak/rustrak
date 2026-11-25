@@ -1,10 +1,9 @@
-import { Button, Input } from '@rustrak/ui';
+import { Button, Input, SettingRow, SettingSection } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { githubMutations } from '@/features/github/api/mutations';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /** The person's GitHub username, which is how assignees cross over. */

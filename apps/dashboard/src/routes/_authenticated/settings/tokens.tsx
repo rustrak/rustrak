@@ -1,4 +1,9 @@
-import { ExternalLinkIcon } from '@rustrak/ui';
+import {
+  ExternalLinkIcon,
+  SettingSection,
+  SettingsHeader,
+  SettingsListSkeleton,
+} from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -7,11 +12,6 @@ import { tokenQueries } from '@/features/token/api/queries';
 import { TokensList } from '@/features/token/ui/components/tokens-list/tokens-list';
 import { accessQueries } from '@/shared/api/permissions';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import {
-  SettingSection,
-  SettingsListSkeleton,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 const projectsToPick = projectQueries.picker();

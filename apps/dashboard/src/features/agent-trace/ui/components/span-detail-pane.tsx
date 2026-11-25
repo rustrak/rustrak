@@ -1,10 +1,10 @@
 import type { SpanDetailResponse } from '@rustrak/client';
+import { PanelPlaceholder } from '@rustrak/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useTranslations } from 'use-intl';
 import { AiSpanDetail } from '@/features/agent-trace/ui/components/ai-span-detail';
 import type { ApiError } from '@/shared/api/query';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
-import { PanelPlaceholder } from '@/shared/ui/components/panel';
 
 interface SpanDetailPaneProps {
   /** The selected span's read, or `null` when no span is selected. */

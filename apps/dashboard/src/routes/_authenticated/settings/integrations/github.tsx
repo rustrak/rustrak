@@ -1,4 +1,4 @@
-import { Skeleton } from '@rustrak/ui';
+import { SettingsHeader, SettingsListSkeleton, Skeleton } from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -8,8 +8,6 @@ import { GitHubLoginCard } from '@/features/github/ui/components/github-login-ca
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { QueryState } from '@/shared/ui/components/query-state';
-import { SettingsListSkeleton } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
 export const Route = createFileRoute(

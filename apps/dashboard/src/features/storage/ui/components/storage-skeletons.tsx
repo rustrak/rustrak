@@ -1,7 +1,5 @@
-import { Skeleton } from '@rustrak/ui';
+import { SettingSection, SettingsHeader, Skeleton } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
-import { SettingSection } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 
 /**
  * `StorageView` before its retention lands: the same header, without the

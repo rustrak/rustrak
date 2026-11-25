@@ -14,6 +14,10 @@ import {
   NewIcon,
   Select,
   SelectItem,
+  SettingSection,
+  SettingsEmpty,
+  SettingsHeader,
+  SettingsListItem,
   Tag,
   TeamIcon,
 } from '@rustrak/ui';
@@ -23,12 +27,6 @@ import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { ownRoles } from '@/features/user/model/project-members';
-import {
-  SettingSection,
-  SettingsEmpty,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface ProjectMembersListProps {

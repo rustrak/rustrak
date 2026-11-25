@@ -3,7 +3,13 @@ import type {
   TransactionsGetStatsData,
   TransactionsGetStatsResponse,
 } from '@rustrak/client';
-import { type FilterVariants, Page, PageHeader, Skeleton } from '@rustrak/ui';
+import {
+  EmptyState,
+  type FilterVariants,
+  Page,
+  PageHeader,
+  Skeleton,
+} from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
@@ -28,7 +34,6 @@ import {
   type TableSearch,
   tableSearch,
 } from '@/shared/lib/table-search';
-import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { PeriodFilter } from '@/shared/ui/components/period-filter';
 import { useRouter } from '@/shared/ui/hooks/use-router';

@@ -3,6 +3,7 @@ import {
   Button,
   CloseIcon,
   cn,
+  EmptyState,
   Page,
   PageHeader,
   Skeleton,
@@ -43,7 +44,6 @@ import {
   searchPage,
   searchString,
 } from '@/shared/lib/search-params';
-import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { PeriodFilter } from '@/shared/ui/components/period-filter';
 import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';

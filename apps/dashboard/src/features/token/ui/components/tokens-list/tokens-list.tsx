@@ -3,17 +3,20 @@ import type {
   CatalogResource,
   CreateAuthToken,
 } from '@rustrak/client';
-import { Button, confirm, NewIcon, TokensIcon } from '@rustrak/ui';
+import {
+  Button,
+  confirm,
+  NewIcon,
+  SettingSection,
+  SettingsEmpty,
+  SettingsHeader,
+  TokensIcon,
+} from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { tokenMutations } from '@/features/token/api/mutations';
-import {
-  SettingSection,
-  SettingsEmpty,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { CreateTokenDialog } from './create-token-dialog';
 import { TokenRows } from './token-rows';

@@ -5,6 +5,7 @@ import {
   FieldError,
   Input,
   NewIcon,
+  SettingRow,
 } from '@rustrak/ui';
 import { useSelector } from '@tanstack/react-form';
 import { useState } from 'react';
@@ -14,7 +15,6 @@ import {
   fieldErrorText,
   useFieldContext,
 } from '@/shared/ui/components/app-form';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 
 /**
  * The extra HTTP headers a webhook request carries, as name/value rows: an

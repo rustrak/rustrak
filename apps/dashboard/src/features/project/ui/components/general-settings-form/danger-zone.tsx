@@ -1,7 +1,12 @@
 import type { ProjectResponse } from '@rustrak/client';
-import { Button, confirm, DeleteIcon } from '@rustrak/ui';
+import {
+  Button,
+  confirm,
+  DeleteIcon,
+  SettingRow,
+  SettingSection,
+} from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 
 /**
  * Removing the project, behind a confirmation that names it.

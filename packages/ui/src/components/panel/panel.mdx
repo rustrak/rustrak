@@ -1,0 +1,55 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import { Cover, DocPage, Guarantee, Guarantees, Place, Rule, Section, Stage, UsedIn } from '../../docs/blocks';
+import { Panel } from './panel';
+import * as Stories from './panel.stories';
+
+<Meta of={Stories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="Panel"
+  lede="A panel of a page: a heading, what it shows, its content, maybe a footer."
+  note="With RailBlock for a detail page's rail and PanelPlaceholder for what is still loading."
+/>
+
+<Section n="01" title="Anatomy" intro="Title and hint on the left, actions on the right, content under them.">
+
+<Stage>
+  <Panel title="Issues" hint="This week">
+    <p className="text-value text-fg-secondary">12 new.</p>
+  </Panel>
+</Stage>
+
+<Rule>Rows that run edge to edge (a list, a table) go in a flush panel.</Rule>
+
+</Section>
+
+<Section n="02" title="Where it is used">
+
+<UsedIn>
+  <Place at="Project overview">Every chart and list of the overview.</Place>
+  <Place at="Plugins">A plugin's own pages, so they read like the dashboard's.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="03" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="ItsTitleIsAHeading">The title is a level-2 heading.</Guarantee>
+  <Guarantee story="FlushRunsToTheEdges">A flush panel's content has no side gutter.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="04" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

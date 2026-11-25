@@ -10,6 +10,10 @@ import {
   SegmentedControl,
   SegmentedItem,
   SelectedIcon,
+  SettingRow,
+  SettingSection,
+  SettingsEmpty,
+  SettingsHeader,
   Switch,
   Tag,
 } from '@rustrak/ui';
@@ -24,12 +28,6 @@ import {
 } from '@/features/mcp/lib/snippets';
 import { CodeBlock } from '@/shared/ui/components/code-block';
 import { Link } from '@/shared/ui/components/link';
-import {
-  SettingRow,
-  SettingSection,
-  SettingsEmpty,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { type CopyFlags, useCopyFlags } from '@/shared/ui/hooks/use-copy-flags';
 import { useSyntaxHighlighter } from '@/shared/ui/hooks/use-syntax-highlighter';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';

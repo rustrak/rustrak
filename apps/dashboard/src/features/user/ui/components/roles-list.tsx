@@ -12,6 +12,9 @@ import {
   SecurityIcon,
   Select,
   SelectItem,
+  SettingSection,
+  SettingsEmpty,
+  SettingsListItem,
   TeamIcon,
 } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
@@ -19,11 +22,6 @@ import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { Link } from '@/shared/ui/components/link';
-import {
-  SettingSection,
-  SettingsEmpty,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';

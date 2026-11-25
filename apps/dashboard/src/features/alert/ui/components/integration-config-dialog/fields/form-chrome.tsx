@@ -5,6 +5,8 @@ import {
   Field,
   FieldError,
   Input,
+  SettingRow,
+  SettingSection,
   TestIcon,
 } from '@rustrak/ui';
 import { type ReactNode, useId } from 'react';
@@ -13,7 +15,6 @@ import {
   fieldErrorText,
   useFieldContext,
 } from '@/shared/ui/components/app-form';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 
 /*
  * The parts a provider's form is built from, now that it is a settings page

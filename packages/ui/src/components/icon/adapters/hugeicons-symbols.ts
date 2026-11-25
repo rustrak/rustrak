@@ -71,6 +71,7 @@ export {
   PlayIcon as Play,
   PlugSocketIcon as Plug,
   PlusSignIcon as Plus,
+  PuzzleIcon as Puzzle,
   RefreshIcon as RefreshCw,
   Rocket01Icon as Rocket,
   Search01Icon as Search,

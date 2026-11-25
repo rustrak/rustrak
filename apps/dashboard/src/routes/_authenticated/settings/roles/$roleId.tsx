@@ -1,4 +1,4 @@
-import { Skeleton } from '@rustrak/ui';
+import { SettingsHeader, Skeleton } from '@rustrak/ui';
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -7,7 +7,6 @@ import { RoleDocument } from '@/features/user/ui/components/role-document';
 import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
 import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute('/_authenticated/settings/roles/$roleId')({

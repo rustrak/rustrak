@@ -124,6 +124,8 @@ export const spacingTokens = [
   'row-head',
   'page-gutter',
   'search',
+  'setting-control',
+  'setting-control-wide',
   'dialog-sm',
   'dialog-md',
   'dialog-lg',

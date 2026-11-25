@@ -6,6 +6,9 @@ import {
   DeleteIcon,
   Menu,
   MoreIcon,
+  SettingSection,
+  SettingsEmpty,
+  SettingsListItem,
   Tag,
   TeamIcon,
 } from '@rustrak/ui';
@@ -14,11 +17,6 @@ import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { Link } from '@/shared/ui/components/link';
-import {
-  SettingSection,
-  SettingsEmpty,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface TeamMembersListProps {

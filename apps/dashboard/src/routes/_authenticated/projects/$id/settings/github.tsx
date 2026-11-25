@@ -1,3 +1,8 @@
+import {
+  SettingSection,
+  SettingsHeader,
+  SettingsListSkeleton,
+} from '@rustrak/ui';
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -7,11 +12,6 @@ import { projectQueries } from '@/features/project/api/queries';
 import { startIfAllowed } from '@/shared/api/permissions';
 import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import {
-  SettingSection,
-  SettingsListSkeleton,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute(

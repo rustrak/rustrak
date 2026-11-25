@@ -1,5 +1,14 @@
 import type { CatalogResource, Permission, Role } from '@rustrak/client';
-import { Button, confirm, DeleteIcon, Input, Textarea } from '@rustrak/ui';
+import {
+  Button,
+  confirm,
+  DeleteIcon,
+  Input,
+  SettingRow,
+  SettingSection,
+  SettingsHeader,
+  Textarea,
+} from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
@@ -7,8 +16,6 @@ import { useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { grantable } from '@/shared/lib/permission-matrix';
 import { PermissionEditor } from '@/shared/ui/components/permission-editor';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';

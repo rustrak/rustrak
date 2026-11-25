@@ -8,6 +8,9 @@ import {
   IssuesIcon,
   LinkIcon,
   OkIcon,
+  SettingRow,
+  SettingSection,
+  SettingsListItem,
   Tag,
   TeamIcon,
   WarningIcon,
@@ -26,11 +29,6 @@ import { cn } from '@/shared/lib/utils';
 import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
-import {
-  SettingRow,
-  SettingSection,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /**

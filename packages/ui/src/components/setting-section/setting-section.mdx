@@ -1,0 +1,68 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import { Cover, DocPage, Guarantee, Guarantees, Place, Rule, Section, Stage, UsedIn } from '../../docs/blocks';
+import { Switch } from '../switch/switch';
+import { SettingRow, SettingSection, SettingsListItem } from './setting-section';
+import * as Stories from './setting-section.stories';
+
+<Meta of={Stories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="SettingSection"
+  lede="A group of settings: a heading above, its rows inside one card."
+  note="With SettingRow, SettingsListItem, SettingsListSkeleton and SettingsEmpty, the pieces every settings page is built from."
+/>
+
+<Section n="01" title="Anatomy" intro="Rows separated by a hairline read as one list and keep the emphasis on the controls.">
+
+<Stage>
+  <SettingSection title="General">
+    <SettingRow title="Enabled" description="Run it in every project.">
+      <Switch aria-label="Enabled" defaultChecked />
+    </SettingRow>
+  </SettingSection>
+</Stage>
+
+<Rule>A row's two columns follow the row's own width, not the window's.</Rule>
+
+</Section>
+
+<Section n="02" title="A list of things" intro="Members, tokens, connected apps and installed plugins are SettingsListItem rows.">
+
+<Stage>
+  <SettingSection title="Installed">
+    <SettingsListItem title="Hello" description="The smallest Rustrak plugin." meta="0.1.0" />
+  </SettingSection>
+</Stage>
+
+</Section>
+
+<Section n="03" title="Where it is used">
+
+<UsedIn>
+  <Place at="Settings">Every settings page of the dashboard.</Place>
+  <Place at="Plugins">A plugin's own settings, so it is indistinguishable from the rest.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="04" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="TheTitleLabelsItsControl">A row's title focuses its control.</Guarantee>
+  <Guarantee story="ItsTitleIsAHeading">The section's title is a level-2 heading.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="05" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

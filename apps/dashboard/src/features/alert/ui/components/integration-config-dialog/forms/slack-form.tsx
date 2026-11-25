@@ -1,4 +1,9 @@
-import { SegmentedControl, SegmentedItem } from '@rustrak/ui';
+import {
+  SegmentedControl,
+  SegmentedItem,
+  SettingRow,
+  SettingSection,
+} from '@rustrak/ui';
 import { useSelector } from '@tanstack/react-form';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -12,7 +17,6 @@ import {
 } from '@/features/alert/model/integration-forms';
 import { useIntegrationSubmit } from '@/features/alert/ui/hooks/use-integration-submit';
 import { revalidateLogic, useAppForm } from '@/shared/ui/components/app-form';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
 import { DeleteSection, TestRow } from '../fields/form-chrome';

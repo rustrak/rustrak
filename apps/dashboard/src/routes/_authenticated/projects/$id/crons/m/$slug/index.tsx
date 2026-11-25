@@ -1,4 +1,4 @@
-import { MuteIcon, Skeleton, Text } from '@rustrak/ui';
+import { MuteIcon, Panel, RailBlock, Skeleton, Text } from '@rustrak/ui';
 import {
   keepPreviousData,
   noop,
@@ -34,7 +34,6 @@ import {
   DetailRail,
 } from '@/shared/ui/components/detail-layout';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { Panel, RailBlock } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 

@@ -1,5 +1,11 @@
 import type { CleanupStatus } from '@rustrak/client';
-import { Button, ConfigureIcon, DeleteIcon } from '@rustrak/ui';
+import {
+  Button,
+  ConfigureIcon,
+  DeleteIcon,
+  SettingSection,
+  SettingsHeader,
+} from '@rustrak/ui';
 import {
   useQuery,
   useQueryClient,
@@ -10,8 +16,6 @@ import { useTranslations } from 'use-intl';
 import { storageQueries } from '@/features/storage/api/queries';
 import { nextReadIn, summarize } from '@/features/storage/model/retention';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
-import { SettingSection } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { useCleanupJob } from '../hooks/use-cleanup-job';
 import { AgeChart } from './age-chart';
 import { CompactionNotice } from './compaction-notice';

@@ -1,5 +1,5 @@
 import type { Vital } from '@rustrak/client';
-import { Page, PageHeader } from '@rustrak/ui';
+import { Page, PageHeader, Panel, PanelPlaceholder } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -20,7 +20,6 @@ import {
   WorstPages,
 } from '@/features/web-vital/ui/components/web-vitals';
 import { searchString } from '@/shared/lib/search-params';
-import { Panel, PanelPlaceholder } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import {

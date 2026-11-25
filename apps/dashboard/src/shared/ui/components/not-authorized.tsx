@@ -1,6 +1,5 @@
-import { SecurityIcon } from '@rustrak/ui';
+import { SecurityIcon, SettingsEmpty } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
-import { SettingsEmpty } from './setting-row';
 
 /**
  * Where a page's content would be, for a reader whose roles do not reach it:

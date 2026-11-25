@@ -221,6 +221,26 @@ export { queryFieldsFromColumns } from './components/query-bar/query-bar-parts';
 
 /* --- Shell --------------------------------------------------------------- */
 
+export type { EmptyStateProps } from './components/empty-state/empty-state';
+export { EmptyState } from './components/empty-state/empty-state';
+export { FactList, Figure, FigureStrip } from './components/figure/figure';
+export type { PanelProps } from './components/panel/panel';
+export { Panel, PanelPlaceholder, RailBlock } from './components/panel/panel';
+export type {
+  SettingRowProps,
+  SettingSectionProps,
+  SettingsEmptyProps,
+  SettingsListItemProps,
+} from './components/setting-section/setting-section';
+export {
+  SettingRow,
+  SettingSection,
+  SettingsEmpty,
+  SettingsListItem,
+  SettingsListSkeleton,
+} from './components/setting-section/setting-section';
+export type { SettingsHeaderProps } from './components/settings-header/settings-header';
+export { SettingsHeader } from './components/settings-header/settings-header';
 export type { SheetProps, SheetRowProps } from './components/sheet/sheet';
 export { Sheet, SheetRow, SheetSection } from './components/sheet/sheet';
 export type {

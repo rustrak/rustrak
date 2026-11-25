@@ -1,7 +1,11 @@
 import type { TransactionDetailResponse } from '@rustrak/client';
 import {
   CopyIcon,
+  FactList,
+  Figure,
+  FigureStrip,
   formatSpanDuration,
+  RailBlock,
   Skeleton,
   Tag,
   Waterfall,
@@ -22,9 +26,7 @@ import { useRelativeTime } from '@/shared/i18n/use-now';
 import type { WaterfallRow } from '@/shared/lib/waterfall';
 import { RATING_TEXT } from '@/shared/lib/web-vitals';
 import { DetailMain, DetailRail } from '@/shared/ui/components/detail-layout';
-import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { RailBlock } from '@/shared/ui/components/panel';
 import { useCopy } from '@/shared/ui/hooks/use-copy';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 
