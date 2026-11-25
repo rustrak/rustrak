@@ -1,0 +1,60 @@
+{
+  "nav": {
+    "hits": "Visitas",
+    "about": "Acerca de Hello",
+    "hello": "Hello"
+  },
+  "hits": {
+    "title": "Visitas",
+    "subtitle": "Cada vista de página que este proyecto envió a Hello.",
+    "total": "Visitas en total",
+    "add": "Añadir una visita",
+    "path": "Ruta",
+    "addButton": "Añadir",
+    "latest": "Últimas visitas",
+    "none": "Aún no hay visitas",
+    "noneHint": "Envía una con la clave DSN del proyecto, o añádela aquí.",
+    "clear": "Vaciar",
+    "open": "Abrir",
+    "back": "Volver a las visitas",
+    "detail": "Visita #{id}",
+    "recordedAt": "Registrada el",
+    "missing": "Esta visita ya no existe"
+  },
+  "about": {
+    "title": "Acerca de Hello",
+    "body": "Plugin {plugin}, dibujado en el proyecto {project}."
+  },
+  "instance": {
+    "title": "Hello",
+    "greeting": "{greeting} desde todos los proyectos."
+  },
+  "widget": {
+    "title": "Hello · {issue}",
+    "hits": "Visitas en este proyecto"
+  },
+  "settings": {
+    "greeting": {
+      "label": "Saludo",
+      "description": "Lo que dice la página de Hello, fuera de cualquier proyecto."
+    },
+    "token": {
+      "label": "Token de firma",
+      "description": "Solo lo guarda el servidor; el navegador nunca lo ve."
+    },
+    "maxPathLength": {
+      "label": "Ruta más larga",
+      "description": "Caracteres de la ruta que se guardan por visita; el resto se corta."
+    }
+  },
+  "permissions": {
+    "stats": {
+      "label": "Recuento de visitas",
+      "description": "Ver cuántas visitas tiene un proyecto."
+    },
+    "hits": {
+      "label": "Visitas",
+      "description": "Ver cada visita y vaciarlas."
+    }
+  }
+}

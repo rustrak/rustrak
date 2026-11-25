@@ -1,0 +1,5 @@
+error: a path starts with / and has no placeholders
+ --> tests/ui/route_without_slash.rs:3:7
+  |
+3 | #[get("stats")]
+  |       ^^^^^^^

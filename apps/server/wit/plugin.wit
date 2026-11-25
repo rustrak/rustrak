@@ -1,0 +1,78 @@
+/// The contract between Rustrak and its plugins. Frozen once released: a
+/// change is a new version, and the host keeps serving the old ones.
+package rustrak:plugin@0.1.0;
+
+interface types {
+  record request {
+    method: string,
+    /// Relative to the plugin, e.g. "/stats".
+    path: string,
+    query: string,
+    headers: list<tuple<string, string>>,
+    body: list<u8>,
+    /// The project the host resolved, on project-scoped routes.
+    project-id: option<u64>,
+    /// The client's address as Rustrak sees it, after trusted proxies.
+    client-ip: option<string>,
+  }
+
+  record response {
+    status: u16,
+    headers: list<tuple<string, string>>,
+    body: list<u8>,
+  }
+
+}
+
+/// The plugin's own SQLite file. Nothing else is reachable.
+interface sql {
+  variant value {
+    null,
+    integer(s64),
+    real(f64),
+    text(string),
+    blob(list<u8>),
+  }
+
+  record rows {
+    columns: list<string>,
+    rows: list<list<value>>,
+  }
+
+  variant sql-error {
+    constraint(string),
+    database-full,
+    busy,
+    other(string),
+  }
+
+  execute: func(sql: string, params: list<value>) -> result<u64, sql-error>;
+  query: func(sql: string, params: list<value>) -> result<rows, sql-error>;
+  /// Several statements in one transaction: all of them or none.
+  batch: func(statements: list<tuple<string, list<value>>>) -> result<_, sql-error>;
+}
+
+/// The plugin's settings, validated by the host against the manifest's schema.
+interface settings {
+  /// Instance settings as JSON.
+  instance: func() -> string;
+  /// One project's settings as JSON, defaults applied.
+  project: func(project-id: u64) -> string;
+}
+
+interface log {
+  enum level { debug, info, warn, error }
+  write: func(level: level, message: string);
+}
+
+world plugin {
+  import sql;
+  import settings;
+  import log;
+
+  use types.{request, response};
+
+  /// Serves its routes. Which routes there are is read from the
+  /// component's `rustrak:routes` custom section, without running it.
+  export handle-http: func(req: request) -> response;
+}

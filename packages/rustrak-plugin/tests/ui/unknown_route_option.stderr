@@ -1,0 +1,5 @@
+error: unknown option `pubic`
+ --> tests/ui/unknown_route_option.rs:3:13
+  |
+3 | #[get("/x", pubic)]
+  |             ^^^^^
