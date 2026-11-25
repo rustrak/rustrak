@@ -330,6 +330,13 @@ GitHub Sponsors and [Open Collective](https://opencollective.com/rustrak).
   </a>
 </td>
 <td align="center" width="180">
+  <a href="https://tableplus.com">
+    <img src="https://avatars.githubusercontent.com/u/29408238?s=180&v=4" width="90" height="90" alt="TablePlus" />
+    <br />
+    <sub><b>TablePlus</b></sub>
+  </a>
+</td>
+<td align="center" width="180">
   <a href="https://github.com/ZerGo0">
     <img src="https://avatars.githubusercontent.com/u/18653821?s=180&v=4" width="90" height="90" alt="ZerGo0" />
     <br />
