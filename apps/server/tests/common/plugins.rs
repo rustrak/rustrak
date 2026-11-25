@@ -118,3 +118,12 @@ pub fn hello_settings() -> rustrak::plugins::runtime::SettingsSource {
     .to_string();
     std::sync::Arc::new(move |_| defaults.clone())
 }
+
+/// `plugins/web-traffic`.
+pub fn web_traffic_rtp() -> Vec<u8> {
+    static RTP: OnceLock<Vec<u8>> = OnceLock::new();
+    RTP.get_or_init(|| {
+        build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/web-traffic"))
+    })
+    .clone()
+}

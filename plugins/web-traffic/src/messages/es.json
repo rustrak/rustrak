@@ -1,0 +1,148 @@
+{
+  "nav": {
+    "traffic": "Resumen",
+    "setup": "Instalar el seguimiento",
+    "visitors": "Visitantes",
+    "events": "Eventos"
+  },
+  "permissions": {
+    "traffic": {
+      "label": "Tráfico web",
+      "description": "Ver los visitantes, páginas, referencias y campañas de un proyecto."
+    },
+    "visitors": {
+      "label": "Visitantes",
+      "description": "Ver el día de cada visitante: sus páginas, eventos y perfil."
+    }
+  },
+  "settings": {
+    "allowedDomains": {
+      "label": "Dominios",
+      "description": "Contar solo estos sitios, separados por comas (con sus subdominios). Vacío cuenta cualquiera."
+    },
+    "keepQuery": {
+      "label": "Guardar la query",
+      "description": "Guardar ?busqueda=… con cada página. Las etiquetas de campaña (utm_*) se leen siempre."
+    },
+    "respectDoNotTrack": {
+      "label": "Respetar Do Not Track",
+      "description": "No contar a quien pide en su navegador no ser rastreado."
+    }
+  },
+  "period": {
+    "24h": "Últimas 24 horas",
+    "7d": "Últimos 7 días",
+    "30d": "Últimos 30 días",
+    "90d": "Últimos 90 días",
+    "14d": "Últimos 14 días"
+  },
+  "overview": {
+    "title": "Tráfico web",
+    "visitors": "Visitantes",
+    "pageviews": "Páginas vistas",
+    "bounce": "Tasa de rebote",
+    "chart": "Tráfico",
+    "change": "{pct, number, ::sign-always}% frente al periodo anterior",
+    "empty": "Aún no hay visitas. Añade el script a tu web para empezar a contar.",
+    "duration": "Duración de la visita",
+    "online": "{count, plural, one {# en línea ahora} other {# en línea ahora}}"
+  },
+  "top": {
+    "pages": "Páginas",
+    "sources": "Fuentes",
+    "events": "Eventos",
+    "visitors": "Visitantes",
+    "count": "Veces",
+    "none": "Nada en este periodo.",
+    "location": "Ubicación",
+    "environment": "Entorno",
+    "all": "Ver todo",
+    "narrow": "Ver solo {value}"
+  },
+  "setup": {
+    "snippet": "Script",
+    "snippetHint": "Pégalo dentro del head de la página. Pesa poco más de 1 KB comprimido y no usa cookies.",
+    "noKey": "Necesitas permiso para leer las claves de cliente de este proyecto para ver el script.",
+    "events": "Tus propios eventos",
+    "eventsHint": "Cuenta un registro o una compra desde código, o con un clic.",
+    "privacyHint": "Los visitantes se cuentan con un hash de su dirección y navegador que cambia cada día. Su dirección nunca se guarda y nadie puede ser seguido de un día a otro."
+  },
+  "widget": {
+    "day": "Tráfico web, últimas 24 horas",
+    "open": "Abrir",
+    "issue": "Tráfico en {path}",
+    "issueHint": "Últimos 7 días, la página donde ocurre este issue."
+  },
+  "dimension": {
+    "title": "Título",
+    "referrer": "Referencia",
+    "source": "Fuente",
+    "medium": "Medio",
+    "campaign": "Campaña",
+    "country": "País",
+    "language": "Idioma",
+    "browser": "Navegador",
+    "os": "Sistema",
+    "device": "Dispositivo",
+    "path": "Página"
+  },
+  "ranking": {
+    "path": "Páginas",
+    "entry": "Entrada",
+    "exit": "Salida",
+    "title": "Títulos",
+    "referrer": "Referencias",
+    "source": "Fuentes",
+    "medium": "Medios",
+    "campaign": "Campañas",
+    "country": "Países",
+    "language": "Idiomas",
+    "browser": "Navegadores",
+    "os": "Sistemas",
+    "device": "Dispositivos",
+    "event": "Eventos"
+  },
+  "filters": {
+    "label": "Filtrar el tráfico",
+    "placeholder": "Filtrar por página, país, navegador…"
+  },
+  "breakdown": {
+    "share": "Cuota",
+    "search": "Buscar"
+  },
+  "visitors": {
+    "title": "Visitantes",
+    "visit": "Visita",
+    "last": "Última vez",
+    "count": "{count, plural, one {# visitante} other {# visitantes}}",
+    "noneHint": "Nadie visitó en este periodo, o los filtros no dejan a nadie."
+  },
+  "journey": {
+    "title": "Visita",
+    "steps": "Páginas y eventos",
+    "pageview": "Página",
+    "event": "Evento",
+    "privacy": "Dentro de un mismo día: al día siguiente la misma persona es un visitante nuevo.",
+    "gone": "Esta visita ya no se conserva."
+  },
+  "event": {
+    "kind": "Evento",
+    "property": "Propiedad",
+    "conversion": "Conversión",
+    "conversionHint": "Del total de visitantes del periodo",
+    "perVisitor": "Por visitante",
+    "pages": "Páginas donde ocurrió",
+    "recent": "Últimos"
+  },
+  "events": {
+    "overTime": "Eventos en el tiempo"
+  },
+  "visitor": {
+    "visits": "Visitas",
+    "visit": "Visita {n}",
+    "profile": "Perfil",
+    "pages": "Páginas distintas",
+    "first": "Primera vez",
+    "last": "Última vez"
+  }
+}

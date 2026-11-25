@@ -1,0 +1,22 @@
+{
+  "name": "rustrak-plugin-web-traffic",
+  "version": "0.1.0",
+  "description": "Privacy-first web traffic for Rustrak: visitors, pages, referrers and campaigns, without cookies.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "rustrak-plugin build",
+    "test": "rustrak-plugin generate && cargo test && vitest run"
+  },
+  "devDependencies": {
+    "@rustrak/plugin": "workspace:*",
+    "@rustrak/ui": "workspace:*",
+    "@tanstack/react-query": "^5.100.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "^6.0.0",
+    "use-intl": "^4.0.0",
+    "vitest": "5.1.1"
+  },
+  "author": "Rustrak"
+}
