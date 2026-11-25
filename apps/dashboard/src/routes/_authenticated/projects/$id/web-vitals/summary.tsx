@@ -1,4 +1,9 @@
-import { ExternalLinkIcon, Page, PageHeader } from '@rustrak/ui';
+import {
+  ExternalLinkIcon,
+  Page,
+  PageHeader,
+  PanelPlaceholder,
+} from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -8,7 +13,6 @@ import { pageSpeedHref } from '@/features/web-vital/model/web-vitals';
 import { Verdict } from '@/features/web-vital/ui/components/web-vitals';
 import { searchString } from '@/shared/lib/search-params';
 import { Link } from '@/shared/ui/components/link';
-import { PanelPlaceholder } from '@/shared/ui/components/panel';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { MetricCards } from './-components/metric-cards';

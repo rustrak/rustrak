@@ -1,4 +1,4 @@
-import { Field, FieldError, Skeleton } from '@rustrak/ui';
+import { Field, FieldError, SettingSection, Skeleton } from '@rustrak/ui';
 import { useSelector } from '@tanstack/react-form';
 import { lazy, Suspense, useMemo } from 'react';
 import { toast } from 'sonner';
@@ -26,7 +26,6 @@ import {
   revalidateLogic,
   useAppForm,
 } from '@/shared/ui/components/app-form';
-import { SettingSection } from '@/shared/ui/components/setting-row';
 import { ConfigFooter } from '../fields/config-footer';
 import { EnabledField } from '../fields/enabled-field';
 import { DeleteSection, TestRow } from '../fields/form-chrome';

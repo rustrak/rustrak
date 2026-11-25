@@ -1,4 +1,5 @@
 import type { ProjectResponse } from '@rustrak/client';
+import { SettingRow, SettingSection } from '@rustrak/ui';
 import { useSelector } from '@tanstack/react-form';
 import { useMutation } from '@tanstack/react-query';
 import { useMemo, useRef } from 'react';
@@ -14,7 +15,6 @@ import type { Translate } from '@/shared/lib/error-copy';
 import { applyServerFieldErrors } from '@/shared/lib/form-errors';
 import { useAppForm } from '@/shared/ui/components/app-form';
 import { PlatformPicker } from '@/shared/ui/components/platform-picker';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { DangerZone } from './danger-zone';

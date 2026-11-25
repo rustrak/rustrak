@@ -3,7 +3,13 @@ import type {
   WebVitalsListPagesResponse,
   WebVitalsSummary,
 } from '@rustrak/client';
-import { Page, PageHeader, Skeleton } from '@rustrak/ui';
+import {
+  EmptyState,
+  Page,
+  PageHeader,
+  PanelPlaceholder,
+  Skeleton,
+} from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
@@ -21,9 +27,7 @@ import {
   Verdict,
 } from '@/features/web-vital/ui/components/web-vitals';
 import { type TableSearch, tableSearch } from '@/shared/lib/table-search';
-import { EmptyState } from '@/shared/ui/components/empty-state';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { PanelPlaceholder } from '@/shared/ui/components/panel';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { MetricCards } from './-components/metric-cards';
 import {

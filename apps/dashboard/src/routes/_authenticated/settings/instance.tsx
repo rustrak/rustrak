@@ -1,3 +1,4 @@
+import { SettingRow, SettingSection, SettingsHeader } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -5,8 +6,6 @@ import { projectQueries } from '@/features/project/api/queries';
 import { serverVersionQuery } from '@/shared/api/server-version';
 import { APP_VERSION } from '@/shared/config/constants';
 import { describeError } from '@/shared/lib/error-copy';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 
 export const Route = createFileRoute('/_authenticated/settings/instance')({
   // Both are rows the page paints without: it never suspends on them.

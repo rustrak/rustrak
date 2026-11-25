@@ -13,6 +13,9 @@ import {
   RefreshIcon,
   Select,
   SelectItem,
+  SettingRow,
+  SettingSection,
+  SettingsListItem,
   Switch,
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -32,11 +35,6 @@ import {
 import { ConditionFilters } from '@/shared/ui/components/condition-filters';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
-import {
-  SettingRow,
-  SettingSection,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 interface RepositorySettingsProps {

@@ -1,9 +1,8 @@
 import type { IssueTemplate } from '@rustrak/client';
-import { Button, Input, Textarea } from '@rustrak/ui';
+import { Button, Input, SettingRow, Textarea } from '@rustrak/ui';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { parseLabels } from '@/features/github/lib/labels';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 
 /**
  * The labels, title prefix and body footer a GitHub issue starts with,

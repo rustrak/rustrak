@@ -1,3 +1,4 @@
+import { SettingRow } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useId } from 'react';
 import { toast } from 'sonner';
@@ -5,7 +6,6 @@ import { useTimeZone, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { session } from '@/shared/api/session';
 import { intl } from '@/shared/i18n/intl';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 import { TimeZoneCombobox } from '@/shared/ui/components/time-zone-combobox';
 
 /** The zone on the account row right now, or `null` when it holds none. */

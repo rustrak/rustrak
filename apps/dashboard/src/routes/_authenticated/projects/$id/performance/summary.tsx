@@ -1,3 +1,4 @@
+import { Panel, PanelPlaceholder, RailBlock } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -24,11 +25,6 @@ import {
   DetailMain,
   DetailRail,
 } from '@/shared/ui/components/detail-layout';
-import {
-  Panel,
-  PanelPlaceholder,
-  RailBlock,
-} from '@/shared/ui/components/panel';
 import { PeriodFilter } from '@/shared/ui/components/period-filter';
 import { QueryState } from '@/shared/ui/components/query-state';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';

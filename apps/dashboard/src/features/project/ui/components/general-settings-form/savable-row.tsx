@@ -1,9 +1,8 @@
-import { Field, FieldError, Input, Spinner } from '@rustrak/ui';
+import { Field, FieldError, Input, SettingRow, Spinner } from '@rustrak/ui';
 import {
   fieldErrorText,
   useFieldContext,
 } from '@/shared/ui/components/app-form';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 
 /**
  * One settings field that saves on its own, rendered inside its

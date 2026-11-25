@@ -1,10 +1,9 @@
 import type { ProjectResponse } from '@rustrak/client';
-import { Button, CopyIcon, SelectedIcon } from '@rustrak/ui';
+import { Button, CopyIcon, SelectedIcon, SettingSection } from '@rustrak/ui';
 import { useTranslations } from 'use-intl';
 import { resolveSetupSnippet } from '@/features/project/lib/setup-snippet';
 import { platformLabel } from '@/shared/config/platforms';
 import { CodeBlock } from '@/shared/ui/components/code-block';
-import { SettingSection } from '@/shared/ui/components/setting-row';
 import { useCopyFlags } from '@/shared/ui/hooks/use-copy-flags';
 import {
   type SyntaxHighlighter,

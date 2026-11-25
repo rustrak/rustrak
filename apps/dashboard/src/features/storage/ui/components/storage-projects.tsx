@@ -1,5 +1,12 @@
 import type { RetentionSettings } from '@rustrak/client';
-import { Button, EditIcon, Input, SearchIcon, Tag } from '@rustrak/ui';
+import {
+  Button,
+  EditIcon,
+  Input,
+  SearchIcon,
+  SettingSection,
+  Tag,
+} from '@rustrak/ui';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import {
@@ -9,7 +16,6 @@ import {
   windowsFor,
 } from '@/features/storage/model/retention';
 import { formatBytes } from '@/shared/lib/utils';
-import { SettingSection } from '@/shared/ui/components/setting-row';
 
 /** Header and body cells share their padding; the outer ones meet the card's. */
 const CELL = 'px-3 py-3 first:pl-5 last:pr-5';

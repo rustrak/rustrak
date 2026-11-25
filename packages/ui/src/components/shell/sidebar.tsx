@@ -397,6 +397,8 @@ export type SidebarItemProps = SidebarItemMark &
     active?: boolean;
     /** A dot at the end of the row: something here wants looking at. */
     status?: 'error' | 'warning' | 'info' | 'brand';
+    /** After the label, hidden with it when collapsed: a "Beta" tag. */
+    badge?: ReactNode;
   };
 
 const statusDot = tv({
@@ -429,6 +431,7 @@ export function SidebarItem({
   tone = 'default',
   active,
   status,
+  badge,
   className,
   render,
   ...props
@@ -448,6 +451,9 @@ export function SidebarItem({
           <>
             {Icon ? <Icon size="2xl" className="shrink-0" /> : leading}
             <span className={cn('flex-1', label({ collapsed }))}>{text}</span>
+            {badge ? (
+              <span className={cn('flex', label({ collapsed }))}>{badge}</span>
+            ) : null}
             <Count
               tone={tone === 'warning' ? 'strong' : 'default'}
               className={cn(rowCount({ tone }), label({ collapsed }))}

@@ -1,8 +1,7 @@
 import type { AuthTokenResponse } from '@rustrak/client';
-import { TokensIcon } from '@rustrak/ui';
+import { SettingsListItem, TokensIcon } from '@rustrak/ui';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useRelativeTime } from '@/shared/i18n/use-now';
-import { SettingsListItem } from '@/shared/ui/components/setting-row';
 import { TokenActions } from './token-actions';
 
 export interface TokenListProps {

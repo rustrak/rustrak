@@ -1,5 +1,11 @@
 import type { MonitorEnvironmentStats, MonitorResponse } from '@rustrak/client';
-import { cn, TimeSeriesChart } from '@rustrak/ui';
+import {
+  cn,
+  FactList,
+  Figure,
+  FigureStrip,
+  TimeSeriesChart,
+} from '@rustrak/ui';
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { checkInFill } from '@/features/monitor/lib/check-in-fill';
@@ -15,7 +21,6 @@ import { successRate, windowDuration } from '@/features/monitor/lib/timeline';
 import { ScheduleText } from '@/features/monitor/ui/components/schedule-text';
 import { useNow, useRelativeTime } from '@/shared/i18n/use-now';
 import { isDaily } from '@/shared/lib/chart-format';
-import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 import { CheckInStrip, StripAxis } from './check-in-strip';
 

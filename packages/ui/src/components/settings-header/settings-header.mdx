@@ -1,0 +1,53 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import { Cover, DocPage, Guarantee, Guarantees, Place, Rule, Section, Stage, UsedIn } from '../../docs/blocks';
+import { Button } from '../button/button';
+import { SettingsHeader } from './settings-header';
+import * as Stories from './settings-header.stories';
+
+<Meta of={Stories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="SettingsHeader"
+  lede="A settings page's title, what it is for, and its own actions."
+  note="Sticks to the top of the page's scroller, bleeding over its padding."
+/>
+
+<Section n="01" title="Anatomy" intro="Title, one quiet line under it, actions on the right, a rule under all of it.">
+
+<Stage>
+  <SettingsHeader title="Plugins" description="Extend Rustrak with plugins." actions={<Button size="sm">Install</Button>} />
+</Stage>
+
+<Rule>With tabs the tab strip is the bottom edge, so there is one line, not two.</Rule>
+
+</Section>
+
+<Section n="02" title="Where it is used">
+
+<UsedIn>
+  <Place at="Settings">Every settings page, workspace and project.</Place>
+  <Place at="Plugins">A plugin's own settings page, so it reads like the rest.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="03" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="ItIsThePagesHeading">The title is the page's one level-1 heading.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="04" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

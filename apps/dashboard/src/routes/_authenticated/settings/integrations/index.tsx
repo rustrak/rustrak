@@ -1,4 +1,4 @@
-import { Button, Tag, type TagTone } from '@rustrak/ui';
+import { Button, SettingsHeader, Tag, type TagTone } from '@rustrak/ui';
 import { noop, useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
@@ -13,7 +13,6 @@ import { cn } from '@/shared/lib/utils';
 import { GitHubMark } from '@/shared/ui/components/github-mark';
 import { Link } from '@/shared/ui/components/link';
 import { LoadFailure } from '@/shared/ui/components/load-failure';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 
 export const Route = createFileRoute('/_authenticated/settings/integrations/')({
   validateSearch: (search: Record<string, unknown>) => ({

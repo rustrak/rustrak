@@ -1,16 +1,18 @@
 import type { OAuthGrant } from '@rustrak/client';
-import { Avatar, Button, IntegrationsIcon } from '@rustrak/ui';
+import {
+  Avatar,
+  Button,
+  IntegrationsIcon,
+  SettingSection,
+  SettingsEmpty,
+  SettingsListItem,
+} from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useFormatter, useTranslations } from 'use-intl';
 import { mcpMutations } from '@/features/mcp/api/mutations';
 import { mcpQueries } from '@/features/mcp/api/queries';
 import { QueryState } from '@/shared/ui/components/query-state';
-import {
-  SettingSection,
-  SettingsEmpty,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 /** The host a client is published from, which is what a reader recognises. */

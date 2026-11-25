@@ -1,4 +1,10 @@
-import { Skeleton } from '@rustrak/ui';
+import {
+  SettingRow,
+  SettingSection,
+  SettingsHeader,
+  SettingsListSkeleton,
+  Skeleton,
+} from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -6,12 +12,6 @@ import { projectQueries } from '@/features/project/api/queries';
 import { RateLimitSettings } from '@/features/project/ui/components/general-settings-form/rate-limit-settings';
 import { ProductsSettings } from '@/features/project/ui/components/products-settings';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import {
-  SettingRow,
-  SettingSection,
-  SettingsListSkeleton,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute(

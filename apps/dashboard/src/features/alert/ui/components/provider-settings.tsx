@@ -11,6 +11,10 @@ import {
   Menu,
   MoreIcon,
   NewIcon,
+  SettingSection,
+  SettingsEmpty,
+  SettingsHeader,
+  SettingsListItem,
   Tag,
   TestIcon,
 } from '@rustrak/ui';
@@ -22,12 +26,6 @@ import { providerEditing } from '@/features/alert/lib/provider-view';
 import { slackDefaults } from '@/features/alert/model/integration-forms';
 import { ProviderForm } from '@/features/alert/ui/components/integration-config-dialog/provider-form';
 import { ProviderIcon } from '@/features/alert/ui/components/provider-icon';
-import {
-  SettingSection,
-  SettingsEmpty,
-  SettingsListItem,
-} from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 

@@ -8,6 +8,8 @@ import type {
 import {
   BarsChart,
   cn,
+  Figure,
+  FigureStrip,
   focusRingInset,
   formatSpanDuration,
   Text,
@@ -16,7 +18,6 @@ import {
 import type { ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { axisDuration, isDaily } from '@/shared/lib/chart-format';
-import { Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 
 /**

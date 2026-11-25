@@ -1,5 +1,13 @@
 import type { FeedbackListResponse, IssueStatusUpdate } from '@rustrak/client';
-import { cn, Page, Skeleton, Tab, TabList, Tabs } from '@rustrak/ui';
+import {
+  cn,
+  EmptyState,
+  Page,
+  Skeleton,
+  Tab,
+  TabList,
+  Tabs,
+} from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
@@ -11,7 +19,6 @@ import {
 } from '@/features/issue/model/feedback-mailbox';
 import { FeedbackDetail } from '@/features/issue/ui/components/feedback-detail';
 import { FeedbackList } from '@/features/issue/ui/components/feedback-list';
-import { EmptyState } from '@/shared/ui/components/empty-state';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';

@@ -1,5 +1,5 @@
 import type { ReleaseSummary } from '@rustrak/client';
-import { formatFilterQuery, Skeleton } from '@rustrak/ui';
+import { formatFilterQuery, RailBlock, Skeleton } from '@rustrak/ui';
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useDeferredValue } from 'react';
@@ -22,7 +22,6 @@ import {
   DetailRail,
 } from '@/shared/ui/components/detail-layout';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { RailBlock } from '@/shared/ui/components/panel';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { ReleaseFilters } from './-components/release-filters';
 import {

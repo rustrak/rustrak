@@ -1,0 +1,49 @@
+import { Controls, Meta, Unstyled } from '@storybook/addon-docs/blocks';
+import { Cover, DocPage, Guarantee, Guarantees, Place, Section, Stage, UsedIn } from '../../docs/blocks';
+import { EmptyState } from './empty-state';
+import * as Stories from './empty-state.stories';
+
+<Meta of={Stories} />
+
+<Unstyled>
+<DocPage>
+
+<Cover
+  eyebrow="Components"
+  title="EmptyState"
+  lede="A page with nothing to show yet: what is missing and how to get it."
+/>
+
+<Section n="01" title="Anatomy" intro="A quiet mark, what is missing, and the one sentence that says how to get it.">
+
+<Stage>
+  <EmptyState title="No issues yet" description="Send an error from your app and it shows up here." />
+</Stage>
+
+</Section>
+
+<Section n="02" title="Where it is used">
+
+<UsedIn>
+  <Place at="Lists">A page whose list is empty.</Place>
+  <Place at="Plugins">A plugin page that does not exist in this project.</Place>
+</UsedIn>
+
+</Section>
+
+<Section n="03" title="What it guarantees">
+
+<Guarantees>
+  <Guarantee story="ItSaysWhatIsMissing">What is missing and how to get it are text, read in order.</Guarantee>
+</Guarantees>
+
+</Section>
+
+<Section n="04" title="Props">
+
+<Controls />
+
+</Section>
+
+</DocPage>
+</Unstyled>

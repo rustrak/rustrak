@@ -1,10 +1,9 @@
+import { SettingRow, SettingSection, SettingsHeader } from '@rustrak/ui';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { ClockSelector } from '@/features/user/ui/components/clock-selector';
 import { LanguageSelector } from '@/features/user/ui/components/language-selector';
 import { TimeZoneSelector } from '@/features/user/ui/components/time-zone-selector';
-import { SettingRow, SettingSection } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { ThemeSelector } from '@/shared/ui/components/theme-selector';
 
 export const Route = createFileRoute('/_authenticated/settings/preferences')({

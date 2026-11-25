@@ -14,6 +14,7 @@ import {
   LogsIcon,
   PerformanceIcon,
   ReleasesIcon,
+  SettingSection,
   Switch,
   Text,
 } from '@rustrak/ui';
@@ -27,7 +28,6 @@ import {
   orderedProducts,
   PRODUCTS,
 } from '@/features/project/model/products';
-import { SettingSection } from '@/shared/ui/components/setting-row';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 const ICONS: Record<Product, IconComponent> = {

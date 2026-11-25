@@ -6,6 +6,9 @@ import type {
 import {
   BarsChart,
   cn,
+  FactList,
+  Figure,
+  FigureStrip,
   formatSpanDuration,
   Tag,
   TimeSeriesChart,
@@ -19,7 +22,6 @@ import {
 } from '@/features/transaction/model/endpoints';
 import { useRelativeTime } from '@/shared/i18n/use-now';
 import { axisDuration, isDaily } from '@/shared/lib/chart-format';
-import { FactList, Figure, FigureStrip } from '@/shared/ui/components/figures';
 import { Link } from '@/shared/ui/components/link';
 import { useBucketLabel } from '@/shared/ui/hooks/use-bucket-label';
 

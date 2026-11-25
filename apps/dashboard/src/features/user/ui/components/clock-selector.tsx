@@ -1,4 +1,4 @@
-import { Switch } from '@rustrak/ui';
+import { SettingRow, Switch } from '@rustrak/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useId, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
@@ -6,7 +6,6 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
 import { session } from '@/shared/api/session';
 import { intl } from '@/shared/i18n/intl';
-import { SettingRow } from '@/shared/ui/components/setting-row';
 
 /**
  * The clock on the account row right now, or `null` when it holds none.

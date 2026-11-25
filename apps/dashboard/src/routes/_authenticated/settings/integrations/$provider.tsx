@@ -1,5 +1,5 @@
 import type { ProviderType } from '@rustrak/client';
-import { Skeleton } from '@rustrak/ui';
+import { SettingsHeader, SettingsListSkeleton, Skeleton } from '@rustrak/ui';
 import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
@@ -13,8 +13,6 @@ import {
 import { searchId } from '@/shared/lib/search-params';
 import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { SettingsListSkeleton } from '@/shared/ui/components/setting-row';
-import { SettingsHeader } from '@/shared/ui/components/settings-header';
 import { usePageTrail } from '@/shared/ui/hooks/use-page-trail';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 

@@ -65,6 +65,7 @@ import {
   Play,
   Plug,
   Plus,
+  Puzzle,
   RefreshCw,
   Rocket,
   ScrollText,
@@ -223,6 +224,8 @@ export const EnvironmentIcon = fromHugeicons('EnvironmentIcon', Server);
 export const MemberIcon = fromHugeicons('MemberIcon', User);
 export const TeamIcon = fromHugeicons('TeamIcon', Users);
 export const IntegrationsIcon = fromHugeicons('IntegrationsIcon', Plug);
+/** A plugin: what extends Rustrak from inside, where an integration connects out. */
+export const PluginsIcon = fromHugeicons('PluginsIcon', Puzzle);
 export const StorageIcon = fromHugeicons('StorageIcon', HardDrive);
 /** An API token: what lets something other than a person in. */
 export const TokensIcon = fromHugeicons('TokensIcon', KeyRound);
@@ -322,6 +325,7 @@ export const icons = {
   member: MemberIcon,
   team: TeamIcon,
   integrations: IntegrationsIcon,
+  plugins: PluginsIcon,
   storage: StorageIcon,
   tokens: TokensIcon,
   payload: PayloadIcon,
