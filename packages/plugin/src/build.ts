@@ -25,6 +25,13 @@ const PROFILE: Record<string, string> = {
 
 const TARGET = 'wasm32-wasip2';
 
+/** A line of cargo's `--message-format=json`, as far as it is read here. */
+interface Artifact {
+  reason?: string;
+  target?: { kind: string[] };
+  filenames?: string[];
+}
+
 function run(
   cmd: string,
   args: string[],
@@ -65,12 +72,14 @@ function compileServer(dir: string): string {
   const wasm = out
     .split('\n')
     .filter((line) => line.startsWith('{'))
-    .map(
-      (line) => JSON.parse(line) as { reason?: string; filenames?: string[] },
+    .map((line) => JSON.parse(line) as Artifact)
+    // The library, not a binary the author added: both are a `.wasm`.
+    .filter(
+      (m) =>
+        m.reason === 'compiler-artifact' && m.target?.kind.includes('cdylib'),
     )
-    .filter((m) => m.reason === 'compiler-artifact')
     .flatMap((m) => m.filenames ?? [])
-    .findLast((f) => f.endsWith('.wasm'));
+    .find((f) => f.endsWith('.wasm'));
   if (!wasm) throw new Error('cargo built no .wasm: is the crate a cdylib?');
   return wasm;
 }

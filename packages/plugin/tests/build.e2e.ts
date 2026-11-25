@@ -113,7 +113,25 @@ describe('new', () => {
       join(dir, '.cargo/config.toml'),
       '[build]\ntarget-dir = "elsewhere"\n',
     );
-    const { rtp, manifest } = await build(dir, { outDir: join(dir, 'dist') });
+    // A binary is a .wasm too: the component is still the library.
+    writeFileSync(join(dir, 'tool.rs'), 'fn main() {}\n');
+    writeFileSync(
+      join(dir, 'Cargo.toml'),
+      `${readFileSync(join(dir, 'Cargo.toml'), 'utf8')}\n[[bin]]\nname = "tool"\npath = "tool.rs"\n`,
+    );
+    // The environment outranks the config file: clear it for this build.
+    const inherited = {
+      CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR,
+      CARGO_BUILD_TARGET_DIR: process.env.CARGO_BUILD_TARGET_DIR,
+    };
+    delete process.env.CARGO_TARGET_DIR;
+    delete process.env.CARGO_BUILD_TARGET_DIR;
+    const { rtp, manifest } = await build(dir, {
+      outDir: join(dir, 'dist'),
+    }).finally(() => {
+      for (const [k, v] of Object.entries(inherited))
+        if (v !== undefined) process.env[k] = v;
+    });
     expect(existsSync(join(dir, 'elsewhere'))).toBe(true);
     expect(manifest).toContain('[ui]');
     const wasm = strFromU8(unzipSync(readFileSync(rtp))['server.wasm']!, true);

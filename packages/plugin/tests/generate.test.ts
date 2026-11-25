@@ -63,6 +63,12 @@ describe('generate', () => {
         settings: { option: { type: 'select', options: ['a', 'b'] } },
       }),
     ).toThrow(/settings\.option: .*clashes with Option/);
+    expect(() =>
+      run({
+        ...config,
+        settings: { perm: { type: 'select', options: ['a', 'b'] } },
+      }),
+    ).toThrow(/settings\.perm: .*clashes with Perm/);
   });
 
   it('warns about a language missing, a key missing, and a setting with no label', () => {

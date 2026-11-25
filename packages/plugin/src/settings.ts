@@ -48,7 +48,7 @@ export function rustIdent(name: string, where: string): string {
 }
 
 /** What `plugin.rs` already names: a select's enum cannot take these. */
-const TAKEN = new Set(['Settings', 'Option', 'String']);
+const TAKEN = new Set(['Settings', 'Option', 'String', 'Perm']);
 
 /** `interface PluginSettings` for the browser: secrets are not there. */
 export function settingsTs(settings: Settings): string {
