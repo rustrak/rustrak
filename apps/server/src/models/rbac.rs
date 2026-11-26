@@ -236,6 +236,12 @@ impl Grants {
                 .project_plugins
                 .iter()
                 .any(|(k, a)| other.allows_plugin(k, *a))
+            // Either side may be the one that names it: an owner's grants
+            // name none, and writing one implies reading it.
+            || other
+                .project_plugins
+                .iter()
+                .any(|(k, a)| self.allows_plugin(k, *a))
     }
 
     fn mark_project_plugins(&mut self, scope_of: &impl Fn(&str, Action) -> Option<Scope>) {
@@ -335,9 +341,22 @@ impl Access {
     /// The same access, knowing which plugins' permissions their manifests
     /// scope to a project (`scope_of`), so those show it.
     pub fn with_plugin_scopes(mut self, scope_of: impl Fn(&str, Action) -> Option<Scope>) -> Self {
+        // An instance one holds wherever a role giving it is held, as for
+        // Rustrak's own workspace permissions.
+        let lifted: Vec<_> = self
+            .projects
+            .values()
+            .flat_map(|g| g.plugins.iter())
+            .filter(|(k, a)| scope_of(k, *a) == Some(Scope::Instance))
+            .cloned()
+            .collect();
+        self.instance.plugins.extend(lifted);
         self.instance.mark_project_plugins(&scope_of);
         for g in self.projects.values_mut() {
             g.mark_project_plugins(&scope_of);
+        }
+        if let Some(cap) = &mut self.cap {
+            cap.grants.mark_project_plugins(&scope_of);
         }
         self
     }

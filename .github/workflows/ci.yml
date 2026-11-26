@@ -180,6 +180,10 @@ jobs:
           cache-workspaces: apps/server -> target
       - *setup-pnpm
       - *setup-node
+      # The plugin tests build `tests/fixtures/hello-plugin` with the authors'
+      # CLI (`@rustrak/plugin`), which needs its dependencies and its build.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@rustrak/plugin
 
       # `openapi` on, so `gen_openapi` is compiled here, in this profile, and
       # the check below is a run rather than a second compile with a different
@@ -216,6 +220,8 @@ jobs:
           tool: cargo-llvm-cov
 
       - run: pnpm install --frozen-lockfile
+      # As in rust-test: the plugin tests build their fixture with it.
+      - run: pnpm turbo run build --filter=@rustrak/plugin
 
       - name: Generate server coverage
         working-directory: apps/server

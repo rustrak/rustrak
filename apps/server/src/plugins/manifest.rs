@@ -77,6 +77,10 @@ fn default_storage_mb() -> u32 {
     512
 }
 
+/// The largest quota a plugin may declare: 1 TiB, well inside SQLite's page
+/// ceiling, so the declared number is the limit.
+const MAX_STORAGE_MB: u32 = 1 << 20;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Method {
@@ -256,6 +260,13 @@ impl Manifest {
             return fail(format!(
                 "plugin.id {:?} must be 2 to 32 lowercase letters, digits or dashes, starting with a letter",
                 p.id
+            ));
+        }
+        // 0 is no limit at all to SQLite (`max_page_count = 0` only reads it).
+        if !(1..=MAX_STORAGE_MB).contains(&self.capabilities.storage_mb) {
+            return fail(format!(
+                "capabilities.storage_mb {} must be 1 to {MAX_STORAGE_MB}",
+                self.capabilities.storage_mb
             ));
         }
         if !super::WORLDS.contains(&p.world.to_string().as_str()) {

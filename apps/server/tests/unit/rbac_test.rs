@@ -439,6 +439,66 @@ fn a_plugin_key_names_a_plugin_and_one_of_its_resources() {
     }
 }
 
+fn plugin_scopes(key: &str, _: Action) -> Option<Scope> {
+    match key {
+        "hello:hits" => Some(Scope::Project),
+        "hello:admin" => Some(Scope::Instance),
+        _ => None,
+    }
+}
+
+fn plugin_grant(key: &str, action: Action) -> Grants {
+    Grants::default().with_plugins([(key.to_string(), action)])
+}
+
+#[test]
+fn an_owners_token_kept_to_a_project_plugin_permission_sees_the_project() {
+    // As the extractor builds it: the token's cap first, then the scopes.
+    let token = Access::new(vec![instance(Grants::all())])
+        .capped(TokenScope {
+            grants: plugin_grant("hello:hits", Action::Read),
+            projects: None,
+        })
+        .with_plugin_scopes(plugin_scopes);
+    assert!(token.can_plugin("hello:hits", Scope::Project, Action::Read, Some(5)));
+    assert!(token.can(Resource::Project, Action::Read, Some(5)));
+}
+
+#[test]
+fn a_token_keeping_only_the_read_its_owners_update_implies_sees_the_project() {
+    let token = Access::new(vec![on_project(
+        5,
+        plugin_grant("hello:hits", Action::Update),
+    )])
+    .capped(TokenScope {
+        grants: plugin_grant("hello:hits", Action::Read),
+        projects: None,
+    })
+    .with_plugin_scopes(plugin_scopes);
+    assert!(token.can_plugin("hello:hits", Scope::Project, Action::Read, Some(5)));
+    assert!(token.can(Resource::Project, Action::Read, Some(5)));
+}
+
+#[test]
+fn an_instance_plugin_permission_held_through_a_project_is_held_everywhere() {
+    // Like Rustrak's workspace permissions: wherever the role is held.
+    let actor = Access::new(vec![on_project(
+        7,
+        plugin_grant("hello:admin", Action::Read),
+    )])
+    .with_plugin_scopes(plugin_scopes);
+    assert!(actor.can_plugin("hello:admin", Scope::Instance, Action::Read, None));
+    assert!(actor.covers(&plugin_grant("hello:admin", Action::Read), None));
+    assert!(actor.covers(&plugin_grant("hello:admin", Action::Read), Some(9)));
+    // A project one stays on its project.
+    let project = Access::new(vec![on_project(
+        7,
+        plugin_grant("hello:hits", Action::Read),
+    )])
+    .with_plugin_scopes(plugin_scopes);
+    assert!(!project.covers(&plugin_grant("hello:hits", Action::Read), Some(9)));
+}
+
 #[test]
 fn only_a_project_scoped_plugin_permission_shows_the_project() {
     let plugin = |key: &str| Grants::default().with_plugins([(key.to_string(), Action::Read)]);

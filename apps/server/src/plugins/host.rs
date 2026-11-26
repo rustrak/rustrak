@@ -201,7 +201,7 @@ pub struct PluginHost {
     installed: RwLock<HashMap<String, Arc<Installed>>>,
     /// Held by every change (install, uninstall, projects, settings) from
     /// its read to its cache update, so two never interleave.
-    // ponytail: global lock, per-plugin locks if it ever matters.
+    // One global lock, per-plugin locks if it ever matters.
     writes: tokio::sync::Mutex<()>,
 }
 
@@ -565,12 +565,28 @@ impl PluginHost {
         &self,
         retention: &BTreeMap<String, u32>,
     ) -> AppResult<Vec<PluginStorage>> {
+        self.report(retention, |_| true).await
+    }
+
+    /// `storage` for the plugins `keep` names only: no other database is read.
+    async fn report(
+        &self,
+        retention: &BTreeMap<String, u32>,
+        keep: impl Fn(&str) -> bool,
+    ) -> AppResult<Vec<PluginStorage>> {
         let plugins: Vec<_> = {
             let installed = self.installed.read().expect("plugins lock");
-            let mut all: Vec<_> = installed.values().cloned().collect();
+            let mut all: Vec<_> = installed
+                .values()
+                .filter(|p| keep(&p.manifest.plugin.id))
+                .cloned()
+                .collect();
             all.sort_by(|a, b| a.manifest.plugin.id.cmp(&b.manifest.plugin.id));
             all
         };
+        if plugins.is_empty() {
+            return Ok(Vec::new());
+        }
         let dir = self.dir.clone();
         let retention = retention.clone();
         tokio::task::spawn_blocking(move || {
@@ -579,10 +595,14 @@ impl PluginHost {
                 .map(|p| {
                     let id = p.manifest.plugin.id.clone();
                     let days = retention.get(&id).copied();
-                    let history = match p.loaded.db() {
-                        Some(db) => db
-                            .history(days.map(cutoff))
-                            .map_err(|e| AppError::Internal(format!("plugin {id}: {e}")))?,
+                    // One plugin's unreadable database leaves the others'
+                    // rows on the page: its own history shows empty.
+                    let history = match p.loaded.db().map(|db| db.history(days.map(cutoff))) {
+                        Some(Ok(history)) => history,
+                        Some(Err(e)) => {
+                            log::error!("plugin {id}: reading its history: {e}");
+                            Vec::new()
+                        }
                         None => Vec::new(),
                     };
                     let file = db_path(&dir, &id);
@@ -593,29 +613,28 @@ impl PluginHost {
                         })
                         .map(|m| m.len())
                         .sum();
-                    Ok(PluginStorage {
+                    PluginStorage {
                         name: p.manifest.plugin.name.clone(),
                         bytes,
                         quota_bytes: u64::from(p.manifest.capabilities.storage_mb) * 1024 * 1024,
                         retention_days: days,
                         history,
                         id,
-                    })
+                    }
                 })
                 .collect()
         })
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?
+        .map_err(|e| AppError::Internal(e.to_string()))
     }
 
     /// The history rows of each plugin older than its window: what clearing
-    /// would delete.
+    /// would delete. Only the plugins in `windows` are read.
     pub async fn expired_rows(&self, windows: &BTreeMap<String, u32>) -> AppResult<i64> {
         Ok(self
-            .storage(windows)
+            .report(windows, |id| windows.contains_key(id))
             .await?
             .iter()
-            .filter(|p| windows.contains_key(&p.id))
             .flat_map(|p| p.history.iter().map(|h| h.expired))
             .sum())
     }
@@ -627,16 +646,31 @@ impl PluginHost {
             .filter_map(|(id, days)| Some((self.get(id)?, *days)))
             .collect();
         tokio::task::spawn_blocking(move || {
+            // One plugin's failing database does not keep the others' history
+            // from being cleared: each is tried, the failures reported at the end.
             let mut removed = 0;
+            let mut failed = Vec::new();
             for (plugin, days) in targets {
                 let Some(db) = plugin.loaded.db() else {
                     continue;
                 };
-                removed += db.forget_before(cutoff(days)).map_err(|e| {
-                    AppError::Internal(format!("plugin {}: {e}", plugin.manifest.plugin.id))
-                })? as i64;
+                let id = &plugin.manifest.plugin.id;
+                match db.forget_before(cutoff(days)) {
+                    Ok(n) => removed += n as i64,
+                    Err(e) => {
+                        log::error!("plugin {id}: clearing its history: {e}");
+                        failed.push(id.clone());
+                    }
+                }
             }
-            Ok(removed)
+            if failed.is_empty() {
+                Ok(removed)
+            } else {
+                Err(AppError::Internal(format!(
+                    "clearing the history of plugin(s) {} failed ({removed} rows cleared elsewhere)",
+                    failed.join(", ")
+                )))
+            }
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
@@ -882,35 +916,54 @@ fn prepare(
         .read_code(code)
         .map_err(|e| AppError::Validation(format!("plugin {id}: {e}")))?;
 
-    let version_dir = dir.join(&id).join(&version);
+    let root = dir.join(&id);
+    let version_dir = root.join(&version);
+    // What this install creates, so a refusal below takes it back: never
+    // an installed plugin's own folder or its data.
+    let (new_root, new_version) = (!root.exists(), !version_dir.exists());
     std::fs::create_dir_all(&version_dir)
         .map_err(|e| AppError::Internal(format!("{}: {e}", version_dir.display())))?;
 
-    let db = if manifest.capabilities.sql {
-        let db = PluginDb::open(&db_path(dir, &id), manifest.capabilities.storage_mb)
-            .map_err(|e| AppError::Internal(format!("plugin {id} database: {e}")))?;
-        Some(Arc::new(db))
-    } else {
-        None
+    let opened = (|| {
+        let db = if manifest.capabilities.sql {
+            let db = PluginDb::open(&db_path(dir, &id), manifest.capabilities.storage_mb)
+                .map_err(|e| AppError::Internal(format!("plugin {id} database: {e}")))?;
+            Some(Arc::new(db))
+        } else {
+            None
+        };
+
+        // Compile first: a component that does not load must not leave its
+        // migrations applied.
+        let loaded = runtime
+            .load(&id, &package.wasm, &version_dir, db.clone())
+            .map_err(|e| AppError::Validation(format!("plugin {id} does not load: {e:#}")))?;
+
+        if let Some(db) = &db {
+            db.migrate(&package.migrations)
+                .map_err(|e| AppError::Validation(format!("plugin {id}: {e}")))?;
+        }
+
+        if write {
+            // Beside its final name: `install` renames it once the row is in.
+            let tmp = package_path(dir, &id, &version).with_extension("tmp");
+            std::fs::write(&tmp, rtp)
+                .map_err(|e| AppError::Internal(format!("{}: {e}", tmp.display())))?;
+        }
+        Ok(loaded)
+    })();
+    let loaded = match opened {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            let created = if new_root { &root } else { &version_dir };
+            if new_root || new_version {
+                if let Err(rm) = std::fs::remove_dir_all(created) {
+                    log::error!("{}: {rm}", created.display());
+                }
+            }
+            return Err(e);
+        }
     };
-
-    // Compile first: a component that does not load must not leave its
-    // migrations applied.
-    let loaded = runtime
-        .load(&id, &package.wasm, &version_dir, db.clone())
-        .map_err(|e| AppError::Validation(format!("plugin {id} does not load: {e:#}")))?;
-
-    if let Some(db) = &db {
-        db.migrate(&package.migrations)
-            .map_err(|e| AppError::Validation(format!("plugin {id}: {e}")))?;
-    }
-
-    if write {
-        // Beside its final name: `install` renames it once the row is in.
-        let tmp = package_path(dir, &id, &version).with_extension("tmp");
-        std::fs::write(&tmp, rtp)
-            .map_err(|e| AppError::Internal(format!("{}: {e}", tmp.display())))?;
-    }
     let mut ui_files: HashMap<String, Vec<u8>> = package
         .files
         .iter()

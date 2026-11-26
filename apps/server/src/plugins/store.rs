@@ -3,7 +3,7 @@
 //! inside its quota and inside its time budget.
 
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
@@ -151,7 +151,7 @@ fn history_tables(conn: &Connection) -> rusqlite::Result<Vec<String>> {
 }
 
 pub struct PluginDb {
-    // ponytail: one connection for reads and writes; a reader pool when a
+    // One connection for reads and writes; a reader pool when a
     // plugin's dashboards measurably wait on its writes.
     conn: Mutex<Connection>,
 }
@@ -363,12 +363,19 @@ impl PluginDb {
         deadline: Instant,
         f: impl FnOnce(&Connection) -> Result<T, SqlError>,
     ) -> Result<T, SqlError> {
-        let conn = self.conn.lock().expect("plugin db lock poisoned");
         // The wait for the lock (housekeeping holds it for minutes) is part
-        // of the budget.
-        if Instant::now() >= deadline {
-            return Err(SqlError::Busy);
-        }
+        // of the budget: nothing interrupts a host call blocked in `lock()`.
+        let conn = loop {
+            match self.conn.try_lock() {
+                Ok(conn) => break conn,
+                Err(TryLockError::Poisoned(p)) => break p.into_inner(),
+                Err(TryLockError::WouldBlock) if Instant::now() >= deadline => {
+                    return Err(SqlError::Busy);
+                }
+                // Polls; a condvar if this ever shows up in a profile.
+                Err(TryLockError::WouldBlock) => std::thread::sleep(Duration::from_millis(5)),
+            }
+        };
         conn.progress_handler(1_000, Some(move || Instant::now() > deadline))?;
         let result = f(&conn);
         conn.progress_handler(0, None::<fn() -> bool>)?;
@@ -432,7 +439,10 @@ mod tests {
         let guard = db.conn.lock().unwrap();
         std::thread::scope(|s| {
             let call = s.spawn(|| db.query("SELECT 1", &[], Duration::from_millis(50)));
-            std::thread::sleep(Duration::from_millis(200));
+            // Busy at its deadline, while the lock is still held: not once
+            // housekeeping lets go minutes later.
+            std::thread::sleep(Duration::from_millis(500));
+            assert!(call.is_finished(), "the call waited past its deadline");
             drop(guard);
             assert_eq!(call.join().unwrap(), Err(SqlError::Busy));
         });

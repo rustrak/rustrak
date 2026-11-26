@@ -101,7 +101,7 @@ pub async fn list_plugins(
     Ok(HttpResponse::Ok().json(plugins))
 }
 
-// ponytail: owners only until `plugins` joins the RBAC catalog.
+// Owners only until `plugins` joins the RBAC catalog.
 fn require_owner(actor: &ApiActor) -> AppResult<()> {
     if actor.is_owner() {
         Ok(())

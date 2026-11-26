@@ -519,6 +519,61 @@ async fn a_package_refused_late_leaves_nothing_behind() {
 }
 
 #[actix_web::test]
+async fn a_package_whose_migration_fails_leaves_no_files_and_an_installed_one_keeps_its_own() {
+    let db = TestDb::new().await;
+    let state = common::state(&db.pool, common::config()).await;
+    let broken = |version: &str| {
+        let files: Vec<_> = crate::common::plugins::files_of(&hello_rtp())
+            .into_iter()
+            .map(|(path, bytes)| match path.as_str() {
+                p if p.starts_with("migrations/") => (path, b"nonsense;".to_vec()),
+                "rustrak-plugin.toml" => (
+                    path,
+                    String::from_utf8(bytes)
+                        .unwrap()
+                        .replacen(
+                            "version = \"0.1.0\"",
+                            &format!("version = \"{version}\""),
+                            1,
+                        )
+                        .into_bytes(),
+                ),
+                _ => (path, bytes),
+            })
+            .collect();
+        crate::common::plugins::zip_with_manifest(&files)
+    };
+    let plugin_dir = state.config.plugins_dir.join("hello");
+
+    // A first install refused at its migrations: nothing of it on disk.
+    let refused = state
+        .plugins
+        .install(&db.pool, broken("0.1.0"), Source::Upload)
+        .await;
+    assert!(refused.is_err());
+    assert!(
+        !plugin_dir.exists(),
+        "{} was left behind",
+        plugin_dir.display()
+    );
+
+    // An upgrade refused the same way: the installed version and its data stay.
+    state
+        .plugins
+        .install(&db.pool, hello_rtp(), Source::Upload)
+        .await
+        .unwrap();
+    let refused = state
+        .plugins
+        .install(&db.pool, broken("0.2.0"), Source::Upload)
+        .await;
+    assert!(refused.is_err());
+    assert!(plugin_dir.join("data.sqlite").exists());
+    assert!(plugin_dir.join("0.1.0").exists());
+    assert!(!plugin_dir.join("0.2.0").exists());
+}
+
+#[actix_web::test]
 async fn an_upgrade_removes_the_version_it_replaces() {
     let db = TestDb::new().await;
     let state = common::state(&db.pool, common::config()).await;

@@ -59,6 +59,19 @@ fn reads_a_complete_manifest() {
 }
 
 #[test]
+fn refuses_a_storage_quota_that_does_not_limit_anything() {
+    let with = |mb: u64| format!("{VALID}\n[capabilities]\nstorage_mb = {mb}\n");
+    // 0 reads as "no limit" to SQLite; above the cap, the limit is the disk.
+    for mb in [0, 4_000_000_000] {
+        assert!(
+            parse_err(&with(mb)).contains("capabilities.storage_mb"),
+            "{mb} should be refused"
+        );
+    }
+    assert_eq!(parse(&with(1)).capabilities.storage_mb, 1);
+}
+
+#[test]
 fn refuses_an_id_that_is_not_a_slug() {
     for id in [
         "Analytics",

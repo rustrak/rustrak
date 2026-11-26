@@ -17,7 +17,7 @@ pub const OFFICIAL_INDEX: &str =
 
 /// The keys the official index is signed with (minisign public keys, the
 /// base64 line). Its secret half signs in the registry's CI only.
-// ponytail: empty until the registry's key is generated (`minisign -G`);
+// Empty until the registry's key is generated (`minisign -G`);
 // until then only RUSTRAK_PLUGIN_REGISTRY_KEYS verifies an index.
 pub const OFFICIAL_KEYS: &[&str] = &[];
 
