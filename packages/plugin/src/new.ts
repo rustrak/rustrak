@@ -9,7 +9,7 @@ import { generate } from './generate.ts';
 /** The first Rustrak release with this world. */
 const MIN_RUSTRAK = '>=0.34.0';
 /** `@rustrak/plugin`, `@rustrak/ui` and the `rustrak-plugin` crate share the Rustrak release's number. */
-const RELEASE: string = createRequire(import.meta.url)(
+export const RELEASE: string = createRequire(import.meta.url)(
   '../package.json',
 ).version;
 const RUSTRAK_PACKAGES = `^${RELEASE}`;
@@ -35,16 +35,22 @@ const title = (slug: string) =>
     .map((w) => w[0]!.toUpperCase() + w.slice(1))
     .join(' ');
 
-export function scaffold(dir: string): void {
-  if (existsSync(dir) && readdirSync(dir).length > 0) {
-    throw new Error(`${dir} is not empty`);
-  }
+/** Why `dir` cannot take a new plugin; `undefined` when it can. */
+export function nameError(dir: string): string | undefined {
   const slug = basename(dir);
   if (!/^[a-z][a-z0-9-]{1,31}$/.test(slug)) {
-    throw new Error(
-      `${slug}: a plugin's name is 2 to 32 lowercase letters, digits or dashes`,
-    );
+    return `${slug}: a plugin name is 2 to 32 lowercase letters, digits or dashes`;
   }
+  if (existsSync(dir) && readdirSync(dir).length > 0) {
+    return `${dir} is not empty`;
+  }
+}
+
+/** Writes the project; how many files it wrote. */
+export function scaffold(dir: string): number {
+  const error = nameError(dir);
+  if (error) throw new Error(error);
+  const slug = basename(dir);
   mkdirSync(dir, { recursive: true });
 
   // Written to rustrak.config.ts and generated from at once: the new project
@@ -313,4 +319,5 @@ npm run build   # dist/${slug}-0.1.0.rtp
   }
   // .rustrak/ now, so cargo and the editor work before the first build.
   generate(dir, config);
+  return Object.keys(files).length;
 }

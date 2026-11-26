@@ -1,8 +1,7 @@
 // `rustrak-plugin build`: the compiler. Compiles server/ with locked settings,
-// asks the Rustrak binary what the code declares, writes the manifest and
-// packs everything into a `.rtp` the server accepts.
+// builds the pages, writes the manifest and packs everything into a `.rtp` the server accepts.
 
-import { execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -12,7 +11,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
+import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
+import { gzipSync } from 'node:zlib';
 import { strToU8, zipSync } from 'fflate';
 import { filesIn, loadConfig, paths } from './config.ts';
 import { generate } from './generate.ts';
@@ -39,34 +40,53 @@ interface Artifact {
   filenames?: string[];
 }
 
-function run(
-  cmd: string,
+/**
+ * Runs cargo, handing each line it prints to `onOutput` as it comes; what it
+ * wrote to stdout. On failure, what cargo said is the error: it names the file.
+ */
+function cargo(
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
-): string {
-  try {
-    return execFileSync(cmd, args, {
+  opts: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    onOutput?: (line: string) => void;
+  },
+): Promise<string> {
+  return new Promise((done, fail) => {
+    const child = spawn('cargo', args, {
       cwd: opts.cwd,
       env: opts.env,
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-  } catch (e) {
-    const err = e as { code?: string; stderr?: string; message: string };
-    if (err.code === 'ENOENT') throw new Error(`${cmd} was not found`);
-    // What the tool said is the error: cargo names the file.
-    throw new Error(err.stderr?.trim() || `${cmd} ${args.join(' ')} failed`);
-  }
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk) => {
+      stdout += chunk;
+    });
+    createInterface({ input: child.stderr }).on('line', (line) => {
+      stderr += `${line}\n`;
+      opts.onOutput?.(line);
+    });
+    child.on('error', (e: NodeJS.ErrnoException) =>
+      fail(e.code === 'ENOENT' ? new Error('cargo was not found') : e),
+    );
+    child.on('close', (code) =>
+      code === 0
+        ? done(stdout)
+        : fail(new Error(stderr.trim() || `cargo ${args.join(' ')} failed`)),
+    );
+  });
 }
 
 /**
  * Compiles server/ to a component and returns its path, as cargo reports it:
  * a `target-dir` in a Cargo config or a `[lib] name` moves the file.
  */
-function compileServer(dir: string): string {
-  const out = run(
-    'cargo',
+async function compileServer(
+  dir: string,
+  onOutput?: (line: string) => void,
+): Promise<string> {
+  const out = await cargo(
     [
       'build',
       '--release',
@@ -74,7 +94,7 @@ function compileServer(dir: string): string {
       TARGET,
       '--message-format=json-render-diagnostics',
     ],
-    { cwd: dir, env: { ...process.env, ...PROFILE } },
+    { cwd: dir, env: { ...process.env, ...PROFILE }, onOutput },
   );
   // Real paths both: cargo reports /private/var for macOS's /var.
   const manifest = realpathSync(join(dir, 'Cargo.toml'));
@@ -121,13 +141,15 @@ function filesUnder(root: string, prefix: string): Record<string, Uint8Array> {
 /**
  * Runs the migrations, in order, on a database that lives only in memory:
  * one that does not run fails here, not at install. Rustrak runs them in
- * the same SQLite.
+ * the same SQLite. How many there are.
  */
-function checkMigrations(dir: string): void {
+function checkMigrations(dir: string): number {
   const db = new DatabaseSync(':memory:');
+  const sql = filesIn(dir)
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
   try {
-    for (const file of filesIn(dir).sort()) {
-      if (!file.endsWith('.sql')) continue;
+    for (const file of sql) {
       try {
         db.exec(readFileSync(file, 'utf8'));
       } catch (e) {
@@ -139,12 +161,47 @@ function checkMigrations(dir: string): void {
   } finally {
     db.close();
   }
+  return sql.length;
+}
+
+/** What `build` is doing, in the order it does it. */
+export type BuildStep = 'check' | 'server' | 'ui' | 'pack';
+
+export interface BuildOptions {
+  outDir?: string;
+  /** A step starts; the one before it is done. */
+  onStep?: (step: BuildStep) => void;
+  /** A line cargo printed while compiling the server. */
+  onOutput?: (line: string) => void;
+}
+
+/** What went into the `.rtp`, for whoever reports the build. */
+export interface BuildSummary {
+  id: string;
+  version: string;
+  /** Of the `.rtp`, in bytes. */
+  size: number;
+  /** In the `.rtp`, its MANIFEST left out. */
+  files: number;
+  /** Of `server.wasm`, in bytes. */
+  server: number;
+  migrations: number;
+  pages: number;
+  widgets: number;
+  /** Every file in the `.rtp`, by path, with its size and gzipped size. */
+  entries: { path: string; size: number; gzip: number }[];
 }
 
 export async function build(
   dir: string,
-  { outDir = join(dir, 'dist') } = {},
-): Promise<{ rtp: string; manifest: string }> {
+  { outDir = join(dir, 'dist'), onStep, onOutput }: BuildOptions = {},
+): Promise<{
+  rtp: string;
+  manifest: string;
+  warnings: string[];
+  summary: BuildSummary;
+}> {
+  onStep?.('check');
   const pkg = JSON.parse(
     readFileSync(join(dir, 'package.json'), 'utf8'),
   ) as PackageJson;
@@ -157,24 +214,32 @@ export async function build(
       'A plugin needs readme/en.md: its page in the catalog, in English (readme/es.md and others are optional)',
     );
 
-  const { warnings, messages } = generate(dir, config);
-  checkMigrations(where.migrations);
-  const wasm = compileServer(dir);
+  const generated = generate(dir, config);
+  const { messages } = generated;
+  const migrations = checkMigrations(where.migrations);
+
+  onStep?.('server');
+  const wasm = readFileSync(await compileServer(dir, onOutput));
+
+  onStep?.('ui');
   const id = pluginId(pkg.name, config.id);
   const uiOut = join(where.generated, 'ui-dist');
   const ui = await buildUi(dir, id, uiOut, messages, config.permissions);
+
+  onStep?.('pack');
   const manifest = buildManifest({ id, pkg, config, ui });
-  const readmeWarnings = missingLocales(
-    (l) => `readme/${l}.md` in readmes,
-    (l) => `readme/${l}.md`,
-  );
-  for (const warning of [...readmeWarnings, ...warnings])
-    console.warn(`warning: ${warning}`);
+  const warnings = [
+    ...missingLocales(
+      (l) => `readme/${l}.md` in readmes,
+      (l) => `readme/${l}.md`,
+    ),
+    ...generated.warnings,
+  ];
 
   const files: Record<string, Uint8Array> = {
     'rustrak-plugin.toml': strToU8(manifest),
     ...readmes,
-    'server.wasm': readFileSync(wasm),
+    'server.wasm': wasm,
     // What it hands out to anyone, like a tracker script a website loads.
     ...filesUnder(where.public, 'public'),
     ...filesUnder(where.migrations, 'migrations'),
@@ -191,6 +256,28 @@ export async function build(
 
   mkdirSync(outDir, { recursive: true });
   const rtp = join(outDir, `${id}-${pkg.version}.rtp`);
-  writeFileSync(rtp, zip(files));
-  return { rtp, manifest };
+  const packed = zip(files);
+  writeFileSync(rtp, packed);
+  return {
+    rtp,
+    manifest,
+    warnings,
+    summary: {
+      id,
+      version: pkg.version,
+      size: packed.length,
+      files: Object.keys(files).length,
+      server: wasm.length,
+      migrations,
+      pages: ui?.pages.length ?? 0,
+      widgets: ui?.widgets.length ?? 0,
+      entries: Object.entries(files)
+        .map(([path, data]) => ({
+          path,
+          size: data.length,
+          gzip: gzipSync(data).length,
+        }))
+        .sort((a, b) => a.path.localeCompare(b.path)),
+    },
+  };
 }

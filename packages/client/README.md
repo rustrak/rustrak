@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://rustrak.dev">
-    <img src="https://raw.githubusercontent.com/rustrak/rustrak/main/apps/docs/public/logo.svg" alt="Rustrak" width="64" height="64" />
+    <img src="https://raw.githubusercontent.com/rustrak/rustrak/main/.github/assets/rustrak-wordmark.svg" alt="Rustrak" height="40" />
   </a>
   <h1>@rustrak/client</h1>
   <p>Official TypeScript client for the <a href="https://rustrak.dev">Rustrak</a> self-hosted error tracking API</p>

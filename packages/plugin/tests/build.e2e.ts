@@ -34,14 +34,46 @@ function scaffoldHere(dir: string): void {
 describe('build', () => {
   it('packs the hello fixture, its routes inside its component', async () => {
     const out = mkdtempSync(join(tmpdir(), 'rustrak-plugin-out-'));
-    const { rtp } = await build(
+    const steps: string[] = [];
+    const output: string[] = [];
+    const { rtp, summary } = await build(
       join(repo, 'apps/server/tests/fixtures/hello-plugin'),
-      { outDir: out },
+      {
+        outDir: out,
+        onStep: (step) => steps.push(step),
+        onOutput: (line) => output.push(line),
+      },
     );
 
     expect(rtp).toBe(join(out, 'hello-0.1.0.rtp'));
+    // What the CLI draws, in the order it happens.
+    expect(steps).toEqual(['check', 'server', 'ui', 'pack']);
+    expect(output.some((line) => /^\s*(Compiling|Finished)/.test(line))).toBe(
+      true,
+    );
 
     const files = unzipSync(readFileSync(rtp));
+    expect(summary).toEqual({
+      id: 'hello',
+      version: '0.1.0',
+      size: readFileSync(rtp).length,
+      files: Object.keys(files).length - 1,
+      server: files['server.wasm']!.length,
+      migrations: 3,
+      pages: 4,
+      widgets: 1,
+      entries: expect.any(Array),
+    });
+    // Every file in the package, as Vite lists what it wrote.
+    expect(summary.entries.map((e) => e.path)).toEqual(
+      Object.keys(files)
+        .filter((path) => path !== 'MANIFEST')
+        .sort(),
+    );
+    const packed = summary.entries.find((e) => e.path === 'server.wasm')!;
+    expect(packed.size).toBe(files['server.wasm']!.length);
+    expect(packed.gzip).toBeGreaterThan(0);
+    expect(packed.gzip).toBeLessThan(packed.size);
     expect(Object.keys(files).sort()).toEqual([
       'MANIFEST',
       'logo.svg',
