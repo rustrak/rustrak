@@ -32,6 +32,11 @@ who never installs Node.
 | `packages/test-sentry` | CLI to send test events to a DSN |
 | `packages/benchmarks` | Load and throughput benchmarks |
 
+The official plugins (Web Traffic and the rest) and their signed registry live
+in their own public repo, https://github.com/rustrak/plugins. This repo keeps
+the plugin host, the authors' CLI (`packages/plugin`, `packages/rustrak-plugin`)
+and the `hello` fixture the server's tests build.
+
 Each app and package has its own `CLAUDE.md` with its architecture and rules.
 Read that one before working inside it.
 
