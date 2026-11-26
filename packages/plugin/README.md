@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://rustrak.dev">
-    <img src="https://raw.githubusercontent.com/rustrak/rustrak/main/apps/docs/public/logo.svg" alt="Rustrak" width="64" height="64" />
+    <img src="https://raw.githubusercontent.com/rustrak/rustrak/main/.github/assets/rustrak-wordmark.svg" alt="Rustrak" height="40" />
   </a>
   <h1>@rustrak/plugin</h1>
   <p>The framework and compiler for <a href="https://rustrak.dev">Rustrak</a> plugins</p>
@@ -12,7 +12,7 @@
     <a href="https://www.npmjs.com/package/@rustrak/plugin">
       <img src="https://img.shields.io/npm/dw/@rustrak/plugin?style=flat-square" alt="weekly downloads" />
     </a>
-    <a href="https://github.com/rustrak/rustrak/blob/main/LICENSE">
+    <a href="https://github.com/rustrak/rustrak/blob/main/packages/plugin/LICENSE">
       <img src="https://img.shields.io/npm/l/@rustrak/plugin?style=flat-square" alt="license" />
     </a>
     <a href="https://github.com/rustrak/rustrak/actions/workflows/ci.yml">
@@ -50,18 +50,22 @@ The Rust side is the [`rustrak-plugin`](https://crates.io/crates/rustrak-plugin)
 ## Quick Start
 
 ```bash
-npx @rustrak/plugin new visits
-cd visits
-npm install
-npm run build        # dist/visits-0.1.0.rtp
+npx @rustrak/plugin new my-plugin
 ```
 
-The new project builds as it is: a route that records page views, one that counts them, a page in each project, a widget under every issue, a setting, a permission and texts in English and Spanish. Upload `dist/visits-0.1.0.rtp` in **Settings › Plugins** and it runs.
+It asks whether to install its dependencies with the package manager you ran it with, whether to start a git repository, and adds the `wasm32-wasip2` target when rustup lacks it. Then:
+
+```bash
+cd my-plugin
+npm run build        # dist/my-plugin-0.1.0.rtp
+```
+
+The new project builds as it is: a route that records page views, one that counts them, a page in each project, a widget under every issue, a setting, a permission and texts in English and Spanish. Upload `dist/my-plugin-0.1.0.rtp` in **Settings › Plugins** and it runs.
 
 ## Project layout
 
 ```
-visits/
+my-plugin/
 ├── rustrak.config.ts        name, Rustrak versions, settings, permissions
 ├── package.json             id and version of the plugin
 ├── Cargo.toml               the Rust crate (crate root is generated)
@@ -86,7 +90,7 @@ visits/
 import { defineConfig } from '@rustrak/plugin';
 
 export default defineConfig({
-  name: 'Visits',
+  name: 'My Plugin',
   rustrak: '>=0.34.0',
   icon: 'performance',
   storageMb: 512,
@@ -134,7 +138,7 @@ fn record(ctx: &Ctx, body: Body) -> Result<NoContent> {
     Ok(NoContent)
 }
 
-/// For signed-in people who hold visits:visits:read.
+/// For signed-in people who hold my-plugin:visits:read.
 #[get("/visits", requires = Perm::Visits.read())]
 fn count(ctx: &Ctx) -> Result<String> {
     let n: i64 = ctx.db().scalar(
@@ -209,10 +213,12 @@ Every type is checked against the project: `usePluginTranslations()` knows the k
 
 | Command | What |
 |---|---|
-| `rustrak-plugin new <name>` | Creates a plugin project that builds as it is |
+| `rustrak-plugin new [dir]` | Creates a plugin project that builds as it is, asking what the flags leave open |
 | `rustrak-plugin generate` | Writes `.rustrak/` from `rustrak.config.ts` and `src/messages/`: types for the editor, `Settings` and `Perm` for Rust |
 | `rustrak-plugin build` | Compiles and packs the plugin into `dist/<id>-<version>.rtp` |
 | `rustrak-plugin index <dir>` | Writes a registry's `index.json` from the `.rtp` files in `<dir>` |
+
+`new` takes `--install` / `--no-install`, `--git` / `--no-git` and `--yes` (every default, no questions). In CI, or when its output is not a terminal, it asks nothing and installs nothing unless told.
 
 `build` does, in order:
 
@@ -222,7 +228,7 @@ Every type is checked against the project: `usePluginTranslations()` knows the k
 4. Builds the pages and widgets against the dashboard's React and design system
 5. Packs the manifest, the wasm, the UI, migrations, public files, texts, readmes and logo into a `.rtp`, with the sha256 of every file
 
-A text missing in a language, or a readme missing for one, is a warning, not an error: English is the fallback.
+A text missing in a language, or a readme missing for one, is a warning, not an error: English is the fallback. In a terminal the build is drawn as a trace: each step is a span on one timeline, the running one growing while cargo counts the crates it compiles. It ends with the package's weight by part (server, ui, the rest). A failed compile prints cargo's diagnostics as cargo wrote them. In CI each step is one plain line.
 
 ### Publishing a registry
 
@@ -255,4 +261,4 @@ Point a server at it with `RUSTRAK_PLUGIN_REGISTRY`, and trust its key with `RUS
 
 ## License
 
-[MIT](https://github.com/rustrak/rustrak/blob/main/LICENSE)
+[MIT](LICENSE)

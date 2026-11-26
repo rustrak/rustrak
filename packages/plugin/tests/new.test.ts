@@ -1,9 +1,9 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import pkg from '../package.json' with { type: 'json' };
-import { scaffold } from '../src/new.ts';
+import { nameError, scaffold } from '../src/new.ts';
 
 describe('scaffold', () => {
   const dir = join(
@@ -19,5 +19,31 @@ describe('scaffold', () => {
 
   it('runs on the first Rustrak with plugins', () => {
     expect(read('rustrak.config.ts')).toContain(`rustrak: '>=0.34.0'`);
+  });
+});
+
+describe('nameError', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'rustrak-plugin-name-'));
+
+  it('accepts a free directory with a plugin name', () => {
+    expect(nameError(join(parent, 'visits'))).toBeUndefined();
+  });
+
+  it('says what a name is', () => {
+    expect(nameError(join(parent, 'Visits'))).toBe(
+      'Visits: a plugin name is 2 to 32 lowercase letters, digits or dashes',
+    );
+  });
+
+  it('refuses a path that is a file', () => {
+    const file = join(parent, 'notes');
+    writeFileSync(file, 'x');
+    expect(nameError(file)).toBe(`${file} is a file, not a directory`);
+  });
+
+  it('refuses a directory that has files', () => {
+    const taken = join(parent, 'taken');
+    scaffold(taken);
+    expect(nameError(taken)).toBe(`${taken} is not empty`);
   });
 });
