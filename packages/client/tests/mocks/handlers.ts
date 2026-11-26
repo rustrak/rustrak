@@ -90,7 +90,9 @@ export const INTERNAL_ERROR_MESSAGE = 'Internal server error';
  * fixture that passed its own 500 message would be testing a body the server
  * stopped emitting. Passing one throws. `incidentId` is what a 500 carries
  * instead, and it is optional here because a proxy-generated 5xx and a server
- * older than gh-233 both send a body without one.
+ * older than gh-233 both send a body without one. `BadGateway` and
+ * `ServiceUnavailable` are the exception: the server sends their `Display`
+ * (so they take a message, like a 4xx) and no incident id.
  *
  * `fields` mirrors the server exactly: `ErrorDetail.fields` is
  * `#[serde(skip_serializing_if = "Vec::is_empty")]`, so an absent or empty list
@@ -105,16 +107,23 @@ export function appErrorResponse(
   options?: { incidentId?: string },
 ) {
   const status = APP_ERROR_STATUS[type];
-  const isServerError = status >= 500;
+  // `error_response` leaves these two 5xx in their own words, with no incident.
+  const isRedacted =
+    status >= 500 && type !== 'BadGateway' && type !== 'ServiceUnavailable';
 
-  if (isServerError && message !== undefined) {
+  if (isRedacted && message !== undefined) {
     throw new Error(
-      `appErrorResponse('${type}', ...) takes no message: every 5xx body is ` +
+      `appErrorResponse('${type}', ...) takes no message: its body is ` +
         `${JSON.stringify(INTERNAL_ERROR_MESSAGE)}, fixed by the server.`,
     );
   }
-  if (!isServerError && message === undefined) {
+  if (!isRedacted && message === undefined) {
     throw new Error(`appErrorResponse('${type}', ...) requires a message.`);
+  }
+  if (!isRedacted && options?.incidentId !== undefined) {
+    throw new Error(
+      `appErrorResponse('${type}', ...) takes no incidentId: the server sends none.`,
+    );
   }
 
   const prefix = APP_ERROR_PREFIXES[type];
@@ -129,7 +138,7 @@ export function appErrorResponse(
     {
       error: {
         type,
-        message: isServerError ? INTERNAL_ERROR_MESSAGE : message,
+        message: isRedacted ? INTERNAL_ERROR_MESSAGE : message,
         ...(fields !== undefined && fields.length > 0 ? { fields } : {}),
         ...(options?.incidentId !== undefined
           ? { incident_id: options.incidentId }

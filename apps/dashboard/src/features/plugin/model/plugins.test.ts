@@ -8,6 +8,7 @@ import {
   pageHref,
   readmeIn,
   sectionOf,
+  viewPage,
 } from './plugins';
 
 const plugin = (over: Partial<PluginSummary>): PluginSummary => ({
@@ -59,9 +60,47 @@ describe('matchPage', () => {
     expect(matchPage(pages, 'instance', '')?.page).toBe(pages[3]);
   });
 
+  it('prefers a fixed segment over a parameter, whatever the order', () => {
+    const sorted = [
+      { path: 'funnels/:id', scope: 'project' },
+      { path: 'funnels/new', scope: 'project' },
+    ];
+    expect(matchPage(sorted, 'project', 'funnels/new')?.page).toBe(sorted[1]);
+    expect(matchPage(sorted, 'project', 'funnels/7')?.page).toBe(sorted[0]);
+  });
+
+  it('decodes a parameter once: the router already decoded the address', () => {
+    expect(matchPage(pages, 'project', 'funnels/100%25')?.params.funnelId).toBe(
+      '100%25',
+    );
+  });
+
   it('finds nothing for an address no page has', () => {
     expect(matchPage(pages, 'project', 'funnels/42/steps')).toBeNull();
     expect(matchPage(pages, 'settings', '')).toBeNull();
+  });
+});
+
+describe('viewPage', () => {
+  it('is the address itself when it fits', () => {
+    expect(viewPage('hello', 'funnels/42')).toBe('plugin:hello/funnels/42');
+  });
+
+  it('keeps long addresses apart within 64 characters', () => {
+    const a = viewPage('hello', `${'x'.repeat(80)}/a`);
+    const b = viewPage('hello', `${'x'.repeat(80)}/b`);
+    expect(a.length).toBeLessThanOrEqual(64);
+    expect(b.length).toBeLessThanOrEqual(64);
+    expect(a).not.toBe(b);
+    expect(a.startsWith('plugin~hello/xxx')).toBe(true);
+    expect(viewPage('hello', `${'x'.repeat(80)}/a`)).toBe(a);
+  });
+
+  it('never gives a short address the key of a long one', () => {
+    const long = viewPage('hello', 'x'.repeat(80));
+    // The rest of a hashed key, read back as a short address of its own.
+    const short = viewPage('hello', long.slice('plugin:hello/'.length));
+    expect(short).not.toBe(long);
   });
 });
 
@@ -109,16 +148,30 @@ describe('readmeIn', () => {
 });
 
 describe('pageAllowed', () => {
+  const traffic = plugin({
+    id: 'web-traffic',
+    permissions: [
+      { resource: 'traffic', actions: ['read'], scope: 'instance' },
+      { resource: 'visitors', actions: ['read'], scope: 'project' },
+    ],
+  });
   const can = (key: string, action: string) =>
     key === 'web-traffic:traffic' && action === 'read';
 
   it('is any page that requires nothing, else one whose permission is held', () => {
-    expect(pageAllowed({}, 'web-traffic', can)).toBe(true);
-    expect(pageAllowed({ requires: 'traffic:read' }, 'web-traffic', can)).toBe(
-      true,
-    );
-    expect(pageAllowed({ requires: 'visitors:read' }, 'web-traffic', can)).toBe(
+    expect(pageAllowed({}, traffic, can)).toBe(true);
+    expect(pageAllowed({ requires: 'traffic:read' }, traffic, can)).toBe(true);
+    expect(pageAllowed({ requires: 'visitors:read' }, traffic, can)).toBe(
       false,
     );
+  });
+
+  it("asks with the permission's scope", () => {
+    const scopes: unknown[] = [];
+    const record = (_k: string, _a: string, _p?: number, scope?: string) =>
+      scopes.push(scope) > 0;
+    pageAllowed({ requires: 'traffic:read' }, traffic, record, 3);
+    pageAllowed({ requires: 'visitors:read' }, traffic, record, 3);
+    expect(scopes).toEqual(['instance', 'project']);
   });
 });

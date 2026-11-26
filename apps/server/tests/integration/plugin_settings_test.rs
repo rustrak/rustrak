@@ -174,3 +174,61 @@ async fn settings_survive_a_restart() {
         "Hola"
     );
 }
+
+#[actix_web::test]
+async fn a_plugin_missing_a_required_setting_answers_503_until_it_is_set() {
+    let db = TestDb::new().await;
+    let state = common::state(&db.pool, common::config()).await;
+    let rtp = common::plugins::hello_rtp_with(|m| {
+        // The secret's `required = false`, the first one after its type.
+        let at = m.find("type = \"secret\"").unwrap();
+        let (head, tail) = m.split_at(at);
+        format!(
+            "{head}{}",
+            tail.replacen("required = false", "required = true", 1)
+        )
+    });
+    state
+        .plugins
+        .install(&db.pool, rtp, Source::Upload)
+        .await
+        .unwrap();
+    assert!(state
+        .plugins
+        .get("hello")
+        .unwrap()
+        .manifest
+        .settings
+        .iter()
+        .any(|s| s.required));
+    let app = common::app_with(&state).await;
+    let owner = common::create_test_token(&db.pool).await;
+    let (web, _) = common::create_ingest_project(&db.pool, "web").await;
+    state
+        .plugins
+        .set_projects(&db.pool, "hello", true, None)
+        .await
+        .unwrap();
+    let config = || {
+        test::TestRequest::get()
+            .uri(&format!("/api/projects/{web}/plugins/hello/config"))
+            .insert_header(crate::common::bearer(&owner))
+    };
+
+    let (status, body) = crate::call_json!(&app, config());
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(body.to_string().contains("token"), "{body}");
+
+    state
+        .plugins
+        .set_settings(
+            &db.pool,
+            "hello",
+            None,
+            json!({ "token": "t" }).as_object().unwrap().clone(),
+        )
+        .await
+        .unwrap();
+    let (status, body) = crate::call_json!(&app, config());
+    assert_eq!(status, StatusCode::OK, "{body}");
+}

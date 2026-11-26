@@ -66,6 +66,8 @@ COPY --chown=65532:65532 --from=builder /data /data
 # container upgrades: an event answered with 200 but not yet digested is
 # replayed by the next container instead of lost with the old one (#359).
 ENV INGEST_DIR=/data/ingest
+# Installed plugins and their databases, writable by nonroot and kept too.
+ENV RUSTRAK_PLUGINS_DIR=/data/plugins
 VOLUME /data
 EXPOSE 8080
 USER nonroot

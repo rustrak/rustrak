@@ -67,7 +67,9 @@ pub mod __private {
     #[allow(clippy::too_many_arguments)]
     pub mod bindings {
         wit_bindgen::generate!({
-            path: "../../apps/server/wit",
+            // A symlink to apps/server/wit, the one contract: `cargo package`
+            // copies the file into the crate.
+            path: "wit",
             world: "plugin",
             pub_export_macro: true,
             export_macro_name: "export_plugin",

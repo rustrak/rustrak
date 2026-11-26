@@ -14,6 +14,8 @@ import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 export const Route = createFileRoute('/_authenticated/settings/plugins/')({
   loader: ({ context: { queryClient } }) => {
     void queryClient.query(pluginQueries.list()).catch(noop);
+    // An owner's only; anyone else's 403 is swallowed here and never read.
+    void queryClient.query(pluginQueries.registry()).catch(noop);
   },
   pendingComponent: PluginsLoading,
   component: PluginsPage,

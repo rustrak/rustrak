@@ -45,4 +45,11 @@ describe('newRules', () => {
     ];
     expect(newRules(plugin, ruleKeys(dashboard))).toBe('');
   });
+
+  it('keeps a changed @keyframes whole, never frame by frame', () => {
+    const frames = (text: string) => rule(text, [rule('0% { opacity: 0; }')]);
+    const known = ruleKeys([frames('@keyframes in { 0% { opacity: 0; } }')]);
+    const changed = '@keyframes in { 0% { opacity: 0; } 100% { opacity: 1; } }';
+    expect(newRules([frames(changed)], known)).toBe(changed);
+  });
 });

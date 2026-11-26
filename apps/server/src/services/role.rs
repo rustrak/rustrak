@@ -7,6 +7,7 @@ use crate::models::rbac::{self, Access, Action, Assignment, Grants, Resource, Sc
 use crate::models::{
     grants_of, Permission, PersonalAccess, PluginGrant, Role, RoleAssignment, User, UserRole,
 };
+use crate::plugins::host::PluginHost;
 
 pub struct RoleService;
 
@@ -464,7 +465,10 @@ impl RoleService {
         Self::write_permissions(
             &mut tx,
             role_id,
-            &grants_of(&personal.permissions, &personal.plugin_permissions),
+            &grants_of(
+                &personal.permissions,
+                personal.plugin_permissions.as_deref().unwrap_or_default(),
+            ),
         )
         .await?;
         match &personal.project_ids {
@@ -579,7 +583,11 @@ impl RoleService {
 
     /// Everyone holding a role of the list that reaches this project, by email.
     /// Owners hold no role, and personal permissions are no role of the list.
-    pub async fn project_members(pool: &DbPool, project_id: i32) -> AppResult<Vec<ProjectMember>> {
+    pub async fn project_members(
+        pool: &DbPool,
+        project_id: i32,
+        host: &PluginHost,
+    ) -> AppResult<Vec<ProjectMember>> {
         let rows: Vec<(i32, String, i32, String, Option<i32>)> = sqlx::query_as(
             r#"
             SELECT u.id, u.email, r.id, r.name, a.project_id
@@ -600,6 +608,9 @@ impl RoleService {
                 r.permissions
                     .iter()
                     .any(|p| p.resource.scope() == Scope::Project)
+                    || r.plugin_permissions.iter().any(|g| {
+                        host.permission_scope(&g.resource, g.action) == Some(Scope::Project)
+                    })
             })
             .map(|r| r.id)
             .collect();

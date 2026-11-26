@@ -5,7 +5,7 @@
  * `@xl:flex-row` and every row that used both stacks. Dropping the copies
  * leaves the dashboard's order alone and adds only what is new.
  *
- * ponytail: a class only the plugin has still lands after every dashboard
+ * A class only the plugin has still lands after every dashboard
  * variant; reorder per property if a plugin ever needs that.
  */
 
@@ -15,10 +15,17 @@ export interface Rule {
   cssRules?: ArrayLike<Rule>;
 }
 
-/** `@layer utilities`, `@media (…)`: a rule that only groups others. */
+/**
+ * `@layer utilities`, `@media (…)`: a rule that only groups others.
+ * `@keyframes` holds frames, not rules: it is one rule, kept or dropped whole.
+ */
 function group(rule: Rule): string | null {
   const head = rule.cssText.slice(0, rule.cssText.indexOf('{')).trim();
-  return head.startsWith('@') && rule.cssRules ? head : null;
+  return head.startsWith('@') &&
+    !/^@(-[a-z]+-)?keyframes\b/.test(head) &&
+    rule.cssRules
+    ? head
+    : null;
 }
 
 /** Every rule under its groups' headers, to look a copy up by. */

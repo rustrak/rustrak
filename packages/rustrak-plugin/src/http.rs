@@ -92,7 +92,13 @@ pub struct Created<T>(pub T);
 
 impl<T: Serialize> IntoResponse for Created<T> {
     fn into_response(self) -> Response {
-        Json(self.0).into_response().with_status(201)
+        // A body that failed to serialize stays the 500 it is.
+        let response = Json(self.0).into_response();
+        if response.status == 200 {
+            response.with_status(201)
+        } else {
+            response
+        }
     }
 }
 

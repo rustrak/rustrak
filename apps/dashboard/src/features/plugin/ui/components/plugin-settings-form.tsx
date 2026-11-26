@@ -13,10 +13,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { useLocale, useTranslations } from 'use-intl';
+import { QueryState } from '@/shared/ui/components/query-state';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { pluginMutations } from '../../api/mutations';
 import { pluginQueries } from '../../api/queries';
-import { fieldsAt, settingsPatch, settingText } from '../../model/settings';
+import {
+  canReset,
+  fieldsAt,
+  fieldValue,
+  settingsPatch,
+  settingText,
+} from '../../model/settings';
 
 /**
  * A plugin's settings, as one form for every plugin: drawn from the schema
@@ -48,72 +55,104 @@ export function PluginSettingsForm({
   if (fields.length === 0) {
     return <SettingsEmpty title={t('plugins.detail.nothingToConfigure')} />;
   }
-  if (!view.data) return <SettingsListSkeleton rows={fields.length} />;
-
-  const saved = view.data.values as Record<string, unknown>;
-  const patch = settingsPatch(fields, saved, draft);
-  const messages = plugin.messages as Record<string, unknown>;
-  const label = (key: string) => settingText(messages, locale, key, 'label');
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    save.mutate(patch, {
-      onSuccess: (saved) => {
-        // The answer is the new state: shown at once, before the refetch.
-        client.setQueryData(
-          pluginQueries.settings(plugin.id, projectId).queryKey,
-          saved,
-        );
-        setDraft({});
-        toast.success(t('plugins.form.saved'));
-      },
-      onError: (error) => toastFailure(t('plugins.form.saveFailed'), error),
-    });
-  };
 
   return (
-    <form onSubmit={submit} data-testid="plugin-settings-form">
-      {view.data.missing.length > 0 ? (
-        <p
-          role="status"
-          className="border-b border-border-divider px-5 py-3 text-meta text-warning-fg"
-        >
-          {t('plugins.form.missing', {
-            fields: view.data.missing.map(label).join(', '),
-          })}
-        </p>
-      ) : null}
-      {fields.map((spec) => (
-        <SettingRow
-          key={spec.key}
-          title={label(spec.key)}
-          description={settingText(messages, locale, spec.key, 'description')}
-          htmlFor={`setting-${spec.key}`}
-        >
-          <Field
-            spec={spec}
-            value={spec.key in draft ? draft[spec.key] : saved[spec.key]}
-            // What applies when nothing is set here: the instance's value in
-            // a project, the default for the instance.
-            inherited={
-              level === 'project' ? view.data.resolved[spec.key] : spec.default
-            }
-            secretSet={view.data.secrets[spec.key] ?? false}
-            disabled={!canEdit || save.isPending}
-            onChange={(value) => setDraft((d) => ({ ...d, [spec.key]: value }))}
-          />
-        </SettingRow>
-      ))}
-      {canEdit ? (
-        <div className="flex justify-end px-5 py-4">
-          <Button
-            type="submit"
-            disabled={Object.keys(patch).length === 0 || save.isPending}
-          >
-            {t('plugins.form.save')}
-          </Button>
-        </div>
-      ) : null}
-    </form>
+    <QueryState
+      query={view}
+      placeholder={<SettingsListSkeleton rows={fields.length} />}
+      title={t('plugins.form.loadFailed')}
+    >
+      {(data) => {
+        const saved = data.values as Record<string, unknown>;
+        const patch = settingsPatch(fields, saved, draft);
+        const messages = plugin.messages as Record<string, unknown>;
+        const label = (key: string) =>
+          settingText(messages, locale, key, 'label');
+        const submit = (e: FormEvent) => {
+          e.preventDefault();
+          save.mutate(patch, {
+            onSuccess: (saved) => {
+              // The answer is the new state: shown at once, before the refetch.
+              client.setQueryData(
+                pluginQueries.settings(plugin.id, projectId).queryKey,
+                saved,
+              );
+              setDraft({});
+              toast.success(t('plugins.form.saved'));
+            },
+            onError: (error) =>
+              toastFailure(t('plugins.form.saveFailed'), error),
+          });
+        };
+
+        return (
+          <form onSubmit={submit} data-testid="plugin-settings-form">
+            {data.missing.length > 0 ? (
+              <p
+                role="status"
+                className="border-b border-border-divider px-5 py-3 text-meta text-warning-fg"
+              >
+                {t('plugins.form.missing', {
+                  fields: data.missing.map(label).join(', '),
+                })}
+              </p>
+            ) : null}
+            {fields.map((spec) => (
+              <SettingRow
+                key={spec.key}
+                title={label(spec.key)}
+                description={settingText(
+                  messages,
+                  locale,
+                  spec.key,
+                  'description',
+                )}
+                htmlFor={`setting-${spec.key}`}
+              >
+                <Field
+                  spec={spec}
+                  value={fieldValue(spec.key, saved, draft)}
+                  // What applies when nothing is set here: the instance's value in
+                  // a project, the default for the instance.
+                  inherited={
+                    level === 'project' ? data.resolved[spec.key] : spec.default
+                  }
+                  secretSet={data.secrets[spec.key] ?? false}
+                  disabled={!canEdit || save.isPending}
+                  onChange={(value) =>
+                    setDraft((d) => ({ ...d, [spec.key]: value }))
+                  }
+                />
+                {canEdit && canReset(spec, saved, draft) ? (
+                  <div className="flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={save.isPending}
+                      onClick={() =>
+                        setDraft((d) => ({ ...d, [spec.key]: '' }))
+                      }
+                    >
+                      {t('plugins.form.reset')}
+                    </Button>
+                  </div>
+                ) : null}
+              </SettingRow>
+            ))}
+            {canEdit ? (
+              <div className="flex justify-end px-5 py-4">
+                <Button
+                  type="submit"
+                  disabled={Object.keys(patch).length === 0 || save.isPending}
+                >
+                  {t('plugins.form.save')}
+                </Button>
+              </div>
+            ) : null}
+          </form>
+        );
+      }}
+    </QueryState>
   );
 }
 

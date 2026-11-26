@@ -11,6 +11,7 @@ import { projectQueries } from '@/features/project/api/queries';
 import { tokenQueries } from '@/features/token/api/queries';
 import { TokensList } from '@/features/token/ui/components/tokens-list/tokens-list';
 import { accessQueries } from '@/shared/api/permissions';
+import { editorCatalog } from '@/shared/lib/permission-matrix';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
@@ -42,7 +43,7 @@ function TokensPage() {
       <TokensList
         tokens={tokens}
         canCreate={canCreate}
-        catalog={catalog?.resources ?? []}
+        catalog={catalog ? editorCatalog(catalog) : []}
         projects={projects?.items ?? []}
         title={t('tokens.title')}
         subtitle={t('tokens.subtitle')}

@@ -22,7 +22,12 @@ export const Route = createFileRoute(
   loader: ({ context: { queryClient }, params }) => {
     void queryClient.query(pluginQueries.list()).catch(noop);
     const id = searchId(params.projectId);
-    if (id) void queryClient.query(projectQueries.detail(id)).catch(noop);
+    if (id) {
+      void queryClient.query(projectQueries.detail(id)).catch(noop);
+      void queryClient
+        .query(pluginQueries.settings(params.pluginId, id))
+        .catch(noop);
+    }
   },
   pendingComponent: SetupLoading,
   component: PluginProjectPage,

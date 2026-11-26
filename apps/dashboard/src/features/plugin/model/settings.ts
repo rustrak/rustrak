@@ -88,3 +88,26 @@ export function settingsPatch(
   }
   return patch;
 }
+
+/** What a field shows: the draft, else the saved value. A reset (`''`) is unset. */
+export function fieldValue(
+  key: string,
+  saved: Record<string, unknown>,
+  draft: Record<string, unknown>,
+): unknown {
+  if (!(key in draft)) return saved[key];
+  return draft[key] === '' ? undefined : draft[key];
+}
+
+/**
+ * A switch or a select cannot be emptied, so a saved one offers a reset:
+ * `''` in the draft, which the patch sends as `null`.
+ */
+export const canReset = (
+  spec: SettingSpec,
+  saved: Record<string, unknown>,
+  draft: Record<string, unknown>,
+): boolean =>
+  (spec.type === 'boolean' || spec.type === 'select') &&
+  (saved[spec.key] ?? null) !== null &&
+  draft[spec.key] !== '';

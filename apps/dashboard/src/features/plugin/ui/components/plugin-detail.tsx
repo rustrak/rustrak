@@ -83,7 +83,11 @@ export function PluginDetail({
             title={t('plugins.detail.defaults')}
             description={t('plugins.detail.defaultsHint')}
           >
-            <PluginSettingsForm plugin={plugin} canEdit={canManage} />
+            <PluginSettingsForm
+              key={plugin.id}
+              plugin={plugin}
+              canEdit={canManage}
+            />
           </SettingSection>
           {canManage ? <DangerSection plugin={plugin} /> : null}
         </>

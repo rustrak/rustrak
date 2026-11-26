@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useFormatter, useTranslations } from 'use-intl';
 import { storageQueries } from '@/features/storage/api/queries';
 import { formatBytes } from '@/shared/lib/utils';
+import { QueryState } from '@/shared/ui/components/query-state';
 
 /**
  * Each plugin's data: its file against its quota, and its history (its
@@ -23,15 +24,19 @@ export function StoragePlugins() {
       title={t('plugins.title')}
       description={t('plugins.description')}
     >
-      {!plugins.data ? (
-        <SettingsListSkeleton rows={1} />
-      ) : plugins.data.length === 0 ? (
-        <SettingsEmpty title={t('plugins.none')} />
-      ) : (
-        plugins.data.map((plugin) => (
-          <PluginRow key={plugin.id} plugin={plugin} />
-        ))
-      )}
+      <QueryState
+        query={plugins}
+        placeholder={<SettingsListSkeleton rows={1} />}
+        title={t('plugins.loadFailed')}
+      >
+        {(list) =>
+          list.length === 0 ? (
+            <SettingsEmpty title={t('plugins.none')} />
+          ) : (
+            list.map((plugin) => <PluginRow key={plugin.id} plugin={plugin} />)
+          )
+        }
+      </QueryState>
     </SettingSection>
   );
 }
@@ -64,5 +69,15 @@ function PluginRow({ plugin }: { plugin: PluginStorage }) {
             : t('keep.days', { count: plugin.retention_days })
       }
     />
+  );
+}
+
+/** In a dialog: the plugins' read failed, so their history is not offered. */
+export function PluginsLoadFailed() {
+  const t = useTranslations('storage');
+  return (
+    <p role="alert" className="text-meta text-danger-fg">
+      {t('plugins.loadFailed')}
+    </p>
   );
 }

@@ -179,4 +179,10 @@ describe("a plugin's permission", () => {
       ),
     ).toBe(true);
   });
+
+  it('holds an instance permission given on any project, wherever it is asked', () => {
+    const p = permissionsFrom(me);
+    expect(p.canPlugin('hello:hits', 'read', 8, 'instance')).toBe(true);
+    expect(p.canPlugin('hello:hits', 'read', 8, 'project')).toBe(false);
+  });
 });

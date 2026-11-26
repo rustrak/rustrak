@@ -33,6 +33,23 @@ export const pascal = (s: string) =>
   s.replace(/(^|[-_])([a-z0-9])/g, (_, __, c: string) => c.toUpperCase());
 const snake = (s: string) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
+const KEYWORDS = new Set(
+  'abstract as async await become box break const continue do dyn else enum extern false final fn for gen if impl in let loop macro match mod move mut override priv pub ref return static struct trait true try type typeof unsafe unsized use virtual where while yield'.split(
+    ' ',
+  ),
+);
+
+/** A name as a Rust identifier: `type` → `r#type`. `where` names it in errors. */
+export function rustIdent(name: string, where: string): string {
+  // The four that have no raw form.
+  if (['self', 'Self', 'super', 'crate'].includes(name))
+    throw new Error(`${where}: ${name} is reserved in Rust`);
+  return KEYWORDS.has(name) ? `r#${name}` : name;
+}
+
+/** What `plugin.rs` already names: a select's enum cannot take these. */
+const TAKEN = new Set(['Settings', 'Option', 'String', 'Perm']);
+
 /** `interface PluginSettings` for the browser: secrets are not there. */
 export function settingsTs(settings: Settings): string {
   const lines = Object.entries(settings)
@@ -64,9 +81,14 @@ export function settingsRust(settings: Settings): string {
         type = 'bool';
         break;
       case 'select': {
-        type = pascal(key);
+        type = rustIdent(pascal(key), `settings.${key}`);
+        if (TAKEN.has(type))
+          throw new Error(
+            `settings.${key}: its enum would be ${type}, which clashes with ${type} in plugin.rs; rename the setting`,
+          );
         const variants = f.options.map(
-          (o) => `    #[serde(rename = "${o}")]\n    ${pascal(o)},`,
+          (o) =>
+            `    #[serde(rename = "${o}")]\n    ${rustIdent(pascal(o), `settings.${key}`)},`,
         );
         enums.push(
           `#[derive(Debug, Clone, Copy, PartialEq, Eq, ::rustrak_plugin::serde::Deserialize)]\n#[serde(crate = "::rustrak_plugin::serde")]\npub enum ${type} {\n${variants.join('\n')}\n}`,
@@ -77,7 +99,7 @@ export function settingsRust(settings: Settings): string {
         type = 'String';
     }
     if (!alwaysSet(f)) type = `Option<${type}>`;
-    return `    pub ${snake(key)}: ${type},`;
+    return `    pub ${rustIdent(snake(key), `settings.${key}`)}: ${type},`;
   });
   const body = fields.length ? `{\n${fields.join('\n')}\n}` : '{}';
   return [

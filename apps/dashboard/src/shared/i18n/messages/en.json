@@ -1770,7 +1770,8 @@
       "size": "{used} of {quota}",
       "history": "{rows} rows of history in {tables}",
       "noHistory": "Nothing it keeps expires",
-      "historyHint": "Its history: {tables}"
+      "historyHint": "Its history: {tables}",
+      "loadFailed": "Could not read the plugins' storage"
     }
   },
   "errors": {
@@ -2388,7 +2389,7 @@
         "title": "Plugins"
       },
       "title": "Plugins",
-      "subtitle": "Extend Rustrak with plugins. Each one runs sandboxed, with its own database.",
+      "subtitle": "Extend Rustrak with plugins. Each one's server code runs sandboxed, with its own database.",
       "install": "Install plugin",
       "installing": "Installing…",
       "installed": "{name} {version} installed",
@@ -2401,6 +2402,7 @@
       "versionBy": "{version} · by {author}",
       "failed": "The plugin {plugin} failed to show this part.",
       "pageMissing": "This plugin page does not exist",
+      "listFailed": "Could not load the plugins",
       "pageMissingHint": "The plugin is not installed, not active in this project, or has no page here.",
       "detail": {
         "projects": "Projects",
@@ -2454,7 +2456,9 @@
         "saveFailed": "The settings could not be saved",
         "secretSet": "Set. Type to replace it",
         "secretNotSet": "Not set",
-        "missing": "Set {fields} before the plugin can run."
+        "missing": "Set {fields} before the plugin can run.",
+        "reset": "Reset",
+        "loadFailed": "Could not read the plugin's settings"
       },
       "verified": "✓ Verified by the registry",
       "notVerified": "Not verified: uploaded by hand",
@@ -2476,7 +2480,8 @@
         "settings": "Project settings",
         "settingsHint": "This project's own values: they take precedence over the instance's defaults.",
         "offHint": "Turn it on in this project to set it up."
-      }
+      },
+      "registryLoadFailed": "Could not read the plugin registry"
     }
   },
   "github": {

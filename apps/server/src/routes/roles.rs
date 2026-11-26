@@ -80,8 +80,9 @@ pub struct RoleInput {
     #[serde(default)]
     pub description: String,
     pub permissions: Vec<Permission>,
+    /// Omitted or `null`: on an update, the ones it holds stay.
     #[serde(default)]
-    pub plugin_permissions: Vec<PluginGrant>,
+    pub plugin_permissions: Option<Vec<PluginGrant>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -299,20 +300,21 @@ pub async fn create_role(
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Roles, Action::Create, None)?;
     validate(&body.name)?;
-    check_plugin_grants(&host, &body.plugin_permissions, &[])?;
-    if !actor.access.covers(
-        &grants_of(&body.permissions, &body.plugin_permissions),
-        None,
-    ) {
+    let b = body.into_inner();
+    let plugins = b.plugin_permissions.unwrap_or_default();
+    check_plugin_grants(&host, &plugins, &[])?;
+    if !actor
+        .access
+        .covers(&grants_of(&b.permissions, &plugins), None)
+    {
         return Err(beyond_your_own());
     }
-    let b = body.into_inner();
     let role = RoleService::create(
         pool.get_ref(),
         &b.name,
         &b.description,
         b.permissions,
-        b.plugin_permissions,
+        plugins,
     )
     .await?;
     Ok(HttpResponse::Created().json(role))
@@ -350,22 +352,26 @@ pub async fn update_role(
     validate(&body.name)?;
     let id = path.into_inner();
     let current = RoleService::get(pool.get_ref(), id).await?;
-    check_plugin_grants(&host, &body.plugin_permissions, &current.plugin_permissions)?;
-    if !actor.access.covers(
-        &grants_of(&body.permissions, &body.plugin_permissions),
-        None,
-    ) || !actor.access.covers(&current.grants(), None)
+    let b = body.into_inner();
+    // The dashboard's form may not send them: what is held stays.
+    let plugins = b
+        .plugin_permissions
+        .unwrap_or_else(|| current.plugin_permissions.clone());
+    check_plugin_grants(&host, &plugins, &current.plugin_permissions)?;
+    if !actor
+        .access
+        .covers(&grants_of(&b.permissions, &plugins), None)
+        || !actor.access.covers(&current.grants(), None)
     {
         return Err(beyond_your_own());
     }
-    let b = body.into_inner();
     let role = RoleService::update(
         pool.get_ref(),
         id,
         &b.name,
         &b.description,
         b.permissions,
-        b.plugin_permissions,
+        plugins,
     )
     .await?;
     Ok(HttpResponse::Ok().json(role))
@@ -471,10 +477,15 @@ pub async fn set_assignments(
         .map(|a| (a.role_id, a.project_id))
         .collect();
     RoleService::check_grantable(pool.get_ref(), &actor.access, &pairs, &held, "role_id").await?;
-    if let Some(personal) = &body.personal {
+    let mut body = body.into_inner();
+    if let Some(personal) = &mut body.personal {
         let (_, kept) = RoleService::personal_permissions(pool.get_ref(), user_id).await?;
-        check_plugin_grants(&host, &personal.plugin_permissions, &kept)?;
-        let grants = grants_of(&personal.permissions, &personal.plugin_permissions);
+        // Not sent: the ones they hold stay.
+        let plugins = personal
+            .plugin_permissions
+            .get_or_insert_with(|| kept.clone());
+        check_plugin_grants(&host, plugins, &kept)?;
+        let grants = grants_of(&personal.permissions, plugins);
         let covered = match &personal.project_ids {
             None => actor.access.covers(&grants, None),
             Some(ids) if ids.is_empty() => {

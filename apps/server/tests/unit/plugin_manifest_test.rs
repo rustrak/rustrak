@@ -59,6 +59,19 @@ fn reads_a_complete_manifest() {
 }
 
 #[test]
+fn refuses_a_storage_quota_that_does_not_limit_anything() {
+    let with = |mb: u64| format!("{VALID}\n[capabilities]\nstorage_mb = {mb}\n");
+    // 0 reads as "no limit" to SQLite; above the cap, the limit is the disk.
+    for mb in [0, 4_000_000_000] {
+        assert!(
+            parse_err(&with(mb)).contains("capabilities.storage_mb"),
+            "{mb} should be refused"
+        );
+    }
+    assert_eq!(parse(&with(1)).capabilities.storage_mb, 1);
+}
+
+#[test]
 fn refuses_an_id_that_is_not_a_slug() {
     for id in [
         "Analytics",
@@ -107,6 +120,19 @@ fn refuses_two_routes_with_the_same_method_and_path() {
 fn refuses_a_requirement_the_plugin_does_not_declare() {
     let err = with_code(&ROUTES.replace("dashboards:read", "dashboards:delete")).unwrap_err();
     assert!(err.contains("dashboards:delete"), "{err}");
+}
+
+#[test]
+fn refuses_a_requirement_on_a_public_route() {
+    // Nobody is signed in on a public route, so a requirement there would
+    // never be checked: refused rather than silently ignored.
+    let routes = ROUTES.replace(
+        r#""auth":"public","scope":"project","requires":null"#,
+        r#""auth":"public","scope":"project","requires":"dashboards:read""#,
+    );
+    let err = with_code(&routes).unwrap_err();
+    assert!(err.contains("POST /collect"), "{err}");
+    assert!(err.contains("public"), "{err}");
 }
 
 #[test]

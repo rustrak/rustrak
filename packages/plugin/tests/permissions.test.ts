@@ -19,6 +19,12 @@ describe('permissionsRust', () => {
     expect(rs).not.toContain('"hits:create"');
   });
 
+  it('refuses a resource whose type would be Self', () => {
+    expect(() =>
+      permissionsRust({ self: { scope: 'project', actions: ['read'] } }),
+    ).toThrow(/permissions\.self: Self is reserved in Rust/);
+  });
+
   it('is nothing for a plugin with no permissions', () => {
     expect(permissionsRust({})).toBe('');
   });

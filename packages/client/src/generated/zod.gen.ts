@@ -1596,6 +1596,7 @@ export const zAuthTokenCreatedResponse = z.object({
     expires_at: z.nullable(z.iso.datetime({ offset: true })),
     id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     permissions: z.nullable(z.array(zPermission)),
+    plugin_permissions: z.array(zPluginGrant),
     project_ids: z.nullable(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))),
     token: z.string()
 });
@@ -1610,6 +1611,7 @@ export const zAuthTokenResponse = z.object({
     id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     last_used_at: z.nullable(z.iso.datetime({ offset: true })),
     permissions: z.nullable(z.array(zPermission)),
+    plugin_permissions: z.array(zPluginGrant),
     project_ids: z.nullable(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))),
     token_prefix: z.string(),
     user_id: z.nullable(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))
@@ -1622,6 +1624,7 @@ export const zCreateAuthToken = z.object({
     description: z.nullish(z.string()),
     expires_at: z.nullish(z.iso.datetime({ offset: true })),
     permissions: z.nullish(z.array(zPermission)),
+    plugin_permissions: z.optional(z.array(zPluginGrant)),
     project_ids: z.nullish(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))))
 });
 
@@ -1630,7 +1633,7 @@ export const zCreateAuthToken = z.object({
  */
 export const zPersonalAccess = z.object({
     permissions: z.array(zPermission),
-    plugin_permissions: z.optional(z.array(zPluginGrant)),
+    plugin_permissions: z.nullish(z.array(zPluginGrant)),
     project_ids: z.nullish(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))))
 });
 
@@ -1726,7 +1729,7 @@ export const zRoleInput = z.object({
     description: z.optional(z.string()),
     name: z.string(),
     permissions: z.array(zPermission),
-    plugin_permissions: z.optional(z.array(zPluginGrant))
+    plugin_permissions: z.nullish(z.array(zPluginGrant))
 });
 
 export const zRoleRef = z.object({

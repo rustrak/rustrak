@@ -138,6 +138,7 @@ impl RustrakMcp {
     async fn list_project_members(&self, Parameters(a): Parameters<ProjectArgs>) -> CallToolResult {
         reply(members::list_members(
             self.pool(),
+            self.plugins(),
             self.actor(),
             web::Path::from(a.project_id),
         ))
@@ -159,6 +160,7 @@ impl RustrakMcp {
         done(
             members::upsert_member(
                 self.pool(),
+                self.plugins(),
                 self.actor(),
                 web::Path::from(a.project_id),
                 web::Json(a.rest),

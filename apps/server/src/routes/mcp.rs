@@ -149,7 +149,7 @@ async fn caller(
         }
     };
     match actor {
-        Ok(actor) => Ok(Some(actor)),
+        Ok(actor) => Ok(Some(actor.plugin_scoped(req))),
         Err(e) if matches!(e.kind(), AppError::Unauthorized(_)) => Ok(None),
         Err(e) => Err(e),
     }

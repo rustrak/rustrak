@@ -277,6 +277,7 @@ async fn seed(db: &TestDb) -> (Seed, String) {
 fn param_value(name: &str, path: &str, schema: &Value, seed: &Seed) -> String {
     match name {
         "project_id" => seed.project_id.to_string(),
+        "plugin" => "hello".into(),
         "id" if path.starts_with("/api/projects/") => seed.project_id.to_string(),
         "id" if path.starts_with("/api/tokens/") => seed.token_id.to_string(),
         "id" if path.starts_with("/api/integrations/") => seed.integration_id.to_string(),
@@ -408,6 +409,21 @@ async fn every_get_matches_the_published_spec() {
     let mut state = crate::common::state(&db.pool, test_config()).await;
     state.telemetry_reporter = web::Data::new(reporter);
     state.client_metadata = web::Data::new(contract_client());
+    // A plugin, on every project: its settings are routes like any other.
+    state
+        .plugins
+        .install(
+            &db.pool,
+            crate::common::plugins::hello_rtp(),
+            rustrak::plugins::host::Source::Upload,
+        )
+        .await
+        .expect("the hello plugin installs");
+    state
+        .plugins
+        .set_projects(&db.pool, "hello", true, None)
+        .await
+        .expect("the hello plugin runs everywhere");
     let app = crate::common::app_with(&state).await;
 
     // A session as well as the token, for the routes that only take a cookie.

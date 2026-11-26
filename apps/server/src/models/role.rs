@@ -69,8 +69,9 @@ pub struct RoleAssignment {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PersonalAccess {
     pub permissions: Vec<Permission>,
+    /// Omitted or `null`: the ones held stay.
     #[serde(default)]
-    pub plugin_permissions: Vec<PluginGrant>,
+    pub plugin_permissions: Option<Vec<PluginGrant>>,
     /// Where its project permissions apply. Omitted or `null`: every project.
     #[serde(default)]
     pub project_ids: Option<Vec<i32>>,

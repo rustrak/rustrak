@@ -7,7 +7,6 @@
   "type": "module",
   "scripts": {
     "build": "rustrak-plugin build",
-    "dev": "rustrak-plugin dev",
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {

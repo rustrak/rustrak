@@ -88,7 +88,11 @@ pub async fn create_token(
         .permissions
         .iter()
         .flatten()
-        .any(|p| !actor.access.holds_somewhere(p.resource, p.action));
+        .any(|p| !actor.access.holds_somewhere(p.resource, p.action))
+        || body
+            .plugin_permissions
+            .iter()
+            .any(|p| !actor.access.holds_plugin_somewhere(&p.resource, p.action));
     if lacking {
         return Err(crate::services::role::beyond_your_own());
     }

@@ -1,4 +1,4 @@
-import type { Action, MyAccess, Resource } from '@rustrak/client';
+import type { Action, MyAccess, Resource, Scope } from '@rustrak/client';
 import { hasPermission as has, isPluginKey } from './permission-matrix';
 
 /**
@@ -19,8 +19,17 @@ export interface Permissions {
    * what reach a new project, so with none the server refuses.
    */
   canCreateProject: boolean;
-  /** A plugin's permission, `<plugin>:<resource>`, as the server checks it. */
-  canPlugin: (key: string, action: Action, projectId?: number) => boolean;
+  /**
+   * A plugin's permission, `<plugin>:<resource>`, as the server checks it:
+   * one declared with `instance` scope holds wherever a role giving it is
+   * held, so it ignores `projectId`.
+   */
+  canPlugin: (
+    key: string,
+    action: Action,
+    projectId?: number,
+    scope?: Scope,
+  ) => boolean;
 }
 
 export const NO_PERMISSIONS: MyAccess = {
@@ -44,10 +53,10 @@ const holds = (
 export function permissionsFrom(me: MyAccess): Permissions {
   const local = (projectId: number) =>
     me.projects.find((p) => p.project_id === projectId)?.permissions ?? [];
-  const canPlugin: Permissions['canPlugin'] = (key, action, projectId) =>
+  const canPlugin: Permissions['canPlugin'] = (key, action, projectId, scope) =>
     me.is_owner ||
     holds(me.plugins.everywhere, key, action) ||
-    (projectId === undefined
+    (projectId === undefined || scope === 'instance'
       ? me.plugins.projects.some((p) => holds(p.permissions, key, action))
       : holds(
           me.plugins.projects.find((p) => p.project_id === projectId)

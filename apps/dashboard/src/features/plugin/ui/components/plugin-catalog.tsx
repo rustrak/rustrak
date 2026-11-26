@@ -1,9 +1,14 @@
-import type { PluginSummary, RegistryPlugin } from '@rustrak/client';
+import type {
+  PluginSummary,
+  RegistryListing,
+  RegistryPlugin,
+} from '@rustrak/client';
 import {
   Button,
   SettingSection,
   SettingsEmpty,
   SettingsListItem,
+  SettingsListSkeleton,
   Tag,
 } from '@rustrak/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -12,6 +17,7 @@ import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { cn } from '@/shared/lib/utils';
 import { Link } from '@/shared/ui/components/link';
+import { QueryState } from '@/shared/ui/components/query-state';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 import { pluginMutations } from '../../api/mutations';
 import { pluginQueries } from '../../api/queries';
@@ -154,45 +160,51 @@ export function RegistryCatalog({ canInstall }: { canInstall: boolean }) {
   const listing = useQuery(pluginQueries.registry());
   const install = useMutation(pluginMutations.installFromRegistry());
   const toastFailure = useToastFailure();
-  if (!listing.data) return null;
-  const offered = listing.data.plugins.filter(
-    (p) => p.installed_version !== p.version,
-  );
+  const offered = (registry: RegistryListing) =>
+    registry.plugins.filter((p) => p.installed_version !== p.version);
 
   return (
     <SettingSection
       title={t('plugins.available')}
       description={t('plugins.availableHint')}
     >
-      {!listing.data.available ? (
-        <SettingsEmpty
-          title={t('plugins.registryUnavailable')}
-          description={listing.data.error ?? undefined}
-        />
-      ) : offered.length === 0 ? (
-        <SettingsEmpty title={t('plugins.registryUpToDate')} />
-      ) : (
-        offered.map((plugin) => (
-          <RegistryRow
-            key={plugin.id}
-            plugin={plugin}
-            disabled={!canInstall || install.isPending}
-            onInstall={() =>
-              install.mutate(plugin.id, {
-                onSuccess: (installed) =>
-                  toast.success(
-                    t('plugins.installed', {
-                      name: installed.name,
-                      version: installed.version,
-                    }),
-                  ),
-                onError: (error) =>
-                  toastFailure(t('plugins.installFailed'), error),
-              })
-            }
-          />
-        ))
-      )}
+      <QueryState
+        query={listing}
+        placeholder={<SettingsListSkeleton rows={1} />}
+        title={t('plugins.registryLoadFailed')}
+      >
+        {(registry) =>
+          !registry.available ? (
+            <SettingsEmpty
+              title={t('plugins.registryUnavailable')}
+              description={registry.error ?? undefined}
+            />
+          ) : offered(registry).length === 0 ? (
+            <SettingsEmpty title={t('plugins.registryUpToDate')} />
+          ) : (
+            offered(registry).map((plugin) => (
+              <RegistryRow
+                key={plugin.id}
+                plugin={plugin}
+                disabled={!canInstall || install.isPending}
+                onInstall={() =>
+                  install.mutate(plugin.id, {
+                    onSuccess: (installed) =>
+                      toast.success(
+                        t('plugins.installed', {
+                          name: installed.name,
+                          version: installed.version,
+                        }),
+                      ),
+                    onError: (error) =>
+                      toastFailure(t('plugins.installFailed'), error),
+                  })
+                }
+              />
+            ))
+          )
+        }
+      </QueryState>
     </SettingSection>
   );
 }

@@ -8,6 +8,7 @@ import { EmptyState, Skeleton } from '@rustrak/ui';
 import { useCallback, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import type { PeriodChoice } from '@/shared/lib/period';
+import { LoadFailure } from '@/shared/ui/components/load-failure';
 import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PeriodFilter } from '@/shared/ui/components/period-filter';
 import {
@@ -56,7 +57,7 @@ export function PluginPage({
     () => ({ Views, PeriodFilter: HostPeriod }),
     [Views],
   );
-  const { loaded, failed, pending } = useLoadedPlugins();
+  const { loaded, failed, pending, error } = useLoadedPlugins();
   const entry = loaded.find(({ plugin }) => plugin.id === pluginId);
   const found = entry ? matchPage(entry.definition.pages, scope, at) : null;
   const usable =
@@ -79,11 +80,14 @@ export function PluginPage({
 
   if (!usable) {
     if (failed.includes(pluginId)) return <PluginFailed pluginId={pluginId} />;
-    if (pending) {
+    if (pending) return <PluginPageSkeleton />;
+    if (error) {
       return (
-        <div className="p-6">
-          <Skeleton className="h-40 w-full rounded-lg" />
-        </div>
+        <LoadFailure
+          error={error.error}
+          title={t('plugins.listFailed')}
+          notFoundOnMissing={false}
+        />
       );
     }
     return (
@@ -110,10 +114,22 @@ export function PluginPage({
       components={components}
     >
       <title>{title}</title>
-      <PluginBoundary key={at} pluginId={pluginId}>
+      <PluginBoundary
+        key={`${pluginId}:${projectId ?? ''}:${at}`}
+        pluginId={pluginId}
+      >
         <Page projectId={projectId} params={found.params} />
       </PluginBoundary>
     </PluginScope>
+  );
+}
+
+/** A plugin page while its bundle or the reader's permissions load. */
+export function PluginPageSkeleton() {
+  return (
+    <div className="p-6">
+      <Skeleton className="h-40 w-full rounded-lg" />
+    </div>
   );
 }
 
@@ -199,5 +215,5 @@ function usePageAllowed(
   const page = plugin?.ui?.pages.find(
     (p) => p.scope === scope && p.path === path,
   );
-  return !plugin || !page || pageAllowed(page, plugin.id, canPlugin, projectId);
+  return !plugin || !page || pageAllowed(page, plugin, canPlugin, projectId);
 }

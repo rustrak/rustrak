@@ -317,6 +317,10 @@ export type AuthTokenCreatedResponse = {
      */
     permissions: Array<Permission> | null;
     /**
+     * Plugins' permissions it is limited to, beside `permissions`.
+     */
+    plugin_permissions: Array<PluginGrant>;
+    /**
      * `null`: every project its owner reaches.
      */
     project_ids: Array<number> | null;
@@ -336,6 +340,10 @@ export type AuthTokenResponse = {
      * `null`: everything its owner may do.
      */
     permissions: Array<Permission> | null;
+    /**
+     * Plugins' permissions it is limited to, beside `permissions`.
+     */
+    plugin_permissions: Array<PluginGrant>;
     /**
      * `null`: every project its owner reaches.
      */
@@ -820,6 +828,11 @@ export type CreateAuthToken = {
      * `null`: everything its owner may do.
      */
     permissions?: Array<Permission> | null;
+    /**
+     * Plugins' permissions it may use besides `permissions`, within its
+     * owner's. Ignored while `permissions` is omitted: it may do everything.
+     */
+    plugin_permissions?: Array<PluginGrant>;
     /**
      * The projects it may reach. Omitted or `null`: every project its owner reaches.
      */
@@ -1874,7 +1887,10 @@ export type PermissionSpec = {
  */
 export type PersonalAccess = {
     permissions: Array<Permission>;
-    plugin_permissions?: Array<PluginGrant>;
+    /**
+     * Omitted or `null`: the ones held stay.
+     */
+    plugin_permissions?: Array<PluginGrant> | null;
     /**
      * Where its project permissions apply. Omitted or `null`: every project.
      */
@@ -2550,7 +2566,10 @@ export type RoleInput = {
     description?: string;
     name: string;
     permissions: Array<Permission>;
-    plugin_permissions?: Array<PluginGrant>;
+    /**
+     * Omitted or `null`: on an update, the ones it holds stay.
+     */
+    plugin_permissions?: Array<PluginGrant> | null;
 };
 
 export type RoleRef = {

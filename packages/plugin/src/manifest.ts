@@ -21,7 +21,7 @@ export interface PackageJson {
 
 /** Rustrak cannot tell a design-system icon; the dashboard draws it. */
 export function checkIcon(icon: string | undefined, where: string): void {
-  if (icon !== undefined && !(icon in icons)) {
+  if (icon !== undefined && !Object.hasOwn(icons, icon)) {
     throw new Error(`${where}: ${icon} is not an icon of @rustrak/ui`);
   }
 }

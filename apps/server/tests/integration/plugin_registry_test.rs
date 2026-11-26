@@ -23,6 +23,11 @@ impl Registry {
 
     /// The same, hello's package listed under `id`.
     fn listing(id: &str, sha256: Option<String>, sign: bool) -> Self {
+        Self::listing_as(id, "0.1.0", sha256, sign)
+    }
+
+    /// The same, hello's package listed under `id` as `version`.
+    fn listing_as(id: &str, version: &str, sha256: Option<String>, sign: bool) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let rtp = hello_rtp();
         std::fs::write(dir.path().join("hello-0.1.0.rtp"), &rtp).unwrap();
@@ -38,7 +43,7 @@ impl Registry {
                 "author": "Rustrak",
                 "logo": { "url": "hello.svg", "sha256": hex::encode(Sha256::digest(logo)) },
                 "versions": [
-                    { "version": "0.1.0", "rustrak": ">=0.33.0", "url": "hello-0.1.0.rtp",
+                    { "version": version, "rustrak": ">=0.33.0", "url": "hello-0.1.0.rtp",
                       "sha256": sha256.unwrap_or_else(|| hex::encode(Sha256::digest(&rtp))) },
                     { "version": "9.0.0", "rustrak": ">=99.0.0", "url": "hello-9.0.0.rtp",
                       "sha256": "00" },
@@ -234,4 +239,45 @@ async fn a_package_of_another_plugin_is_refused_before_it_touches_that_plugin() 
     let listed = state.plugins.list(&db.pool).await.unwrap();
     assert_eq!(listed.len(), 1, "hello is still installed, alone");
     assert!(!listed[0].verified);
+}
+
+/// POSTs the registry install of `id` and returns its status and body.
+async fn install_from(registry: &Registry, id: &str) -> (StatusCode, String) {
+    let db = TestDb::new().await;
+    let state = common::state(&db.pool, registry.config()).await;
+    let app = common::app_with(&state).await;
+    let owner = common::create_test_token(&db.pool).await;
+    let req = test::TestRequest::post()
+        .uri(&format!("/api/settings/plugins/registry/{id}"))
+        .insert_header(crate::common::bearer(&owner))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let body = String::from_utf8(test::read_body(resp).await.to_vec()).unwrap();
+    assert!(state.plugins.get(id).is_none(), "{body}");
+    (status, body)
+}
+
+#[actix_web::test]
+async fn a_package_of_another_version_than_the_one_listed_is_refused() {
+    // Listed as 0.2.0, the package is hello 0.1.0.
+    let registry = Registry::listing_as("hello", "0.2.0", None, true);
+    let (status, body) = install_from(&registry, "hello").await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+    assert!(body.contains("0.2.0"), "{body}");
+}
+
+#[actix_web::test]
+async fn a_local_registry_file_bigger_than_any_package_is_refused() {
+    let registry = Registry::new(None, true);
+    // Sparse: past the cap without writing 20 MiB.
+    let rtp = std::fs::OpenOptions::new()
+        .write(true)
+        .open(registry.dir.path().join("hello-0.1.0.rtp"))
+        .unwrap();
+    rtp.set_len(rustrak::plugins::package::MAX_PACKAGE_BYTES + 1)
+        .unwrap();
+    let (status, body) = install_from(&registry, "hello").await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+    assert!(body.contains("bigger than any package"), "{body}");
 }

@@ -177,6 +177,13 @@ export async function buildUi(
   }
 
   const registered = describe(readFileSync(join(outDir, 'index.js'), 'utf8'));
+  for (const { file, component } of [
+    ...registered.pages,
+    ...registered.widgets,
+  ]) {
+    if (!component)
+      throw new Error(`${file}: export default the component it renders`);
+  }
   const granted = new Set(
     Object.entries(permissions).flatMap(([resource, p]) =>
       p.actions.map((a) => `${resource}:${a}`),
@@ -236,8 +243,9 @@ interface Registered {
     scope: Scope;
     file: string;
     config?: PageConfig;
+    component?: unknown;
   }[];
-  widgets: (Partial<WidgetConfig> & { file: string })[];
+  widgets: (Partial<WidgetConfig> & { file: string; component?: unknown })[];
 }
 
 /**
@@ -252,8 +260,9 @@ function describe(code: string): Registered {
         key in target ? target[key as keyof typeof target] : () => null,
     },
   );
-  // The design system, as far as a module's top level can tell: anything,
-  // called or read, is something more (a column helper, its columns).
+  // React and the design system, as far as a module's top level can tell:
+  // anything, called or read, is something more (`memo(Page)`, a context,
+  // a column helper and its columns).
   const anything: object = new Proxy(() => anything, {
     get: (_, key) => (key === Symbol.toPrimitive ? () => '' : anything),
     apply: () => anything,
@@ -261,10 +270,10 @@ function describe(code: string): Registered {
   let registered: Registered | undefined;
   const sandbox = {
     __rustrak: {
-      React: {},
-      jsxRuntime: {},
-      ReactDOM: {},
-      ReactQuery: {},
+      React: anything,
+      jsxRuntime: anything,
+      ReactDOM: anything,
+      ReactQuery: anything,
       ui,
       designSystem: anything,
     },

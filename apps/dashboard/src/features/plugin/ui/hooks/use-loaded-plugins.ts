@@ -11,10 +11,12 @@ import type { PluginDefinition } from '@rustrak/plugin/ui';
 import * as ui from '@rustrak/plugin/ui';
 import * as designSystem from '@rustrak/ui';
 import * as ReactQuery from '@tanstack/react-query';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { noop, useQueries, useQuery } from '@tanstack/react-query';
 import * as React from 'react';
+import { useEffect } from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
 import * as ReactDOM from 'react-dom';
+import type { ApiError } from '@/shared/api/query';
 import { pluginQueries } from '../../api/queries';
 import { newRules, ruleKeys } from '../../model/styles';
 
@@ -60,36 +62,65 @@ function dashboardRules(): Set<string> {
   return keys;
 }
 
-/**
- * The plugin's stylesheet: only its own classes, on the dashboard's tokens,
- * without the copies that would reorder the dashboard's (`model/styles.ts`).
- */
-async function loadStyles(id: string, href: string | null | undefined) {
-  const current = document.querySelector<HTMLStyleElement>(
-    `style[data-plugin="${id}"]`,
-  );
-  if (!href || current?.dataset.href === href) return;
-  const response = await fetch(href);
+/** Each fetched stylesheet's text, by its address (which carries its version). */
+const fetchedStyles = new Map<string, string>();
+
+async function fetchStyles(href: string, signal: AbortSignal): Promise<true> {
+  const response = await fetch(href, { signal });
   if (!response.ok) throw new Error(`Could not load ${href}`);
-  const sheet = new CSSStyleSheet();
-  sheet.replaceSync(await response.text());
-  const style = document.createElement('style');
-  style.dataset.plugin = id;
-  // An update's bundle has a new address: its sheet replaces the old one.
-  style.dataset.href = href;
-  style.textContent = newRules(sheet.cssRules, dashboardRules());
-  current?.remove();
-  document.head.append(style);
+  fetchedStyles.set(href, await response.text());
+  return true;
 }
 
-function loadBundle(
-  id: string,
-  entry: string,
-  styles?: string | null,
-): Promise<PluginDefinition> {
+/**
+ * Makes the page carry exactly these plugins' sheets (`id href` per line):
+ * each one only its own classes, on the dashboard's tokens, without the
+ * copies that would reorder the dashboard's (`model/styles.ts`). Another
+ * version's sheet, or one of a plugin no longer loaded, goes.
+ */
+function applyStyles(sheets: string) {
+  const wanted = new Map(
+    sheets
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.split(' ') as [string, string]),
+  );
+  for (const style of document.querySelectorAll<HTMLStyleElement>(
+    'style[data-plugin]',
+  )) {
+    const id = style.dataset.plugin ?? '';
+    if (wanted.get(id) === style.dataset.href) wanted.delete(id);
+    else style.remove();
+  }
+  for (const [id, href] of wanted) {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(fetchedStyles.get(href) ?? '');
+    const style = document.createElement('style');
+    style.dataset.plugin = id;
+    style.dataset.href = href;
+    style.textContent = newRules(sheet.cssRules, dashboardRules());
+    document.head.append(style);
+  }
+}
+
+/**
+ * Each plugin's latest load: one registers at a time, as `waiting` holds one.
+ * A load settles only once its script has, so the next never takes its turn
+ * early.
+ */
+const loads = new Map<string, Promise<unknown>>();
+
+function loadBundle(id: string, entry: string): Promise<PluginDefinition> {
+  const next = (loads.get(id) ?? Promise.resolve())
+    .catch(noop)
+    .then(() => loadOnce(id, entry));
+  loads.set(id, next);
+  return next;
+}
+
+function loadOnce(id: string, entry: string): Promise<PluginDefinition> {
   expose();
-  const css = loadStyles(id, styles);
-  const code = new Promise<PluginDefinition>((resolve, reject) => {
+  return new Promise<PluginDefinition>((resolve, reject) => {
     waiting.set(id, resolve);
     const script = document.createElement('script');
     script.src = entry;
@@ -106,7 +137,6 @@ function loadBundle(
     };
     document.head.append(script);
   });
-  return Promise.all([code, css]).then(([definition]) => definition);
 }
 
 export interface LoadedPlugin {
@@ -120,6 +150,8 @@ export function useLoadedPlugins(): {
   /** The plugins whose bundle would not load or register. */
   failed: string[];
   pending: boolean;
+  /** Why the list of plugins could not be read. */
+  error: ApiError | null;
 } {
   const list = useQuery(pluginQueries.list());
   const withUi = (list.data ?? []).flatMap((p) =>
@@ -130,10 +162,22 @@ export function useLoadedPlugins(): {
       // Its own root: refreshing the list must not run a bundle twice.
       queryKey: ['plugin-bundles', p.ui.entry],
       queryFn: () =>
-        loadBundle(p.id, p.ui.entry, p.ui.styles).catch((error: unknown) => {
+        loadBundle(p.id, p.ui.entry).catch((error: unknown) => {
           console.error(`Plugin ${p.id} failed to load`, error);
           throw error;
         }),
+      staleTime: Number.POSITIVE_INFINITY,
+      gcTime: Number.POSITIVE_INFINITY,
+    })),
+  });
+  // A stylesheet is read like any other resource; putting it on the page
+  // is the effect below, which only ever reads what has arrived.
+  const styles = useQueries({
+    queries: withUi.map((p) => ({
+      queryKey: ['plugin-styles', p.ui.styles],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        fetchStyles(p.ui.styles ?? '', signal),
+      enabled: Boolean(p.ui.styles),
       staleTime: Number.POSITIVE_INFINITY,
       gcTime: Number.POSITIVE_INFINITY,
     })),
@@ -142,9 +186,19 @@ export function useLoadedPlugins(): {
     const definition = bundles[i]?.data;
     return definition ? [{ plugin, definition }] : [];
   });
+  // The sheets the page should carry: each loaded plugin's own version.
+  const sheets = withUi
+    .filter((p, i) => bundles[i]?.data && styles[i]?.data && p.ui.styles)
+    .map((p) => `${p.id} ${p.ui.styles}`)
+    .join('\n');
+  useEffect(() => applyStyles(sheets), [sheets]);
   return {
     loaded,
+    error: list.error,
     failed: withUi.filter((_, i) => bundles[i]?.isError).map((p) => p.id),
-    pending: list.isPending || bundles.some((b) => b.isPending),
+    pending:
+      list.isPending ||
+      bundles.some((b) => b.isPending) ||
+      withUi.some((p, i) => p.ui.styles && styles[i]?.isPending),
   };
 }
