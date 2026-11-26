@@ -100,7 +100,7 @@ If a page or widget throws, the dashboard shows `The plugin <plugin> failed to s
 | `usePluginSettings()` | The plugin's settings here, without secrets: the project's values, then the instance's, then the defaults |
 | `usePluginPermissions()` | `can(resource, action)`, to hide a button the reader could not use |
 
-A string body is sent as `text/plain`, anything else as JSON. A failed call throws `PluginApiError`, with the `status` and the route's `detail`.
+A string body is sent as `text/plain`, anything else as JSON. A failed call throws `PluginApiError` with its `status`. When your route answered the error, its `message` is the route's `detail`. When Rustrak answered it (a `401`, a `403` for a missing permission, a `404` where the plugin is off, a `503`), the body is Rustrak's own error and `message` does not carry it yet: branch on `status`.
 
 ```tsx
 import { usePluginMutation, usePluginPermissions } from '@rustrak/plugin/ui';
@@ -119,7 +119,7 @@ function ClearHits() {
 
 `usePluginTranslations()` returns `t`, over `src/messages/<locale>.json` in the reader's language, with English where a key is missing. It takes the same ICU syntax as the dashboard: `{name}` and plurals. Keys are typed: a key missing from `en.json` is a type error.
 
-`useFormatter()` and `useLocale()` come from `use-intl` and follow the reader's language, time zone and clock: `format.dateTime(date, 'dateTime')`, `'date'`, `'precise'`, and `format.number(n, 'compact')`.
+`useFormatter()` and `useLocale()` are the dashboard's, re-exported by `@rustrak/plugin/ui`. Import them from there, never from `use-intl`: the build does not share `use-intl` with the dashboard, so a direct import gets a copy with no provider, and it throws. They follow the reader's language, time zone and clock: `format.dateTime(date, 'dateTime')`, `'date'`, `'precise'`, and `format.number(n, 'compact')`.
 
 ## Navigation, filters and saved views
 

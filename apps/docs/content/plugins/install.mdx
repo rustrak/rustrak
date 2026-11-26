@@ -64,7 +64,7 @@ A plugin can add permissions, named `<plugin>:<resource>`, such as `my-plugin:vi
 
 Owners hold every plugin permission. Granting `create`, `update` or `delete` on a plugin's resource grants `read` on it too.
 
-A route or page that requires a permission checks it on every request. A project route that requires none still needs a caller who can see the project.
+A route or page that requires a permission checks it on every request. A project route that requires none still needs a caller who can see the project, unless it is public: a public route takes the project's DSN key and no user.
 
 ## Its data and retention
 

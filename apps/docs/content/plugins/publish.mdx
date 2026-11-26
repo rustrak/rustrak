@@ -87,6 +87,7 @@ The official plugins and their registry live in [rustrak/plugins](https://github
 A registry is a folder served over HTTPS (or a `file://` path) with the `.rtp` files, an `index.json` and its minisign signature:
 
 ```bash
+minisign -G                             # once: the key pair, minisign.pub and a secret key
 rustrak-plugin index ./registry
 minisign -Sm ./registry/index.json      # writes index.json.minisig
 ```
@@ -97,7 +98,7 @@ Point a server at it and trust your key:
 
 ```bash
 RUSTRAK_PLUGIN_REGISTRY=https://plugins.example.com/registry/index.json
-RUSTRAK_PLUGIN_REGISTRY_KEYS=RWQ...your-minisign-public-key...
+RUSTRAK_PLUGIN_REGISTRY_KEYS=RWQ...   # the second line of minisign.pub
 ```
 
 Rustrak fetches `index.json` and `index.json.minisig` and refuses the index unless one of the trusted keys signed it. It downloads a package only when it installs it, and refuses one whose sha256 differs from the index's. A fetched index is reused for 10 minutes.

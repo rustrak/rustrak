@@ -32,7 +32,7 @@ Where the route lives, and who may call it, depends on its flags:
 |---|---|---|
 | `#[get("/stats")]` | `/api/projects/<project id>/plugins/<plugin>/stats` | A signed-in person or an API token that can see the project |
 | `#[get("/stats", requires = Perm::Stats.read())]` | Same | The same, holding `<plugin>:stats` `read` |
-| `#[post("/visit", public)]` | Same | Anyone with the project's DSN key, as `?sentry_key=<key>` or `X-Rustrak-Key: <key>` |
+| `#[post("/visit", public)]` | `/api/projects/<project id>/plugins/<plugin>/visit` | Anyone with the project's DSN key, as `?sentry_key=<key>` or `X-Rustrak-Key: <key>` |
 | `#[get("/report", instance)]` | `/api/plugins/<plugin>/report` | A signed-in person or an API token. Not tied to a project |
 
 `instance` takes `requires` too. `public` takes neither: a public route has no user to check, and it always belongs to a project.
@@ -114,7 +114,7 @@ Some answers come from Rustrak, not from your code. They use Rustrak's own error
 | `403` | The caller lacks the permission the route requires (`Missing permission <plugin>:<resource>:<action>`) |
 | `404` | No such route, or the plugin is not on in that project (`Plugin route not found in <plugin>`) |
 | `503` | A required setting is not set, or 8 requests are already running and the next waited 5 seconds |
-| `504` | The route ran past its 2 seconds of CPU (`The plugin did not answer in time`) |
+| `504` | The route ran past its 2 seconds, its queries included (`The plugin did not answer in time`) |
 | `500` | The code panicked. A panic aborts the instance |
 
 ## Logs

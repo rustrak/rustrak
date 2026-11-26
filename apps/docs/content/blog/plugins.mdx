@@ -32,7 +32,7 @@ A plugin is only the part you care about. Rustrak provides the rest:
 - **It uses the members and roles you already have.** A plugin declares its permissions, and you grant them in **Roles** like any of Rustrak's own. No user system to build.
 - **It shows up in the dashboard.** Its pages sit in the sidebar, and it can draw inside pages you already use, such as under every issue.
 - **It has its own data.** Today each plugin gets a SQLite file with its own quota. It cannot touch Rustrak's data or another plugin's.
-- **It is isolated.** The server code is compiled to WebAssembly and runs in a sandbox with 32 MB of memory and 2 seconds of CPU per request. A plugin with a bug does not take Rustrak down.
+- **It is isolated.** The server code is compiled to WebAssembly and runs in a sandbox with 32 MB of memory and 2 seconds per request. A plugin with a bug does not take Rustrak down.
 
 ## Build one
 
@@ -42,7 +42,10 @@ If nobody has built what you need, you can:
 npx @rustrak/plugin new my-plugin
 ```
 
-![npx @rustrak/plugin new my-plugin asks two questions and lists the project it created](/demos/plugin-new.gif)
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="/demos/plugin-new.png" />
+  <img src="/demos/plugin-new.gif" alt="npx @rustrak/plugin new my-plugin asks two questions and lists the project it created" />
+</picture>
 
 The project builds from the first minute. The server side is Rust: a route is a function with an attribute, and the plugin's database is one call away.
 

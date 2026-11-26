@@ -37,7 +37,7 @@
 }
 
 .prose.prose-docs blockquote::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 1.2rem;
   left: 1.15rem;

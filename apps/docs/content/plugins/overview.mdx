@@ -49,7 +49,7 @@ No state survives between two requests except what the plugin wrote to its datab
 
 | What | Limit |
 |---|---|
-| CPU time per request | 2 seconds, then `504` with `The plugin did not answer in time` |
+| Time per request, queries included | 2 seconds, then `504` with `The plugin did not answer in time` |
 | Memory per instance | 32 MB |
 | Requests running at once, per plugin | 8. The rest wait up to 5 seconds, then get `503` |
 | Request body | 1 MB |

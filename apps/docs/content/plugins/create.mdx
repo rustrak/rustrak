@@ -27,6 +27,8 @@ npx @rustrak/plugin new my-plugin
 
 The name is the folder and becomes the plugin's id: 2 to 32 lowercase letters, digits or dashes, starting with a letter. In a terminal, `new` asks whether to install the dependencies and whether to start a git repository, and adds the `wasm32-wasip2` target if rustup lacks it. `--yes` takes every default without asking. `--install`/`--no-install` and `--git`/`--no-git` answer one question each.
 
+The questions and these flags arrive in the release after 0.34.0. The `new` of `@rustrak/plugin@0.34.0` asks nothing and ignores the flags: it writes the project and prints the steps left, `rustup target add wasm32-wasip2`, `npm install` and `npm run build`. Run them yourself.
+
 What you get:
 
 ```text
