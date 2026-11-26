@@ -88,14 +88,15 @@ export function DeleteDialog({
 
 /**
  * The plugins whose history goes too. A plugin's history has no project, so
- * it is offered only across all of them.
+ * it is offered only across all of them, and never while the read failed:
+ * its boxes are hidden then, even with an older answer in the cache.
  */
 function usePluginChoice(project: string) {
   const read = useQuery(storageQueries.plugins());
   const withHistory = (read.data ?? []).filter((p) => p.history.length > 0);
   const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(new Set());
   const plugins =
-    project === ALL
+    project === ALL && !read.isError
       ? withHistory.map((p) => p.id).filter((id) => !unchecked.has(id))
       : [];
   return {
