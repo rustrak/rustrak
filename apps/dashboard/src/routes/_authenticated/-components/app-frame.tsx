@@ -704,6 +704,15 @@ function useMobileBack(
           settingsPage.href,
         );
   }
+  if (isUnder(pathname, `${base}/plugins`)) {
+    // A plugin's page names its whole trail: back is its last link.
+    const linked = trail.findLast(
+      (crumb, i) => crumb.href && i < trail.length - 1,
+    );
+    return linked?.href
+      ? { label: linked.label, href: linked.href }
+      : undefined;
+  }
   if (project) {
     const page = activePage(pathname, base);
     const section = page?.href ? `${base}${page.href}` : null;

@@ -103,6 +103,7 @@ export function PluginProjectSetup({
           <SettingsEmpty title={t('plugins.setup.offHint')} />
         ) : (
           <PluginSettingsForm
+            key={`${plugin.id}:${project.id}`}
             plugin={plugin}
             projectId={project.id}
             canEdit={canEdit}

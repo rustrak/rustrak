@@ -135,6 +135,14 @@ describe('roleChoices', () => {
     ).toEqual([1, 2]);
   });
 
+  it('does not offer a role whose plugin permissions the reader cannot give', () => {
+    const withPlugin = {
+      ...role(4, 'logs'),
+      plugin_permissions: [{ resource: 'uptime:checks', action: 'read' }],
+    } as Role;
+    expect(roleChoices([withPlugin], [], canGive)).toEqual([]);
+  });
+
   it('names a held role the reader cannot list, and skips personal ones', () => {
     const held = [
       { role_id: 7, role_name: 'Hidden', is_personal: false },

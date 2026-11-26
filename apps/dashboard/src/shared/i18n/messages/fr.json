@@ -1770,7 +1770,8 @@
       "size": "{used} sur {quota}",
       "history": "{rows} lignes d’historique dans {tables}",
       "noHistory": "Rien de ce qu’il garde n’expire",
-      "historyHint": "Son historique : {tables}"
+      "historyHint": "Son historique : {tables}",
+      "loadFailed": "Impossible de lire le stockage des plugins"
     }
   },
   "errors": {
@@ -2388,7 +2389,7 @@
         "title": "Plugins"
       },
       "title": "Plugins",
-      "subtitle": "Étendez Rustrak avec des plugins. Chacun s’exécute isolé, avec sa propre base de données.",
+      "subtitle": "Étendez Rustrak avec des plugins. Le code serveur de chacun s’exécute isolé, avec sa propre base de données.",
       "install": "Installer un plugin",
       "installing": "Installation…",
       "installed": "{name} {version} installé",
@@ -2401,6 +2402,7 @@
       "versionBy": "{version} · par {author}",
       "failed": "Le plugin {plugin} n’a pas pu afficher cette partie.",
       "pageMissing": "Cette page du plugin n’existe pas",
+      "listFailed": "Impossible de charger les plugins",
       "pageMissingHint": "Le plugin n’est pas installé, pas actif dans ce projet, ou n’a pas de page ici.",
       "detail": {
         "projects": "Projets",
@@ -2454,7 +2456,9 @@
         "saveFailed": "Les réglages n’ont pas pu être enregistrés",
         "secretSet": "Défini. Tapez pour le remplacer",
         "secretNotSet": "Non défini",
-        "missing": "Définissez {fields} pour que le plugin puisse fonctionner."
+        "missing": "Définissez {fields} pour que le plugin puisse fonctionner.",
+        "reset": "Réinitialiser",
+        "loadFailed": "Impossible de lire les réglages du plugin"
       },
       "verified": "✓ Vérifié par le registre",
       "notVerified": "Non vérifié : importé à la main",
@@ -2476,7 +2480,8 @@
         "settings": "Réglages du projet",
         "settingsHint": "Les valeurs propres à ce projet : elles priment sur celles de l'instance.",
         "offHint": "Activez-le dans ce projet pour le configurer."
-      }
+      },
+      "registryLoadFailed": "Impossible de lire le registre des plugins"
     }
   },
   "github": {

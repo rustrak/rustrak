@@ -1,4 +1,4 @@
-import type { Action, PluginSummary } from '@rustrak/client';
+import type { Action, PluginSummary, Scope } from '@rustrak/client';
 import { pluginHref, pluginPermissionKey } from '@rustrak/plugin/ui';
 
 /** Whether a plugin runs in a project: everywhere, or chosen there. */
@@ -39,14 +39,19 @@ export function pageAt(splat: string | undefined): string {
   return (splat ?? '').replace(/^\/+|\/+$/g, '');
 }
 
-/** The page of `scope` whose path matches `at`, with its `:name` parameters. */
+/**
+ * The page of `scope` whose path matches `at`, with its `:name` parameters:
+ * of several, the one with the fewest parameters, so `funnels/new` wins over
+ * `funnels/:id`. `at` comes decoded from the router.
+ */
 export function matchPage<P extends { path: string; scope: string }>(
   pages: P[],
   scope: string,
   at: string,
 ): { page: P; params: Record<string, string> } | null {
   const segments = at ? at.split('/') : [];
-  for (const page of pages) {
+  const params = (page: P) => page.path.split(':').length;
+  for (const page of [...pages].sort((a, b) => params(a) - params(b))) {
     if (page.scope !== scope) continue;
     const pattern = page.path ? page.path.split('/') : [];
     if (pattern.length !== segments.length) continue;
@@ -54,7 +59,7 @@ export function matchPage<P extends { path: string; scope: string }>(
     const matches = pattern.every((part, i) => {
       const segment = segments[i]!;
       if (part.startsWith(':')) {
-        params[part.slice(1)] = decodeURIComponent(segment);
+        params[part.slice(1)] = segment;
         return true;
       }
       return part === segment;
@@ -76,9 +81,19 @@ export const bySidebarRank = (
   (a.sidebar?.rank ?? Number.MAX_SAFE_INTEGER) -
   (b.sidebar?.rank ?? Number.MAX_SAFE_INTEGER);
 
-/** A plugin page's key among saved views: at most the server's 64 characters. */
+/**
+ * A plugin page's key among saved views: at most the server's 64 characters.
+ * A longer one keeps its start and ends in a hash of the whole, so two long
+ * addresses never share their views.
+ */
 export function viewPage(pluginId: string, at: string): string {
-  return `plugin:${pluginId}/${at}`.slice(0, 64);
+  const key = `plugin:${pluginId}/${at}`;
+  if (key.length <= 64) return key;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
+  }
+  return `${key.slice(0, 55)}~${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 /**
@@ -116,21 +131,33 @@ export function readmeIn(
   );
 }
 
+/** The scope a plugin declared one of its permissions with, by its key. */
+export function permissionScope(
+  plugin: Pick<PluginSummary, 'id' | 'permissions'>,
+  key: string,
+): Scope | undefined {
+  return plugin.permissions.find(
+    (p) => pluginPermissionKey(plugin.id, p.resource) === key,
+  )?.scope;
+}
+
 /**
  * Whether the reader may open a plugin page: any that requires nothing, or
  * one whose `resource:action` they hold on the plugin.
  */
 export function pageAllowed(
   page: { requires?: string | null },
-  pluginId: string,
-  can: (key: string, action: Action, projectId?: number) => boolean,
+  plugin: Pick<PluginSummary, 'id' | 'permissions'>,
+  can: (
+    key: string,
+    action: Action,
+    projectId?: number,
+    scope?: Scope,
+  ) => boolean,
   projectId?: number,
 ): boolean {
   if (!page.requires) return true;
   const [resource, action] = page.requires.split(':');
-  return can(
-    pluginPermissionKey(pluginId, resource ?? ''),
-    action as Action,
-    projectId,
-  );
+  const key = pluginPermissionKey(plugin.id, resource ?? '');
+  return can(key, action as Action, projectId, permissionScope(plugin, key));
 }

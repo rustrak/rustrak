@@ -79,7 +79,8 @@ export function RolesList({
               <>
                 <span>
                   {t('roles.permissionCount', {
-                    count: role.permissions.length,
+                    count:
+                      role.permissions.length + role.plugin_permissions.length,
                   })}
                 </span>
                 <span className="flex items-center gap-1">

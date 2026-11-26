@@ -1,6 +1,12 @@
 import type { SettingSpec } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
-import { fieldsAt, settingsPatch, settingText } from './settings';
+import {
+  canReset,
+  fieldsAt,
+  fieldValue,
+  settingsPatch,
+  settingText,
+} from './settings';
 
 const specs: SettingSpec[] = [
   {
@@ -78,6 +84,30 @@ describe('settingsPatch', () => {
     expect(
       settingsPatch(specs, { greeting: 'Hola' }, { greeting: '' }),
     ).toEqual({ greeting: null });
+  });
+
+  it('offers a reset only on a saved switch or select not already reset', () => {
+    const enabled = specs[3];
+    expect(canReset(enabled, { enabled: false }, {})).toBe(true);
+    expect(canReset(enabled, {}, {})).toBe(false);
+    expect(canReset(enabled, { enabled: true }, { enabled: '' })).toBe(false);
+    expect(canReset(specs[0], { greeting: 'Hola' }, {})).toBe(false);
+  });
+
+  it('shows a reset field as unset, so the inherited value shows', () => {
+    expect(fieldValue('enabled', { enabled: true }, { enabled: '' })).toBe(
+      undefined,
+    );
+    expect(fieldValue('enabled', { enabled: true }, {})).toBe(true);
+    expect(fieldValue('enabled', { enabled: true }, { enabled: false })).toBe(
+      false,
+    );
+  });
+
+  it('clears a reset switch, so it inherits again', () => {
+    expect(settingsPatch(specs, { enabled: false }, { enabled: '' })).toEqual({
+      enabled: null,
+    });
   });
 
   it('leaves a secret alone unless something is typed', () => {

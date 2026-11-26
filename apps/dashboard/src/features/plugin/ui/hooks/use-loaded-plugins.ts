@@ -11,10 +11,12 @@ import type { PluginDefinition } from '@rustrak/plugin/ui';
 import * as ui from '@rustrak/plugin/ui';
 import * as designSystem from '@rustrak/ui';
 import * as ReactQuery from '@tanstack/react-query';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { noop, useQueries, useQuery } from '@tanstack/react-query';
 import * as React from 'react';
+import { useEffect } from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
 import * as ReactDOM from 'react-dom';
+import type { ApiError } from '@/shared/api/query';
 import { pluginQueries } from '../../api/queries';
 import { newRules, ruleKeys } from '../../model/styles';
 
@@ -82,7 +84,22 @@ async function loadStyles(id: string, href: string | null | undefined) {
   document.head.append(style);
 }
 
+/** Each plugin's latest load: one registers at a time, as `waiting` holds one. */
+const loads = new Map<string, Promise<unknown>>();
+
 function loadBundle(
+  id: string,
+  entry: string,
+  styles?: string | null,
+): Promise<PluginDefinition> {
+  const next = (loads.get(id) ?? Promise.resolve())
+    .catch(noop)
+    .then(() => loadOnce(id, entry, styles));
+  loads.set(id, next);
+  return next;
+}
+
+function loadOnce(
   id: string,
   entry: string,
   styles?: string | null,
@@ -120,6 +137,8 @@ export function useLoadedPlugins(): {
   /** The plugins whose bundle would not load or register. */
   failed: string[];
   pending: boolean;
+  /** Why the list of plugins could not be read. */
+  error: ApiError | null;
 } {
   const list = useQuery(pluginQueries.list());
   const withUi = (list.data ?? []).flatMap((p) =>
@@ -142,8 +161,20 @@ export function useLoadedPlugins(): {
     const definition = bundles[i]?.data;
     return definition ? [{ plugin, definition }] : [];
   });
+  // A bundle read from the cache (a plugin installed again, an earlier
+  // version back) skips `loadStyles`; its sheet may be another version's.
+  const sheets = loaded
+    .map(({ plugin }) => `${plugin.id} ${plugin.ui.styles ?? ''}`)
+    .join('\n');
+  useEffect(() => {
+    for (const line of sheets.split('\n')) {
+      const [id, href] = line.split(' ');
+      if (id) void loadStyles(id, href).catch(noop);
+    }
+  }, [sheets]);
   return {
     loaded,
+    error: list.error,
     failed: withUi.filter((_, i) => bundles[i]?.isError).map((p) => p.id),
     pending: list.isPending || bundles.some((b) => b.isPending),
   };

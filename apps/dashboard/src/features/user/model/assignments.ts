@@ -4,7 +4,10 @@ import type {
   Role,
   SetAccess,
 } from '@rustrak/client';
-import { splitPermissions } from '@/shared/lib/permission-matrix';
+import {
+  joinPermissions,
+  splitPermissions,
+} from '@/shared/lib/permission-matrix';
 
 /** A role of the list, the person's own permissions, or nothing chosen yet. */
 export type RoleChoice = number | 'personal' | null;
@@ -105,7 +108,9 @@ export function roleChoices(
 ): RoleOption[] {
   const holds = (id: number) => held.some((h) => h.role_id === id);
   const listed = roles.filter(
-    (r) => holds(r.id) || r.permissions.every(canGive),
+    (r) =>
+      holds(r.id) ||
+      joinPermissions(r.permissions, r.plugin_permissions).every(canGive),
   );
   const unlisted = held
     .filter((h) => !h.is_personal && !roles.some((r) => r.id === h.role_id))

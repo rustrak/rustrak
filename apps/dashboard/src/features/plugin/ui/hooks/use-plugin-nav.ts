@@ -1,7 +1,7 @@
 import { pluginTranslator } from '@rustrak/plugin/ui';
 import { useMemo } from 'react';
 import { useLocale } from 'use-intl';
-import { usePermissions } from '@/shared/ui/hooks/use-permissions';
+import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import {
   activeIn,
   bySidebarRank,
@@ -33,7 +33,7 @@ export interface PluginNavGroup {
 export function usePluginNav(projectId?: number): PluginNavGroup[] {
   const { loaded } = useLoadedPlugins();
   const locale = useLocale();
-  const { canPlugin } = usePermissions();
+  const { canPlugin } = usePermissionsLater();
   return useMemo(() => {
     const scope = projectId === undefined ? 'instance' : 'project';
     return loaded
@@ -46,7 +46,7 @@ export function usePluginNav(projectId?: number): PluginNavGroup[] {
           .flatMap(({ sidebar, ...page }) =>
             sidebar &&
             page.scope === scope &&
-            pageAllowed(page, plugin.id, canPlugin, projectId)
+            pageAllowed(page, plugin, canPlugin, projectId)
               ? [{ ...page, sidebar }]
               : [],
           )

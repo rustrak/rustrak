@@ -18,6 +18,7 @@ import { KINDS, WINDOW_FIELD } from '@/features/storage/model/retention';
 import { useRetentionDraft } from '../hooks/use-retention-draft';
 import { KeepForSelect } from './keep-for-select';
 import { RetentionFooter } from './retention-footer';
+import { PluginsLoadFailed } from './storage-plugins';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const WEEKDAYS = Array.from({ length: 7 }, (_, d) => d);
@@ -171,6 +172,7 @@ function PluginWindows({
 }) {
   const t = useTranslations('storage');
   const plugins = useQuery(storageQueries.plugins());
+  if (plugins.isError) return <PluginsLoadFailed />;
   const withHistory = (plugins.data ?? []).filter((p) => p.history.length > 0);
   if (withHistory.length === 0) return null;
   const keep = (id: string, days: number | null) => {

@@ -25,9 +25,15 @@ export const Route = createFileRoute(
   validateSearch: (search: Record<string, unknown>) => ({
     tab: searchOneOf(search.tab, TABS),
   }),
-  loader: ({ context: { queryClient } }) => {
+  loaderDeps: ({ search }) => ({ tab: search.tab }),
+  loader: ({ context: { queryClient }, params, deps }) => {
     void queryClient.query(pluginQueries.list()).catch(noop);
     void queryClient.query(projectsToPick).catch(noop);
+    if (deps.tab === 'settings') {
+      void queryClient
+        .query(pluginQueries.settings(params.pluginId))
+        .catch(noop);
+    }
   },
   pendingComponent: PluginLoading,
   component: PluginSettingsPage,
@@ -52,6 +58,8 @@ function PluginSettingsPage() {
       <title>{plugin.name}</title>
       <PluginDetail
         plugin={plugin}
+        // Only the picker's first 100 projects are listed; paging or searching
+        // them is a separate change.
         projects={projects?.items ?? []}
         canManage={permissions.isOwner}
         tab={tab ?? 'about'}

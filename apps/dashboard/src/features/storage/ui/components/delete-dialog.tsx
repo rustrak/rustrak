@@ -37,6 +37,7 @@ import {
 import { ApiError } from '@/shared/api/query';
 import { formatBytes } from '@/shared/lib/utils';
 import { ImpactLine } from './impact-line';
+import { PluginsLoadFailed } from './storage-plugins';
 
 const OLDER_THAN = [1, 7, 14, 30, 90, 180, 365] as const;
 const ALL = 'all';
@@ -90,15 +91,20 @@ export function DeleteDialog({
  * it is offered only across all of them.
  */
 function usePluginChoice(project: string) {
-  const withHistory = (useQuery(storageQueries.plugins()).data ?? []).filter(
-    (p) => p.history.length > 0,
-  );
+  const read = useQuery(storageQueries.plugins());
+  const withHistory = (read.data ?? []).filter((p) => p.history.length > 0);
   const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(new Set());
   const plugins =
     project === ALL
       ? withHistory.map((p) => p.id).filter((id) => !unchecked.has(id))
       : [];
-  return { withHistory, unchecked, setUnchecked, plugins };
+  return {
+    withHistory,
+    unchecked,
+    setUnchecked,
+    plugins,
+    failed: read.isError,
+  };
 }
 
 /** One box per plugin whose history can go, all ticked to start with. */
@@ -153,7 +159,7 @@ function Editor({
   const [sourceMaps, setSourceMaps] = useState(true);
   const [days, setDays] = useState(90);
   const [project, setProject] = useState(ALL);
-  const { withHistory, unchecked, setUnchecked, plugins } =
+  const { withHistory, unchecked, setUnchecked, plugins, failed } =
     usePluginChoice(project);
 
   const options = {
@@ -218,6 +224,7 @@ function Editor({
             hint={t('delete.sourceMapsHint')}
             disabled={isPending}
           />
+          {project === ALL && failed ? <PluginsLoadFailed /> : null}
           {project === ALL ? (
             <PluginChoices
               plugins={withHistory}

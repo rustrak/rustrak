@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildManifest, pluginId } from '../src/manifest.ts';
+import { buildManifest, checkIcon, pluginId } from '../src/manifest.ts';
 
 const pkg = {
   name: 'rustrak-plugin-hello',
@@ -125,5 +125,13 @@ describe('buildManifest', () => {
         },
       }),
     ).toThrow(/unicorn/);
+  });
+});
+
+describe('checkIcon', () => {
+  it('refuses a name only the prototype has', () => {
+    expect(() => checkIcon('constructor', 'sidebar')).toThrow(
+      'constructor is not an icon',
+    );
   });
 });

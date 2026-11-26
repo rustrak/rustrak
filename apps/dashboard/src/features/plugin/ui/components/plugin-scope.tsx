@@ -1,12 +1,16 @@
+import type { Action } from '@rustrak/client';
 import {
   type HostComponents,
   type Messages,
   PluginContext,
   type TrailCrumb,
 } from '@rustrak/plugin/ui';
+import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useMemo } from 'react';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
+import { pluginQueries } from '../../api/queries';
+import { permissionScope } from '../../model/plugins';
 
 /** What a plugin's page or widget reads from `@rustrak/plugin/ui`. */
 export function PluginScope({
@@ -31,13 +35,17 @@ export function PluginScope({
 }) {
   const { push } = useRouter();
   const { canPlugin } = usePermissions();
+  const plugin = useQuery(pluginQueries.list()).data?.find(
+    (p) => p.id === pluginId,
+  );
   const value = useMemo(
     () => ({
       pluginId,
       projectId,
       messages,
       navigate: push,
-      can: canPlugin,
+      can: (key: string, action: Action, at?: number) =>
+        canPlugin(key, action, at, plugin && permissionScope(plugin, key)),
       search,
       setSearch,
       setTrail,
@@ -49,6 +57,7 @@ export function PluginScope({
       messages,
       push,
       canPlugin,
+      plugin,
       search,
       setSearch,
       setTrail,
