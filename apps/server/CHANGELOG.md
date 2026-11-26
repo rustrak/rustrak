@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.34.0
+
+### Minor Changes
+
+- [`3ae1d4b`](https://github.com/rustrak/rustrak/commit/3ae1d4b2fa27a9cd8a3edd8d3eb5dc0559a43b08) Thanks [@AbianS](https://github.com/AbianS)! - Plugins (beta). Rustrak installs and runs plugins compiled to WebAssembly components, each sandboxed per request with its own SQLite file, settings, permissions and pages in the dashboard, installed from a signed registry or a `.rtp` package. The plugin SDK ships with each release: `@rustrak/plugin` (the `rustrak-plugin` CLI and the UI framework) on npm and the `rustrak-plugin` crate on crates.io. `@rustrak/client` gains the plugin and plugin storage endpoints.
+
 ## 0.33.0
 
 ### Minor Changes

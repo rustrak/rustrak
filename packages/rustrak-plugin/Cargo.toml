@@ -1,13 +1,13 @@
 [package]
 name = "rustrak-plugin"
-version = "0.33.0"
+version = "0.34.0"
 edition = "2024"
 description = "The framework for writing Rustrak plugins: routes, permissions and the plugin's own database."
 license = "MIT"
 repository = "https://github.com/rustrak/rustrak"
 
 [dependencies]
-rustrak-plugin-macros = { path = "macros", version = "0.33.0" }
+rustrak-plugin-macros = { path = "macros", version = "0.34.0" }
 wit-bindgen = "0.63.0"
 inventory = "0.3.25"
 serde = { version = "1.0.229", features = ["derive"] }

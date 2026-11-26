@@ -1,5 +1,13 @@
 # docs
 
+## 0.19.1
+
+### Patch Changes
+
+- [`3ae1d4b`](https://github.com/rustrak/rustrak/commit/3ae1d4b2fa27a9cd8a3edd8d3eb5dc0559a43b08) Thanks [@AbianS](https://github.com/AbianS)! - The client SDK reference lists the plugin methods and `storage.getPlugins()`.
+- Updated dependencies []:
+  - @rustrak/ui@0.34.0
+
 ## 0.19.0
 
 ### Minor Changes

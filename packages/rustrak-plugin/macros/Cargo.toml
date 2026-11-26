@@ -1,6 +1,6 @@
 [package]
 name = "rustrak-plugin-macros"
-version = "0.33.0"
+version = "0.34.0"
 edition = "2024"
 description = "The attribute macros of rustrak-plugin. Use them through that crate."
 license = "MIT"
