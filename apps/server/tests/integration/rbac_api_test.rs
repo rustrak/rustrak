@@ -69,6 +69,7 @@ async fn role(pool: &DbPool, name: &str, perms: &[(Resource, Action)]) -> i32 {
             .iter()
             .map(|&(resource, action)| Permission { resource, action })
             .collect(),
+        vec![],
     )
     .await
     .unwrap()

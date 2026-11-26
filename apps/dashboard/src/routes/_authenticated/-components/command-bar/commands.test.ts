@@ -19,6 +19,7 @@ const owner = permissionsFrom({
   instance: [],
   all_projects: [],
   projects: [],
+  plugins: { everywhere: [], projects: [] },
 });
 
 const project = (

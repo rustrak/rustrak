@@ -1510,6 +1510,7 @@ async fn test_execute_cleanup_in_small_batches_removes_everything_and_keeps_coun
             logs: 3,
             issues_removed: 2,
             source_maps: 0,
+            plugin_rows: 0,
         }
     );
     assert!(progress.len() > 3, "progress is reported batch by batch");
@@ -1599,12 +1600,12 @@ async fn test_cleanup_job_runs_in_the_background_and_refuses_a_second_run() {
     assert_eq!(job.status().state, CleanupState::Idle);
 
     let started = job
-        .start(db.pool.clone(), 30, None, CleanupFilter::all())
+        .start(db.pool.clone(), 30, None, CleanupFilter::all(), &[])
         .unwrap();
     assert_eq!(started.state, CleanupState::Running);
     assert!(started.started_at.is_some());
 
-    let second = job.start(db.pool.clone(), 30, None, CleanupFilter::all());
+    let second = job.start(db.pool.clone(), 30, None, CleanupFilter::all(), &[]);
     assert!(
         matches!(second, Err(AppError::Conflict(_))),
         "a second run is refused while the first is running"
@@ -1619,7 +1620,7 @@ async fn test_cleanup_job_runs_in_the_background_and_refuses_a_second_run() {
     assert!(done.error.is_none());
 
     // Finished: a new run may start.
-    job.start(db.pool.clone(), 30, None, CleanupFilter::all())
+    job.start(db.pool.clone(), 30, None, CleanupFilter::all(), &[])
         .unwrap();
     assert_eq!(wait_for_job(&job).await.state, CleanupState::Completed);
 }
@@ -1629,7 +1630,7 @@ async fn test_cleanup_job_rejects_a_bad_window_without_starting() {
     let db = TestDb::new().await;
     let job = CleanupJob::default();
 
-    let result = job.start(db.pool.clone(), 0, None, CleanupFilter::all());
+    let result = job.start(db.pool.clone(), 0, None, CleanupFilter::all(), &[]);
 
     assert!(matches!(result, Err(AppError::Validation(_))));
     assert_eq!(job.status().state, CleanupState::Idle, "nothing started");

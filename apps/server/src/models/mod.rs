@@ -162,7 +162,7 @@ pub use release::{
     OrgReleaseResponse, ProjectRef, RefInput, Release, ReleaseProject, ReleaseResponse,
     ReleaseSummary, UpdateOrgRelease, UpdateRelease,
 };
-pub use role::{Permission, PersonalAccess, Role, RoleAssignment};
+pub use role::{grants_of, Permission, PersonalAccess, PluginGrant, Role, RoleAssignment};
 pub use span_v2::{parse_span_v2_container, SpanV2Entry};
 pub use stats::{EventTimeseriesPoint, MetricDelta, ProjectStatsSummary};
 pub use storage::{

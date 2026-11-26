@@ -37,7 +37,7 @@ tokio = { version = "1.54.1", features = ["full"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
 # rustrak.toml, the declarative bootstrap file (RUSTRAK_CONFIG)
-toml = { version = "1.2.1", default-features = false, features = ["std", "serde", "parse"] }
+toml = { version = "1.2.1", default-features = false, features = ["std", "serde", "parse", "display"] }
 
 # Logging
 env_logger = "0.11.11"
@@ -90,6 +90,19 @@ bytes = "1.12.2"
 
 # Hashing (for grouping key hash)
 sha2 = "0.11.1"
+
+# Plugins: the manifest's version ranges.
+semver = { version = "1.0.28", features = ["serde"] }
+# Each plugin's own SQLite file. rusqlite 0.39 links the same libsqlite3-sys
+# as sqlx (0.37), so it is one SQLite in the binary, and it exposes the
+# authorizer, progress handler and limits a plugin's SQL is fenced with.
+rusqlite = { version = "0.39", features = ["bundled", "hooks", "limits"] }
+# Plugins run as WebAssembly components. 48 is a wasmtime LTS line (24 months
+# of security fixes). Only what the host uses: the default features add about
+# 3.5 MB to a stripped binary.
+wasmtime = { version = "48.0.10", default-features = false, features = ["std", "runtime", "cranelift", "component-model", "pooling-allocator"] }
+wasmparser = "0.243.0"
+wasmtime-wasi = { version = "48.0.10", default-features = false, features = ["p2"] }
 
 # formatting edge cases match.
 dynfmt = { version = "0.2", features = ["python", "curly"] }
@@ -165,6 +178,7 @@ utoipa-scalar = { version = "0.4.0", features = ["actix-web"], optional = true }
 croner = "4.0.3"
 # Sentry's release parser, the one Relay and Sentry compare versions with.
 sentry-release-parser = { version = "1.4.0", default-features = false }
+minisign-verify = "0.3.0"
 
 [target.'cfg(unix)'.dependencies]
 # statvfs: free disk before a SQLite compaction. Already built for `zip`.
@@ -205,6 +219,7 @@ pretty_assertions = "1.4.1"
 
 # Validates real responses against openapi.json (openapi_contract_test)
 jsonschema = "0.61.2"
+minisign = "0.10.0"
 
 # tempfile moved to [dependencies] (needed at runtime for assembly)
 

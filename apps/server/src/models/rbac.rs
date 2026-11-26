@@ -12,11 +12,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 
 /// Whether a resource belongs to the workspace or to one project.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Scope {
     /// Instance-wide settings and administration.
+    #[default]
     Instance,
     /// Something that belongs to one project.
     Project,
@@ -135,11 +136,39 @@ fn catalog_pairs() -> impl Iterator<Item = (Resource, Action)> {
         .flat_map(|r| r.actions().iter().map(move |a| (*r, *a)))
 }
 
+/// A plugin's id, or one of its permissions' resources: 2 to 32 lowercase
+/// letters, digits or dashes, starting with a letter.
+pub fn is_slug(s: &str) -> bool {
+    let mut chars = s.chars();
+    (2..=32).contains(&s.len())
+        && chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// A plugin's permission key, `<plugin>:<resource>`, as roles store it.
+pub fn plugin_key(plugin: &str, resource: &str) -> String {
+    format!("{plugin}:{resource}")
+}
+
+pub fn is_plugin_key(key: &str) -> bool {
+    key.split_once(':')
+        .is_some_and(|(p, r)| is_slug(p) && is_slug(r))
+}
+
+/// Plugins' `(key, action)` grants.
+pub type PluginPairs = Vec<(String, Action)>;
+
 /// The grants of one role (or one token).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Grants {
     all: bool,
     pairs: BTreeSet<(Resource, Action)>,
+    /// Plugins' permissions. Their scope is the plugin's manifest's, so the
+    /// check names it: see `Access::can_plugin`.
+    plugins: BTreeSet<(String, Action)>,
+    /// Those of `plugins` whose manifest scopes them to a project: like
+    /// Rustrak's project permissions, holding one shows the project.
+    project_plugins: BTreeSet<(String, Action)>,
 }
 
 impl Grants {
@@ -147,16 +176,35 @@ impl Grants {
     pub fn all() -> Self {
         Grants {
             all: true,
-            pairs: BTreeSet::new(),
+            ..Grants::default()
         }
     }
 
     /// These pairs, minus any action the resource does not accept.
     pub fn of(pairs: impl IntoIterator<Item = (Resource, Action)>) -> Self {
         Grants {
-            all: false,
             pairs: pairs.into_iter().filter(|(r, a)| r.accepts(*a)).collect(),
+            ..Grants::default()
         }
+    }
+
+    /// These grants and plugins' permissions.
+    pub fn with_plugins(mut self, pairs: impl IntoIterator<Item = (String, Action)>) -> Self {
+        self.plugins.extend(pairs);
+        self
+    }
+
+    pub fn plugin_pairs(&self) -> Vec<(String, Action)> {
+        self.plugins.iter().cloned().collect()
+    }
+
+    /// As `allows`: writing implies reading.
+    fn allows_plugin(&self, key: &str, action: Action) -> bool {
+        self.all
+            || self
+                .plugins
+                .iter()
+                .any(|(k, a)| k == key && (*a == action || action == Action::Read))
     }
 
     pub fn pairs(&self) -> Vec<(Resource, Action)> {
@@ -175,18 +223,42 @@ impl Grants {
     }
 
     fn any_project_grant(&self) -> bool {
-        self.all || self.pairs.iter().any(|(r, _)| r.scope() == Scope::Project)
+        self.all
+            || self.pairs.iter().any(|(r, _)| r.scope() == Scope::Project)
+            || !self.project_plugins.is_empty()
     }
 
     /// Whether both hold some project permission in common.
     fn shares_project_grant(&self, other: &Grants) -> bool {
         catalog_pairs()
             .any(|(r, a)| r.scope() == Scope::Project && self.allows(r, a) && other.allows(r, a))
+            || self
+                .project_plugins
+                .iter()
+                .any(|(k, a)| other.allows_plugin(k, *a))
+            // Either side may be the one that names it: an owner's grants
+            // name none, and writing one implies reading it.
+            || other
+                .project_plugins
+                .iter()
+                .any(|(k, a)| self.allows_plugin(k, *a))
+    }
+
+    fn mark_project_plugins(&mut self, scope_of: &impl Fn(&str, Action) -> Option<Scope>) {
+        self.project_plugins = self
+            .plugins
+            .iter()
+            .filter(|(k, a)| scope_of(k, *a) == Some(Scope::Project))
+            .cloned()
+            .collect();
     }
 
     fn add(&mut self, other: &Grants) {
         self.all |= other.all;
         self.pairs.extend(other.pairs.iter().copied());
+        self.plugins.extend(other.plugins.iter().cloned());
+        self.project_plugins
+            .extend(other.project_plugins.iter().cloned());
     }
 }
 
@@ -264,6 +336,29 @@ impl Access {
             }
         }
         access
+    }
+
+    /// The same access, knowing which plugins' permissions their manifests
+    /// scope to a project (`scope_of`), so those show it.
+    pub fn with_plugin_scopes(mut self, scope_of: impl Fn(&str, Action) -> Option<Scope>) -> Self {
+        // An instance one holds wherever a role giving it is held, as for
+        // Rustrak's own workspace permissions.
+        let lifted: Vec<_> = self
+            .projects
+            .values()
+            .flat_map(|g| g.plugins.iter())
+            .filter(|(k, a)| scope_of(k, *a) == Some(Scope::Instance))
+            .cloned()
+            .collect();
+        self.instance.plugins.extend(lifted);
+        self.instance.mark_project_plugins(&scope_of);
+        for g in self.projects.values_mut() {
+            g.mark_project_plugins(&scope_of);
+        }
+        if let Some(cap) = &mut self.cap {
+            cap.grants.mark_project_plugins(&scope_of);
+        }
+        self
     }
 
     /// The same access, limited to what `scope` allows: a token never does
@@ -384,25 +479,109 @@ impl Access {
         }
     }
 
+    /// Whether this token's projects include `project_id`; with none given,
+    /// only a token on every project reaches it.
+    fn cap_reaches(&self, project_id: Option<i32>) -> bool {
+        self.cap.as_ref().is_none_or(|c| {
+            c.projects
+                .as_ref()
+                .is_none_or(|ids| project_id.is_some_and(|id| ids.contains(&id)))
+        })
+    }
+
+    /// Whether this token's own scope lets a plugin's permission through.
+    fn cap_allows_plugin(&self, key: &str, action: Action) -> bool {
+        self.cap
+            .as_ref()
+            .is_none_or(|c| c.grants.allows_plugin(key, action))
+    }
+
+    /// Whether a plugin's permission holds: `scope` is its manifest's. An
+    /// instance one holds wherever a role giving it is held, as for Rustrak's.
+    pub fn can_plugin(
+        &self,
+        key: &str,
+        scope: Scope,
+        action: Action,
+        project_id: Option<i32>,
+    ) -> bool {
+        let on = |id: i32| {
+            self.projects
+                .get(&id)
+                .is_some_and(|g| g.allows_plugin(key, action))
+        };
+        let held = self.instance.allows_plugin(key, action)
+            || match scope {
+                Scope::Instance => self.projects.keys().any(|&id| on(id)),
+                Scope::Project => project_id.is_some_and(on),
+            };
+        let capped = self.cap_allows_plugin(key, action)
+            && (scope == Scope::Instance || self.cap_reaches(project_id));
+        held && (scope == Scope::Instance || project_id.is_some()) && capped
+    }
+
+    /// The plugins' permissions held everywhere, and on each project.
+    pub fn plugin_pairs(&self) -> (PluginPairs, Vec<(i32, PluginPairs)>) {
+        let kept = |g: &Grants| -> Vec<(String, Action)> {
+            g.plugins
+                .iter()
+                .filter(|(k, a)| self.cap_allows_plugin(k, *a))
+                .cloned()
+                .collect()
+        };
+        let mut projects: Vec<_> = self
+            .projects
+            .iter()
+            .filter(|(id, _)| self.cap_reaches(Some(**id)))
+            .map(|(id, g)| (*id, kept(g)))
+            .filter(|(_, pairs)| !pairs.is_empty())
+            .collect();
+        projects.sort_by_key(|(id, _)| *id);
+        (kept(&self.instance), projects)
+    }
+
+    /// Whether a plugin's permission holds on the workspace or on at least
+    /// one project, as `holds_somewhere` for Rustrak's.
+    pub fn holds_plugin_somewhere(&self, key: &str, action: Action) -> bool {
+        self.cap_allows_plugin(key, action)
+            && (self.instance.allows_plugin(key, action)
+                || self
+                    .projects
+                    .iter()
+                    .any(|(&id, g)| self.cap_reaches(Some(id)) && g.allows_plugin(key, action)))
+    }
+
     /// Whether this user already holds every grant in `grants` where it would
     /// apply, so handing it out (or writing it into a role) is no escalation.
     pub fn covers(&self, grants: &Grants, project_id: Option<i32>) -> bool {
         if grants.all {
             return self.is_owner();
         }
-        grants
-            .pairs
-            .iter()
-            .all(|&(r, a)| match (r.scope(), project_id) {
-                (Scope::Instance, _) => self.can(r, a, None),
-                (Scope::Project, Some(p)) => self.can(r, a, Some(p)),
-                // On every project, a project grant reaches every project: only an
-                // instance-wide holder covers it.
-                (Scope::Project, None) => {
-                    self.instance.allows(r, a)
-                        && self.cap.as_ref().is_none_or(|c| c.allows_everywhere(r, a))
-                }
-            })
+        // A plugin's permission: held everywhere, or on the project given.
+        let plugins = grants.plugins.iter().all(|(k, a)| {
+            self.cap_allows_plugin(k, *a)
+                && self.cap_reaches(project_id)
+                && (self.instance.allows_plugin(k, *a)
+                    || project_id.is_some_and(|p| {
+                        self.projects
+                            .get(&p)
+                            .is_some_and(|g| g.allows_plugin(k, *a))
+                    }))
+        });
+        plugins
+            && grants
+                .pairs
+                .iter()
+                .all(|&(r, a)| match (r.scope(), project_id) {
+                    (Scope::Instance, _) => self.can(r, a, None),
+                    (Scope::Project, Some(p)) => self.can(r, a, Some(p)),
+                    // On every project, a project grant reaches every project: only an
+                    // instance-wide holder covers it.
+                    (Scope::Project, None) => {
+                        self.instance.allows(r, a)
+                            && self.cap.as_ref().is_none_or(|c| c.allows_everywhere(r, a))
+                    }
+                })
     }
 
     /// What holds everywhere: workspace permissions, and project permissions

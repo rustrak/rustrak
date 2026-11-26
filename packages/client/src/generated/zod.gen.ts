@@ -343,6 +343,7 @@ export const zCleanupCounts = z.object({
     events: z.int(),
     issues_removed: z.int(),
     logs: z.int(),
+    plugin_rows: z.int(),
     source_maps: z.int(),
     spans: z.int(),
     transactions: z.int()
@@ -371,6 +372,7 @@ export const zCleanupRequest = z.object({
     include_logs: z.optional(z.boolean()),
     include_transactions: z.optional(z.boolean()),
     older_than_days: z.int().check(z.gte(1)),
+    plugins: z.optional(z.array(z.string())),
     project_id: z.nullish(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))
 });
 
@@ -455,6 +457,11 @@ export const zCleanupStatus = z.object({
     removed: zCleanupCounts,
     started_at: z.nullable(z.iso.datetime({ offset: true })),
     state: zCleanupState
+});
+
+export const zConfigurePlugin = z.object({
+    allProjects: z.boolean(),
+    projects: z.optional(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))))
 });
 
 export const zConfirmSsoLinkRequest = z.object({
@@ -766,6 +773,15 @@ export const zGrouping = z.object({
     id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     issue_id: z.uuid(),
     project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+/**
+ * One history table of a plugin and how much of it is past the window.
+ */
+export const zHistoryTable = z.object({
+    expired: z.int(),
+    rows: z.int(),
+    table: z.string()
 });
 
 export const zIntervalUnit = z.enum([
@@ -1103,6 +1119,43 @@ export const zPercentileValue = z.object({
 });
 
 /**
+ * One grant of a plugin's permission: `hello:hits`, as its manifest
+ * declares it. Kept apart from `Permission`, whose resource is Rustrak's own.
+ */
+export const zPluginGrant = z.object({
+    action: zAction,
+    resource: z.string()
+});
+
+/**
+ * A `.rtp` file's bytes. Opaque in the spec, like an attachment: the client
+ * validates bodies with zod, which has no type for a binary one.
+ */
+export const zPluginPackage = z.unknown();
+
+/**
+ * One plugin's settings at one level, for the form Rustrak draws.
+ */
+export const zPluginSettingsView = z.object({
+    missing: z.array(z.string()),
+    resolved: z.record(z.string(), z.unknown()),
+    secrets: z.record(z.string(), z.boolean()),
+    values: z.record(z.string(), z.unknown())
+});
+
+/**
+ * One plugin's data, in the Storage page.
+ */
+export const zPluginStorage = z.object({
+    bytes: z.int().check(z.gte(0)),
+    history: z.array(zHistoryTable),
+    id: z.string(),
+    name: z.string(),
+    quota_bytes: z.int().check(z.gte(0)),
+    retention_days: z.nullable(z.int().check(z.gte(0), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))
+});
+
+/**
  * Body of a template preview request.
  */
 export const zPreviewTemplateBody = z.object({
@@ -1165,6 +1218,19 @@ export const zProjectMember = z.object({
     email: z.string(),
     roles: z.array(zMemberRole),
     user_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zProjectPluginPermissions = z.object({
+    permissions: z.array(zPluginGrant),
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+/**
+ * Plugins' permissions the caller holds: everywhere, and per project.
+ */
+export const zMyPluginAccess = z.object({
+    everywhere: z.array(zPluginGrant),
+    projects: z.array(zProjectPluginPermissions)
 });
 
 /**
@@ -1366,6 +1432,29 @@ export const zRefInput = z.object({
 });
 
 /**
+ * One published plugin, as the catalog lists it.
+ */
+export const zRegistryPlugin = z.object({
+    author: z.nullable(z.string()),
+    description: z.nullable(z.string()),
+    icon: z.nullable(z.string()),
+    id: z.string(),
+    installed_version: z.nullable(z.string()),
+    logo: z.nullable(z.string()),
+    name: z.string(),
+    version: z.string()
+});
+
+/**
+ * The registry's plugins, or why there are none.
+ */
+export const zRegistryListing = z.object({
+    available: z.boolean(),
+    error: z.nullable(z.string()),
+    plugins: z.array(zRegistryPlugin)
+});
+
+/**
  * Per-release health row returned by the stats endpoint.
  */
 export const zReleaseHealthRow = z.object({
@@ -1507,6 +1596,7 @@ export const zAuthTokenCreatedResponse = z.object({
     expires_at: z.nullable(z.iso.datetime({ offset: true })),
     id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     permissions: z.nullable(z.array(zPermission)),
+    plugin_permissions: z.array(zPluginGrant),
     project_ids: z.nullable(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))),
     token: z.string()
 });
@@ -1521,6 +1611,7 @@ export const zAuthTokenResponse = z.object({
     id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     last_used_at: z.nullable(z.iso.datetime({ offset: true })),
     permissions: z.nullable(z.array(zPermission)),
+    plugin_permissions: z.array(zPluginGrant),
     project_ids: z.nullable(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))),
     token_prefix: z.string(),
     user_id: z.nullable(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))
@@ -1533,6 +1624,7 @@ export const zCreateAuthToken = z.object({
     description: z.nullish(z.string()),
     expires_at: z.nullish(z.iso.datetime({ offset: true })),
     permissions: z.nullish(z.array(zPermission)),
+    plugin_permissions: z.optional(z.array(zPluginGrant)),
     project_ids: z.nullish(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))))
 });
 
@@ -1541,6 +1633,7 @@ export const zCreateAuthToken = z.object({
  */
 export const zPersonalAccess = z.object({
     permissions: z.array(zPermission),
+    plugin_permissions: z.nullish(z.array(zPluginGrant)),
     project_ids: z.nullish(z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))))
 });
 
@@ -1556,6 +1649,7 @@ export const zMyAccess = z.object({
     all_projects: z.array(zPermission),
     instance: z.array(zPermission),
     is_owner: z.boolean(),
+    plugins: zMyPluginAccess,
     projects: z.array(zProjectPermissions)
 });
 
@@ -1594,6 +1688,7 @@ export const zRetentionSettings = z.object({
     frequency: z._default(zCleanupFrequency, 'daily'),
     hour: z._default(z.int().check(z.gte(0), z.lte(23)), 3),
     overrides: z._default(z.array(zProjectRetention), []),
+    plugins: z._default(z.record(z.string(), z.int().check(z.gte(0), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))), {}),
     weekday: z._default(z.int().check(z.gte(0), z.lte(6)), 0)
 });
 
@@ -1612,7 +1707,8 @@ export const zRole = z.object({
     description: z.string(),
     id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
     name: z.string(),
-    permissions: z.array(zPermission)
+    permissions: z.array(zPermission),
+    plugin_permissions: z.array(zPluginGrant)
 });
 
 /**
@@ -1632,7 +1728,8 @@ export const zRoleAssignment = z.object({
 export const zRoleInput = z.object({
     description: z.optional(z.string()),
     name: z.string(),
-    permissions: z.array(zPermission)
+    permissions: z.array(zPermission),
+    plugin_permissions: z.nullish(z.array(zPluginGrant))
 });
 
 export const zRoleRef = z.object({
@@ -1724,6 +1821,19 @@ export const zSchedulePreview = z.object({
  */
 export const zScope = z.enum(['instance', 'project']);
 
+/**
+ * One permission a plugin adds, in the catalog Roles is built from.
+ */
+export const zCatalogPluginPermission = z.object({
+    actions: z.array(zAction),
+    description: z.record(z.string(), z.string()),
+    key: z.string(),
+    label: z.record(z.string(), z.string()),
+    plugin: z.string(),
+    plugin_name: z.string(),
+    scope: zScope
+});
+
 export const zCatalogResource = z.object({
     actions: z.array(zAction),
     key: z.string(),
@@ -1732,7 +1842,14 @@ export const zCatalogResource = z.object({
 });
 
 export const zCatalog = z.object({
+    plugins: z.array(zCatalogPluginPermission),
     resources: z.array(zCatalogResource)
+});
+
+export const zPermissionSpec = z.object({
+    actions: z.array(zAction),
+    resource: z.string(),
+    scope: zScope
 });
 
 export const zSeenResponse = z.object({
@@ -1885,6 +2002,39 @@ export const zSetDefaultView = z.object({
 export const zSetProjectMember = z.object({
     role_ids: z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))),
     user_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
+});
+
+export const zSettingType = z.enum([
+    'text',
+    'url',
+    'secret',
+    'number',
+    'boolean',
+    'select'
+]);
+
+export const zSettingSpec = z.object({
+    default: z.optional(z.unknown()),
+    integer: z.nullish(z.boolean()),
+    key: z.string(),
+    max: z.nullish(z.number()),
+    min: z.nullish(z.number()),
+    options: z.nullish(z.array(z.string())),
+    required: z.optional(z.boolean()),
+    scope: z.optional(zScope),
+    type: zSettingType
+});
+
+/**
+ * Values for a plugin's settings: a value sets, `null` clears, a key left
+ * out stays as it is.
+ */
+export const zSettingsPatch = z.record(z.string(), z.unknown());
+
+export const zSidebar = z.object({
+    icon: z.nullish(z.string()),
+    label: z.string(),
+    rank: z.nullish(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })))
 });
 
 /**
@@ -2315,6 +2465,47 @@ export const zTransactionTimeseriesPoint = z.object({
     p95_ms: z.number()
 });
 
+export const zUiPage = z.object({
+    path: z.string(),
+    requires: z.nullish(z.string()),
+    scope: zScope,
+    sidebar: z.nullish(zSidebar)
+});
+
+export const zUiWidget = z.object({
+    zone: z.string()
+});
+
+export const zPluginUi = z.object({
+    entry: z.string(),
+    pages: z.array(zUiPage),
+    styles: z.nullable(z.string()),
+    widgets: z.array(zUiWidget)
+});
+
+/**
+ * What the dashboard needs to know about one installed plugin.
+ */
+export const zPluginSummary = z.object({
+    allProjects: z.boolean(),
+    author: z.nullable(z.string()),
+    database: z.boolean(),
+    description: z.nullable(z.string()),
+    icon: z.nullable(z.string()),
+    id: z.string(),
+    logo: z.nullable(z.string()),
+    messages: z.record(z.string(), z.unknown()),
+    name: z.string(),
+    permissions: z.array(zPermissionSpec),
+    projects: z.array(z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))),
+    readme: z.record(z.string(), z.string()),
+    repository: z.nullable(z.string()),
+    settings: z.array(zSettingSpec),
+    ui: z.nullable(zPluginUi),
+    verified: z.boolean(),
+    version: z.string()
+});
+
 /**
  * DTO for updating an alert integration
  */
@@ -2426,7 +2617,8 @@ export const zUpdateRelease = z.object({
  */
 export const zUserAccess = z.object({
     assignments: z.array(zRoleAssignment),
-    personal_permissions: z.array(zPermission)
+    personal_permissions: z.array(zPermission),
+    personal_plugin_permissions: z.array(zPluginGrant)
 });
 
 /**
@@ -3267,6 +3459,11 @@ export const zOauthRevokeGrantPath = z.object({
  * Disconnected
  */
 export const zOauthRevokeGrantResponse = z.void();
+
+/**
+ * Installed plugins
+ */
+export const zPluginsListResponse = z.array(zPluginSummary);
 
 export const zProjectsListQuery = z.object({
     page: z.optional(z.int().check(z.gte(1))),
@@ -4310,6 +4507,28 @@ export const zMonitorsListCheckinsResponse = z.object({
     total_pages: z.int()
 });
 
+export const zPluginsProjectSettingsPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
+    plugin: z.string()
+});
+
+/**
+ * Its settings in this project
+ */
+export const zPluginsProjectSettingsResponse = zPluginSettingsView;
+
+export const zPluginsSetProjectSettingsBody = zSettingsPatch;
+
+export const zPluginsSetProjectSettingsPath = z.object({
+    project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' })),
+    plugin: z.string()
+});
+
+/**
+ * Saved
+ */
+export const zPluginsSetProjectSettingsResponse = zPluginSettingsView;
+
 export const zReleasesListPath = z.object({
     project_id: z.int().check(z.minimum(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }), z.maximum(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }))
 });
@@ -4921,6 +5140,74 @@ export const zSettingsUpdateMcpBody = zMcpSettings;
 export const zSettingsUpdateMcpResponse = zMcpStatus;
 
 /**
+ * The plugin package, a .rtp file
+ */
+export const zPluginsInstallBody = zPluginPackage;
+
+/**
+ * Installed
+ */
+export const zPluginsInstallResponse = zPluginSummary;
+
+/**
+ * The published plugins this Rustrak runs, or why there are none
+ */
+export const zPluginsRegistryResponse = zRegistryListing;
+
+export const zPluginsInstallFromRegistryPath = z.object({
+    plugin: z.string()
+});
+
+/**
+ * Installed, verified
+ */
+export const zPluginsInstallFromRegistryResponse = zPluginSummary;
+
+export const zPluginsUninstallPath = z.object({
+    plugin: z.string()
+});
+
+export const zPluginsUninstallQuery = z.object({
+    purge: z.optional(z.boolean())
+});
+
+/**
+ * Uninstalled
+ */
+export const zPluginsUninstallResponse = z.void();
+
+export const zPluginsConfigureBody = zConfigurePlugin;
+
+export const zPluginsConfigurePath = z.object({
+    plugin: z.string()
+});
+
+/**
+ * Updated
+ */
+export const zPluginsConfigureResponse = zPluginSummary;
+
+export const zPluginsSettingsPath = z.object({
+    plugin: z.string()
+});
+
+/**
+ * Its settings for the whole instance
+ */
+export const zPluginsSettingsResponse = zPluginSettingsView;
+
+export const zPluginsSetSettingsBody = zSettingsPatch;
+
+export const zPluginsSetSettingsPath = z.object({
+    plugin: z.string()
+});
+
+/**
+ * Saved
+ */
+export const zPluginsSetSettingsResponse = zPluginSettingsView;
+
+/**
  * How the reader's sidebar lists the projects
  */
 export const zSidebarGetProjectsResponse = zSidebarProjects;
@@ -4965,6 +5252,11 @@ export const zStorageGetCompactionResponse = zCompaction;
  * Compaction started in the background; poll the cleanup status
  */
 export const zStorageCompactResponse = zCleanupStatus;
+
+/**
+ * Each installed plugin's file, quota and history against its retention
+ */
+export const zStorageGetPluginsResponse = z.array(zPluginStorage);
 
 /**
  * Per-project storage breakdown

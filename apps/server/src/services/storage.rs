@@ -4,6 +4,7 @@
 //! globally and per project — so an admin can see what's accumulating and reclaim
 //! space. Backs the Settings → Storage page.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use chrono::Utc;
@@ -144,6 +145,9 @@ pub struct CleanupJob {
     /// The table a Postgres compaction is rewriting (or queued to lock):
     /// ingest turns away what it would write into it.
     rewriting: Arc<Mutex<Option<String>>>,
+    /// Plugins' history goes with Rustrak's, in the same cleanup. `None`
+    /// cleans Rustrak's data alone.
+    plugins: Option<Arc<crate::plugins::host::PluginHost>>,
 }
 
 /// A snapshot and when its read began.
@@ -198,11 +202,14 @@ enum CleanupPlan {
         older_than_days: i64,
         project_id: Option<i32>,
         filter: CleanupFilter,
+        /// Plugins whose history goes too, by id, with the window in days.
+        plugins: Option<(Arc<crate::plugins::host::PluginHost>, BTreeMap<String, u32>)>,
     },
-    /// Also deletes the source maps no upload uses.
+    /// Also deletes the source maps no upload uses, and plugins' history.
     Retention {
         settings: RetentionSettings,
         store: Arc<dyn SourceMapStore>,
+        plugins: Option<Arc<crate::plugins::host::PluginHost>>,
     },
     /// Rewrites a SQLite file created before incremental mode, or the
     /// Postgres tables retention deletes from. Deletes nothing, but runs as
@@ -211,6 +218,14 @@ enum CleanupPlan {
 }
 
 impl CleanupJob {
+    /// A cleanup that clears the installed plugins' history too.
+    pub fn new(plugins: Arc<crate::plugins::host::PluginHost>) -> Self {
+        Self {
+            plugins: Some(plugins),
+            ..Self::default()
+        }
+    }
+
     pub fn status(&self) -> CleanupStatus {
         lock(&self.status).clone()
     }
@@ -352,14 +367,23 @@ impl CleanupJob {
     /// Validates the window and starts the cleanup in the background,
     /// returning the `running` status. Refuses with `Conflict` while another
     /// cleanup is running.
+    /// With the history of `plugins` older than the same window, across
+    /// every project only.
     pub fn start(
         &self,
         pool: DbPool,
         older_than_days: i64,
         project_id: Option<i32>,
         filter: CleanupFilter,
+        plugins: &[String],
     ) -> AppResult<CleanupStatus> {
         validate_retention(older_than_days)?;
+        let windows = crate::models::storage::plugin_windows(older_than_days, project_id, plugins);
+        let plugins = self
+            .plugins
+            .clone()
+            .filter(|_| !windows.is_empty())
+            .map(|host| (host, windows));
         let started = self.begin()?;
         tokio::spawn(Self::execute(
             Arc::clone(&self.status),
@@ -368,6 +392,7 @@ impl CleanupJob {
                 older_than_days,
                 project_id,
                 filter,
+                plugins,
             },
         ));
         Ok(started)
@@ -387,7 +412,11 @@ impl CleanupJob {
         Self::execute(
             Arc::clone(&self.status),
             pool,
-            CleanupPlan::Retention { settings, store },
+            CleanupPlan::Retention {
+                settings,
+                store,
+                plugins: self.plugins.clone(),
+            },
         )
         .await
     }
@@ -409,7 +438,11 @@ impl CleanupJob {
         let handle = tokio::spawn(Self::execute(
             Arc::clone(&self.status),
             pool,
-            CleanupPlan::Retention { settings, store },
+            CleanupPlan::Retention {
+                settings,
+                store,
+                plugins: self.plugins.clone(),
+            },
         ));
         Ok((started, handle))
     }
@@ -484,8 +517,9 @@ impl CleanupJob {
                     older_than_days,
                     project_id,
                     filter,
+                    plugins,
                 } => {
-                    StorageService::execute_cleanup_in_batches(
+                    let mut counts = StorageService::execute_cleanup_in_batches(
                         &pool,
                         older_than_days,
                         project_id,
@@ -493,9 +527,18 @@ impl CleanupJob {
                         CLEANUP_BATCH_SIZE,
                         on_batch,
                     )
-                    .await
+                    .await?;
+                    if let Some((host, windows)) = plugins {
+                        counts.plugin_rows = host.forget_expired(&windows).await?;
+                        lock(&progress).removed = counts.clone();
+                    }
+                    Ok(counts)
                 }
-                CleanupPlan::Retention { settings, store } => {
+                CleanupPlan::Retention {
+                    settings,
+                    store,
+                    plugins,
+                } => {
                     let mut counts = StorageService::apply_retention_in_batches(
                         &pool,
                         &settings,
@@ -508,6 +551,9 @@ impl CleanupJob {
                         .files_removed;
                     // What the spans it just removed were the last to use.
                     StorageService::gc_span_descriptions(&pool).await?;
+                    if let Some(plugins) = plugins {
+                        counts.plugin_rows = plugins.forget_expired(&settings.plugins).await?;
+                    }
                     lock(&progress).removed = counts.clone();
                     Ok(counts)
                 }
@@ -1225,6 +1271,7 @@ impl StorageService {
                 0
             },
             source_maps: 0,
+            plugin_rows: 0,
         })
     }
 

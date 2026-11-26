@@ -197,6 +197,7 @@ async fn creating_a_token_needs_the_permission() {
         u.id,
         &[],
         Some(&rustrak::models::PersonalAccess {
+            plugin_permissions: None,
             permissions: vec![rustrak::models::Permission {
                 resource: Resource::ApiTokens,
                 action: Action::Create,

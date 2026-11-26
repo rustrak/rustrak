@@ -65,6 +65,8 @@ server {
     location /mcp/       { proxy_pass $rustrak_api; }
     location = /.well-known  { proxy_pass $rustrak_api; }
     location /.well-known/   { proxy_pass $rustrak_api; }
+    location = /public   { proxy_pass $rustrak_api; }
+    location /public/    { proxy_pass $rustrak_api; }
 
     # The server's Prometheus scrape has no authentication, so a public
     # dashboard must not become a way around the network that protects it.

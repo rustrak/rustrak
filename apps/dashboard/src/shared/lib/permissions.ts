@@ -26,6 +26,7 @@ export const NO_PERMISSIONS: MyAccess = {
   instance: [],
   all_projects: [],
   projects: [],
+  plugins: { everywhere: [], projects: [] },
 };
 
 export function permissionsFrom(me: MyAccess): Permissions {

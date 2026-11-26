@@ -31,6 +31,7 @@ async fn user_with(pool: &DbPool, perms: &[(Resource, Action)], project: Option<
             .iter()
             .map(|&(resource, action)| Permission { resource, action })
             .collect(),
+        vec![],
     )
     .await
     .unwrap();

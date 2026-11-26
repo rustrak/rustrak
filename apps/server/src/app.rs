@@ -14,6 +14,7 @@ use crate::config::Config;
 use crate::db::DbPool;
 use crate::digest::processors::Processors;
 use crate::digest::session_aggregator::SessionAggregator;
+use crate::plugins::host::PluginHost;
 use crate::routes::dashboard::Dashboard;
 use crate::routes::metrics::MetricsEndpoint;
 use crate::scheduler::engine::Scheduler;
@@ -52,6 +53,10 @@ pub struct AppState {
     pub telemetry_status: web::Data<TelemetryStatus>,
     pub metrics: web::Data<MetricsEndpoint>,
     pub client_metadata: web::Data<Arc<dyn ClientMetadataSource>>,
+    /// Installed plugins. Empty until [`PluginHost::boot`] or an install.
+    pub plugins: web::Data<PluginHost>,
+    /// The signed index of published plugins.
+    pub registry: web::Data<crate::plugins::registry::Registry>,
     /// The compiled dashboard, if one was shipped alongside the binary.
     /// Detected once: `HttpServer::new` builds the app once per worker, and a
     /// directory appearing halfway through would split the server.
@@ -159,6 +164,13 @@ impl AppState {
             Counters::global(),
         );
 
+        let plugins = web::Data::new(PluginHost::new(config.plugins_dir.clone())?);
+        let cleanup_job = web::Data::new(CleanupJob::new(plugins.clone().into_inner()));
+        let registry = crate::plugins::registry::Registry::new(
+            config.plugin_registry.clone(),
+            config.plugin_registry_keys.clone(),
+        );
+
         #[cfg(feature = "openapi")]
         let openapi = <crate::openapi::ApiDoc as utoipa::OpenApi>::openapi();
 
@@ -175,13 +187,15 @@ impl AppState {
             assembly_queue: web::Data::new(AssemblyQueue::default()),
             session_aggregator,
             processors: web::Data::new(processors),
-            cleanup_job: web::Data::new(CleanupJob::default()),
+            cleanup_job,
             project_deletions: web::Data::new(ProjectDeletions::default()),
             login_limiter: web::Data::new(LoginLimiter::default()),
             telemetry_reporter: web::Data::new(telemetry_reporter),
             telemetry_status: web::Data::new(telemetry_status),
             metrics: web::Data::new(metrics),
             client_metadata: web::Data::new(Arc::new(HttpClientMetadata)),
+            plugins,
+            registry: web::Data::new(registry),
             dashboard,
         })
     }
@@ -453,6 +467,8 @@ pub fn app(
         .app_data(state.project_deletions.clone())
         .app_data(state.login_limiter.clone())
         .app_data(state.client_metadata.clone())
+        .app_data(state.plugins.clone())
+        .app_data(state.registry.clone())
         // `Logger::default()`'s format, plus the incident id a 5xx echoes
         // in `INCIDENT_ID_HEADER`. `error_response` never sees the request
         // and so cannot name the route in its own log line; this is the

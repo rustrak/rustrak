@@ -19,6 +19,8 @@ pub fn cors() -> Cors {
             HeaderName::from_static("x-sentry-auth"),
             HeaderName::from_static("sentry-trace"),
             HeaderName::from_static("baggage"),
+            // A plugin's public routes take the project key here.
+            HeaderName::from_static("x-rustrak-key"),
         ])
         // A browser SDK can only read what is exposed, and these are what it
         // backs off on: the same three Relay exposes.

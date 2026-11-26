@@ -162,6 +162,14 @@ async fn serve(
         log::info!("Prometheus metrics enabled at /metrics");
     }
 
+    // A plugin that fails to load is logged and skipped; only the database
+    // being unreachable stops the boot here.
+    state
+        .plugins
+        .boot(&db_pool)
+        .await
+        .map_err(|e| std::io::Error::other(format!("Loading plugins: {e}")))?;
+
     state.spawn_workers();
 
     // On SIGTERM or SIGINT the digests drain first, while the HTTP workers

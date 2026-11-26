@@ -2,9 +2,9 @@ use sha2::{Digest, Sha256};
 
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
-use crate::models::rbac::{Action, Grants, Resource};
+use crate::models::rbac::{self, Action, Resource};
 use crate::models::token::generate_token;
-use crate::models::{AuthToken, CreateAuthToken, Permission};
+use crate::models::{grants_of, AuthToken, CreateAuthToken, Permission, PluginGrant};
 
 pub struct AuthTokenService;
 
@@ -54,6 +54,16 @@ impl AuthTokenService {
                     resource
                         .accepts(action)
                         .then_some(Permission { resource, action })
+                })
+                .collect();
+            t.plugin_permissions = perms
+                .iter()
+                .filter(|(id, r, _)| *id == t.id && rbac::is_plugin_key(r))
+                .filter_map(|(_, r, a)| {
+                    Some(PluginGrant {
+                        resource: r.clone(),
+                        action: Action::parse(a)?,
+                    })
                 })
                 .collect();
             t.project_ids = projects
@@ -135,19 +145,23 @@ impl AuthTokenService {
         .bind(input.project_ids.is_none())
         .fetch_one(&mut *tx)
         .await?;
-        let grants = Grants::of(
-            input
-                .permissions
-                .iter()
-                .flatten()
-                .map(|p| (p.resource, p.action)),
-        );
-        for (r, a) in grants.pairs() {
+        let plugins = if input.permissions.is_some() {
+            input.plugin_permissions.as_slice()
+        } else {
+            &[]
+        };
+        let grants = grants_of(input.permissions.as_deref().unwrap_or_default(), plugins);
+        let rows = grants
+            .pairs()
+            .into_iter()
+            .map(|(r, a)| (r.key().to_string(), a))
+            .chain(grants.plugin_pairs());
+        for (r, a) in rows {
             sqlx::query(
                 "INSERT INTO auth_token_permissions (token_id, resource, action) VALUES ($1, $2, $3)",
             )
             .bind(id)
-            .bind(r.key())
+            .bind(r)
             .bind(a.key())
             .execute(&mut *tx)
             .await?;

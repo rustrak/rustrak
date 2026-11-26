@@ -244,10 +244,6 @@ async fn token(db: &TestDb) -> String {
         .token
 }
 
-fn bearer(token: &str) -> (&'static str, String) {
-    ("Authorization", format!("Bearer {token}"))
-}
-
 async fn project(db: &TestDb) -> rustrak::models::Project {
     ProjectService::create(
         &db.pool,
@@ -334,7 +330,7 @@ async fn status_reports_no_app_until_one_is_connected() {
 
     let req = test::TestRequest::get()
         .uri("/api/github")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body["app"], Value::Null);
@@ -347,7 +343,7 @@ async fn status_reports_no_app_until_one_is_connected() {
     connect(&db, &github, project.id).await;
     let req = test::TestRequest::get()
         .uri("/api/github")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body["app"]["slug"], "rustrak-test");
@@ -371,7 +367,7 @@ async fn manifest_flow_creates_the_app() {
 
     let req = test::TestRequest::post()
         .uri("/api/github/manifest")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "organization": "acme" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -395,21 +391,21 @@ async fn manifest_flow_creates_the_app() {
     // spends the state: it is one-shot, kept server-side with the session.
     let req = test::TestRequest::get()
         .uri("/api/github/callback?code=abc&state=forged")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .cookie(cookie.clone())
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 400);
     let req = test::TestRequest::get()
         .uri(&format!("/api/github/callback?code=abc&state={state}"))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .cookie(cookie)
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 400);
 
     let req = test::TestRequest::post()
         .uri("/api/github/manifest")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "organization": "acme" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -427,7 +423,7 @@ async fn manifest_flow_creates_the_app() {
     // `GITHUB_API_URL` names (api.github.com when unset).
     let req = test::TestRequest::get()
         .uri(&format!("/api/github/callback?code=abc&state={state}"))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .cookie(cookie)
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -456,7 +452,7 @@ async fn an_incomplete_manifest_answer_saves_no_app() {
 
     let req = test::TestRequest::post()
         .uri("/api/github/manifest")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "organization": "acme" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -474,7 +470,7 @@ async fn an_incomplete_manifest_answer_saves_no_app() {
         .uri(&format!(
             "/api/github/callback?code=incomplete&state={state}"
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .cookie(cookie)
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -498,7 +494,7 @@ async fn manifest_sends_the_browser_to_the_dashboard_host() {
 
     let req = test::TestRequest::post()
         .uri("/api/github/manifest")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({}))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
@@ -530,7 +526,7 @@ async fn installing_the_app_records_the_installation() {
 
     let req = test::TestRequest::get()
         .uri("/api/github/installed?installation_id=99&setup_action=install")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 302);
@@ -549,7 +545,7 @@ async fn disconnecting_forgets_the_app_and_project_repositories() {
 
     let req = test::TestRequest::delete()
         .uri("/api/github")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 204);
     assert!(GitHubService::app(&db.pool).await.unwrap().is_none());
@@ -573,7 +569,7 @@ async fn repositories_lists_what_the_installations_reach() {
             "/api/github/repositories?project_id={}",
             project.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body[0]["full_name"], "acme/web");
@@ -597,7 +593,7 @@ async fn repositories_reads_every_page_of_a_large_installation() {
             "/api/github/repositories?project_id={}",
             project.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     let names: Vec<&str> = body
@@ -629,7 +625,7 @@ async fn repositories_skip_an_installation_github_no_longer_has() {
             "/api/github/repositories?project_id={}",
             project.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), 200);
@@ -655,7 +651,7 @@ async fn project_repository_refuses_a_name_that_is_not_owner_slash_repo() {
     ] {
         let req = test::TestRequest::put()
             .uri(&format!("/api/projects/{}/github", project.id))
-            .insert_header(bearer(&token))
+            .insert_header(crate::common::bearer(&token))
             .set_json(json!({ "installation_id": 99, "repo_full_name": name }))
             .to_request();
         assert_eq!(test::call_service(&app, req).await.status(), 400, "{name}");
@@ -678,14 +674,14 @@ async fn project_repository_round_trip() {
 
     let req = test::TestRequest::get()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body, Value::Null);
 
     let req = test::TestRequest::put()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({
             "installation_id": 99,
             "repo_full_name": "acme/web",
@@ -704,7 +700,7 @@ async fn project_repository_round_trip() {
 
     let req = test::TestRequest::put()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({
             "installation_id": 99,
             "repo_full_name": "acme/web",
@@ -715,7 +711,7 @@ async fn project_repository_round_trip() {
 
     let req = test::TestRequest::delete()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 204);
 }
@@ -731,7 +727,7 @@ async fn codeowners_sync_counts_the_rules() {
 
     let req = test::TestRequest::post()
         .uri(&format!("/api/projects/{}/github/codeowners", project.id))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body["codeowners_rules"], 2);
@@ -1091,7 +1087,7 @@ async fn creating_a_github_issue_links_it() {
 
     let req = test::TestRequest::post()
         .uri(&format!("{base}/issues"))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({}))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -1110,7 +1106,7 @@ async fn creating_a_github_issue_links_it() {
 
     let req = test::TestRequest::get()
         .uri(&base)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(
@@ -1126,7 +1122,7 @@ async fn templates(db: &TestDb, project_id: i32, project_template: Value) {
     let app = crate::common::app_with_config(&db.pool, test_config()).await;
     let req = test::TestRequest::put()
         .uri("/api/github/issue-template")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({
             "labels": ["bug"], "title_prefix": "[Rustrak] ", "body_footer": "  cc @acme/oncall\n",
         }))
@@ -1137,7 +1133,7 @@ async fn templates(db: &TestDb, project_id: i32, project_template: Value) {
     assert_eq!(body["body_footer"], "  cc @acme/oncall");
     let req = test::TestRequest::put()
         .uri(&format!("/api/projects/{project_id}/github"))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({
             "installation_id": 99, "repo_full_name": "acme/web", "issue_template": project_template,
         }))
@@ -1159,13 +1155,13 @@ async fn a_footer_too_long_for_github_is_refused() {
 
     let req = test::TestRequest::put()
         .uri("/api/github/issue-template")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "body_footer": footer }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 400);
     let req = test::TestRequest::put()
         .uri(&format!("/api/projects/{}/github", project.id))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({
             "installation_id": 99, "repo_full_name": "acme/web",
             "issue_template": { "body_footer": footer },
@@ -1216,7 +1212,7 @@ async fn the_draft_carries_the_event_and_both_templates() {
             "/api/projects/{}/issues/{}/github/draft",
             project.id, issue.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let draft: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(draft["title"], "[Rustrak] TypeError: x is undefined");
@@ -1261,7 +1257,7 @@ async fn a_github_issue_opens_with_the_templates_unless_the_request_says_otherwi
 
     let req = test::TestRequest::post()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({}))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 201);
@@ -1277,7 +1273,7 @@ async fn a_github_issue_opens_with_the_templates_unless_the_request_says_otherwi
             "/api/projects/{}/issues/{}/github/issues",
             project.id, other.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "title": "Mine", "body": "Text", "labels": [], "assignee": "octocat" }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 201);
@@ -1294,7 +1290,7 @@ async fn a_github_issue_opens_with_the_templates_unless_the_request_says_otherwi
             "/api/projects/{}/issues/{}/github/issues",
             project.id, third.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "title": "Mine", "body": "" }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 201);
@@ -1318,7 +1314,7 @@ async fn a_pull_request_cannot_be_linked() {
             "/api/projects/{}/issues/{}/github/links",
             project.id, issue.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "reference": "#14" }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 400);
@@ -1348,7 +1344,7 @@ async fn linking_an_existing_issue_comments_back_and_refuses_duplicates() {
 
     let req = test::TestRequest::post()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "reference": "#12" }))
         .to_request();
     let link: Value = test::call_and_read_body_json(&app, req).await;
@@ -1359,7 +1355,7 @@ async fn linking_an_existing_issue_comments_back_and_refuses_duplicates() {
 
     let req = test::TestRequest::post()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "reference": "https://github.com/acme/web/issues/12" }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 409);
@@ -1381,7 +1377,7 @@ async fn linking_an_existing_issue_comments_back_and_refuses_duplicates() {
 
     let req = test::TestRequest::delete()
         .uri(&format!("{uri}/{}", link["id"]))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 204);
     assert!(GitHubService::links(&db.pool, issue.id)
@@ -1421,7 +1417,7 @@ async fn comments_reach_github_without_the_authors_email() {
                 "/api/projects/{}/issues/{}/comments",
                 project.id, issue.id
             ))
-            .insert_header(bearer(&token))
+            .insert_header(crate::common::bearer(&token))
             .set_json(json!({ "text": text }))
             .to_request()
     };
@@ -1511,7 +1507,7 @@ async fn resolving_commenting_and_assigning_mirror_onto_linked_issues() {
 
     let req = test::TestRequest::patch()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "status": "resolved" }))
         .to_request();
     assert!(test::call_service(&app, req).await.status().is_success());
@@ -1520,7 +1516,7 @@ async fn resolving_commenting_and_assigning_mirror_onto_linked_issues() {
 
     let req = test::TestRequest::post()
         .uri(&format!("{uri}/comments"))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "text": "Deployed the fix" }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 201);
@@ -1547,7 +1543,7 @@ async fn resolving_commenting_and_assigning_mirror_onto_linked_issues() {
         .unwrap();
     let req = test::TestRequest::patch()
         .uri(&uri)
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "assigned_to": user.id, "assignee_type": "user" }))
         .to_request();
     assert!(test::call_service(&app, req).await.status().is_success());
@@ -1607,7 +1603,7 @@ async fn issue_code_block_names_suspect_commits_and_owners() {
             "/api/projects/{}/issues/{}/github",
             project.id, issue.id
         ))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body["suspect_commits"].as_array().unwrap().len(), 1);
@@ -1669,7 +1665,7 @@ async fn bulk_resolving_closes_linked_issues_of_this_project_only() {
 
     let req = test::TestRequest::put()
         .uri(&format!("/api/projects/{}/issues", project.id))
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "ids": [issue.id, foreign.id], "status": "resolved" }))
         .to_request();
     assert!(test::call_service(&app, req).await.status().is_success());
@@ -2566,7 +2562,7 @@ async fn people_set_their_own_github_login() {
     let get = || {
         test::TestRequest::get()
             .uri("/api/github/me")
-            .insert_header(bearer(&token))
+            .insert_header(crate::common::bearer(&token))
             .to_request()
     };
     let body: Value = test::call_and_read_body_json(&app, get()).await;
@@ -2574,7 +2570,7 @@ async fn people_set_their_own_github_login() {
 
     let req = test::TestRequest::put()
         .uri("/api/github/me")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "login": "@octocat" }))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
@@ -2601,21 +2597,21 @@ async fn people_set_their_own_github_login() {
         .unwrap();
     let req = test::TestRequest::put()
         .uri("/api/github/me")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "login": "OctoCat" }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 409);
 
     let req = test::TestRequest::put()
         .uri("/api/github/me")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "login": "not a login!" }))
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 400);
 
     let req = test::TestRequest::put()
         .uri("/api/github/me")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "login": null }))
         .to_request();
     let body: Value = test::call_and_read_body_json(&app, req).await;
@@ -2630,7 +2626,7 @@ async fn manifest_marks_an_invalid_organization_on_its_field() {
 
     let req = test::TestRequest::post()
         .uri("/api/github/manifest")
-        .insert_header(bearer(&token))
+        .insert_header(crate::common::bearer(&token))
         .set_json(json!({ "organization": "not an org" }))
         .to_request();
     let resp = test::call_service(&app, req).await;

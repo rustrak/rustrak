@@ -12,7 +12,8 @@ use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::rbac::{Action, Resource, Scope};
 #[cfg(feature = "openapi")]
 use crate::models::Role;
-use crate::models::{Permission, PersonalAccess, RoleAssignment};
+use crate::models::{grants_of, Permission, PersonalAccess, PluginGrant, RoleAssignment};
+use crate::plugins::host::PluginHost;
 use crate::services::role::beyond_your_own;
 use crate::services::{RoleService, UsersService};
 
@@ -32,6 +33,23 @@ pub struct CatalogResource {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Catalog {
     pub resources: Vec<CatalogResource>,
+    /// What installed plugins add, granted the same way.
+    pub plugins: Vec<crate::plugins::host::CatalogPluginPermission>,
+}
+
+/// Plugins' permissions the caller holds: everywhere, and per project.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MyPluginAccess {
+    pub everywhere: Vec<PluginGrant>,
+    pub projects: Vec<ProjectPluginPermissions>,
+}
+
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProjectPluginPermissions {
+    pub project_id: i32,
+    pub permissions: Vec<PluginGrant>,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,6 +70,7 @@ pub struct MyAccess {
     pub all_projects: Vec<Permission>,
     /// Project permissions held on one project.
     pub projects: Vec<ProjectPermissions>,
+    pub plugins: MyPluginAccess,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +80,9 @@ pub struct RoleInput {
     #[serde(default)]
     pub description: String,
     pub permissions: Vec<Permission>,
+    /// Omitted or `null`: on an update, the ones it holds stay.
+    #[serde(default)]
+    pub plugin_permissions: Option<Vec<PluginGrant>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +110,7 @@ pub struct UserAccess {
     pub assignments: Vec<RoleAssignment>,
     /// What their personal role holds; its places are in `assignments`.
     pub personal_permissions: Vec<Permission>,
+    pub personal_plugin_permissions: Vec<PluginGrant>,
 }
 
 fn permissions(pairs: Vec<(Resource, Action)>) -> Vec<Permission> {
@@ -112,10 +135,42 @@ fn validate(name: &str) -> AppResult<()> {
 }
 
 async fn user_access(pool: &DbPool, user_id: i32) -> AppResult<UserAccess> {
+    let (personal_permissions, personal_plugin_permissions) =
+        RoleService::personal_permissions(pool, user_id).await?;
     Ok(UserAccess {
         assignments: RoleService::assignments_for(pool, user_id).await?,
-        personal_permissions: RoleService::personal_permissions(pool, user_id).await?,
+        personal_permissions,
+        personal_plugin_permissions,
     })
+}
+
+fn plugin_grants(pairs: Vec<(String, Action)>) -> Vec<PluginGrant> {
+    pairs
+        .into_iter()
+        .map(|(resource, action)| PluginGrant { resource, action })
+        .collect()
+}
+
+/// Refuses a plugin's permission no installed plugin declares, unless it
+/// was already `kept`: an uninstalled plugin's grants stay for a reinstall,
+/// and saving what holds them must not fail on them.
+fn check_plugin_grants(
+    host: &PluginHost,
+    grants: &[PluginGrant],
+    kept: &[PluginGrant],
+) -> AppResult<()> {
+    match grants
+        .iter()
+        .find(|g| !kept.contains(g) && host.permission_scope(&g.resource, g.action).is_none())
+    {
+        Some(g) => Err(AppError::Validation(format!(
+            "No installed plugin declares {}:{}",
+            g.resource,
+            g.action.key()
+        ))
+        .with_field("plugin_permissions", FieldErrorCode::Invalid)),
+        None => Ok(()),
+    }
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -130,7 +185,7 @@ async fn user_access(pool: &DbPool, user_id: i32) -> AppResult<UserAccess> {
     security(("bearer_auth" = [])),
 ))]
 /// Lists every resource a permission can name, with its module, scope and actions.
-pub async fn catalog(_actor: ApiActor) -> AppResult<HttpResponse> {
+pub async fn catalog(_actor: ApiActor, host: web::Data<PluginHost>) -> AppResult<HttpResponse> {
     let resources = Resource::ALL
         .iter()
         .map(|r| CatalogResource {
@@ -140,7 +195,10 @@ pub async fn catalog(_actor: ApiActor) -> AppResult<HttpResponse> {
             actions: r.actions().to_vec(),
         })
         .collect();
-    Ok(HttpResponse::Ok().json(Catalog { resources }))
+    Ok(HttpResponse::Ok().json(Catalog {
+        resources,
+        plugins: host.permission_catalog(),
+    }))
 }
 
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -163,14 +221,29 @@ pub async fn me(actor: ApiActor) -> AppResult<HttpResponse> {
             instance: vec![],
             all_projects: vec![],
             projects: vec![],
+            plugins: MyPluginAccess {
+                everywhere: vec![],
+                projects: vec![],
+            },
         }));
     }
     let (instance, all_projects): (Vec<_>, Vec<_>) = a
         .instance_pairs()
         .into_iter()
         .partition(|(r, _)| r.scope() == Scope::Instance);
+    let (everywhere, by_project) = a.plugin_pairs();
     Ok(HttpResponse::Ok().json(MyAccess {
         is_owner: false,
+        plugins: MyPluginAccess {
+            everywhere: plugin_grants(everywhere),
+            projects: by_project
+                .into_iter()
+                .map(|(project_id, pairs)| ProjectPluginPermissions {
+                    project_id,
+                    permissions: plugin_grants(pairs),
+                })
+                .collect(),
+        },
         instance: permissions(instance),
         all_projects: permissions(all_projects),
         projects: a
@@ -221,19 +294,29 @@ pub async fn list_roles(pool: web::Data<DbPool>, actor: ApiActor) -> AppResult<H
 /// Creates a role from permissions the caller holds themselves.
 pub async fn create_role(
     pool: web::Data<DbPool>,
+    host: web::Data<PluginHost>,
     actor: ApiActor,
     body: web::Json<RoleInput>,
 ) -> AppResult<HttpResponse> {
     actor.require(Resource::Roles, Action::Create, None)?;
     validate(&body.name)?;
+    let b = body.into_inner();
+    let plugins = b.plugin_permissions.unwrap_or_default();
+    check_plugin_grants(&host, &plugins, &[])?;
     if !actor
         .access
-        .covers(&Permission::grants(&body.permissions), None)
+        .covers(&grants_of(&b.permissions, &plugins), None)
     {
         return Err(beyond_your_own());
     }
-    let b = body.into_inner();
-    let role = RoleService::create(pool.get_ref(), &b.name, &b.description, b.permissions).await?;
+    let role = RoleService::create(
+        pool.get_ref(),
+        &b.name,
+        &b.description,
+        b.permissions,
+        plugins,
+    )
+    .await?;
     Ok(HttpResponse::Created().json(role))
 }
 
@@ -260,6 +343,7 @@ pub async fn create_role(
 /// removed, so nobody strips a role of something they could not give back.
 pub async fn update_role(
     pool: web::Data<DbPool>,
+    host: web::Data<PluginHost>,
     actor: ApiActor,
     path: web::Path<i32>,
     body: web::Json<RoleInput>,
@@ -268,16 +352,28 @@ pub async fn update_role(
     validate(&body.name)?;
     let id = path.into_inner();
     let current = RoleService::get(pool.get_ref(), id).await?;
+    let b = body.into_inner();
+    // The dashboard's form may not send them: what is held stays.
+    let plugins = b
+        .plugin_permissions
+        .unwrap_or_else(|| current.plugin_permissions.clone());
+    check_plugin_grants(&host, &plugins, &current.plugin_permissions)?;
     if !actor
         .access
-        .covers(&Permission::grants(&body.permissions), None)
+        .covers(&grants_of(&b.permissions, &plugins), None)
         || !actor.access.covers(&current.grants(), None)
     {
         return Err(beyond_your_own());
     }
-    let b = body.into_inner();
-    let role =
-        RoleService::update(pool.get_ref(), id, &b.name, &b.description, b.permissions).await?;
+    let role = RoleService::update(
+        pool.get_ref(),
+        id,
+        &b.name,
+        &b.description,
+        b.permissions,
+        plugins,
+    )
+    .await?;
     Ok(HttpResponse::Ok().json(role))
 }
 
@@ -355,6 +451,7 @@ pub async fn list_assignments(
 /// it applies to.
 pub async fn set_assignments(
     pool: web::Data<DbPool>,
+    host: web::Data<PluginHost>,
     actor: ApiActor,
     path: web::Path<i32>,
     body: web::Json<SetAccess>,
@@ -380,8 +477,15 @@ pub async fn set_assignments(
         .map(|a| (a.role_id, a.project_id))
         .collect();
     RoleService::check_grantable(pool.get_ref(), &actor.access, &pairs, &held, "role_id").await?;
-    if let Some(personal) = &body.personal {
-        let grants = Permission::grants(&personal.permissions);
+    let mut body = body.into_inner();
+    if let Some(personal) = &mut body.personal {
+        let (_, kept) = RoleService::personal_permissions(pool.get_ref(), user_id).await?;
+        // Not sent: the ones they hold stay.
+        let plugins = personal
+            .plugin_permissions
+            .get_or_insert_with(|| kept.clone());
+        check_plugin_grants(&host, plugins, &kept)?;
+        let grants = grants_of(&personal.permissions, plugins);
         let covered = match &personal.project_ids {
             None => actor.access.covers(&grants, None),
             Some(ids) if ids.is_empty() => {
@@ -416,7 +520,11 @@ pub async fn set_assignments(
     components(schemas(
         Catalog,
         CatalogResource,
+        crate::plugins::host::CatalogPluginPermission,
         MyAccess,
+        MyPluginAccess,
+        ProjectPluginPermissions,
+        crate::models::PluginGrant,
         ProjectPermissions,
         RoleInput,
         AssignmentInput,

@@ -236,6 +236,12 @@ pub enum AppError {
     #[error("Service unavailable: {0}")]
     Unavailable(String),
 
+    /// An upstream Rustrak depends on (the plugin registry) answered with
+    /// something unusable: unreachable, or failing its signature. 502; the
+    /// message is ours and safe to show.
+    #[error("Bad gateway: {0}")]
+    BadGateway(String),
+
     /// Too many attempts from one caller: 429 with `Retry-After` set to the
     /// seconds left until the next attempt is allowed. The detail is that
     /// number, last like every other variant's.
@@ -387,6 +393,7 @@ impl AppError {
             AppError::Database(_) => "DatabaseError",
             AppError::Internal(_) => "InternalError",
             AppError::Unavailable(_) => "ServiceUnavailable",
+            AppError::BadGateway(_) => "BadGateway",
             AppError::TooManyRequests(_) => "TooManyRequests",
             AppError::WithFields(fielded) => fielded.inner.error_type(),
         }
@@ -418,6 +425,7 @@ impl ResponseError for AppError {
             AppError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            AppError::BadGateway(_) => StatusCode::BAD_GATEWAY,
             AppError::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             AppError::WithFields(fielded) => fielded.inner.status_code(),
         }
@@ -428,7 +436,10 @@ impl ResponseError for AppError {
         // `Unavailable` says what it is in its own words and was logged where
         // it was raised; it has no hidden detail for an incident to point at.
         let incident_id = (status.is_server_error()
-            && !matches!(self.kind(), AppError::Unavailable(_)))
+            && !matches!(
+                self.kind(),
+                AppError::Unavailable(_) | AppError::BadGateway(_)
+            ))
         .then(|| uuid::Uuid::new_v4().to_string());
 
         let message = match &incident_id {

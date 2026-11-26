@@ -1869,13 +1869,13 @@ async fn test_oidc_group_roles_follow_the_groups_on_every_login() {
     create_test_user(&db.pool, "owner@example.com", "owner-password", true).await;
     let storefront = crate::common::create_test_project(&db.pool, "Storefront").await;
     let billing = crate::common::create_test_project(&db.pool, "Billing").await;
-    let viewer = RoleService::create(&db.pool, "Viewer", "", Vec::new())
+    let viewer = RoleService::create(&db.pool, "Viewer", "", Vec::new(), vec![])
         .await
         .unwrap();
-    RoleService::create(&db.pool, "Developer", "", Vec::new())
+    RoleService::create(&db.pool, "Developer", "", Vec::new(), vec![])
         .await
         .unwrap();
-    let manual = RoleService::create(&db.pool, "Manual", "", Vec::new())
+    let manual = RoleService::create(&db.pool, "Manual", "", Vec::new(), vec![])
         .await
         .unwrap();
     let policy = linking_with_group_roles(&format!(
@@ -1944,7 +1944,7 @@ async fn test_oidc_group_roles_apply_only_after_the_link_is_confirmed() {
     let existing = create_test_user(&db.pool, "linked@example.com", &password, false).await;
     let shop = crate::common::create_test_project(&db.pool, "Shop").await;
     let ops = crate::common::create_test_project(&db.pool, "Ops").await;
-    RoleService::create(&db.pool, "Viewer", "", Vec::new())
+    RoleService::create(&db.pool, "Viewer", "", Vec::new(), vec![])
         .await
         .unwrap();
     let mapping = format!("shop=Viewer@{};ops=Viewer@{}", shop.slug, ops.slug);

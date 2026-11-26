@@ -3,8 +3,11 @@ use std::collections::HashMap;
 
 use crate::db::{Db, DbPool};
 use crate::error::{AppError, AppResult, FieldErrorCode};
-use crate::models::rbac::{Access, Action, Assignment, Grants, Resource, Scope};
-use crate::models::{Permission, PersonalAccess, Role, RoleAssignment, User, UserRole};
+use crate::models::rbac::{self, Access, Action, Assignment, Grants, Resource, Scope};
+use crate::models::{
+    grants_of, Permission, PersonalAccess, PluginGrant, Role, RoleAssignment, User, UserRole,
+};
+use crate::plugins::host::PluginHost;
 
 pub struct RoleService;
 
@@ -59,8 +62,42 @@ fn name_taken(e: sqlx::Error, name: &str) -> AppError {
 
 impl Role {
     pub fn grants(&self) -> Grants {
-        Permission::grants(&self.permissions)
+        grants_of(&self.permissions, &self.plugin_permissions)
     }
+}
+
+/// A stored row: one of Rustrak's permissions, or a plugin's.
+enum Row {
+    Core(Resource, Action),
+    Plugin(PluginGrant),
+}
+
+fn parse_row(resource: &str, action: &str) -> Option<Row> {
+    if let Some((r, a)) = parse_pair(resource, action) {
+        return Some(Row::Core(r, a));
+    }
+    // A plugin's: kept even while the plugin is uninstalled, so reinstalling
+    // brings the roles back. Nothing checks it meanwhile.
+    rbac::is_plugin_key(resource).then_some(())?;
+    Some(Row::Plugin(PluginGrant {
+        resource: resource.to_string(),
+        action: Action::parse(action)?,
+    }))
+}
+
+/// Stored rows as Rustrak's permissions and the plugins'.
+fn split_rows<'a>(
+    rows: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> (Vec<Permission>, Vec<PluginGrant>) {
+    let (mut core, mut plugins) = (Vec::new(), Vec::new());
+    for (r, a) in rows {
+        match parse_row(r, a) {
+            Some(Row::Core(resource, action)) => core.push(Permission { resource, action }),
+            Some(Row::Plugin(grant)) => plugins.push(grant),
+            None => {}
+        }
+    }
+    (core, plugins)
 }
 
 impl RoleService {
@@ -90,25 +127,28 @@ impl RoleService {
                 .fetch_all(pool)
                 .await?;
 
-        let mut by_role: HashMap<i32, Vec<Permission>> = HashMap::new();
-        for (role_id, r, a) in perms {
-            if let Some((resource, action)) = parse_pair(&r, &a) {
-                by_role
-                    .entry(role_id)
-                    .or_default()
-                    .push(Permission { resource, action });
-            }
+        let mut rows_of: HashMap<i32, Vec<(&str, &str)>> = HashMap::new();
+        for (role_id, r, a) in &perms {
+            rows_of.entry(*role_id).or_default().push((r, a));
         }
+        let mut by_role: HashMap<i32, (Vec<Permission>, Vec<PluginGrant>)> = rows_of
+            .into_iter()
+            .map(|(id, rows)| (id, split_rows(rows)))
+            .collect();
 
         Ok(rows
             .into_iter()
-            .map(|(id, name, description, created_at, count)| Role {
-                permissions: by_role.remove(&id).unwrap_or_default(),
-                id,
-                name,
-                description,
-                assignment_count: count,
-                created_at,
+            .map(|(id, name, description, created_at, count)| {
+                let (permissions, plugin_permissions) = by_role.remove(&id).unwrap_or_default();
+                Role {
+                    permissions,
+                    plugin_permissions,
+                    id,
+                    name,
+                    description,
+                    assignment_count: count,
+                    created_at,
+                }
             })
             .collect())
     }
@@ -158,6 +198,7 @@ impl RoleService {
         name: &str,
         description: &str,
         permissions: Vec<Permission>,
+        plugin_permissions: Vec<PluginGrant>,
     ) -> AppResult<Role> {
         let mut tx = pool.begin().await?;
         let (id,): (i32,) =
@@ -167,7 +208,7 @@ impl RoleService {
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(|e| name_taken(e, name))?;
-        Self::write_permissions(&mut tx, id, &permissions).await?;
+        Self::write_permissions(&mut tx, id, &grants_of(&permissions, &plugin_permissions)).await?;
         tx.commit().await?;
         Self::get(pool, id).await
     }
@@ -179,6 +220,7 @@ impl RoleService {
         name: &str,
         description: &str,
         permissions: Vec<Permission>,
+        plugin_permissions: Vec<PluginGrant>,
     ) -> AppResult<Role> {
         Self::get(pool, id).await?;
         let mut tx = pool.begin().await?;
@@ -189,7 +231,7 @@ impl RoleService {
             .execute(&mut *tx)
             .await
             .map_err(|e| name_taken(e, name))?;
-        Self::write_permissions(&mut tx, id, &permissions).await?;
+        Self::write_permissions(&mut tx, id, &grants_of(&permissions, &plugin_permissions)).await?;
         tx.commit().await?;
         Self::get(pool, id).await
     }
@@ -197,18 +239,23 @@ impl RoleService {
     async fn write_permissions(
         tx: &mut sqlx::Transaction<'_, Db>,
         role_id: i32,
-        permissions: &[Permission],
+        grants: &Grants,
     ) -> AppResult<()> {
         sqlx::query("DELETE FROM role_permissions WHERE role_id = $1")
             .bind(role_id)
             .execute(&mut **tx)
             .await?;
-        for (r, a) in Permission::grants(permissions).pairs() {
+        let rows = grants
+            .pairs()
+            .into_iter()
+            .map(|(r, a)| (r.key().to_string(), a))
+            .chain(grants.plugin_pairs());
+        for (r, a) in rows {
             sqlx::query(
                 "INSERT INTO role_permissions (role_id, resource, action) VALUES ($1, $2, $3)",
             )
             .bind(role_id)
-            .bind(r.key())
+            .bind(r)
             .bind(a.key())
             .execute(&mut **tx)
             .await?;
@@ -415,7 +462,15 @@ impl RoleService {
                 id
             }
         };
-        Self::write_permissions(&mut tx, role_id, &personal.permissions).await?;
+        Self::write_permissions(
+            &mut tx,
+            role_id,
+            &grants_of(
+                &personal.permissions,
+                personal.plugin_permissions.as_deref().unwrap_or_default(),
+            ),
+        )
+        .await?;
         match &personal.project_ids {
             None => Self::assign(&mut *tx, user_id, role_id, None).await?,
             Some(ids) => {
@@ -428,8 +483,11 @@ impl RoleService {
         Ok(())
     }
 
-    /// The permissions a user was given directly.
-    pub async fn personal_permissions(pool: &DbPool, user_id: i32) -> AppResult<Vec<Permission>> {
+    /// The permissions a user was given directly: Rustrak's, and plugins'.
+    pub async fn personal_permissions(
+        pool: &DbPool,
+        user_id: i32,
+    ) -> AppResult<(Vec<Permission>, Vec<PluginGrant>)> {
         let rows: Vec<(String, String)> = sqlx::query_as(
             r#"
             SELECT p.resource, p.action
@@ -440,11 +498,9 @@ impl RoleService {
         .bind(user_id)
         .fetch_all(pool)
         .await?;
-        Ok(rows
-            .iter()
-            .filter_map(|(r, a)| parse_pair(r, a))
-            .map(|(resource, action)| Permission { resource, action })
-            .collect())
+        Ok(split_rows(
+            rows.iter().map(|(r, a)| (r.as_str(), a.as_str())),
+        ))
     }
 
     /// Replaces the roles a user holds on one project (empty removes them).
@@ -508,11 +564,18 @@ impl RoleService {
         .await?;
         Ok(Access::new(
             rows.into_iter()
-                .filter_map(|(project_id, r, a)| parse_pair(&r, &a).map(|p| (project_id, p)))
-                .map(|(project_id, pair)| Assignment {
-                    // Workspace permissions apply wherever the role is held.
-                    project_id: project_id.filter(|_| pair.0.scope() == Scope::Project),
-                    grants: Grants::of([pair]),
+                .filter_map(|(project_id, r, a)| Some((project_id, parse_row(&r, &a)?)))
+                .map(|(project_id, row)| match row {
+                    Row::Core(r, a) => Assignment {
+                        // Workspace permissions apply wherever the role is held.
+                        project_id: project_id.filter(|_| r.scope() == Scope::Project),
+                        grants: Grants::of([(r, a)]),
+                    },
+                    // A plugin's scope is its manifest's: `can_plugin` names it.
+                    Row::Plugin(g) => Assignment {
+                        project_id,
+                        grants: Grants::default().with_plugins([(g.resource, g.action)]),
+                    },
                 })
                 .collect(),
         ))
@@ -520,7 +583,11 @@ impl RoleService {
 
     /// Everyone holding a role of the list that reaches this project, by email.
     /// Owners hold no role, and personal permissions are no role of the list.
-    pub async fn project_members(pool: &DbPool, project_id: i32) -> AppResult<Vec<ProjectMember>> {
+    pub async fn project_members(
+        pool: &DbPool,
+        project_id: i32,
+        host: &PluginHost,
+    ) -> AppResult<Vec<ProjectMember>> {
         let rows: Vec<(i32, String, i32, String, Option<i32>)> = sqlx::query_as(
             r#"
             SELECT u.id, u.email, r.id, r.name, a.project_id
@@ -541,6 +608,9 @@ impl RoleService {
                 r.permissions
                     .iter()
                     .any(|p| p.resource.scope() == Scope::Project)
+                    || r.plugin_permissions.iter().any(|g| {
+                        host.permission_scope(&g.resource, g.action) == Some(Scope::Project)
+                    })
             })
             .map(|r| r.id)
             .collect();

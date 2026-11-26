@@ -15,6 +15,7 @@ pub mod metrics;
 pub mod monitors;
 pub mod oauth;
 pub mod period;
+pub mod plugins;
 pub mod projects;
 pub mod releases;
 pub mod roles;
@@ -61,6 +62,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .configure(storage::configure)
         .configure(telemetry::configure)
         .configure(ingest::configure)
+        .configure(plugins::configure)
         .service(
             web::scope("/api/projects/{project_id}")
                 .configure(projects::configure_project)
@@ -73,6 +75,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .configure(members::configure_project)
                 .configure(saved_views::configure_project)
                 .configure(monitors::configure_project)
+                .configure(plugins::configure_project)
                 .configure(releases::configure_project)
                 .configure(sessions::configure_project)
                 .configure(spans::configure_project)

@@ -4379,6 +4379,45 @@
         }
       }
     },
+    "/api/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Lists the installed plugins and what each adds to the dashboard.",
+        "operationId": "plugins.list",
+        "responses": {
+          "200": {
+            "description": "Installed plugins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/projects": {
       "get": {
         "tags": [
@@ -11117,6 +11156,148 @@
         ]
       }
     },
+    "/api/projects/{project_id}/plugin-settings/{plugin}": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Reads a plugin's settings in one project, without its secrets.",
+        "operationId": "plugins.projectSettings",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Its settings in this project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSettingsView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not installed, or no such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Writes a plugin's settings in one project: only its project settings.",
+        "operationId": "plugins.setProjectSettings",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A value its schema refuses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "May not change this project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not installed, or no such project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/projects/{project_id}/releases": {
       "get": {
         "tags": [
@@ -15227,6 +15408,422 @@
         ]
       }
     },
+    "/api/settings/plugins": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Installs a plugin package, or replaces the installed version of it.",
+        "operationId": "plugins.install",
+        "requestBody": {
+          "description": "The plugin package, a .rtp file",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginPackage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a valid package for this server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/settings/plugins/registry": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Lists the plugins the signed registry publishes, with the version this Rustrak runs.",
+        "operationId": "plugins.registry",
+        "responses": {
+          "200": {
+            "description": "The published plugins this Rustrak runs, or why there are none",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryListing"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/settings/plugins/registry/{plugin}": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Installs a published plugin, its newest version this Rustrak runs, verified against the signed index.",
+        "operationId": "plugins.installFromRegistry",
+        "parameters": [
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Installed, verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a package this Rustrak can run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The registry could not be read, or what it served does not verify",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/settings/plugins/{plugin}": {
+      "put": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Chooses where an installed plugin runs.",
+        "operationId": "plugins.configure",
+        "parameters": [
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigurePlugin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSummary"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Uninstalls a plugin, keeping its data unless `purge`.",
+        "operationId": "plugins.uninstall",
+        "parameters": [
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purge",
+            "in": "query",
+            "description": "Delete the plugin's database too. Without it, reinstalling finds it.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Uninstalled"
+          },
+          "403": {
+            "description": "Not an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/settings/plugins/{plugin}/settings": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Reads a plugin's settings for the whole instance, without its secrets.",
+        "operationId": "plugins.settings",
+        "parameters": [
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Its settings for the whole instance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSettingsView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Writes a plugin's settings for the whole instance, checked against its schema.",
+        "operationId": "plugins.setSettings",
+        "parameters": [
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A value its schema refuses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/sidebar/projects": {
       "get": {
         "tags": [
@@ -15586,6 +16183,55 @@
           },
           "409": {
             "description": "A cleanup is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/storage/plugins": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Lists each installed plugin's data: its file, its quota, and its history (the tables with `created_at`) against its retention.",
+        "operationId": "storage.getPlugins",
+        "responses": {
+          "200": {
+            "description": "Each installed plugin's file, quota and history against its retention",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginStorage"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing storage:read",
             "content": {
               "application/json": {
                 "schema": {
@@ -18532,6 +19178,7 @@
           "description",
           "created_at",
           "permissions",
+          "plugin_permissions",
           "project_ids",
           "expires_at"
         ],
@@ -18567,6 +19214,13 @@
             },
             "description": "`null`: everything its owner may do."
           },
+          "plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Plugins' permissions it is limited to, beside `permissions`."
+          },
           "project_ids": {
             "type": [
               "array",
@@ -18594,6 +19248,7 @@
           "created_at",
           "last_used_at",
           "permissions",
+          "plugin_permissions",
           "project_ids",
           "expires_at"
         ],
@@ -18635,6 +19290,13 @@
               "$ref": "#/components/schemas/Permission"
             },
             "description": "`null`: everything its owner may do."
+          },
+          "plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Plugins' permissions it is limited to, beside `permissions`."
           },
           "project_ids": {
             "type": [
@@ -18877,14 +19539,76 @@
       "Catalog": {
         "type": "object",
         "required": [
-          "resources"
+          "resources",
+          "plugins"
         ],
         "properties": {
+          "plugins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogPluginPermission"
+            },
+            "description": "What installed plugins add, granted the same way."
+          },
           "resources": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CatalogResource"
             }
+          }
+        }
+      },
+      "CatalogPluginPermission": {
+        "type": "object",
+        "description": "One permission a plugin adds, in the catalog Roles is built from.",
+        "required": [
+          "key",
+          "plugin",
+          "plugin_name",
+          "scope",
+          "actions",
+          "label",
+          "description"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          },
+          "description": {
+            "type": "object",
+            "description": "By language.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "key": {
+            "type": "string",
+            "description": "`<plugin>:<resource>`, as roles store it."
+          },
+          "label": {
+            "type": "object",
+            "description": "By language.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "plugin_name": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
           }
         }
       },
@@ -19056,7 +19780,8 @@
           "spans",
           "logs",
           "issues_removed",
-          "source_maps"
+          "source_maps",
+          "plugin_rows"
         ],
         "properties": {
           "events": {
@@ -19070,6 +19795,11 @@
           "logs": {
             "type": "integer",
             "format": "int64"
+          },
+          "plugin_rows": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Plugins' history rows deleted; only a retention cleanup removes them."
           },
           "source_maps": {
             "type": "integer",
@@ -19125,6 +19855,13 @@
             "type": "integer",
             "format": "int64",
             "minimum": 1
+          },
+          "plugins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plugins whose history (their tables with `created_at`) goes too, older\nthan the same window. Only for every project: their history has no\nproject Rustrak knows."
           },
           "project_id": {
             "type": [
@@ -19418,6 +20155,26 @@
           }
         }
       },
+      "ConfigurePlugin": {
+        "type": "object",
+        "required": [
+          "allProjects"
+        ],
+        "properties": {
+          "allProjects": {
+            "type": "boolean",
+            "description": "Active in every project, those created later included."
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "The projects it runs in one by one; left out, they stay as they are."
+          }
+        }
+      },
       "ConfirmSsoLinkRequest": {
         "type": "object",
         "required": [
@@ -19620,6 +20377,13 @@
               "$ref": "#/components/schemas/Permission"
             },
             "description": "What the token may do, within its owner's permissions. Omitted or\n`null`: everything its owner may do."
+          },
+          "plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Plugins' permissions it may use besides `permissions`, within its\nowner's. Ignored while `permissions` is omitted: it may do everything."
           },
           "project_ids": {
             "type": [
@@ -20618,6 +21382,28 @@
           "project_id": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "HistoryTable": {
+        "type": "object",
+        "description": "One history table of a plugin and how much of it is past the window.",
+        "required": [
+          "table",
+          "rows",
+          "expired"
+        ],
+        "properties": {
+          "expired": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "table": {
+            "type": "string"
           }
         }
       },
@@ -21758,7 +22544,8 @@
           "is_owner",
           "instance",
           "all_projects",
-          "projects"
+          "projects",
+          "plugins"
         ],
         "properties": {
           "all_projects": {
@@ -21778,12 +22565,37 @@
           "is_owner": {
             "type": "boolean"
           },
+          "plugins": {
+            "$ref": "#/components/schemas/MyPluginAccess"
+          },
           "projects": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProjectPermissions"
             },
             "description": "Project permissions held on one project."
+          }
+        }
+      },
+      "MyPluginAccess": {
+        "type": "object",
+        "description": "Plugins' permissions the caller holds: everywhere, and per project.",
+        "required": [
+          "everywhere",
+          "projects"
+        ],
+        "properties": {
+          "everywhere": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectPluginPermissions"
+            }
           }
         }
       },
@@ -21938,6 +22750,29 @@
           }
         }
       },
+      "PermissionSpec": {
+        "type": "object",
+        "required": [
+          "resource",
+          "scope",
+          "actions"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          },
+          "resource": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "additionalProperties": false
+      },
       "PersonalAccess": {
         "type": "object",
         "description": "Permissions given to one person directly, without a role of the list.",
@@ -21951,6 +22786,16 @@
               "$ref": "#/components/schemas/Permission"
             }
           },
+          "plugin_permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Omitted or `null`: the ones held stay."
+          },
           "project_ids": {
             "type": [
               "array",
@@ -21961,6 +22806,268 @@
               "format": "int32"
             },
             "description": "Where its project permissions apply. Omitted or `null`: every project."
+          }
+        }
+      },
+      "PluginGrant": {
+        "type": "object",
+        "description": "One grant of a plugin's permission: `hello:hits`, as its manifest\ndeclares it. Kept apart from `Permission`, whose resource is Rustrak's own.",
+        "required": [
+          "resource",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          },
+          "resource": {
+            "type": "string",
+            "description": "`<plugin>:<resource>`."
+          }
+        }
+      },
+      "PluginPackage": {
+        "description": "A `.rtp` file's bytes. Opaque in the spec, like an attachment: the client\nvalidates bodies with zod, which has no type for a binary one."
+      },
+      "PluginSettingsView": {
+        "type": "object",
+        "description": "One plugin's settings at one level, for the form Rustrak draws.",
+        "required": [
+          "values",
+          "resolved",
+          "secrets",
+          "missing"
+        ],
+        "properties": {
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required settings nothing sets yet: the plugin answers 503 until then."
+          },
+          "resolved": {
+            "type": "object",
+            "description": "What the plugin reads here: this level, then the instance, then the\ndefaults. No secrets."
+          },
+          "secrets": {
+            "type": "object",
+            "description": "Whether each secret is set; their values never leave the server.",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "values": {
+            "type": "object",
+            "description": "Set at this level (the instance, or this project). No secrets."
+          }
+        }
+      },
+      "PluginStorage": {
+        "type": "object",
+        "description": "One plugin's data, in the Storage page.",
+        "required": [
+          "id",
+          "name",
+          "bytes",
+          "quota_bytes",
+          "retention_days",
+          "history"
+        ],
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its SQLite file, write-ahead log included.",
+            "minimum": 0
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryTable"
+            },
+            "description": "Its tables with `created_at`, the ones retention clears."
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quota_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "retention_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The admin's window for its history; `null` keeps everything.",
+            "minimum": 0
+          }
+        }
+      },
+      "PluginSummary": {
+        "type": "object",
+        "description": "What the dashboard needs to know about one installed plugin.",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "description",
+          "author",
+          "repository",
+          "icon",
+          "logo",
+          "readme",
+          "database",
+          "permissions",
+          "allProjects",
+          "projects",
+          "ui",
+          "verified",
+          "settings",
+          "messages"
+        ],
+        "properties": {
+          "allProjects": {
+            "type": "boolean",
+            "description": "Active in every project, those created later included."
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "database": {
+            "type": "boolean",
+            "description": "Whether it keeps its own database."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A `@rustrak/ui` icon name."
+          },
+          "id": {
+            "type": "string"
+          },
+          "logo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its own logo (`logo.svg` in its package), shown instead of `icon`."
+          },
+          "messages": {
+            "type": "object",
+            "description": "Its texts, by language (`messages/<locale>.json`): they label its\nsettings and permissions, and its pages."
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionSpec"
+            },
+            "description": "The permissions it adds to roles."
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Projects it was turned on in one by one."
+          },
+          "readme": {
+            "type": "object",
+            "description": "Its page in the catalog, Markdown, by language: English always.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingSpec"
+            },
+            "description": "What its settings form is drawn from."
+          },
+          "ui": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PluginUi"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "Installed from the signed registry; `false` for one uploaded by hand."
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "PluginUi": {
+        "type": "object",
+        "required": [
+          "entry",
+          "styles",
+          "pages",
+          "widgets"
+        ],
+        "properties": {
+          "entry": {
+            "type": "string",
+            "description": "The bundle to load, a script that registers the plugin."
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UiPage"
+            }
+          },
+          "styles": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its stylesheet, when it has one."
+          },
+          "widgets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UiWidget"
+            }
           }
         }
       },
@@ -22131,6 +23238,25 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Permission"
+            }
+          },
+          "project_id": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ProjectPluginPermissions": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
             }
           },
           "project_id": {
@@ -22581,6 +23707,90 @@
           }
         }
       },
+      "RegistryListing": {
+        "type": "object",
+        "description": "The registry's plugins, or why there are none.",
+        "required": [
+          "available",
+          "error",
+          "plugins"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plugins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryPlugin"
+            }
+          }
+        }
+      },
+      "RegistryPlugin": {
+        "type": "object",
+        "description": "One published plugin, as the catalog lists it.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "icon",
+          "author",
+          "logo",
+          "version",
+          "installed_version"
+        ],
+        "properties": {
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What is installed now, if any."
+          },
+          "logo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its logo, served by Rustrak once checked against the index."
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "description": "The newest version this Rustrak runs."
+          }
+        }
+      },
       "ReleaseHealthRow": {
         "type": "object",
         "description": "Per-release health row returned by the stats endpoint.",
@@ -22963,7 +24173,8 @@
           "overrides",
           "frequency",
           "hour",
-          "weekday"
+          "weekday",
+          "plugins"
         ],
         "properties": {
           "defaults": {
@@ -22992,6 +24203,19 @@
               "$ref": "#/components/schemas/ProjectRetention"
             },
             "default": []
+          },
+          "plugins": {
+            "type": "object",
+            "description": "Days each plugin keeps its history (its tables with `created_at`),\nby plugin id. A plugin left out keeps everything.",
+            "default": {},
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "weekday": {
             "type": "integer",
@@ -23048,6 +24272,7 @@
           "name",
           "description",
           "permissions",
+          "plugin_permissions",
           "assignment_count",
           "created_at"
         ],
@@ -23076,6 +24301,13 @@
             "items": {
               "$ref": "#/components/schemas/Permission"
             }
+          },
+          "plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Plugins' permissions it gives."
           }
         }
       },
@@ -23142,6 +24374,16 @@
             "items": {
               "$ref": "#/components/schemas/Permission"
             }
+          },
+          "plugin_permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Omitted or `null`: on an update, the ones it holds stay."
           }
         }
       },
@@ -23898,6 +25140,102 @@
             "format": "int32"
           }
         }
+      },
+      "SettingSpec": {
+        "type": "object",
+        "required": [
+          "key",
+          "type"
+        ],
+        "properties": {
+          "default": {
+            "description": "A string, a number or a boolean, as the type says."
+          },
+          "integer": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "max": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "min": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "options": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "type": {
+            "$ref": "#/components/schemas/SettingType"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SettingType": {
+        "type": "string",
+        "enum": [
+          "text",
+          "url",
+          "secret",
+          "number",
+          "boolean",
+          "select"
+        ]
+      },
+      "SettingsPatch": {
+        "type": "object",
+        "description": "Values for a plugin's settings: a value sets, `null` clears, a key left\nout stays as it is."
+      },
+      "Sidebar": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A `@rustrak/ui` icon name."
+          },
+          "label": {
+            "type": "string",
+            "description": "A key of the plugin's messages."
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
       },
       "SidebarProjects": {
         "type": "object",
@@ -24851,6 +26189,53 @@
           }
         }
       },
+      "UiPage": {
+        "type": "object",
+        "required": [
+          "path",
+          "scope"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Under the plugin's own URL: \"\" is its first page, \"funnels/:funnelId\" a deeper one."
+          },
+          "requires": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of the plugin's permissions, `resource:action`: the page, and its\nplace in the sidebar, are only for whoever holds it."
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "sidebar": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Sidebar",
+                "description": "Shown in the sidebar of its scope."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "UiWidget": {
+        "type": "object",
+        "required": [
+          "zone"
+        ],
+        "properties": {
+          "zone": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdateAlertIntegration": {
         "type": "object",
         "description": "DTO for updating an alert integration",
@@ -25261,7 +26646,8 @@
         "description": "Everything a user holds.",
         "required": [
           "assignments",
-          "personal_permissions"
+          "personal_permissions",
+          "personal_plugin_permissions"
         ],
         "properties": {
           "assignments": {
@@ -25276,6 +26662,12 @@
               "$ref": "#/components/schemas/Permission"
             },
             "description": "What their personal role holds; its places are in `assignments`."
+          },
+          "personal_plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            }
           }
         }
       },

@@ -152,7 +152,7 @@ for anyone who never installs Node. `RUSTRAK_DASHBOARD=off` skips a build that
 is present, which is how a published image runs API-only.
 
 The one rule the fallback must not break: `API_PREFIXES` (`/api`, `/auth`,
-`/health`, `/docs`, `/api-docs`, `/metrics`, `/mcp`, `/.well-known`) never
+`/health`, `/docs`, `/api-docs`, `/metrics`, `/mcp`, `/.well-known`, `/public`) never
 answer with the application shell. An
 unmatched path under one of them is a JSON 404 like any other error, because a
 mistyped endpoint answering `200 text/html` makes `@rustrak/client` report a

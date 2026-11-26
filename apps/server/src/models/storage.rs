@@ -26,6 +26,12 @@ pub struct CleanupRequest {
     /// Whether to purge logs. Defaults to `true`.
     #[serde(default = "default_true")]
     pub include_logs: bool,
+    /// Plugins whose history (their tables with `created_at`) goes too, older
+    /// than the same window. Only for every project: their history has no
+    /// project Rustrak knows.
+    #[serde(default)]
+    #[schemars(description = "Plugin ids whose history older than the window goes too")]
+    pub plugins: Vec<String>,
 }
 
 /// serde default for the `include_*` flags: an omitted flag means "yes, include
@@ -35,6 +41,12 @@ fn default_true() -> bool {
 }
 
 impl CleanupRequest {
+    /// The plugins whose history goes too, each with the window in days. A
+    /// plugin's history has no project: only a cleanup across all of them.
+    pub fn plugin_windows(&self) -> std::collections::BTreeMap<String, u32> {
+        plugin_windows(self.older_than_days, self.project_id, &self.plugins)
+    }
+
     /// The data-category selection this request describes.
     pub fn filter(&self) -> CleanupFilter {
         CleanupFilter {
@@ -43,6 +55,20 @@ impl CleanupRequest {
             include_logs: self.include_logs,
         }
     }
+}
+
+/// See [`CleanupRequest::plugin_windows`]. `older_than_days` is validated
+/// before any cleanup, so it fits.
+pub fn plugin_windows(
+    older_than_days: i64,
+    project_id: Option<i32>,
+    plugins: &[String],
+) -> std::collections::BTreeMap<String, u32> {
+    if project_id.is_some() {
+        return Default::default();
+    }
+    let days = u32::try_from(older_than_days).unwrap_or(u32::MAX);
+    plugins.iter().map(|id| (id.clone(), days)).collect()
 }
 
 /// Which data categories a cleanup acts on. Lets an admin reclaim one kind of
@@ -103,10 +129,15 @@ pub struct CleanupCounts {
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(required))]
     pub source_maps: i64,
+    /// Plugins' history rows deleted; only a retention cleanup removes them.
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub plugin_rows: i64,
 }
 
 impl std::ops::AddAssign for CleanupCounts {
     fn add_assign(&mut self, other: Self) {
+        self.plugin_rows += other.plugin_rows;
         self.events += other.events;
         self.transactions += other.transactions;
         self.spans += other.spans;
@@ -440,6 +471,13 @@ pub struct RetentionSettings {
     /// Day a weekly cleanup runs, 0 = Sunday.
     #[cfg_attr(feature = "openapi", schema(minimum = 0, maximum = 6, required))]
     pub weekday: u8,
+    /// Days each plugin keeps its history (its tables with `created_at`),
+    /// by plugin id. A plugin left out keeps everything.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    #[schemars(
+        description = "Days each plugin keeps its history, by plugin id; left out is forever"
+    )]
+    pub plugins: std::collections::BTreeMap<String, u32>,
 }
 
 impl Default for RetentionSettings {
@@ -451,6 +489,7 @@ impl Default for RetentionSettings {
             frequency: CleanupFrequency::Daily,
             hour: 3,
             weekday: 0,
+            plugins: Default::default(),
         }
     }
 }
@@ -480,12 +519,20 @@ impl RetentionSettings {
         if self.weekday > 6 {
             return invalid("weekday must be between 0 (Sunday) and 6", "weekday");
         }
+        if self
+            .plugins
+            .values()
+            .any(|&days| !(1..=36_500).contains(&days))
+        {
+            return invalid("A plugin keeps its history for 1 to 36500 days", "plugins");
+        }
         Ok(())
     }
 
     /// Whether any project ever loses data, so the cleanup needs to run.
     pub fn deletes_anything(&self) -> bool {
-        self.defaults.deletes_anything()
+        !self.plugins.is_empty()
+            || self.defaults.deletes_anything()
             || self
                 .overrides
                 .iter()

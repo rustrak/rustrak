@@ -7,6 +7,7 @@ const none: MyAccess = {
   instance: [],
   all_projects: [],
   projects: [],
+  plugins: { everywhere: [], projects: [] },
 };
 
 describe('permissionsFrom', () => {
@@ -121,6 +122,7 @@ describe('canEverywhere', () => {
     instance: [],
     all_projects: [],
     projects: [],
+    plugins: { everywhere: [], projects: [] },
   };
 
   it('needs the grant on every project: one project is not enough', () => {

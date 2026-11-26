@@ -1,7 +1,7 @@
 //! The permission catalog and how assignments combine into access.
 
 use rustrak::models::rbac::{
-    Access, Action, Assignment, Grants, ProjectScope, Resource, Scope, TokenScope,
+    self as rbac, Access, Action, Assignment, Grants, ProjectScope, Resource, Scope, TokenScope,
 };
 
 fn grants(pairs: &[(Resource, Action)]) -> Grants {
@@ -383,4 +383,155 @@ fn projects_where_a_grant_holds() {
         token.projects_where(Resource::Issues, Action::Read),
         ProjectScope::Only(vec![5])
     );
+}
+
+// Plugins' permissions: `<plugin>:<resource>`, declared in their
+// rustrak.config.ts, granted in roles like Rustrak's own.
+
+fn plugin(pairs: &[(&str, Action)]) -> Grants {
+    Grants::of([]).with_plugins(pairs.iter().map(|(k, a)| (k.to_string(), *a)))
+}
+
+#[test]
+fn a_plugin_permission_holds_where_its_role_does() {
+    let access = Access::new(vec![on_project(
+        7,
+        plugin(&[("hello:hits", Action::Delete)]),
+    )]);
+    assert!(access.can_plugin("hello:hits", Scope::Project, Action::Delete, Some(7)));
+    // Writing implies reading, as for Rustrak's own.
+    assert!(access.can_plugin("hello:hits", Scope::Project, Action::Read, Some(7)));
+    assert!(!access.can_plugin("hello:hits", Scope::Project, Action::Delete, Some(8)));
+    assert!(!access.can_plugin("hello:stats", Scope::Project, Action::Read, Some(7)));
+}
+
+#[test]
+fn an_instance_plugin_permission_holds_wherever_its_role_is_held() {
+    let access = Access::new(vec![on_project(
+        7,
+        plugin(&[("hello:reports", Action::Read)]),
+    )]);
+    assert!(access.can_plugin("hello:reports", Scope::Instance, Action::Read, None));
+}
+
+#[test]
+fn an_owner_holds_every_plugin_permission() {
+    let access = Access::new(vec![instance(Grants::all())]);
+    assert!(access.can_plugin("anything:at-all", Scope::Project, Action::Delete, Some(1)));
+}
+
+#[test]
+fn a_plugin_permission_is_handed_out_only_by_who_holds_it() {
+    let access = Access::new(vec![instance(plugin(&[("hello:hits", Action::Read)]))]);
+    assert!(access.covers(&plugin(&[("hello:hits", Action::Read)]), None));
+    assert!(!access.covers(&plugin(&[("hello:hits", Action::Delete)]), None));
+}
+
+#[test]
+fn a_plugin_key_names_a_plugin_and_one_of_its_resources() {
+    assert!(rbac::is_plugin_key("hello:hits"));
+    assert!(rbac::is_plugin_key(&rbac::plugin_key(
+        "web-traffic",
+        "visitors"
+    )));
+    for not in ["hits", "Hello:x", "hello:", ":hits", "h:hits"] {
+        assert!(!rbac::is_plugin_key(not), "{not}");
+    }
+}
+
+fn plugin_scopes(key: &str, _: Action) -> Option<Scope> {
+    match key {
+        "hello:hits" => Some(Scope::Project),
+        "hello:admin" => Some(Scope::Instance),
+        _ => None,
+    }
+}
+
+fn plugin_grant(key: &str, action: Action) -> Grants {
+    Grants::default().with_plugins([(key.to_string(), action)])
+}
+
+#[test]
+fn an_owners_token_kept_to_a_project_plugin_permission_sees_the_project() {
+    // As the extractor builds it: the token's cap first, then the scopes.
+    let token = Access::new(vec![instance(Grants::all())])
+        .capped(TokenScope {
+            grants: plugin_grant("hello:hits", Action::Read),
+            projects: None,
+        })
+        .with_plugin_scopes(plugin_scopes);
+    assert!(token.can_plugin("hello:hits", Scope::Project, Action::Read, Some(5)));
+    assert!(token.can(Resource::Project, Action::Read, Some(5)));
+}
+
+#[test]
+fn a_token_keeping_only_the_read_its_owners_update_implies_sees_the_project() {
+    let token = Access::new(vec![on_project(
+        5,
+        plugin_grant("hello:hits", Action::Update),
+    )])
+    .capped(TokenScope {
+        grants: plugin_grant("hello:hits", Action::Read),
+        projects: None,
+    })
+    .with_plugin_scopes(plugin_scopes);
+    assert!(token.can_plugin("hello:hits", Scope::Project, Action::Read, Some(5)));
+    assert!(token.can(Resource::Project, Action::Read, Some(5)));
+}
+
+#[test]
+fn an_instance_plugin_permission_held_through_a_project_is_held_everywhere() {
+    // Like Rustrak's workspace permissions: wherever the role is held.
+    let actor = Access::new(vec![on_project(
+        7,
+        plugin_grant("hello:admin", Action::Read),
+    )])
+    .with_plugin_scopes(plugin_scopes);
+    assert!(actor.can_plugin("hello:admin", Scope::Instance, Action::Read, None));
+    assert!(actor.covers(&plugin_grant("hello:admin", Action::Read), None));
+    assert!(actor.covers(&plugin_grant("hello:admin", Action::Read), Some(9)));
+    // A project one stays on its project.
+    let project = Access::new(vec![on_project(
+        7,
+        plugin_grant("hello:hits", Action::Read),
+    )])
+    .with_plugin_scopes(plugin_scopes);
+    assert!(!project.covers(&plugin_grant("hello:hits", Action::Read), Some(9)));
+}
+
+#[test]
+fn only_a_project_scoped_plugin_permission_shows_the_project() {
+    let plugin = |key: &str| Grants::default().with_plugins([(key.to_string(), Action::Read)]);
+    let scope_of = |key: &str, _: Action| match key {
+        "hello:hits" => Some(Scope::Project),
+        "hello:admin" => Some(Scope::Instance),
+        _ => None,
+    };
+    let project =
+        Access::new(vec![on_project(5, plugin("hello:hits"))]).with_plugin_scopes(scope_of);
+    assert!(project.can(Resource::Project, Action::Read, Some(5)));
+    assert_eq!(project.visible_projects(), ProjectScope::Only(vec![5]));
+
+    // Like Rustrak's workspace permissions: held wherever, it shows nothing.
+    for a in [
+        instance(plugin("hello:admin")),
+        on_project(5, plugin("hello:admin")),
+    ] {
+        let access = Access::new(vec![a]).with_plugin_scopes(scope_of);
+        assert!(!access.can(Resource::Project, Action::Read, Some(5)));
+    }
+
+    // Through a token, only one that keeps it.
+    let cap = |plugins: Grants| TokenScope {
+        grants: plugins,
+        projects: None,
+    };
+    let kept = Access::new(vec![on_project(5, plugin("hello:hits"))])
+        .with_plugin_scopes(scope_of)
+        .capped(cap(plugin("hello:hits")));
+    assert!(kept.can(Resource::Project, Action::Read, Some(5)));
+    let dropped = Access::new(vec![on_project(5, plugin("hello:hits"))])
+        .with_plugin_scopes(scope_of)
+        .capped(cap(Grants::default()));
+    assert!(!dropped.can(Resource::Project, Action::Read, Some(5)));
 }

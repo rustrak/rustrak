@@ -61,6 +61,7 @@ impl RustrakMcp {
     ) -> CallToolResult {
         reply(storage::preview_cleanup(
             self.pool(),
+            self.plugins(),
             self.actor(),
             web::Json(a),
         ))
@@ -154,6 +155,7 @@ impl RustrakMcp {
     ) -> CallToolResult {
         reply(storage::preview_retention(
             self.pool(),
+            self.plugins(),
             self.actor(),
             web::Json(a),
         ))
@@ -188,11 +190,7 @@ impl RustrakMcp {
         &self,
         Parameters(a): Parameters<UpdateRetentionArgs>,
     ) -> CallToolResult {
-        let deletes = a.settings.defaults.deletes_anything()
-            || a.settings
-                .overrides
-                .iter()
-                .any(|o| o.windows().deletes_anything());
+        let deletes = a.settings.deletes_anything();
         if deletes && a.confirm != Some(true) {
             return refuse("update_retention with a retention window schedules permanent deletion and was not confirmed. Run preview_retention, show the user what goes, then call again with confirm=true to proceed.");
         }
