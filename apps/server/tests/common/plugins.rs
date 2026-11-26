@@ -1,6 +1,6 @@
-//! The test plugins, built by `rustrak-plugin build` exactly as their
-//! authors build them, once per test binary: the `hello` fixture
-//! (`tests/fixtures/hello-plugin`) and `plugins/web-traffic`.
+//! The test plugin, built by `rustrak-plugin build` exactly as its
+//! authors build it, once per test binary: the `hello` fixture
+//! (`tests/fixtures/hello-plugin`).
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
