@@ -258,6 +258,34 @@ describe('buildUi', () => {
     expect(result.widgets).toEqual([{ zone: 'plugin.setup' }]);
   });
 
+  it('builds a page that uses React at its top level: memo, createContext', async () => {
+    const dir = copy((d) => {
+      const page = join(d, 'src/ui/routes/project/page.tsx');
+      const source = readFileSync(page, 'utf8').replace(
+        'export default function',
+        'function',
+      );
+      writeFileSync(
+        page,
+        `import { createContext, memo } from 'react';\nexport const Ctx = createContext(null);\n${source}\nexport default memo(${/function (\w+)/.exec(source)?.[1]});\n`,
+      );
+    });
+    const { result } = await built(dir);
+    expect(result.pages.map((p) => p.path)).toContain('');
+  });
+
+  it('refuses a page with no default component', async () => {
+    const dir = copy((d) =>
+      writeFileSync(
+        join(d, 'src/ui/routes/project/page.tsx'),
+        'export const Page = () => null;',
+      ),
+    );
+    await expect(built(dir)).rejects.toThrow(
+      /routes\/project\/page\.tsx: export default the component/,
+    );
+  });
+
   it('refuses a widget that names no zone', async () => {
     const dir = copy((d) =>
       writeFileSync(

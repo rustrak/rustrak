@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { paths } from './config.ts';
+import { rustIdent } from './settings.ts';
 
 const MODULE = /^[a-z][a-z0-9_]*$/;
 
@@ -32,24 +33,24 @@ function declare(
     }
     if (!MODULE.test(name))
       throw new Error(`${shown}/${entry}: a module name is snake_case`);
+    return rustIdent(name, `${shown}/${entry}`);
   };
   for (const sub of dirs) {
-    named(sub, sub);
+    const ident = named(sub, sub);
     const inner = declare(join(dir, sub), `${shown}/${sub}`, `${indent}    `);
     if (inner.length === 0) continue;
     lines.push(
       `${indent}#[path = "${at}${sub}"]`,
-      `${indent}pub mod ${sub} {`,
+      `${indent}pub mod ${ident} {`,
       ...inner,
       `${indent}}`,
     );
   }
   for (const file of files) {
     const name = file.slice(0, -'.rs'.length);
-    named(file, name);
     lines.push(
       `${indent}#[path = "${at}${file}"]`,
-      `${indent}pub mod ${name};`,
+      `${indent}pub mod ${named(file, name)};`,
     );
   }
   return lines;

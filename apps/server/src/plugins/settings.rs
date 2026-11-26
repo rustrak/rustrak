@@ -176,11 +176,14 @@ pub fn resolve(
         .collect()
 }
 
-/// `values` without its secrets: what may reach a browser.
+/// `values` without its secrets, nor anything the schema no longer declares
+/// (a secret of an older version, say): what may reach a browser.
 pub fn public(specs: &[SettingSpec], mut values: Map<String, Value>) -> Map<String, Value> {
-    for s in specs.iter().filter(|s| s.kind == SettingType::Secret) {
-        values.remove(&s.key);
-    }
+    values.retain(|key, _| {
+        specs
+            .iter()
+            .any(|s| &s.key == key && s.kind != SettingType::Secret)
+    });
     values
 }
 

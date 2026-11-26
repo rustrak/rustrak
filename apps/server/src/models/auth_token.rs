@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 use crate::models::rbac::{Grants, TokenScope};
-use crate::models::Permission;
+use crate::models::{grants_of, Permission, PluginGrant};
 
 /// An API token. `token` holds the SHA-256 hash, except on a token just
 /// created, where it holds the raw value that is shown once.
@@ -24,6 +24,8 @@ pub struct AuthToken {
     #[sqlx(skip)]
     pub permissions: Vec<Permission>,
     #[sqlx(skip)]
+    pub plugin_permissions: Vec<PluginGrant>,
+    #[sqlx(skip)]
     pub project_ids: Vec<i32>,
 }
 
@@ -37,6 +39,10 @@ pub struct CreateAuthToken {
     /// `null`: everything its owner may do.
     #[serde(default)]
     pub permissions: Option<Vec<Permission>>,
+    /// Plugins' permissions it may use besides `permissions`, within its
+    /// owner's. Ignored while `permissions` is omitted: it may do everything.
+    #[serde(default)]
+    pub plugin_permissions: Vec<PluginGrant>,
     /// The projects it may reach. Omitted or `null`: every project its owner reaches.
     #[serde(default)]
     pub project_ids: Option<Vec<i32>>,
@@ -57,6 +63,8 @@ pub struct AuthTokenCreatedResponse {
     /// `null`: everything its owner may do.
     #[cfg_attr(feature = "openapi", schema(required))]
     pub permissions: Option<Vec<Permission>>,
+    /// Plugins' permissions it is limited to, beside `permissions`.
+    pub plugin_permissions: Vec<PluginGrant>,
     /// `null`: every project its owner reaches.
     #[cfg_attr(feature = "openapi", schema(required))]
     pub project_ids: Option<Vec<i32>>,
@@ -80,6 +88,8 @@ pub struct AuthTokenResponse {
     /// `null`: everything its owner may do.
     #[cfg_attr(feature = "openapi", schema(required))]
     pub permissions: Option<Vec<Permission>>,
+    /// Plugins' permissions it is limited to, beside `permissions`.
+    pub plugin_permissions: Vec<PluginGrant>,
     /// `null`: every project its owner reaches.
     #[cfg_attr(feature = "openapi", schema(required))]
     pub project_ids: Option<Vec<i32>>,
@@ -102,7 +112,7 @@ impl AuthToken {
             grants: if self.all_permissions {
                 Grants::all()
             } else {
-                crate::models::Permission::grants(&self.permissions)
+                grants_of(&self.permissions, &self.plugin_permissions)
             },
             projects: self.projects_or_all(),
         }
@@ -122,6 +132,7 @@ impl AuthToken {
             created_at: self.created_at,
             last_used_at: self.last_used_at,
             permissions: self.permissions_or_all(),
+            plugin_permissions: self.plugin_permissions.clone(),
             project_ids: self.projects_or_all(),
             expires_at: self.expires_at,
         }
@@ -135,6 +146,7 @@ impl AuthToken {
             description: self.description.clone(),
             created_at: self.created_at,
             permissions: self.permissions_or_all(),
+            plugin_permissions: self.plugin_permissions.clone(),
             project_ids: self.projects_or_all(),
             expires_at: self.expires_at,
         }

@@ -20,7 +20,19 @@ wasmtime::component::bindgen!({ path: "wit", world: "plugin" });
 use self::rustrak::plugin::{log as plugin_log, settings, sql};
 
 /// Linear memory one instance may grow to.
-const MEMORY_LIMIT: usize = 32 << 20;
+pub(super) const MEMORY_LIMIT: usize = 32 << 20;
+/// Elements one table may grow to: far above what a compiled plugin's
+/// function table holds, far below the gigabytes `table.grow` could take.
+const TABLE_LIMIT: usize = 100_000;
+
+/// What one call's instance may grow to: one memory, its tables bounded.
+fn limits() -> StoreLimits {
+    StoreLimitsBuilder::new()
+        .memory_size(MEMORY_LIMIT)
+        .memories(1)
+        .table_elements(TABLE_LIMIT)
+        .build()
+}
 /// One epoch tick. Deadlines are whole ticks.
 const TICK: Duration = Duration::from_millis(10);
 
@@ -150,7 +162,7 @@ impl Runtime {
             Host {
                 wasi: WasiCtx::builder().build(),
                 table: ResourceTable::new(),
-                limits: StoreLimitsBuilder::new().memory_size(MEMORY_LIMIT).build(),
+                limits: limits(),
                 plugin: plugin.id.clone(),
                 db: plugin.db.clone(),
                 deadline: Instant::now() + budget,
@@ -279,5 +291,25 @@ impl plugin_log::Host for Host {
             plugin_log::Level::Error => log::Level::Error,
         };
         log::log!(target: "rustrak::plugin", level, "[{}] {message}", self.plugin);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wasmtime::ResourceLimiter;
+
+    use super::*;
+
+    #[test]
+    fn a_table_cannot_grow_past_its_cap() {
+        let mut limits = limits();
+        assert!(limits.table_growing(0, TABLE_LIMIT, None).unwrap());
+        assert!(!limits.table_growing(0, TABLE_LIMIT + 1, None).unwrap());
+    }
+
+    #[test]
+    fn memory_cannot_grow_past_its_cap() {
+        let mut limits = limits();
+        assert!(!limits.memory_growing(0, MEMORY_LIMIT + 1, None).unwrap());
     }
 }

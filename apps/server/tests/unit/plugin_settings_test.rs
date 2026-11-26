@@ -90,6 +90,14 @@ fn the_browser_never_gets_a_secret() {
 }
 
 #[test]
+fn a_value_the_schema_no_longer_declares_never_reaches_the_browser() {
+    // A secret an older version declared, still stored after an upgrade.
+    let stored = map(json!({ "greeting": "Hola", "apiKey": "k", "oldToken": "leak" }));
+    let public = settings::public(&specs(), stored);
+    assert_eq!(public, map(json!({ "greeting": "Hola" })));
+}
+
+#[test]
 fn a_change_is_checked_against_the_schema() {
     let specs = specs();
     let mut values = Map::new();

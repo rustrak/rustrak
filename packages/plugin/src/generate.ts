@@ -46,7 +46,7 @@ export function generate(dir: string, config: PluginConfig): Generated {
       '',
       "declare module '@rustrak/plugin/ui' {",
       '  interface PluginMessages {',
-      ...[...known].sort().map((key) => `    '${key}': true;`),
+      ...[...known].sort().map((key) => `    ${JSON.stringify(key)}: true;`),
       '  }',
       settingsTs(settings),
       permissionsTs(permissions),

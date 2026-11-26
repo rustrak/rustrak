@@ -145,7 +145,11 @@ fn route_impl(method: &str, args: &Args, func: &ItemFn) -> syn::Result<Tokens> {
         )
     })?;
     let p = path.value();
-    if !p.starts_with('/') || p.contains(['{', '}', '?', '#', '"', '\\']) {
+    // The path goes into the route's JSON line as it is: nothing to escape.
+    if !p.starts_with('/')
+        || p.contains(['{', '}', '?', '#', '"', '\\'])
+        || p.contains(char::is_control)
+    {
         return Err(syn::Error::new(
             path.span(),
             "a path starts with / and has no placeholders",

@@ -1,4 +1,5 @@
-use serde::de::DeserializeOwned;
+use serde::de::value::{Error as DeError, MapDeserializer, SeqDeserializer};
+use serde::de::{self, DeserializeOwned, IntoDeserializer};
 
 use crate::__private::bindings::rustrak::plugin::sql;
 
@@ -36,12 +37,28 @@ macro_rules! int {
     ($($t:ty),*) => {$(
         impl ToValue for $t {
             fn to_value(&self) -> Value {
-                Value::Integer(*self as i64)
+                Value::Integer(i64::from(*self))
             }
         }
     )*};
 }
-int!(i8, i16, i32, i64, u8, u16, u32, u64, usize, isize);
+int!(i8, i16, i32, i64, u8, u16, u32);
+
+// SQLite's integers are i64: a larger value panics, which fails the request,
+// rather than being stored as a different number.
+macro_rules! wide {
+    ($($t:ty),*) => {$(
+        impl ToValue for $t {
+            fn to_value(&self) -> Value {
+                Value::Integer(
+                    i64::try_from(*self)
+                        .expect("an integer above i64::MAX does not fit in SQLite"),
+                )
+            }
+        }
+    )*};
+}
+wide!(u64, usize, isize);
 
 impl ToValue for bool {
     fn to_value(&self) -> Value {
@@ -89,14 +106,76 @@ fn values(params: &[&dyn ToValue]) -> Vec<Value> {
     params.iter().map(|p| p.to_value()).collect()
 }
 
-fn json(v: Value) -> serde_json::Value {
-    match v {
-        Value::Null => serde_json::Value::Null,
-        Value::Integer(i) => i.into(),
-        Value::Real(f) => f.into(),
-        Value::Text(s) => s.into(),
-        Value::Blob(b) => b.into(),
+/// One column's value, read the way SQLite stores it: a `bool` from 0 or 1.
+struct Cell(Value);
+
+impl<'de> de::Deserializer<'de> for Cell {
+    type Error = DeError;
+
+    fn deserialize_any<V: de::Visitor<'de>>(self, v: V) -> Result<V::Value, DeError> {
+        match self.0 {
+            Value::Null => v.visit_unit(),
+            Value::Integer(i) => v.visit_i64(i),
+            Value::Real(f) => v.visit_f64(f),
+            Value::Text(s) => v.visit_string(s),
+            Value::Blob(b) => v.visit_seq(SeqDeserializer::new(b.into_iter())),
+        }
     }
+
+    fn deserialize_bool<V: de::Visitor<'de>>(self, v: V) -> Result<V::Value, DeError> {
+        match self.0 {
+            Value::Integer(i) => v.visit_bool(i != 0),
+            other => Cell(other).deserialize_any(v),
+        }
+    }
+
+    fn deserialize_option<V: de::Visitor<'de>>(self, v: V) -> Result<V::Value, DeError> {
+        if matches!(self.0, Value::Null) {
+            v.visit_none()
+        } else {
+            v.visit_some(self)
+        }
+    }
+
+    fn deserialize_newtype_struct<V: de::Visitor<'de>>(
+        self,
+        _: &'static str,
+        v: V,
+    ) -> Result<V::Value, DeError> {
+        v.visit_newtype_struct(self)
+    }
+
+    fn deserialize_enum<V: de::Visitor<'de>>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        v: V,
+    ) -> Result<V::Value, DeError> {
+        match self.0 {
+            Value::Text(s) => s.into_deserializer().deserialize_enum(name, variants, v),
+            other => Cell(other).deserialize_any(v),
+        }
+    }
+
+    serde::forward_to_deserialize_any! {
+        i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bytes byte_buf unit unit_struct seq tuple tuple_struct map struct
+        identifier ignored_any
+    }
+}
+
+impl IntoDeserializer<'_, DeError> for Cell {
+    type Deserializer = Self;
+
+    fn into_deserializer(self) -> Self {
+        self
+    }
+}
+
+/// A row as `T`, its fields matched to columns by name.
+fn from_row<T: DeserializeOwned>(columns: &[String], row: Vec<Value>) -> Result<T, DbError> {
+    let cells = columns.iter().cloned().zip(row.into_iter().map(Cell));
+    T::deserialize(MapDeserializer::<_, DeError>::new(cells)).map_err(|e| DbError(e.to_string()))
 }
 
 /// The plugin's own SQLite database. Write the SQL; rows come back as your
@@ -118,15 +197,7 @@ impl Db {
         let rows = sql::query(sql, &values(params))?;
         rows.rows
             .into_iter()
-            .map(|row| {
-                let object: serde_json::Map<String, serde_json::Value> = rows
-                    .columns
-                    .iter()
-                    .cloned()
-                    .zip(row.into_iter().map(json))
-                    .collect();
-                serde_json::from_value(object.into()).map_err(|e| DbError(e.to_string()))
-            })
+            .map(|row| from_row(&rows.columns, row))
             .collect()
     }
 
@@ -143,7 +214,7 @@ impl Db {
             .next()
             .and_then(|r| r.into_iter().next())
             .ok_or_else(|| DbError("the query returned no rows".into()))?;
-        serde_json::from_value(json(first)).map_err(|e| DbError(e.to_string()))
+        T::deserialize(Cell(first)).map_err(|e| DbError(e.to_string()))
     }
 
     /// Several statements in one transaction: all of them or none.
@@ -153,5 +224,72 @@ impl Db {
             .map(|(s, p)| (s.to_string(), values(p)))
             .collect();
         Ok(sql::batch(&statements)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Deserialize as _;
+
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    enum Kind {
+        #[serde(rename = "a")]
+        A,
+    }
+
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct Id(i64);
+
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    struct Row {
+        on: bool,
+        off: bool,
+        n: Option<i64>,
+        none: Option<String>,
+        bytes: Vec<u8>,
+        ratio: f64,
+        kind: Kind,
+        id: Id,
+    }
+
+    #[test]
+    fn a_row_reads_a_bool_from_the_integer_sqlite_stores() {
+        let columns = ["on", "off", "n", "none", "bytes", "ratio", "kind", "id"].map(String::from);
+        let row = vec![
+            true.to_value(),
+            false.to_value(),
+            Value::Integer(7),
+            Value::Null,
+            Value::Blob(vec![1, 2]),
+            Value::Integer(2),
+            Value::Text("a".into()),
+            Value::Integer(9),
+        ];
+        let row: Row = from_row(&columns, row).unwrap();
+        assert_eq!(
+            row,
+            Row {
+                on: true,
+                off: false,
+                n: Some(7),
+                none: None,
+                bytes: vec![1, 2],
+                ratio: 2.0,
+                kind: Kind::A,
+                id: Id(9),
+            }
+        );
+    }
+
+    #[test]
+    fn a_scalar_reads_a_bool_too() {
+        assert!(bool::deserialize(Cell(Value::Integer(1))).unwrap());
+    }
+
+    #[test]
+    #[should_panic(expected = "i64::MAX")]
+    fn an_unsigned_value_sqlite_cannot_hold_is_refused() {
+        u64::MAX.to_value();
     }
 }

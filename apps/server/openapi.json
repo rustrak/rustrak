@@ -19178,6 +19178,7 @@
           "description",
           "created_at",
           "permissions",
+          "plugin_permissions",
           "project_ids",
           "expires_at"
         ],
@@ -19213,6 +19214,13 @@
             },
             "description": "`null`: everything its owner may do."
           },
+          "plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Plugins' permissions it is limited to, beside `permissions`."
+          },
           "project_ids": {
             "type": [
               "array",
@@ -19240,6 +19248,7 @@
           "created_at",
           "last_used_at",
           "permissions",
+          "plugin_permissions",
           "project_ids",
           "expires_at"
         ],
@@ -19281,6 +19290,13 @@
               "$ref": "#/components/schemas/Permission"
             },
             "description": "`null`: everything its owner may do."
+          },
+          "plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Plugins' permissions it is limited to, beside `permissions`."
           },
           "project_ids": {
             "type": [
@@ -20361,6 +20377,13 @@
               "$ref": "#/components/schemas/Permission"
             },
             "description": "What the token may do, within its owner's permissions. Omitted or\n`null`: everything its owner may do."
+          },
+          "plugin_permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginGrant"
+            },
+            "description": "Plugins' permissions it may use besides `permissions`, within its\nowner's. Ignored while `permissions` is omitted: it may do everything."
           },
           "project_ids": {
             "type": [
@@ -22764,10 +22787,14 @@
             }
           },
           "plugin_permissions": {
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/PluginGrant"
-            }
+            },
+            "description": "Omitted or `null`: the ones held stay."
           },
           "project_ids": {
             "type": [
@@ -24349,10 +24376,14 @@
             }
           },
           "plugin_permissions": {
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/PluginGrant"
-            }
+            },
+            "description": "Omitted or `null`: on an update, the ones it holds stay."
           }
         }
       },

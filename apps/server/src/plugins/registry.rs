@@ -17,7 +17,7 @@ pub const OFFICIAL_INDEX: &str =
 
 /// The keys the official index is signed with (minisign public keys, the
 /// base64 line). Its secret half signs in the registry's CI only.
-// ponytail: empty until the registry's key is generated (`minisign -G`);
+// Empty until the registry's key is generated (`minisign -G`);
 // until then only RUSTRAK_PLUGIN_REGISTRY_KEYS verifies an index.
 pub const OFFICIAL_KEYS: &[&str] = &[];
 
@@ -178,8 +178,13 @@ impl Registry {
         Ok(index)
     }
 
-    /// The package of `id` this Rustrak runs, checked against the index.
-    pub async fn download(&self, id: &str, host: &Version) -> Result<Vec<u8>, RegistryError> {
+    /// The package of `id` this Rustrak runs, checked against the index,
+    /// with the version the index lists it as.
+    pub async fn download(
+        &self,
+        id: &str,
+        host: &Version,
+    ) -> Result<(Vec<u8>, Version), RegistryError> {
         let index = self.index().await?;
         let version = index
             .plugins
@@ -187,7 +192,10 @@ impl Registry {
             .find(|p| p.id == id)
             .and_then(|p| p.compatible(host))
             .ok_or_else(|| RegistryError::NotListed(id.to_string()))?;
-        self.fetch_checked(id, &version.url, &version.sha256).await
+        let bytes = self
+            .fetch_checked(id, &version.url, &version.sha256)
+            .await?;
+        Ok((bytes, version.version.clone()))
     }
 
     /// The logo of `id`, checked against the index like a package.
@@ -227,10 +235,23 @@ impl Registry {
     }
 
     async fn fetch(&self, url: &str) -> Result<Vec<u8>, RegistryError> {
+        let too_big = || RegistryError::Unreachable(format!("{url} is bigger than any package"));
         if let Some(path) = url.strip_prefix("file://") {
-            return tokio::fs::read(path)
+            use tokio::io::AsyncReadExt;
+            let unreachable =
+                |e: std::io::Error| RegistryError::Unreachable(format!("{path}: {e}"));
+            let mut bytes = Vec::new();
+            tokio::fs::File::open(path)
                 .await
-                .map_err(|e| RegistryError::Unreachable(format!("{path}: {e}")));
+                .map_err(unreachable)?
+                .take(MAX_PACKAGE_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .await
+                .map_err(unreachable)?;
+            if bytes.len() as u64 > MAX_PACKAGE_BYTES {
+                return Err(too_big());
+            }
+            return Ok(bytes);
         }
         let mut response = self
             .http
@@ -249,9 +270,7 @@ impl Registry {
         {
             bytes.extend_from_slice(&chunk);
             if bytes.len() as u64 > MAX_PACKAGE_BYTES {
-                return Err(RegistryError::Unreachable(format!(
-                    "{url} is bigger than any package"
-                )));
+                return Err(too_big());
             }
         }
         Ok(bytes)

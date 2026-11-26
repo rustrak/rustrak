@@ -166,6 +166,9 @@ pub struct Grants {
     /// Plugins' permissions. Their scope is the plugin's manifest's, so the
     /// check names it: see `Access::can_plugin`.
     plugins: BTreeSet<(String, Action)>,
+    /// Those of `plugins` whose manifest scopes them to a project: like
+    /// Rustrak's project permissions, holding one shows the project.
+    project_plugins: BTreeSet<(String, Action)>,
 }
 
 impl Grants {
@@ -220,19 +223,42 @@ impl Grants {
     }
 
     fn any_project_grant(&self) -> bool {
-        self.all || self.pairs.iter().any(|(r, _)| r.scope() == Scope::Project)
+        self.all
+            || self.pairs.iter().any(|(r, _)| r.scope() == Scope::Project)
+            || !self.project_plugins.is_empty()
     }
 
     /// Whether both hold some project permission in common.
     fn shares_project_grant(&self, other: &Grants) -> bool {
         catalog_pairs()
             .any(|(r, a)| r.scope() == Scope::Project && self.allows(r, a) && other.allows(r, a))
+            || self
+                .project_plugins
+                .iter()
+                .any(|(k, a)| other.allows_plugin(k, *a))
+            // Either side may be the one that names it: an owner's grants
+            // name none, and writing one implies reading it.
+            || other
+                .project_plugins
+                .iter()
+                .any(|(k, a)| self.allows_plugin(k, *a))
+    }
+
+    fn mark_project_plugins(&mut self, scope_of: &impl Fn(&str, Action) -> Option<Scope>) {
+        self.project_plugins = self
+            .plugins
+            .iter()
+            .filter(|(k, a)| scope_of(k, *a) == Some(Scope::Project))
+            .cloned()
+            .collect();
     }
 
     fn add(&mut self, other: &Grants) {
         self.all |= other.all;
         self.pairs.extend(other.pairs.iter().copied());
         self.plugins.extend(other.plugins.iter().cloned());
+        self.project_plugins
+            .extend(other.project_plugins.iter().cloned());
     }
 }
 
@@ -310,6 +336,29 @@ impl Access {
             }
         }
         access
+    }
+
+    /// The same access, knowing which plugins' permissions their manifests
+    /// scope to a project (`scope_of`), so those show it.
+    pub fn with_plugin_scopes(mut self, scope_of: impl Fn(&str, Action) -> Option<Scope>) -> Self {
+        // An instance one holds wherever a role giving it is held, as for
+        // Rustrak's own workspace permissions.
+        let lifted: Vec<_> = self
+            .projects
+            .values()
+            .flat_map(|g| g.plugins.iter())
+            .filter(|(k, a)| scope_of(k, *a) == Some(Scope::Instance))
+            .cloned()
+            .collect();
+        self.instance.plugins.extend(lifted);
+        self.instance.mark_project_plugins(&scope_of);
+        for g in self.projects.values_mut() {
+            g.mark_project_plugins(&scope_of);
+        }
+        if let Some(cap) = &mut self.cap {
+            cap.grants.mark_project_plugins(&scope_of);
+        }
+        self
     }
 
     /// The same access, limited to what `scope` allows: a token never does
@@ -483,11 +532,23 @@ impl Access {
         let mut projects: Vec<_> = self
             .projects
             .iter()
+            .filter(|(id, _)| self.cap_reaches(Some(**id)))
             .map(|(id, g)| (*id, kept(g)))
             .filter(|(_, pairs)| !pairs.is_empty())
             .collect();
         projects.sort_by_key(|(id, _)| *id);
         (kept(&self.instance), projects)
+    }
+
+    /// Whether a plugin's permission holds on the workspace or on at least
+    /// one project, as `holds_somewhere` for Rustrak's.
+    pub fn holds_plugin_somewhere(&self, key: &str, action: Action) -> bool {
+        self.cap_allows_plugin(key, action)
+            && (self.instance.allows_plugin(key, action)
+                || self
+                    .projects
+                    .iter()
+                    .any(|(&id, g)| self.cap_reaches(Some(id)) && g.allows_plugin(key, action)))
     }
 
     /// Whether this user already holds every grant in `grants` where it would

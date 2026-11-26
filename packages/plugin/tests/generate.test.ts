@@ -37,7 +37,7 @@ describe('generate', () => {
   it('types the message keys and the settings for the editor', () => {
     const { env } = run();
     expect(env).toContain("declare module '@rustrak/plugin/ui'");
-    expect(env).toContain("'nav.visits': true;");
+    expect(env).toContain('"nav.visits": true;');
     expect(env).toContain('greeting: string;');
     expect(env).not.toContain('apiKey');
   });
@@ -49,6 +49,26 @@ describe('generate', () => {
     );
     expect(rust).toContain('pub greeting: String,');
     expect(rust).toContain('pub api_key: Option<String>,');
+  });
+
+  it('writes a Rust keyword as a raw identifier, keeping the setting key', () => {
+    const { rust } = run({ ...config, settings: { type: { type: 'text' } } });
+    expect(rust).toContain('pub r#type: Option<String>,');
+  });
+
+  it('refuses a select whose enum would clash with a generated type', () => {
+    expect(() =>
+      run({
+        ...config,
+        settings: { option: { type: 'select', options: ['a', 'b'] } },
+      }),
+    ).toThrow(/settings\.option: .*clashes with Option/);
+    expect(() =>
+      run({
+        ...config,
+        settings: { perm: { type: 'select', options: ['a', 'b'] } },
+      }),
+    ).toThrow(/settings\.perm: .*clashes with Perm/);
   });
 
   it('warns about a language missing, a key missing, and a setting with no label', () => {
@@ -106,6 +126,13 @@ describe('the server module tree', () => {
     expect(() => generate(dir, config)).toThrow(
       /src\/server\/routes\/mod\.rs: Rustrak declares the modules/,
     );
+  });
+
+  it('declares a module named by a Rust keyword as a raw identifier', () => {
+    const dir = server(['models/type.rs']);
+    generate(dir, config);
+    const lib = readFileSync(join(dir, '.rustrak', 'lib.rs'), 'utf8');
+    expect(lib).toContain('#[path = "type.rs"]\n    pub mod r#type;');
   });
 
   it('refuses a file whose name is not a snake_case module', () => {

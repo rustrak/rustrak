@@ -101,7 +101,7 @@ pub async fn list_plugins(
     Ok(HttpResponse::Ok().json(plugins))
 }
 
-// ponytail: owners only until `plugins` joins the RBAC catalog.
+// Owners only until `plugins` joins the RBAC catalog.
 fn require_owner(actor: &ApiActor) -> AppResult<()> {
     if actor.is_owner() {
         Ok(())
@@ -139,7 +139,7 @@ pub async fn install_plugin(
 ) -> AppResult<HttpResponse> {
     require_owner(&actor)?;
     let installed = host
-        .install(pool.get_ref(), body.to_vec(), Source::Upload)
+        .install(pool.get_ref(), body.into(), Source::Upload)
         .await?;
     let summary = host
         .summary(pool.get_ref(), &installed.manifest.plugin.id)
@@ -271,19 +271,24 @@ pub async fn install_from_registry(
 ) -> AppResult<HttpResponse> {
     require_owner(&actor)?;
     let id = path.into_inner();
-    let rtp = registry
+    let (rtp, listed) = registry
         .download(&id, host.host_version())
         .await
         .map_err(|e| AppError::BadGateway(e.to_string()))?;
-    // Before installing: a package of another plugin would replace that one.
-    let served = crate::plugins::package::Package::read(&rtp)
-        .map_err(|e| AppError::BadGateway(e.to_string()))?
-        .manifest
-        .plugin
-        .id;
-    if served != id {
+    // Before installing: a package of another plugin would replace that one,
+    // and one of another version would install as what the index did not list.
+    // Unzipping up to MAX_PACKAGE_BYTES is CPU work: off the async worker.
+    let (rtp, served) = web::block(move || {
+        let read = crate::plugins::package::Package::read(&rtp);
+        read.map(|p| (rtp, p.manifest.plugin))
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .map_err(|e| AppError::BadGateway(e.to_string()))?;
+    if served.id != id || served.version != listed {
         return Err(AppError::BadGateway(format!(
-            "the registry served {served} for {id}"
+            "the registry served {} {} for {id} {listed}",
+            served.id, served.version
         )));
     }
     host.install(pool.get_ref(), rtp, Source::Registry).await?;
