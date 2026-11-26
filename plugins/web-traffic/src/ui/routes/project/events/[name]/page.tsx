@@ -17,7 +17,6 @@ import {
   type EventTotals,
   filterOf,
   type Occurrence,
-  type Overview,
   type Property,
   periodOf,
   type Row,
@@ -60,15 +59,13 @@ export default function EventDetail({ params }: PageProps<'project'>) {
   const name = params.name ?? '';
   usePluginTrail([{ label: name }]);
   const totals = usePluginApi<EventTotals>('/event', { name, ...filter });
-  const overview = usePluginApi<Overview>('/overview', filter);
   const properties = usePluginApi<Property[]>('/event-properties', {
     name,
     ...filter,
   });
   const pages = usePluginApi<Row[]>('/event-pages', { name, ...filter });
   const row = totals.data;
-  const everyone = overview.data?.current.visitors;
-  const conversion = row && everyone ? share(row.visitors, everyone) : null;
+  const conversion = row ? share(row.visitors, row.everyone) : null;
   const shown = (value?: number) =>
     value === undefined ? (totals.isPending ? '…' : '0') : format.number(value);
 

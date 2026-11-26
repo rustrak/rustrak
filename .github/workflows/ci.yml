@@ -185,6 +185,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --filter=@rustrak/plugin
 
+      # Web Traffic's own unit tests, its cargo test and its vitest. ci:web
+      # leaves the plugin out because it needs Rust, and the server tests
+      # below only build it.
+      - name: Test the Web Traffic plugin
+        working-directory: plugins/web-traffic
+        run: pnpm run test
+
       # `openapi` on, so `gen_openapi` is compiled here, in this profile, and
       # the check below is a run rather than a second compile with a different
       # feature set.

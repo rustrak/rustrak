@@ -10,7 +10,13 @@ import { Figure, FigureStrip, Panel, PanelPlaceholder } from '@rustrak/ui';
 import { ProfileFacts, VisitSection } from '../../../../components/journey';
 import { useRegionName } from '../../../../components/region';
 import { TrafficPage } from '../../../../components/traffic-page';
-import { duration, type Profile, type Step, visits } from '../../../../model';
+import {
+  duration,
+  type Profile,
+  type Step,
+  unshown,
+  visits,
+} from '../../../../model';
 
 export const config = definePage({ requires: 'visitors:read' });
 
@@ -25,6 +31,8 @@ export default function VisitorPage({ params }: PageProps<'project'>) {
   const steps = usePluginApi<Step[]>('/journey', { id });
   const p = profile.data;
   const day = visits(steps.data ?? []);
+  // A day longer than the journey's list: its visits and steps are a start.
+  const missing = p && steps.data ? unshown(steps.data, p) : 0;
   const figure = (
     value: number | undefined,
     show: (n: number) => string = (n) => format.number(n),
@@ -44,7 +52,9 @@ export default function VisitorPage({ params }: PageProps<'project'>) {
       <FigureStrip className="shrink-0 grid-cols-2 md:grid-cols-4">
         <Figure
           label={t('visitor.visits')}
-          value={figure(steps.data && day.length)}
+          value={figure(steps.data && day.length, (n) =>
+            missing > 0 ? `${format.number(n)}+` : format.number(n),
+          )}
         />
         <Figure label={t('overview.pageviews')} value={figure(p?.pageviews)} />
         <Figure label={t('top.events')} value={figure(p?.events)} />
@@ -62,6 +72,11 @@ export default function VisitorPage({ params }: PageProps<'project'>) {
               {day.map((visit, n) => (
                 <VisitSection key={visit[0]!.at} visit={visit} n={n + 1} />
               ))}
+              {missing > 0 ? (
+                <p className="px-5 py-3 text-meta text-fg-subtle">
+                  {t('journey.partial', { count: missing })}
+                </p>
+              ) : null}
             </div>
           )}
         </Panel>

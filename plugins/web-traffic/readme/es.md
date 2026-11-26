@@ -69,3 +69,8 @@ página de **Almacenamiento** de Rustrak.
 
 **Tráfico web: leer** permite ver el informe de un proyecto. Dalo en un rol,
 en Roles, o en los permisos propios de un miembro.
+
+**Visitantes: leer** se da aparte, porque muestra a las personas una a una: la
+página de Visitantes, el día y el perfil de cada visitante, y las últimas
+veces que ocurrió un evento con quién lo hizo. Dalo también a quien deba ver
+eso.

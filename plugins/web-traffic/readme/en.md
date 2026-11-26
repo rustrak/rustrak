@@ -66,3 +66,7 @@ How long page views and events are kept is set in Rustrak's **Storage** page.
 
 **Web traffic: read** lets someone see a project's report. Give it in a role
 under Roles or a member's own permissions.
+
+**Visitors: read** is given apart from it, because it shows people one by
+one: the Visitors page, each visitor's day and profile, and an event's latest
+occurrences with who did them. Give it as well to whoever should see those.

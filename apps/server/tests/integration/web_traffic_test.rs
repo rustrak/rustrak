@@ -378,13 +378,13 @@ async fn one_filter_narrows_the_whole_report() {
     assert_eq!(series["names"], json!(["signup"]));
     let rows = series["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 24);
-    let total: i64 = rows.iter().map(|r| r["signup"].as_i64().unwrap()).sum();
+    let total: i64 = rows.iter().map(|r| r["0"].as_i64().unwrap()).sum();
     assert_eq!(total, 2);
     let (_, all) = call!(&app, get("/event-series?period=24h"));
     assert_eq!(all["names"], json!(["signup"]), "the most common events");
     // Exactly one event, whatever others share its name's letters.
     let (_, totals) = call!(&app, get("/event?name=signup"));
-    assert_eq!(totals, json!({ "count": 2, "visitors": 2 }));
+    assert_eq!(totals, json!({ "count": 2, "visitors": 2, "everyone": 2 }));
     let (_, pages) = call!(&app, get("/event-pages?name=signup"));
     assert_eq!(
         ranked(&pages),
@@ -445,6 +445,74 @@ async fn a_websites_own_events_are_counted() {
     assert_eq!(
         ranked(&events),
         json!([{ "value": "signup", "visitors": 2, "count": 3 }])
+    );
+}
+
+/// Whatever a website names its events or puts in them, its report reads it,
+/// and a conversion is out of every visitor, the ones who only sent events too.
+#[actix_web::test]
+async fn any_event_name_and_data_are_reported() {
+    let (_db, app, owner, project, key) = installed().await;
+    // Two visitors only send events (the tracker's auto-track off), named
+    // like the chart's own time key and carrying a null.
+    for ip in ["10.0.0.1", "10.0.0.2"] {
+        let (status, _) = call!(
+            &app,
+            beacon(
+                project,
+                &key,
+                ip,
+                FIREFOX,
+                json!({ "type": "event", "url": "https://shop.example.com/", "name": "t", "data": { "plan": null } })
+            )
+        );
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    // A third only reads a page.
+    call!(
+        &app,
+        beacon(
+            project,
+            &key,
+            "10.0.0.3",
+            FIREFOX,
+            pageview("https://shop.example.com/")
+        )
+    );
+    let get = |path: &str| {
+        test::TestRequest::get()
+            .uri(&format!(
+                "/api/projects/{project}/plugins/web-traffic{path}"
+            ))
+            .insert_header(bearer(&owner))
+    };
+
+    let (status, properties) = call!(&app, get("/event-properties?name=t"));
+    assert_eq!(status, StatusCode::OK, "{properties}");
+    assert_eq!(
+        properties,
+        json!([{ "key": "plan", "value": "null", "count": 2 }])
+    );
+
+    let (_, series) = call!(&app, get("/event-series?name=t&period=24h"));
+    assert_eq!(series["names"], json!(["t"]));
+    let rows = series["rows"].as_array().unwrap();
+    assert!(
+        rows.windows(2)
+            .all(|w| w[1]["t"].as_i64().unwrap() - w[0]["t"].as_i64().unwrap() == 3_600),
+        "every row keeps its hour: {series}"
+    );
+    let total: i64 = rows.iter().map(|r| r["0"].as_i64().unwrap()).sum();
+    assert_eq!(
+        total, 2,
+        "an event's counts are keyed by its place in names"
+    );
+
+    let (_, totals) = call!(&app, get("/event?name=t"));
+    assert_eq!(
+        totals,
+        json!({ "count": 2, "visitors": 2, "everyone": 3 }),
+        "two of three visitors, not two of the one who read a page"
     );
 }
 

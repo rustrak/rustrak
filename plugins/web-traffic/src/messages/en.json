@@ -123,7 +123,8 @@
     "pageview": "Page",
     "event": "Event",
     "privacy": "Within one day: the next day the same person is a new visitor.",
-    "gone": "This visit is no longer kept."
+    "gone": "This visit is no longer kept.",
+    "partial": "{count, plural, one {# later step is not shown.} other {# later steps are not shown.}} The list holds a day's first 500, and the visit count only those."
   },
   "event": {
     "kind": "Event",

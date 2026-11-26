@@ -42,7 +42,7 @@ export function EventsChart({
             stacked
             xKey="t"
             data={rows}
-            series={names.map((n) => ({ key: n, label: n }))}
+            series={names.map((n, i) => ({ key: String(i), label: n }))}
             formatX={(v) => format.dateTime(new Date(v), tickFormat(period))}
           />
         )}

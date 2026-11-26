@@ -198,7 +198,10 @@ export interface Profile {
   device: string | null;
 }
 
-/** Events by name, one row per bucket of the window: `{ t, signup: 3 }`. */
+/**
+ * Events by name, one row per bucket of the window: `{ t, 0: 3 }`, each
+ * count keyed by its name's place in `names`.
+ */
 export interface EventSeries {
   names: string[];
   /** `t` in unix seconds. */
@@ -208,6 +211,8 @@ export interface EventSeries {
 export interface EventTotals {
   count: number;
   visitors: number;
+  /** Every visitor of the window, by page or by event. */
+  everyone: number;
 }
 
 export interface Occurrence {
@@ -230,6 +235,14 @@ export function visits(steps: readonly Step[]): Step[][] {
     else current.push(step);
   }
   return out;
+}
+
+/** The steps of a day its journey leaves out: the list stops at its first 500. */
+export function unshown(
+  steps: readonly Step[],
+  profile: Pick<Profile, 'pageviews' | 'events'>,
+): number {
+  return Math.max(0, profile.pageviews + profile.events - steps.length);
 }
 
 /** A share in percent, rounded; `null` from nothing. */

@@ -214,14 +214,22 @@ fn one_event(report: &Report, name: &str) -> Sql {
 pub struct EventTotals {
     pub count: i64,
     pub visitors: i64,
+    /// Every visitor of the window, by page or by event: what a conversion
+    /// is out of.
+    pub everyone: i64,
 }
 
 pub fn event_totals(ctx: &Ctx, report: &Report, name: &str) -> Result<EventTotals> {
     let mut sql = Sql::new(
-        "SELECT count(*) AS count, count(DISTINCT visitor) AS visitors ",
+        "SELECT count(*) AS count, count(DISTINCT visitor) AS visitors, \
+         (SELECT count(*) FROM (SELECT visitor ",
         [],
     );
-    sql.append(one_event(report, name));
+    sql.append(report.pageviews())
+        .push(" UNION SELECT visitor FROM events WHERE ", [])
+        .append(report.events())
+        .push(")) AS everyone ", [])
+        .append(one_event(report, name));
     one(ctx, &sql)
 }
 
@@ -232,10 +240,11 @@ pub struct Property {
     pub count: i64,
 }
 
-/// What one event carried: each property's values and how often.
+/// What one event carried: each property's values and how often. A JSON
+/// `null` reads as `null`.
 pub fn event_properties(ctx: &Ctx, report: &Report, name: &str) -> Result<Vec<Property>> {
     let mut sql = Sql::new(
-        "SELECT p.key AS key, CAST(p.value AS TEXT) AS value, count(*) AS count \
+        "SELECT p.key AS key, coalesce(CAST(p.value AS TEXT), 'null') AS value, count(*) AS count \
          FROM events, json_each(events.data) AS p WHERE ",
         [],
     );
@@ -287,7 +296,9 @@ struct EventBucket {
 #[derive(Serialize)]
 pub struct EventSeries {
     pub names: Vec<String>,
-    /// One per bucket of the window, the empty ones too: `{ t, <name>: n }`.
+    /// One per bucket of the window, the empty ones too: `{ t, "0": n, ... }`,
+    /// each count keyed by its name's place in `names`, so an event named `t`
+    /// cannot overwrite the time.
     pub rows: Vec<Map<String, Value>>,
 }
 
@@ -310,12 +321,12 @@ pub fn event_series(ctx: &Ctx, report: &Report, name: Option<&str>) -> Result<Ev
     let rows = buckets(report)
         .map(|t| {
             let mut row = Map::from_iter([("t".to_string(), Value::from(t))]);
-            for name in &names {
+            for (i, name) in names.iter().enumerate() {
                 let count = found
                     .iter()
                     .find(|b| b.t == t && &b.name == name)
                     .map_or(0, |b| b.count);
-                row.insert(name.clone(), count.into());
+                row.insert(i.to_string(), count.into());
             }
             row
         })

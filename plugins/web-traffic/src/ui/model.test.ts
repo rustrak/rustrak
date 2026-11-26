@@ -9,6 +9,7 @@ import {
   narrows,
   pathOf,
   share,
+  unshown,
   visitLength,
   visits,
 } from './model';
@@ -89,6 +90,12 @@ describe("a visitor's day", () => {
     const day = [step(0), step(60), step(60 + 31 * 60), step(60 + 32 * 60)];
     expect(visits(day).map((v) => v.length)).toEqual([2, 2]);
     expect(visits([])).toEqual([]);
+  });
+
+  it('counts the steps a long day leaves out of its list', () => {
+    const day = [step(0), step(60)];
+    expect(unshown(day, { pageviews: 600, events: 1 })).toBe(599);
+    expect(unshown(day, { pageviews: 1, events: 1 })).toBe(0);
   });
 });
 

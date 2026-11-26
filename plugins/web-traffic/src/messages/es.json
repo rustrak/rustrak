@@ -123,7 +123,8 @@
     "pageview": "Página",
     "event": "Evento",
     "privacy": "Dentro de un mismo día: al día siguiente la misma persona es un visitante nuevo.",
-    "gone": "Esta visita ya no se conserva."
+    "gone": "Esta visita ya no se conserva.",
+    "partial": "{count, plural, one {# paso posterior no se muestra.} other {# pasos posteriores no se muestran.}} La lista guarda los 500 primeros del día, y las visitas cuentan solo esos."
   },
   "event": {
     "kind": "Evento",
