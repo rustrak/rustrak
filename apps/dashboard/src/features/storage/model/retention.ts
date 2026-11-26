@@ -1,6 +1,7 @@
 import type {
   CleanupCounts,
   CompactedTable,
+  PluginStorage,
   ProjectStorage,
   RetentionResponse,
   RetentionSettings,
@@ -60,10 +61,13 @@ export function windowsFor(
   return windows;
 }
 
-/** Whether any project ever loses data, so the cleanup runs at all. */
+/** Whether any project or plugin ever loses data, so the cleanup runs at all. */
 export function deletesAnything(settings: RetentionSettings): boolean {
-  return [settings.defaults, ...settings.overrides].some((w) =>
-    KINDS.some((kind) => w[WINDOW_FIELD[kind]] != null),
+  return (
+    Object.keys(settings.plugins).length > 0 ||
+    [settings.defaults, ...settings.overrides].some((w) =>
+      KINDS.some((kind) => w[WINDOW_FIELD[kind]] != null),
+    )
   );
 }
 
@@ -234,6 +238,35 @@ export function estimateSize(
   return formatBytes(estimateBytes(counts, projects) + extra);
 }
 
+/**
+ * What one row of plugins' history weighs: their files over their history
+ * rows, for pricing what a cleanup deletes from them.
+ */
+export function pluginRowBytes(
+  plugins: readonly PluginStorage[] | undefined,
+): number {
+  const rows = (plugins ?? []).reduce(
+    (n, p) => n + p.history.reduce((m, h) => m + h.rows, 0),
+    0,
+  );
+  const bytes = (plugins ?? []).reduce(
+    (n, p) => n + (p.history.length > 0 ? p.bytes : 0),
+    0,
+  );
+  return rows > 0 ? bytes / rows : 0;
+}
+
+/** What the next cleanup frees in plugins: each one's expired share of its file. */
+export function pluginFrees(
+  plugins: readonly PluginStorage[] | undefined,
+): number {
+  return (plugins ?? []).reduce((sum, p) => {
+    const rows = p.history.reduce((n, h) => n + h.rows, 0);
+    const expired = p.history.reduce((n, h) => n + h.expired, 0);
+    return rows > 0 ? sum + (p.bytes * expired) / rows : sum;
+  }, 0);
+}
+
 /** "2 errors", "3 logs"… for what a run removed, leaving out the zeros. */
 export function removedParts(removed: CleanupCounts, t: Translate): string[] {
   const parts: [number, string][] = [
@@ -243,6 +276,7 @@ export function removedParts(removed: CleanupCounts, t: Translate): string[] {
     [removed.logs, 'unit.logs'],
     [removed.issues_removed, 'unit.emptyIssues'],
     [removed.source_maps, 'unit.sourceMaps'],
+    [removed.plugin_rows, 'unit.pluginRows'],
   ];
   return parts
     .filter(([count]) => count > 0)

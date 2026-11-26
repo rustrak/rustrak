@@ -23,6 +23,7 @@ import { DeleteDialog } from './delete-dialog';
 import { ProjectRetentionDialog } from './project-retention-dialog';
 import { RetentionDialog } from './retention-dialog';
 import { CleanupLine, StorageOverview } from './storage-overview';
+import { StoragePlugins } from './storage-plugins';
 import { StorageProjects } from './storage-projects';
 import {
   ChartSkeleton,
@@ -195,6 +196,8 @@ export function StorageView({
           <ProjectsSkeleton />
         </SettingSection>
       )}
+
+      <StoragePlugins />
 
       <RetentionDialog
         open={editing}

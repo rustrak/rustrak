@@ -5,6 +5,7 @@ import { useTranslations } from 'use-intl';
 import { userQueries } from '@/features/user/api/queries';
 import { RoleDocument } from '@/features/user/ui/components/role-document';
 import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
+import { editorCatalog } from '@/shared/lib/permission-matrix';
 import { NotAuthorized } from '@/shared/ui/components/not-authorized';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
@@ -51,7 +52,7 @@ function Role() {
         // A different role, or the saved one coming back, starts a fresh draft.
         key={`${role.id}:${JSON.stringify(role)}`}
         role={role}
-        catalog={catalog.resources}
+        catalog={editorCatalog(catalog)}
         canEdit={permissions.can('roles', 'update')}
         canDelete={permissions.can('roles', 'delete')}
       />

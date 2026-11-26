@@ -2,6 +2,7 @@ import type {
   CleanupCounts,
   CleanupRequest,
   CleanupStatus,
+  PluginStorage,
   ProjectStorage,
   SourceMapGcResult,
 } from '@rustrak/client';
@@ -30,11 +31,13 @@ import {
   impactState,
   KINDS,
   type Kind,
+  pluginRowBytes,
   removedParts,
 } from '@/features/storage/model/retention';
 import { ApiError } from '@/shared/api/query';
 import { formatBytes } from '@/shared/lib/utils';
 import { ImpactLine } from './impact-line';
+import { PluginsLoadFailed } from './storage-plugins';
 
 const OLDER_THAN = [1, 7, 14, 30, 90, 180, 365] as const;
 const ALL = 'all';
@@ -83,6 +86,66 @@ export function DeleteDialog({
   );
 }
 
+/**
+ * The plugins whose history goes too. A plugin's history has no project, so
+ * it is offered only across all of them, and never while the read failed:
+ * its boxes are hidden then, even with an older answer in the cache.
+ */
+function usePluginChoice(project: string) {
+  const read = useQuery(storageQueries.plugins());
+  const withHistory = (read.data ?? []).filter((p) => p.history.length > 0);
+  const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(new Set());
+  const plugins =
+    project === ALL && !read.isError
+      ? withHistory.map((p) => p.id).filter((id) => !unchecked.has(id))
+      : [];
+  return {
+    withHistory,
+    unchecked,
+    setUnchecked,
+    plugins,
+    failed: read.isError,
+  };
+}
+
+/**
+ * One box per plugin whose history can go, all ticked to start with; a line
+ * saying so when they could not be read.
+ */
+function PluginChoices({
+  plugins,
+  failed,
+  unchecked,
+  onChange,
+  disabled,
+}: {
+  plugins: readonly PluginStorage[];
+  failed: boolean;
+  unchecked: ReadonlySet<string>;
+  onChange: (ids: ReadonlySet<string>) => void;
+  disabled: boolean;
+}) {
+  const t = useTranslations('storage');
+  if (failed) return <PluginsLoadFailed />;
+  return plugins.map((plugin) => (
+    <Choice
+      key={plugin.id}
+      checked={!unchecked.has(plugin.id)}
+      onChange={(checked) => {
+        const next = new Set(unchecked);
+        if (checked) next.delete(plugin.id);
+        else next.add(plugin.id);
+        onChange(next);
+      }}
+      title={t('delete.plugin', { plugin: plugin.name })}
+      hint={t('plugins.historyHint', {
+        tables: plugin.history.map((h) => h.table).join(', '),
+      })}
+      disabled={disabled}
+    />
+  ));
+}
+
 function Editor({
   projects,
   isPending,
@@ -103,6 +166,8 @@ function Editor({
   const [sourceMaps, setSourceMaps] = useState(true);
   const [days, setDays] = useState(90);
   const [project, setProject] = useState(ALL);
+  const { withHistory, unchecked, setUnchecked, plugins, failed } =
+    usePluginChoice(project);
 
   const options = {
     older_than_days: days,
@@ -110,12 +175,14 @@ function Editor({
     include_events: kinds.includes('events'),
     include_transactions: kinds.includes('transactions'),
     include_logs: kinds.includes('logs'),
+    plugins,
   };
 
-  const nothingChosen = kinds.length === 0 && !sourceMaps;
+  const nothingChosen =
+    kinds.length === 0 && plugins.length === 0 && !sourceMaps;
   const { state, maps, rows, parts, size, retry } = useDeletion(
     options,
-    { rows: kinds.length > 0, sourceMaps },
+    { rows: kinds.length > 0 || plugins.length > 0, sourceMaps },
     projects,
   );
 
@@ -164,6 +231,15 @@ function Editor({
             hint={t('delete.sourceMapsHint')}
             disabled={isPending}
           />
+          {project === ALL ? (
+            <PluginChoices
+              plugins={withHistory}
+              failed={failed}
+              unchecked={unchecked}
+              onChange={setUnchecked}
+              disabled={isPending}
+            />
+          ) : null}
         </fieldset>
 
         <Scope
@@ -348,14 +424,17 @@ function whatGoes(
   unused: SourceMapGcResult | null,
   projects: readonly ProjectStorage[] | null,
   t: (key: string, values?: Record<string, string | number>) => string,
+  pluginRow: number,
 ) {
   const known = counts === null || counts === 'failed' ? null : counts;
   const maps = unused?.files_removed ?? 0;
-  const rows = known ? KINDS.reduce((sum, k) => sum + known[k], 0) : 0;
+  const rows = known
+    ? KINDS.reduce((sum, k) => sum + known[k], 0) + known.plugin_rows
+    : 0;
   const parts = known ? removedParts({ ...known, source_maps: maps }, t) : [];
   const freed = unused?.bytes_freed ?? 0;
   const size = known
-    ? estimateSize(known, projects, freed)
+    ? estimateSize(known, projects, freed + known.plugin_rows * pluginRow)
     : formatBytes(freed);
   return { maps, rows, parts, size };
 }
@@ -391,6 +470,7 @@ function useDeletion(
     chosen.sourceMaps && unused !== 'failed' ? unused : null,
     projects,
     t,
+    pluginRowBytes(useQuery(storageQueries.plugins()).data),
   );
   const state = joined(
     chosen.rows ? impactState(counts) : 'ready',

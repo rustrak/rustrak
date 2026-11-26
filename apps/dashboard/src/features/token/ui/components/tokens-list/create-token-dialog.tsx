@@ -22,7 +22,7 @@ import {
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { tokenExpiry } from '@/features/token/model/expiry';
-import { grantable } from '@/shared/lib/permission-matrix';
+import { grantable, splitPermissions } from '@/shared/lib/permission-matrix';
 import { PermissionEditor } from '@/shared/ui/components/permission-editor';
 import {
   type ProjectOption,
@@ -89,7 +89,10 @@ export function CreateTokenDialog({
     if (!canSubmit) return;
     onCreate({
       description: trimmed || undefined,
-      permissions,
+      // The editor's one list goes as the API keeps it: Rustrak's, and plugins'.
+      ...(permissions === null
+        ? { permissions }
+        : splitPermissions(permissions)),
       project_ids: projectIds,
       expires_at: expiry.ok ? expiry.value : null,
     });

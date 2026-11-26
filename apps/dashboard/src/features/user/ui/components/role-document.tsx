@@ -14,7 +14,11 @@ import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { userMutations } from '@/features/user/api/mutations';
-import { grantable } from '@/shared/lib/permission-matrix';
+import {
+  grantable,
+  joinPermissions,
+  splitPermissions,
+} from '@/shared/lib/permission-matrix';
 import { PermissionEditor } from '@/shared/ui/components/permission-editor';
 import { usePermissionsLater } from '@/shared/ui/hooks/use-permissions';
 import { useRouter } from '@/shared/ui/hooks/use-router';
@@ -62,17 +66,20 @@ export function RoleDocument({
   // `key` when the saved role changes, so it never goes stale.
   const [name, setName] = useState(() => role.name);
   const [description, setDescription] = useState(() => role.description);
-  const [permissions, setPermissions] = useState<Permission[]>(
-    () => role.permissions,
-  );
+  const saved = joinPermissions(role.permissions, role.plugin_permissions);
+  const [permissions, setPermissions] = useState<Permission[]>(() => saved);
 
   const dirty =
     name !== role.name ||
     description !== role.description ||
-    JSON.stringify(permissions) !== JSON.stringify(role.permissions);
+    JSON.stringify(permissions) !== JSON.stringify(saved);
 
   const submit = () =>
-    save.mutate({ name: name.trim(), description, permissions });
+    save.mutate({
+      name: name.trim(),
+      description,
+      ...splitPermissions(permissions),
+    });
 
   const destroy = async () => {
     const ok = await confirm({

@@ -11,6 +11,7 @@ import { projectQueries } from '@/features/project/api/queries';
 import { userQueries } from '@/features/user/api/queries';
 import { UserAssignments } from '@/features/user/ui/components/user-assignments';
 import { accessQueries, startIfAllowed } from '@/shared/api/permissions';
+import { editorCatalog } from '@/shared/lib/permission-matrix';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 import { useSessionUser } from '@/shared/ui/hooks/use-session-user';
@@ -67,7 +68,7 @@ function UserPage() {
         user={user}
         access={access}
         roles={roles}
-        catalog={catalog.resources}
+        catalog={editorCatalog(catalog)}
         projects={projects.items}
         readOnlyReason={readOnlyReason}
       />

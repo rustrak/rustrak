@@ -188,7 +188,8 @@
     "rolesDescription": "定义每个角色可以执行的操作",
     "mcpDescription": "通过 MCP 连接 AI 助手",
     "dataDescription": "事件限制以及项目存储的数据",
-    "githubDescription": "关联 GitHub 仓库"
+    "githubDescription": "关联 GitHub 仓库",
+    "pluginsDescription": "安装插件并选择其运行位置"
   },
   "charts": {
     "errors": "错误",
@@ -696,7 +697,8 @@
       "groupMonitor": "监控",
       "alerts": "告警",
       "docs": "文档",
-      "jumpTo": "跳转到"
+      "jumpTo": "跳转到",
+      "plugins": "插件"
     },
     "collapse": {
       "expand": "展开",
@@ -1713,7 +1715,8 @@
       "spans": "{count} 个 span",
       "logs": "{count} 条日志",
       "emptyIssues": "{count} 个空 issue",
-      "sourceMaps": "{count} 个未使用的 source map"
+      "sourceMaps": "{count} 个未使用的 source map",
+      "pluginRows": "{count} 行插件数据"
     },
     "deleteAction": "立即删除数据",
     "kindHint": {
@@ -1734,7 +1737,8 @@
       "action": "删除约 {size}",
       "actionIdle": "删除",
       "sourceMaps": "未使用的 source map",
-      "sourceMapsHint": "已不再被任何上传引用的文件；被引用的文件永远不会被删除"
+      "sourceMapsHint": "已不再被任何上传引用的文件；被引用的文件永远不会被删除",
+      "plugin": "{plugin} 的历史记录"
     },
     "compaction": {
       "title": "此数据库由旧版 Rustrak 创建",
@@ -1758,6 +1762,16 @@
       "disk": "运行期间 PostgreSQL 服务器磁盘上大约需要 {required} 可用空间，即最大一张表的大小；如果预写日志（WAL）在同一磁盘上，还需要大致相同的空间。Rustrak 无法查看该磁盘：请先确认。",
       "lock": "每张表在重写期间会被锁定，每保留 1 GB 数据约需数秒。错误事件仍会被接收，并在其所在表完成后保存。在其所在表重写期间发送的事务、span 和日志会被拒绝并丢失（SDK 会暂停发送这些数据 10 秒），显示该表的页面在完成前会报错。",
       "duration": "最大的表耗时最长。请在空闲时段运行，或使用 pg_repack，它只在开始和结束时短暂锁表。"
+    },
+    "plugins": {
+      "title": "插件",
+      "description": "每个插件自己的数据。其历史记录（含 created_at 的表）由与 Rustrak 相同的清理任务清除。",
+      "none": "尚未安装插件",
+      "size": "{used} / {quota}",
+      "history": "{tables} 中有 {rows} 行历史记录",
+      "noHistory": "其保存的内容不会过期",
+      "historyHint": "其历史记录：{tables}",
+      "loadFailed": "无法读取插件存储"
     }
   },
   "errors": {
@@ -2106,12 +2120,16 @@
       "github": "仓库",
       "products": "产品",
       "groupAccount": "账户",
-      "groupWorkspace": "工作区",
       "profile": "个人资料",
       "preferences": "偏好设置",
       "instance": "实例",
       "data": "数据",
-      "roles": "角色"
+      "roles": "角色",
+      "plugins": "插件",
+      "groupAccess": "访问",
+      "groupConnections": "连接",
+      "groupSystem": "系统",
+      "beta": "测试版"
     },
     "loadProjectFailed": "无法加载项目",
     "loadProjectsFailed": "无法加载项目",
@@ -2365,7 +2383,106 @@
       "subtitle": "此项目保存哪些数据，以及接收多少。"
     },
     "projectNotAuthorizedDescription": "你的访问权限不包含此项目部分。请联系所有者申请。",
-    "workspaceNotAuthorizedDescription": "你的访问权限不包含此部分。请联系所有者申请。"
+    "workspaceNotAuthorizedDescription": "你的访问权限不包含此部分。请联系所有者申请。",
+    "plugins": {
+      "meta": {
+        "title": "插件"
+      },
+      "title": "插件",
+      "subtitle": "使用插件扩展 Rustrak。每个插件的服务端代码都在沙箱中运行，并拥有自己的数据库。",
+      "install": "安装插件",
+      "installing": "正在安装…",
+      "installed": "已安装 {name} {version}",
+      "installFailed": "无法安装该插件",
+      "configureFailed": "无法更新该插件",
+      "empty": "尚未安装插件",
+      "emptyHint": "从 .rtp 文件安装一个插件，为 Rustrak 添加页面、组件和功能。",
+      "active": "已启用",
+      "inactive": "未启用",
+      "versionBy": "{version} · 作者 {author}",
+      "failed": "插件 {plugin} 无法显示此部分。",
+      "pageMissing": "此插件页面不存在",
+      "listFailed": "无法加载插件",
+      "pageMissingHint": "该插件未安装、未在此项目中启用，或在此处没有页面。",
+      "detail": {
+        "projects": "项目",
+        "projectsHint": "在每个项目中启用它，并打开某个项目进行配置：安装指南和该项目自己的设置值。",
+        "allProjects": "所有项目",
+        "allProjectsHint": "所有项目，包括以后创建的项目。",
+        "runIn": "在 {project} 中运行",
+        "configuration": "配置",
+        "nothingToConfigure": "此插件没有可配置的内容",
+        "access": "访问权限",
+        "accessHint": "插件在此服务器上可以执行的操作。",
+        "database": "独立数据库",
+        "permissions": "新增的权限",
+        "none": "无",
+        "yes": "是",
+        "about": "关于",
+        "danger": "危险区域",
+        "uninstall": "卸载",
+        "uninstallPurge": "卸载并删除数据",
+        "uninstallHint": "卸载后会保留其数据以便重新安装，除非同时删除数据。",
+        "uninstallTitle": "卸载 {name}？",
+        "keepConfirm": "其页面和路由会立即停止。数据会被保留，重新安装后恢复。",
+        "purgeConfirm": "其页面、路由和所有数据都将被删除，且无法撤销。",
+        "cancel": "取消",
+        "uninstalled": "已卸载 {name}",
+        "uninstallFailed": "无法卸载该插件",
+        "runs": "运行中",
+        "off": "已关闭",
+        "defaults": "默认值",
+        "defaultsHint": "适用于整个实例。上方各项目自己的设置优先。",
+        "project": "项目",
+        "status": "状态",
+        "active": "启用",
+        "details": "详情",
+        "version": "版本",
+        "author": "作者",
+        "source": "来源",
+        "verified": "已验证",
+        "unverified": "未验证",
+        "runsIn": "运行于",
+        "everyProject": "所有项目",
+        "someProjects": "{total} 个项目中的 {count} 个",
+        "pages": "页面",
+        "widgets": "小组件",
+        "repository": "仓库",
+        "openSetup": "安装与设置"
+      },
+      "form": {
+        "save": "保存",
+        "saved": "设置已保存",
+        "saveFailed": "无法保存设置",
+        "secretSet": "已设置，输入以替换",
+        "secretNotSet": "未设置",
+        "missing": "请先设置 {fields}，插件才能运行。",
+        "reset": "重置",
+        "loadFailed": "无法读取插件设置"
+      },
+      "verified": "✓ 已由注册表验证",
+      "notVerified": "未验证：手动上传",
+      "available": "可用插件",
+      "availableHint": "发布在 Rustrak 插件注册表中，安装时经过签名校验。",
+      "registryUnavailable": "插件注册表不可用",
+      "registryUpToDate": "已发布的插件均已安装",
+      "update": "{from} → {to}",
+      "updateButton": "更新",
+      "installButton": "安装",
+      "setup": {
+        "title": "{project} 中的 {plugin}",
+        "where": "在此项目中",
+        "runs": "在此运行",
+        "runsHint": "它的页面、小组件和路由只存在于它运行的项目中。",
+        "everywhere": "已在所有项目中启用：请在插件设置中更改。",
+        "install": "安装",
+        "installHint": "此项目让插件工作所需的内容。",
+        "settings": "项目设置",
+        "settingsHint": "此项目自己的值：优先于实例的默认值。",
+        "offHint": "在此项目中启用它以进行配置。"
+      },
+      "registryLoadFailed": "无法读取插件注册表"
+    }
   },
   "github": {
     "section": {

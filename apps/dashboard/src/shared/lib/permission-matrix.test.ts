@@ -1,10 +1,18 @@
-import type { CatalogResource, Permission } from '@rustrak/client';
+import type {
+  Catalog,
+  CatalogResource,
+  Permission,
+  Resource,
+} from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
 import {
+  editorCatalog,
   grantable,
   hasPermission,
+  joinPermissions,
   modulesOf,
   rowState,
+  splitPermissions,
   toggle,
   toggleRow,
 } from './permission-matrix';
@@ -83,5 +91,60 @@ describe('grantable', () => {
 
   it('keeps everything for someone who holds everything', () => {
     expect(grantable(catalog, { canAnywhere: () => true })).toEqual(catalog);
+  });
+});
+
+describe("plugins' permissions in the editor", () => {
+  const catalog = {
+    resources: [
+      { key: 'issues', module: 'issues', scope: 'project', actions: ['read'] },
+    ],
+    plugins: [
+      {
+        key: 'hello:hits',
+        plugin: 'hello',
+        plugin_name: 'Hello',
+        scope: 'project',
+        actions: ['read', 'delete'],
+        label: { en: 'Hits', es: 'Visitas' },
+        description: { en: 'See each hit.' },
+      },
+    ],
+  } as const satisfies Catalog;
+
+  it('lists them beside Rustrak’s own, one module per plugin', () => {
+    const resources = editorCatalog(catalog);
+    expect(resources.map((r) => [r.key, r.module])).toEqual([
+      ['issues', 'issues'],
+      ['hello:hits', 'plugin:hello'],
+    ]);
+    expect(resources[1]).toMatchObject({
+      moduleName: 'Hello',
+      label: { es: 'Visitas' },
+    });
+  });
+
+  it('splits them back apart for the API', () => {
+    expect(
+      splitPermissions([
+        { resource: 'issues', action: 'read' },
+        { resource: 'hello:hits' as Resource, action: 'delete' },
+      ]),
+    ).toEqual({
+      permissions: [{ resource: 'issues', action: 'read' }],
+      plugin_permissions: [{ resource: 'hello:hits', action: 'delete' }],
+    });
+  });
+
+  it('joins what the API keeps apart', () => {
+    expect(
+      joinPermissions(
+        [{ resource: 'issues', action: 'read' }],
+        [{ resource: 'hello:hits', action: 'read' }],
+      ),
+    ).toEqual([
+      { resource: 'issues', action: 'read' },
+      { resource: 'hello:hits', action: 'read' },
+    ]);
   });
 });

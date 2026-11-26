@@ -36,6 +36,12 @@ export const storageQueries = {
       queryKey: [...storageQueries.all(), 'compaction'],
       queryFn: ({ signal }) => orThrow(api().storage.getCompaction({ signal })),
     }),
+  /** Each plugin's file, quota and history against its retention. */
+  plugins: () =>
+    queryOptions({
+      queryKey: [...storageQueries.all(), 'plugins'],
+      queryFn: ({ signal }) => orThrow(api().storage.getPlugins({ signal })),
+    }),
   /** Retention: settings, next cleanup and last cleanup. */
   retention: () =>
     queryOptions({

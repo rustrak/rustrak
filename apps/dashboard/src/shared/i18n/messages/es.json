@@ -188,7 +188,8 @@
     "rolesDescription": "Define qué puede hacer cada rol",
     "mcpDescription": "Conecta asistentes de IA por MCP",
     "dataDescription": "Límites de eventos y lo que guarda el proyecto",
-    "githubDescription": "Vincula un repositorio de GitHub"
+    "githubDescription": "Vincula un repositorio de GitHub",
+    "pluginsDescription": "Instala plugins y elige dónde se ejecutan"
   },
   "charts": {
     "errors": "Errores",
@@ -696,7 +697,8 @@
       "groupMonitor": "Monitorización",
       "alerts": "Alertas",
       "docs": "Documentación",
-      "jumpTo": "Ir a"
+      "jumpTo": "Ir a",
+      "plugins": "Plugins"
     },
     "collapse": {
       "expand": "Expandir",
@@ -1713,7 +1715,8 @@
       "spans": "{count, plural, =1 {# span} other {# spans}}",
       "logs": "{count, plural, =1 {# log} other {# logs}}",
       "emptyIssues": "{count, plural, =1 {# issue vacía} other {# issues vacías}}",
-      "sourceMaps": "{count, plural, =1 {# source map sin usar} other {# source maps sin usar}}"
+      "sourceMaps": "{count, plural, =1 {# source map sin usar} other {# source maps sin usar}}",
+      "pluginRows": "{count, plural, =1 {# fila de plugins} other {# filas de plugins}}"
     },
     "deleteAction": "Borrar datos ahora",
     "kindHint": {
@@ -1734,7 +1737,8 @@
       "action": "Borrar ≈ {size}",
       "actionIdle": "Borrar",
       "sourceMaps": "Source maps sin usar",
-      "sourceMapsHint": "Archivos que ya no referencia ninguna subida; los referenciados nunca se tocan"
+      "sourceMapsHint": "Archivos que ya no referencia ninguna subida; los referenciados nunca se tocan",
+      "plugin": "Historial de {plugin}"
     },
     "compaction": {
       "title": "Esta base de datos se creó con una versión anterior de Rustrak",
@@ -1758,6 +1762,16 @@
       "disk": "Necesita unos {required} libres en el disco del servidor PostgreSQL mientras dura, el tamaño de la tabla más grande, y otro tanto para el WAL si está en el mismo disco. Rustrak no ve ese disco: compruébalo antes.",
       "lock": "Cada tabla queda bloqueada mientras se reescribe, unos segundos por GB que conserva. Los errores se siguen aceptando y se guardan cuando su tabla termina. Las transacciones, spans y logs que lleguen mientras se reescribe su tabla se rechazan y se pierden (los SDK dejan de enviarlos durante 10 segundos), y las páginas que muestran esa tabla dan error hasta que termine.",
       "duration": "La tabla más grande es la que más tarda. Hazlo en un momento tranquilo, o usa pg_repack, que solo bloquea cada tabla un momento al empezar y al acabar."
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "Los datos propios de cada plugin. Su historial, las tablas con created_at, lo borra la misma limpieza que los de Rustrak.",
+      "none": "No hay plugins instalados",
+      "size": "{used} de {quota}",
+      "history": "{rows} filas de historial en {tables}",
+      "noHistory": "Nada de lo que guarda caduca",
+      "historyHint": "Su historial: {tables}",
+      "loadFailed": "No se pudo leer el almacenamiento de los plugins"
     }
   },
   "errors": {
@@ -2106,12 +2120,16 @@
       "github": "Repositorio",
       "products": "Productos",
       "groupAccount": "Cuenta",
-      "groupWorkspace": "Espacio de trabajo",
       "profile": "Perfil",
       "preferences": "Preferencias",
       "instance": "Instancia",
       "data": "Datos",
-      "roles": "Roles"
+      "roles": "Roles",
+      "plugins": "Plugins",
+      "groupAccess": "Acceso",
+      "groupConnections": "Conexiones",
+      "groupSystem": "Sistema",
+      "beta": "Beta"
     },
     "loadProjectFailed": "No se pudo cargar el proyecto",
     "loadProjectsFailed": "No se pudieron cargar los proyectos",
@@ -2365,7 +2383,106 @@
       "subtitle": "Qué guarda este proyecto y cuánto acepta."
     },
     "projectNotAuthorizedDescription": "Tu acceso no incluye esta sección del proyecto. Contacta con un propietario para solicitarlo.",
-    "workspaceNotAuthorizedDescription": "Tu acceso no incluye esta sección. Contacta con un propietario para solicitarlo."
+    "workspaceNotAuthorizedDescription": "Tu acceso no incluye esta sección. Contacta con un propietario para solicitarlo.",
+    "plugins": {
+      "meta": {
+        "title": "Plugins"
+      },
+      "title": "Plugins",
+      "subtitle": "Amplía Rustrak con plugins. El código de servidor de cada uno se ejecuta aislado, con su propia base de datos.",
+      "install": "Instalar plugin",
+      "installing": "Instalando…",
+      "installed": "{name} {version} instalado",
+      "installFailed": "No se pudo instalar el plugin",
+      "configureFailed": "No se pudo actualizar el plugin",
+      "empty": "No hay plugins instalados",
+      "emptyHint": "Instala uno desde un archivo .rtp para añadir páginas, widgets y funciones a Rustrak.",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "versionBy": "{version} · de {author}",
+      "failed": "El plugin {plugin} no pudo mostrar esta parte.",
+      "pageMissing": "Esta página del plugin no existe",
+      "listFailed": "No se pudieron cargar los plugins",
+      "pageMissingHint": "El plugin no está instalado, no está activo en este proyecto o no tiene una página aquí.",
+      "detail": {
+        "projects": "Proyectos",
+        "projectsHint": "Actívalo en cada proyecto y abre uno para configurarlo ahí: su instalación y sus propios valores.",
+        "allProjects": "Todos los proyectos",
+        "allProjectsHint": "Todos los proyectos, incluidos los que se creen después.",
+        "runIn": "Ejecutar en {project}",
+        "configuration": "Configuración",
+        "nothingToConfigure": "Este plugin no tiene nada que configurar",
+        "access": "Acceso",
+        "accessHint": "Lo que el plugin puede hacer en este servidor.",
+        "database": "Su propia base de datos",
+        "permissions": "Permisos que añade",
+        "none": "Ninguno",
+        "yes": "Sí",
+        "about": "Acerca de",
+        "danger": "Zona de peligro",
+        "uninstall": "Desinstalar",
+        "uninstallPurge": "Desinstalar y borrar datos",
+        "uninstallHint": "Al quitarlo se conservan sus datos para reinstalarlo, salvo que también los borres.",
+        "uninstallTitle": "¿Desinstalar {name}?",
+        "keepConfirm": "Sus páginas y rutas dejan de funcionar al momento. Sus datos se conservan y al reinstalarlo vuelven.",
+        "purgeConfirm": "Se borran sus páginas, rutas y todos sus datos. No se puede deshacer.",
+        "cancel": "Cancelar",
+        "uninstalled": "{name} desinstalado",
+        "uninstallFailed": "No se pudo desinstalar el plugin",
+        "runs": "Activo",
+        "off": "Desactivado",
+        "defaults": "Valores por defecto",
+        "defaultsHint": "Para toda la instancia. Los ajustes de cada proyecto, arriba, tienen prioridad.",
+        "project": "Proyecto",
+        "status": "Estado",
+        "active": "Activo",
+        "details": "Detalles",
+        "version": "Versión",
+        "author": "Autor",
+        "source": "Origen",
+        "verified": "Verificado",
+        "unverified": "Sin verificar",
+        "runsIn": "Se ejecuta en",
+        "everyProject": "Todos los proyectos",
+        "someProjects": "{count} de {total} proyectos",
+        "pages": "Páginas",
+        "widgets": "Widgets",
+        "repository": "Repositorio",
+        "openSetup": "Instalación y ajustes"
+      },
+      "form": {
+        "save": "Guardar",
+        "saved": "Ajustes guardados",
+        "saveFailed": "No se pudieron guardar los ajustes",
+        "secretSet": "Configurado. Escribe para cambiarlo",
+        "secretNotSet": "Sin configurar",
+        "missing": "Configura {fields} para que el plugin pueda funcionar.",
+        "reset": "Restablecer",
+        "loadFailed": "No se pudieron leer los ajustes del plugin"
+      },
+      "verified": "✓ Verificado por el registro",
+      "notVerified": "Sin verificar: subido a mano",
+      "available": "Disponibles",
+      "availableHint": "Publicados en el registro de plugins de Rustrak, firmados y comprobados al instalar.",
+      "registryUnavailable": "El registro de plugins no está disponible",
+      "registryUpToDate": "Todo lo publicado está instalado",
+      "update": "{from} → {to}",
+      "updateButton": "Actualizar",
+      "installButton": "Instalar",
+      "setup": {
+        "title": "{plugin} en {project}",
+        "where": "En este proyecto",
+        "runs": "Activo aquí",
+        "runsHint": "Sus páginas, widgets y rutas solo existen en los proyectos donde está activo.",
+        "everywhere": "Activo en todos los proyectos: cámbialo en los ajustes del plugin.",
+        "install": "Instalación",
+        "installHint": "Lo que este proyecto necesita para que el plugin funcione.",
+        "settings": "Ajustes del proyecto",
+        "settingsHint": "Los valores propios de este proyecto: tienen prioridad sobre los de la instancia.",
+        "offHint": "Actívalo en este proyecto para configurarlo."
+      },
+      "registryLoadFailed": "No se pudo leer el registro de plugins"
+    }
   },
   "github": {
     "section": {

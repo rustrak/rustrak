@@ -70,7 +70,7 @@ describe('access rows', () => {
   it('sends personal permissions only when a row uses them', () => {
     expect(
       toSetAccess([{ role: 'personal', projects: [7] }], logs).personal,
-    ).toEqual({ permissions: logs, project_ids: [7] });
+    ).toEqual({ permissions: logs, plugin_permissions: [], project_ids: [7] });
   });
 
   it('compares regardless of order', () => {
@@ -133,6 +133,14 @@ describe('roleChoices', () => {
         canGive,
       ).map((r) => r.id),
     ).toEqual([1, 2]);
+  });
+
+  it('does not offer a role whose plugin permissions the reader cannot give', () => {
+    const withPlugin = {
+      ...role(4, 'logs'),
+      plugin_permissions: [{ resource: 'uptime:checks', action: 'read' }],
+    } as Role;
+    expect(roleChoices([withPlugin], [], canGive)).toEqual([]);
   });
 
   it('names a held role the reader cannot list, and skips personal ones', () => {

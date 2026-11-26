@@ -188,7 +188,8 @@
     "rolesDescription": "Definește ce poate face fiecare rol",
     "mcpDescription": "Conectează asistenți AI prin MCP",
     "dataDescription": "Limite de evenimente și ce stochează proiectul",
-    "githubDescription": "Leagă un depozit GitHub"
+    "githubDescription": "Leagă un depozit GitHub",
+    "pluginsDescription": "Instalează pluginuri și alege unde rulează"
   },
   "charts": {
     "errors": "Erori",
@@ -696,7 +697,8 @@
       "groupMonitor": "Monitorizare",
       "alerts": "Alerte",
       "docs": "Documentație",
-      "jumpTo": "Salt la"
+      "jumpTo": "Salt la",
+      "plugins": "Pluginuri"
     },
     "collapse": {
       "expand": "Extinde",
@@ -1713,7 +1715,8 @@
       "spans": "{count, plural, =1 {# span} other {# spanuri}}",
       "logs": "{count, plural, =1 {# log} other {# loguri}}",
       "emptyIssues": "{count, plural, =1 {# issue gol} other {# issues goale}}",
-      "sourceMaps": "{count, plural, =1 {# source map nefolosit} other {# source maps nefolosite}}"
+      "sourceMaps": "{count, plural, =1 {# source map nefolosit} other {# source maps nefolosite}}",
+      "pluginRows": "{count, plural, =1 {# rând de plugin} few {# rânduri de pluginuri} other {# de rânduri de pluginuri}}"
     },
     "deleteAction": "Șterge date acum",
     "kindHint": {
@@ -1734,7 +1737,8 @@
       "action": "Șterge ≈ {size}",
       "actionIdle": "Șterge",
       "sourceMaps": "Source maps nefolosite",
-      "sourceMapsHint": "Fișiere pe care niciun upload nu le mai referă; cele referite nu sunt atinse niciodată"
+      "sourceMapsHint": "Fișiere pe care niciun upload nu le mai referă; cele referite nu sunt atinse niciodată",
+      "plugin": "Istoricul {plugin}"
     },
     "compaction": {
       "title": "Această bază de date a fost creată de o versiune anterioară Rustrak",
@@ -1758,6 +1762,16 @@
       "disk": "Are nevoie de aproximativ {required} liberi pe discul serverului PostgreSQL cât rulează, dimensiunea celui mai mare tabel, și cam tot atât pentru WAL dacă se află pe același disc. Rustrak nu vede acel disc: verifică-l înainte.",
       "lock": "Fiecare tabel este blocat cât este rescris, câteva secunde pentru fiecare GB păstrat. Erorile sunt acceptate în continuare și sunt salvate după ce tabelul lor este gata. Tranzacțiile, span-urile și logurile trimise cât tabelul lor este rescris sunt refuzate și se pierd (SDK-urile nu le mai trimit timp de 10 secunde), iar paginile care afișează acel tabel dau eroare până se termină.",
       "duration": "Cel mai mare tabel durează cel mai mult. Rulează-l într-un moment liniștit sau folosește pg_repack, care blochează fiecare tabel doar scurt, la început și la sfârșit."
+    },
+    "plugins": {
+      "title": "Pluginuri",
+      "description": "Datele proprii ale fiecărui plugin. Istoricul lui, tabelele cu created_at, este șters de aceeași curățare ca al Rustrak.",
+      "none": "Niciun plugin instalat",
+      "size": "{used} din {quota}",
+      "history": "{rows} rânduri de istoric în {tables}",
+      "noHistory": "Nimic din ce păstrează nu expiră",
+      "historyHint": "Istoricul lui: {tables}",
+      "loadFailed": "Stocarea pluginurilor nu a putut fi citită"
     }
   },
   "errors": {
@@ -2106,12 +2120,16 @@
       "github": "Depozit",
       "products": "Produse",
       "groupAccount": "Cont",
-      "groupWorkspace": "Spațiu de lucru",
       "profile": "Profil",
       "preferences": "Preferințe",
       "instance": "Instanță",
       "data": "Date",
-      "roles": "Roluri"
+      "roles": "Roluri",
+      "plugins": "Pluginuri",
+      "groupAccess": "Acces",
+      "groupConnections": "Conexiuni",
+      "groupSystem": "Sistem",
+      "beta": "Beta"
     },
     "loadProjectFailed": "Proiectul nu a putut fi încărcat",
     "loadProjectsFailed": "Proiectele nu au putut fi încărcate",
@@ -2365,7 +2383,106 @@
       "subtitle": "Ce păstrează acest proiect și cât acceptă."
     },
     "projectNotAuthorizedDescription": "Accesul tău nu include această secțiune a proiectului. Contactează un proprietar pentru a-l solicita.",
-    "workspaceNotAuthorizedDescription": "Accesul tău nu include această secțiune. Contactează un proprietar pentru a-l solicita."
+    "workspaceNotAuthorizedDescription": "Accesul tău nu include această secțiune. Contactează un proprietar pentru a-l solicita.",
+    "plugins": {
+      "meta": {
+        "title": "Pluginuri"
+      },
+      "title": "Pluginuri",
+      "subtitle": "Extinde Rustrak cu pluginuri. Codul de server al fiecăruia rulează izolat, cu propria bază de date.",
+      "install": "Instalează plugin",
+      "installing": "Se instalează…",
+      "installed": "{name} {version} a fost instalat",
+      "installFailed": "Pluginul nu a putut fi instalat",
+      "configureFailed": "Pluginul nu a putut fi actualizat",
+      "empty": "Niciun plugin instalat",
+      "emptyHint": "Instalează unul dintr-un fișier .rtp pentru a adăuga pagini, widgeturi și funcții în Rustrak.",
+      "active": "Activ",
+      "inactive": "Inactiv",
+      "versionBy": "{version} · de {author}",
+      "failed": "Pluginul {plugin} nu a putut afișa această parte.",
+      "pageMissing": "Această pagină a pluginului nu există",
+      "listFailed": "Pluginurile nu au putut fi încărcate",
+      "pageMissingHint": "Pluginul nu este instalat, nu este activ în acest proiect sau nu are o pagină aici.",
+      "detail": {
+        "projects": "Proiecte",
+        "projectsHint": "Activează-l în fiecare proiect și deschide unul ca să-l configurezi acolo: instalarea și valorile proprii.",
+        "allProjects": "Toate proiectele",
+        "allProjectsHint": "Toate proiectele, inclusiv cele create ulterior.",
+        "runIn": "Rulează în {project}",
+        "configuration": "Configurare",
+        "nothingToConfigure": "Acest plugin nu are nimic de configurat",
+        "access": "Acces",
+        "accessHint": "Ce poate face pluginul pe acest server.",
+        "database": "Propria bază de date",
+        "permissions": "Permisiuni adăugate",
+        "none": "Niciuna",
+        "yes": "Da",
+        "about": "Despre",
+        "danger": "Zonă periculoasă",
+        "uninstall": "Dezinstalează",
+        "uninstallPurge": "Dezinstalează și șterge datele",
+        "uninstallHint": "La eliminare datele se păstrează pentru o reinstalare, dacă nu le ștergi și pe ele.",
+        "uninstallTitle": "Dezinstalezi {name}?",
+        "keepConfirm": "Paginile și rutele lui se opresc imediat. Datele se păstrează și revin la reinstalare.",
+        "purgeConfirm": "Paginile, rutele și toate datele lui sunt șterse. Acțiunea nu poate fi anulată.",
+        "cancel": "Anulează",
+        "uninstalled": "{name} a fost dezinstalat",
+        "uninstallFailed": "Pluginul nu a putut fi dezinstalat",
+        "runs": "Activ",
+        "off": "Dezactivat",
+        "defaults": "Valori implicite",
+        "defaultsHint": "Pentru întreaga instanță. Setările fiecărui proiect, de mai sus, au prioritate.",
+        "project": "Proiect",
+        "status": "Stare",
+        "active": "Activ",
+        "details": "Detalii",
+        "version": "Versiune",
+        "author": "Autor",
+        "source": "Sursă",
+        "verified": "Verificat",
+        "unverified": "Neverificat",
+        "runsIn": "Rulează în",
+        "everyProject": "Toate proiectele",
+        "someProjects": "{count} din {total} proiecte",
+        "pages": "Pagini",
+        "widgets": "Widgeturi",
+        "repository": "Depozit",
+        "openSetup": "Instalare și setări"
+      },
+      "form": {
+        "save": "Salvează",
+        "saved": "Setările au fost salvate",
+        "saveFailed": "Setările nu au putut fi salvate",
+        "secretSet": "Setat. Scrie pentru a-l înlocui",
+        "secretNotSet": "Nesetat",
+        "missing": "Setează {fields} ca pluginul să poată rula.",
+        "reset": "Resetează",
+        "loadFailed": "Setările pluginului nu au putut fi citite"
+      },
+      "verified": "✓ Verificat de registru",
+      "notVerified": "Neverificat: încărcat manual",
+      "available": "Disponibile",
+      "availableHint": "Publicate în registrul de pluginuri Rustrak, semnate și verificate la instalare.",
+      "registryUnavailable": "Registrul de pluginuri nu este disponibil",
+      "registryUpToDate": "Tot ce este publicat este instalat",
+      "update": "{from} → {to}",
+      "updateButton": "Actualizează",
+      "installButton": "Instalează",
+      "setup": {
+        "title": "{plugin} în {project}",
+        "where": "În acest proiect",
+        "runs": "Activ aici",
+        "runsHint": "Paginile, widgeturile și rutele sale există doar în proiectele în care rulează.",
+        "everywhere": "Activ în toate proiectele: schimbă asta în setările pluginului.",
+        "install": "Instalare",
+        "installHint": "Ce are nevoie acest proiect ca pluginul să funcționeze.",
+        "settings": "Setările proiectului",
+        "settingsHint": "Valorile proprii ale acestui proiect: au prioritate față de cele ale instanței.",
+        "offHint": "Activează-l în acest proiect ca să-l configurezi."
+      },
+      "registryLoadFailed": "Registrul de pluginuri nu a putut fi citit"
+    }
   },
   "github": {
     "section": {
