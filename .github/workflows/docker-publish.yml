@@ -274,22 +274,60 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build @rustrak/client
-        run: pnpm --filter @rustrak/client build
+      # @rustrak/ui and @rustrak/plugin are what a plugin's author installs.
+      - name: Build the npm packages
+        run: pnpm --filter @rustrak/client --filter @rustrak/ui --filter @rustrak/plugin build
 
       # `--tag` is the dist-tag. Without it npm points `latest` at whatever was
       # published last, prerelease included, and `npm install @rustrak/client`
       # would hand out a release candidate.
       # A version already on the registry is skipped rather than failed, so a
       # re-run of a half-published release gets past the half that worked.
-      - name: Publish @rustrak/client
+      # pnpm turns @rustrak/plugin's `workspace:*` peer into this version.
+      - name: Publish the npm packages
         env:
           VERSION: ${{ needs.version.outputs.version }}
           CHANNEL: ${{ needs.version.outputs.channel }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if npm view "@rustrak/client@$VERSION" version >/dev/null 2>&1; then
-            echo "@rustrak/client@$VERSION is already published, skipping"
-          else
-            pnpm --filter @rustrak/client publish --no-git-checks --access public --tag "$CHANNEL"
-          fi
+          for pkg in @rustrak/client @rustrak/ui @rustrak/plugin; do
+            if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "$pkg@$VERSION is already published, skipping"
+            else
+              pnpm --filter "$pkg" publish --no-git-checks --access public --tag "$CHANNEL"
+            fi
+          done
+
+  # ── crates.io publish ─────────────────────────────────────────────────────────
+
+  # The plugin SDK, at the release's number (scripts/sync-version.sh). The
+  # macros crate first: rustrak-plugin depends on it by version.
+  publish-crates:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          cache: false
+
+      # Skipped rather than failed when crates.io already has the version, like
+      # the npm step, so a re-run only fills in what is missing.
+      - name: Publish the plugin SDK crates
+        working-directory: packages/rustrak-plugin
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          for crate in rustrak-plugin-macros rustrak-plugin; do
+            if out=$(cargo publish --locked -p "$crate" 2>&1); then
+              echo "$out"
+            elif grep -q "already exists" <<<"$out"; then
+              echo "$crate is already published, skipping"
+            else
+              echo "$out"; exit 1
+            fi
+          done

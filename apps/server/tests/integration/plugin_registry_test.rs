@@ -160,6 +160,34 @@ async fn an_uploaded_package_installs_as_not_verified() {
     assert_eq!(installed["verified"], false);
 }
 
+/// `tests/fixtures/official-registry` is a copy of rustrak/plugins'
+/// `registry/`, signed in that repository with the official key.
+#[actix_web::test]
+async fn the_official_keys_trust_the_official_registry() {
+    let mut config = common::config();
+    config.plugin_registry = Some(format!(
+        "file://{}/tests/fixtures/official-registry/index.json",
+        env!("CARGO_MANIFEST_DIR")
+    ));
+    config.plugin_registry_keys = rustrak::plugins::registry::OFFICIAL_KEYS
+        .iter()
+        .map(|k| k.to_string())
+        .collect();
+    let db = TestDb::new().await;
+    let state = common::state(&db.pool, config).await;
+    let app = common::app_with(&state).await;
+    let owner = common::create_test_token(&db.pool).await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/settings/plugins/registry")
+        .insert_header(crate::common::bearer(&owner))
+        .to_request();
+    let listing: Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(listing["available"], true, "{listing}");
+    assert!(rustrak::plugins::registry::OFFICIAL_INDEX
+        .ends_with("rustrak/plugins/main/registry/index.json"));
+}
+
 #[actix_web::test]
 async fn an_index_whose_signature_does_not_match_is_not_trusted() {
     let registry = Registry::new(None, false);

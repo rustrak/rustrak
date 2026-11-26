@@ -35,4 +35,18 @@ cd "$SERVER_DIR" && cargo update --workspace
 # The spec carries the version in `info.version`.
 cd "$SERVER_DIR" && cargo run --bin gen_openapi --features openapi
 
+# The plugin SDK crates are published with the release's number too, the
+# macros crate's version pinned where rustrak-plugin depends on it.
+SDK_DIR="$SERVER_DIR/../../packages/rustrak-plugin"
+perl -pi -e "s/^version = \".+\"/version = \"$VERSION\"/" \
+  "$SDK_DIR/Cargo.toml" "$SDK_DIR/macros/Cargo.toml"
+perl -pi -e "s/(rustrak-plugin-macros = \{ path = \"macros\", version = )\".+\"/\$1\"$VERSION\"/" \
+  "$SDK_DIR/Cargo.toml"
+if ! grep -q "rustrak-plugin-macros = { path = \"macros\", version = \"$VERSION\" }" "$SDK_DIR/Cargo.toml"; then
+  echo "ERROR: failed to update the SDK's version in $SDK_DIR/Cargo.toml"
+  exit 1
+fi
+cd "$SDK_DIR" && cargo update --workspace
+cd "$SERVER_DIR/tests/fixtures/hello-plugin" && cargo update -p rustrak-plugin -p rustrak-plugin-macros
+
 echo "Synced version $VERSION to Cargo.toml"

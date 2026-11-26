@@ -13,13 +13,11 @@ use sha2::{Digest, Sha256};
 
 /// Where the official index lives.
 pub const OFFICIAL_INDEX: &str =
-    "https://raw.githubusercontent.com/rustrak/plugins/main/index.json";
+    "https://raw.githubusercontent.com/rustrak/plugins/main/registry/index.json";
 
 /// The keys the official index is signed with (minisign public keys, the
-/// base64 line). Its secret half signs in the registry's CI only.
-// Empty until the registry's key is generated (`minisign -G`);
-// until then only RUSTRAK_PLUGIN_REGISTRY_KEYS verifies an index.
-pub const OFFICIAL_KEYS: &[&str] = &[];
+/// base64 line). Its secret half signs in rustrak/plugins' CI only.
+pub const OFFICIAL_KEYS: &[&str] = &["RWRAGDfsq0nE5fXbtMG+ipN20lntQ9hSTXSGGMFhDMooCJ2uUKAXkPeV"];
 
 /// How long a fetched index is kept before it is fetched again.
 const FRESH: Duration = Duration::from_secs(600);

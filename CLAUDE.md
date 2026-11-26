@@ -104,8 +104,11 @@ CREATE_SUPERUSER="admin@example.com:password" cargo run
 
 ## Versioning
 
-`@rustrak/server`, `@rustrak/dashboard` and `@rustrak/client` are a `fixed`
-group in `.changeset/config.json`. They always share one number, even
+`@rustrak/server`, `@rustrak/dashboard`, `@rustrak/client`, `@rustrak/ui` and
+`@rustrak/plugin` are a `fixed` group in `.changeset/config.json`, and the
+`rustrak-plugin` crates follow it through `scripts/sync-version.sh`. Every
+release publishes client, ui and plugin to npm and the crates to crates.io
+(`docker-publish.yml`). They always share one number, even
 when a package has no changes, because that number identifies the **Rustrak
 release** rather than the semver of any single artifact. It is what lets someone
 answer "which version am I running?" and makes `@rustrak/client@X.Y.Z`

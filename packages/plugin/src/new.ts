@@ -7,10 +7,12 @@ import type { PluginConfig } from './config.ts';
 import { generate } from './generate.ts';
 
 /** The first Rustrak release with this world. */
-const MIN_RUSTRAK = '>=0.33.0';
-const SDK_VERSION = '0.1';
-/** `@rustrak/plugin` and `@rustrak/ui` share the Rustrak release's number. */
-const RUSTRAK_PACKAGES = `^${createRequire(import.meta.url)('../package.json').version}`;
+const MIN_RUSTRAK = '>=0.34.0';
+/** `@rustrak/plugin`, `@rustrak/ui` and the `rustrak-plugin` crate share the Rustrak release's number. */
+const RELEASE: string = createRequire(import.meta.url)(
+  '../package.json',
+).version;
+const RUSTRAK_PACKAGES = `^${RELEASE}`;
 
 /** An object as TypeScript source: unquoted keys, single quotes. */
 const asTs = (value: unknown) =>
@@ -98,7 +100,7 @@ path = ".rustrak/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-rustrak-plugin = "${SDK_VERSION}"
+rustrak-plugin = "${RELEASE}"
 serde = { version = "1", features = ["derive"] }
 
 # A plugin builds on its own, never as part of a parent workspace.

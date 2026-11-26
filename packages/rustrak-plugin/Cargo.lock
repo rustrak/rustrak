@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "rustrak-plugin"
-version = "0.1.0"
+version = "0.33.0"
 dependencies = [
  "inventory",
  "rustrak-plugin-macros",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "rustrak-plugin-macros"
-version = "0.1.0"
+version = "0.33.0"
 dependencies = [
  "proc-macro2",
  "quote",
