@@ -140,6 +140,40 @@ async fn a_runaway_plugin_times_out_without_taking_the_server_down() {
 }
 
 #[actix_web::test]
+async fn a_plugin_sleeps_within_its_budget_and_no_longer() {
+    let db = TestDb::new().await;
+    let state = common::state(&db.pool, common::config()).await;
+    state
+        .plugins
+        .install(&db.pool, hello_rtp(), Source::Upload)
+        .await
+        .unwrap();
+    let app = common::app_with(&state).await;
+    let token = common::create_test_token(&db.pool).await;
+
+    let sleep = test::TestRequest::get()
+        .uri("/api/plugins/hello/sleep")
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+    let answer = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        test::call_service(&app, sleep),
+    )
+    .await
+    .expect("the sleep ends with the call's budget");
+    assert_eq!(answer.status(), StatusCode::GATEWAY_TIMEOUT);
+
+    let nap = test::TestRequest::get()
+        .uri("/api/plugins/hello/nap")
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, nap).await.status(),
+        StatusCode::NO_CONTENT
+    );
+}
+
+#[actix_web::test]
 async fn installed_plugins_are_loaded_again_after_a_restart() {
     let db = TestDb::new().await;
     let config = common::config();

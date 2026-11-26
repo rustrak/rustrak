@@ -9,8 +9,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
-use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
+use wasmtime::component::{Component, HasData, HasSelf, Linker, Resource, ResourceTable};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder, Trap};
+use wasmtime_wasi::clocks::{WasiClocksCtxView, WasiClocksView};
+use wasmtime_wasi::p2::bindings::clocks::monotonic_clock;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use super::store::{self, PluginDb};
@@ -100,6 +102,15 @@ impl Runtime {
         // Rust's std imports these; the context behind them is empty.
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
         Plugin::add_to_linker::<Host, HasSelf<Host>>(&mut linker, |h| h)?;
+        linker.allow_shadowing(true);
+        monotonic_clock::add_to_linker::<Host, BoundedClock>(&mut linker, |h| {
+            let left = u64::try_from(h.remaining().as_nanos()).unwrap_or(u64::MAX);
+            Bounded {
+                clocks: h.clocks(),
+                left,
+            }
+        })?;
+        linker.allow_shadowing(false);
 
         let ticker = engine.weak();
         std::thread::Builder::new()
@@ -232,6 +243,50 @@ impl Host {
 }
 
 impl self::rustrak::plugin::types::Host for Host {}
+
+/// WASI's monotonic clock, refusing a wait past the call's deadline: epoch
+/// interruption only stops wasm code, never a wait in the host, so an hour's
+/// sleep would hold a call's turn for the hour. Such a wait times the call
+/// out at once; one within the budget runs as asked.
+struct Bounded<'a> {
+    clocks: WasiClocksCtxView<'a>,
+    /// Nanoseconds left of the call's budget.
+    left: u64,
+}
+
+struct BoundedClock;
+
+impl HasData for BoundedClock {
+    type Data<'a> = Bounded<'a>;
+}
+
+impl monotonic_clock::Host for Bounded<'_> {
+    fn now(&mut self) -> wasmtime::Result<monotonic_clock::Instant> {
+        monotonic_clock::Host::now(&mut self.clocks)
+    }
+
+    fn resolution(&mut self) -> wasmtime::Result<monotonic_clock::Duration> {
+        monotonic_clock::Host::resolution(&mut self.clocks)
+    }
+
+    fn subscribe_instant(
+        &mut self,
+        when: monotonic_clock::Instant,
+    ) -> wasmtime::Result<Resource<monotonic_clock::Pollable>> {
+        let now = monotonic_clock::Host::now(&mut self.clocks)?;
+        self.subscribe_duration(when.saturating_sub(now))
+    }
+
+    fn subscribe_duration(
+        &mut self,
+        duration: monotonic_clock::Duration,
+    ) -> wasmtime::Result<Resource<monotonic_clock::Pollable>> {
+        if duration > self.left {
+            return Err(Trap::Interrupt.into());
+        }
+        monotonic_clock::Host::subscribe_duration(&mut self.clocks, duration)
+    }
+}
 
 fn to_store(v: sql::Value) -> store::Value {
     match v {
