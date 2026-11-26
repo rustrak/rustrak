@@ -1,0 +1,35 @@
+---
+/**
+ * `<Terminal>`: a real terminal session, recorded with asciinema and drawn
+ * by agg, as `public/demos/<name>.gif` with its last frame as `<name>.png`.
+ * An animated image plays with no JavaScript, and a reader who asks for
+ * less motion gets the last frame, where the session ends.
+ */
+interface Props {
+  name: string;
+  alt: string;
+}
+const { name, alt } = Astro.props;
+---
+
+<figure class="demo terminal">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset={`/demos/${name}.png`} />
+    <img src={`/demos/${name}.gif`} alt={alt} loading="lazy" decoding="async" />
+  </picture>
+</figure>
+
+<style>
+  .terminal {
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: #141414;
+    padding: 0.75rem;
+  }
+  .terminal img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+</style>

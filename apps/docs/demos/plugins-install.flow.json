@@ -1,0 +1,128 @@
+{
+  "title": "Install a plugin",
+  "url": "http://localhost:8090/settings/plugins",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "steps": [
+    {
+      "action": "wait",
+      "for": {
+        "role": "button",
+        "name": "Web Traffic",
+        "exact": false
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Web Traffic",
+        "exact": false
+      },
+      "tooltip": "The registry lists every plugin this Rustrak can run. Open one to read what it does"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "button",
+        "name": "Install",
+        "exact": true
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Install",
+        "exact": true
+      },
+      "tooltip": "Install it. Rustrak checks the package against the registry's signed index first"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "link",
+        "name": "Web Traffic",
+        "exact": false
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "Web Traffic",
+        "exact": false
+      },
+      "tooltip": "Installed, but inactive: a plugin runs nowhere until you turn it on"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "tab",
+        "name": "Configuration"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "tab",
+        "name": "Configuration"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "switch",
+        "name": "Run in Storefront"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "switch",
+        "name": "Run in Storefront"
+      },
+      "tooltip": "Turn it on project by project, or in all of them at once"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "cell",
+        "name": "javascript-nextjs Storefront Setup and settings"
+      },
+      "tooltip": "Open the project. Setup has the script to paste into the site, with this project's key"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "heading",
+        "name": "Setup"
+      }
+    },
+    {
+      "action": "fill",
+      "target": {
+        "role": "textbox",
+        "name": "Domains"
+      },
+      "value": "linden.example"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Save"
+      },
+      "tooltip": "This project's own settings override the instance's defaults"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "text": "Settings saved"
+      }
+    }
+  ]
+}

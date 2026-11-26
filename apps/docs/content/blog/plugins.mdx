@@ -1,0 +1,87 @@
+---
+title: "Plugins: Rustrak grows without the core getting heavier"
+description: "Rustrak 0.34.0 runs plugins: sandboxed WebAssembly with their own data, settings, permissions and dashboard pages. Why I built them, what the first one does, and why they are in beta."
+date: "2026-11-26"
+author: "Abian Suarez"
+tags: ["release", "plugins", "rust", "architecture"]
+---
+
+Rustrak has had one fixed idea since the start: use very little and stay simple. It fits on a small VPS, starts in a moment, and does one thing well, which is collecting your errors and helping you understand them.
+
+It is also tied to Sentry, for better and for worse. The good part is that it works with the Sentry SDKs you already use: change the DSN and you are done. The other part is that, to keep it that way, the core has to do things the way Sentry does them.
+
+I have ideas I think matter for anyone running something in production, things I miss in my own work. Sentry does not have them, so they have no place in the core. And if I put them all there anyway, everyone pays for them in memory, complexity and maintenance, even people who never use them. Rustrak would stop being what it is.
+
+So Rustrak 0.34.0 runs plugins. Whoever needs something more installs it. Whoever does not, never notices.
+
+## Beyond Sentry
+
+A plugin does not have to look like anything in Sentry. It does not even have to be about errors, and that opens Rustrak to things that would never make sense in the core.
+
+It works the other way too. Sentry has big features only some teams use. If I build them, they will ship as official plugins: installed by whoever wants them, costing nothing to everyone else.
+
+And if the plugin system turns out efficient and solid enough, I am considering moving some of today's core features into plugins, to keep the core as small as it can be. You would install only what you use.
+
+## Why a plugin and not another app
+
+When a team that already runs Rustrak needs something specific, the usual move is another app: its own database, users, login and deployment. One more service on the VPS, one more thing to keep alive.
+
+A plugin is only the part you care about. Rustrak provides the rest:
+
+- **It runs inside Rustrak.** No other process to deploy or watch.
+- **It uses the members and roles you already have.** A plugin declares its permissions, and you grant them in **Roles** like any of Rustrak's own. No user system to build.
+- **It shows up in the dashboard.** Its pages sit in the sidebar, and it can draw inside pages you already use, such as under every issue.
+- **It has its own data.** Today each plugin gets a SQLite file with its own quota. It cannot touch Rustrak's data or another plugin's.
+- **It is isolated.** The server code is compiled to WebAssembly and runs in a sandbox with 32 MB of memory and 2 seconds per request. A plugin with a bug does not take Rustrak down.
+
+## Build one
+
+If nobody has built what you need, you can:
+
+```bash
+npx @rustrak/plugin new my-plugin
+```
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="/demos/plugin-new.png" />
+  <img src="/demos/plugin-new.gif" alt="npx @rustrak/plugin new my-plugin asks two questions and lists the project it created" />
+</picture>
+
+The project builds from the first minute. The server side is Rust: a route is a function with an attribute, and the plugin's database is one call away.
+
+```rust
+#[post("/visit", public)]
+fn record(ctx: &Ctx, body: Body) -> Result<NoContent> {
+    ctx.db().execute(
+        "INSERT INTO visits (project_id, path, created_at) VALUES (?1, ?2, unixepoch())",
+        params![ctx.project_id(), body.text()],
+    )?;
+    Ok(NoContent)
+}
+```
+
+The pages are React, built with the same components as Rustrak's dashboard, so they look like the rest of it. `npm run build` packs everything into one `.rtp` file you upload in **Settings → Plugins**.
+
+The [plugin docs](/plugins/overview) cover all of it: [creating one](/plugins/create), [routes](/plugins/server), [the database](/plugins/database), [pages and widgets](/plugins/ui) and [publishing](/plugins/publish).
+
+## The first plugin: Web Traffic
+
+To build the plugin system I needed a real use case, not a toy. I picked web analytics, because many teams end up running it as a separate service, and because it makes a lot of sense next to your errors.
+
+Web Traffic shows who visits your site, where they come from and which pages they read. It sets no cookies, so you need no consent banner, and no third party sees anything. A visitor is a hash that changes every day: the IP address is never stored, and nobody can be followed from one day to the next.
+
+What I like most is what it does because it lives inside Rustrak. On every issue you see how many people visited the page where the error happens, so you know whether it hits ten people or ten thousand. And seeing visitors one by one takes a separate permission, which you give only to whoever needs it.
+
+It is in the official registry, [rustrak/plugins](https://github.com/rustrak/plugins). On Rustrak 0.34.0, install it from **Settings → Plugins**, turn it on in a project, and paste the script its setup page gives you.
+
+## Beta, and it will change
+
+All of this is new. Today a plugin can store data, have settings, answer requests, show pages and use Rustrak's permissions. I am still working out what else it should be able to do, and how it fits with the rest.
+
+Next, I want a plugin to send notifications through Rustrak's alerts, using the integrations you already have connected (Slack, email, webhooks), with nothing to set up on its side.
+
+Some decisions are still open. I do not know yet whether each plugin keeps its own SQLite file, or gets its tables in its own schema inside the database you already run, so there is only one. Or whether you get to choose. I will decide by testing it, and by what you tell me.
+
+So while plugins are in beta, expect them to change, sometimes in ways that make you update a plugin you already wrote.
+
+What plugin would you build, or what are you missing? Tell me in [the discussion on GitHub](https://github.com/rustrak/rustrak/discussions/615). Those answers decide where this goes next.

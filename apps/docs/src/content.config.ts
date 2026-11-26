@@ -41,7 +41,7 @@ const changelog = defineCollection({
 const docs = defineCollection({
   loader: glob({
     pattern:
-      '{getting-started,configuration,usage,sdks,troubleshooting,upgrading,reference}/**/*.mdx',
+      '{getting-started,configuration,usage,plugins,sdks,troubleshooting,upgrading,reference}/**/*.mdx',
     base: './content',
   }),
   schema: z.object({

@@ -1,0 +1,115 @@
+---
+description: "A Rustrak plugin's own SQLite database: migrations, queries from Rust with ctx.db(), what the SQL may not do, the storage quota and how retention clears history tables."
+---
+
+# Database
+
+Each plugin gets one SQLite file of its own, `data.sqlite` in its folder under `RUSTRAK_PLUGINS_DIR`. It is the plugin's only state: nothing else survives from one request to the next. Rustrak runs PostgreSQL or SQLite for its own data, and plugins get SQLite either way.
+
+The file is created when a plugin whose code uses `ctx.db()` is installed, and it stays across versions. A plugin that never calls `ctx.db()` gets none.
+
+## Migrations
+
+Tables come from SQL files in `migrations/`, named `NNNN_name.sql`:
+
+```sql
+-- migrations/0001_init.sql
+CREATE TABLE visits (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+```
+
+- Rustrak applies them in number order, at install, and records each in its own ledger table.
+- On an update it applies only the new ones. All of them run in one transaction: either the whole upgrade lands or the file stays as it was, and the install is refused.
+- They are forward only. There is no down migration.
+- Never edit a migration you released. Rustrak compares each applied migration's sha256 and refuses the package with `migration 0001_init was changed after it was applied`. Add a new one instead.
+- Two files with the same number are refused.
+- A migration may not open its own transaction: no `BEGIN`, `COMMIT` or `SAVEPOINT`.
+
+`rustrak-plugin build` runs every migration on an in-memory SQLite first, so a broken one fails the build instead of the install.
+
+## Queries
+
+`ctx.db()` gives the database. You write the SQL. Parameters go in `params![]` and bind to `?1`, `?2` and so on. Rows come back as your own types, matched to columns by name.
+
+```rust
+use rustrak_plugin::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct Visit {
+    pub id: i64,
+    pub path: String,
+    pub created_at: i64,
+}
+
+pub fn latest(ctx: &Ctx, limit: u32) -> Result<Vec<Visit>> {
+    Ok(ctx.db().query(
+        "SELECT id, path, created_at FROM visits
+         WHERE project_id = ?1 ORDER BY id DESC LIMIT ?2",
+        params![ctx.project_id(), limit],
+    )?)
+}
+```
+
+| Method | Returns |
+|---|---|
+| `execute(sql, params)` | The number of rows it changed, as `u64` |
+| `query::<T>(sql, params)` | Every row, each as `T` |
+| `scalar::<T>(sql, params)` | The first column of the first row. No rows is an error |
+| `batch(&[(sql, params), ...])` | Runs several statements in one transaction: all of them or none |
+
+```rust
+ctx.db().batch(&[
+    ("DELETE FROM visits WHERE project_id = ?1", params![project]),
+    ("DELETE FROM daily_visits WHERE project_id = ?1", params![project]),
+])?;
+```
+
+A `?` on any of them turns a failure into a `500`, with the message in Rustrak's log.
+
+### Types
+
+| Rust | SQLite |
+|---|---|
+| `i8` to `i64`, `u8` to `u32`, `bool` | `INTEGER` |
+| `u64`, `usize`, `isize` | `INTEGER`. A value above `i64::MAX` panics, which fails the request |
+| `f64` | `REAL` |
+| `&str`, `String` | `TEXT` |
+| `Vec<u8>` | `BLOB` |
+| `Option<T>` | `NULL` when `None` |
+
+Reading back, a `bool` field takes the `0` or `1` SQLite stores, an `Option` field takes `NULL`, and an enum field takes the text of its variant.
+
+## What the SQL may not do
+
+Anything inside its own file is allowed, except:
+
+- `ATTACH` and `DETACH`: the plugin cannot reach another file.
+- `PRAGMA`: it cannot change how the file runs. Rustrak opens it in WAL mode with foreign keys on.
+- Writing to, altering or dropping Rustrak's migration ledger.
+- `BEGIN`, `COMMIT` and `SAVEPOINT` inside `batch`. Use `batch` itself for a transaction.
+
+A query also shares the request's 2 seconds. One still running when time is up is interrupted with `interrupted: time limit reached`. A result larger than the plugin's 32 MB of memory fails before it is handed over.
+
+## Errors
+
+| Message | When |
+|---|---|
+| `constraint failed: ...` | A `UNIQUE`, `NOT NULL`, `CHECK` or foreign key constraint |
+| `the plugin's storage is full` | The file reached its quota |
+| `the database is busy` | Another request held the file for too long |
+| `the query returned no rows` | `scalar` found nothing |
+
+## The quota
+
+`storageMb` in `rustrak.config.ts` caps the file, 512 MB by default and up to 1 TiB. Past it, writes fail with `the plugin's storage is full` and reads keep working. **Storage** in the dashboard shows each plugin's size against its quota.
+
+## History and retention
+
+A table with a `created_at` column is history. Rustrak's retention clears its old rows. The column holds unix seconds (`unixepoch()`) or ISO 8601 text.
+
+The admin chooses how long each plugin keeps its history, in **Storage → Configure retention**. The plugin does not choose. Until a window is set, nothing is cleared. Tables without `created_at` are never touched, so keep settings, aggregates and anything that must last in tables without that column.

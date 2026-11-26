@@ -1,0 +1,67 @@
+---
+description: "What a Rustrak plugin is, how the server runs one, what it can reach and what it cannot. Plugins are in beta."
+---
+
+# Plugins
+
+A plugin adds a feature to Rustrak without forking it: its own routes on the API, its own pages in the dashboard, its own data. The server code is Rust compiled to WebAssembly and runs sandboxed inside the Rustrak process. The pages are React, drawn by the dashboard with its own components, so they look like the rest of Rustrak.
+
+> **Plugins are in beta.** They arrived in Rustrak 0.34.0. The plugin API, the SDK and the package format can change between minor versions while Rustrak is on `0.x`. Pin the Rustrak versions your plugin supports in its `rustrak` range.
+
+If you want to use plugins, read [Install and manage plugins](/plugins/install). If you want to write one, start with [Create a plugin](/plugins/create).
+
+## What a plugin can do
+
+- **Answer HTTP requests.** Routes under `/api/projects/<id>/plugins/<plugin>/` or `/api/plugins/<plugin>/`, written as Rust functions. A route can be public, so an app or a website sends to it with its project's DSN key, like a Sentry SDK does.
+- **Keep its own data.** Each plugin gets a SQLite file of its own, with migrations and a size quota.
+- **Add pages and widgets.** Pages inside each project or outside any project, with a sidebar entry. Widgets draw into three places of the dashboard's own pages, such as under every issue.
+- **Have settings.** The admin fills them in a form Rustrak draws, for the whole instance or per project. Secrets never reach the browser.
+- **Add permissions.** They show up in roles, beside Rustrak's own, and its routes and pages can require them.
+- **Serve public files.** A script a website loads, under `/public/<plugin>/`.
+
+The official Web Traffic plugin, for one, adds a traffic report to each project it runs in:
+
+<InteractiveDemo src="/demos/plugins-use.openshowcase" />
+
+## What it cannot do
+
+- **Read Rustrak's database.** The server code sees only its own SQLite file. It cannot read your issues, events or projects. Its pages can, through `useRustrakApi`, as the person looking at them.
+- **Make network calls or touch the disk.** Rustrak links WASI only because Rust's standard library imports it, and hands the component an empty context: no sockets, no preopened directories, no environment variables.
+- **Run in the background.** A plugin's code runs only while it answers a request. There are no scheduled jobs and no hooks on ingested events.
+- **See credentials.** Rustrak strips `Cookie`, `Authorization` and `X-Rustrak-Key` before a request reaches the plugin, and drops any `Set-Cookie` the plugin answers with.
+
+## How Rustrak runs it
+
+A plugin ships as one `.rtp` file: a zip with its manifest, its compiled `server.wasm`, its dashboard bundle, migrations, texts and readme, and the sha256 of every file. Rustrak checks every hash before it uses anything inside.
+
+When you install it, Rustrak checks the plugin supports this server's version, reads the routes the code declares without running it, compiles the component to machine code, applies the migrations, and caches the compiled code on disk. Nothing changes unless every step succeeds.
+
+For each request, Rustrak:
+
+1. Finds the route by method and exact path. An undeclared route is a 404.
+2. Checks who is calling: the project's DSN key on a public route, a session or an API token on the others, plus the permission the route requires.
+3. Checks the plugin runs in that project and its required settings are set.
+4. Starts a fresh instance of the component, hands it the request, and stops it when it answers or runs out of time.
+
+No state survives between two requests except what the plugin wrote to its database.
+
+## Limits
+
+| What | Limit |
+|---|---|
+| Time per request, queries included | 2 seconds, then `504` with `The plugin did not answer in time` |
+| Memory per instance | 32 MB |
+| Requests running at once, per plugin | 8. The rest wait up to 5 seconds, then get `503` |
+| Request body | 1 MB |
+| Database | `storageMb` from its config, 512 MB by default |
+| `.rtp` package | 20 MB |
+| `server.wasm` | 5 MB |
+| `logo.svg` | 256 KB |
+
+A query result larger than the plugin's memory fails instead of being handed over.
+
+## Trust
+
+The server code is sandboxed. The pages are not: a plugin's dashboard bundle runs in the dashboard, with the session of whoever opens the page, and can call Rustrak's API as that person. Install only plugins you trust.
+
+Rustrak marks each installed plugin as **Verified** or **Not verified**. Verified means it came from the signed registry, whose index names the sha256 of every package. A plugin uploaded from a file is not verified. Rustrak cannot tell who made it.

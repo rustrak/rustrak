@@ -1,0 +1,127 @@
+---
+description: "Write a Rustrak plugin's HTTP routes in Rust with the rustrak-plugin crate: route macros, public and instance routes, permissions, extractors, responses and errors."
+---
+
+# Server routes
+
+A plugin's server is a set of Rust functions, one per route, in `src/server/routes/`. The [`rustrak-plugin`](https://crates.io/crates/rustrak-plugin) crate registers each one with an attribute. You write no `main`, no router and no `mod` lines: the build declares every file under `src/server/` for you.
+
+```rust
+use rustrak_plugin::prelude::*;
+use crate::Perm;
+
+#[get("/visits", requires = Perm::Visits.read())]
+fn count(ctx: &Ctx) -> Result<String> {
+    let n: i64 = ctx.db().scalar(
+        "SELECT count(*) FROM visits WHERE project_id = ?1",
+        params![ctx.project_id()],
+    )?;
+    Ok(n.to_string())
+}
+```
+
+Keep routes in `routes/` and the queries they share in `models/`, as `new` lays them out. A route macro outside `src/server/routes/` fails to compile with `a route goes in src/server/routes/`.
+
+## Where a route answers
+
+`#[get]`, `#[post]`, `#[put]`, `#[patch]` and `#[delete]` take the route's path first. A path starts with `/` and has no placeholders: Rustrak matches the method and the whole path exactly. Pass an id in the query string or the body instead.
+
+Where the route lives, and who may call it, depends on its flags:
+
+| Attribute | URL | Who can call it |
+|---|---|---|
+| `#[get("/stats")]` | `/api/projects/<project id>/plugins/<plugin>/stats` | A signed-in person or an API token that can see the project |
+| `#[get("/stats", requires = Perm::Stats.read())]` | Same | The same, holding `<plugin>:stats` `read` |
+| `#[post("/visit", public)]` | `/api/projects/<project id>/plugins/<plugin>/visit` | Anyone with the project's DSN key, as `?sentry_key=<key>` or `X-Rustrak-Key: <key>` |
+| `#[get("/report", instance)]` | `/api/plugins/<plugin>/report` | A signed-in person or an API token. Not tied to a project |
+
+`instance` takes `requires` too. `public` takes neither: a public route has no user to check, and it always belongs to a project.
+
+Rustrak checks all of this before your code runs. A project route also answers only in projects the plugin is turned on in, and only once its required settings are set. API tokens call routes with `Authorization: Bearer <token>`, like the rest of the API.
+
+## Arguments
+
+A route takes `&Ctx` and any of these, in any order. Rustrak builds each from the request and answers `400` when it cannot.
+
+| Type | What it holds |
+|---|---|
+| `Body` | The raw body. `body.text()` reads it as UTF-8 |
+| `Json<T>` | The body parsed as JSON into `T`. Invalid JSON is `400` with `invalid JSON body: ...` |
+| `Query<T>` | The query string parsed into `T`. A bad one is `400` with `invalid query: ...` |
+
+```rust
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct Page {
+    limit: Option<u32>,
+}
+
+#[get("/hits", requires = Perm::Hits.read())]
+fn list(ctx: &Ctx, page: Query<Page>) -> Result<Json<Vec<Hit>>> {
+    let limit = page.0.limit.unwrap_or(20).min(100);
+    Ok(Json(hit::latest(ctx, limit)?))
+}
+```
+
+`sentry_key` is removed from the query string before your code sees it.
+
+## The context
+
+| `Ctx` method | Returns |
+|---|---|
+| `ctx.db()` | The plugin's database. See [Database](/plugins/database) |
+| `ctx.project_id()` | `Option<u64>`: the project, on project routes |
+| `ctx.project()` | The project id, or `Error::NotFound` outside one |
+| `ctx.header(name)` | A request header, matched case-insensitively |
+| `ctx.client_ip()` | The caller's address as Rustrak sees it, after its trusted proxies |
+| `ctx.settings::<T>()` | The settings as `T`. Use the generated `Settings::get(ctx)` instead |
+
+The plugin never sees `Cookie`, `Authorization` or `X-Rustrak-Key`.
+
+## Responses
+
+A route returns `Result<T>` where `T` is one of:
+
+| Type | Status | Body |
+|---|---|---|
+| `String` or `&'static str` | `200` | Text, `text/plain; charset=utf-8` |
+| `Json(value)` | `200` | `value` as JSON |
+| `Created(value)` | `201` | `value` as JSON |
+| `NoContent` | `204` | None |
+
+The value inside `Json` and `Created` is anything that implements `serde::Serialize`.
+
+## Errors
+
+Return an `Error` and Rustrak answers with its status and a JSON body, `{"detail": "..."}`:
+
+| Variant | Status | `detail` |
+|---|---|---|
+| `Error::BadRequest(message)` | `400` | `message` |
+| `Error::Forbidden` | `403` | `Forbidden` |
+| `Error::NotFound` | `404` | `Not found` |
+| `Error::Internal(message)` | `500` | `Internal error`. `message` goes to Rustrak's log, not to the caller |
+| `Error::Unavailable(message)` | `503` | `message` |
+
+A database error turns into `Error::Internal` with `?`, so a failed query is a `500` and its message lands in the log.
+
+Some answers come from Rustrak, not from your code. They use Rustrak's own error body, `{"error": {"type": "...", "message": "..."}}`, except the `504`, which carries `detail`:
+
+| Status | When |
+|---|---|
+| `401` | A public route without the key (`Missing or invalid project key`) or with another project's (`Invalid key for project`) |
+| `403` | The caller lacks the permission the route requires (`Missing permission <plugin>:<resource>:<action>`) |
+| `404` | No such route, or the plugin is not on in that project (`Plugin route not found in <plugin>`) |
+| `503` | A required setting is not set, or 8 requests are already running and the next waited 5 seconds |
+| `504` | The route ran past its 2 seconds, its queries included (`The plugin did not answer in time`) |
+| `500` | The code panicked. A panic aborts the instance |
+
+## Logs
+
+What the plugin writes as an internal error goes to Rustrak's log under the target `rustrak::plugin`, prefixed with the plugin's id:
+
+```text
+[my-plugin] the plugin's storage is full
+```
+

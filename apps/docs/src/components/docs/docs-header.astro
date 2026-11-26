@@ -84,9 +84,10 @@ const REFERENCE = [
               <a
                 href={t.href}
                 aria-current={t.id === tab ? 'true' : undefined}
-                class="flex h-8 items-center rounded-lg px-3 text-control text-fg-subtle transition-colors hover:bg-surface/60 hover:text-fg aria-[current]:bg-surface aria-[current]:text-fg"
+                class="flex h-8 items-center gap-2 rounded-lg px-3 text-control text-fg-subtle transition-colors hover:bg-surface/60 hover:text-fg aria-[current]:bg-surface aria-[current]:text-fg"
               >
                 {t.title}
+                {t.badge && <span class="tab-badge">{t.badge}</span>}
               </a>
             </li>
           ))
@@ -97,7 +98,7 @@ const REFERENCE = [
           <button
             type="button"
             popovertarget="docs-reference"
-            class="flex h-8 items-center gap-1 rounded-lg px-3 text-control text-fg-subtle transition-colors hover:bg-surface/60 hover:text-fg"
+            class="flex h-8 items-center gap-2 rounded-lg px-3 text-control text-fg-subtle transition-colors hover:bg-surface/60 hover:text-fg"
             style="anchor-name: --docs-reference"
           >
             Reference

@@ -1,5 +1,5 @@
 /**
- * The documentation's navigation: three tabs, each scoping the sidebar to the
+ * The documentation's navigation: four tabs, each scoping the sidebar to the
  * part of the docs a reader came for, as Bun, Astro and Clerk do. Running
  * Rustrak and using it are different readers on different days; neither
  * needs the other's forty links in the way.
@@ -16,6 +16,8 @@ export type NavGroup = { title: string; items: NavItem[] };
 export type NavTab = {
   id: string;
   title: string;
+  /** A word beside the title, for a section that is new or not final: `Beta`. */
+  badge?: string;
   /** Where the tab lands: its first page. */
   href: string;
   groups: NavGroup[];
@@ -114,6 +116,32 @@ export const TABS: NavTab[] = [
         items: [
           item('troubleshooting/common-issues', 'Common issues'),
           item('troubleshooting/faq', 'FAQ'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'plugins',
+    title: 'Plugins',
+    badge: 'BETA',
+    href: '/plugins/overview',
+    groups: [
+      {
+        title: 'Plugins (beta)',
+        items: [
+          item('plugins/overview', 'Overview'),
+          item('plugins/install', 'Install and manage'),
+        ],
+      },
+      {
+        title: 'Build a plugin',
+        items: [
+          item('plugins/create', 'Create a plugin'),
+          item('plugins/configuration', 'Configuration'),
+          item('plugins/server', 'Server routes'),
+          item('plugins/database', 'Database'),
+          item('plugins/ui', 'Pages and widgets'),
+          item('plugins/publish', 'Build and publish'),
         ],
       },
     ],

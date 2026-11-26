@@ -24,7 +24,7 @@ const tabs = drawer ? TABS : [tab];
     tabs.map((t) => (
       <div class:list={[drawer && 'mb-8']}>
         {drawer && (
-          <p class="mb-4 text-fg text-section">{t.title}</p>
+          <p class="mb-4 flex items-center gap-2 text-fg text-section">{t.title}{t.badge && <span class="tab-badge">{t.badge}</span>}</p>
         )}
         {t.groups.map((group) => (
           <div class="mb-7">

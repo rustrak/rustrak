@@ -15,11 +15,11 @@ const absolute = (markdown: string) =>
   markdown.replace(/\]\(\/(?!\/)/g, `](${SITE}/`);
 
 /** A docs page as Markdown: its body, which opens with its `# Title`, less
- * the interactive demos, which mean nothing as text. */
+ * the interactive demos and terminal recordings, which mean nothing as text. */
 export const docMarkdown = (page: DocPage) =>
   absolute(
     (page.body ?? '')
-      .replace(/^\s*<InteractiveDemo[^>]*\/>\s*$/gm, '')
+      .replace(/^\s*<(InteractiveDemo|Terminal)[^>]*\/>\s*$/gm, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim(),
   );

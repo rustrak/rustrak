@@ -375,6 +375,16 @@ If your chat server or automation tool runs on your own network, for example an 
 RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS=on
 ```
 
+## Plugins
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RUSTRAK_PLUGINS_DIR` | `./plugin-data` (`/data/plugins` in the Docker image) | Installed plugin packages, their compiled code and their databases |
+| `RUSTRAK_PLUGIN_REGISTRY` | The official index | URL of a plugin registry's `index.json`. `off` hides the registry |
+| `RUSTRAK_PLUGIN_REGISTRY_KEYS` | *(none)* | Comma-separated minisign public keys trusted besides the official one |
+
+Back up `RUSTRAK_PLUGINS_DIR` with the database. See [Install and manage plugins](/plugins/install#server-settings). Plugins are in beta.
+
 ## Telemetry
 
 | Variable | Default | Description |

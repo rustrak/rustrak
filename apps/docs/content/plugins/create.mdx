@@ -1,0 +1,99 @@
+---
+description: "Create a Rustrak plugin with npx @rustrak/plugin new, build it into a .rtp, install it and send it data. Plugins are in beta."
+steps: true
+---
+
+# Create a plugin
+
+Scaffold a plugin, build it and see it running in your Rustrak in about five minutes. The project `new` writes builds as it is: it records page views sent with a project's DSN key, counts them on a page in each project and under every issue, and has one setting and one permission.
+
+> Plugins are in beta. The SDK can change between minor versions while Rustrak is on `0.x`.
+
+## Get the tools
+
+You need:
+
+- Node.js 22.18 or newer. `rustrak.config.ts` loads through Node's own type stripping.
+- Rust, with the `wasm32-wasip2` target: `rustup target add wasm32-wasip2`.
+- A Rustrak server on 0.34.0 or newer, where you are an owner.
+
+## Scaffold the project
+
+```bash
+npx @rustrak/plugin new my-plugin
+```
+
+<Terminal name="plugin-new" alt="npx @rustrak/plugin new my-plugin asks whether to install the dependencies and start a git repository, then lists the project it created." />
+
+The name is the folder and becomes the plugin's id: 2 to 32 lowercase letters, digits or dashes, starting with a letter. In a terminal, `new` asks whether to install the dependencies and whether to start a git repository, and adds the `wasm32-wasip2` target if rustup lacks it. `--yes` takes every default without asking. `--install`/`--no-install` and `--git`/`--no-git` answer one question each.
+
+The questions and these flags arrive in the release after 0.34.0. The `new` of `@rustrak/plugin@0.34.0` asks nothing and ignores the flags: it writes the project and prints the steps left, `rustup target add wasm32-wasip2`, `npm install` and `npm run build`. Run them yourself.
+
+What you get:
+
+```text
+my-plugin/
+├── rustrak.config.ts             name, Rustrak versions, settings, permissions
+├── package.json                  the plugin's id and version
+├── Cargo.toml                    the Rust crate
+├── migrations/0001_init.sql      the visits table
+├── src/
+│   ├── server/
+│   │   ├── models/visit.rs       the queries
+│   │   └── routes/visits.rs      POST /visit and GET /visits
+│   ├── ui/
+│   │   ├── routes/project/page.tsx   a page in each project
+│   │   └── widgets/issue-visits.tsx  a widget under every issue
+│   └── messages/en.json, es.json     its texts
+├── readme/en.md, es.md           its page in the catalog
+└── logo.svg
+```
+
+`.rustrak/` holds what the CLI generates from the rest. It is git-ignored.
+
+## Build it
+
+```bash
+cd my-plugin
+npm install
+npm run build
+```
+
+<Terminal name="plugin-build" alt="npm run build checks the migration, compiles 43 crates, builds 1 page and 1 widget, and packs dist/my-plugin-0.1.0.rtp, 60 kB." />
+
+`npm run build` runs `rustrak-plugin build`. It checks the migrations, compiles `src/server/` to WebAssembly, builds the pages and packs everything into `dist/my-plugin-0.1.0.rtp`. The first build downloads and compiles the Rust dependencies, so it takes longer than the ones after.
+
+It warns about each language Rustrak speaks that the plugin has no texts or readme for, such as `No texts in zh, fr, ro: those readers see English`. Readers in those languages see English. The warnings do not stop the build.
+
+## Install it
+
+1. In Rustrak, open **Settings → Plugins** and press **Install from file**.
+2. Press **Choose file** and pick `dist/my-plugin-0.1.0.rtp`.
+3. Open the plugin, go to **Configuration → Projects** and turn it on in a project with **Run in &lt;project&gt;**.
+
+The project's sidebar now has **My Plugin**. The page shows **Visits** with 0.
+
+## Send it a visit
+
+The `POST /visit` route is public: it takes the project's DSN key instead of a session, as `?sentry_key=` or the `X-Rustrak-Key` header. The key is the part of the DSN between `//` and `@`, and the project id is the number at its end.
+
+```bash
+curl -X POST "https://rustrak.example.com/api/projects/<project id>/plugins/my-plugin/visit?sentry_key=<key>" \
+  --data '/pricing?utm_source=newsletter'
+```
+
+Rustrak answers `204`. Reload the plugin's page and **Visits** counts it. Open any issue in that project and the same number sits under its charts.
+
+The project's **Keep query strings** setting, off by default, decides whether the plugin stores `?utm_source=newsletter` with the path. You find it in **Configuration → Projects**, opening the project.
+
+## Change it and rebuild
+
+Edit the code, run `npm run build` again, and install the new `.rtp` the same way. Installing the same id replaces the plugin and keeps its data. To ship a new version, bump `version` in `package.json`.
+
+From here:
+
+- [Configuration](/plugins/configuration) for `rustrak.config.ts`: settings, permissions and the rest.
+- [Server routes](/plugins/server) for what a route can take and return.
+- [Database](/plugins/database) for migrations, queries and retention.
+- [Pages and widgets](/plugins/ui) for the dashboard side.
+- [Build and publish](/plugins/publish) for the build in detail and the registry.

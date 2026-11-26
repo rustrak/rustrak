@@ -5,6 +5,7 @@ import Demo from '../components/docs/demo.astro';
 import Empty from '../components/docs/empty.astro';
 import PageActions from '../components/docs/page-actions.astro';
 import PageRail from '../components/docs/page-rail.astro';
+import Terminal from '../components/docs/terminal.astro';
 import { type DocPage, editUrl, getDocs, slugOf, titleOf } from '../docs';
 import { findPage, hrefOf, PAGES } from '../docs-nav';
 import Docs from '../layouts/docs.astro';
@@ -84,7 +85,7 @@ const markdown = new URL(`/${slug}.md`, Astro.site).href;
     </header>
 
     <div class:list={['prose prose-docs', page.data.steps && 'steps']}>
-      <Content components={{ h1: Empty, InteractiveDemo: Demo, A }} />
+      <Content components={{ h1: Empty, InteractiveDemo: Demo, Terminal, A }} />
     </div>
   </article>
 
