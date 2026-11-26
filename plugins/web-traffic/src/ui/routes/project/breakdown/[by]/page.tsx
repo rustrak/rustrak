@@ -56,7 +56,8 @@ export default function Breakdown({
   const rows = usePluginApi<Row[]>('/top', {
     by,
     ...filter,
-    q: search.q,
+    // The events section has no search box: no search it cannot clear.
+    q: inSection ? undefined : search.q,
     limit: MAX_ROWS,
   });
   const regionName = useRegionName();
@@ -117,7 +118,7 @@ export default function Breakdown({
                 cell: ({ row }) => {
                   const length = visitLength({
                     duration: row.original.duration ?? 0,
-                    visitors: row.original.visitors,
+                    visits: row.original.visits ?? 0,
                   });
                   return length === null ? '–' : duration(length);
                 },

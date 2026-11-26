@@ -7,6 +7,7 @@ import {
 } from '@rustrak/plugin/ui';
 import { Panel, PanelPlaceholder, TimeSeriesChart } from '@rustrak/ui';
 import { type EventSeries, filterOf, periodOf, tickFormat } from '../model';
+import { LoadFailed } from './load-failed';
 
 /** Events over the window: the five most common, or one by `name`. */
 export function EventsChart({
@@ -34,6 +35,8 @@ export function EventsChart({
       <Panel title={t(title)}>
         {series.isPending ? (
           <PanelPlaceholder height={height} />
+        ) : !series.data ? (
+          <LoadFailed retry={series.refetch} />
         ) : (
           <TimeSeriesChart
             label={t(title)}

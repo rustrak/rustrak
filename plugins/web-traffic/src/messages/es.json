@@ -5,6 +5,10 @@
     "visitors": "Visitantes",
     "events": "Eventos"
   },
+  "load": {
+    "failed": "No se ha podido cargar.",
+    "retry": "Reintentar"
+  },
   "permissions": {
     "traffic": {
       "label": "Tráfico web",

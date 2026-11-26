@@ -74,7 +74,9 @@ export interface Totals {
   pageviews: number;
   visitors: number;
   bounces: number;
-  /** Seconds between each visitor's first and last page, summed. */
+  /** A half-hour pause starts a new one, as `visits` splits a day. */
+  visits: number;
+  /** Seconds from each visit's first page to its last, summed. */
   duration: number;
 }
 
@@ -90,6 +92,8 @@ export interface Row {
   count: number;
   /** Of `visitors`, those who saw one page all day. */
   bounces?: number;
+  /** Their visits. */
+  visits?: number;
   /** Their visits' length in seconds, summed. */
   duration?: number;
 }
@@ -124,13 +128,13 @@ export function keyOf(dsn: string | null | undefined): string | null {
   }
 }
 
-/** The average visit, in seconds; `null` without visitors. */
+/** The average visit, in seconds; `null` without visits. */
 export function visitLength(
-  totals: Pick<Totals, 'duration' | 'visitors'>,
+  totals: Pick<Totals, 'duration' | 'visits'>,
 ): number | null {
-  return totals.visitors === 0
+  return totals.visits === 0
     ? null
-    : Math.round(totals.duration / totals.visitors);
+    : Math.round(totals.duration / totals.visits);
 }
 
 /** `1h 4m`, `3m 20s`, `12s`. */

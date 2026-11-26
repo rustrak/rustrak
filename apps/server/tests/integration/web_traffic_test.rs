@@ -160,7 +160,7 @@ async fn a_websites_visits_become_its_traffic_report() {
     assert_eq!(status, StatusCode::OK, "{overview}");
     assert_eq!(
         overview["current"],
-        json!({ "pageviews": 3, "visitors": 2, "bounces": 1, "duration": overview["current"]["duration"] })
+        json!({ "pageviews": 3, "visitors": 2, "visits": 2, "bounces": 1, "duration": overview["current"]["duration"] })
     );
     assert_eq!(overview["previous"]["pageviews"], 0);
     let series = overview["series"].as_array().unwrap();
@@ -514,6 +514,85 @@ async fn any_event_name_and_data_are_reported() {
         json!({ "count": 2, "visitors": 2, "everyone": 3 }),
         "two of three visitors, not two of the one who read a page"
     );
+
+    // Who did it links to their day, page views or not.
+    let (_, recent) = call!(&app, get("/event-recent?name=t"));
+    let who = recent[0]["visitor"].as_str().unwrap().to_string();
+    let (status, profile) = call!(&app, get(&format!("/visitor?id={who}")));
+    assert_eq!(status, StatusCode::OK, "{profile}");
+    assert_eq!(
+        (&profile["pageviews"], &profile["events"], &profile["entry"]),
+        (&json!(0), &json!(1), &json!("/"))
+    );
+}
+
+/// A visit ends at a half-hour pause, as the visitor page splits a day: the
+/// time away is no visit's length.
+#[actix_web::test]
+async fn a_visit_ends_at_a_long_pause() {
+    let db = TestDb::new().await;
+    let config = common::config();
+    let data = config.plugins_dir.join("web-traffic").join("data.sqlite");
+    let state = common::state(&db.pool, config).await;
+    state
+        .plugins
+        .install(&db.pool, web_traffic_rtp(), Source::Upload)
+        .await
+        .unwrap();
+    let app = common::app_with(&state).await;
+    let owner = common::create_test_token(&db.pool).await;
+    call!(
+        &app,
+        test::TestRequest::put()
+            .uri("/api/settings/plugins/web-traffic")
+            .insert_header(bearer(&owner))
+            .set_json(json!({ "allProjects": true }))
+    );
+    let (project, key) = common::create_ingest_project(&db.pool, "shop").await;
+    for _ in 0..4 {
+        call!(
+            &app,
+            beacon(
+                project,
+                &key,
+                "10.0.0.1",
+                FIREFOX,
+                pageview("https://shop.example.com/")
+            )
+        );
+    }
+    // Two pages a minute apart eight hours ago, and two a minute apart now.
+    rusqlite::Connection::open(&data)
+        .unwrap()
+        .execute(
+            "UPDATE pageviews SET created_at = unixepoch() - CASE id \
+             WHEN 1 THEN 28860 WHEN 2 THEN 28800 WHEN 3 THEN 60 ELSE 0 END",
+            [],
+        )
+        .unwrap();
+
+    let get = |path: &str| {
+        test::TestRequest::get()
+            .uri(&format!(
+                "/api/projects/{project}/plugins/web-traffic{path}"
+            ))
+            .insert_header(bearer(&owner))
+    };
+    let (_, overview) = call!(&app, get("/overview?period=24h"));
+    assert_eq!(
+        (
+            &overview["current"]["duration"],
+            &overview["current"]["visits"]
+        ),
+        (&json!(120), &json!(2)),
+        "{overview}"
+    );
+    let (_, pages) = call!(&app, get("/top?by=path&period=24h"));
+    assert_eq!(
+        (&pages[0]["duration"], &pages[0]["visits"]),
+        (&json!(120), &json!(2)),
+        "{pages}"
+    );
 }
 
 #[actix_web::test]
@@ -692,11 +771,12 @@ async fn the_report_needs_its_permission() {
         assert_eq!(status, StatusCode::OK, "{route} with traffic:read");
     }
     // One visitor at a time: their day, their profile, who did an event.
-    for route in [
-        "/visitors",
-        "/visitor?id=x",
-        "/journey?id=x",
-        "/event-recent?name=x",
+    // Nobody is `x`: those two are found allowed, and not found.
+    for (route, allowed) in [
+        ("/visitors", StatusCode::OK),
+        ("/visitor?id=x", StatusCode::NOT_FOUND),
+        ("/journey?id=x", StatusCode::NOT_FOUND),
+        ("/event-recent?name=x", StatusCode::OK),
     ] {
         let (status, _) = call!(&app, status_of(route, &tokens[1]));
         assert_eq!(
@@ -705,7 +785,7 @@ async fn the_report_needs_its_permission() {
             "{route} without visitors:read"
         );
         let (status, _) = call!(&app, status_of(route, &tokens[2]));
-        assert_ne!(status, StatusCode::FORBIDDEN, "{route} with visitors:read");
+        assert_eq!(status, allowed, "{route} with visitors:read");
     }
 }
 

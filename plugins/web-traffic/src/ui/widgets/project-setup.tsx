@@ -6,6 +6,8 @@ import {
   useRustrakApi,
   type WidgetProps,
 } from '@rustrak/plugin/ui';
+import { PanelPlaceholder } from '@rustrak/ui';
+import { LoadFailed } from '../components/load-failed';
 import { keyOf } from '../model';
 
 export const config = defineWidget({ zone: 'plugin.setup' });
@@ -33,19 +35,24 @@ export default function ProjectSetup({
   );
   const key = keyOf(project.data?.dsn);
   const snippet = `<script defer src="${publicUrl(plugin, 'script.js')}"
-  data-project="${projectId}" data-key="${key ?? '…'}"></script>`;
+  data-project="${projectId}" data-key="${key}"></script>`;
 
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
         <h3 className="text-value font-medium text-fg">{t('setup.snippet')}</h3>
         <p className="text-meta text-fg-subtle">{t('setup.snippetHint')}</p>
-        {project.data && !key ? (
+        {/* Only ever a snippet that works: with this project's key. */}
+        {project.isPending ? (
+          <PanelPlaceholder height={64} />
+        ) : !project.data ? (
+          <LoadFailed retry={project.refetch} />
+        ) : key ? (
+          <Code>{snippet}</Code>
+        ) : (
           <p role="alert" className="text-meta text-danger-fg">
             {t('setup.noKey')}
           </p>
-        ) : (
-          <Code>{snippet}</Code>
         )}
       </section>
       <section className="flex flex-col gap-2">

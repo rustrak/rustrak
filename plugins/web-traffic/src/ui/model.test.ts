@@ -17,10 +17,22 @@ import {
 describe('the traffic figures', () => {
   it('reads a bounce rate and a change against the period before', () => {
     expect(
-      bounceRate({ pageviews: 10, visitors: 4, bounces: 1, duration: 0 }),
+      bounceRate({
+        pageviews: 10,
+        visitors: 4,
+        bounces: 1,
+        visits: 4,
+        duration: 0,
+      }),
     ).toBe(25);
     expect(
-      bounceRate({ pageviews: 0, visitors: 0, bounces: 0, duration: 0 }),
+      bounceRate({
+        pageviews: 0,
+        visitors: 0,
+        bounces: 0,
+        visits: 0,
+        duration: 0,
+      }),
     ).toBeNull();
     expect(change(15, 10)).toBe(50);
     expect(change(5, 10)).toBe(-50);
@@ -55,9 +67,8 @@ describe('the narrowing', () => {
 
 describe('visits and events', () => {
   it('reads an average visit', () => {
-    expect(
-      visitLength({ visitors: 2, duration: 130 }),
-    ).toBe(65);
+    expect(visitLength({ visits: 2, duration: 130 })).toBe(65);
+    expect(visitLength({ visits: 0, duration: 0 })).toBeNull();
     expect(duration(65)).toBe('1m 5s');
     expect(duration(3725)).toBe('1h 2m');
     expect(duration(9)).toBe('9s');

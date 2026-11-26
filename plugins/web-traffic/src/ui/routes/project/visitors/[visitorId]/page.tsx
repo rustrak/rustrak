@@ -7,7 +7,9 @@ import {
   usePluginTranslations,
 } from '@rustrak/plugin/ui';
 import { Figure, FigureStrip, Panel, PanelPlaceholder } from '@rustrak/ui';
+import type { UseQueryResult } from '@tanstack/react-query';
 import { ProfileFacts, VisitSection } from '../../../../components/journey';
+import { LoadFailed } from '../../../../components/load-failed';
 import { useRegionName } from '../../../../components/region';
 import { TrafficPage } from '../../../../components/traffic-page';
 import {
@@ -65,25 +67,47 @@ export default function VisitorPage({ params }: PageProps<'project'>) {
       </FigureStrip>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Panel title={t('journey.steps')} hint={t('journey.privacy')} flush>
-          {steps.isPending ? (
-            <PanelPlaceholder height={240} />
-          ) : (
-            <div className="flex flex-col">
-              {day.map((visit, n) => (
-                <VisitSection key={visit[0]!.at} visit={visit} n={n + 1} />
-              ))}
-              {missing > 0 ? (
-                <p className="px-5 py-3 text-meta text-fg-subtle">
-                  {t('journey.partial', { count: missing })}
-                </p>
-              ) : null}
-            </div>
-          )}
+          <Steps
+            steps={steps}
+            gone={profile.isError}
+            day={day}
+            missing={missing}
+          />
         </Panel>
         <Panel title={t('visitor.profile')}>
           {p ? <ProfileFacts profile={p} /> : <PanelPlaceholder height={320} />}
         </Panel>
       </div>
     </TrafficPage>
+  );
+}
+
+/** The day's visits, and how many later steps the list leaves out. */
+function Steps({
+  steps,
+  gone,
+  day,
+  missing,
+}: {
+  steps: UseQueryResult<Step[]>;
+  /** Not kept any more: the page says so above. */
+  gone: boolean;
+  day: Step[][];
+  missing: number;
+}) {
+  const t = usePluginTranslations();
+  if (steps.isPending) return <PanelPlaceholder height={240} />;
+  if (!steps.data) return gone ? null : <LoadFailed retry={steps.refetch} />;
+  return (
+    <div className="flex flex-col">
+      {day.map((visit, n) => (
+        <VisitSection key={visit[0]!.at} visit={visit} n={n + 1} />
+      ))}
+      {missing > 0 ? (
+        <p className="px-5 py-3 text-meta text-fg-subtle">
+          {t('journey.partial', { count: missing })}
+        </p>
+      ) : null}
+    </div>
   );
 }

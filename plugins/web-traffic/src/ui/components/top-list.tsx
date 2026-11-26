@@ -10,6 +10,7 @@ import { Panel, PanelPlaceholder, Tab, TabList, Tabs } from '@rustrak/ui';
 import { useState } from 'react';
 import { eventPage, filterOf, narrows, type Ranking, type Row } from '../model';
 import { BAR_ROW, BarFill } from './bar';
+import { LoadFailed } from './load-failed';
 
 interface TopListProps {
   title: MessageKey;
@@ -71,7 +72,8 @@ function Rows({ by, label }: { by: Ranking; label?: TopListProps['label'] }) {
   const dimension = narrows(by);
 
   if (rows.isPending) return <PanelPlaceholder height={176} />;
-  if (rows.data?.length === 0) {
+  if (!rows.data) return <LoadFailed retry={rows.refetch} />;
+  if (rows.data.length === 0) {
     return (
       <p className="px-5 py-6 text-meta text-fg-subtle">{t('top.none')}</p>
     );

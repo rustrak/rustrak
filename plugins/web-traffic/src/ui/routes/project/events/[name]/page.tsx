@@ -11,6 +11,7 @@ import {
 import { Figure, FigureStrip, Panel, PanelPlaceholder } from '@rustrak/ui';
 import { BAR_ROW, BarFill } from '../../../../components/bar';
 import { EventsChart } from '../../../../components/events-chart';
+import { LoadFailed } from '../../../../components/load-failed';
 import { TrafficPage } from '../../../../components/traffic-page';
 import {
   byKey,
@@ -67,13 +68,14 @@ export default function EventDetail({ params }: PageProps<'project'>) {
   const row = totals.data;
   const conversion = row ? share(row.visitors, row.everyone) : null;
   const shown = (value?: number) =>
-    value === undefined ? (totals.isPending ? '…' : '0') : format.number(value);
+    value === undefined ? (totals.isPending ? '…' : '–') : format.number(value);
 
   return (
     <TrafficPage
       title={name}
       summary={[t('event.kind'), t(`period.${periodOf(search)}`)]}
     >
+      {!row && totals.isError ? <LoadFailed retry={totals.refetch} /> : null}
       <FigureStrip className="shrink-0 grid-cols-2 md:grid-cols-4">
         <Figure label={t('top.count')} value={shown(row?.count)} />
         <Figure label={t('overview.visitors')} value={shown(row?.visitors)} />
@@ -98,9 +100,11 @@ export default function EventDetail({ params }: PageProps<'project'>) {
         <Panel title={t('event.pages')} flush>
           {pages.isPending ? (
             <PanelPlaceholder height={120} />
+          ) : !pages.data ? (
+            <LoadFailed retry={pages.refetch} />
           ) : (
             <Bars
-              rows={(pages.data ?? []).map((p) => ({
+              rows={pages.data.map((p) => ({
                 value: p.value,
                 count: p.count,
               }))}
@@ -133,9 +137,11 @@ function RecentOccurrences({ name }: { name: string }) {
     <Panel title={t('event.recent')} flush>
       {recent.isPending ? (
         <PanelPlaceholder height={160} />
+      ) : !recent.data ? (
+        <LoadFailed retry={recent.refetch} />
       ) : (
         <ul className="flex flex-col py-2">
-          {(recent.data ?? []).map((o, i) => (
+          {recent.data.map((o, i) => (
             // Occurrences have no id; time and order tell them apart.
             // react-doctor-disable-next-line react-doctor/no-array-index-as-key
             <li

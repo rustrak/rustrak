@@ -16,6 +16,9 @@ const RECENT: u32 = 50;
 const LIVE_WINDOW: i64 = 300;
 /// The events a chart of all of them draws.
 const CHARTED_EVENTS: u32 = 5;
+/// A pause this long between two pages starts a new visit, as the visitor
+/// page splits a day (`VISIT_GAP` in `src/ui/model.ts`).
+const VISIT_GAP: i64 = 30 * 60;
 
 fn query<T: for<'de> Deserialize<'de>>(ctx: &Ctx, sql: &Sql) -> Result<Vec<T>> {
     Ok(ctx.db().query(&sql.text, &sql.params())?)
@@ -31,20 +34,34 @@ pub struct Totals {
     pub visitors: i64,
     /// Visitors who saw one page and left.
     pub bounces: i64,
-    /// Seconds between each visitor's first and last page, summed.
+    pub visits: i64,
+    /// Seconds from each visit's first page to its last, summed.
     pub duration: i64,
+}
+
+/// `(SELECT visitor, views, visits, length ...)`: each visitor's day in the
+/// report, its time away left out of `length`.
+fn days(report: &Report) -> Sql {
+    let mut sql = Sql::new(
+        "(SELECT visitor, count(*) AS views, sum(gap IS NULL OR gap > ?) AS visits, \
+         sum(CASE WHEN gap <= ? THEN gap ELSE 0 END) AS length \
+         FROM (SELECT visitor, created_at - lag(created_at) \
+         OVER (PARTITION BY visitor ORDER BY created_at, id) AS gap ",
+        [VISIT_GAP.to_value(), VISIT_GAP.to_value()],
+    );
+    sql.append(report.pageviews())
+        .push(") GROUP BY visitor)", []);
+    sql
 }
 
 fn totals(ctx: &Ctx, report: &Report) -> Result<Totals> {
     let mut sql = Sql::new(
         "SELECT coalesce(sum(views), 0) AS pageviews, count(*) AS visitors, \
-         coalesce(sum(views = 1), 0) AS bounces, coalesce(sum(last - first), 0) AS duration \
-         FROM (SELECT visitor, count(*) AS views, min(created_at) AS first, \
-         max(created_at) AS last ",
+         coalesce(sum(visits), 0) AS visits, coalesce(sum(views = 1), 0) AS bounces, \
+         coalesce(sum(length), 0) AS duration FROM ",
         [],
     );
-    sql.append(report.pageviews())
-        .push(" GROUP BY visitor)", []);
+    sql.append(days(report));
     one(ctx, &sql)
 }
 
@@ -113,6 +130,9 @@ pub struct Row {
     /// Of `visitors`, those who saw one page all day.
     #[serde(default)]
     pub bounces: i64,
+    /// Their visits.
+    #[serde(default)]
+    pub visits: i64,
     /// Their visits' length in seconds, summed.
     #[serde(default)]
     pub duration: i64,
@@ -163,19 +183,16 @@ pub fn top(
     containing(&mut values, "value", search);
     let mut sql = Sql::new(
         "SELECT value, count(*) AS visitors, sum(n) AS count, \
-         sum(day.views = 1) AS bounces, sum(day.length) AS duration \
+         sum(day.views = 1) AS bounces, sum(day.visits) AS visits, \
+         sum(day.length) AS duration \
          FROM (SELECT value, visitor, count(*) AS n FROM (",
         [],
     );
     sql.append(values)
+        .push(") GROUP BY value, visitor) JOIN ", [])
+        .append(days(report))
         .push(
-            ") GROUP BY value, visitor) JOIN (SELECT visitor, count(*) AS views, \
-             max(created_at) - min(created_at) AS length ",
-            [],
-        )
-        .append(report.pageviews())
-        .push(
-            " GROUP BY visitor) day USING (visitor) GROUP BY value \
+            " day USING (visitor) GROUP BY value \
              ORDER BY visitors DESC, count DESC, value LIMIT ?",
             [limit.to_value()],
         );
@@ -316,7 +333,12 @@ pub fn event_series(ctx: &Ctx, report: &Report, name: Option<&str>) -> Result<Ev
          FROM events WHERE ",
         [report.bucket.to_value(), report.bucket.to_value()],
     );
-    sql.append(report.events()).push(" GROUP BY 1, 2", []);
+    // Only the names charted: SQLite takes `IN ()` as matching nothing.
+    let marks = vec!["?"; names.len()].join(", ");
+    sql.append(report.events()).push(
+        &format!(" AND events.name IN ({marks}) GROUP BY 1, 2"),
+        names.iter().map(|n| n.to_value()),
+    );
     let found = query::<EventBucket>(ctx, &sql)?;
     let rows = buckets(report)
         .map(|t| {
@@ -458,6 +480,21 @@ pub fn profile(ctx: &Ctx, project: u64, visitor: &str) -> Result<Option<Profile>
          JOIN pageviews f ON f.id = a.first_id",
         params![project, visitor],
     )?;
+    if rows.is_empty() {
+        // Someone who only sent events (the tracker's auto-track off): what
+        // their events say, and nothing of a first page.
+        let rows: Vec<Profile> = ctx.db().query(
+            "SELECT visitor AS id, min(created_at) AS first, max(created_at) AS last, \
+                 0 AS pageviews, count(*) AS events, 0 AS pages, \
+                 (SELECT path FROM events WHERE project_id = ?1 AND visitor = ?2 \
+                    ORDER BY created_at, id LIMIT 1) AS entry, \
+                 (SELECT path FROM events WHERE project_id = ?1 AND visitor = ?2 \
+                    ORDER BY created_at DESC, id DESC LIMIT 1) AS exit \
+                 FROM events WHERE project_id = ?1 AND visitor = ?2 HAVING count(*) > 0",
+            params![project, visitor],
+        )?;
+        return Ok(rows.into_iter().next());
+    }
     Ok(rows.into_iter().next())
 }
 

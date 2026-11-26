@@ -55,7 +55,11 @@
     send({
       type: 'event',
       name: String(name),
-      data: data && typeof data === 'object' ? data : undefined,
+      // An object's properties only: the collector refuses a list.
+      data:
+        data && typeof data === 'object' && !Array.isArray(data)
+          ? data
+          : undefined,
     });
   };
 

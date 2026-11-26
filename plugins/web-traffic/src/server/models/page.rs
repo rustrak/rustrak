@@ -75,7 +75,9 @@ pub fn country(header: impl Fn(&str) -> Option<String>, language: Option<&str>) 
     .filter(|c| c.len() == 2 && c != "XX" && c != "T1")
     .or_else(|| {
         language?
-            .split(['-', '_'])
+            .split(',')
+            .next()?
+            .split(['-', '_', ';'])
             .nth(1)
             .filter(|r| r.len() == 2)
             .map(str::to_ascii_uppercase)
@@ -92,7 +94,9 @@ pub fn language(tag: Option<&str>) -> Option<String> {
 
 /// A host as one site: `www.Example.com` is `example.com`.
 fn site(host: &str) -> String {
-    host.trim_start_matches("www.").to_ascii_lowercase()
+    host.to_ascii_lowercase()
+        .trim_start_matches("www.")
+        .to_string()
 }
 
 /// At most `max` characters, without the spaces around it.
@@ -146,6 +150,7 @@ mod tests {
         assert!(allowed("shop.example.com", Some(" ")));
         assert!(allowed("example.com", Some("example.com, other.org")));
         assert!(allowed("shop.example.com", Some("www.example.com")));
+        assert!(allowed("example.com", Some("WWW.Example.com")));
         assert!(!allowed("example.com.evil.net", Some("example.com")));
         assert!(!allowed("evil.net", Some("example.com")));
     }
@@ -157,6 +162,12 @@ mod tests {
         assert_eq!(country(cloudflare, Some("en-US")).as_deref(), Some("ES"));
         assert_eq!(country(none, Some("pt-BR")).as_deref(), Some("BR"));
         assert_eq!(country(none, Some("fr")), None);
+        assert_eq!(
+            country(none, Some("en-US,en;q=0.9")).as_deref(),
+            Some("US"),
+            "an Accept-Language header: its first choice"
+        );
+        assert_eq!(country(none, Some("fr,en-US;q=0.8")), None);
         let unknown = |h: &str| (h == "cf-ipcountry").then(|| "XX".to_string());
         assert_eq!(country(unknown, None), None);
         assert_eq!(language(Some("es-ES,es;q=0.9")).as_deref(), Some("es"));
