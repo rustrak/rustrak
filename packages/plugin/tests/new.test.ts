@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -33,6 +33,12 @@ describe('nameError', () => {
     expect(nameError(join(parent, 'Visits'))).toBe(
       'Visits: a plugin name is 2 to 32 lowercase letters, digits or dashes',
     );
+  });
+
+  it('refuses a path that is a file', () => {
+    const file = join(parent, 'notes');
+    writeFileSync(file, 'x');
+    expect(nameError(file)).toBe(`${file} is a file, not a directory`);
   });
 
   it('refuses a directory that has files', () => {

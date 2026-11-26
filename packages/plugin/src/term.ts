@@ -151,19 +151,23 @@ function depth(): Depth | undefined {
   return out.hasColors(2 ** 24) ? 24 : out.hasColors(256) ? 8 : 4;
 }
 
+/** The narrowest terminal a trace row fits on one line of. */
+const MIN_COLUMNS = 60;
+
 /**
- * Whether to animate: a terminal wide enough that shows colour, not CI, not
- * a dumb terminal, not a screen reader (`ACCESSIBLE`, as clack reads it).
+ * Whether output can be redrawn in place: a terminal wide enough, not CI,
+ * not a dumb terminal, not a screen reader (`ACCESSIBLE`, as clack reads it).
  */
-function animates(width: number): boolean {
-  const { env, stdout } = process;
+export function redraws(
+  env: NodeJS.ProcessEnv = process.env,
+  out: { isTTY?: boolean; columns?: number } = process.stdout,
+): boolean {
   return Boolean(
-    stdout.isTTY &&
-      depth() &&
+    out.isTTY &&
       !env.CI &&
       env.TERM !== 'dumb' &&
       !env.ACCESSIBLE &&
-      (stdout.columns ?? 0) >= width + 4,
+      (out.columns ?? 0) >= MIN_COLUMNS,
   );
 }
 
@@ -182,7 +186,7 @@ export async function logo(tagline: string): Promise<void> {
   const pad = (l: string) => `  ${l}`;
   const footer = `  ${styleText('dim', tagline)}`;
   const colors = depth();
-  if (!colors || !animates(lines[0]!.length)) {
+  if (!colors || !redraws()) {
     const still = colors ? frame(lines, 1, colors) : lines;
     console.log(['', ...still.map(pad), footer, ''].join('\n'));
     return;
@@ -219,6 +223,13 @@ export async function logo(tagline: string): Promise<void> {
 export function packageManager(userAgent: string | undefined) {
   const name = userAgent?.split('/')[0];
   return name === 'pnpm' || name === 'yarn' || name === 'bun' ? name : 'npm';
+}
+
+/** The command that runs a package script: `bun build` and `npm build` are built-ins. */
+export function runScript(pm: string, script: string): string {
+  return pm === 'npm' || pm === 'bun'
+    ? `${pm} run ${script}`
+    : `${pm} ${script}`;
 }
 
 /** A size as Vite prints it: `145.41 kB`. */
@@ -331,8 +342,13 @@ export class Trace {
   private readonly t0 = performance.now();
   private drawn = 0;
   private timer: NodeJS.Timeout | undefined;
-  private readonly live = Boolean(process.stdout.isTTY && !process.env.CI);
+  private readonly live = redraws();
   private readonly show = () => process.stdout.write('\x1b[?25h');
+  /** Ctrl-C skips `exit`: the cursor comes back here instead. */
+  private readonly interrupt = () => {
+    this.show();
+    process.exit(130);
+  };
 
   private get now(): number {
     return performance.now() - this.t0;
@@ -349,6 +365,7 @@ export class Trace {
     if (this.live && !this.timer) {
       process.stdout.write('\x1b[?25l');
       process.once('exit', this.show);
+      process.once('SIGINT', this.interrupt);
       this.timer = setInterval(() => this.draw(), 80);
     }
     this.draw();
@@ -396,6 +413,7 @@ export class Trace {
     this.draw();
     this.show();
     process.off('exit', this.show);
+    process.off('SIGINT', this.interrupt);
     return this.now;
   }
 

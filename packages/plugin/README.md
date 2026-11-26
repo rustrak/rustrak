@@ -50,22 +50,22 @@ The Rust side is the [`rustrak-plugin`](https://crates.io/crates/rustrak-plugin)
 ## Quick Start
 
 ```bash
-npx @rustrak/plugin new
+npx @rustrak/plugin new my-plugin
 ```
 
-It asks where the plugin goes, whether to install its dependencies with the package manager you ran it with, whether to start a git repository, and adds the `wasm32-wasip2` target when rustup lacks it. Then:
+It asks whether to install its dependencies with the package manager you ran it with, whether to start a git repository, and adds the `wasm32-wasip2` target when rustup lacks it. Then:
 
 ```bash
-cd visits
-npm run build        # dist/visits-0.1.0.rtp
+cd my-plugin
+npm run build        # dist/my-plugin-0.1.0.rtp
 ```
 
-The new project builds as it is: a route that records page views, one that counts them, a page in each project, a widget under every issue, a setting, a permission and texts in English and Spanish. Upload `dist/visits-0.1.0.rtp` in **Settings › Plugins** and it runs.
+The new project builds as it is: a route that records page views, one that counts them, a page in each project, a widget under every issue, a setting, a permission and texts in English and Spanish. Upload `dist/my-plugin-0.1.0.rtp` in **Settings › Plugins** and it runs.
 
 ## Project layout
 
 ```
-visits/
+my-plugin/
 ├── rustrak.config.ts        name, Rustrak versions, settings, permissions
 ├── package.json             id and version of the plugin
 ├── Cargo.toml               the Rust crate (crate root is generated)
@@ -90,7 +90,7 @@ visits/
 import { defineConfig } from '@rustrak/plugin';
 
 export default defineConfig({
-  name: 'Visits',
+  name: 'My Plugin',
   rustrak: '>=0.34.0',
   icon: 'performance',
   storageMb: 512,
@@ -138,7 +138,7 @@ fn record(ctx: &Ctx, body: Body) -> Result<NoContent> {
     Ok(NoContent)
 }
 
-/// For signed-in people who hold visits:visits:read.
+/// For signed-in people who hold my-plugin:visits:read.
 #[get("/visits", requires = Perm::Visits.read())]
 fn count(ctx: &Ctx) -> Result<String> {
     let n: i64 = ctx.db().scalar(

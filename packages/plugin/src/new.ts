@@ -1,6 +1,12 @@
 // `rustrak-plugin new <dir>`: a plugin project that builds as it is.
 
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import type { PluginConfig } from './config.ts';
@@ -41,9 +47,9 @@ export function nameError(dir: string): string | undefined {
   if (!/^[a-z][a-z0-9-]{1,31}$/.test(slug)) {
     return `${slug}: a plugin name is 2 to 32 lowercase letters, digits or dashes`;
   }
-  if (existsSync(dir) && readdirSync(dir).length > 0) {
-    return `${dir} is not empty`;
-  }
+  if (!existsSync(dir)) return undefined;
+  if (!statSync(dir).isDirectory()) return `${dir} is a file, not a directory`;
+  if (readdirSync(dir).length > 0) return `${dir} is not empty`;
 }
 
 /** Writes the project; how many files it wrote. */

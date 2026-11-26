@@ -27,6 +27,8 @@ import {
   lime,
   logo,
   packageManager,
+  redraws,
+  runScript,
   stack,
   Trace,
 } from './term.ts';
@@ -79,7 +81,16 @@ function run(
   trace.begin(doing, done);
   const output: string[] = [];
   return new Promise((settle) => {
-    const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    // On Windows npm, pnpm and yarn are .cmd shims, which Node launches only
+    // through a shell (CVE-2024-27980). The command is ours, never input.
+    const child =
+      process.platform === 'win32'
+        ? spawn([cmd, ...args].join(' '), {
+            cwd,
+            shell: true,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+        : spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     for (const stream of [child.stdout, child.stderr]) {
       createInterface({ input: stream }).on('line', (line) => {
         const plain = stripVTControlCharacters(line).trim();
@@ -119,10 +130,16 @@ function inGitRepo(dir: string): boolean | undefined {
   }
 }
 
-/** Whether rustup has the target plugins compile to; `undefined` without rustup. */
-function hasTarget(): boolean | undefined {
+/**
+ * Whether rustup has the target plugins compile to, for the toolchain `dir`
+ * selects (a rust-toolchain.toml above it); `undefined` without rustup.
+ */
+function hasTarget(dir: string): boolean | undefined {
+  let at = dir;
+  while (!existsSync(at)) at = dirname(at);
   try {
     return execFileSync('rustup', ['target', 'list', '--installed'], {
+      cwd: at,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     })
@@ -193,7 +210,7 @@ async function plan(argv: string[], pm: string): Promise<Plan | undefined> {
   const git =
     inGitRepo(dir) === false &&
     (await choose(values.git, 'Start a git repository?'));
-  const target = hasTarget();
+  const target = hasTarget(dir);
   const addTarget =
     target === false &&
     (await choose(
@@ -252,11 +269,18 @@ async function create(argv: string[]): Promise<number> {
   const files = scaffold(dir);
   trace.end(`${shown}/ · ${plural(files, 'file')}`);
   const failures: string[] = [];
-  const installed =
-    answers.install &&
-    (await run(trace, ['Installing', 'Installed'], pm, ['install'], dir)) ===
-      undefined;
-  if (answers.install && !installed) failures.push(`${pm} install failed`);
+  let installed = false;
+  if (answers.install) {
+    const output = await run(
+      trace,
+      ['Installing', 'Installed'],
+      pm,
+      ['install'],
+      dir,
+    );
+    installed = output === undefined;
+    if (output) failures.push(`${pm} install failed:\n${output}`);
+  }
   if (answers.addTarget) {
     const output = await run(
       trace,
@@ -288,12 +312,13 @@ async function create(argv: string[]): Promise<number> {
   });
   const steps = [`cd ${shown}`];
   if (!installed) steps.push(`${pm} install`);
-  steps.push(`${pm === 'npm' ? 'npm run' : pm} build`);
+  steps.push(runScript(pm, 'build'));
   console.log(`\n  ${dim('next')}  ${bold(steps.join(' && '))}`);
   console.log(
     `        ${dim(`then upload dist/${slug}-0.1.0.rtp in Settings › Plugins`)}\n`,
   );
-  return 0;
+  // The project is there either way; what was asked for and failed is not.
+  return failures.length > 0 ? 1 : 0;
 }
 
 const VERBS: Record<BuildStep, [doing: string, done: string]> = {
@@ -340,8 +365,7 @@ function project(dir: string): string {
 async function runBuild(): Promise<number> {
   const dir = process.cwd();
   // cargo's diagnostics in its own colours, where they can be seen.
-  if (process.stdout.isTTY && !isCI())
-    process.env.CARGO_TERM_COLOR ??= 'always';
+  if (redraws()) process.env.CARGO_TERM_COLOR ??= 'always';
   console.log(
     `\n  ${lime(bold('rustrak'))} build ${dim(`· ${project(dir)}`)}\n`,
   );

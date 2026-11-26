@@ -7,6 +7,8 @@ import {
   frame,
   groupWarnings,
   packageManager,
+  redraws,
+  runScript,
   span,
   stack,
   wordmark,
@@ -152,5 +154,34 @@ describe('groupWarnings', () => {
       'No texts in zh: those readers see English',
       'src/messages/en.json has no settings.key.label (the key is shown)',
     ]);
+  });
+});
+
+describe('runScript', () => {
+  it('runs a package script, never a built-in of the same name', () => {
+    expect(runScript('npm', 'build')).toBe('npm run build');
+    expect(runScript('bun', 'build')).toBe('bun run build');
+    expect(runScript('pnpm', 'build')).toBe('pnpm build');
+    expect(runScript('yarn', 'build')).toBe('yarn build');
+  });
+});
+
+describe('redraws', () => {
+  const tty = { isTTY: true, columns: 100 };
+
+  it('is a wide terminal that is not CI, dumb or read aloud', () => {
+    expect(redraws({}, tty)).toBe(true);
+  });
+
+  it('is never CI, a dumb terminal, a screen reader or a pipe', () => {
+    expect(redraws({ CI: 'true' }, tty)).toBe(false);
+    expect(redraws({ TERM: 'dumb' }, tty)).toBe(false);
+    expect(redraws({ ACCESSIBLE: '1' }, tty)).toBe(false);
+    expect(redraws({}, { isTTY: false, columns: 100 })).toBe(false);
+  });
+
+  it('is never a terminal too narrow for a row to fit on one line', () => {
+    expect(redraws({}, { isTTY: true, columns: 59 })).toBe(false);
+    expect(redraws({}, { isTTY: true, columns: 60 })).toBe(true);
   });
 });
