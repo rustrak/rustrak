@@ -131,10 +131,10 @@ impl Runtime {
     ) -> wasmtime::Result<Loaded> {
         let hash = hex::encode(Sha256::digest(wasm));
         let cache = cache_dir.join(format!("server-{}.cwasm", &hash[..16]));
+        // A noexec plugin dir cannot map it: read into memory then.
         // SAFETY: the file is one this host wrote into its own plugin
         // directory; wasmtime checks it was built by a compatible engine and
         // refuses it otherwise, which recompiles below.
-        // A noexec plugin dir cannot map it: read into memory then.
         let cached = cache
             .exists()
             .then(|| {

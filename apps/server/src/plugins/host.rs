@@ -29,8 +29,6 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldError, FieldErrorCode};
 use crate::models::rbac::{plugin_key, Action, Scope};
 
-/// Calls one plugin runs at once; the rest wait their turn.
-const CONCURRENT_CALLS: usize = 8;
 /// A plugin's own logo, in its package and among its assets.
 const LOGO: &str = "logo.svg";
 const MAX_LOGO: usize = 256 * 1024;
@@ -54,10 +52,36 @@ fn call_pool() -> &'static tokio::runtime::Handle {
 /// How long a call waits for a turn before the request gets a 503.
 const QUEUE_WAIT: Duration = Duration::from_secs(5);
 
+/// Turns on the pool, across every plugin: one per thread, so no call waits
+/// in the pool's own queue, past `QUEUE_WAIT`.
+static CALLS: Semaphore = Semaphore::const_new(CALL_THREADS);
+
+/// Runs `call` on the pool once one of `turns` frees up within `wait`, and
+/// holds it until `call` returns. The call runs inside the caller's runtime,
+/// whose timers WASI's clocks sleep on: the pool's own has none.
+async fn run_call<R: Send + 'static>(
+    turns: &'static Semaphore,
+    wait: Duration,
+    call: impl FnOnce() -> R + Send + 'static,
+) -> AppResult<R> {
+    let turn = tokio::time::timeout(wait, turns.acquire())
+        .await
+        .map_err(|_| AppError::Unavailable("plugins are busy".into()))?
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let caller = tokio::runtime::Handle::current();
+    call_pool()
+        .spawn_blocking(move || {
+            let _turn = turn;
+            let _runtime = caller.enter();
+            call()
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("plugin call: {e}")))
+}
+
 pub struct Installed {
     pub manifest: Manifest,
     loaded: Loaded,
-    turns: Semaphore,
     /// The dashboard bundle, `ui/` stripped from each path.
     ui_files: HashMap<String, Vec<u8>>,
     /// The package's hash, in the bundle's address: cached for good, the
@@ -796,19 +820,13 @@ impl PluginHost {
                 missing.join(", ")
             )));
         }
-        let _turn = tokio::time::timeout(QUEUE_WAIT, plugin.turns.acquire())
-            .await
-            .map_err(|_| {
-                AppError::Unavailable(format!("plugin {} is busy", plugin.manifest.plugin.id))
-            })?
-            .map_err(|e| AppError::Internal(e.to_string()))?;
         let runtime = self.runtime()?;
         let call = plugin.clone();
         let settings = settings_source(plugin.clone());
-        call_pool()
-            .spawn_blocking(move || runtime.handle_http(&call.loaded, req, budget, settings))
-            .await
-            .map_err(|e| AppError::Internal(format!("plugin call: {e}")))
+        run_call(&CALLS, QUEUE_WAIT, move || {
+            runtime.handle_http(&call.loaded, req, budget, settings)
+        })
+        .await
     }
 }
 
@@ -1000,7 +1018,6 @@ fn prepare(
     Ok(Installed {
         manifest,
         loaded,
-        turns: Semaphore::new(CONCURRENT_CALLS),
         ui_files,
         ui_tag: hex::encode(&Sha256::digest(rtp)[..8]),
         readme: package.readme,
@@ -1086,6 +1103,42 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+
+    #[tokio::test]
+    async fn a_call_sleeps_on_the_callers_timers() {
+        static TURNS: Semaphore = Semaphore::const_new(1);
+        run_call(&TURNS, QUEUE_WAIT, || {
+            tokio::runtime::Handle::current().block_on(tokio::time::sleep(Duration::from_millis(5)))
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_call_holds_its_turn_until_it_returns() {
+        static TURNS: Semaphore = Semaphore::const_new(1);
+        let (started, running) = std::sync::mpsc::channel();
+        let (finish, finished) = std::sync::mpsc::channel::<()>();
+        let call = tokio::spawn(run_call(&TURNS, QUEUE_WAIT, move || {
+            started.send(()).unwrap();
+            finished.recv().unwrap();
+        }));
+        tokio::task::spawn_blocking(move || running.recv().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(TURNS.available_permits(), 0);
+        finish.send(()).unwrap();
+        call.await.unwrap().unwrap();
+        assert_eq!(TURNS.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_call_with_no_turn_in_time_is_turned_away() {
+        static TURNS: Semaphore = Semaphore::const_new(1);
+        let _taken = TURNS.acquire().await.unwrap();
+        let refused = run_call(&TURNS, Duration::from_millis(10), || ()).await;
+        assert!(matches!(refused, Err(AppError::Unavailable(_))));
+    }
 
     #[test]
     fn the_runtime_starts_with_the_first_plugin_only() {
