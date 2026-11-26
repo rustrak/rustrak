@@ -224,6 +224,22 @@ describe('catalog', () => {
     expect(ids('all', 'traffic')).toEqual(['web-traffic']);
   });
 
+  it('trusts the installed version over a stale registry listing', () => {
+    const fresh = catalog(
+      [plugin({ id: 'web-traffic', version: '0.2.0' })],
+      [
+        published({
+          id: 'web-traffic',
+          installed_version: '0.1.0',
+          version: '0.2.0',
+        }),
+      ],
+      'updates',
+      '',
+    );
+    expect(fresh).toEqual([]);
+  });
+
   it('lists the installed ones alone when the registry is not read', () => {
     expect(catalog(installed, undefined, 'all', '').map((e) => e.id)).toEqual([
       'mine',

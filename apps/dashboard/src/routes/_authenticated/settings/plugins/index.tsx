@@ -40,7 +40,8 @@ function PluginsPage() {
         plugins={plugins}
         canInstall={permissions.isOwner}
         query={search.q ?? ''}
-        filter={search.filter ?? 'all'}
+        // Only an owner has the filters: anyone else's is always All.
+        filter={permissions.isOwner ? (search.filter ?? 'all') : 'all'}
         onSearch={({ q, filter }) =>
           navigate({
             search: catalogSearch({ q, filter }),

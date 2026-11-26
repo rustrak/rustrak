@@ -202,7 +202,7 @@ export function hasUpdate(entry: CatalogEntry): boolean {
   return (
     !!entry.installed &&
     !!entry.published &&
-    entry.published.installed_version !== entry.published.version
+    entry.installed.version !== entry.published.version
   );
 }
 
