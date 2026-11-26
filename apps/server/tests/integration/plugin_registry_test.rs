@@ -139,8 +139,7 @@ async fn a_published_plugin_installs_from_the_registry_as_verified() {
     assert_eq!(listing["plugins"][0]["installed_version"], "0.1.0");
 
     // Still verified after a restart.
-    let restarted =
-        rustrak::plugins::host::PluginHost::new(state.config.plugins_dir.clone()).unwrap();
+    let restarted = rustrak::plugins::host::PluginHost::new(state.config.plugins_dir.clone());
     restarted.boot(&db.pool).await.unwrap();
     assert!(restarted.list(&db.pool).await.unwrap()[0].verified);
 }

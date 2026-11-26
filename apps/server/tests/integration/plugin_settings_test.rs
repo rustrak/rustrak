@@ -167,7 +167,7 @@ async fn settings_survive_a_restart() {
     );
     assert_eq!(status, StatusCode::OK);
 
-    let restarted = rustrak::plugins::host::PluginHost::new(config.plugins_dir.clone()).unwrap();
+    let restarted = rustrak::plugins::host::PluginHost::new(config.plugins_dir.clone());
     restarted.boot(&db.pool).await.unwrap();
     assert_eq!(
         restarted.get("hello").unwrap().settings(None)["greeting"],

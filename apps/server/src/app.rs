@@ -164,7 +164,7 @@ impl AppState {
             Counters::global(),
         );
 
-        let plugins = web::Data::new(PluginHost::new(config.plugins_dir.clone())?);
+        let plugins = web::Data::new(PluginHost::new(config.plugins_dir.clone()));
         let cleanup_job = web::Data::new(CleanupJob::new(plugins.clone().into_inner()));
         let registry = crate::plugins::registry::Registry::new(
             config.plugin_registry.clone(),

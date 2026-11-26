@@ -9,8 +9,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
-use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
+use wasmtime::component::{Component, HasData, HasSelf, Linker, Resource, ResourceTable};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder, Trap};
+use wasmtime_wasi::clocks::{WasiClocksCtxView, WasiClocksView};
+use wasmtime_wasi::p2::bindings::clocks::monotonic_clock;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use super::store::{self, PluginDb};
@@ -48,6 +50,8 @@ pub enum CallError {
 /// every deadline.
 pub struct Runtime {
     engine: Engine,
+    /// What `engine` was built with: a throwaway engine compiles with it.
+    config: Config,
     linker: Linker<Host>,
 }
 
@@ -98,6 +102,15 @@ impl Runtime {
         // Rust's std imports these; the context behind them is empty.
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
         Plugin::add_to_linker::<Host, HasSelf<Host>>(&mut linker, |h| h)?;
+        linker.allow_shadowing(true);
+        monotonic_clock::add_to_linker::<Host, BoundedClock>(&mut linker, |h| {
+            let left = u64::try_from(h.remaining().as_nanos()).unwrap_or(u64::MAX);
+            Bounded {
+                clocks: h.clocks(),
+                left,
+            }
+        })?;
+        linker.allow_shadowing(false);
 
         let ticker = engine.weak();
         std::thread::Builder::new()
@@ -110,7 +123,11 @@ impl Runtime {
                 }
             })?;
 
-        Ok(Arc::new(Self { engine, linker }))
+        Ok(Arc::new(Self {
+            engine,
+            config,
+            linker,
+        }))
     }
 
     /// Compiles `wasm` to machine code, or reuses what an earlier call left
@@ -125,22 +142,40 @@ impl Runtime {
     ) -> wasmtime::Result<Loaded> {
         let hash = hex::encode(Sha256::digest(wasm));
         let cache = cache_dir.join(format!("server-{}.cwasm", &hash[..16]));
+        // A noexec plugin dir cannot map it: read into memory then.
         // SAFETY: the file is one this host wrote into its own plugin
         // directory; wasmtime checks it was built by a compatible engine and
         // refuses it otherwise, which recompiles below.
         let cached = cache
             .exists()
-            .then(|| unsafe { Component::deserialize_file(&self.engine, &cache) }.ok())
+            .then(|| {
+                unsafe { Component::deserialize_file(&self.engine, &cache) }
+                    .or_else(|_| unsafe {
+                        Component::deserialize(&self.engine, std::fs::read(&cache)?)
+                    })
+                    .ok()
+            })
             .flatten();
         let component = match cached {
             Some(c) => c,
             None => {
-                let c = Component::from_binary(&self.engine, wasm)?;
+                // Compiled by a throwaway engine: wasmtime 48 keeps Cranelift's
+                // per-function scratch for as long as its engine lives (~17 MB
+                // for Web Traffic; fixed in 49, #14314), so the long-lived one
+                // only deserializes. On its own thread, so the garbage it
+                // leaves does not pin the pages the plugin's state lands on.
+                let code = std::thread::scope(|s| {
+                    s.spawn(|| Engine::new(&self.config)?.precompile_component(wasm))
+                        .join()
+                        .expect("the compile thread")
+                })?;
                 std::fs::create_dir_all(cache_dir)?;
                 let tmp = cache.with_extension("tmp");
-                std::fs::write(&tmp, c.serialize()?)?;
+                std::fs::write(&tmp, &code)?;
                 std::fs::rename(&tmp, &cache)?;
-                c
+                // From memory: a noexec plugin dir cannot map the file.
+                // SAFETY: code compiled just above by an engine with this config.
+                unsafe { Component::deserialize(&self.engine, &code) }?
             }
         };
         let pre = PluginPre::new(self.linker.instantiate_pre(&component)?)?;
@@ -208,6 +243,50 @@ impl Host {
 }
 
 impl self::rustrak::plugin::types::Host for Host {}
+
+/// WASI's monotonic clock, refusing a wait past the call's deadline: epoch
+/// interruption only stops wasm code, never a wait in the host, so an hour's
+/// sleep would hold a call's turn for the hour. Such a wait times the call
+/// out at once; one within the budget runs as asked.
+struct Bounded<'a> {
+    clocks: WasiClocksCtxView<'a>,
+    /// Nanoseconds left of the call's budget.
+    left: u64,
+}
+
+struct BoundedClock;
+
+impl HasData for BoundedClock {
+    type Data<'a> = Bounded<'a>;
+}
+
+impl monotonic_clock::Host for Bounded<'_> {
+    fn now(&mut self) -> wasmtime::Result<monotonic_clock::Instant> {
+        monotonic_clock::Host::now(&mut self.clocks)
+    }
+
+    fn resolution(&mut self) -> wasmtime::Result<monotonic_clock::Duration> {
+        monotonic_clock::Host::resolution(&mut self.clocks)
+    }
+
+    fn subscribe_instant(
+        &mut self,
+        when: monotonic_clock::Instant,
+    ) -> wasmtime::Result<Resource<monotonic_clock::Pollable>> {
+        let now = monotonic_clock::Host::now(&mut self.clocks)?;
+        self.subscribe_duration(when.saturating_sub(now))
+    }
+
+    fn subscribe_duration(
+        &mut self,
+        duration: monotonic_clock::Duration,
+    ) -> wasmtime::Result<Resource<monotonic_clock::Pollable>> {
+        if duration > self.left {
+            return Err(Trap::Interrupt.into());
+        }
+        monotonic_clock::Host::subscribe_duration(&mut self.clocks, duration)
+    }
+}
 
 fn to_store(v: sql::Value) -> store::Value {
     match v {

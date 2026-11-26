@@ -27,6 +27,8 @@ fn routes_are_read_from_every_file_of_the_code() {
             "method:GET,path:/count,auth:user,scope:project,requires:stats:read",
             "method:GET,path:/greet,auth:user,scope:project,requires:null",
             "method:GET,path:/hits,auth:user,scope:project,requires:hits:read",
+            "method:GET,path:/nap,auth:user,scope:instance,requires:null",
+            "method:GET,path:/sleep,auth:user,scope:instance,requires:null",
             "method:GET,path:/spin,auth:user,scope:instance,requires:null",
             "method:POST,path:/echo,auth:user,scope:project,requires:null",
             "method:POST,path:/hit,auth:public,scope:project,requires:null",
