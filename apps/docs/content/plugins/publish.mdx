@@ -1,0 +1,105 @@
+---
+description: "What rustrak-plugin build checks and packs into a .rtp, how to version a Rustrak plugin, and how to publish it to the official registry or run your own signed registry."
+---
+
+# Build and publish
+
+`rustrak-plugin build` turns a plugin project into one `.rtp` file, `dist/<id>-<version>.rtp`. That file is what an owner uploads in **Settings → Plugins**, and what a registry lists.
+
+## What the build does
+
+In order, stopping at the first failure:
+
+1. Refuses a project without `readme/en.md`, its page in the catalog.
+2. Writes `.rustrak/` from `rustrak.config.ts`, `src/server/` and `src/messages/`.
+3. Runs every migration on an in-memory SQLite, so a broken one fails here and not at install.
+4. Compiles `src/server/` to a `wasm32-wasip2` component with a fixed release profile, whatever `Cargo.toml` says: `opt-level = "s"`, LTO, one codegen unit, stripped, `panic = "abort"`.
+5. Builds the pages and widgets against the dashboard's React and design system.
+6. Packs the manifest, the component, the UI, migrations, public files, texts, readmes and logo, with the sha256 of every file.
+
+A text or a readme missing for one of Rustrak's languages (`en`, `zh`, `fr`, `es`, `ro`) is a warning: those readers see English.
+
+In a terminal the build draws each step on one timeline, the running one growing while cargo counts the crates it compiles. A failed compile prints cargo's own diagnostics. In CI, or when the output is not a terminal, each step is one plain line:
+
+```text
+  rustrak build · my-plugin 0.1.0
+
+     Checked   29ms  1 migration
+    Compiled   1.4s  1 crate → 130.89 kB
+       Built   81ms  1 page, 1 widget
+      Packed   20ms  10 files
+
+  ● dist/my-plugin-0.1.0.rtp  60.35 kB
+    ██████████████████████████████████▓░
+    █ server 53.45 kB   ▓ ui 2.91 kB   ░ rest 1.43 kB
+
+  ▲ No readme in zh, fr, ro: those readers see English
+  ▲ No texts in zh, fr, ro: those readers see English
+  ✓ built in 1.5s · upload it in Settings › Plugins
+```
+
+It ends with the package's weight by part: the server, the UI and the rest.
+
+## The CLI
+
+| Command | What it does |
+|---|---|
+| `rustrak-plugin new [dir]` | Creates a plugin project that builds as it is. Flags: `--install`/`--no-install`, `--git`/`--no-git`, `--yes` |
+| `rustrak-plugin generate` | Writes `.rustrak/` only: the crate root, `Settings` and `Perm` for Rust, types for the editor |
+| `rustrak-plugin build` | Compiles and packs the plugin into `dist/<id>-<version>.rtp` |
+| `rustrak-plugin index <dir>` | Writes a registry's `index.json` from the `.rtp` files in `<dir>` |
+
+Run them through `npx`, or as `npm run build`, which the new project's `package.json` defines.
+
+## Inside a `.rtp`
+
+A zip. Rustrak refuses any file outside this layout, and uses nothing until every file matches the hash in `MANIFEST`.
+
+| Path | What |
+|---|---|
+| `rustrak-plugin.toml` | The manifest: id, name, version, `rustrak` range, settings, permissions, pages, widgets |
+| `server.wasm` | The component, 5 MB at most |
+| `ui/` | The dashboard bundle and its stylesheet |
+| `migrations/` | `NNNN_name.sql` |
+| `messages/` | `<locale>.json` |
+| `readme/` | `<locale>.md`, `en.md` required |
+| `public/` | Files served to anyone |
+| `logo.svg` | 256 KB at most |
+| `MANIFEST` | The sha256 of every other file |
+
+The layout also allows `CHANGELOG.md`, `BUILD`, `MANIFEST.minisig`, `screenshots/` and `schemas/`. The whole package is 20 MB at most. The routes are not in the manifest: Rustrak reads them from a custom section the route macros write into the component, without running it.
+
+## Versions
+
+- The plugin's version is `version` in `package.json`, in semver. Bump it for every release.
+- `rustrak` in `rustrak.config.ts` is the range of Rustrak versions it runs on. Rustrak refuses to install it outside that range, and the registry offers each server only the versions whose range includes it.
+- `@rustrak/plugin`, `@rustrak/ui` and the `rustrak-plugin` crate are released with Rustrak and share its version number. `new` pins them to the release it came from.
+- The contract between server and plugin, `rustrak:plugin@0.1.0`, is versioned on its own. Rustrak 0.34.0 implements `0.1.0`.
+
+While plugins are in beta, test each plugin against a new Rustrak minor version before widening its `rustrak` range.
+
+## Publish to the official registry
+
+The official plugins and their registry live in [rustrak/plugins](https://github.com/rustrak/plugins). Its CI builds the packages, writes the index and signs it. Every Rustrak trusts that key by default, so a plugin listed there installs as **Verified** from **Settings → Plugins**. To publish there, follow that repository's README.
+
+## Run your own registry
+
+A registry is a folder served over HTTPS (or a `file://` path) with the `.rtp` files, an `index.json` and its minisign signature:
+
+```bash
+rustrak-plugin index ./registry
+minisign -Sm ./registry/index.json      # writes index.json.minisig
+```
+
+`index` lists every `.rtp` in the folder by plugin, each version with its `rustrak` range, its address relative to the index and its sha256, and copies each plugin's newest logo beside it as `<id>.svg`.
+
+Point a server at it and trust your key:
+
+```bash
+RUSTRAK_PLUGIN_REGISTRY=https://plugins.example.com/registry/index.json
+RUSTRAK_PLUGIN_REGISTRY_KEYS=RWQ...your-minisign-public-key...
+```
+
+Rustrak fetches `index.json` and `index.json.minisig` and refuses the index unless one of the trusted keys signed it. It downloads a package only when it installs it, and refuses one whose sha256 differs from the index's. A fetched index is reused for 10 minutes.
+
+The registry setting replaces the official index. The official key stays trusted, beside yours. Keep the secret key out of the registry's folder: anyone holding it can publish to every server that trusts it.

@@ -1,0 +1,100 @@
+---
+description: "Install a Rustrak plugin from the signed registry or a .rtp file, choose the projects it runs in, fill in its settings, grant its permissions and uninstall it."
+---
+
+# Install and manage plugins
+
+Plugins live in **Settings → Plugins**. Only an owner can install, configure or uninstall one. Everyone else sees what the plugins add (their pages, widgets and permissions) without the admin screens.
+
+> Plugins are in beta. See [Plugins](/plugins/overview) for what that means and what a plugin can reach.
+
+## Install from the registry
+
+**Settings → Plugins** lists what the registry publishes beside what is installed. Filter it with **Show**: **All**, **Installed**, **Available** or **Updates**.
+
+1. Open a plugin to read its README.
+2. Press **Install**.
+
+Rustrak installs the newest version that supports this server, and checks the package against the registry's signed index first. A package whose hash does not match the index is refused with `the package downloaded for <id> is not the one the index signed`.
+
+When a newer version supports your server, the plugin's card shows **Update available** and its versions, `0.1.0 → 0.2.0`. **Update** installs it in place. Its database, settings and the projects it runs in stay.
+
+If the server cannot reach the registry, the page says `The plugin registry is not available` and installing from a file still works.
+
+<InteractiveDemo src="/demos/plugins-install.openshowcase" />
+
+## Install from a file
+
+1. In **Settings → Plugins**, press **Install from file**.
+2. Rustrak warns that a plugin from a file is not verified. Press **Choose file** and pick the `.rtp`.
+
+Rustrak shows `<name> <version> installed`, or why it refused the package. Common refusals:
+
+| Message | Why |
+|---|---|
+| `<id> <version> needs Rustrak <range>, this is <version>` | The plugin's `rustrak` range leaves this server out |
+| `migration 0002_name was changed after it was applied` | A migration the plugin already ran was edited in the new version |
+| `plugin <id> does not load: ...` | The component does not link against this server |
+
+Installing a plugin whose id is already installed replaces it, the same as an update.
+
+## Choose where it runs
+
+A new plugin runs nowhere until you turn it on. Open it and go to **Configuration → Projects**:
+
+- **All projects** turns it on everywhere, in projects created later too.
+- Otherwise, turn it on one project at a time with **Run in &lt;project&gt;**.
+
+In a project where it is off, its pages, widgets and project routes do not exist: a request to one gets a 404. Instance pages and routes, outside any project, answer whenever the plugin is installed.
+
+## Fill in its settings
+
+The plugin's settings form is drawn from what the plugin declares. It has two levels:
+
+- **Defaults**, under **Configuration**, for the whole instance.
+- A project's own values. In **Configuration → Projects**, open a project to reach **&lt;plugin&gt; in &lt;project&gt;**. Its **Project settings** take precedence over the defaults. **Setup** above them shows whatever the plugin needs from that project, such as a snippet with the project's key.
+
+A secret shows only whether it is set (`Set. Type to replace it` or `Not set`). Its value never leaves the server.
+
+Until every required setting has a value, the form says `Set <fields> before the plugin can run.` and the plugin's routes answer `503` with `plugin <id> needs its settings first: <fields>`.
+
+## Grant its permissions
+
+A plugin can add permissions, named `<plugin>:<resource>`, such as `my-plugin:visits`. They appear in **Settings → Roles** beside Rustrak's own, with the plugin's own labels, and you grant them the same way: in a role, as a personal permission or on an [API token](/usage/tokens). See [Roles & permissions](/usage/roles).
+
+Owners hold every plugin permission. Granting `create`, `update` or `delete` on a plugin's resource grants `read` on it too.
+
+A route or page that requires a permission checks it on every request. A project route that requires none still needs a caller who can see the project.
+
+## Its data and retention
+
+A plugin's database lives in `RUSTRAK_PLUGINS_DIR`, beside its package. **Storage** lists each plugin under **Plugins**: its size against its quota and the rows of history it keeps.
+
+A plugin's history is every table it has with a `created_at` column. **Configure retention** in Storage lists each plugin that has one, and the scheduled cleanup clears its old rows with the same run that clears Rustrak's. The rest of a plugin's data is never touched.
+
+## Uninstall
+
+Open the plugin and go to **Configuration**. Under **Danger zone**:
+
+- **Uninstall** stops its pages and routes at once and keeps its database and settings. Installing it again picks them up, but it runs nowhere until you turn it on in projects again.
+- **Uninstall and delete data** also deletes its database, its settings and every role grant of its permissions. It cannot be undone.
+
+## Server settings
+
+| Variable | Default | What it does |
+|---|---|---|
+| `RUSTRAK_PLUGINS_DIR` | `./plugin-data` (`/data/plugins` in the Docker image) | Where installed packages, their compiled code and their databases live |
+| `RUSTRAK_PLUGIN_REGISTRY` | The official index | URL of the registry's `index.json`. `off` hides the registry and leaves only installing from a file |
+| `RUSTRAK_PLUGIN_REGISTRY_KEYS` | *(none)* | Comma-separated minisign public keys trusted besides the official one |
+
+On disk, each plugin is one folder:
+
+```text
+<RUSTRAK_PLUGINS_DIR>/<id>/<version>/plugin.rtp       the package, as installed
+<RUSTRAK_PLUGINS_DIR>/<id>/<version>/server-*.cwasm   its compiled code, rebuilt when missing
+<RUSTRAK_PLUGINS_DIR>/<id>/data.sqlite                its database, kept across versions
+```
+
+Back up `RUSTRAK_PLUGINS_DIR` with your database. In the Docker image it sits on the `/data` volume already.
+
+The official registry is [rustrak/plugins](https://github.com/rustrak/plugins). To run your own, see [Build and publish](/plugins/publish#run-your-own-registry).

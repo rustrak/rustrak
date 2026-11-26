@@ -302,3 +302,16 @@ html {
     transition-duration: 0s;
   }
 }
+
+/* A tab's badge (`badge` in docs-nav.ts): a small mono label on a faint
+   brand tint. No pill, no motion. */
+.tab-badge {
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--fg-brand) 14%, transparent);
+  color: var(--fg-brand);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}

@@ -1,0 +1,123 @@
+---
+description: "Reference for a Rustrak plugin's rustrak.config.ts and package.json: id, supported versions, icon, storage quota, settings and permissions, and the types generated from them."
+---
+
+# Configuration
+
+A plugin says who it is in two files. `package.json` holds its version and description. `rustrak.config.ts` holds everything else Rustrak needs before it runs a line of the plugin's code. The build turns both into the manifest inside the `.rtp`. You never write the manifest by hand.
+
+```typescript
+import { defineConfig } from '@rustrak/plugin';
+
+export default defineConfig({
+  name: 'My Plugin',
+  rustrak: '>=0.34.0',
+  icon: 'performance',
+  storageMb: 512,
+  permissions: {
+    visits: { scope: 'project', actions: ['read', 'delete'] },
+  },
+  settings: {
+    keepQuery: { type: 'boolean', scope: 'project', default: false },
+    apiKey: { type: 'secret', required: true },
+  },
+});
+```
+
+`defineConfig` is typed, so a wrong field or value is an error in your editor. Rustrak checks it all again when it installs the package.
+
+## Fields
+
+| Field | Required | What it does |
+|---|---|---|
+| `name` | Yes | Shown in the catalog and the dashboard |
+| `rustrak` | Yes | The Rustrak versions it runs on: `>=0.34.0`, `^0.34.0`, or two comparators like `>=0.34.0, <0.40.0`. Installing on a version outside it is refused |
+| `id` | No | Defaults to the `package.json` name without its scope or a `rustrak-plugin-` prefix. 2 to 32 lowercase letters, digits or dashes, starting with a letter |
+| `icon` | No | A `@rustrak/ui` icon name, shown when the package has no `logo.svg` |
+| `storageMb` | No | The quota of the plugin's database in MB. Defaults to 512 |
+| `settings` | No | What the admin can set. See [Settings](#settings) |
+| `permissions` | No | What people can be granted. See [Permissions](#permissions) |
+
+From `package.json` the build takes `version` (semver, the plugin's version), `description`, `author` and `repository`. They show on the plugin's page in **Settings → Plugins**.
+
+## Settings
+
+Each key of `settings` is a setting, named in camelCase. Rustrak draws the form, validates what the admin types against it and hands the plugin the result.
+
+| `type` | Value | Extra fields |
+|---|---|---|
+| `text` | A string | `default` |
+| `url` | An `http://` or `https://` address | `default` |
+| `secret` | A string the browser never receives | None. Always set for the instance |
+| `number` | A number | `default`, `min`, `max`, `integer` |
+| `boolean` | `true` or `false` | `default` |
+| `select` | One of `options` | `options` (lowercase words and dashes, such as `per-project`), `default` |
+
+Every type also takes:
+
+- `scope`: `instance` (the default) for one value for the whole Rustrak, or `project` for a value per project. A project setting's instance value is the default for projects that do not set their own.
+- `required`: the plugin's routes answer `503` until it has a value.
+
+What the plugin reads in a project is the project's value, then the instance's, then the `default`.
+
+### Reading them
+
+In Rust, `Settings` is generated with one typed field per setting, in snake_case. A setting with neither `default` nor `required` is an `Option`. A `select` becomes an enum.
+
+```rust
+let settings = crate::Settings::get(ctx)?;
+if settings.keep_query { /* ... */ }
+```
+
+In a page, `usePluginSettings()` returns the same values without secrets. See [Pages and widgets](/plugins/ui).
+
+## Permissions
+
+Each key of `permissions` is a resource, in lowercase words and dashes, with a `scope` and the `actions` it offers:
+
+```typescript
+permissions: {
+  visits: { scope: 'project', actions: ['read', 'delete'] },
+  reports: { scope: 'instance', actions: ['read', 'create'] },
+},
+```
+
+- `scope: 'project'` is granted per project. `scope: 'instance'` is granted for the whole Rustrak.
+- `actions` is one or more of `read`, `create`, `update` and `delete`.
+
+Rustrak names them `<plugin id>:<resource>`, `my-plugin:visits`, and lists them in roles beside its own. A route requires one with `requires = Perm::Visits.read()`. A page requires one with `requires: 'visits:read'`. An action you did not declare does not compile.
+
+## Texts
+
+The labels of settings and permissions come from `src/messages/en.json`, the same file the plugin's pages read:
+
+```json
+{
+  "settings": {
+    "keepQuery": {
+      "label": "Keep query strings",
+      "description": "Store ?utm_source=… with each path."
+    }
+  },
+  "permissions": {
+    "visits": {
+      "label": "Visits",
+      "description": "See how many visits a project has."
+    }
+  }
+}
+```
+
+`en.json` is the fallback for every language. Add `es.json`, `fr.json`, `zh.json` or `ro.json` to translate. A setting with no label shows its key, and the build warns about it.
+
+## What is generated
+
+`rustrak-plugin generate`, and every `build`, writes `.rustrak/` from the config and the texts:
+
+| File | For |
+|---|---|
+| `.rustrak/lib.rs` | The crate root. It declares every module under `src/server/` from its folders, so you write no `mod` lines |
+| `.rustrak/plugin.rs` | `Settings` and `Perm` for Rust |
+| `.rustrak/plugin-env.d.ts` | Types for the editor: message keys, settings and permissions |
+
+Run `npx rustrak-plugin generate` after editing the config, so your editor sees the change before the next build. Commit none of `.rustrak/`.

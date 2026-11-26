@@ -1,0 +1,34 @@
+{
+  "title": "Use a plugin",
+  "url": "http://localhost:8090/projects/1/issues",
+  "viewport": { "width": 1440, "height": 900 },
+  "steps": [
+    { "action": "wait", "for": { "role": "link", "name": "Visitors" } },
+    {
+      "action": "click",
+      "target": { "role": "link", "name": "Overview", "exact": true, "nth": 1 },
+      "tooltip": "A plugin's pages sit in the project's sidebar, beside Rustrak's own"
+    },
+    { "action": "wait", "for": { "role": "heading", "name": "Web traffic" } },
+    {
+      "action": "wait",
+      "for": { "role": "button", "name": "/plants/monstera", "exact": false }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "/plants/monstera",
+        "exact": false
+      },
+      "tooltip": "Click a page to filter the whole report by it"
+    },
+    { "action": "wait", "ms": 800 },
+    {
+      "action": "click",
+      "target": { "role": "tab", "name": "Campaigns" },
+      "tooltip": "Campaigns come from utm tags: here, what the spring sale brought to this plant"
+    },
+    { "action": "wait", "ms": 800 }
+  ]
+}

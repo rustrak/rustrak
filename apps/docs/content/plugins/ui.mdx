@@ -1,0 +1,147 @@
+---
+description: "Add pages and widgets to the Rustrak dashboard from a plugin: file-based routes, sidebar entries, widget zones, and the hooks and components @rustrak/plugin/ui exports."
+---
+
+# Pages and widgets
+
+A plugin's dashboard side is React, in `src/ui/`. The dashboard loads it and hands it its own React, query cache, translator and design system, so a plugin page is built from the same components as the rest of Rustrak and looks like it. The build never bundles `react`, `react-dom`, `@tanstack/react-query`, `@rustrak/ui` or `@rustrak/plugin/ui`. Any other package you import is bundled.
+
+Styling is Tailwind on the dashboard's tokens: use classes such as `p-page-gutter`, `text-fg` or `text-meta` and they match the dashboard in light and dark mode. The build emits a stylesheet with only the classes the plugin uses.
+
+A plugin with no pages and no widgets ships no UI at all, which is fine for one that only serves routes.
+
+## Pages
+
+A page is a `page.tsx` under `src/ui/routes/project/` (inside each project) or `src/ui/routes/instance/` (outside any project). Folders are the path, and a `[name]` folder is a parameter:
+
+| File | Address in the dashboard |
+|---|---|
+| `src/ui/routes/project/page.tsx` | `/projects/<id>/plugins/<plugin>` |
+| `src/ui/routes/project/about/page.tsx` | `/projects/<id>/plugins/<plugin>/about` |
+| `src/ui/routes/project/hits/[hitId]/page.tsx` | `/projects/<id>/plugins/<plugin>/hits/<hitId>` |
+| `src/ui/routes/instance/page.tsx` | `/plugins/<plugin>` |
+
+Folder names are lowercase letters, digits and dashes. Any other file under `src/ui/` is an ordinary module you can import: components, hooks, helpers.
+
+A page exports its component as `default` and, optionally, a `config`:
+
+```tsx
+import {
+  definePage,
+  type PageProps,
+  usePluginApi,
+  usePluginTranslations,
+} from '@rustrak/plugin/ui';
+import { Figure, FigureStrip, SettingsHeader } from '@rustrak/ui';
+
+export const config = definePage({
+  sidebar: { label: 'nav.visits', icon: 'performance', rank: 1 },
+  requires: 'visits:read',
+});
+
+export default function Visits({ projectId }: PageProps<'project'>) {
+  const t = usePluginTranslations();
+  const visits = usePluginApi<string>('/visits');
+  return (
+    <div className="flex flex-col gap-4 p-page-gutter">
+      <SettingsHeader title={t('visits.title')} description={t('visits.subtitle')} />
+      <FigureStrip className="grid-cols-1">
+        <Figure label={t('visits.total')} value={visits.data ?? '…'} />
+      </FigureStrip>
+    </div>
+  );
+}
+```
+
+| `config` field | What it does |
+|---|---|
+| `sidebar.label` | A key of `src/messages/en.json`. Puts the page in its scope's sidebar, under the plugin's name |
+| `sidebar.icon` | A `@rustrak/ui` icon name |
+| `sidebar.rank` | Order among the plugin's sidebar entries. An entry without one goes last |
+| `requires` | One of the plugin's permissions, `visits:read`. The page and its sidebar entry exist only for people who hold it |
+
+A page without `sidebar` is reached by a link. Project pages get `projectId` and `params`. Instance pages get `params`. `params` holds the `[name]` folders as strings.
+
+The build refuses a `sidebar.label` that is not in `en.json` and a `requires` the config does not declare. `requires` hides a page. It does not protect data: put `requires` on the routes the page calls too, because those are what Rustrak checks.
+
+## Widgets
+
+A widget is a file in `src/ui/widgets/` that draws into one of the dashboard's own pages. It names its zone in `config`:
+
+```tsx
+import { defineWidget, usePluginApi, type WidgetProps } from '@rustrak/plugin/ui';
+
+export const config = defineWidget({ zone: 'issue.details.after' });
+
+export default function IssueVisits({ issue }: WidgetProps<'issue.details.after'>) {
+  const visits = usePluginApi<string>('/visits');
+  return <p className="text-meta text-fg">{visits.data} visits while {issue.title} happened</p>;
+}
+```
+
+| Zone | Where it draws | Props |
+|---|---|---|
+| `issue.details.after` | Under an issue's charts, on every issue of a project | `projectId`, `issue` (`id`, `title`) |
+| `project.overview.after` | At the end of a project's overview | `projectId` |
+| `plugin.setup` | Under **Setup** in the plugin's page for one project, in **Settings → Plugins** | `projectId` |
+
+Widgets draw only in projects the plugin runs in. Use `plugin.setup` for what a project needs before the plugin works, such as a snippet with its DSN key.
+
+If a page or widget throws, the dashboard shows `The plugin <plugin> failed to show this part.` in its place and the rest of the page keeps working.
+
+## Data
+
+| Hook | What it does |
+|---|---|
+| `usePluginApi<T>(path, search?)` | Reads one of the plugin's routes through the dashboard's query cache. On a project page it calls the project route |
+| `usePluginMutation<Body, Result>(path, method?)` | Writes to a route, `POST` by default. After it succeeds, every read of the plugin refreshes |
+| `usePluginFetch()` | Reads a route from an event handler, cached like `usePluginApi` |
+| `useRustrakApi<T>(path)` | Reads Rustrak's own API, such as `/api/projects/3`, as the signed-in person |
+| `usePluginSettings()` | The plugin's settings here, without secrets: the project's values, then the instance's, then the defaults |
+| `usePluginPermissions()` | `can(resource, action)`, to hide a button the reader could not use |
+
+A string body is sent as `text/plain`, anything else as JSON. A failed call throws `PluginApiError`, with the `status` and the route's `detail`.
+
+```tsx
+import { usePluginMutation, usePluginPermissions } from '@rustrak/plugin/ui';
+import { Button } from '@rustrak/ui';
+
+// Shown only to people who hold <plugin>:hits delete.
+function ClearHits() {
+  const clear = usePluginMutation('/hits', 'DELETE');
+  const { can } = usePluginPermissions();
+  if (!can('hits', 'delete')) return null;
+  return <Button onClick={() => clear.mutate(undefined)}>Clear</Button>;
+}
+```
+
+## Text, dates and numbers
+
+`usePluginTranslations()` returns `t`, over `src/messages/<locale>.json` in the reader's language, with English where a key is missing. It takes the same ICU syntax as the dashboard: `{name}` and plurals. Keys are typed: a key missing from `en.json` is a type error.
+
+`useFormatter()` and `useLocale()` come from `use-intl` and follow the reader's language, time zone and clock: `format.dateTime(date, 'dateTime')`, `'date'`, `'precise'`, and `format.number(n, 'compact')`.
+
+## Navigation, filters and saved views
+
+| Export | What it does |
+|---|---|
+| `PluginLink` | A link to another page of the plugin: `<PluginLink to="hits/7">` |
+| `HostLink` | A link to any page of the dashboard, through its router |
+| `usePluginNavigate()` | Goes to one of the plugin's pages from code, after a save |
+| `usePluginTrail(crumbs)` | Names the page in the breadcrumbs, after its section |
+| `usePluginSearch()` | The page's filters, kept in its address so a link brings them back: `[search, setSearch]` |
+| `PluginViews` | The saved views menu, over the page's address query |
+| `PeriodFilter` | The time window picker the project pages use |
+| `usePlugin()` | `pluginId`, `projectId` and the rest of where the component is drawn |
+| `publicUrl(ctx, file)` | The absolute address of a file in `src/public/` |
+| `setupHref(ctx)` | The plugin's setup page for this project, or its settings outside one |
+
+## Public files
+
+Files in `src/public/` are served to anyone at `/public/<plugin>/<file>`, with any origin allowed to load them and a five-minute cache. That is where a script a website includes goes, a tracker that posts to a public route with the project's key:
+
+```html
+<script src="https://rustrak.example.com/public/my-plugin/track.js" data-key="<key>"></script>
+```
+
+Rustrak's CORS policy lets any origin call a plugin's public routes with the `X-Rustrak-Key` header.
