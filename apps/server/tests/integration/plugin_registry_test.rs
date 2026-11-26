@@ -177,6 +177,21 @@ async fn a_published_plugins_readme_reads_before_it_is_installed() {
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+
+    // Nor one the index lists under another plugin's id or version.
+    for (registry, id) in [
+        (Registry::listing("other", None, true), "other"),
+        (Registry::listing_as("hello", "0.2.0", None, true), "hello"),
+    ] {
+        let state = common::state(&db.pool, registry.config()).await;
+        let app = common::app_with(&state).await;
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/settings/plugins/registry/{id}/readme"))
+            .insert_header(crate::common::bearer(&owner))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY, "{id}");
+    }
 }
 
 #[actix_web::test]

@@ -21,10 +21,19 @@ export const pluginQueries = {
       queryKey: [...pluginQueries.all(), 'registry'],
       queryFn: ({ signal }) => orThrow(api().plugins.registry({ signal })),
     }),
-  /** A published plugin's README, read before it is installed. */
-  registryReadme: (pluginId: string) =>
+  /**
+   * A published plugin's README, read before it is installed. Keyed by the
+   * version listed too, so a new release is read again.
+   */
+  registryReadme: (pluginId: string, version: string) =>
     queryOptions({
-      queryKey: [...pluginQueries.all(), 'registry', pluginId, 'readme'],
+      queryKey: [
+        ...pluginQueries.all(),
+        'registry',
+        pluginId,
+        version,
+        'readme',
+      ],
       queryFn: ({ signal }) =>
         orThrow(
           api().plugins.registryReadme({ path: { plugin: pluginId }, signal }),

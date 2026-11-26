@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activeIn,
   catalog,
+  catalogSearch,
   matchPage,
   pageAllowed,
   pageAt,
@@ -228,5 +229,22 @@ describe('catalog', () => {
       'mine',
       'web-traffic',
     ]);
+  });
+});
+
+describe('catalogSearch', () => {
+  it('keeps a search and a known filter, and drops the rest', () => {
+    expect(catalogSearch({ q: 'traffic', filter: 'updates' })).toEqual({
+      q: 'traffic',
+      filter: 'updates',
+    });
+    expect(catalogSearch({ q: '', filter: 'all' })).toEqual({
+      q: undefined,
+      filter: undefined,
+    });
+    expect(catalogSearch({ q: 3, filter: 'nope' })).toEqual({
+      q: undefined,
+      filter: undefined,
+    });
   });
 });

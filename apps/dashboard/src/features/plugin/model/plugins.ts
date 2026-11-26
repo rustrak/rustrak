@@ -178,7 +178,24 @@ export interface CatalogEntry {
   published?: RegistryPlugin;
 }
 
-export type CatalogFilter = 'all' | 'installed' | 'available' | 'updates';
+const FILTERS = ['all', 'installed', 'available', 'updates'] as const;
+export type CatalogFilter = (typeof FILTERS)[number];
+
+/**
+ * Settings › Plugins' address query: `?q=` and `?filter=`. An absent or
+ * unknown value is left out, so the address never gains one it did not have.
+ */
+export function catalogSearch(search: Record<string, unknown>): {
+  q?: string;
+  filter?: Exclude<CatalogFilter, 'all'>;
+} {
+  const q =
+    typeof search.q === 'string' && search.q !== '' ? search.q : undefined;
+  const filter = FILTERS.find((f) => f !== 'all' && f === search.filter) as
+    | Exclude<CatalogFilter, 'all'>
+    | undefined;
+  return { q, filter };
+}
 
 /** Whether the registry publishes a newer version than the installed one. */
 export function hasUpdate(entry: CatalogEntry): boolean {

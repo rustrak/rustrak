@@ -3,6 +3,7 @@ import { noop, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { pluginQueries } from '@/features/plugin/api/queries';
+import { catalogSearch } from '@/features/plugin/model/plugins';
 import {
   InstallPluginButton,
   PluginCatalog,
@@ -11,6 +12,7 @@ import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
 
 export const Route = createFileRoute('/_authenticated/settings/plugins/')({
+  validateSearch: catalogSearch,
   loader: ({ context: { queryClient } }) => {
     void queryClient.query(pluginQueries.list()).catch(noop);
     // An owner's only; anyone else's 403 is swallowed here and never read.
@@ -24,6 +26,8 @@ function PluginsPage() {
   const t = useTranslations('settings');
   const { data: plugins } = useSuspenseQuery(pluginQueries.list());
   const permissions = usePermissions();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   return (
     <>
       <title>{t('plugins.meta.title')}</title>
@@ -32,7 +36,18 @@ function PluginsPage() {
         description={t('plugins.subtitle')}
         actions={permissions.isOwner ? <InstallPluginButton /> : null}
       />
-      <PluginCatalog plugins={plugins} canInstall={permissions.isOwner} />
+      <PluginCatalog
+        plugins={plugins}
+        canInstall={permissions.isOwner}
+        query={search.q ?? ''}
+        filter={search.filter ?? 'all'}
+        onSearch={({ q, filter }) =>
+          navigate({
+            search: catalogSearch({ q, filter }),
+            replace: true,
+          })
+        }
+      />
     </>
   );
 }

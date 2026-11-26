@@ -115,17 +115,21 @@ const FILTERS: CatalogFilter[] = ['all', 'installed', 'available', 'updates'];
 export function PluginCatalog({
   plugins,
   canInstall,
+  query,
+  filter,
+  onSearch,
 }: {
   plugins: PluginSummary[];
   canInstall: boolean;
+  query: string;
+  filter: CatalogFilter;
+  onSearch: (next: { q: string; filter: CatalogFilter }) => void;
 }) {
   const t = useTranslations('settings');
   const registry = useQuery({
     ...pluginQueries.registry(),
     enabled: canInstall,
   });
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<CatalogFilter>('all');
   const [open, setOpen] = useState<CatalogEntry | null>(null);
 
   const published = registry.data?.available
@@ -137,7 +141,7 @@ export function PluginCatalog({
   if (count('all') === 0 && !registry.isLoading) {
     return (
       <>
-        <RegistryNotice registry={registry} />
+        {canInstall ? <RegistryNotice registry={registry} /> : null}
         <SettingsEmpty
           title={t('plugins.empty')}
           description={t('plugins.emptyHint')}
@@ -155,13 +159,15 @@ export function PluginCatalog({
           filters={NO_FILTERS}
           search={query}
           placeholder={t('plugins.search')}
-          onChange={(next) => setQuery(next.search)}
+          onChange={(next) => onSearch({ q: next.search, filter })}
         />
         {canInstall ? (
           <SegmentedControl
             aria-label={t('plugins.filter.label')}
             value={filter}
-            onValueChange={(v) => setFilter(v as CatalogFilter)}
+            onValueChange={(v) =>
+              onSearch({ q: query, filter: v as CatalogFilter })
+            }
           >
             {FILTERS.map((f) => (
               <SegmentedItem key={f} value={f}>
@@ -174,7 +180,7 @@ export function PluginCatalog({
           </SegmentedControl>
         ) : null}
       </div>
-      <RegistryNotice registry={registry} />
+      {canInstall ? <RegistryNotice registry={registry} /> : null}
       {entries.length === 0 && !registry.isLoading ? (
         <SettingsEmpty title={t('plugins.noMatch')} />
       ) : (
@@ -318,7 +324,10 @@ function PluginPreview({
   const install = useMutation(pluginMutations.installFromRegistry());
   const published = entry?.published;
   const readme = useQuery({
-    ...pluginQueries.registryReadme(published?.id ?? ''),
+    ...pluginQueries.registryReadme(
+      published?.id ?? '',
+      published?.version ?? '',
+    ),
     enabled: !!published,
   });
 
