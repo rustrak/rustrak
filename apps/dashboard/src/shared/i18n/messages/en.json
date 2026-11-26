@@ -2386,11 +2386,11 @@
     "workspaceNotAuthorizedDescription": "Your access does not include this section. Contact an owner to request it.",
     "plugins": {
       "meta": {
-        "title": "Plugins"
+        "title": "Plugins | Rustrak"
       },
       "title": "Plugins",
-      "subtitle": "Extend Rustrak with plugins. Each one's server code runs sandboxed, with its own database.",
-      "install": "Install plugin",
+      "subtitle": "Make Rustrak your own. Install what you need in one click.",
+      "install": "Install from file",
       "installing": "Installing…",
       "installed": "{name} {version} installed",
       "installFailed": "The plugin could not be installed",
@@ -2462,10 +2462,7 @@
       },
       "verified": "✓ Verified by the registry",
       "notVerified": "Not verified: uploaded by hand",
-      "available": "Available",
-      "availableHint": "Published in Rustrak's plugin registry, signed and checked when installed.",
       "registryUnavailable": "The plugin registry is not available",
-      "registryUpToDate": "Everything published is installed",
       "update": "{from} → {to}",
       "updateButton": "Update",
       "installButton": "Install",
@@ -2481,7 +2478,25 @@
         "settingsHint": "This project's own values: they take precedence over the instance's defaults.",
         "offHint": "Turn it on in this project to set it up."
       },
-      "registryLoadFailed": "Could not read the plugin registry"
+      "registryLoadFailed": "Could not read the plugin registry",
+      "search": "Search plugins",
+      "noMatch": "No plugins match",
+      "notInstalled": "Not installed",
+      "updateAvailable": "Update available",
+      "readmeFailed": "Could not read this plugin's README",
+      "openSettings": "Settings",
+      "filter": {
+        "label": "Show",
+        "all": "All",
+        "installed": "Installed",
+        "available": "Available",
+        "updates": "Updates"
+      },
+      "local": {
+        "title": "Install a plugin from a file?",
+        "description": "A plugin installed from a file is not verified: Rustrak cannot check who made it or whether it was changed. Its server code runs sandboxed, but install only plugins you trust.",
+        "confirm": "Choose file"
+      }
     }
   },
   "github": {

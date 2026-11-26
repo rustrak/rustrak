@@ -15568,6 +15568,69 @@
         ]
       }
     },
+    "/api/settings/plugins/registry/{plugin}/readme": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Reads a published plugin's README before it is installed, from the package the signed index lists.",
+        "operationId": "plugins.registryReadme",
+        "parameters": [
+          {
+            "name": "plugin",
+            "in": "path",
+            "description": "Plugin id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Its README, Markdown, by language: English always",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The registry could not be read, or what it served does not verify",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/api/settings/plugins/{plugin}": {
       "put": {
         "tags": [

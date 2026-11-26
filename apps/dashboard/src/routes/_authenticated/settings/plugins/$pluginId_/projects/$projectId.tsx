@@ -65,7 +65,7 @@ function ProjectSetup({
   if (!plugin) throw notFound();
   return (
     <>
-      <title>{`${plugin.name} · ${project.name}`}</title>
+      <title>{`${plugin.name} | ${project.name} | Rustrak`}</title>
       <PluginProjectSetup
         plugin={plugin}
         project={project}

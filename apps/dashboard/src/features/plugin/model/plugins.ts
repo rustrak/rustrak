@@ -1,4 +1,9 @@
-import type { Action, PluginSummary, Scope } from '@rustrak/client';
+import type {
+  Action,
+  PluginSummary,
+  RegistryPlugin,
+  Scope,
+} from '@rustrak/client';
 import { pluginHref, pluginPermissionKey } from '@rustrak/plugin/ui';
 
 /** Whether a plugin runs in a project: everywhere, or chosen there. */
@@ -162,4 +167,58 @@ export function pageAllowed(
   const [resource, action] = page.requires.split(':');
   const key = pluginPermissionKey(plugin.id, resource ?? '');
   return can(key, action as Action, projectId, permissionScope(plugin, key));
+}
+
+/** One plugin in Settings › Plugins: installed here, published, or both. */
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  installed?: PluginSummary;
+  published?: RegistryPlugin;
+}
+
+export type CatalogFilter = 'all' | 'installed' | 'available' | 'updates';
+
+/** Whether the registry publishes a newer version than the installed one. */
+export function hasUpdate(entry: CatalogEntry): boolean {
+  return (
+    !!entry.installed &&
+    !!entry.published &&
+    entry.published.installed_version !== entry.published.version
+  );
+}
+
+/**
+ * The installed plugins and the published ones as one list by name, kept to
+ * `filter` and to those whose name, id or description holds `query`.
+ */
+export function catalog(
+  installed: PluginSummary[],
+  registry: RegistryPlugin[] | undefined,
+  filter: CatalogFilter,
+  query: string,
+): CatalogEntry[] {
+  const byId = new Map<string, CatalogEntry>();
+  for (const p of installed) byId.set(p.id, { ...p, installed: p });
+  for (const p of registry ?? []) {
+    const entry = byId.get(p.id);
+    if (entry) entry.published = p;
+    else byId.set(p.id, { ...p, published: p });
+  }
+  const q = query.trim().toLowerCase();
+  return [...byId.values()]
+    .filter(
+      (e) =>
+        filter === 'all' ||
+        (filter === 'installed' && !!e.installed) ||
+        (filter === 'available' && !e.installed) ||
+        (filter === 'updates' && hasUpdate(e)),
+    )
+    .filter((e) =>
+      [e.name, e.id, e.description ?? ''].some((s) =>
+        s.toLowerCase().includes(q),
+      ),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

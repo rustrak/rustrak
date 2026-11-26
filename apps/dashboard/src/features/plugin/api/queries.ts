@@ -21,6 +21,16 @@ export const pluginQueries = {
       queryKey: [...pluginQueries.all(), 'registry'],
       queryFn: ({ signal }) => orThrow(api().plugins.registry({ signal })),
     }),
+  /** A published plugin's README, read before it is installed. */
+  registryReadme: (pluginId: string) =>
+    queryOptions({
+      queryKey: [...pluginQueries.all(), 'registry', pluginId, 'readme'],
+      queryFn: ({ signal }) =>
+        orThrow(
+          api().plugins.registryReadme({ path: { plugin: pluginId }, signal }),
+        ),
+      staleTime: 10 * 60_000,
+    }),
   /**
    * One plugin's settings, for the whole instance or one project: the same
    * entry its pages read with `usePluginSettings()`, so a save shows there.

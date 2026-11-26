@@ -2386,11 +2386,11 @@
     "workspaceNotAuthorizedDescription": "Tu acceso no incluye esta sección. Contacta con un propietario para solicitarlo.",
     "plugins": {
       "meta": {
-        "title": "Plugins"
+        "title": "Plugins | Rustrak"
       },
       "title": "Plugins",
-      "subtitle": "Amplía Rustrak con plugins. El código de servidor de cada uno se ejecuta aislado, con su propia base de datos.",
-      "install": "Instalar plugin",
+      "subtitle": "Haz Rustrak a tu medida. Instala lo que necesites con un clic.",
+      "install": "Instalar desde archivo",
       "installing": "Instalando…",
       "installed": "{name} {version} instalado",
       "installFailed": "No se pudo instalar el plugin",
@@ -2462,10 +2462,7 @@
       },
       "verified": "✓ Verificado por el registro",
       "notVerified": "Sin verificar: subido a mano",
-      "available": "Disponibles",
-      "availableHint": "Publicados en el registro de plugins de Rustrak, firmados y comprobados al instalar.",
       "registryUnavailable": "El registro de plugins no está disponible",
-      "registryUpToDate": "Todo lo publicado está instalado",
       "update": "{from} → {to}",
       "updateButton": "Actualizar",
       "installButton": "Instalar",
@@ -2481,7 +2478,25 @@
         "settingsHint": "Los valores propios de este proyecto: tienen prioridad sobre los de la instancia.",
         "offHint": "Actívalo en este proyecto para configurarlo."
       },
-      "registryLoadFailed": "No se pudo leer el registro de plugins"
+      "registryLoadFailed": "No se pudo leer el registro de plugins",
+      "search": "Buscar plugins",
+      "noMatch": "Ningún plugin coincide",
+      "notInstalled": "No instalado",
+      "updateAvailable": "Actualización disponible",
+      "readmeFailed": "No se pudo leer el README de este plugin",
+      "openSettings": "Ajustes",
+      "filter": {
+        "label": "Mostrar",
+        "all": "Todos",
+        "installed": "Instalados",
+        "available": "Disponibles",
+        "updates": "Actualizaciones"
+      },
+      "local": {
+        "title": "¿Instalar un plugin desde un archivo?",
+        "description": "Un plugin instalado desde un archivo no está verificado: Rustrak no puede comprobar quién lo hizo ni si fue modificado. Su código de servidor se ejecuta aislado, pero instala solo plugins en los que confíes.",
+        "confirm": "Elegir archivo"
+      }
     }
   },
   "github": {

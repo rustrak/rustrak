@@ -11348,6 +11348,42 @@ export type PluginsInstallFromRegistryResponses = {
 
 export type PluginsInstallFromRegistryResponse = PluginsInstallFromRegistryResponses[keyof PluginsInstallFromRegistryResponses];
 
+export type PluginsRegistryReadmeData = {
+    body?: never;
+    path: {
+        /**
+         * Plugin id
+         */
+        plugin: string;
+    };
+    query?: never;
+    url: '/api/settings/plugins/registry/{plugin}/readme';
+};
+
+export type PluginsRegistryReadmeErrors = {
+    /**
+     * Not an owner
+     */
+    403: ErrorResponse;
+    /**
+     * The registry could not be read, or what it served does not verify
+     */
+    502: ErrorResponse;
+};
+
+export type PluginsRegistryReadmeError = PluginsRegistryReadmeErrors[keyof PluginsRegistryReadmeErrors];
+
+export type PluginsRegistryReadmeResponses = {
+    /**
+     * Its README, Markdown, by language: English always
+     */
+    200: {
+        [key: string]: string;
+    };
+};
+
+export type PluginsRegistryReadmeResponse = PluginsRegistryReadmeResponses[keyof PluginsRegistryReadmeResponses];
+
 export type PluginsUninstallData = {
     body?: never;
     path: {

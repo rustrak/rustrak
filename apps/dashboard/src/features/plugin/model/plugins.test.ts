@@ -1,7 +1,8 @@
-import type { PluginSummary } from '@rustrak/client';
+import type { PluginSummary, RegistryPlugin } from '@rustrak/client';
 import { describe, expect, it } from 'vitest';
 import {
   activeIn,
+  catalog,
   matchPage,
   pageAllowed,
   pageAt,
@@ -173,5 +174,59 @@ describe('pageAllowed', () => {
     pageAllowed({ requires: 'traffic:read' }, traffic, record, 3);
     pageAllowed({ requires: 'visitors:read' }, traffic, record, 3);
     expect(scopes).toEqual(['instance', 'project']);
+  });
+});
+
+describe('catalog', () => {
+  const published = (
+    over: Partial<RegistryPlugin> & Pick<RegistryPlugin, 'id'>,
+  ): RegistryPlugin => ({
+    name: over.id,
+    description: null,
+    author: null,
+    icon: null,
+    logo: null,
+    version: '1.0.0',
+    installed_version: null,
+    ...over,
+  });
+  const installed = [
+    plugin({ id: 'web-traffic', name: 'Web Traffic', verified: true }),
+    plugin({ id: 'mine', name: 'Mine', description: 'My own uptime checks' }),
+  ];
+  const registry = [
+    published({
+      id: 'web-traffic',
+      installed_version: '0.1.0',
+      version: '0.2.0',
+    }),
+    published({ id: 'uptime', name: 'Uptime' }),
+  ];
+  const ids = (filter: Parameters<typeof catalog>[2], query = '') =>
+    catalog(installed, registry, filter, query).map((e) => e.id);
+
+  it('lists installed and published plugins once each, by name', () => {
+    expect(ids('all')).toEqual(['mine', 'uptime', 'web-traffic']);
+    const traffic = catalog(installed, registry, 'all', '').at(-1);
+    expect(traffic?.installed?.id).toBe('web-traffic');
+    expect(traffic?.published?.version).toBe('0.2.0');
+  });
+
+  it('filters by what is installed, available or has an update', () => {
+    expect(ids('installed')).toEqual(['mine', 'web-traffic']);
+    expect(ids('available')).toEqual(['uptime']);
+    expect(ids('updates')).toEqual(['web-traffic']);
+  });
+
+  it('searches name, id and description, any case', () => {
+    expect(ids('all', 'UPTIME')).toEqual(['mine', 'uptime']);
+    expect(ids('all', 'traffic')).toEqual(['web-traffic']);
+  });
+
+  it('lists the installed ones alone when the registry is not read', () => {
+    expect(catalog(installed, undefined, 'all', '').map((e) => e.id)).toEqual([
+      'mine',
+      'web-traffic',
+    ]);
   });
 });

@@ -8,7 +8,14 @@ import remarkGfm from 'remark-gfm';
  * links open away from Rustrak, and images show their text instead of
  * fetching from wherever the README points.
  */
-export function PluginReadme({ markdown }: { markdown: string }) {
+export function PluginReadme({
+  markdown,
+  untitled = false,
+}: {
+  markdown: string;
+  /** Leave out its top heading where the plugin's name is already the title. */
+  untitled?: boolean;
+}) {
   return (
     <div
       className="flex flex-col gap-3 px-6 py-5 text-value text-fg-secondary"
@@ -17,9 +24,10 @@ export function PluginReadme({ markdown }: { markdown: string }) {
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => (
-            <h2 className="text-title text-fg">{children}</h2>
-          ),
+          h1: ({ children }) =>
+            untitled ? null : (
+              <h2 className="text-title text-fg">{children}</h2>
+            ),
           h2: ({ children }) => (
             <h3 className="mt-3 text-section text-fg">{children}</h3>
           ),

@@ -1,4 +1,5 @@
 import { cn } from '@rustrak/ui';
+import { useState } from 'react';
 import { pluginIcon } from '../../model/icon';
 
 const MARK = {
@@ -9,7 +10,8 @@ const MARK = {
 
 /**
  * A plugin's mark: its own `logo.svg` when it ships one, drawn as an image
- * (an SVG's scripts never run there), else its design-system icon.
+ * (an SVG's scripts never run there), else its design-system icon. The icon
+ * holds the place until the logo has loaded, and stays if it never does.
  */
 export function PluginMark({
   logo,
@@ -21,28 +23,29 @@ export function PluginMark({
   size?: keyof typeof MARK;
 }) {
   const mark = MARK[size];
-  if (logo) {
-    return (
-      <img
-        src={logo}
-        alt=""
-        className={cn(
-          mark.box,
-          'shrink-0 border border-border-subtle object-contain',
-        )}
-        data-testid="plugin-logo"
-      />
-    );
-  }
+  const [loaded, setLoaded] = useState<string | null>(null);
   const Icon = pluginIcon(icon);
+  const shown = !!logo && loaded === logo;
   return (
     <span
       className={cn(
         mark.box,
-        'flex shrink-0 items-center justify-center border border-border-subtle text-fg-secondary',
+        'relative flex shrink-0 items-center justify-center overflow-hidden border border-border-subtle text-fg-secondary',
       )}
     >
-      <Icon size={mark.icon} />
+      {shown ? null : <Icon size={mark.icon} />}
+      {logo ? (
+        <img
+          src={logo}
+          alt=""
+          onLoad={() => setLoaded(logo)}
+          className={cn(
+            'absolute inset-0 size-full object-contain',
+            !shown && 'opacity-0',
+          )}
+          data-testid="plugin-logo"
+        />
+      ) : null}
     </span>
   );
 }

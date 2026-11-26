@@ -6,7 +6,6 @@ import { pluginQueries } from '@/features/plugin/api/queries';
 import {
   InstallPluginButton,
   PluginCatalog,
-  RegistryCatalog,
 } from '@/features/plugin/ui/components/plugin-catalog';
 import { PageLoading } from '@/shared/ui/components/page-loading';
 import { usePermissions } from '@/shared/ui/hooks/use-permissions';
@@ -33,8 +32,7 @@ function PluginsPage() {
         description={t('plugins.subtitle')}
         actions={permissions.isOwner ? <InstallPluginButton /> : null}
       />
-      <PluginCatalog plugins={plugins} />
-      {permissions.isOwner ? <RegistryCatalog canInstall /> : null}
+      <PluginCatalog plugins={plugins} canInstall={permissions.isOwner} />
     </>
   );
 }

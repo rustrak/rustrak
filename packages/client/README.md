@@ -603,6 +603,7 @@ Every method, grouped as it hangs off the client (`client.issues.list(...)`).
 | `plugins.list()` | `GET /api/plugins` | Lists the installed plugins and what each adds to the dashboard. |
 | `plugins.projectSettings({ path })` | `GET /api/projects/{project_id}/plugin-settings/{plugin}` | Reads a plugin's settings in one project, without its secrets. |
 | `plugins.registry()` | `GET /api/settings/plugins/registry` | Lists the plugins the signed registry publishes, with the version this Rustrak runs. |
+| `plugins.registryReadme({ path })` | `GET /api/settings/plugins/registry/{plugin}/readme` | Reads a published plugin's README before it is installed, from the package the signed index lists. |
 | `plugins.setProjectSettings({ path, body })` | `PUT /api/projects/{project_id}/plugin-settings/{plugin}` | Writes a plugin's settings in one project: only its project settings. |
 | `plugins.setSettings({ path, body })` | `PUT /api/settings/plugins/{plugin}/settings` | Writes a plugin's settings for the whole instance, checked against its schema. |
 | `plugins.settings({ path })` | `GET /api/settings/plugins/{plugin}/settings` | Reads a plugin's settings for the whole instance, without its secrets. |
