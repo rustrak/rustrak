@@ -260,7 +260,7 @@ in memory and complexity. Plugins let Rustrak grow without that: whoever needs
 something installs it from **Settings → Plugins** in one click, and whoever
 does not never notices.
 
-<img width="2000" height="900" alt="The Web Traffic plugin's overview inside Rustrak, with its pages under its own name in the project sidebar" src="PLUGINS_IMAGE_URL" />
+<img width="2000" height="900" alt="The Web Traffic plugin's overview inside Rustrak, with its pages under its own name in the project sidebar" src="https://github.com/user-attachments/assets/a40d7dff-0039-470e-b6f8-b2214c41665e" />
 
 The first one is **Web Traffic**: who visits your site and where they come
 from, without cookies. Missing something? Build it as a plugin instead of
