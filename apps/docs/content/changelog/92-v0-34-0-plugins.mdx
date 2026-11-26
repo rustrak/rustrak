@@ -1,0 +1,36 @@
+---
+version: v0.34.0
+title: Plugins
+description: Rustrak runs plugins, sandboxed WebAssembly with their own database, settings, permissions and dashboard pages, and ships the SDK to build them
+date: 2026-11-26
+tags: [plugins, sdk, dashboard, api]
+---
+
+## Upgrading
+
+- Installed plugins and their databases live in `RUSTRAK_PLUGINS_DIR` (default `./plugin-data`). The Docker image sets it to `/data/plugins`, on the `/data` volume. Back it up like the database
+- Migrations on PostgreSQL and SQLite add `plugins`, `plugin_projects` and `plugin_project_settings`
+- `@rustrak/client` is regenerated with the plugin endpoints and `storage.getPlugins()`
+
+## Plugins (Beta)
+
+Settings › Plugins lists what the registry publishes and what is installed. Install from the signed registry or upload a `.rtp` package, choose where it runs (the whole instance or chosen projects), fill in its settings and uninstall it, keeping its data or purging it.
+
+- **Sandboxed:** a plugin's server code is a WebAssembly component run in a fresh instance per request, with a memory cap and a time limit
+- **Its own data:** each plugin gets a SQLite file with forward-only migrations and a quota, and its SQL cannot reach anything else. Rows with a `created_at` follow the retention you set, and Storage shows each plugin's weight
+- **Settings:** per instance and per project. Secrets are never sent to the browser
+- **Permissions:** a plugin's `<plugin>:<resource>` grants go into roles, personal permissions and API tokens, and are checked on its routes like Rustrak's own
+- **In the dashboard:** a plugin's pages sit under its name in the sidebar, with breadcrumbs, filters and saved views, plus a setup page per project
+- **Registry:** the official index is [rustrak/plugins](https://github.com/rustrak/plugins), verified against its signing key. `RUSTRAK_PLUGIN_REGISTRY` points at another index and `RUSTRAK_PLUGIN_REGISTRY_KEYS` trusts more keys
+
+## Plugin SDK
+
+Each release publishes the SDK at the same version as the server.
+
+- `rustrak-plugin` (crates.io): routes as functions with `#[get]`, `#[post]` and friends, typed context, query and JSON, the plugin's database through `ctx.db()`, typed settings and permissions
+- `@rustrak/plugin` (npm): `rustrak-plugin new`, `generate`, `build` and `index`. `build` compiles the server to a `wasm32-wasip2` component, builds the pages against the dashboard's React and design system, checks the migrations and packs a `.rtp`
+- `@rustrak/plugin/ui`: what a plugin's pages import, from routes and settings to saved views and the dashboard's controls
+
+## Improvements
+
+- `Panel`, `Figure`, `SettingSection`, `SettingsHeader` and `EmptyState` move into `@rustrak/ui`, and the sidebar item gains a `badge`
