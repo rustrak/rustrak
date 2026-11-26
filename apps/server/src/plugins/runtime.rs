@@ -48,6 +48,8 @@ pub enum CallError {
 /// every deadline.
 pub struct Runtime {
     engine: Engine,
+    /// What `engine` was built with: a throwaway engine compiles with it.
+    config: Config,
     linker: Linker<Host>,
 }
 
@@ -110,7 +112,11 @@ impl Runtime {
                 }
             })?;
 
-        Ok(Arc::new(Self { engine, linker }))
+        Ok(Arc::new(Self {
+            engine,
+            config,
+            linker,
+        }))
     }
 
     /// Compiles `wasm` to machine code, or reuses what an earlier call left
@@ -128,19 +134,37 @@ impl Runtime {
         // SAFETY: the file is one this host wrote into its own plugin
         // directory; wasmtime checks it was built by a compatible engine and
         // refuses it otherwise, which recompiles below.
+        // A noexec plugin dir cannot map it: read into memory then.
         let cached = cache
             .exists()
-            .then(|| unsafe { Component::deserialize_file(&self.engine, &cache) }.ok())
+            .then(|| {
+                unsafe { Component::deserialize_file(&self.engine, &cache) }
+                    .or_else(|_| unsafe {
+                        Component::deserialize(&self.engine, std::fs::read(&cache)?)
+                    })
+                    .ok()
+            })
             .flatten();
         let component = match cached {
             Some(c) => c,
             None => {
-                let c = Component::from_binary(&self.engine, wasm)?;
+                // Compiled by a throwaway engine: wasmtime 48 keeps Cranelift's
+                // per-function scratch for as long as its engine lives (~17 MB
+                // for Web Traffic; fixed in 49, #14314), so the long-lived one
+                // only deserializes. On its own thread, so the garbage it
+                // leaves does not pin the pages the plugin's state lands on.
+                let code = std::thread::scope(|s| {
+                    s.spawn(|| Engine::new(&self.config)?.precompile_component(wasm))
+                        .join()
+                        .expect("the compile thread")
+                })?;
                 std::fs::create_dir_all(cache_dir)?;
                 let tmp = cache.with_extension("tmp");
-                std::fs::write(&tmp, c.serialize()?)?;
+                std::fs::write(&tmp, &code)?;
                 std::fs::rename(&tmp, &cache)?;
-                c
+                // From memory: a noexec plugin dir cannot map the file.
+                // SAFETY: code compiled just above by an engine with this config.
+                unsafe { Component::deserialize(&self.engine, &code) }?
             }
         };
         let pre = PluginPre::new(self.linker.instantiate_pre(&component)?)?;

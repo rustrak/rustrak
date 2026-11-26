@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 use std::time::Duration;
 
 use semver::Version;
@@ -34,6 +34,22 @@ const CONCURRENT_CALLS: usize = 8;
 /// A plugin's own logo, in its package and among its assets.
 const LOGO: &str = "logo.svg";
 const MAX_LOGO: usize = 256 * 1024;
+
+/// Threads every plugin's calls share. Each holds an allocator heap and
+/// wasmtime's per-thread state, so a few beat one pool per Actix worker.
+const CALL_THREADS: usize = 4;
+
+/// Where plugin calls run, apart from the workers' own blocking pools.
+fn call_pool() -> &'static tokio::runtime::Handle {
+    static POOL: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .max_blocking_threads(CALL_THREADS)
+            .thread_name("plugin-call")
+            .build()
+            .expect("the plugin call pool")
+    });
+    POOL.handle()
+}
 
 /// How long a call waits for a turn before the request gets a 503.
 const QUEUE_WAIT: Duration = Duration::from_secs(5);
@@ -195,7 +211,9 @@ pub struct PluginUi {
 }
 
 pub struct PluginHost {
-    runtime: Arc<Runtime>,
+    /// Started with the first plugin: an instance without one never pays
+    /// for the engine or its epoch ticker.
+    runtime: OnceLock<Arc<Runtime>>,
     dir: PathBuf,
     host_version: Version,
     installed: RwLock<HashMap<String, Arc<Installed>>>,
@@ -206,16 +224,23 @@ pub struct PluginHost {
 }
 
 impl PluginHost {
-    pub fn new(dir: PathBuf) -> std::io::Result<Self> {
-        let runtime =
-            Runtime::new().map_err(|e| std::io::Error::other(format!("plugin runtime: {e:#}")))?;
-        Ok(Self {
-            runtime,
+    pub fn new(dir: PathBuf) -> Self {
+        Self {
+            runtime: OnceLock::new(),
             dir,
             host_version: super::host_version(),
             installed: RwLock::default(),
             writes: tokio::sync::Mutex::default(),
-        })
+        }
+    }
+
+    fn runtime(&self) -> AppResult<Arc<Runtime>> {
+        if let Some(runtime) = self.runtime.get() {
+            return Ok(runtime.clone());
+        }
+        let runtime =
+            Runtime::new().map_err(|e| AppError::Internal(format!("plugin runtime: {e:#}")))?;
+        Ok(self.runtime.get_or_init(|| runtime).clone())
     }
 
     pub fn get(&self, id: &str) -> Option<Arc<Installed>> {
@@ -236,7 +261,7 @@ impl PluginHost {
     ) -> AppResult<Arc<Installed>> {
         let _write = self.writes.lock().await;
         let installed = {
-            let runtime = self.runtime.clone();
+            let runtime = self.runtime()?;
             let dir = self.dir.clone();
             let host_version = self.host_version.clone();
             tokio::task::spawn_blocking(move || {
@@ -303,7 +328,7 @@ impl PluginHost {
                 .fetch_all(pool)
                 .await?;
         for (id, version, source) in rows {
-            let runtime = self.runtime.clone();
+            let runtime = self.runtime()?;
             let dir = self.dir.clone();
             let host_version = self.host_version.clone();
             let path = package_path(&dir, &id, &version);
@@ -777,14 +802,13 @@ impl PluginHost {
                 AppError::Unavailable(format!("plugin {} is busy", plugin.manifest.plugin.id))
             })?
             .map_err(|e| AppError::Internal(e.to_string()))?;
-        let runtime = self.runtime.clone();
+        let runtime = self.runtime()?;
         let call = plugin.clone();
         let settings = settings_source(plugin.clone());
-        tokio::task::spawn_blocking(move || {
-            runtime.handle_http(&call.loaded, req, budget, settings)
-        })
-        .await
-        .map_err(|e| AppError::Internal(format!("plugin call: {e}")))
+        call_pool()
+            .spawn_blocking(move || runtime.handle_http(&call.loaded, req, budget, settings))
+            .await
+            .map_err(|e| AppError::Internal(format!("plugin call: {e}")))
     }
 }
 
@@ -1054,4 +1078,39 @@ fn asset_url(id: &str, tag: &str, file: &str) -> String {
 
 fn not_found(id: &str) -> AppError {
     AppError::NotFound(format!("Plugin {id} not found"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+
+    use super::*;
+
+    #[test]
+    fn the_runtime_starts_with_the_first_plugin_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = PluginHost::new(dir.path().into());
+        assert!(host.runtime.get().is_none());
+        host.runtime().unwrap();
+        assert!(host.runtime.get().is_some());
+    }
+
+    #[tokio::test]
+    async fn every_plugin_call_shares_a_few_threads() {
+        let threads = Arc::new(Mutex::new(HashSet::new()));
+        let calls: Vec<_> = (0..4 * CALL_THREADS)
+            .map(|_| {
+                let threads = threads.clone();
+                call_pool().spawn_blocking(move || {
+                    threads.lock().unwrap().insert(std::thread::current().id());
+                    std::thread::sleep(Duration::from_millis(20));
+                })
+            })
+            .collect();
+        for call in calls {
+            call.await.unwrap();
+        }
+        assert_eq!(threads.lock().unwrap().len(), CALL_THREADS);
+    }
 }
