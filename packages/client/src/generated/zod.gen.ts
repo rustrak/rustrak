@@ -5163,6 +5163,15 @@ export const zPluginsInstallFromRegistryPath = z.object({
  */
 export const zPluginsInstallFromRegistryResponse = zPluginSummary;
 
+export const zPluginsRegistryReadmePath = z.object({
+    plugin: z.string()
+});
+
+/**
+ * Its README, Markdown, by language: English always
+ */
+export const zPluginsRegistryReadmeResponse = z.record(z.string(), z.string());
+
 export const zPluginsUninstallPath = z.object({
     plugin: z.string()
 });

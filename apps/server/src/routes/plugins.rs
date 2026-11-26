@@ -45,6 +45,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/api/settings/plugins/registry/{plugin}/logo",
             web::get().to(registry_logo),
         )
+        .route(
+            "/api/settings/plugins/registry/{plugin}/readme",
+            web::get().to(registry_readme),
+        )
         .service(
             web::resource("/api/settings/plugins/{plugin}")
                 .route(web::put().to(configure_plugin))
@@ -247,6 +251,36 @@ pub async fn registry(
     Ok(HttpResponse::Ok().json(listing))
 }
 
+/// `id`'s package the signed index lists for this Rustrak, read. Refused
+/// when it is another plugin's or another version than the one listed: it
+/// would replace that plugin, or install as what the index did not list.
+async fn published(
+    registry: &Registry,
+    host: &PluginHost,
+    id: &str,
+) -> AppResult<(Vec<u8>, crate::plugins::package::Package)> {
+    let (rtp, listed) = registry
+        .download(id, host.host_version())
+        .await
+        .map_err(|e| AppError::BadGateway(e.to_string()))?;
+    // Unzipping up to MAX_PACKAGE_BYTES is CPU work: off the async worker.
+    let (rtp, package) = web::block(move || {
+        let read = crate::plugins::package::Package::read(&rtp);
+        read.map(|p| (rtp, p))
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .map_err(|e| AppError::BadGateway(e.to_string()))?;
+    let served = &package.manifest.plugin;
+    if served.id != id || served.version != listed {
+        return Err(AppError::BadGateway(format!(
+            "the registry served {} {} for {id} {listed}",
+            served.id, served.version
+        )));
+    }
+    Ok((rtp, package))
+}
+
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/api/settings/plugins/registry/{plugin}",
@@ -271,28 +305,34 @@ pub async fn install_from_registry(
 ) -> AppResult<HttpResponse> {
     require_owner(&actor)?;
     let id = path.into_inner();
-    let (rtp, listed) = registry
-        .download(&id, host.host_version())
-        .await
-        .map_err(|e| AppError::BadGateway(e.to_string()))?;
-    // Before installing: a package of another plugin would replace that one,
-    // and one of another version would install as what the index did not list.
-    // Unzipping up to MAX_PACKAGE_BYTES is CPU work: off the async worker.
-    let (rtp, served) = web::block(move || {
-        let read = crate::plugins::package::Package::read(&rtp);
-        read.map(|p| (rtp, p.manifest.plugin))
-    })
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))?
-    .map_err(|e| AppError::BadGateway(e.to_string()))?;
-    if served.id != id || served.version != listed {
-        return Err(AppError::BadGateway(format!(
-            "the registry served {} {} for {id} {listed}",
-            served.id, served.version
-        )));
-    }
+    let (rtp, _) = published(&registry, &host, &id).await?;
     host.install(pool.get_ref(), rtp, Source::Registry).await?;
     Ok(HttpResponse::Created().json(host.summary(pool.get_ref(), &id).await?))
+}
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/api/settings/plugins/registry/{plugin}/readme",
+    operation_id = "plugins.registryReadme",
+    tag = "plugins",
+    params(("plugin" = String, Path, description = "Plugin id")),
+    responses(
+        (status = 200, description = "Its README, Markdown, by language: English always", body = std::collections::BTreeMap<String, String>),
+        (status = 403, description = "Not an owner", body = crate::error::ErrorResponse),
+        (status = 502, description = "The registry could not be read, or what it served does not verify", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = [])),
+))]
+/// Reads a published plugin's README before it is installed, from the package the signed index lists.
+pub async fn registry_readme(
+    host: web::Data<PluginHost>,
+    registry: web::Data<Registry>,
+    actor: ApiActor,
+    path: web::Path<String>,
+) -> AppResult<HttpResponse> {
+    require_owner(&actor)?;
+    let (_, package) = published(&registry, &host, &path.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(package.readme))
 }
 
 /// A published plugin's logo, checked against the signed index and served

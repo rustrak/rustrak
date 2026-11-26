@@ -2386,11 +2386,11 @@
     "workspaceNotAuthorizedDescription": "Accesul tău nu include această secțiune. Contactează un proprietar pentru a-l solicita.",
     "plugins": {
       "meta": {
-        "title": "Pluginuri"
+        "title": "Pluginuri | Rustrak"
       },
       "title": "Pluginuri",
-      "subtitle": "Extinde Rustrak cu pluginuri. Codul de server al fiecăruia rulează izolat, cu propria bază de date.",
-      "install": "Instalează plugin",
+      "subtitle": "Fă Rustrak pe măsura ta. Instalează ce îți trebuie dintr-un clic.",
+      "install": "Instalează din fișier",
       "installing": "Se instalează…",
       "installed": "{name} {version} a fost instalat",
       "installFailed": "Pluginul nu a putut fi instalat",
@@ -2462,10 +2462,7 @@
       },
       "verified": "✓ Verificat de registru",
       "notVerified": "Neverificat: încărcat manual",
-      "available": "Disponibile",
-      "availableHint": "Publicate în registrul de pluginuri Rustrak, semnate și verificate la instalare.",
       "registryUnavailable": "Registrul de pluginuri nu este disponibil",
-      "registryUpToDate": "Tot ce este publicat este instalat",
       "update": "{from} → {to}",
       "updateButton": "Actualizează",
       "installButton": "Instalează",
@@ -2481,7 +2478,25 @@
         "settingsHint": "Valorile proprii ale acestui proiect: au prioritate față de cele ale instanței.",
         "offHint": "Activează-l în acest proiect ca să-l configurezi."
       },
-      "registryLoadFailed": "Registrul de pluginuri nu a putut fi citit"
+      "registryLoadFailed": "Registrul de pluginuri nu a putut fi citit",
+      "search": "Caută pluginuri",
+      "noMatch": "Niciun plugin nu se potrivește",
+      "notInstalled": "Neinstalat",
+      "updateAvailable": "Actualizare disponibilă",
+      "readmeFailed": "README-ul acestui plugin nu a putut fi citit",
+      "openSettings": "Setări",
+      "filter": {
+        "label": "Afișează",
+        "all": "Toate",
+        "installed": "Instalate",
+        "available": "Disponibile",
+        "updates": "Actualizări"
+      },
+      "local": {
+        "title": "Instalezi un plugin dintr-un fișier?",
+        "description": "Un plugin instalat dintr-un fișier nu este verificat: Rustrak nu poate verifica cine l-a creat sau dacă a fost modificat. Codul său de server rulează izolat, dar instalează doar pluginuri în care ai încredere.",
+        "confirm": "Alege fișierul"
+      }
     }
   },
   "github": {

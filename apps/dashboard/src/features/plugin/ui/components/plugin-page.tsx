@@ -113,7 +113,7 @@ export function PluginPage({
       setTrail={setTrail}
       components={components}
     >
-      <title>{title}</title>
+      <title>{`${title} | Rustrak`}</title>
       <PluginBoundary
         key={`${pluginId}:${projectId ?? ''}:${at}`}
         pluginId={pluginId}

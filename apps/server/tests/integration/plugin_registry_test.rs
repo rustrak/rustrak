@@ -146,6 +146,55 @@ async fn a_published_plugin_installs_from_the_registry_as_verified() {
 }
 
 #[actix_web::test]
+async fn a_published_plugins_readme_reads_before_it_is_installed() {
+    let registry = Registry::new(None, true);
+    let db = TestDb::new().await;
+    let state = common::state(&db.pool, registry.config()).await;
+    let app = common::app_with(&state).await;
+    let owner = common::create_test_token(&db.pool).await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/settings/plugins/registry/hello/readme")
+        .insert_header(crate::common::bearer(&owner))
+        .to_request();
+    let readme: Value = test::call_and_read_body_json(&app, req).await;
+    assert!(
+        readme["en"].as_str().is_some_and(|md| !md.is_empty()),
+        "{readme}"
+    );
+    assert!(
+        state.plugins.get("hello").is_none(),
+        "reading is not installing"
+    );
+
+    // A package that is not the one the index signed has no README to read.
+    let tampered = Registry::new(Some("00".into()), true);
+    let state = common::state(&db.pool, tampered.config()).await;
+    let app = common::app_with(&state).await;
+    let req = test::TestRequest::get()
+        .uri("/api/settings/plugins/registry/hello/readme")
+        .insert_header(crate::common::bearer(&owner))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+
+    // Nor one the index lists under another plugin's id or version.
+    for (registry, id) in [
+        (Registry::listing("other", None, true), "other"),
+        (Registry::listing_as("hello", "0.2.0", None, true), "hello"),
+    ] {
+        let state = common::state(&db.pool, registry.config()).await;
+        let app = common::app_with(&state).await;
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/settings/plugins/registry/{id}/readme"))
+            .insert_header(crate::common::bearer(&owner))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY, "{id}");
+    }
+}
+
+#[actix_web::test]
 async fn an_uploaded_package_installs_as_not_verified() {
     let db = TestDb::new().await;
     let app = common::app(&db.pool).await;

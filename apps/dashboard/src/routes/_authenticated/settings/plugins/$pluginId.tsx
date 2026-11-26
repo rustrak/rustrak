@@ -47,6 +47,7 @@ function PluginSettingsPage() {
   const { pluginId } = Route.useParams();
   const { tab } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const t = useTranslations('settings');
   const { data: plugins } = useSuspenseQuery(pluginQueries.list());
   const { data: projects } = useQuery(projectsToPick);
   const permissions = usePermissions();
@@ -55,7 +56,7 @@ function PluginSettingsPage() {
   if (!plugin) throw notFound();
   return (
     <>
-      <title>{plugin.name}</title>
+      <title>{`${plugin.name} | ${t('plugins.title')} | Rustrak`}</title>
       <PluginDetail
         plugin={plugin}
         // Only the picker's first 100 projects are listed; paging or searching

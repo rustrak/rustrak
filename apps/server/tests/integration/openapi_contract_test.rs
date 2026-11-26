@@ -62,6 +62,8 @@ const NOT_SEEDED: &[&str] = &[
     "auth.ssoLink",
     // Bytes, not JSON, and the seed has no feedback screenshot.
     "events.downloadAttachment",
+    // No plugin registry configured (plugin_registry_test reads one).
+    "plugins.registryReadme",
 ];
 
 struct Seed {

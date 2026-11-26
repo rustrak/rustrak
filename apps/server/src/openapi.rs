@@ -184,6 +184,7 @@ impl Modify for SecurityAddon {
         crate::routes::plugins::instance_settings,
         crate::routes::plugins::registry,
         crate::routes::plugins::install_from_registry,
+        crate::routes::plugins::registry_readme,
         crate::routes::storage::get_plugins,
         crate::routes::plugins::set_instance_settings,
         crate::routes::plugins::project_settings,
