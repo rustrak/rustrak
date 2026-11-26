@@ -1,6 +1,6 @@
 {
   "name": "@rustrak/plugin",
-  "version": "0.34.0",
+  "version": "0.34.1",
   "description": "The framework and compiler for Rustrak plugins: configuration, build and packing",
   "homepage": "https://rustrak.dev",
   "repository": {

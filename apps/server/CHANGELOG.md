@@ -1,5 +1,11 @@
 # @rustrak/server
 
+## 0.34.1
+
+### Patch Changes
+
+- [`6d9d141`](https://github.com/rustrak/rustrak/commit/6d9d14179366bedc1d90c86ae561e7b124f4d2a1) Thanks [@AbianS](https://github.com/AbianS)! - Plugins use less memory and fewer threads: installing one no longer leaves compiler memory resident, every call runs on one shared pool of four threads with a queue that answers 503 after five seconds, a plugin that sleeps past its time budget is stopped at once, and a `noexec` plugin directory no longer recompiles plugins at every boot. Settings › Plugins becomes a searchable catalog with a plugin's README before installing it and `rustrak-plugin new` is interactive.
+
 ## 0.34.0
 
 ### Minor Changes
