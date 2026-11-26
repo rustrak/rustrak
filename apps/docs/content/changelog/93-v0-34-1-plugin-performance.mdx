@@ -1,0 +1,24 @@
+---
+version: v0.34.1
+title: Plugin Performance
+description: Plugins use less memory and fewer threads, a slow plugin can no longer hold the queue, and the catalog becomes searchable
+date: 2026-11-26
+tags: [plugins, performance, dashboard, sdk]
+---
+
+## Plugin Performance
+
+Plugins now cost less to keep installed and to call.
+
+- **Compiler memory goes back:** installing a plugin used to leave about 10 MB of compiler state resident until a restart, even after uninstalling it. Plugins now compile on a throwaway engine, so that memory is freed when the compile ends
+- **One shared call pool:** every plugin call runs on one pool of four threads, instead of each Actix worker's blocking pool
+- **Bounded queue:** a call that cannot get a turn within five seconds gets a 503 instead of waiting behind the others
+- **Sleeps respect the budget:** a plugin that waits on a clock past its time budget is timed out at once instead of holding its turn
+- **Faster boot on `noexec`:** when the plugin directory is mounted `noexec`, compiled plugins are read into memory instead of recompiled at every boot
+- **Lazy start:** the plugin runtime starts with the first plugin installed, so an instance without plugins pays nothing for it
+
+## Improvements
+
+- Settings › Plugins shows installed and published plugins in one searchable grid, with All, Installed, Available and Updates filters
+- A published plugin's README opens before you install or update it, and installing a `.rtp` from a file asks first, since that plugin is not verified
+- `rustrak-plugin new` asks its questions interactively (`--install`, `--git` and `--yes` answer for CI), and `build` traces its steps and ends with the package size by part
