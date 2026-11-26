@@ -36,19 +36,43 @@ function pluginTable(toml: string): Record<string, string | string[]> {
   return out;
 }
 
+/** `1.0.0-rc.1+b` → core `[1, 0, 0]`, pre `['rc', '1']`; build metadata dropped. */
+function semver(v: string) {
+  const s = v.split('+')[0] ?? '';
+  const dash = s.indexOf('-');
+  return {
+    core: (dash < 0 ? s : s.slice(0, dash)).split('.').map(Number),
+    pre: dash < 0 ? [] : s.slice(dash + 1).split('.'),
+  };
+}
+
+/** One pre-release identifier against another: numbers as numbers, below words. */
+function identifier(p: string, q: string): number {
+  const [m, n] = [/^\d+$/.test(p), /^\d+$/.test(q)];
+  if (m && n) return Number(p) - Number(q);
+  if (m !== n) return m ? -1 : 1;
+  return p < q ? -1 : p > q ? 1 : 0;
+}
+
 /** Semver order, a pre-release before its release: `1.0.0-rc.1` < `1.0.0`. */
 const older = (a: string, b: string) => {
-  const [coreA = '', preA] = a.split('-', 2);
-  const [coreB = '', preB] = b.split('-', 2);
-  const [x, y] = [coreA.split('.').map(Number), coreB.split('.').map(Number)];
+  const [x, y] = [semver(a), semver(b)];
   for (let i = 0; i < 3; i++) {
-    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+    const d = (x.core[i] ?? 0) - (y.core[i] ?? 0);
+    if (d) return d;
   }
-  if (preA === preB) return 0;
-  if (preA === undefined) return 1;
-  if (preB === undefined) return -1;
-  return preA.localeCompare(preB, 'en', { numeric: true });
+  if (!x.pre.length || !y.pre.length) return y.pre.length - x.pre.length;
+  const shared = Math.min(x.pre.length, y.pre.length);
+  for (let i = 0; i < shared; i++) {
+    const d = identifier(x.pre[i] ?? '', y.pre[i] ?? '');
+    if (d) return d;
+  }
+  // `rc` < `rc.1`: the shorter one, all else equal, comes first.
+  return x.pre.length - y.pre.length;
 };
+
+/** What Rustrak accepts as `plugin.id`; it also names files here. */
+const PLUGIN_ID = /^[a-z][a-z0-9-]{1,31}$/;
 
 /** Writes `<dir>/index.json` from the `.rtp` files in `dir`. */
 export function writeIndex(dir: string): string {
@@ -62,6 +86,8 @@ export function writeIndex(dir: string): string {
     if (!manifest) throw new Error(`${file} has no rustrak-plugin.toml`);
     const p = pluginTable(strFromU8(manifest));
     const id = String(p.id);
+    if (!PLUGIN_ID.test(id))
+      throw new Error(`${file}: ${JSON.stringify(id)} is not a plugin id`);
     const listed = plugins.get(id) ?? {
       id,
       name: '',

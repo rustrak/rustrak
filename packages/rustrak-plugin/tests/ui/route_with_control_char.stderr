@@ -1,0 +1,5 @@
+error: a path starts with / and has no placeholders
+ --> tests/ui/route_with_control_char.rs:3:7
+  |
+3 | #[get("/a\nb")]
+  |       ^^^^^^^

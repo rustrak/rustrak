@@ -51,7 +51,7 @@ export function Figure({
       <dt className={s.label()}>{label}</dt>
       <dd className={s.value({ className: valueClassName })}>{value}</dd>
       {footnote !== undefined ? (
-        <dd className={s.footnote()}>{footnote ?? ' '}</dd>
+        <dd className={s.footnote()}>{footnote ?? ' '}</dd>
       ) : null}
     </div>
   );

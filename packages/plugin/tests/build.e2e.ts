@@ -1,7 +1,13 @@
 // End to end: `build` compiles a real plugin and packs it, needing nothing
 // but cargo and node. Rustrak's own tests install what it packs.
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
@@ -101,7 +107,39 @@ describe('new', () => {
       expect(existsSync(join(dir, file)), file).toBe(true);
     }
 
-    const { rtp, manifest } = await build(dir, { outDir: join(dir, 'dist') });
+    // Cargo puts the component where its config says, not in target/.
+    mkdirSync(join(dir, '.cargo'));
+    writeFileSync(
+      join(dir, '.cargo/config.toml'),
+      '[build]\ntarget-dir = "elsewhere"\n',
+    );
+    // A binary is a .wasm too: the component is still the library.
+    writeFileSync(join(dir, 'tool.rs'), 'fn main() {}\n');
+    writeFileSync(
+      join(dir, 'Cargo.toml'),
+      `${readFileSync(join(dir, 'Cargo.toml'), 'utf8')}\n[[bin]]\nname = "tool"\npath = "tool.rs"\n\n[dependencies.helper]\npath = "helper"\n`,
+    );
+    // So is a dependency that is a cdylib too, reported before the plugin.
+    mkdirSync(join(dir, 'helper/src'), { recursive: true });
+    writeFileSync(
+      join(dir, 'helper/Cargo.toml'),
+      '[package]\nname = "helper"\nversion = "0.1.0"\nedition = "2024"\n\n[lib]\ncrate-type = ["rlib", "cdylib"]\n',
+    );
+    writeFileSync(join(dir, 'helper/src/lib.rs'), 'pub fn help() {}\n');
+    // The environment outranks the config file: clear it for this build.
+    const inherited = {
+      CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR,
+      CARGO_BUILD_TARGET_DIR: process.env.CARGO_BUILD_TARGET_DIR,
+    };
+    delete process.env.CARGO_TARGET_DIR;
+    delete process.env.CARGO_BUILD_TARGET_DIR;
+    const { rtp, manifest } = await build(dir, {
+      outDir: join(dir, 'dist'),
+    }).finally(() => {
+      for (const [k, v] of Object.entries(inherited))
+        if (v !== undefined) process.env[k] = v;
+    });
+    expect(existsSync(join(dir, 'elsewhere'))).toBe(true);
     expect(manifest).toContain('[ui]');
     const wasm = strFromU8(unzipSync(readFileSync(rtp))['server.wasm']!, true);
     expect(wasm).toContain('"path":"/visits"');
