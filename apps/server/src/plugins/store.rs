@@ -11,6 +11,7 @@ use rusqlite::types::{ToSqlOutput, ValueRef};
 use rusqlite::{Connection, ErrorCode, ToSql};
 
 use super::package::Migration;
+use super::runtime::MEMORY_LIMIT;
 
 const LEDGER: &str = "_rustrak_migrations";
 
@@ -104,13 +105,22 @@ fn fence(ctx: AuthContext<'_>) -> Authorization {
     }
 }
 
+/// The fence, for SQL the host wraps in its own transaction: the plugin's
+/// `COMMIT` would otherwise end it halfway.
+fn strict(ctx: AuthContext<'_>) -> Authorization {
+    match ctx.action {
+        AuthAction::Transaction { .. } | AuthAction::Savepoint { .. } => Authorization::Deny,
+        _ => fence(ctx),
+    }
+}
+
 /// How long the host's own work on a plugin's file may take.
 const HOUSEKEEPING: Duration = Duration::from_secs(600);
 
 /// A row older than `?1` (unix seconds): `created_at` as a number, or as
-/// ISO text compared to the same instant.
+/// ISO text read as an instant ('T', 'Z' and offsets included).
 const EXPIRED: &str = "((typeof(created_at) IN ('integer', 'real') AND created_at < ?1) \
-     OR (typeof(created_at) = 'text' AND created_at < datetime(?1, 'unixepoch')))";
+     OR (typeof(created_at) = 'text' AND unixepoch(created_at) < ?1))";
 
 /// One history table of a plugin and how much of it is past the window.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -155,6 +165,11 @@ impl PluginDb {
              PRAGMA foreign_keys = ON;",
         )?;
         conn.busy_timeout(Duration::from_secs(5))?;
+        // No single value bigger than a plugin instance could hold.
+        conn.set_limit(
+            rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH,
+            MEMORY_LIMIT as i32,
+        )?;
         let page_size: i64 = conn.pragma_query_value(None, "page_size", |r| r.get(0))?;
         let pages = i64::from(storage_mb) * 1024 * 1024 / page_size;
         conn.pragma_update(None, "max_page_count", pages)?;
@@ -175,6 +190,14 @@ impl PluginDb {
     /// Applies the pending migrations, all in one transaction: an upgrade
     /// either lands whole or leaves the file as it was.
     pub fn migrate(&self, migrations: &[Migration]) -> Result<(), MigrationError> {
+        self.migrate_within(migrations, HOUSEKEEPING)
+    }
+
+    fn migrate_within(
+        &self,
+        migrations: &[Migration],
+        limit: Duration,
+    ) -> Result<(), MigrationError> {
         let mut conn = self.conn.lock().expect("plugin db lock poisoned");
         let applied: Vec<(u32, String)> = {
             let mut stmt = conn
@@ -204,46 +227,68 @@ impl PluginDb {
             return Ok(());
         }
 
-        let tx = conn
-            .transaction()
-            .map_err(|e| MigrationError(e.to_string()))?;
-        for m in pending {
-            tx.execute_batch(&m.sql).map_err(|e| {
-                MigrationError(format!("migration {:04}_{}: {e}", m.version, m.name))
-            })?;
-            // The ledger is the host's: lift the fence for this one write.
-            let ledger = |e: rusqlite::Error| MigrationError(e.to_string());
-            tx.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
-                .map_err(ledger)?;
-            let recorded = tx.execute(
-                &format!("INSERT INTO {LEDGER} (version, name, checksum, applied_at) VALUES (?1, ?2, ?3, unixepoch())"),
-                rusqlite::params![m.version, m.name, m.checksum],
-            );
-            tx.authorizer(Some(fence)).map_err(ledger)?;
-            recorded.map_err(ledger)?;
-        }
-        tx.commit().map_err(|e| MigrationError(e.to_string()))
+        let host = |e: rusqlite::Error| MigrationError(e.to_string());
+        let deadline = Instant::now() + limit;
+        conn.progress_handler(1_000, Some(move || Instant::now() > deadline))
+            .map_err(host)?;
+        let result = (|| {
+            let tx = conn.transaction().map_err(host)?;
+            for m in pending {
+                tx.authorizer(Some(strict)).map_err(host)?;
+                let applied = tx.execute_batch(&m.sql);
+                tx.authorizer(Some(fence)).map_err(host)?;
+                applied.map_err(|e| {
+                    MigrationError(format!("migration {:04}_{}: {e}", m.version, m.name))
+                })?;
+                // The ledger is the host's: lift the fence for this one write.
+                tx.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+                    .map_err(host)?;
+                let recorded = tx.execute(
+                    &format!("INSERT INTO {LEDGER} (version, name, checksum, applied_at) VALUES (?1, ?2, ?3, unixepoch())"),
+                    rusqlite::params![m.version, m.name, m.checksum],
+                );
+                tx.authorizer(Some(fence)).map_err(host)?;
+                recorded.map_err(host)?;
+            }
+            tx.commit().map_err(host)
+        })();
+        conn.progress_handler(0, None::<fn() -> bool>)
+            .map_err(host)?;
+        result
     }
 
     pub fn execute(&self, sql: &str, params: &[Value], budget: Duration) -> Result<u64, SqlError> {
-        self.with_deadline(budget, |conn| {
+        self.with_deadline(Instant::now() + budget, |conn| {
             Ok(conn.execute(sql, rusqlite::params_from_iter(params))? as u64)
         })
     }
 
     pub fn query(&self, sql: &str, params: &[Value], budget: Duration) -> Result<Rows, SqlError> {
-        self.with_deadline(budget, |conn| {
+        self.with_deadline(Instant::now() + budget, |conn| {
             let mut stmt = conn.prepare(sql)?;
             let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
             let width = columns.len();
             let mut rows = Vec::new();
+            // What the result will take in the plugin's memory, roughly: it
+            // cannot hold more than its whole linear memory.
+            let mut bytes = 0;
             let mut cursor = stmt.query(rusqlite::params_from_iter(params))?;
             while let Some(row) = cursor.next()? {
-                rows.push(
-                    (0..width)
-                        .map(|i| row.get_ref(i).map(Value::from))
-                        .collect::<Result<_, _>>()?,
-                );
+                let mut values = Vec::with_capacity(width);
+                for i in 0..width {
+                    let v = row.get_ref(i)?;
+                    bytes += match v {
+                        ValueRef::Text(b) | ValueRef::Blob(b) => b.len(),
+                        _ => 8,
+                    };
+                    if bytes > MEMORY_LIMIT {
+                        return Err(SqlError::Other(format!(
+                            "the result is larger than the plugin's memory ({MEMORY_LIMIT} bytes)"
+                        )));
+                    }
+                    values.push(Value::from(v));
+                }
+                rows.push(values);
             }
             Ok(Rows { columns, rows })
         })
@@ -255,11 +300,15 @@ impl PluginDb {
         statements: &[(String, Vec<Value>)],
         budget: Duration,
     ) -> Result<(), SqlError> {
-        self.with_deadline(budget, |conn| {
+        self.with_deadline(Instant::now() + budget, |conn| {
             let tx = conn.unchecked_transaction()?;
-            for (sql, params) in statements {
-                tx.execute(sql, rusqlite::params_from_iter(params))?;
-            }
+            tx.authorizer(Some(strict))?;
+            let ran = statements.iter().try_for_each(|(sql, params)| {
+                tx.execute(sql, rusqlite::params_from_iter(params))
+                    .map(drop)
+            });
+            tx.authorizer(Some(fence))?;
+            ran?;
             tx.commit()?;
             Ok(())
         })
@@ -270,7 +319,7 @@ impl PluginDb {
     /// plugin's data it never touches. `expired` counts the rows older than
     /// `cutoff` (unix seconds), none without one.
     pub fn history(&self, cutoff: Option<i64>) -> Result<Vec<HistoryTable>, SqlError> {
-        self.with_deadline(HOUSEKEEPING, |conn| {
+        self.with_deadline(Instant::now() + HOUSEKEEPING, |conn| {
             let mut out = Vec::new();
             for table in history_tables(conn)? {
                 let (rows, expired) = conn.query_row(
@@ -295,7 +344,7 @@ impl PluginDb {
     /// Deletes every history row older than `cutoff` (unix seconds), in one
     /// transaction; how many went.
     pub fn forget_before(&self, cutoff: i64) -> Result<u64, SqlError> {
-        self.with_deadline(HOUSEKEEPING, |conn| {
+        self.with_deadline(Instant::now() + HOUSEKEEPING, |conn| {
             let tx = conn.unchecked_transaction()?;
             let mut removed = 0;
             for table in history_tables(&tx)? {
@@ -311,11 +360,15 @@ impl PluginDb {
 
     fn with_deadline<T>(
         &self,
-        budget: Duration,
+        deadline: Instant,
         f: impl FnOnce(&Connection) -> Result<T, SqlError>,
     ) -> Result<T, SqlError> {
         let conn = self.conn.lock().expect("plugin db lock poisoned");
-        let deadline = Instant::now() + budget;
+        // The wait for the lock (housekeeping holds it for minutes) is part
+        // of the budget.
+        if Instant::now() >= deadline {
+            return Err(SqlError::Busy);
+        }
         conn.progress_handler(1_000, Some(move || Instant::now() > deadline))?;
         let result = f(&conn);
         conn.progress_handler(0, None::<fn() -> bool>)?;
@@ -326,5 +379,155 @@ impl PluginDb {
             conn.execute_batch("ROLLBACK")?;
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FAR: Duration = Duration::from_secs(5);
+
+    fn open(dir: &tempfile::TempDir) -> PluginDb {
+        PluginDb::open(&dir.path().join("data.sqlite"), 64).expect("open")
+    }
+
+    fn migration(version: u32, sql: &str) -> Migration {
+        Migration {
+            version,
+            name: format!("m{version}"),
+            sql: sql.into(),
+            checksum: format!("c{version}"),
+        }
+    }
+
+    #[test]
+    fn a_huge_blob_is_refused_before_it_is_built() {
+        let dir = tempfile::tempdir().unwrap();
+        // Not `expect_err`: a passing query would print a gigabyte.
+        let Err(err) = open(&dir).query("SELECT zeroblob(1000000000)", &[], FAR) else {
+            panic!("refused");
+        };
+        assert!(matches!(err, SqlError::Other(_)), "{err:?}");
+    }
+
+    #[test]
+    fn rows_past_the_guest_memory_limit_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let Err(err) = open(&dir).query(
+            "WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 40) \
+             SELECT zeroblob(1048576) FROM c",
+            &[],
+            FAR,
+        ) else {
+            panic!("refused");
+        };
+        assert!(err.to_string().contains("memory"), "{err}");
+    }
+
+    #[test]
+    fn a_deadline_spent_waiting_for_the_lock_is_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open(&dir);
+        let guard = db.conn.lock().unwrap();
+        std::thread::scope(|s| {
+            let call = s.spawn(|| db.query("SELECT 1", &[], Duration::from_millis(50)));
+            std::thread::sleep(Duration::from_millis(200));
+            drop(guard);
+            assert_eq!(call.join().unwrap(), Err(SqlError::Busy));
+        });
+    }
+
+    #[test]
+    fn a_migration_cannot_commit_halfway() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open(&dir);
+        let err = db
+            .migrate(&[migration(1, "CREATE TABLE a (x); COMMIT; nonsense")])
+            .unwrap_err();
+        assert!(err.to_string().contains("0001"), "{err}");
+        let left = db
+            .query(
+                "SELECT count(*) FROM sqlite_schema WHERE name = 'a'",
+                &[],
+                FAR,
+            )
+            .unwrap();
+        assert_eq!(left.rows, [[Value::Integer(0)]]);
+        // The fence is back: plugin SQL runs, and still cannot write the ledger.
+        db.execute("CREATE TABLE b (x)", &[], FAR).unwrap();
+        assert!(db
+            .execute(&format!("DELETE FROM {LEDGER}"), &[], FAR)
+            .is_err());
+    }
+
+    #[test]
+    fn a_batch_cannot_commit_halfway() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open(&dir);
+        db.execute("CREATE TABLE a (x)", &[], FAR).unwrap();
+        let stmts = [
+            ("INSERT INTO a VALUES (1)".to_string(), vec![]),
+            ("COMMIT".to_string(), vec![]),
+            ("nonsense".to_string(), vec![]),
+        ];
+        assert!(db.batch(&stmts, FAR).is_err());
+        let rows = db.query("SELECT count(*) FROM a", &[], FAR).unwrap();
+        assert_eq!(rows.rows, [[Value::Integer(0)]]);
+    }
+
+    #[test]
+    fn a_migration_that_never_ends_is_interrupted_and_rolled_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open(&dir);
+        let started = Instant::now();
+        let err = db
+            .migrate_within(
+                &[migration(
+                    1,
+                    "CREATE TABLE a (x); \
+                     WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c) \
+                     SELECT count(*) FROM c;",
+                )],
+                Duration::from_millis(100),
+            )
+            .unwrap_err();
+        assert!(started.elapsed() < FAR, "{err}");
+        let left = db
+            .query(
+                "SELECT count(*) FROM sqlite_schema WHERE name = 'a'",
+                &[],
+                FAR,
+            )
+            .unwrap();
+        assert_eq!(left.rows, [[Value::Integer(0)]]);
+    }
+
+    #[test]
+    fn retention_reads_iso_text_as_an_instant() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open(&dir);
+        db.execute("CREATE TABLE h (created_at)", &[], FAR).unwrap();
+        // The cutoff, 1_700_000_000, is 2023-11-14 22:13:20 UTC.
+        for at in [
+            "2023-11-14T22:13:19Z",
+            "2023-11-14 23:13:19+01:00",
+            "2023-11-14T22:13:21Z",
+            "2023-11-14T23:13:21+01:00",
+        ] {
+            db.execute("INSERT INTO h VALUES (?1)", &[Value::Text(at.into())], FAR)
+                .unwrap();
+        }
+        assert_eq!(db.forget_before(1_700_000_000).unwrap(), 2);
+        let left = db
+            .query("SELECT created_at FROM h ORDER BY created_at", &[], FAR)
+            .unwrap();
+        assert_eq!(
+            left.rows,
+            [
+                [Value::Text("2023-11-14T22:13:21Z".into())],
+                [Value::Text("2023-11-14T23:13:21+01:00".into())],
+            ]
+        );
     }
 }

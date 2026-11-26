@@ -1,3 +1,4 @@
+use crate::plugins::host::PluginHost;
 use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use std::future::Future;
 use std::pin::Pin;
@@ -183,6 +184,17 @@ pub struct ApiActor {
 }
 
 impl ApiActor {
+    /// Which of its plugin permissions show a project: their manifests' say.
+    /// Every way in (extractor, MCP) goes through here.
+    pub fn plugin_scoped(mut self, req: &HttpRequest) -> Self {
+        if let Some(host) = req.app_data::<web::Data<PluginHost>>() {
+            self.access = self
+                .access
+                .with_plugin_scopes(|key, action| host.permission_scope(key, action));
+        }
+        self
+    }
+
     /// The actor a token acts as: its owner, or full access for a legacy
     /// token with none (`user_id = None`).
     pub async fn for_token(pool: &DbPool, user_id: Option<i32>) -> AppResult<Self> {
@@ -327,8 +339,13 @@ impl FromRequest for ApiActor {
 
         Box::pin(async move {
             let pool = pool(&req)?;
+            let scoped = |actor: ApiActor| actor.plugin_scoped(&req);
             match api_token(&req, pool.get_ref()).await {
-                Ok(token) => return ApiActor::for_api_token(pool.get_ref(), &token).await,
+                Ok(token) => {
+                    return ApiActor::for_api_token(pool.get_ref(), &token)
+                        .await
+                        .map(scoped)
+                }
                 Err(ref e) if falls_through_to_session(e) => {}
                 Err(e) => return Err(e),
             }
@@ -347,10 +364,10 @@ impl FromRequest for ApiActor {
                 ));
             }
             let actor = ApiActor::for_user(pool.get_ref(), authed.0).await?;
-            Ok(ApiActor {
+            Ok(scoped(ApiActor {
                 via_session: true,
                 ..actor
-            })
+            }))
         })
     }
 }

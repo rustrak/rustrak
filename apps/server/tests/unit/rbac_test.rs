@@ -438,3 +438,40 @@ fn a_plugin_key_names_a_plugin_and_one_of_its_resources() {
         assert!(!rbac::is_plugin_key(not), "{not}");
     }
 }
+
+#[test]
+fn only_a_project_scoped_plugin_permission_shows_the_project() {
+    let plugin = |key: &str| Grants::default().with_plugins([(key.to_string(), Action::Read)]);
+    let scope_of = |key: &str, _: Action| match key {
+        "hello:hits" => Some(Scope::Project),
+        "hello:admin" => Some(Scope::Instance),
+        _ => None,
+    };
+    let project =
+        Access::new(vec![on_project(5, plugin("hello:hits"))]).with_plugin_scopes(scope_of);
+    assert!(project.can(Resource::Project, Action::Read, Some(5)));
+    assert_eq!(project.visible_projects(), ProjectScope::Only(vec![5]));
+
+    // Like Rustrak's workspace permissions: held wherever, it shows nothing.
+    for a in [
+        instance(plugin("hello:admin")),
+        on_project(5, plugin("hello:admin")),
+    ] {
+        let access = Access::new(vec![a]).with_plugin_scopes(scope_of);
+        assert!(!access.can(Resource::Project, Action::Read, Some(5)));
+    }
+
+    // Through a token, only one that keeps it.
+    let cap = |plugins: Grants| TokenScope {
+        grants: plugins,
+        projects: None,
+    };
+    let kept = Access::new(vec![on_project(5, plugin("hello:hits"))])
+        .with_plugin_scopes(scope_of)
+        .capped(cap(plugin("hello:hits")));
+    assert!(kept.can(Resource::Project, Action::Read, Some(5)));
+    let dropped = Access::new(vec![on_project(5, plugin("hello:hits"))])
+        .with_plugin_scopes(scope_of)
+        .capped(cap(Grants::default()));
+    assert!(!dropped.can(Resource::Project, Action::Read, Some(5)));
+}

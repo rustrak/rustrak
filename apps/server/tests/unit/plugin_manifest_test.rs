@@ -110,6 +110,19 @@ fn refuses_a_requirement_the_plugin_does_not_declare() {
 }
 
 #[test]
+fn refuses_a_requirement_on_a_public_route() {
+    // Nobody is signed in on a public route, so a requirement there would
+    // never be checked: refused rather than silently ignored.
+    let routes = ROUTES.replace(
+        r#""auth":"public","scope":"project","requires":null"#,
+        r#""auth":"public","scope":"project","requires":"dashboards:read""#,
+    );
+    let err = with_code(&routes).unwrap_err();
+    assert!(err.contains("POST /collect"), "{err}");
+    assert!(err.contains("public"), "{err}");
+}
+
+#[test]
 fn checks_the_host_version_against_the_declared_range() {
     let m = parse(VALID);
     assert!(m.supports_host(&Version::new(0, 33, 0)).is_ok());

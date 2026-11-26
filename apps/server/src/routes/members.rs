@@ -3,6 +3,7 @@
 //! Nobody changes their own membership, or hands out a role beyond what they
 //! hold on this project.
 
+use crate::plugins::host::PluginHost;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 
@@ -136,13 +137,14 @@ pub async fn member_candidates(
 /// Lists everyone holding a role on the project, with those roles; personal permissions are not roles.
 pub async fn list_members(
     pool: web::Data<DbPool>,
+    host: web::Data<PluginHost>,
     actor: ApiActor,
     path: web::Path<i32>,
 ) -> AppResult<HttpResponse> {
     let project_id = path.into_inner();
     actor.require(Resource::ProjectMembers, Action::Read, Some(project_id))?;
     ProjectService::get_by_id(pool.get_ref(), project_id).await?;
-    let members = RoleService::project_members(pool.get_ref(), project_id).await?;
+    let members = RoleService::project_members(pool.get_ref(), project_id, &host).await?;
     Ok(HttpResponse::Ok().json(members))
 }
 
@@ -165,6 +167,7 @@ pub async fn list_members(
 /// Sets the roles a user holds on the project.
 pub async fn upsert_member(
     pool: web::Data<DbPool>,
+    host: web::Data<PluginHost>,
     actor: ApiActor,
     path: web::Path<i32>,
     body: web::Json<SetProjectMember>,
@@ -186,7 +189,7 @@ pub async fn upsert_member(
     .await?;
     RoleService::set_project_roles(pool.get_ref(), project_id, body.user_id, &body.role_ids)
         .await?;
-    let members = RoleService::project_members(pool.get_ref(), project_id).await?;
+    let members = RoleService::project_members(pool.get_ref(), project_id, &host).await?;
     Ok(HttpResponse::Ok().json(members))
 }
 

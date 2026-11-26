@@ -390,6 +390,31 @@ async fn an_unconfirmed_destructive_tool_is_refused() {
 }
 
 #[actix_web::test]
+async fn a_plugin_retention_window_alone_needs_confirmation() {
+    let db = TestDb::new().await;
+    let admin = create_test_token(&db.pool).await;
+    let app = crate::common::app(&db.pool).await;
+    test::call_service(&app, set_mcp(&admin, true).to_request()).await;
+
+    let body: Value = test::call_and_read_body_json(
+        &app,
+        call_tool(
+            Some(&admin),
+            "update_retention",
+            json!({
+                "defaults": {}, "overrides": [], "frequency": "daily",
+                "hour": 3, "weekday": 0, "plugins": { "hello": 7 }
+            }),
+        )
+        .to_request(),
+    )
+    .await;
+    assert_eq!(body["result"]["isError"], json!(true), "{body}");
+    let text = body["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("confirm=true"), "{text}");
+}
+
+#[actix_web::test]
 async fn a_tool_whose_handler_answers_no_content_says_what_it_did() {
     let db = TestDb::new().await;
     let admin = create_test_token(&db.pool).await;

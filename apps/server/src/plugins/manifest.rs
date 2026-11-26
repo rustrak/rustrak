@@ -236,6 +236,11 @@ impl Manifest {
                 return fail(format!("route {key} is declared twice"));
             }
             if let Some(req) = &route.requires {
+                if route.auth == Auth::Public {
+                    return fail(format!(
+                        "route {key}: a public route has nobody signed in, so it cannot require {req}"
+                    ));
+                }
                 self.check_requirement(req)
                     .map_err(|e| ManifestError(format!("route {key}: {e}")))?;
             }

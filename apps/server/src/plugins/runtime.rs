@@ -20,7 +20,7 @@ wasmtime::component::bindgen!({ path: "wit", world: "plugin" });
 use self::rustrak::plugin::{log as plugin_log, settings, sql};
 
 /// Linear memory one instance may grow to.
-const MEMORY_LIMIT: usize = 32 << 20;
+pub(super) const MEMORY_LIMIT: usize = 32 << 20;
 /// One epoch tick. Deadlines are whole ticks.
 const TICK: Duration = Duration::from_millis(10);
 
@@ -150,7 +150,10 @@ impl Runtime {
             Host {
                 wasi: WasiCtx::builder().build(),
                 table: ResourceTable::new(),
-                limits: StoreLimitsBuilder::new().memory_size(MEMORY_LIMIT).build(),
+                limits: StoreLimitsBuilder::new()
+                    .memory_size(MEMORY_LIMIT)
+                    .memories(1)
+                    .build(),
                 plugin: plugin.id.clone(),
                 db: plugin.db.clone(),
                 deadline: Instant::now() + budget,
