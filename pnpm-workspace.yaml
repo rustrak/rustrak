@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+  # The plugin the server's and the compiler's tests build: a fixture, not an example.
+  - apps/server/tests/fixtures/hello-plugin
 
 allowBuilds:
   esbuild: true

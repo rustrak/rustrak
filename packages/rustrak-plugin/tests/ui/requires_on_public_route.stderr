@@ -1,0 +1,5 @@
+error: a public route has no user to check
+ --> tests/ui/requires_on_public_route.rs:3:35
+  |
+3 | #[post("/hit", public, requires = "stats:read")]
+  |                                   ^^^^^^^^^^^^

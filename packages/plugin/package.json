@@ -1,0 +1,70 @@
+{
+  "name": "@rustrak/plugin",
+  "version": "0.33.0",
+  "description": "The framework and compiler for Rustrak plugins: configuration, build and packing",
+  "homepage": "https://rustrak.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rustrak/rustrak.git",
+    "directory": "packages/plugin"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.mts",
+      "default": "./dist/ui/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "rustrak-plugin": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "check-types": "tsc --noEmit",
+    "lint": "biome check .",
+    "format:check": "biome format .",
+    "clean": "rm -rf dist",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+  },
+  "author": "AbianS",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "4.3.5",
+    "@vitejs/plugin-react": "6.3.0",
+    "fflate": "0.8.3",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.8"
+  },
+  "devDependencies": {
+    "@rustrak/ui": "workspace:*",
+    "@tanstack/react-query": "5.108.1",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tsdown": "0.23.7",
+    "typescript": "6.0.3",
+    "use-intl": "4.15.1",
+    "vitest": "5.1.1"
+  },
+  "peerDependencies": {
+    "@rustrak/ui": "workspace:*",
+    "@tanstack/react-query": "^5.100.0",
+    "react": "^19.0.0",
+    "use-intl": "^4.0.0"
+  }
+}

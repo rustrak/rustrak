@@ -1,0 +1,16 @@
+export {
+  type BooleanSetting,
+  defineConfig,
+  type NumberSetting,
+  type PermissionAction,
+  type PermissionDecl,
+  type Permissions,
+  type PluginConfig,
+  type Scope,
+  type SecretSetting,
+  type SelectSetting,
+  type SettingField,
+  type Settings,
+  type TextSetting,
+  type VersionRange,
+} from './config.ts';

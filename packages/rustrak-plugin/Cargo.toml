@@ -1,0 +1,22 @@
+[package]
+name = "rustrak-plugin"
+version = "0.1.0"
+edition = "2024"
+description = "The framework for writing Rustrak plugins: routes, permissions and the plugin's own database."
+license = "MIT"
+repository = "https://github.com/rustrak/rustrak"
+publish = false
+
+[dependencies]
+rustrak-plugin-macros = { path = "macros", version = "0.1.0" }
+wit-bindgen = "0.63.0"
+inventory = "0.3.25"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+serde_urlencoded = "0.7.1"
+
+[workspace]
+members = [".", "macros"]
+
+[dev-dependencies]
+trybuild = "1.0.125"

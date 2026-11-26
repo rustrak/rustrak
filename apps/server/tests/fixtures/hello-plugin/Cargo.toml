@@ -1,0 +1,16 @@
+[package]
+name = "rustrak-plugin-hello"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = ".rustrak/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustrak-plugin = { path = "../../../../../packages/rustrak-plugin" }
+serde = { version = "1.0.229", features = ["derive"] }
+
+# Not part of any workspace: each plugin builds on its own.
+[workspace]

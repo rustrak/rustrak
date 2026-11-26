@@ -4,4 +4,6 @@
 [toolchain]
 channel = "1.98"
 components = ["rustfmt", "clippy"]
+# Plugins compile to WebAssembly components (`plugins/`, and the server's tests build them).
+targets = ["wasm32-wasip2"]
 profile = "minimal"

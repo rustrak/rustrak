@@ -1,0 +1,4 @@
+{
+  "nav": { "visits": "Visits", "overview": "Overview" },
+  "greeting": "Hello {name}"
+}

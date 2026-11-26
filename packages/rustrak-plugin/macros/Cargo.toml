@@ -1,0 +1,16 @@
+[package]
+name = "rustrak-plugin-macros"
+version = "0.1.0"
+edition = "2024"
+description = "The attribute macros of rustrak-plugin. Use them through that crate."
+license = "MIT"
+repository = "https://github.com/rustrak/rustrak"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0.119", features = ["full"] }
+quote = "1.0.47"
+proc-macro2 = "1.0.107"

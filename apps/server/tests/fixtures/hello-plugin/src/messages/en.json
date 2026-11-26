@@ -1,0 +1,60 @@
+{
+  "nav": {
+    "hits": "Hits",
+    "about": "About Hello",
+    "hello": "Hello"
+  },
+  "hits": {
+    "title": "Hits",
+    "subtitle": "Every page view this project sent to Hello.",
+    "total": "Total hits",
+    "add": "Add a hit",
+    "path": "Path",
+    "addButton": "Add",
+    "latest": "Latest hits",
+    "none": "No hits yet",
+    "noneHint": "Send one with the project's DSN key, or add one here.",
+    "clear": "Clear",
+    "open": "Open",
+    "back": "Back to hits",
+    "detail": "Hit #{id}",
+    "recordedAt": "Recorded at",
+    "missing": "This hit does not exist any more"
+  },
+  "about": {
+    "title": "About Hello",
+    "body": "Plugin {plugin}, drawn in project {project}."
+  },
+  "instance": {
+    "title": "Hello",
+    "greeting": "{greeting} from every project."
+  },
+  "widget": {
+    "title": "Hello · {issue}",
+    "hits": "Hits in this project"
+  },
+  "settings": {
+    "greeting": {
+      "label": "Greeting",
+      "description": "What the Hello page says, outside any project."
+    },
+    "token": {
+      "label": "Signing token",
+      "description": "Kept by the server only; the browser never sees it."
+    },
+    "maxPathLength": {
+      "label": "Longest path",
+      "description": "Characters of a path kept per hit; the rest is cut."
+    }
+  },
+  "permissions": {
+    "stats": {
+      "label": "Hit counts",
+      "description": "See how many hits a project has."
+    },
+    "hits": {
+      "label": "Hits",
+      "description": "See each hit, and clear them."
+    }
+  }
+}
