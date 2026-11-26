@@ -45,6 +45,14 @@ impl Shed {
         [(Shed::Backlog, "backlog"), (Shed::Disk, "disk")];
 }
 
+/// How a plugin call ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginOutcome {
+    Ok,
+    Timeout,
+    Trap,
+}
+
 /// Upper bounds, in milliseconds, of the latency buckets. One more bucket
 /// past the last holds everything slower.
 pub(crate) const LATENCY_BOUNDS_MS: [u64; 13] =
@@ -71,6 +79,13 @@ pub(crate) struct Totals {
     pub alerts_failed_by_provider: BTreeMap<String, u64>,
     pub panics: BTreeMap<String, u64>,
     pub db_errors_by_code: BTreeMap<String, u64>,
+    pub plugin_calls: BTreeMap<String, u64>,
+    pub plugin_timeouts: BTreeMap<String, u64>,
+    pub plugin_traps: BTreeMap<String, u64>,
+    pub plugin_latency: [u64; LATENCY_BUCKETS],
+    pub plugin_busy: u64,
+    pub plugin_missing_settings: u64,
+    pub plugin_boot_failures: u64,
 }
 
 impl Totals {
@@ -92,6 +107,13 @@ impl Totals {
         alerts_failed_by_provider: BTreeMap::new(),
         panics: BTreeMap::new(),
         db_errors_by_code: BTreeMap::new(),
+        plugin_calls: BTreeMap::new(),
+        plugin_timeouts: BTreeMap::new(),
+        plugin_traps: BTreeMap::new(),
+        plugin_latency: [0; LATENCY_BUCKETS],
+        plugin_busy: 0,
+        plugin_missing_settings: 0,
+        plugin_boot_failures: 0,
     };
 }
 
@@ -113,6 +135,13 @@ pub struct Counters {
     alerts_failed_by_provider: Mutex<BTreeMap<String, u64>>,
     panics: Mutex<BTreeMap<String, u64>>,
     db_errors_by_code: Mutex<BTreeMap<String, u64>>,
+    plugin_calls: Mutex<BTreeMap<String, u64>>,
+    plugin_timeouts: Mutex<BTreeMap<String, u64>>,
+    plugin_traps: Mutex<BTreeMap<String, u64>>,
+    plugin_latency: [AtomicU64; LATENCY_BUCKETS],
+    plugin_busy: AtomicU64,
+    plugin_missing_settings: AtomicU64,
+    plugin_boot_failures: AtomicU64,
     /// What the last telemetry window ended at; the next one starts there.
     reported: Mutex<Totals>,
 }
@@ -143,6 +172,13 @@ impl Counters {
             alerts_failed_by_provider: Mutex::new(BTreeMap::new()),
             panics: Mutex::new(BTreeMap::new()),
             db_errors_by_code: Mutex::new(BTreeMap::new()),
+            plugin_calls: Mutex::new(BTreeMap::new()),
+            plugin_timeouts: Mutex::new(BTreeMap::new()),
+            plugin_traps: Mutex::new(BTreeMap::new()),
+            plugin_latency: [const { AtomicU64::new(0) }; LATENCY_BUCKETS],
+            plugin_busy: AtomicU64::new(0),
+            plugin_missing_settings: AtomicU64::new(0),
+            plugin_boot_failures: AtomicU64::new(0),
             reported: Mutex::new(Totals::ZERO),
         }
     }
@@ -155,11 +191,7 @@ impl Counters {
 
     pub fn ingest_accepted(&self, latency: Duration) {
         self.accepted.fetch_add(1, Relaxed);
-        let bucket = LATENCY_BOUNDS_MS
-            .iter()
-            .position(|bound| latency <= Duration::from_millis(*bound))
-            .unwrap_or(LATENCY_BOUNDS_MS.len());
-        self.latency[bucket].fetch_add(1, Relaxed);
+        self.latency[bucket(latency)].fetch_add(1, Relaxed);
         self.latency_us.fetch_add(
             u64::try_from(latency.as_micros()).unwrap_or(u64::MAX),
             Relaxed,
@@ -232,6 +264,34 @@ impl Counters {
         bump(&self.db_errors_by_code, code);
     }
 
+    /// One call into a plugin. `key` is its id when it came from the signed
+    /// registry and `upload` otherwise: an uploaded plugin's id is its
+    /// author's to keep.
+    pub fn plugin_call(&self, key: &str, latency: Duration, outcome: PluginOutcome) {
+        bump(&self.plugin_calls, key);
+        self.plugin_latency[bucket(latency)].fetch_add(1, Relaxed);
+        match outcome {
+            PluginOutcome::Ok => {}
+            PluginOutcome::Timeout => bump(&self.plugin_timeouts, key),
+            PluginOutcome::Trap => bump(&self.plugin_traps, key),
+        }
+    }
+
+    /// A plugin call refused because every turn on the pool was taken.
+    pub fn plugin_busy(&self) {
+        self.plugin_busy.fetch_add(1, Relaxed);
+    }
+
+    /// A plugin call refused because its required settings are not set.
+    pub fn plugin_missing_settings(&self) {
+        self.plugin_missing_settings.fetch_add(1, Relaxed);
+    }
+
+    /// An enabled plugin that did not load or activate at startup.
+    pub fn plugin_boot_failed(&self) {
+        self.plugin_boot_failures.fetch_add(1, Relaxed);
+    }
+
     /// Every counter as it stands.
     pub(crate) fn totals(&self) -> Totals {
         let load = |c: &AtomicU64| c.load(Relaxed);
@@ -255,6 +315,13 @@ impl Counters {
             alerts_failed_by_provider: map(&self.alerts_failed_by_provider),
             panics: map(&self.panics),
             db_errors_by_code: map(&self.db_errors_by_code),
+            plugin_calls: map(&self.plugin_calls),
+            plugin_timeouts: map(&self.plugin_timeouts),
+            plugin_traps: map(&self.plugin_traps),
+            plugin_latency: self.plugin_latency.each_ref().map(load),
+            plugin_busy: load(&self.plugin_busy),
+            plugin_missing_settings: load(&self.plugin_missing_settings),
+            plugin_boot_failures: load(&self.plugin_boot_failures),
         }
     }
 
@@ -278,6 +345,9 @@ impl Counters {
 fn window(now: &Totals, since: &Totals) -> Health {
     let latency: Vec<u64> = (0..LATENCY_BUCKETS)
         .map(|i| now.latency[i] - since.latency[i])
+        .collect();
+    let plugin_latency: Vec<u64> = (0..LATENCY_BUCKETS)
+        .map(|i| now.plugin_latency[i] - since.plugin_latency[i])
         .collect();
     let rejected = |r: Rejection| now.rejected[r as usize] - since.rejected[r as usize];
     let map = |now: &BTreeMap<String, u64>, since: &BTreeMap<String, u64>| {
@@ -313,7 +383,27 @@ fn window(now: &Totals, since: &Totals) -> Health {
         ),
         panics: map(&now.panics, &since.panics),
         db_errors_by_code: map(&now.db_errors_by_code, &since.db_errors_by_code),
+        plugins: PluginHealth {
+            calls: map(&now.plugin_calls, &since.plugin_calls),
+            timeouts: map(&now.plugin_timeouts, &since.plugin_timeouts),
+            traps: map(&now.plugin_traps, &since.plugin_traps),
+            latency_ms: Latency {
+                p50: percentile(&plugin_latency, 0.50),
+                p99: percentile(&plugin_latency, 0.99),
+            },
+            busy: now.plugin_busy - since.plugin_busy,
+            missing_settings: now.plugin_missing_settings - since.plugin_missing_settings,
+            boot_failures: now.plugin_boot_failures - since.plugin_boot_failures,
+        },
     }
+}
+
+/// The latency bucket `latency` falls in.
+fn bucket(latency: Duration) -> usize {
+    LATENCY_BOUNDS_MS
+        .iter()
+        .position(|bound| latency <= Duration::from_millis(*bound))
+        .unwrap_or(LATENCY_BOUNDS_MS.len())
 }
 
 fn bump(map: &Mutex<BTreeMap<String, u64>>, key: &str) {
@@ -348,6 +438,19 @@ pub struct Health {
     pub alerts_failed_by_provider: BTreeMap<String, u64>,
     pub panics: BTreeMap<String, u64>,
     pub db_errors_by_code: BTreeMap<String, u64>,
+    pub plugins: PluginHealth,
+}
+
+/// The window's plugin calls. Keyed by registry id, or `upload`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PluginHealth {
+    pub calls: BTreeMap<String, u64>,
+    pub timeouts: BTreeMap<String, u64>,
+    pub traps: BTreeMap<String, u64>,
+    pub latency_ms: Latency,
+    pub busy: u64,
+    pub missing_settings: u64,
+    pub boot_failures: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

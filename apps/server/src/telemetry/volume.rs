@@ -4,7 +4,7 @@
 use crate::db::DbPool;
 use crate::error::AppResult;
 
-use super::{blur_count, Volume};
+use super::{blur_count, Plugins, Volume};
 
 impl Volume {
     pub async fn collect(pool: &DbPool) -> AppResult<Self> {
@@ -37,6 +37,38 @@ impl Volume {
                 "SELECT COUNT(*) FROM project_repositories WHERE auto_create_issues = TRUE",
             )
             .await?,
+        })
+    }
+}
+
+impl Plugins {
+    pub async fn collect(pool: &DbPool) -> AppResult<Self> {
+        let enabled = "SELECT COUNT(*) FROM plugins WHERE state = 'enabled'";
+        let registry: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, version FROM plugins WHERE state = 'enabled' AND source = 'registry' ORDER BY id",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(Self {
+            installed: count(pool, enabled).await?,
+            from_registry: count(pool, &format!("{enabled} AND source = 'registry'")).await?,
+            from_upload: count(pool, &format!("{enabled} AND source = 'upload'")).await?,
+            all_projects: count(pool, &format!("{enabled} AND all_projects = TRUE")).await?,
+            project_activations: count(
+                pool,
+                "SELECT COUNT(*) FROM plugin_projects pp JOIN plugins p ON p.id = pp.plugin_id \
+                 WHERE p.state = 'enabled'",
+            )
+            .await?,
+            uninstalled: count(
+                pool,
+                "SELECT COUNT(*) FROM plugins WHERE state = 'uninstalled'",
+            )
+            .await?,
+            registry: registry
+                .into_iter()
+                .map(|(id, version)| format!("{id}@{version}"))
+                .collect(),
         })
     }
 }

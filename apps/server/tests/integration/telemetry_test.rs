@@ -156,6 +156,66 @@ mod instance_id {
     }
 }
 
+mod plugins {
+    use crate::common::TestDb;
+    use rustrak::models::CreateProject;
+    use rustrak::services::ProjectService;
+    use rustrak::telemetry::Plugins;
+
+    #[tokio::test]
+    async fn none_installed_is_all_zeros() {
+        let db = TestDb::new().await;
+        assert_eq!(
+            Plugins::collect(&db.pool).await.expect("collect"),
+            Plugins::default()
+        );
+    }
+
+    /// What is installed, where it runs, and the registry's ids only: an
+    /// uploaded plugin may be a company's own, so it is a count.
+    #[tokio::test]
+    async fn counts_what_is_installed_and_names_only_registry_plugins() {
+        let db = TestDb::new().await;
+        let project = ProjectService::create(
+            &db.pool,
+            CreateProject {
+                name: "web".to_string(),
+                slug: None,
+                platform: None,
+            },
+        )
+        .await
+        .expect("project");
+        sqlx::query(
+            "INSERT INTO plugins (id, version, state, source, all_projects) VALUES
+             ('web-traffic', '1.2.0', 'enabled', 'registry', TRUE),
+             ('internal', '0.1.0', 'enabled', 'upload', FALSE),
+             ('old', '1.0.0', 'uninstalled', 'registry', FALSE)",
+        )
+        .execute(&db.pool)
+        .await
+        .expect("plugins");
+        sqlx::query("INSERT INTO plugin_projects (plugin_id, project_id) VALUES ('internal', $1)")
+            .bind(project.id)
+            .execute(&db.pool)
+            .await
+            .expect("activation");
+
+        assert_eq!(
+            Plugins::collect(&db.pool).await.expect("collect"),
+            Plugins {
+                installed: 2,
+                from_registry: 1,
+                from_upload: 1,
+                all_projects: 1,
+                project_activations: 1,
+                uninstalled: 1,
+                registry: vec!["web-traffic@1.2.0".to_string()],
+            }
+        );
+    }
+}
+
 mod volume {
     use crate::common::TestDb;
     use rustrak::models::{CreateProject, CreateUserRequest, UserRole};
@@ -363,6 +423,8 @@ mod reporter {
                 alert_providers: vec![],
                 github_connected: false,
                 quota_customized: false,
+                plugin_registry: true,
+                plugin_registry_custom_keys: false,
             },
             sqlite_path: None,
             ingest_dir: std::env::temp_dir(),

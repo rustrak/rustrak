@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, OnceLock, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use semver::Version;
 use sqlx::types::Json;
@@ -28,6 +28,7 @@ use super::store::PluginDb;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldError, FieldErrorCode};
 use crate::models::rbac::{plugin_key, Action, Scope};
+use crate::telemetry::{Counters, PluginOutcome};
 
 /// A plugin's own logo, in its package and among its assets.
 const LOGO: &str = "logo.svg";
@@ -368,10 +369,14 @@ impl PluginHost {
                 Ok(installed) => {
                     log::info!("plugin {id} {version} loaded");
                     if let Err(e) = self.activate(pool, installed).await {
+                        Counters::global().plugin_boot_failed();
                         log::error!("plugin {id} {version} was not activated: {e}");
                     }
                 }
-                Err(e) => log::error!("plugin {id} {version} was not loaded: {e}"),
+                Err(e) => {
+                    Counters::global().plugin_boot_failed();
+                    log::error!("plugin {id} {version} was not loaded: {e}");
+                }
             }
         }
         Ok(())
@@ -814,6 +819,7 @@ impl PluginHost {
         let project = req.project_id.and_then(|p| i32::try_from(p).ok());
         let missing = settings::missing(&plugin.manifest.settings, &plugin.settings(project));
         if !missing.is_empty() {
+            Counters::global().plugin_missing_settings();
             return Err(AppError::Unavailable(format!(
                 "plugin {} needs its settings first: {}",
                 plugin.manifest.plugin.id,
@@ -823,10 +829,29 @@ impl PluginHost {
         let runtime = self.runtime()?;
         let call = plugin.clone();
         let settings = settings_source(plugin.clone());
-        run_call(&CALLS, QUEUE_WAIT, move || {
+        let started = Instant::now();
+        let result = run_call(&CALLS, QUEUE_WAIT, move || {
             runtime.handle_http(&call.loaded, req, budget, settings)
         })
-        .await
+        .await;
+        let counters = Counters::global();
+        let key = if plugin.verified {
+            plugin.manifest.plugin.id.as_str()
+        } else {
+            "upload"
+        };
+        match &result {
+            Ok(Ok(_)) => counters.plugin_call(key, started.elapsed(), PluginOutcome::Ok),
+            Ok(Err(CallError::Timeout)) => {
+                counters.plugin_call(key, started.elapsed(), PluginOutcome::Timeout)
+            }
+            Ok(Err(CallError::Trap(_))) => {
+                counters.plugin_call(key, started.elapsed(), PluginOutcome::Trap)
+            }
+            Err(AppError::Unavailable(_)) => counters.plugin_busy(),
+            Err(_) => {}
+        }
+        result
     }
 }
 

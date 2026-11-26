@@ -192,6 +192,43 @@ mod counters {
         assert_eq!(counters.snapshot_and_reset(), peeked);
     }
 
+    /// A plugin's calls by its key (its id from the registry, `upload`
+    /// otherwise), with how they ended and how long they took.
+    #[test]
+    fn plugin_calls_are_counted_by_key_with_their_outcome() {
+        use rustrak::telemetry::PluginOutcome;
+        let counters = Counters::new();
+        counters.plugin_call("web-traffic", Duration::from_millis(4), PluginOutcome::Ok);
+        counters.plugin_call(
+            "web-traffic",
+            Duration::from_millis(400),
+            PluginOutcome::Timeout,
+        );
+        counters.plugin_call("upload", Duration::from_millis(1), PluginOutcome::Trap);
+        counters.plugin_busy();
+        counters.plugin_missing_settings();
+        counters.plugin_boot_failed();
+
+        let p = counters.snapshot_and_reset().plugins;
+        assert_eq!(p.calls["web-traffic"], 2);
+        assert_eq!(p.calls["upload"], 1);
+        assert_eq!(p.timeouts["web-traffic"], 1);
+        assert!(!p.timeouts.contains_key("upload"));
+        assert_eq!(p.traps["upload"], 1);
+        assert!(!p.traps.contains_key("web-traffic"));
+        assert_eq!((p.busy, p.missing_settings, p.boot_failures), (1, 1, 1));
+        assert_eq!(p.latency_ms.p50, Some(5));
+        assert_eq!(p.latency_ms.p99, Some(500));
+
+        let next = counters.snapshot_and_reset().plugins;
+        assert!(next.calls.is_empty());
+        assert_eq!(
+            (next.busy, next.missing_settings, next.boot_failures),
+            (0, 0, 0)
+        );
+        assert_eq!(next.latency_ms.p50, None);
+    }
+
     /// Every hook in the request path bumps the same process-wide set.
     #[test]
     fn the_global_set_is_one_instance() {

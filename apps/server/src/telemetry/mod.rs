@@ -14,9 +14,9 @@ pub mod reporter;
 pub mod resources;
 pub mod volume;
 
-pub use counters::{Counters, Health, Rejection, Shed};
+pub use counters::{Counters, Health, PluginHealth, PluginOutcome, Rejection, Shed};
 pub use identity::instance_id;
-pub use report::{ConfigFacts, Report, Sink, SinkError, Volume, SCHEMA};
+pub use report::{ConfigFacts, Plugins, Report, Sink, SinkError, Volume, SCHEMA};
 pub use reporter::{Context, Reporter, Schedule};
 pub use resources::{probe, Rss, Sampler};
 pub use volume::{alert_providers, github_connected};

@@ -61,6 +61,18 @@ Every count below is blurred to two significant digits before it leaves:
 | `events_24h`, `transactions_24h`, `sessions_24h`, `logs_24h` | How many arrived in the last 24 hours |
 | `github_projects`, `github_auto_create_projects` | How many projects have a GitHub repository connected, and how many of them open GitHub issues automatically. Never which repository |
 
+### Plugins
+
+What is installed and where it runs. Counts are blurred like the ones above.
+
+| Field | What it is |
+|---|---|
+| `plugins.installed`, `plugins.from_registry`, `plugins.from_upload` | Enabled plugins, and how many came from the signed registry or were uploaded by hand |
+| `plugins.all_projects` | Plugins turned on in every project |
+| `plugins.project_activations` | Plugins turned on one project at a time, counted per project |
+| `plugins.uninstalled` | Plugins uninstalled with their data kept |
+| `plugins.registry` | `id@version` of each enabled plugin from the registry, such as `["web-traffic@1.2.0"]`. Those ids are public. A plugin you uploaded yourself is never named, only counted |
+
 ### Health
 
 Counters since the previous report. This is the part that tells us what is
@@ -77,6 +89,11 @@ breaking.
 | `alerts_failed_by_provider` | Alert deliveries that failed, per provider kind (`slack`, `webhook`, …) |
 | `db_errors_by_code` | Database errors behind a server error or a failed digest, per error code alone: a SQLSTATE on PostgreSQL (`22001`), a result code on SQLite. The message, which can name tables and values, is never included |
 | `panics` | Panics per source location inside Rustrak's own code (`src/digest/mod.rs:212`). The panic message is never included, because it could carry a path or a query |
+| `plugins.calls`, `plugins.timeouts`, `plugins.traps` | Calls into plugins, the ones that ran past their time budget, and the ones that crashed, per registry plugin id. Uploaded plugins add up under `upload`. The crash message is never included |
+| `plugins.latency_ms.{p50,p99}` | Plugin call latency percentiles, on the same scale as ingest |
+| `plugins.busy` | Plugin calls refused because every plugin thread was taken |
+| `plugins.missing_settings` | Plugin calls refused because a required setting is not filled in |
+| `plugins.boot_failures` | Enabled plugins that failed to load at startup |
 
 ### Configuration
 
@@ -88,6 +105,8 @@ Booleans and kinds only, never values.
 | `alert_providers` | The kinds of alert channel enabled, such as `["slack", "webhook"]` |
 | `github_connected` | Whether a GitHub App is connected. Not which one, nor the account it is installed on |
 | `quota_customized` | Whether any `MAX_EVENTS_*` limit differs from its default. The limits themselves are not sent |
+| `plugin_registry` | Whether the plugin registry is on (`RUSTRAK_PLUGIN_REGISTRY` is not `off`). Not its URL |
+| `plugin_registry_custom_keys` | Whether `RUSTRAK_PLUGIN_REGISTRY_KEYS` adds signing keys. Not the keys |
 
 ## What is never sent
 

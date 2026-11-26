@@ -252,3 +252,49 @@ async fn what_the_code_declares_cannot_be_written_in_the_manifest() {
         assert!(state.plugins.get("hello").is_none(), "{why}");
     }
 }
+
+/// Each call is counted for the telemetry under the plugin's id when it came
+/// from the registry, and as `upload` when it did not: an uploaded plugin's
+/// id can name a company's own code.
+#[actix_web::test]
+async fn calls_are_counted_by_registry_id_or_as_upload() {
+    let counters = rustrak::telemetry::Counters::global();
+    let calls = |key: &str| {
+        counters
+            .snapshot()
+            .plugins
+            .calls
+            .get(key)
+            .copied()
+            .unwrap_or(0)
+    };
+    for (source, key) in [(Source::Upload, "upload"), (Source::Registry, "hello")] {
+        let db = TestDb::new().await;
+        let state = common::state(&db.pool, common::config()).await;
+        let (project_id, key_) = common::create_ingest_project(&db.pool, "web").await;
+        state
+            .plugins
+            .install(&db.pool, hello_rtp(), source)
+            .await
+            .unwrap();
+        state
+            .plugins
+            .set_projects(&db.pool, "hello", true, None)
+            .await
+            .unwrap();
+        let app = common::app_with(&state).await;
+        let before = calls(key);
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::post()
+                .uri(&format!(
+                    "/api/projects/{project_id}/plugins/hello/hit?sentry_key={key_}"
+                ))
+                .set_payload("/home")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        assert!(calls(key) > before, "{key} was not counted");
+    }
+}

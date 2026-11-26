@@ -1,6 +1,6 @@
 //! Fixtures for the anonymous telemetry tests.
 
-use rustrak::telemetry::{ConfigFacts, Counters, Report, Rss, Volume};
+use rustrak::telemetry::{ConfigFacts, Counters, Plugins, Report, Rss, Volume};
 
 /// A fully populated report with recognisable values.
 pub fn sample_report() -> Report {
@@ -36,6 +36,7 @@ pub fn sample_report() -> Report {
             github_projects: 0,
             github_auto_create_projects: 0,
         },
+        plugins: Plugins::default(),
         health: Counters::new().snapshot_and_reset(),
         config: ConfigFacts {
             ssl_proxy: true,
@@ -45,6 +46,8 @@ pub fn sample_report() -> Report {
             alert_providers: vec!["slack".to_string()],
             github_connected: false,
             quota_customized: true,
+            plugin_registry: true,
+            plugin_registry_custom_keys: false,
         },
     }
 }

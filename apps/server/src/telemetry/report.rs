@@ -34,6 +34,7 @@ pub struct Report {
     pub sqlite_db_mb: Option<u64>,
     pub ingest_dir_pending: u64,
     pub volume: Volume,
+    pub plugins: Plugins,
     pub health: Health,
     pub config: ConfigFacts,
 }
@@ -54,6 +55,22 @@ pub struct Volume {
     pub github_auto_create_projects: u64,
 }
 
+/// What plugins are installed and where they run. Counts are blurred; only
+/// plugins from the signed registry are named, since those ids are public.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+pub struct Plugins {
+    pub installed: u64,
+    pub from_registry: u64,
+    pub from_upload: u64,
+    /// Turned on in every project.
+    pub all_projects: u64,
+    /// Plugin and project pairs turned on one by one.
+    pub project_activations: u64,
+    pub uninstalled: u64,
+    /// `id@version` of each installed registry plugin, sorted.
+    pub registry: Vec<String>,
+}
+
 /// Which knobs are set. Booleans and kinds only, never values.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
 pub struct ConfigFacts {
@@ -66,6 +83,10 @@ pub struct ConfigFacts {
     pub github_connected: bool,
     /// Whether any quota limit differs from its default. Never the limits.
     pub quota_customized: bool,
+    /// Whether the plugin registry is on (`RUSTRAK_PLUGIN_REGISTRY` not `off`).
+    pub plugin_registry: bool,
+    /// Whether `RUSTRAK_PLUGIN_REGISTRY_KEYS` adds keys. Never the keys.
+    pub plugin_registry_custom_keys: bool,
 }
 
 #[derive(Debug, thiserror::Error)]

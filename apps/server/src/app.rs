@@ -153,6 +153,9 @@ impl AppState {
                     alert_providers: Vec::new(),
                     github_connected: false,
                     quota_customized: config.rate_limit.is_customized(),
+                    plugin_registry: config.plugin_registry.is_some(),
+                    plugin_registry_custom_keys: config.plugin_registry_keys.len()
+                        > crate::plugins::registry::OFFICIAL_KEYS.len(),
                 },
                 sqlite_path: telemetry::sqlite_path_from_url(&config.database.url),
                 ingest_dir: config.ingest_dir.clone(),

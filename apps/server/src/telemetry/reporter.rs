@@ -10,7 +10,9 @@ use std::time::{Duration, Instant};
 use crate::db::DbPool;
 use crate::error::AppResult;
 
-use super::{instance_id, probe, ConfigFacts, Counters, Report, Sampler, Sink, Volume, SCHEMA};
+use super::{
+    instance_id, probe, ConfigFacts, Counters, Plugins, Report, Sampler, Sink, Volume, SCHEMA,
+};
 
 /// What `main` knows and the reporter cannot find out by itself.
 #[derive(Debug, Clone)]
@@ -126,6 +128,7 @@ impl Reporter {
             sqlite_db_mb: disk.sqlite_db_mb,
             ingest_dir_pending: super::blur_count(disk.ingest_dir_pending),
             volume: Volume::collect(&self.pool).await?,
+            plugins: Plugins::collect(&self.pool).await?,
             health,
             config: ConfigFacts {
                 alert_providers: super::alert_providers(&self.pool).await?,
