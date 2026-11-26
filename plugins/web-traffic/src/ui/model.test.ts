@@ -103,6 +103,17 @@ describe("a visitor's day", () => {
     expect(visits([])).toEqual([]);
   });
 
+  it('splits at a pause between pages, as the totals do, whatever events fall in it', () => {
+    const event = (at: number) => ({ ...step(at), kind: 'event' as const });
+    // Pages at 12:00 and 12:40, an event at 12:20: two visits.
+    const day = [step(0), event(20 * 60), step(40 * 60)];
+    expect(visits(day).map((v) => v.length)).toEqual([2, 1]);
+    // A day of events alone splits at a pause between them.
+    expect(
+      visits([event(0), event(60), event(2 * 3600)]).map((v) => v.length),
+    ).toEqual([2, 1]);
+  });
+
   it('counts the steps a long day leaves out of its list', () => {
     const day = [step(0), step(60)];
     expect(unshown(day, { pageviews: 600, events: 1 })).toBe(599);

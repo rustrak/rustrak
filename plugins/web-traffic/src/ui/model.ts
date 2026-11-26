@@ -226,17 +226,29 @@ export interface Occurrence {
   data: string | null;
 }
 
-/** A pause this long between two steps starts a new visit, as Umami does. */
+/**
+ * A pause this long between two pages starts a new visit, as Umami does and
+ * as the server's totals count them (`VISIT_GAP` in `models/stats.rs`).
+ */
 const VISIT_GAP = 30 * 60;
 
-/** A day's steps split into visits. */
+/**
+ * A day's steps split into visits: at a pause between pages, the events in
+ * it going with the visit they follow. A day of events alone splits at a
+ * pause between them.
+ */
 export function visits(steps: readonly Step[]): Step[][] {
+  const isPage = (s: Step) => s.kind === 'pageview';
   const out: Step[][] = [];
+  // The visit's last page; before its first, its last step.
+  let mark = 0;
   for (const step of steps) {
     const current = out.at(-1);
-    const last = current?.at(-1);
-    if (!current || !last || step.at - last.at > VISIT_GAP) out.push([step]);
+    const paged = current?.some(isPage) ?? false;
+    const measured = isPage(step) || !paged;
+    if (!current || (measured && step.at - mark > VISIT_GAP)) out.push([step]);
     else current.push(step);
+    if (isPage(step) || !(out.at(-1) ?? []).some(isPage)) mark = step.at;
   }
   return out;
 }
