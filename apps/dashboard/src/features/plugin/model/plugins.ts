@@ -84,7 +84,8 @@ export const bySidebarRank = (
 /**
  * A plugin page's key among saved views: at most the server's 64 characters.
  * A longer one keeps its start and ends in a hash of the whole, so two long
- * addresses never share their views.
+ * addresses never share their views; it starts `plugin~`, which no short
+ * key does, so none can be mistaken for a short one.
  */
 export function viewPage(pluginId: string, at: string): string {
   const key = `plugin:${pluginId}/${at}`;
@@ -93,7 +94,8 @@ export function viewPage(pluginId: string, at: string): string {
   for (let i = 0; i < key.length; i++) {
     hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
   }
-  return `${key.slice(0, 55)}~${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  const start = `plugin~${pluginId}/${at}`.slice(0, 55);
+  return `${start}~${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 /**

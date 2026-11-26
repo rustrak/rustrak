@@ -107,19 +107,25 @@ function usePluginChoice(project: string) {
   };
 }
 
-/** One box per plugin whose history can go, all ticked to start with. */
+/**
+ * One box per plugin whose history can go, all ticked to start with; a line
+ * saying so when they could not be read.
+ */
 function PluginChoices({
   plugins,
+  failed,
   unchecked,
   onChange,
   disabled,
 }: {
   plugins: readonly PluginStorage[];
+  failed: boolean;
   unchecked: ReadonlySet<string>;
   onChange: (ids: ReadonlySet<string>) => void;
   disabled: boolean;
 }) {
   const t = useTranslations('storage');
+  if (failed) return <PluginsLoadFailed />;
   return plugins.map((plugin) => (
     <Choice
       key={plugin.id}
@@ -224,10 +230,10 @@ function Editor({
             hint={t('delete.sourceMapsHint')}
             disabled={isPending}
           />
-          {project === ALL && failed ? <PluginsLoadFailed /> : null}
           {project === ALL ? (
             <PluginChoices
               plugins={withHistory}
+              failed={failed}
               unchecked={unchecked}
               onChange={setUnchecked}
               disabled={isPending}

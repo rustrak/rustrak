@@ -92,8 +92,15 @@ describe('viewPage', () => {
     expect(a.length).toBeLessThanOrEqual(64);
     expect(b.length).toBeLessThanOrEqual(64);
     expect(a).not.toBe(b);
-    expect(a.startsWith('plugin:hello/xxx')).toBe(true);
+    expect(a.startsWith('plugin~hello/xxx')).toBe(true);
     expect(viewPage('hello', `${'x'.repeat(80)}/a`)).toBe(a);
+  });
+
+  it('never gives a short address the key of a long one', () => {
+    const long = viewPage('hello', 'x'.repeat(80));
+    // The rest of a hashed key, read back as a short address of its own.
+    const short = viewPage('hello', long.slice('plugin:hello/'.length));
+    expect(short).not.toBe(long);
   });
 });
 
