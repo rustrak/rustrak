@@ -1,6 +1,6 @@
 {
   "name": "@rustrak/ui",
-  "version": "0.34.0",
+  "version": "0.34.1",
   "description": "Rustrak's design system: the dashboard's components and tokens, for plugin interfaces too",
   "license": "MIT",
   "repository": {

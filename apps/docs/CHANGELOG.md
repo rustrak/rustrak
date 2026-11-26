@@ -1,5 +1,13 @@
 # docs
 
+## 0.19.2
+
+### Patch Changes
+
+- [`6d9d141`](https://github.com/rustrak/rustrak/commit/6d9d14179366bedc1d90c86ae561e7b124f4d2a1) Thanks [@AbianS](https://github.com/AbianS)! - Plugins section (beta) with eight pages, terminal and dashboard demos, the plugin variables in the environment reference, and a blog post on why Rustrak has plugins.
+- Updated dependencies []:
+  - @rustrak/ui@0.34.1
+
 ## 0.19.1
 
 ### Patch Changes
