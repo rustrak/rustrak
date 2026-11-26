@@ -252,6 +252,20 @@ phone talks to the same server.
 
 <img width="2000" height="1100" alt="wp-mobile" src="https://github.com/user-attachments/assets/002b6433-4167-4b04-8c5a-4e7d8c483e30" />
 
+## Plugins (beta)
+
+Rustrak stays small on purpose, and its core follows Sentry. Features Sentry
+does not have, or that only some teams use, would make everyone pay for them
+in memory and complexity. Plugins let Rustrak grow without that: whoever needs
+something installs it from **Settings → Plugins** in one click, and whoever
+does not never notices.
+
+<img width="2000" height="900" alt="The Web Traffic plugin's overview inside Rustrak, with its pages under its own name in the project sidebar" src="PLUGINS_IMAGE_URL" />
+
+The first one is **Web Traffic**: who visits your site and where they come
+from, without cookies. Missing something? Build it as a plugin instead of
+another app. See the [plugins documentation](https://rustrak.dev/plugins/overview).
+
 ## From code, and from your editor
 
 The REST API has a typed client, and the server has an MCP endpoint built in,
