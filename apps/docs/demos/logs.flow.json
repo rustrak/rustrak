@@ -1,16 +1,40 @@
 {
   "title": "Search logs",
   "url": "http://localhost:8090/projects/3/logs",
-  "viewport": { "width": 1440, "height": 900 },
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
   "steps": [
-    { "action": "wait", "for": { "role": "heading", "name": "Logs" } },
+    {
+      "action": "wait",
+      "for": {
+        "role": "heading",
+        "name": "Logs"
+      }
+    },
     {
       "action": "click",
       "target": {
-        "role": "combobox",
-        "name": "Filter by key:value, or search…"
+        "role": "button",
+        "name": "Environment"
       },
-      "tooltip": "Search the messages, or filter with level: and trace:"
+      "tooltip": "Keep the logs of one environment"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "menuitem",
+        "name": "production"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "menuitem",
+        "name": "production"
+      },
+      "hotspot": false
     },
     {
       "action": "fill",
@@ -20,31 +44,59 @@
       },
       "value": "level:error"
     },
-    { "action": "press", "key": "Enter" },
+    {
+      "action": "press",
+      "key": "Enter"
+    },
     {
       "action": "wait",
-      "for": { "role": "button", "name": "Remove Level filter" }
+      "for": {
+        "role": "button",
+        "name": "Remove Level filter"
+      }
     },
     {
       "action": "click",
-      "target": { "text": "Renewal failed for subscription", "nth": 0 },
-      "tooltip": "Open a line: its time, trace and every attribute it was sent with"
+      "target": {
+        "text": "Renewal failed for subscription",
+        "nth": 0
+      },
+      "tooltip": "Open a line in place: its trace, environment and every attribute, grouped"
     },
-    { "action": "wait", "for": { "text": "Attributes" } },
+    {
+      "action": "wait",
+      "for": {
+        "text": "Attributes"
+      }
+    },
     {
       "action": "click",
-      "target": { "text": "Logs in this trace" },
+      "target": {
+        "role": "button",
+        "name": "Logs in this trace"
+      },
       "hotspot": false
     },
     {
       "action": "wait",
-      "for": { "role": "button", "name": "Remove Trace filter" }
+      "for": {
+        "role": "button",
+        "name": "Remove Trace filter"
+      }
     },
     {
       "action": "click",
-      "target": { "role": "button", "name": "Remove Level filter" },
+      "target": {
+        "role": "button",
+        "name": "Remove Level filter"
+      },
       "tooltip": "Filter by its trace, drop the level: the whole request, line by line"
     },
-    { "action": "wait", "for": { "text": "Charging renewal for subscription" } }
+    {
+      "action": "wait",
+      "for": {
+        "text": "Charging renewal for subscription"
+      }
+    }
   ]
 }

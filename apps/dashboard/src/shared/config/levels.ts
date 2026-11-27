@@ -14,7 +14,8 @@ const SEVERITY: Record<string, Severity> = {
 
 /** A level's tone, as a `Tag` takes it; none for debug, trace or unknown. */
 export function levelTone(level?: string | null): Severity | undefined {
-  return SEVERITY[level ?? ''];
+  // Own keys only: levels are whatever an SDK sent, `constructor` included.
+  return level && Object.hasOwn(SEVERITY, level) ? SEVERITY[level] : undefined;
 }
 
 const MARK: Record<Severity, string> = {

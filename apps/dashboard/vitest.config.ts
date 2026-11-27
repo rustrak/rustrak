@@ -42,11 +42,11 @@ export default defineConfig({
     // rules assert with. Not a convenience.
     globals: true,
     // The architecture rules, plus unit tests for pure modules: a feature's
-    // `model` and `lib`, `shared/{lib,i18n,api}`, and a route's own
+    // `model` and `lib`, `shared/{lib,i18n,api,config}`, and a route's own
     // `-components` helpers. Anywhere else, a `.test.ts` is not collected.
     include: [
       'src/__tests__/architecture/**/*.test.ts',
-      'src/{features/*/{model,lib},shared/{lib,i18n,api}}/**/*.test.ts',
+      'src/{features/*/{model,lib},shared/{lib,i18n,api,config}}/**/*.test.ts',
       'src/routes/**/-components/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],

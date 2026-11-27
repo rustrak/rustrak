@@ -261,7 +261,6 @@
     "pageOf": "Pagina {page} din {total}",
     "newer": "Jurnale mai noi",
     "older": "Jurnale mai vechi",
-    "back": "Înapoi la jurnale",
     "close": "Închide",
     "time": "Ora",
     "severity": "Severitate",
@@ -279,7 +278,12 @@
       "warn": "Avertisment",
       "error": "Eroare",
       "fatal": "Fatal"
-    }
+    },
+    "environment": "Mediu",
+    "sameEnvironment": "Logurile din acest mediu",
+    "copyJson": "Copiază JSON",
+    "message": "Mesaj",
+    "ownAttributes": "proprii"
   },
   "issues": {
     "columns": {

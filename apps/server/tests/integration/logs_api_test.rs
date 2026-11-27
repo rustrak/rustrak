@@ -198,6 +198,73 @@ async fn test_list_logs_searches_the_message_ignoring_case() {
     assert_eq!(body["total_count"], 1);
 }
 
+/// One log per environment the SDK sent, and one sent with none.
+async fn logs_by_environment() -> (TestDb, i32, String) {
+    let (db, project, token) = recent_and_old_logs().await;
+    let now = Utc::now().timestamp() as f64;
+    let env =
+        |name: &str| serde_json::json!({"sentry.environment": {"value": name, "type": "string"}});
+    store_logs(
+        &db.pool,
+        project,
+        serde_json::json!([
+            {"timestamp": now - 5.0, "level": "error", "body": "prod boom", "attributes": env("production")},
+            {"timestamp": now - 4.0, "level": "info", "body": "staging ok", "attributes": env("staging")},
+        ]),
+    )
+    .await;
+    (db, project, token)
+}
+
+#[actix_web::test]
+async fn test_list_logs_filters_by_environment() {
+    let (db, project, token) = logs_by_environment().await;
+
+    let body = get_json(
+        &db.pool,
+        &format!("/api/projects/{project}/logs?environment=production"),
+        &token,
+    )
+    .await;
+    assert_eq!(body["total_count"], 1);
+    assert_eq!(body["items"][0]["body"], "prod boom");
+    assert_eq!(body["items"][0]["environment"], "production");
+
+    let body = get_json(&db.pool, &format!("/api/projects/{project}/logs"), &token).await;
+    assert_eq!(body["total_count"], 7);
+    // A log sent without one has none, as Relay leaves it.
+    assert_eq!(
+        body["items"].as_array().unwrap().last().unwrap()["environment"],
+        Value::Null
+    );
+}
+
+#[actix_web::test]
+async fn test_log_volume_filters_by_environment() {
+    let (db, project, token) = logs_by_environment().await;
+
+    let body = get_json(
+        &db.pool,
+        &format!("/api/projects/{project}/logs/volume?environment=staging&period=24h"),
+        &token,
+    )
+    .await;
+    assert_eq!(volume_total(&body), 1);
+}
+
+#[actix_web::test]
+async fn test_environments_include_the_ones_logs_were_sent_from() {
+    let (db, project, token) = logs_by_environment().await;
+
+    let body = get_json(
+        &db.pool,
+        &format!("/api/projects/{project}/environments"),
+        &token,
+    )
+    .await;
+    assert_eq!(body, serde_json::json!(["production", "staging"]));
+}
+
 #[actix_web::test]
 async fn test_list_logs_keeps_the_window() {
     let (db, project, token) = recent_and_old_logs().await;
@@ -370,4 +437,86 @@ async fn test_get_log_answers_for_its_project_only() {
             .to_request();
         assert_eq!(test::call_service(&app, req).await.status(), 404, "{uri}");
     }
+}
+
+/// Logs stored before environments had a column get theirs from the
+/// `sentry.environment` attribute; one sent without it stays without.
+#[cfg(feature = "sqlite")]
+#[actix_web::test]
+async fn the_migration_fills_in_the_environment_of_stored_logs() {
+    use sqlx::migrate::Migrator;
+    use std::borrow::Cow;
+
+    const VERSION: i64 = 20261203000000;
+    let dir = tempfile::tempdir().unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(dir.path().join("m.sqlite"))
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    let all = sqlx::migrate!("./migrations/sqlite");
+    let mut before = Migrator::new(std::path::Path::new("./migrations/sqlite"))
+        .await
+        .unwrap();
+    before.migrations = Cow::Owned(
+        all.migrations
+            .iter()
+            .filter(|m| m.version < VERSION)
+            .cloned()
+            .collect(),
+    );
+    before.run(&pool).await.unwrap();
+
+    let project_id: i32 = sqlx::query_scalar(
+        "INSERT INTO projects (name, slug, sentry_key) VALUES ('legacy', 'legacy', $1) RETURNING id",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    for (body, attributes) in [
+        (
+            "prod",
+            r#"{"sentry.environment":{"value":"production","type":"string"}}"#,
+        ),
+        ("none", r#"{"other":{"value":"x","type":"string"}}"#),
+        // Not a string: ingestion keeps no environment for it, so neither
+        // does the backfill.
+        (
+            "number",
+            r#"{"sentry.environment":{"value":42,"type":"integer"}}"#,
+        ),
+    ] {
+        sqlx::query(
+            "INSERT INTO logs (id, project_id, body, attributes, timestamp) \
+             VALUES ($1, $2, $3, $4, datetime('now'))",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(project_id)
+        .bind(body)
+        .bind(attributes)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    all.run(&pool).await.unwrap();
+
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT body, environment FROM logs ORDER BY body")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        rows,
+        [
+            ("none".to_string(), None),
+            ("number".to_string(), None),
+            ("prod".to_string(), Some("production".to_string()))
+        ]
+    );
 }

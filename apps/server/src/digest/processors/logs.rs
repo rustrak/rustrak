@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// Rustrak is the terminal store, not a forwarding Relay.
 pub struct LogsProcessor;
 
-/// Rows per INSERT: 11 binds each, far under SQLite's 32766 and Postgres's
+/// Rows per INSERT: 12 binds each, far under SQLite's 32766 and Postgres's
 /// 65535 bind limits; the same batch size spans use.
 const LOG_ROWS_PER_INSERT: usize = 256;
 
@@ -35,7 +35,7 @@ impl LogsProcessor {
                 "INSERT INTO logs (
                     id, project_id, dedupe_key,
                     trace_id, span_id,
-                    level, severity_number, body, attributes,
+                    level, severity_number, body, attributes, environment,
                     timestamp, ingested_at
                 ) ",
             );
@@ -45,6 +45,7 @@ impl LogsProcessor {
                     let level = normalize_level(&log.level);
                     let severity_number = severity_number(&level);
                     let attributes = attributes_json(&log);
+                    let environment = environment(&attributes);
                     row.push_bind(Uuid::new_v4())
                         .push_bind(ctx.project_id)
                         .push_bind(dedupe_key(&container_hash, index, ctx.event_id))
@@ -54,6 +55,7 @@ impl LogsProcessor {
                         .push_bind(severity_number)
                         .push_bind(log.body)
                         .push_bind(attributes)
+                        .push_bind(environment)
                         .push_bind(log.timestamp)
                         .push_bind(ctx.ingested_at);
                 },
@@ -108,6 +110,15 @@ fn attributes_json(log: &LogItem) -> serde_json::Value {
     } else {
         serde_json::json!({})
     }
+}
+
+/// The `sentry.environment` attribute SDKs send each log with, or `None`.
+fn environment(attributes: &serde_json::Value) -> Option<String> {
+    let value = attributes
+        .get("sentry.environment")?
+        .get("value")?
+        .as_str()?;
+    empty_to_none(value).map(|env| clamp(&env, 64))
 }
 
 fn empty_to_none(s: &str) -> Option<String> {

@@ -27,6 +27,8 @@ Rustrak takes Sentry's `log` envelope item, so any SDK version that sends logs w
 
 Each line keeps its level, message, timestamp and attributes, each attribute with its type. A line written inside an active span also carries the span's trace and span IDs.
 
+The SDK adds a few attributes of its own to every line, among them `sentry.environment` and `sentry.release`. Rustrak reads the environment into a field of its own, so the list can be filtered by it. SDKs send `production` unless you set `environment` in `Sentry.init`. A line that arrives without one has no environment, the way Sentry leaves it.
+
 ## Levels
 
 | Level | Severity number |
@@ -42,15 +44,20 @@ A line sent without a level is stored as `info`. An unknown level is kept as sen
 
 ## Find a line
 
-**Logs** shows the newest lines first, with a chart of the volume by level above them.
+**Logs** shows the newest lines first, in a table of time, level, message and environment, with a chart of the volume by level above it.
 
 - Type in the search bar to find lines whose message contains the text, ignoring case.
 - `level:error` keeps one level; `trace:<trace id>` keeps one trace.
+- **Environment** keeps the lines of one environment. It lists every environment the project has seen in issues, sessions and logs.
 - The window button (`14d` by default) sets how far back to look.
+
+Every filter is in the address, so a reload or a shared link shows the same lines.
 
 Save a search you repeat as a [view](/usage/saved-views).
 
-Click a line to open it: the full time, severity, trace ID and every attribute. **Logs in this trace** filters the list by that line's trace. It keeps the other filters, so remove `level:` to see every line of the request.
+Click a line to open it in place, under its row. It shows the whole message, then its time, environment, trace and span, then its attributes grouped by namespace (`sentry`, `service` and so on). Hover a value to copy it, or click **Copy JSON** for the whole line. `j` and `k` move to the next and previous line, and `Esc` closes it.
+
+The filter button beside the environment or the trace narrows the list to it. The trace filter keeps the others, so remove `level:` to see every line of the request.
 
 <InteractiveDemo src="/demos/logs.openshowcase" />
 
@@ -67,6 +74,7 @@ curl -H "Authorization: Bearer $RUSTRAK_TOKEN" \
 |---|---|
 | `level` | One level |
 | `trace_id` | One trace |
+| `environment` | One environment, as the SDK sent it |
 | `query` | Message contains this text, ignoring case |
 | `period` | Window such as `24h`, `7d`, `14d`. All time when absent |
 | `page`, `per_page` | Pagination. `per_page` is 20 by default, at most 100 |

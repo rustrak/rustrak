@@ -21,23 +21,26 @@ pub struct LogFilters {
     pub trace_id: Option<String>,
     /// Keeps the logs whose message contains it, ignoring case.
     pub query: Option<String>,
+    /// Exact environment, as the SDK sent it.
+    pub environment: Option<String>,
     pub period_hours: Option<i64>,
 }
 
 impl LogFilters {
-    /// The condition after `project_id = $1`, binding `$2..=$7`: level, trace
-    /// id and the message pattern, each twice. Static SQL with positional
+    /// The condition after `project_id = $1`, binding `$2..=$9`: level, trace
+    /// id, the message pattern and the environment, each twice. Static SQL with positional
     /// binds, so it reads the same on Postgres and SQLite.
     fn condition(&self) -> String {
         format!(
             "($2 IS NULL OR level = $3) AND ($4 IS NULL OR trace_id = $5) \
-             AND ($6 IS NULL OR LOWER(body) LIKE $7 ESCAPE '\\') AND {}",
+             AND ($6 IS NULL OR LOWER(body) LIKE $7 ESCAPE '\\') \
+             AND ($8 IS NULL OR environment = $9) AND {}",
             since("timestamp", self.period_hours)
         )
     }
 }
 
-/// Binds `$1..=$7`: the project, then [`LogFilters::condition`]'s pairs.
+/// Binds `$1..=$9`: the project, then [`LogFilters::condition`]'s pairs.
 macro_rules! bind_filters {
     ($query:expr, $project_id:expr, $filters:expr, $like:expr) => {
         $query
@@ -48,6 +51,8 @@ macro_rules! bind_filters {
             .bind($filters.trace_id.as_deref())
             .bind($like.as_deref())
             .bind($like.as_deref())
+            .bind($filters.environment.as_deref())
+            .bind($filters.environment.as_deref())
     };
 }
 
@@ -80,9 +85,9 @@ impl LogService {
 
         let sql = format!(
             "SELECT id, trace_id, span_id, level, severity_number, body, \
-                    attributes, timestamp, ingested_at \
+                    attributes, environment, timestamp, ingested_at \
              FROM logs WHERE project_id = $1 AND {condition} \
-             ORDER BY timestamp DESC, id DESC LIMIT $8 OFFSET $9"
+             ORDER BY timestamp DESC, id DESC LIMIT $10 OFFSET $11"
         );
         let rows = bind_filters!(
             sqlx::query(sqlx::AssertSqlSafe(&*sql)),
@@ -102,7 +107,7 @@ impl LogService {
     pub async fn get(pool: &DbPool, project_id: i32, id: Uuid) -> AppResult<Option<LogResponse>> {
         let row = sqlx::query(
             "SELECT id, trace_id, span_id, level, severity_number, body, \
-                    attributes, timestamp, ingested_at \
+                    attributes, environment, timestamp, ingested_at \
              FROM logs WHERE project_id = $1 AND id = $2",
         )
         .bind(project_id)
@@ -188,6 +193,7 @@ fn log_response(row: &<crate::db::Db as sqlx::Database>::Row) -> LogResponse {
         severity_number: row.get("severity_number"),
         body: row.get("body"),
         attributes: row.get("attributes"),
+        environment: row.get("environment"),
         timestamp,
         ingested_at,
     }

@@ -958,6 +958,7 @@ export const zLivenessResponse = z.object({
 export const zLogResponse = z.object({
     attributes: z.record(z.string(), z.unknown()),
     body: z.string(),
+    environment: z.nullable(z.string()),
     id: z.uuid(),
     ingested_at: z.iso.datetime({ offset: true }),
     level: z.string(),
@@ -4324,6 +4325,7 @@ export const zLogsListQuery = z.object({
     per_page: z.optional(z.int().check(z.gte(1), z.lte(100))),
     level: z.nullish(z.string()),
     trace_id: z.nullish(z.string()),
+    environment: z.nullish(z.string()),
     query: z.nullish(z.string()),
     period: z.nullish(z.string())
 });
@@ -4335,6 +4337,7 @@ export const zLogsListResponse = z.object({
     items: z.array(z.object({
         attributes: z.record(z.string(), z.unknown()),
         body: z.string(),
+        environment: z.nullable(z.string()),
         id: z.uuid(),
         ingested_at: z.iso.datetime({ offset: true }),
         level: z.string(),
@@ -4356,6 +4359,7 @@ export const zLogsVolumePath = z.object({
 export const zLogsVolumeQuery = z.object({
     level: z.nullish(z.string()),
     trace_id: z.nullish(z.string()),
+    environment: z.nullish(z.string()),
     query: z.nullish(z.string()),
     period: z.nullish(z.string())
 });

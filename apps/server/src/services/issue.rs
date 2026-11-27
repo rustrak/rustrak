@@ -458,12 +458,25 @@ impl IssueService {
     /// The environments a project has seen, by name: its issues', and its
     /// sessions' -- a healthy environment has sessions and no issue at all.
     /// Sentry's environments are the project's, not its issues'.
+    ///
+    /// Logs' environments are read by stepping from one name to the next
+    /// along `idx_logs_project_environment`: one index seek per environment,
+    /// where a plain `SELECT` would read one entry per log.
     pub async fn environments(pool: &DbPool, project_id: i32) -> AppResult<Vec<String>> {
         let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT environment FROM issue_environments WHERE project_id = $1 \
+            "WITH RECURSIVE log_env(environment) AS ( \
+               SELECT MIN(environment) FROM logs WHERE project_id = $1 \
+               UNION ALL \
+               SELECT (SELECT MIN(environment) FROM logs \
+                       WHERE project_id = $1 AND environment > log_env.environment) \
+               FROM log_env WHERE log_env.environment IS NOT NULL \
+             ) \
+             SELECT environment FROM issue_environments WHERE project_id = $1 \
              UNION \
              SELECT environment FROM session_counts \
              WHERE project_id = $1 AND environment <> '' \
+             UNION \
+             SELECT environment FROM log_env WHERE environment IS NOT NULL \
              ORDER BY environment",
         )
         .bind(project_id)

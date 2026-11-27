@@ -261,7 +261,6 @@
     "pageOf": "第 {page} 页，共 {total} 页",
     "newer": "较新的日志",
     "older": "较早的日志",
-    "back": "返回日志",
     "close": "关闭",
     "time": "时间",
     "severity": "严重程度",
@@ -279,7 +278,12 @@
       "warn": "警告",
       "error": "错误",
       "fatal": "致命"
-    }
+    },
+    "environment": "环境",
+    "sameEnvironment": "此环境的日志",
+    "copyJson": "复制 JSON",
+    "message": "消息",
+    "ownAttributes": "自定义"
   },
   "issues": {
     "columns": {

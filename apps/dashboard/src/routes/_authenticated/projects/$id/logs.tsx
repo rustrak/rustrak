@@ -2,7 +2,6 @@ import type { LogResponse, LogsVolumeResponse } from '@rustrak/client';
 import {
   Button,
   CloseIcon,
-  cn,
   EmptyState,
   Page,
   PageHeader,
@@ -45,7 +44,11 @@ import {
   searchString,
 } from '@/shared/lib/search-params';
 import { PageLoading } from '@/shared/ui/components/page-loading';
-import { PeriodFilter } from '@/shared/ui/components/period-filter';
+import {
+  EnvironmentSegment,
+  PeriodSegment,
+} from '@/shared/ui/components/period-filter';
+import { ScopeBar } from '@/shared/ui/components/scope-bar';
 import { useShortcuts } from '@/shared/ui/hooks/use-shortcuts';
 
 const PAGE_SIZE = 50;
@@ -54,6 +57,7 @@ interface LogsReadSearch {
   q?: string;
   level?: (typeof LOG_LEVELS)[number];
   trace?: string;
+  environment?: string;
   period?: PeriodChoice;
   page?: number;
 }
@@ -68,6 +72,7 @@ function logReads(projectId: number, search: LogsReadSearch) {
     query: search.q,
     level: search.level,
     trace_id: search.trace,
+    environment: search.environment,
     period: apiPeriod(period),
   };
   return {
@@ -81,8 +86,13 @@ function logReads(projectId: number, search: LogsReadSearch) {
 }
 
 /** A new search starts over at the newest line, with nothing open. */
+type Narrowing = LogSearchValue & {
+  period?: PeriodChoice;
+  environment?: string;
+};
+
 const narrowed =
-  (next: LogSearchValue & { period?: PeriodChoice }) =>
+  (next: Narrowing) =>
   <S extends object>(prev: S) => ({
     ...prev,
     ...next,
@@ -95,9 +105,10 @@ const narrowed =
  *
  * What every log explorer converged on, at the size of this one: a search
  * bar that takes free text for the message and `level:` and `trace:` keys,
- * the window beside it, the volume stacked by level above the lines, and a
- * line opened in a pane beside the list -- j and k to move, Esc to close.
- * Everything is in the URL, so a line can be linked to.
+ * the environment and the window beside it, the volume stacked by level
+ * above the lines, and a line opened in place under its row, as Sentry's
+ * log table does -- j and k to move, Esc to close. Everything is in the URL,
+ * so a line can be linked to.
  */
 /** The address as typed search; a saved view's text goes through it too. */
 function validateLogsSearch(search: Record<string, unknown>) {
@@ -105,6 +116,7 @@ function validateLogsSearch(search: Record<string, unknown>) {
     q: searchString(search.q),
     level: searchOneOf(search.level, LOG_LEVELS),
     trace: searchString(search.trace),
+    environment: searchString(search.environment),
     period: searchOneOf(search.period, PERIOD_CHOICES),
     page: searchPage(search.page),
     selected: searchString(search.selected),
@@ -117,6 +129,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
     q: search.q,
     level: search.level,
     trace: search.trace,
+    environment: search.environment,
     period: search.period,
     page: search.page,
   }),
@@ -127,6 +140,7 @@ export const Route = createFileRoute('/_authenticated/projects/$id/logs')({
     const reads = logReads(projectId, deps);
     void queryClient.query(reads.list).catch(noop);
     void queryClient.query(reads.volume).catch(noop);
+    void queryClient.query(projectQueries.environments(projectId)).catch(noop);
     void queryClient
       .query(savedViewQueries.list(projectId, 'logs'))
       .catch(noop);
@@ -193,7 +207,19 @@ function LogsPage() {
     );
   }
 
-  const filtered = Boolean(search.q || search.level || search.trace);
+  const filtered = isNarrowed(search);
+  // A linked line newer ones have pushed off the page opens above them.
+  const offPage = current && !items.includes(current) ? current : undefined;
+  const detail = current ? (
+    <LogDetail
+      key={current.id}
+      log={current}
+      onTrace={(trace) => navigate({ search: narrowed({ trace }) })}
+      onEnvironment={(environment) =>
+        navigate({ search: narrowed({ environment }) })
+      }
+    />
+  ) : null;
   const howToSend = t.rich('logs.emptyDescription', {
     code: (chunks) => <code className="font-mono">{chunks}</code>,
   });
@@ -218,53 +244,63 @@ function LogsPage() {
         <EmptyState title={t('logs.emptyTitle')} description={howToSend} />
       ) : (
         <Page scroll={false}>
-          <LogsFilters lineOpen={Boolean(current)} />
+          <LogsFilters projectId={projectId} />
 
-          <VolumePanel volume={volume} lineOpen={Boolean(current)} />
+          <VolumePanel volume={volume} />
 
           <LineFailed
             show={selection.failed}
             onClose={() => select(undefined)}
           />
 
-          <div className="flex min-h-0 flex-1 gap-4">
-            {/* Narrow, the pane replaces the list once a line is open. */}
-            <div
-              className={cn(
-                'min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel lg:flex',
-                current ? 'hidden' : 'flex',
-              )}
-            >
-              <LogList
-                logs={logs}
-                search={search.q ?? ''}
-                selectedId={current?.id}
-                // Nothing narrows it, so the window holds no logs: say how to
-                // send some, in words that fit "none lately" as well as "none".
-                emptyHint={filtered ? undefined : howToSend}
-                page={page}
-                isPending={isPending}
-                onSelect={(id) => select(id === current?.id ? undefined : id)}
-                onPageChange={(next) =>
-                  navigate({
-                    search: (prev) => ({
-                      ...prev,
-                      page: next === 1 ? undefined : next,
-                      selected: undefined,
-                    }),
-                  })
+          {offPage ? (
+            // Bounded and scrolling: the page itself does not scroll, so a
+            // line with many attributes would otherwise be cut off.
+            <div className="max-h-1/2 shrink-0 overflow-y-auto rounded-lg border border-border bg-panel">
+              <LogDetail
+                log={offPage}
+                onTrace={(trace) => navigate({ search: narrowed({ trace }) })}
+                onEnvironment={(environment) =>
+                  navigate({ search: narrowed({ environment }) })
                 }
+                onClose={() => select(undefined)}
               />
             </div>
-            <SelectedPane
-              selection={selection}
-              onTrace={(trace) => navigate({ search: narrowed({ trace }) })}
-              onClose={() => select(undefined)}
+          ) : null}
+
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-subtle bg-panel">
+            <LogList
+              logs={logs}
+              search={search.q ?? ''}
+              selectedId={current?.id}
+              detail={offPage ? null : detail}
+              // Nothing narrows it, so the window holds no logs: say how to
+              // send some, in words that fit "none lately" as well as "none".
+              emptyHint={filtered ? undefined : howToSend}
+              page={page}
+              isPending={isPending}
+              onSelect={(id) => select(id === current?.id ? undefined : id)}
+              onPageChange={(next) =>
+                navigate({
+                  search: (prev) => ({
+                    ...prev,
+                    page: next === 1 ? undefined : next,
+                    selected: undefined,
+                  }),
+                })
+              }
             />
           </div>
         </Page>
       )}
     </div>
+  );
+}
+
+/** Whether anything but the window narrows the lines. */
+function isNarrowed(search: LogsReadSearch) {
+  return Boolean(
+    search.q || search.level || search.trace || search.environment,
   );
 }
 
@@ -292,8 +328,8 @@ function LogsLoading() {
           summary={[<Skeleton key="summary" className="h-4 w-40" />]}
         />
         <Page scroll={false}>
-          <LogsFilters lineOpen={false} />
-          <VolumePanel volume={volume} lineOpen={false} />
+          <LogsFilters projectId={id} held />
+          <VolumePanel volume={volume} />
           <ul className="min-h-0 flex-1 divide-y divide-border-divider overflow-hidden rounded-lg border border-border bg-panel">
             {Array.from({ length: 12 }, (_, line) => (
               // Placeholder lines have no identity beyond their position.
@@ -312,55 +348,64 @@ function LogsLoading() {
   );
 }
 
-/** The search bar and the window, reading and writing the live address. */
-function LogsFilters({ lineOpen }: { lineOpen: boolean }) {
+/**
+ * The search bar, the environment and the window, reading and writing the
+ * live address. In the skeleton (`held`) the environments are not asked for:
+ * an observer that unmounts mid-flight cancels the loader's request.
+ */
+function LogsFilters({
+  projectId,
+  held = false,
+}: {
+  projectId: number;
+  held?: boolean;
+}) {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const narrow = (next: LogSearchValue & { period?: PeriodChoice }) =>
-    navigate({ search: narrowed(next) });
+  const narrow = (next: Narrowing) => navigate({ search: narrowed(next) });
+  const environments =
+    useQuery({
+      ...projectQueries.environments(projectId),
+      enabled: !held,
+      subscribed: !held,
+    }).data ?? [];
 
   return (
-    // Narrow, the bar takes a row and the window the next; with a line open,
-    // the pane takes the whole page.
-    <div
-      className={cn(
-        'flex flex-wrap items-center gap-2',
-        lineOpen && 'max-lg:hidden',
-      )}
-    >
+    // Narrow, the bar takes a row and the scopes the next.
+    <div className="flex flex-wrap items-center gap-2">
       <LogSearch
         value={{ q: search.q, level: search.level, trace: search.trace }}
         onChange={narrow}
       />
-      <PeriodFilter
-        period={search.period ?? DEFAULT_PERIOD}
-        onChange={(next) => narrow({ period: periodParam(next) })}
-      />
+      <ScopeBar>
+        <EnvironmentSegment
+          environments={environments}
+          environment={search.environment}
+          onChange={(environment) => narrow({ environment })}
+        />
+        <PeriodSegment
+          period={search.period ?? DEFAULT_PERIOD}
+          onChange={(next) => narrow({ period: periodParam(next) })}
+        />
+      </ScopeBar>
     </div>
   );
 }
 
 /**
  * The volume above the lines, or a line saying it failed: the chart failing
- * never takes the lines with it. On a phone, and beside an open line, the
- * lines need the height more than the chart does.
+ * never takes the lines with it. On a phone the lines need the height more
+ * than the chart does.
  */
 function VolumePanel({
   volume,
-  lineOpen,
 }: {
   volume: UseQueryResult<LogsVolumeResponse, ApiError>;
-  lineOpen: boolean;
 }) {
   const tLogs = useTranslations('logs');
   if (volume.data?.length === 0) return null;
   return (
-    <div
-      className={cn(
-        'shrink-0 rounded-lg border border-border bg-panel px-2 pt-3 pb-1 max-sm:hidden',
-        lineOpen && 'max-lg:hidden',
-      )}
-    >
+    <div className="shrink-0 rounded-lg border border-border bg-panel px-2 pt-3 pb-1 max-sm:hidden">
       {volume.data ? (
         <LogVolume points={volume.data} />
       ) : volume.isError ? (
@@ -398,29 +443,6 @@ function useSelectedLog(
   if (onPage) return { log: onPage, failed: false };
   if (selected === undefined) return { log: undefined, failed: false };
   return { log: fetched.data, failed: fetched.isError };
-}
-
-/** Beside the list, or in its place on a phone: the open line. */
-function SelectedPane({
-  selection,
-  onTrace,
-  onClose,
-}: {
-  selection: Selection;
-  onTrace: (trace: string) => void;
-  onClose: () => void;
-}) {
-  if (!selection.log) return null;
-  return (
-    <div className="flex min-h-0 w-full flex-col overflow-hidden lg:w-[28rem] lg:flex-none lg:rounded-lg lg:border lg:border-border lg:bg-panel xl:w-[34rem]">
-      <LogDetail
-        key={selection.log.id}
-        log={selection.log}
-        onTrace={onTrace}
-        onClose={onClose}
-      />
-    </div>
-  );
 }
 
 /**

@@ -261,7 +261,6 @@
     "pageOf": "Page {page} sur {total}",
     "newer": "Journaux plus récents",
     "older": "Journaux plus anciens",
-    "back": "Retour aux journaux",
     "close": "Fermer",
     "time": "Heure",
     "severity": "Sévérité",
@@ -279,7 +278,12 @@
       "warn": "Avertissement",
       "error": "Erreur",
       "fatal": "Fatal"
-    }
+    },
+    "environment": "Environnement",
+    "sameEnvironment": "Logs de cet environnement",
+    "copyJson": "Copier le JSON",
+    "message": "Message",
+    "ownAttributes": "personnalisés"
   },
   "issues": {
     "columns": {
