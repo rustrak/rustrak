@@ -1,0 +1,30 @@
+---
+version: v0.35.0
+title: Auto Resolve
+description: Issues resolve themselves after a quiet period, logs keep their environment, and the server gives memory back after bursts
+date: 2026-11-27
+tags: [issues, logs, performance, dashboard]
+---
+
+## Auto Resolve
+
+A project can now resolve its issues once they stop happening, like Sentry's Auto Resolve.
+
+- **Settings › General › Auto resolve:** pick how long an unresolved issue may go without an event, from 1 hour to 30 days. It is off by default
+- **Every 10 minutes:** the scheduler resolves the issues past that period in batches. User feedback, and issues you reopened by hand within the period, are left alone
+- **A plain resolve:** the next event regresses the issue, and the activity shows "resolved this issue after N days of inactivity"
+- **GitHub stays in sync:** linked issues are closed one batch at a time, so a large backlog does not flood the GitHub API
+- Also settable through the API as `resolve_age` (hours) on `PATCH /api/projects/{id}`
+
+## Log Environments
+
+Logs keep the environment the SDK sent (`sentry.environment`), including logs stored before this release.
+
+- The logs page has an Environment filter beside the time window, and the list and volume endpoints take `?environment=`
+- The list is now a table with level badges and an environment column. A line opens in place under its row, with its attributes grouped by namespace
+
+## Improvements
+
+- Memory goes back after ingest bursts: variable-size batch inserts are no longer cached per connection, and a backlog stays in the digest queue instead of spilling to the recovery spool
+- The SQLite pool defaults to 4 connections (PostgreSQL keeps 10), and password hashing runs one at a time so concurrent logins do not stack Argon2 buffers
+- Project cards keep their figures inside the card, with a compact percent change
