@@ -156,7 +156,7 @@ and troubleshooting.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `sqlite:///data/rustrak.db` | Database connection string. Required only for PostgreSQL |
-| `DATABASE_MAX_CONNECTIONS` | `10` | Maximum pool connections |
+| `DATABASE_MAX_CONNECTIONS` | `4` (SQLite), `10` (PostgreSQL) | Maximum pool connections |
 | `DATABASE_MIN_CONNECTIONS` | `1` | Minimum pool connections |
 | `DATABASE_ACQUIRE_TIMEOUT_SECS` | `5` | How long a request waits for a free connection before failing |
 | `DATABASE_IDLE_TIMEOUT_SECS` | `600` | How long an unused connection stays open |

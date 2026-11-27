@@ -61,7 +61,7 @@ impl LogsProcessor {
             query.push(
                 " ON CONFLICT (project_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING",
             );
-            query.build().execute(&mut *tx).await?;
+            query.build().persistent(false).execute(&mut *tx).await?;
         }
 
         tx.commit().await?;

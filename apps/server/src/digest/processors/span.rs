@@ -262,7 +262,7 @@ pub(crate) async fn insert_span_rows(
                   AND trace_id IS NOT NULL
                   AND span_id IS NOT NULL DO NOTHING",
         );
-        query.build().execute(&mut *conn).await?;
+        query.build().persistent(false).execute(&mut *conn).await?;
     }
     Ok(())
 }

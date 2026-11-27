@@ -368,17 +368,19 @@ pub async fn enqueue_digest(
     Ok(())
 }
 
-/// Spool files waiting for the live digest, at most this many. Past it a
-/// file is left unowned and the recovery worker takes it from the spool.
+/// Spool files waiting for the live digest when ingest admits any number
+/// (`INGEST_MAX_PENDING_EVENTS=0`), and the room a drained queue keeps.
+/// Past its capacity a file is left unowned and the recovery worker takes it
+/// from the spool.
 pub(crate) const DIGEST_QUEUE_CAPACITY: usize = 4096;
 
 /// A batch closes at this many bytes of `data` and attachments.
 const DIGEST_BATCH_MAX_BYTES: usize = 8 * 1024 * 1024;
 
 /// The accepted events waiting for the live digest, in acceptance order.
-#[derive(Default)]
 pub(crate) struct DigestQueue {
     refs: std::sync::Mutex<std::collections::VecDeque<SpoolRef>>,
+    capacity: usize,
     ready: tokio::sync::Notify,
     started: std::sync::atomic::AtomicBool,
     /// Events offered so far, queued or not: the digest rests while it
@@ -387,12 +389,29 @@ pub(crate) struct DigestQueue {
 }
 
 impl DigestQueue {
+    /// A queue with room for every event ingest admits (`max_pending`, `0`
+    /// for no limit), so a backlog stays in it rather than going through the
+    /// recovery worker's spool listings. A queued event costs a few dozen
+    /// bytes against the spool file it stands for.
+    pub(crate) fn for_pending(max_pending: i64) -> Self {
+        Self {
+            refs: Default::default(),
+            capacity: usize::try_from(max_pending)
+                .ok()
+                .filter(|&n| n > 0)
+                .map_or(DIGEST_QUEUE_CAPACITY, |n| n.max(DIGEST_QUEUE_CAPACITY)),
+            ready: Default::default(),
+            started: Default::default(),
+            pushes: Default::default(),
+        }
+    }
+
     /// Queues `r`, or hands it back when the queue is full.
     fn try_push(&self, r: SpoolRef) -> Result<(), SpoolRef> {
         self.pushes
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let mut refs = self.refs.lock().unwrap_or_else(|p| p.into_inner());
-        if refs.len() >= DIGEST_QUEUE_CAPACITY {
+        if refs.len() >= self.capacity {
             return Err(r);
         }
         refs.push_back(r);
@@ -416,11 +435,15 @@ impl DigestQueue {
 
     async fn pop(&self) -> SpoolRef {
         loop {
-            let next = self
-                .refs
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .pop_front();
+            let next = {
+                let mut refs = self.refs.lock().unwrap_or_else(|p| p.into_inner());
+                let next = refs.pop_front();
+                // A drained backlog gives its room back.
+                if refs.is_empty() && refs.capacity() > DIGEST_QUEUE_CAPACITY {
+                    refs.shrink_to(DIGEST_QUEUE_CAPACITY);
+                }
+                next
+            };
             if let Some(r) = next {
                 return r;
             }
@@ -1199,6 +1222,33 @@ mod tests {
             assert!(super::shed_by(table).contains(&"transaction"), "{table}");
         }
         assert_eq!(super::shed_by("logs"), ["log_item"]);
+    }
+
+    /// Admission stops at `INGEST_MAX_PENDING_EVENTS`, so a queue that holds
+    /// that many never hands a backlog to the recovery worker, whose
+    /// directory listings slowed a 100k-event drain by a third. Once drained
+    /// it gives the room back.
+    #[tokio::test]
+    async fn the_queue_holds_every_admitted_event_and_gives_its_room_back() {
+        use crate::digest::processors::{InFlightDigests, SpoolRef};
+        let registry = std::sync::Arc::new(InFlightDigests::default());
+        let queue = super::DigestQueue::for_pending(10_000);
+        for _ in 0..10_000 {
+            let event_id = uuid::Uuid::new_v4();
+            let owner = registry.register(1, event_id);
+            let r = SpoolRef {
+                project_id: 1,
+                event_id,
+                size: 1,
+                owner,
+            };
+            assert!(queue.try_push(r).is_ok());
+        }
+        for _ in 0..10_000 {
+            queue.pop().await;
+        }
+        let room = queue.refs.lock().unwrap().capacity();
+        assert!(room <= super::DIGEST_QUEUE_CAPACITY, "kept room for {room}");
     }
 
     #[test]

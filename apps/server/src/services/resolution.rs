@@ -143,6 +143,7 @@ impl ResolutionService {
         );
         let mut created: Vec<ReleaseRef> = insert
             .build_query_as::<ReleaseRef>()
+            .persistent(false)
             .fetch_all(&mut *conn)
             .await?;
         created.sort_by(|a, b| {
