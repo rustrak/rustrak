@@ -714,12 +714,14 @@ impl IssueService {
                     .await?;
                 }
                 tx.commit().await?;
-                // One background task per batch, syncing its issues one at a
-                // time: a large backlog never starts thousands of syncs, and a
-                // slow GitHub never holds up the next batch or project.
+                // Synced in the background, so a slow GitHub never holds up
+                // the next batch or project; one batch at a time, one issue at
+                // a time, so a large backlog never fans out into GitHub.
+                static SYNC: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
                 let synced = ids.clone();
                 let sync_pool = pool.clone();
                 github::sync::spawn("status sync", async move {
+                    let _turn = SYNC.acquire().await;
                     for id in synced {
                         if let Err(error) = github::sync::mirror_status(sync_pool.clone(), id).await
                         {
