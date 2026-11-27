@@ -2,7 +2,6 @@ import type { LogResponse, LogsVolumeResponse } from '@rustrak/client';
 import {
   Button,
   CloseIcon,
-  cn,
   EmptyState,
   Page,
   PageHeader,
@@ -255,8 +254,17 @@ function LogsPage() {
           />
 
           {offPage ? (
-            <div className="shrink-0 overflow-hidden rounded-lg border border-border bg-panel">
-              {detail}
+            // Bounded and scrolling: the page itself does not scroll, so a
+            // line with many attributes would otherwise be cut off.
+            <div className="max-h-1/2 shrink-0 overflow-y-auto rounded-lg border border-border bg-panel">
+              <LogDetail
+                log={offPage}
+                onTrace={(trace) => navigate({ search: narrowed({ trace }) })}
+                onEnvironment={(environment) =>
+                  navigate({ search: narrowed({ environment }) })
+                }
+                onClose={() => select(undefined)}
+              />
             </div>
           ) : null}
 

@@ -1,6 +1,7 @@
 import type { LogResponse } from '@rustrak/client';
 import {
   Button,
+  CloseIcon,
   CopyIcon,
   FilterIcon,
   SelectedIcon,
@@ -23,12 +24,15 @@ export function LogDetail({
   log,
   onTrace,
   onEnvironment,
+  onClose,
 }: {
   log: LogResponse;
   /** Narrows the list to the logs of this line's trace. */
   onTrace: (traceId: string) => void;
   /** Narrows the list to the logs of this line's environment. */
   onEnvironment: (environment: string) => void;
+  /** For a line opened above the list, which has no row to click shut. */
+  onClose?: () => void;
 }) {
   const t = useTranslations('logs');
   const format = useFormatter();
@@ -53,6 +57,15 @@ export function LogDetail({
             >
               {t('copyJson')}
             </Button>
+            {onClose ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={CloseIcon}
+                aria-label={t('close')}
+                onClick={onClose}
+              />
+            ) : null}
           </div>
 
           <dl className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">

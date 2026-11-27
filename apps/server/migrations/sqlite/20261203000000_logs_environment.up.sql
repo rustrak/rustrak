@@ -5,6 +5,7 @@ ALTER TABLE logs ADD COLUMN environment VARCHAR(64);
 
 UPDATE logs
 SET environment = NULLIF(substr(json_extract(attributes, '$."sentry.environment".value'), 1, 64), '')
-WHERE attributes IS NOT NULL;
+-- Only a string, as ingestion reads it: `"value": 42` is no environment.
+WHERE json_type(attributes, '$."sentry.environment".value') = 'text';
 
 CREATE INDEX idx_logs_project_environment ON logs(project_id, environment, timestamp DESC);

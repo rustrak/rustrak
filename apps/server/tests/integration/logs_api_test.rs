@@ -484,6 +484,12 @@ async fn the_migration_fills_in_the_environment_of_stored_logs() {
             r#"{"sentry.environment":{"value":"production","type":"string"}}"#,
         ),
         ("none", r#"{"other":{"value":"x","type":"string"}}"#),
+        // Not a string: ingestion keeps no environment for it, so neither
+        // does the backfill.
+        (
+            "number",
+            r#"{"sentry.environment":{"value":42,"type":"integer"}}"#,
+        ),
     ] {
         sqlx::query(
             "INSERT INTO logs (id, project_id, body, attributes, timestamp) \
@@ -509,6 +515,7 @@ async fn the_migration_fills_in_the_environment_of_stored_logs() {
         rows,
         [
             ("none".to_string(), None),
+            ("number".to_string(), None),
             ("prod".to_string(), Some("production".to_string()))
         ]
     );

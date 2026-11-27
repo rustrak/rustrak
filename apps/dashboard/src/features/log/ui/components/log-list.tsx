@@ -233,7 +233,8 @@ const BADGE = {
  * stand out of a burst without tinting whole rows.
  */
 function LevelBadge({ level }: { level: string }) {
-  const Glyph = GLYPH[level] ?? DotIcon;
+  // Own keys only: a level named `constructor` must not find Object's.
+  const Glyph = Object.hasOwn(GLYPH, level) ? GLYPH[level] : DotIcon;
   return (
     <span
       className={cn(
