@@ -221,3 +221,20 @@ async fn an_event_after_an_auto_resolve_regresses_the_issue() {
     assert_eq!(issue.status, "unresolved");
     assert_eq!(issue.substatus.as_deref(), Some("regressed"));
 }
+
+/// A project being deleted keeps its issues as they are: resolving them
+/// would close their linked GitHub issues after the user deleted it.
+#[actix_web::test]
+async fn a_deleted_project_is_left_alone() {
+    let env = Env::new(Some(24)).await;
+    env.event("stale", 25).await;
+    sqlx::query("UPDATE projects SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1")
+        .bind(env.project.id)
+        .execute(env.pool())
+        .await
+        .unwrap();
+
+    env.run().await;
+
+    assert_eq!(env.issue("stale").await.status, "unresolved");
+}

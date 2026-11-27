@@ -640,6 +640,7 @@ describe('Error Handling', () => {
                 rate_limited_event_count: 0,
                 rate_limit_per_minute: null,
                 rate_limit_per_hour: null,
+                resolve_age: null,
                 created_at: 'invalid-date',
                 updated_at: '2026-01-20T10:00:00.000Z',
               },

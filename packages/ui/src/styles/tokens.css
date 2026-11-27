@@ -188,6 +188,9 @@
   --surface: var(--rk-ink-268);
   --surface-raised: var(--rk-veil-4);
   --surface-hover: var(--rk-veil-4);
+  /* A picker's closed box (select, combobox): a breath above the row it
+     sits in, so it reads apart from the dark text fields. */
+  --surface-picker: color-mix(in oklab, var(--rk-veil-4) 30%, transparent);
   --surface-active: var(--rk-veil-8);
   --surface-selected: var(--rk-veil-6);
   --surface-chip: var(--rk-veil-6);
@@ -326,6 +329,7 @@
   --surface: var(--rk-day-75);
   --surface-raised: var(--rk-day-0);
   --surface-hover: var(--rk-day-100);
+  --surface-picker: transparent;
   --surface-active: var(--rk-day-150);
   --surface-selected: var(--rk-day-100);
   --surface-chip: var(--rk-day-100);
@@ -447,6 +451,7 @@
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-surface-hover: var(--surface-hover);
+  --color-surface-picker: var(--surface-picker);
   --color-surface-active: var(--surface-active);
   --color-surface-selected: var(--surface-selected);
   --color-surface-chip: var(--surface-chip);

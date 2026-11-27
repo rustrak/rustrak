@@ -22,6 +22,7 @@ export const colorTokens = [
   'surface',
   'surface-raised',
   'surface-hover',
+  'surface-picker',
   'surface-active',
   'surface-selected',
   'surface-chip',

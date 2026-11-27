@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RESOLVE_AGES, resolveAgeDuration } from './resolve-age';
+import {
+  RESOLVE_AGES,
+  resolveAgeChoices,
+  resolveAgeDuration,
+} from './resolve-age';
 
 describe('resolveAgeDuration', () => {
   it('reads whole days in days, as Sentry does', () => {
@@ -22,5 +26,18 @@ describe('RESOLVE_AGES', () => {
     expect(RESOLVE_AGES).toContain(48);
     expect(RESOLVE_AGES).toContain(72);
     expect(RESOLVE_AGES.at(-1)).toBe(720);
+  });
+});
+
+describe('resolveAgeChoices', () => {
+  it('are the presets when the stored age is one, or none is stored', () => {
+    expect(resolveAgeChoices(168)).toEqual(RESOLVE_AGES);
+    expect(resolveAgeChoices(null)).toEqual(RESOLVE_AGES);
+  });
+
+  it('add an age set through the API in its place, so it reads as itself', () => {
+    const choices = resolveAgeChoices(13);
+    expect(choices).toContain(13);
+    expect(choices.indexOf(13)).toBe(choices.indexOf(12) + 1);
   });
 });

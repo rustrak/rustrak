@@ -5,7 +5,10 @@ import { useId, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslations } from 'use-intl';
 import { projectMutations } from '@/features/project/api/mutations';
-import { RESOLVE_AGES, resolveAgeDuration } from '@/shared/lib/resolve-age';
+import {
+  resolveAgeChoices,
+  resolveAgeDuration,
+} from '@/shared/lib/resolve-age';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
 
 const OFF = 'off';
@@ -28,8 +31,10 @@ export function AutoResolveSettings({
   const id = useId();
   const stored =
     project.resolve_age === null ? OFF : String(project.resolve_age);
-  // Shows the choice at once; a failed save puts the stored one back.
-  const [value, setValue] = useState(stored);
+  // The project is the truth; only a choice still saving is held here, so
+  // a change made elsewhere shows once the project is read again.
+  const [pending, setPending] = useState<string | null>(null);
+  const value = pending ?? stored;
   const update = useMutation(projectMutations.update(project.id));
 
   const label = (age: number) => {
@@ -40,20 +45,22 @@ export function AutoResolveSettings({
   // "off", so iterating it would list "Off" last.
   const options: [string, string][] = [
     [OFF, t('off')],
-    ...RESOLVE_AGES.map((age): [string, string] => [String(age), label(age)]),
+    ...resolveAgeChoices(project.resolve_age).map((age): [string, string] => [
+      String(age),
+      label(age),
+    ]),
   ];
 
   const choose = (next: string) => {
     if (next === value) return;
-    setValue(next);
+    setPending(next);
     update.mutate(
       { resolve_age: next === OFF ? null : Number(next) },
       {
         onSuccess: () => toast.success(t('saved')),
-        onError: (error) => {
-          setValue(stored);
-          toastFailure(t('saveFailed'), error);
-        },
+        onError: (error) => toastFailure(t('saveFailed'), error),
+        // The project read again by then carries the saved value.
+        onSettled: () => setPending(null),
       },
     );
   };

@@ -22,3 +22,12 @@ export function resolveAgeDuration(hours: number): ResolveAgeDuration {
     ? { unit: 'days', count: hours / 24 }
     : { unit: 'hours', count: hours };
 }
+
+/**
+ * The ages a picker offers: the presets, plus `stored` in its place when the
+ * API set one that is not a preset, so the picker reads it as itself.
+ */
+export function resolveAgeChoices(stored: number | null): readonly number[] {
+  if (stored === null || RESOLVE_AGES.includes(stored)) return RESOLVE_AGES;
+  return [...RESOLVE_AGES, stored].sort((a, b) => a - b);
+}

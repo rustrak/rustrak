@@ -670,22 +670,26 @@ impl IssueService {
     /// lock is never held for long. Returns how many it resolved.
     pub async fn resolve_by_age(pool: &DbPool, now: DateTime<Utc>, batch: i64) -> AppResult<u64> {
         let projects: Vec<(i32, i64)> =
-            sqlx::query_as("SELECT id, resolve_age FROM projects WHERE resolve_age IS NOT NULL")
+            sqlx::query_as("SELECT id, resolve_age FROM projects WHERE resolve_age IS NOT NULL AND deleted_at IS NULL")
                 .fetch_all(pool)
                 .await?;
         let mut resolved = 0;
         for (project_id, age) in projects {
             let cutoff = now - chrono::Duration::hours(age);
             // Reopened by hand since the cutoff: it gets a full age again.
+            // The outer status and last_seen repeat the subquery's on
+            // purpose: under Postgres' READ COMMITTED only they are rechecked
+            // against a row a new event or an archive changed meanwhile.
             let sql = format!(
                 "UPDATE issues SET status = 'resolved', substatus = NULL, status_details = '{{}}' \
-                 WHERE id IN (SELECT id FROM issues \
+                 WHERE status = 'unresolved' AND {} AND id IN (SELECT id FROM issues \
                      WHERE project_id = $1 AND status = 'unresolved' AND issue_category = 'error' \
                      AND {} AND NOT EXISTS (SELECT 1 FROM issue_activity a \
                          WHERE a.issue_id = issues.id AND a.type = 'set_status' \
                          AND a.data LIKE '%\"status\":\"unresolved\"%' AND {}) \
                      LIMIT $3) \
                  RETURNING id",
+                compare_utc("last_seen", "<", 2),
                 compare_utc("last_seen", "<", 2),
                 compare_utc("a.created_at", ">=", 2),
             );
@@ -709,11 +713,12 @@ impl IssueService {
                     .await?;
                 }
                 tx.commit().await?;
+                // One at a time: a first run over a large backlog must not
+                // start thousands of syncs, each holding a connection.
                 for &id in &ids {
-                    github::sync::spawn(
-                        "status sync",
-                        github::sync::mirror_status(pool.clone(), id),
-                    );
+                    if let Err(error) = github::sync::mirror_status(pool.clone(), id).await {
+                        log::warn!("GitHub status sync failed: {error}");
+                    }
                 }
                 resolved += ids.len() as u64;
                 if (ids.len() as i64) < batch {
