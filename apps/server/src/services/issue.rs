@@ -677,6 +677,8 @@ impl IssueService {
         for (project_id, age) in projects {
             let cutoff = now - chrono::Duration::hours(age);
             // Reopened by hand since the cutoff: it gets a full age again.
+            // Each batch rechecks the project: deleted, or its age changed
+            // mid-run, it waits for the next run and its current setting.
             // The outer status and last_seen repeat the subquery's on
             // purpose: under Postgres' READ COMMITTED only they are rechecked
             // against a row a new event or an archive changed meanwhile.
@@ -684,7 +686,8 @@ impl IssueService {
                 "UPDATE issues SET status = 'resolved', substatus = NULL, status_details = '{{}}' \
                  WHERE status = 'unresolved' AND {} AND id IN (SELECT id FROM issues \
                      WHERE project_id = $1 AND status = 'unresolved' AND issue_category = 'error' \
-                     AND EXISTS (SELECT 1 FROM projects p WHERE p.id = $1 AND p.deleted_at IS NULL) \
+                     AND EXISTS (SELECT 1 FROM projects p WHERE p.id = $1 AND p.deleted_at IS NULL \
+                         AND p.resolve_age = $4) \
                      AND {} AND NOT EXISTS (SELECT 1 FROM issue_activity a \
                          WHERE a.issue_id = issues.id AND a.type = 'set_status' \
                          AND a.data LIKE '%\"status\":\"unresolved\"%' AND {}) \
@@ -701,6 +704,7 @@ impl IssueService {
                     .bind(project_id)
                     .bind(cutoff)
                     .bind(batch)
+                    .bind(age)
                     .fetch_all(&mut *tx)
                     .await?;
                 for &id in &ids {
