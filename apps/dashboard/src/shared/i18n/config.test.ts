@@ -142,3 +142,19 @@ describe('the hour cycle in the formats', () => {
     }
   });
 });
+
+describe('the percent change format', () => {
+  const change = (value: number) =>
+    new Intl.NumberFormat('en', formatsFor('UTC').number.percentChange).format(
+      value,
+    );
+
+  it('keeps a huge jump short enough for a stat cell', () => {
+    expect(change(2499.444)).toBe('+249.9K%');
+  });
+
+  it('leaves an ordinary change as it was', () => {
+    expect(change(0.183)).toBe('+18.3%');
+    expect(change(-0.5)).toBe('-50%');
+  });
+});

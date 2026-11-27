@@ -57,7 +57,7 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
   return (
     <article
       className={cn(
-        'group/card relative flex flex-col rounded-2xl border border-border-subtle',
+        'group/card @container relative flex flex-col rounded-2xl border border-border-subtle',
         'bg-surface px-5 pt-4.5 pb-4',
         'hover:border-border-strong',
         interactiveTransition,
@@ -157,7 +157,9 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
         )}
       </div>
 
-      <dl className="mt-4 grid grid-cols-4 gap-3 border-t border-border-divider pt-3.5">
+      {/* Four across only when the card is wide enough to keep every label
+          whole: the grid, not the viewport, decides how wide a card is. */}
+      <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3.5 border-t border-border-divider pt-3.5 @md:grid-cols-4">
         <Figure
           label={t('columns.events24h')}
           value={stats ? format.number(stats.events.current, 'compact') : '–'}
@@ -193,7 +195,7 @@ function Figure({
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <dt className="truncate text-hint text-fg-meta">{label}</dt>
-      <dd className="flex items-baseline gap-1.5">
+      <dd className="flex flex-wrap items-baseline gap-x-1.5">
         <span className="text-value font-semibold text-fg tabular-nums">
           {value}
         </span>

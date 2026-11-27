@@ -219,9 +219,13 @@ export function formatsFor(timeZone: string, hourCycle?: HourCycle) {
       compact: { notation: 'compact', maximumFractionDigits: 1 },
       /** `0.183` -> "18.3%". A rate, where a sign would be meaningless. */
       percent: { style: 'percent', maximumFractionDigits: 1 },
-      /** `0.183` -> "+18.3%". Signed, because the sign is the point. */
+      /**
+       * `0.183` -> "+18.3%", `2499.4` -> "+249.9K%". Signed, because the sign
+       * is the point; compact, so a jump from almost nothing fits its cell.
+       */
       percentChange: {
         style: 'percent',
+        notation: 'compact',
         signDisplay: 'exceptZero',
         maximumFractionDigits: 1,
       },
