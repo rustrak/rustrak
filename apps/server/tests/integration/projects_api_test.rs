@@ -59,6 +59,51 @@ async fn test_get_project_reports_rate_limited_events() {
     assert_eq!(body["rate_limited_event_count"], 7);
 }
 
+/// Auto resolve (Sentry's `resolveAge`) is hours without events, from 1 to
+/// Sentry's 720; `null` turns it off, an absent key leaves it alone.
+#[actix_web::test]
+async fn test_update_project_resolve_age_set_keep_clear_and_bounds() {
+    let db = TestDb::new().await;
+    let token = AuthTokenService::create(&db.pool, CreateAuthToken::default())
+        .await
+        .unwrap();
+    let project = ProjectService::create(
+        &db.pool,
+        CreateProject {
+            name: "Auto Resolve".to_string(),
+            slug: None,
+            platform: None,
+        },
+    )
+    .await
+    .unwrap();
+    let app = crate::common::app_with_config(&db.pool, crate::common::config()).await;
+    let patch = |body: serde_json::Value| {
+        test::TestRequest::patch()
+            .uri(&format!("/api/projects/{}", project.id))
+            .insert_header(("Authorization", format!("Bearer {}", token.token)))
+            .set_json(body)
+            .to_request()
+    };
+
+    let set: serde_json::Value =
+        test::call_and_read_body_json(&app, patch(serde_json::json!({"resolve_age": 168}))).await;
+    assert_eq!(set["resolve_age"], 168);
+
+    let kept: serde_json::Value =
+        test::call_and_read_body_json(&app, patch(serde_json::json!({"name": "Renamed"}))).await;
+    assert_eq!(kept["resolve_age"], 168);
+
+    let cleared: serde_json::Value =
+        test::call_and_read_body_json(&app, patch(serde_json::json!({"resolve_age": null}))).await;
+    assert!(cleared["resolve_age"].is_null());
+
+    for bad in [0, -1, 721] {
+        let resp = test::call_service(&app, patch(serde_json::json!({"resolve_age": bad}))).await;
+        assert_eq!(resp.status(), 400, "resolve_age {bad}");
+    }
+}
+
 /// A project's own limit is set with a number, removed with `null`, and left
 /// alone when the key is absent.
 #[actix_web::test]

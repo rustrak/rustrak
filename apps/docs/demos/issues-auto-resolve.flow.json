@@ -1,0 +1,84 @@
+{
+  "title": "Resolve issues automatically",
+  "url": "http://localhost:8090/projects/3/settings/general",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "steps": [
+    {
+      "action": "wait",
+      "for": {
+        "role": "combobox",
+        "name": "Time without events"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "combobox",
+        "name": "Time without events"
+      },
+      "tooltip": "Pick how long an issue can go without events",
+      "zoom": 1.6
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "option",
+        "name": "7 days",
+        "exact": true
+      },
+      "tooltip": "Issues unseen for 7 days get resolved. It saves right away"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "text": "Auto resolve saved"
+      }
+    },
+    {
+      "action": "goto",
+      "url": "http://localhost:8090/projects/3/issues"
+    },
+    {
+      "action": "wait",
+      "for": {
+        "role": "tab",
+        "name": "Resolved",
+        "exact": true
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "tab",
+        "name": "Resolved",
+        "exact": true
+      },
+      "tooltip": "The Error nobody saw for 10 days is now resolved"
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "link",
+        "name": "Error"
+      },
+      "hotspot": false
+    },
+    {
+      "action": "wait",
+      "for": {
+        "text": "resolved this issue after 7 days of inactivity"
+      }
+    },
+    {
+      "action": "click",
+      "target": {
+        "text": "resolved this issue after 7 days of inactivity"
+      },
+      "tooltip": "The activity says why. A new event reopens it as regressed",
+      "zoom": 1.8
+    }
+  ]
+}

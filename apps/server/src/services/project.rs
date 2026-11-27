@@ -4,8 +4,8 @@ use crate::db::dialect::like_pattern;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::{
-    CreateProject, Product, Project, QuotaWindows, UpdateProject, SELECTABLE_PLATFORMS,
-    VALID_PLATFORMS,
+    CreateProject, Product, Project, QuotaWindows, UpdateProject, MAX_RESOLVE_AGE_HOURS,
+    SELECTABLE_PLATFORMS, VALID_PLATFORMS,
 };
 use crate::pagination::{ProjectSort, SortOrder};
 
@@ -40,7 +40,7 @@ impl ProjectService {
                    quota_exceeded_until, quota_exceeded_reason, next_quota_check,
                    quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
-                   disabled_products, product_order
+                   disabled_products, product_order, resolve_age
             FROM projects
             WHERE deleted_at IS NULL
             ORDER BY created_at DESC
@@ -124,7 +124,7 @@ impl ProjectService {
                    quota_exceeded_until, quota_exceeded_reason, next_quota_check,
                    quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
-                   disabled_products, product_order
+                   disabled_products, product_order, resolve_age
             FROM projects
             WHERE {filter}
             ORDER BY {order_clause}
@@ -153,7 +153,7 @@ impl ProjectService {
                    quota_exceeded_until, quota_exceeded_reason, next_quota_check,
                    quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
-                   disabled_products, product_order
+                   disabled_products, product_order, resolve_age
             FROM projects
             WHERE id = $1 AND deleted_at IS NULL
             "#,
@@ -189,7 +189,7 @@ impl ProjectService {
                    p.quota_exceeded_until, p.quota_exceeded_reason, p.next_quota_check,
                    p.quota_minute_window, p.quota_minute_count, p.quota_hour_window, p.quota_hour_count,
                    p.rate_limited_event_count, p.rate_limit_per_minute, p.rate_limit_per_hour,
-                   p.disabled_products, p.product_order,
+                   p.disabled_products, p.product_order, p.resolve_age,
                    i.quota_minute_window AS installation_minute_window,
                    i.quota_minute_count AS installation_minute_count,
                    i.quota_hour_window AS installation_hour_window,
@@ -414,6 +414,13 @@ impl ProjectService {
                     .with_field(field, FieldErrorCode::Invalid));
             }
         }
+        if matches!(input.resolve_age, Some(Some(hours)) if !(1..=MAX_RESOLVE_AGE_HOURS).contains(&hours))
+        {
+            return Err(AppError::Validation(format!(
+                "resolve_age must be between 1 and {MAX_RESOLVE_AGE_HOURS} hours"
+            ))
+            .with_field("resolve_age", FieldErrorCode::Invalid));
+        }
 
         let slug = match input.slug {
             Some(ref slug) => {
@@ -457,6 +464,7 @@ impl ProjectService {
             && input.rate_limit_per_hour.is_none()
             && input.disabled_products.is_none()
             && input.product_order.is_none()
+            && input.resolve_age.is_none()
         {
             // If no fields to update, return project unchanged
             return Self::get_by_id(pool, id).await;
@@ -474,6 +482,7 @@ impl ProjectService {
                 rate_limit_per_hour = CASE WHEN $7 THEN $8 ELSE rate_limit_per_hour END,
                 disabled_products = CASE WHEN $9 THEN $10 ELSE disabled_products END,
                 product_order = CASE WHEN $11 THEN $12 ELSE product_order END,
+                resolve_age = CASE WHEN $13 THEN $14 ELSE resolve_age END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $4
             RETURNING id, name, slug, sentry_key, stored_event_count,
@@ -481,7 +490,7 @@ impl ProjectService {
                       quota_exceeded_until, quota_exceeded_reason, next_quota_check,
                    quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
-                   disabled_products, product_order
+                   disabled_products, product_order, resolve_age
             "#,
         )
         .bind(name)
@@ -498,6 +507,8 @@ impl ProjectService {
         ))
         .bind(input.product_order.is_some())
         .bind(sqlx::types::Json(input.product_order.unwrap_or_default()))
+        .bind(input.resolve_age.is_some())
+        .bind(input.resolve_age.flatten())
         .fetch_one(pool)
         .await
         .map_err(|e| {
@@ -688,7 +699,7 @@ impl ProjectService {
                       quota_exceeded_until, quota_exceeded_reason, next_quota_check,
                    quota_minute_window, quota_minute_count, quota_hour_window, quota_hour_count,
                    rate_limited_event_count, rate_limit_per_minute, rate_limit_per_hour,
-                   disabled_products, product_order
+                   disabled_products, product_order, resolve_age
         "#;
         // An id the caller chose goes in as `$5`; otherwise the database picks one.
         let insert_sql = match id {

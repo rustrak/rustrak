@@ -17,6 +17,9 @@ const select = tv({
   slots: {
     trigger: [
       fieldFrame,
+      // Gray like the comboboxes (platform, time zone), not the text
+      // field's canvas: every picker reads the same.
+      'bg-transparent dark:bg-surface-hover/30',
       'min-w-0 ps-2.5 pe-2 text-start text-control text-fg',
       'data-popup-open:border-border-strong',
       'data-disabled:cursor-not-allowed data-disabled:border-border-subtle',
@@ -29,7 +32,7 @@ const select = tv({
     icon: 'shrink-0 text-fg-subtle',
     positioner: 'z-50 outline-none',
     popup: [
-      'max-h-(--available-height) min-w-(--anchor-width) overflow-y-auto',
+      'max-h-[min(var(--available-height),18rem)] min-w-(--anchor-width) overflow-y-auto',
       'p-1.5 outline-none',
       panelSurface,
     ],

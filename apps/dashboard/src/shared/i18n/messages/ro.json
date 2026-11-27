@@ -372,7 +372,10 @@
       "resolvedInNextRelease": "a marcat această problemă ca rezolvată în versiunea următoare",
       "resolvedInRelease": "a marcat această problemă ca rezolvată în {version}",
       "resolvedAfterRelease": "a marcat această problemă ca rezolvată în versiunile mai mari decât {version}",
-      "regressionInRelease": "a detectat o regresie în {version}"
+      "regressionInRelease": "a detectat o regresie în {version}",
+      "resolvedByAge": "a rezolvat această problemă din cauza inactivității",
+      "resolvedByAgeHours": "a rezolvat această problemă după {count, plural, one {# oră} few {# ore} other {# de ore}} de inactivitate",
+      "resolvedByAgeDays": "a rezolvat această problemă după {count, plural, one {# zi} few {# zile} other {# de zile}} de inactivitate"
     },
     "issueStatus": {
       "new": "Nouă",
@@ -774,6 +777,16 @@
       "show": "Afișează {name} în bara laterală",
       "drag": "Trage {name}",
       "saveFailed": "Bara laterală nu a putut fi salvată"
+    },
+    "autoResolve": {
+      "title": "Rezolvare automată",
+      "label": "Timp fără evenimente",
+      "description": "Rezolvă problemele care trec atâta timp fără evenimente. Dacă revin, se redeschid ca regresie.",
+      "off": "Dezactivat",
+      "hours": "{count, plural, one {# oră} few {# ore} other {# de ore}}",
+      "days": "{count, plural, one {# zi} few {# zile} other {# de zile}}",
+      "saved": "Rezolvarea automată a fost salvată",
+      "saveFailed": "Rezolvarea automată nu a putut fi salvată"
     }
   },
   "alerts": {

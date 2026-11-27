@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   regressionMessage,
   resolutionOf,
+  resolvedByAgeMessage,
   resolvedInReleaseMessage,
 } from './resolution';
 
@@ -73,6 +74,25 @@ describe('regressionMessage', () => {
   it('falls back without one', () => {
     expect(regressionMessage({ status: 'unresolved' })).toEqual({
       key: 'activity.regression',
+    });
+  });
+});
+
+describe('resolvedByAgeMessage', () => {
+  it('says how long the issue went unseen, in days when whole', () => {
+    expect(resolvedByAgeMessage({ age: 168 })).toEqual({
+      key: 'activity.resolvedByAgeDays',
+      values: { count: 7 },
+    });
+    expect(resolvedByAgeMessage({ age: 6 })).toEqual({
+      key: 'activity.resolvedByAgeHours',
+      values: { count: 6 },
+    });
+  });
+
+  it('falls back to inactivity alone without a usable age', () => {
+    expect(resolvedByAgeMessage({})).toEqual({
+      key: 'activity.resolvedByAge',
     });
   });
 });

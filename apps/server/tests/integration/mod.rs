@@ -7,6 +7,7 @@ mod alert_cooldown_test;
 mod alerts_api_test;
 mod assembly_worker_test;
 mod auth_test;
+mod auto_resolve_test;
 mod bootstrap_test;
 mod concurrency_test;
 mod crons_ingest_test;

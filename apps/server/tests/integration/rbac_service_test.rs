@@ -158,7 +158,14 @@ async fn the_migration_carries_over_existing_admins_and_memberships() {
         .await
         .unwrap();
     }
-    let p = project(&pool, "legacy").await;
+    // Raw: `ProjectService` reads columns added after this migration.
+    let p: i32 = sqlx::query_scalar(
+        "INSERT INTO projects (name, slug, sentry_key) VALUES ('legacy', 'legacy', $1) RETURNING id",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     sqlx::query("INSERT INTO project_members (project_id, user_id, role) VALUES ($1, 2, 'editor')")
         .bind(p)
         .execute(&pool)

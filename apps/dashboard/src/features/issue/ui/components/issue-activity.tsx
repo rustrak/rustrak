@@ -6,6 +6,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { issueMutations } from '@/features/issue/api/mutations';
 import {
   regressionMessage,
+  resolvedByAgeMessage,
   resolvedInReleaseMessage,
 } from '@/features/issue/model/resolution';
 import { useRelativeTime } from '@/shared/i18n/use-now';
@@ -97,6 +98,10 @@ function describe(entry: ActivityEntry, t: Translate): string {
     }
     case 'set_regression': {
       const message = regressionMessage(d);
+      return t(message.key, message.values);
+    }
+    case 'set_resolved_by_age': {
+      const message = resolvedByAgeMessage(d);
       return t(message.key, message.values);
     }
     case 'first_seen':

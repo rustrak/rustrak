@@ -1,5 +1,5 @@
 ---
-description: "How Rustrak groups error events into issues, and how to triage them: short IDs, stack traces, resolve, ignore, assign, regressions, and every project's issues on one page."
+description: "How Rustrak groups error events into issues, and how to triage them: short IDs, stack traces, resolve, auto resolve, archive, assign, regressions, and every project's issues on one page."
 ---
 
 # Issues
@@ -103,6 +103,29 @@ curl -X PUT "$RUSTRAK_URL/api/0/issues/42/" \
 <InteractiveDemo src="/demos/issues-archive.openshowcase" />
 
 The issue page has more shortcuts: `B` bookmarks the issue, `I` assigns it to you, `Shift+C` copies its link.
+
+## Resolve automatically
+
+An issue nobody fixed on purpose often just stops happening: the code around it changed, or the feature went away. Auto resolve closes those for you once they go a set time without a new event, the same as Sentry's **Auto Resolve**.
+
+Turn it on per project in **Settings → General → Auto resolve**, under **Time without events**. You can pick from 1 hour to 30 days; **Off** is the default. The choice saves as soon as you make it.
+
+<InteractiveDemo src="/demos/issues-auto-resolve.openshowcase" />
+
+Rustrak checks every 10 minutes. Each check resolves the project's unresolved issues whose last event is older than the time you picked, so the first check after you turn it on resolves every issue that is already that old. Nothing undoes it, so reopen by hand any issue you still want open.
+
+- It is a plain resolve, with no release: the next event, from any release, reopens the issue as **Regressed**.
+- The issue's activity says why: `resolved this issue after 7 days of inactivity`.
+- Archived issues and [user feedback](/usage/user-feedback) are left alone.
+- An issue someone reopened by hand gets the full time again, counted from when they reopened it.
+
+From the API, set `resolve_age` in hours (1 to 720) on the project, or `null` to turn it off:
+
+```bash
+curl -X PATCH "$RUSTRAK_URL/api/projects/1" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"resolve_age": 168}'
+```
 
 ## Priority
 

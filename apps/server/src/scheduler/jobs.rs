@@ -192,3 +192,39 @@ impl ScheduledJob for StorageCleanupJob {
         serde_json::to_value(removed).map_err(|e| crate::error::AppError::Internal(e.to_string()))
     }
 }
+
+/// Auto resolve (Sentry's `schedule_auto_resolution`): every ten minutes,
+/// resolves the unresolved issues of each project with a `resolve_age` that
+/// have gone that many hours without an event.
+pub struct AutoResolveJob;
+
+impl AutoResolveJob {
+    pub const KEY: &'static str = "auto_resolve";
+}
+
+#[async_trait]
+impl ScheduledJob for AutoResolveJob {
+    fn key(&self) -> &'static str {
+        Self::KEY
+    }
+
+    fn schedule(&self, _settings: &Value) -> Option<(Schedule, Tz)> {
+        Some((
+            Schedule::Interval {
+                value: 10,
+                unit: IntervalUnit::Minute,
+            },
+            Tz::UTC,
+        ))
+    }
+
+    fn misfire(&self) -> Misfire {
+        Misfire::RunOnce
+    }
+
+    async fn run(&self, ctx: JobContext<'_>) -> AppResult<Value> {
+        let resolved =
+            crate::services::IssueService::resolve_by_age(ctx.pool, ctx.now, 1000).await?;
+        Ok(json!({ "resolved": resolved }))
+    }
+}

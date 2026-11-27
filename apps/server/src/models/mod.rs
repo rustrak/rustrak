@@ -153,8 +153,8 @@ pub use issue::{
 };
 pub use log::{LogResponse, LogVolumePoint};
 pub use project::{
-    CreateProject, Product, Project, ProjectResponse, UpdateProject, SELECTABLE_PLATFORMS,
-    VALID_PLATFORMS,
+    CreateProject, Product, Project, ProjectResponse, UpdateProject, MAX_RESOLVE_AGE_HOURS,
+    SELECTABLE_PLATFORMS, VALID_PLATFORMS,
 };
 pub use release::{
     is_valid_environment, is_valid_version, CommitAuthor, CommitInput, CommitResponse,

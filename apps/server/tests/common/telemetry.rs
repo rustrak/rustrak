@@ -35,6 +35,7 @@ pub fn sample_report() -> Report {
             logs_24h: 0,
             github_projects: 0,
             github_auto_create_projects: 0,
+            auto_resolve_projects: 0,
         },
         plugins: Plugins::default(),
         health: Counters::new().snapshot_and_reset(),

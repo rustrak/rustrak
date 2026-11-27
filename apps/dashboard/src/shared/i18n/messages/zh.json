@@ -372,7 +372,10 @@
       "resolvedInNextRelease": "将此问题标记为在即将发布的版本中解决",
       "resolvedInRelease": "将此问题标记为在 {version} 中解决",
       "resolvedAfterRelease": "将此问题标记为在高于 {version} 的版本中解决",
-      "regressionInRelease": "在 {version} 中检测到回归"
+      "regressionInRelease": "在 {version} 中检测到回归",
+      "resolvedByAge": "因无活动解决了此问题",
+      "resolvedByAgeHours": "在 {count} 小时无活动后解决了此问题",
+      "resolvedByAgeDays": "在 {count} 天无活动后解决了此问题"
     },
     "issueStatus": {
       "new": "新出现",
@@ -774,6 +777,16 @@
       "show": "在侧边栏中显示 {name}",
       "drag": "拖动 {name}",
       "saveFailed": "无法保存侧边栏"
+    },
+    "autoResolve": {
+      "title": "自动解决",
+      "label": "无事件时长",
+      "description": "解决在这段时间内没有事件的问题。如果再次发生，会作为回归重新打开。",
+      "off": "关闭",
+      "hours": "{count} 小时",
+      "days": "{count} 天",
+      "saved": "自动解决已保存",
+      "saveFailed": "无法保存自动解决"
     }
   },
   "alerts": {

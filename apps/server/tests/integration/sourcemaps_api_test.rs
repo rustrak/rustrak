@@ -2235,14 +2235,12 @@ async fn the_migration_keeps_stored_maps_and_queued_chunk_lists() {
     );
     before.run(&pool).await.unwrap();
 
-    let project = ProjectService::create(
-        &pool,
-        CreateProject {
-            name: "legacy".into(),
-            slug: None,
-            platform: None,
-        },
+    // Raw: `ProjectService` reads columns added after this migration.
+    let project_id: i32 = sqlx::query_scalar(
+        "INSERT INTO projects (name, slug, sentry_key) VALUES ('legacy', 'legacy', $1) RETURNING id",
     )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .fetch_one(&pool)
     .await
     .unwrap();
     let debug_id = "8a8b8c8d-1111-2222-3333-444455556666";
@@ -2254,14 +2252,14 @@ async fn the_migration_keeps_stored_maps_and_queued_chunk_lists() {
             "INSERT INTO source_file_metadata(id, project_id, debug_id, file_type, file_id) \
              VALUES ('{}', {}, '{debug_id}', 'source_map', '{file_id}')",
             Uuid::new_v4(),
-            project.id
+            project_id
         ),
         format!("INSERT INTO chunk(checksum, size, data) VALUES ('{a}', 1, x'61'), ('{b}', 1, x'62')"),
         format!(
             "INSERT INTO assembly_jobs(id, bundle_checksum, project_id, chunks) \
              VALUES (7, '{}', {}, '[\"{a}\",\"{b}\",\"{a}\"]')",
             "c".repeat(40),
-            project.id
+            project_id
         ),
         format!("INSERT INTO assembly_job_chunks(job_id, checksum) VALUES (7, '{a}'), (7, '{b}')"),
     ] {
@@ -2273,7 +2271,7 @@ async fn the_migration_keeps_stored_maps_and_queued_chunk_lists() {
 
     all.run(&pool).await.unwrap();
 
-    let files = rustrak::services::sourcemap::list_files(&pool, project.id)
+    let files = rustrak::services::sourcemap::list_files(&pool, project_id)
         .await
         .unwrap();
     assert_eq!(files.len(), 1);

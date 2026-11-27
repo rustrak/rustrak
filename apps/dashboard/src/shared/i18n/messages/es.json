@@ -372,7 +372,10 @@
       "resolvedInNextRelease": "marcó este problema como resuelto en la próxima release",
       "resolvedInRelease": "marcó este problema como resuelto en {version}",
       "resolvedAfterRelease": "marcó este problema como resuelto en las releases posteriores a {version}",
-      "regressionInRelease": "detectó una regresión en {version}"
+      "regressionInRelease": "detectó una regresión en {version}",
+      "resolvedByAge": "resolvió este issue por inactividad",
+      "resolvedByAgeHours": "resolvió este issue tras {count, plural, one {# hora} other {# horas}} de inactividad",
+      "resolvedByAgeDays": "resolvió este issue tras {count, plural, one {# día} other {# días}} de inactividad"
     },
     "issueStatus": {
       "new": "Nuevo",
@@ -774,6 +777,16 @@
       "show": "Mostrar {name} en el sidebar",
       "drag": "Arrastrar {name}",
       "saveFailed": "No se pudo guardar el sidebar"
+    },
+    "autoResolve": {
+      "title": "Resolución automática",
+      "label": "Tiempo sin eventos",
+      "description": "Resuelve los issues que pasen este tiempo sin eventos. Si vuelven, se reabren como regresión.",
+      "off": "Desactivado",
+      "hours": "{count, plural, one {# hora} other {# horas}}",
+      "days": "{count, plural, one {# día} other {# días}}",
+      "saved": "Resolución automática guardada",
+      "saveFailed": "No se pudo guardar la resolución automática"
     }
   },
   "alerts": {
