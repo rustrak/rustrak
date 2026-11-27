@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, parseColor } from './color';
+import { composite, contrastRatio, parseColor } from './color';
 import { dark, light, resolve, type Theme } from './token-values';
 
 function ratio(fg: string, bg: string, theme: Theme): number {
@@ -149,5 +149,27 @@ describe('light theme', () => {
         4.5,
       );
     }
+  });
+});
+
+/*
+ * A picker's closed box (select, combobox) sits on the card of its row. In
+ * dark it is a veil, so it is painted over that card before it is measured.
+ */
+describe('a picker reads its value', () => {
+  const onPicker = (theme: Theme) =>
+    round(
+      contrastRatio(
+        parseColor(resolve('--fg', theme)),
+        composite(
+          parseColor(resolve('--surface-picker', theme)),
+          parseColor(resolve('--surface', theme)),
+        ),
+      ),
+    );
+
+  it('in both themes', () => {
+    expect(onPicker(dark)).toBe(10.6);
+    expect(onPicker(light)).toBe(15.91);
   });
 });

@@ -1,4 +1,5 @@
 import type { IssueResponse } from '@rustrak/client';
+import { resolveAgeDuration } from '@/shared/lib/resolve-age';
 
 /**
  * Which release a resolved issue was resolved in, read from its
@@ -24,7 +25,7 @@ export function resolutionOf(
 /** A message key and its values, for the component to translate. */
 export interface Message {
   key: string;
-  values?: Record<string, string>;
+  values?: Record<string, string | number>;
 }
 
 const text = (value: unknown) =>
@@ -58,4 +59,22 @@ export function regressionMessage(data: Record<string, unknown>): Message {
   return version
     ? { key: 'activity.regressionInRelease', values: { version } }
     : { key: 'activity.regression' };
+}
+
+/**
+ * Auto resolve's activity (Sentry's `SET_RESOLVED_BY_AGE`): how long the
+ * issue went without an event, or just inactivity when the age is missing.
+ */
+export function resolvedByAgeMessage(data: Record<string, unknown>): Message {
+  const age = Number(data.age);
+  if (!Number.isInteger(age) || age <= 0)
+    return { key: 'activity.resolvedByAge' };
+  const { unit, count } = resolveAgeDuration(age);
+  return {
+    key:
+      unit === 'days'
+        ? 'activity.resolvedByAgeDays'
+        : 'activity.resolvedByAgeHours',
+    values: { count },
+  };
 }

@@ -53,6 +53,8 @@ pub struct Volume {
     pub github_projects: u64,
     /// Of those, the ones that open GitHub issues automatically.
     pub github_auto_create_projects: u64,
+    /// Projects with auto resolve on.
+    pub auto_resolve_projects: u64,
 }
 
 /// What plugins are installed and where they run. Counts are blurred; only

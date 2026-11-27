@@ -311,6 +311,37 @@ mod volume {
         assert_eq!(volume.github_auto_create_projects, 1);
     }
 
+    /// How many projects turned auto resolve on: a count, never the age.
+    #[tokio::test]
+    async fn counts_the_projects_with_auto_resolve() {
+        let db = TestDb::new().await;
+        for (i, age) in [Some(24), Some(168), None].into_iter().enumerate() {
+            let project = ProjectService::create(
+                &db.pool,
+                CreateProject {
+                    name: format!("p{i}"),
+                    slug: None,
+                    platform: None,
+                },
+            )
+            .await
+            .expect("project");
+            ProjectService::update(
+                &db.pool,
+                project.id,
+                rustrak::models::UpdateProject {
+                    resolve_age: Some(age),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("age");
+        }
+
+        let volume = Volume::collect(&db.pool).await.expect("collect");
+        assert_eq!(volume.auto_resolve_projects, 2);
+    }
+
     #[tokio::test]
     async fn github_connected_is_whether_an_app_is() {
         use rustrak::telemetry::github_connected;

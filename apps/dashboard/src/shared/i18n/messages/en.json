@@ -372,7 +372,10 @@
       "resolvedInNextRelease": "marked this issue as resolved in the upcoming release",
       "resolvedInRelease": "marked this issue as resolved in {version}",
       "resolvedAfterRelease": "marked this issue as resolved in releases greater than {version}",
-      "regressionInRelease": "detected a regression in {version}"
+      "regressionInRelease": "detected a regression in {version}",
+      "resolvedByAge": "resolved this issue due to inactivity",
+      "resolvedByAgeHours": "resolved this issue after {count, plural, one {# hour} other {# hours}} of inactivity",
+      "resolvedByAgeDays": "resolved this issue after {count, plural, one {# day} other {# days}} of inactivity"
     },
     "issueStatus": {
       "new": "New",
@@ -774,6 +777,16 @@
       "show": "Show {name} in the sidebar",
       "drag": "Drag {name}",
       "saveFailed": "Failed to save the sidebar"
+    },
+    "autoResolve": {
+      "title": "Auto resolve",
+      "label": "Time without events",
+      "description": "Resolves issues that go this long without events. If they happen again, they reopen as regressed.",
+      "off": "Off",
+      "hours": "{count, plural, one {# hour} other {# hours}}",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "saved": "Auto resolve saved",
+      "saveFailed": "Could not save auto resolve"
     }
   },
   "alerts": {

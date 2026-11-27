@@ -2205,6 +2205,11 @@ export type ProjectResponse = {
      */
     rate_limited_event_count: number;
     /**
+     * Hours without events after which an unresolved issue is resolved, or
+     * `null` when auto resolve is off.
+     */
+    resolve_age: number | null;
+    /**
      * The DSN's public key: its 32 hex digits in hyphenated UUID form
      * (8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the
      * same key without hyphens.
@@ -3501,6 +3506,13 @@ export type UpdateProject = {
      * Absent leaves it as it is; `null` removes it.
      */
     rate_limit_per_minute?: number | null;
+    /**
+     * Resolve an unresolved issue once it has gone this many hours without
+     * an event, from 1 to 720 (Sentry's `resolveAge`). Any later event
+     * reopens it as regressed. Absent leaves it as it is; `null` turns it
+     * off.
+     */
+    resolve_age?: number | null;
     /**
      * New slug, slugified before storing.
      *
@@ -6131,6 +6143,11 @@ export type ProjectsListResponses = {
              * Events the quota dropped after ingest had accepted them.
              */
             rate_limited_event_count: number;
+            /**
+             * Hours without events after which an unresolved issue is resolved, or
+             * `null` when auto resolve is off.
+             */
+            resolve_age: number | null;
             /**
              * The DSN's public key: its 32 hex digits in hyphenated UUID form
              * (8-4-4-4-12), not necessarily an RFC 4122 UUID. The DSN carries the

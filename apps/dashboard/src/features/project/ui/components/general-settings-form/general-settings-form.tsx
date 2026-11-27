@@ -17,6 +17,7 @@ import { useAppForm } from '@/shared/ui/components/app-form';
 import { PlatformPicker } from '@/shared/ui/components/platform-picker';
 import { useRouter } from '@/shared/ui/hooks/use-router';
 import { useToastFailure } from '@/shared/ui/hooks/use-toast-failure';
+import { AutoResolveSettings } from '../auto-resolve-settings';
 import { DangerZone } from './danger-zone';
 import { SavableRow } from './savable-row';
 
@@ -244,6 +245,8 @@ export function GeneralSettingsForm({
           <form.RootError />
         </SettingSection>
       </form.AppForm>
+
+      <AutoResolveSettings project={project} readOnly={!canUpdate} />
 
       {canDelete ? (
         <DangerZone

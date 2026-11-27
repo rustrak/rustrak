@@ -239,7 +239,14 @@ pub struct Project {
     /// The order the sidebar lists the products in. Products missing from it
     /// follow in their default order, so a product added later still shows.
     pub product_order: sqlx::types::Json<Vec<Product>>,
+    /// Hours an unresolved issue may go unseen before it is resolved
+    /// (Sentry's `sentry:resolve_age`); `None` never resolves by age.
+    pub resolve_age: Option<i64>,
 }
+
+/// The longest auto-resolve age, in hours: Sentry's settings slider stops at
+/// 30 days.
+pub const MAX_RESOLVE_AGE_HOURS: i64 = 720;
 
 /// DTO for creating a new project
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -297,6 +304,12 @@ pub struct UpdateProject {
     pub disabled_products: Option<Vec<Product>>,
     /// The sidebar's order of products, replacing the current one.
     pub product_order: Option<Vec<Product>>,
+    /// Resolve an unresolved issue once it has gone this many hours without
+    /// an event, from 1 to 720 (Sentry's `resolveAge`). Any later event
+    /// reopens it as regressed. Absent leaves it as it is; `null` turns it
+    /// off.
+    #[serde(default, deserialize_with = "deserialize_optional_limit")]
+    pub resolve_age: Option<Option<i64>>,
 }
 
 /// Keeps a missing key (`None`) apart from an explicit `null` (`Some(None)`),
@@ -351,6 +364,10 @@ pub struct ProjectResponse {
     /// The order its sidebar lists the products in; the ones missing follow
     /// in their default order.
     pub product_order: Vec<Product>,
+    /// Hours without events after which an unresolved issue is resolved, or
+    /// `null` when auto resolve is off.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub resolve_age: Option<i64>,
 }
 
 impl Project {
@@ -386,6 +403,7 @@ impl Project {
             platform: self.platform.clone(),
             disabled_products: self.disabled_products.0.clone(),
             product_order: self.product_order.0.clone(),
+            resolve_age: self.resolve_age,
             stats: None,
         }
     }
@@ -428,6 +446,7 @@ mod tests {
             quota: Default::default(),
             disabled_products: Default::default(),
             product_order: Default::default(),
+            resolve_age: None,
         }
     }
 

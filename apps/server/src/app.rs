@@ -19,7 +19,7 @@ use crate::routes::dashboard::Dashboard;
 use crate::routes::metrics::MetricsEndpoint;
 use crate::scheduler::engine::Scheduler;
 use crate::scheduler::jobs::{
-    MonitorSweepJob, PayloadDictionaryJob, SessionPurgeJob, StorageCleanupJob,
+    AutoResolveJob, MonitorSweepJob, PayloadDictionaryJob, SessionPurgeJob, StorageCleanupJob,
 };
 use crate::services::oauth::{ClientMetadataSource, HttpClientMetadata};
 use crate::services::sourcemap::{DbSourceMapProvider, SourceMapProvider};
@@ -272,6 +272,7 @@ impl AppState {
             Arc::new(MonitorSweepJob::new(self.processors.clone().into_inner())),
             Arc::new(SessionPurgeJob),
             Arc::new(PayloadDictionaryJob),
+            Arc::new(AutoResolveJob),
             Arc::new(StorageCleanupJob::new(
                 self.cleanup_job.clone().into_inner(),
                 Arc::clone(&self.sourcemap_store),

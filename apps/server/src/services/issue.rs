@@ -664,6 +664,85 @@ impl IssueService {
         Self::set_status(pool, id, crate::models::STATUS_RESOLVED, None).await
     }
 
+    /// Auto resolve (Sentry's `auto_resolve_project_issues`): resolves, in
+    /// every project with a `resolve_age`, the unresolved issues last seen
+    /// that many hours before `now`, `batch` per transaction so the write
+    /// lock is never held for long. Returns how many it resolved.
+    pub async fn resolve_by_age(pool: &DbPool, now: DateTime<Utc>, batch: i64) -> AppResult<u64> {
+        let projects: Vec<(i32, i64)> =
+            sqlx::query_as("SELECT id, resolve_age FROM projects WHERE resolve_age IS NOT NULL AND deleted_at IS NULL")
+                .fetch_all(pool)
+                .await?;
+        let mut resolved = 0;
+        for (project_id, age) in projects {
+            let cutoff = now - chrono::Duration::hours(age);
+            // Reopened by hand since the cutoff: it gets a full age again.
+            // Each batch rechecks the project: deleted, or its age changed
+            // mid-run, it waits for the next run and its current setting.
+            // The outer status and last_seen repeat the subquery's on
+            // purpose: under Postgres' READ COMMITTED only they are rechecked
+            // against a row a new event or an archive changed meanwhile.
+            let sql = format!(
+                "UPDATE issues SET status = 'resolved', substatus = NULL, status_details = '{{}}' \
+                 WHERE status = 'unresolved' AND {} AND id IN (SELECT id FROM issues \
+                     WHERE project_id = $1 AND status = 'unresolved' AND issue_category = 'error' \
+                     AND EXISTS (SELECT 1 FROM projects p WHERE p.id = $1 AND p.deleted_at IS NULL \
+                         AND p.resolve_age = $4) \
+                     AND {} AND NOT EXISTS (SELECT 1 FROM issue_activity a \
+                         WHERE a.issue_id = issues.id AND a.type = 'set_status' \
+                         AND a.data LIKE '%\"status\":\"unresolved\"%' AND {}) \
+                     LIMIT $3) \
+                 RETURNING id",
+                compare_utc("last_seen", "<", 2),
+                compare_utc("last_seen", "<", 2),
+                compare_utc("a.created_at", ">=", 2),
+            );
+            let data = serde_json::json!({ "age": age }).to_string();
+            loop {
+                let mut tx = pool.begin().await?;
+                let ids: Vec<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(&*sql))
+                    .bind(project_id)
+                    .bind(cutoff)
+                    .bind(batch)
+                    .bind(age)
+                    .fetch_all(&mut *tx)
+                    .await?;
+                for &id in &ids {
+                    IssueSocialService::add_activity_on(
+                        &mut tx,
+                        id,
+                        None,
+                        "set_resolved_by_age",
+                        &data,
+                    )
+                    .await?;
+                }
+                tx.commit().await?;
+                // Synced in the background, so a slow GitHub never holds up
+                // the next batch or project; one batch at a time, one issue at
+                // a time, so a large backlog never fans out into GitHub.
+                static SYNC: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+                let synced = ids.clone();
+                let sync_pool = pool.clone();
+                github::sync::spawn("status sync", async move {
+                    let _turn = SYNC.acquire().await;
+                    for id in synced {
+                        if let Err(error) = github::sync::mirror_status(sync_pool.clone(), id).await
+                        {
+                            log::warn!("GitHub status sync failed: {error}");
+                        }
+                    }
+                    Ok(())
+                });
+                resolved += ids.len() as u64;
+                if (ids.len() as i64) < batch {
+                    break;
+                }
+            }
+        }
+        Ok(resolved)
+    }
+
     /// Reopens an issue
     pub async fn unresolve(pool: &DbPool, id: Uuid) -> AppResult<Issue> {
         Self::set_status(pool, id, crate::models::STATUS_UNRESOLVED, None).await

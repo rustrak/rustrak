@@ -1,4 +1,4 @@
-//! How much the installation holds. Nine counts, each blurred before it
+//! How much the installation holds. Ten counts, each blurred before it
 //! leaves, run once per window off the request path.
 
 use crate::db::DbPool;
@@ -35,6 +35,11 @@ impl Volume {
             github_auto_create_projects: count(
                 pool,
                 "SELECT COUNT(*) FROM project_repositories WHERE auto_create_issues = TRUE",
+            )
+            .await?,
+            auto_resolve_projects: count(
+                pool,
+                "SELECT COUNT(*) FROM projects WHERE resolve_age IS NOT NULL AND deleted_at IS NULL",
             )
             .await?,
         })

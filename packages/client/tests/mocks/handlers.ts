@@ -169,6 +169,7 @@ export const mockProjects = [
     rate_limited_event_count: 0,
     rate_limit_per_minute: null,
     rate_limit_per_hour: null,
+    resolve_age: null,
     created_at: '2026-01-20T10:00:00.000Z',
     updated_at: '2026-01-20T10:00:00.000Z',
     platform: 'javascript',
@@ -186,6 +187,7 @@ export const mockProjects = [
     rate_limited_event_count: 0,
     rate_limit_per_minute: null,
     rate_limit_per_hour: null,
+    resolve_age: null,
     created_at: '2026-01-19T10:00:00.000Z',
     updated_at: '2026-01-19T10:00:00.000Z',
     platform: null,
@@ -235,6 +237,7 @@ export const handlers = [
       rate_limited_event_count: 0,
       rate_limit_per_minute: null,
       rate_limit_per_hour: null,
+      resolve_age: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       // Mirrors the server: an omitted platform stays NULL, a supplied one is

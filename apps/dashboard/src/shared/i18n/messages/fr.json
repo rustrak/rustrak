@@ -372,7 +372,10 @@
       "resolvedInNextRelease": "a marqué ce problème comme résolu dans la prochaine version",
       "resolvedInRelease": "a marqué ce problème comme résolu dans {version}",
       "resolvedAfterRelease": "a marqué ce problème comme résolu dans les versions supérieures à {version}",
-      "regressionInRelease": "a détecté une régression dans {version}"
+      "regressionInRelease": "a détecté une régression dans {version}",
+      "resolvedByAge": "a résolu ce problème pour inactivité",
+      "resolvedByAgeHours": "a résolu ce problème après {count, plural, one {# heure} other {# heures}} d'inactivité",
+      "resolvedByAgeDays": "a résolu ce problème après {count, plural, one {# jour} other {# jours}} d'inactivité"
     },
     "issueStatus": {
       "new": "Nouveau",
@@ -774,6 +777,16 @@
       "show": "Afficher {name} dans la barre latérale",
       "drag": "Déplacer {name}",
       "saveFailed": "Impossible d'enregistrer la barre latérale"
+    },
+    "autoResolve": {
+      "title": "Résolution automatique",
+      "label": "Durée sans événements",
+      "description": "Résout les problèmes restés aussi longtemps sans événement. S'ils reviennent, ils sont rouverts comme régression.",
+      "off": "Désactivé",
+      "hours": "{count, plural, one {# heure} other {# heures}}",
+      "days": "{count, plural, one {# jour} other {# jours}}",
+      "saved": "Résolution automatique enregistrée",
+      "saveFailed": "Impossible d'enregistrer la résolution automatique"
     }
   },
   "alerts": {

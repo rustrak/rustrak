@@ -1297,6 +1297,7 @@ export const zProjectResponse = z.object({
     rate_limit_per_hour: z.nullable(z.int()),
     rate_limit_per_minute: z.nullable(z.int()),
     rate_limited_event_count: z.int(),
+    resolve_age: z.nullable(z.int()),
     sentry_key: z.nullable(z.string()),
     slug: z.string(),
     stats: z.nullish(zProjectListStats),
@@ -2588,6 +2589,7 @@ export const zUpdateProject = z.object({
     product_order: z.nullish(z.array(zProduct)),
     rate_limit_per_hour: z.nullish(z.int()),
     rate_limit_per_minute: z.nullish(z.int()),
+    resolve_age: z.nullish(z.int()),
     slug: z.nullish(z.string())
 });
 
@@ -3490,6 +3492,7 @@ export const zProjectsListResponse = z.object({
         rate_limit_per_hour: z.nullable(z.int()),
         rate_limit_per_minute: z.nullable(z.int()),
         rate_limited_event_count: z.int(),
+        resolve_age: z.nullable(z.int()),
         sentry_key: z.nullable(z.string()),
         slug: z.string(),
         stats: z.nullish(zProjectListStats),
