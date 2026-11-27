@@ -1,4 +1,13 @@
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+
+/// One Argon2 run at a time. Each takes its 19 MiB block (the default
+/// `m_cost`) for the whole hash, so simultaneous logins added up to a peak of
+/// 19 MiB each; serialized, a login waits for the one before it instead.
+fn argon2<T>(run: impl FnOnce(&Argon2) -> T) -> T {
+    static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _turn = TURN.lock().unwrap_or_else(|p| p.into_inner());
+    run(&Argon2::default())
+}
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -108,8 +117,7 @@ impl User {
 
     /// Hash a password using Argon2id
     pub fn hash_password(password: &str) -> Result<String, AppError> {
-        let hash = Argon2::default()
-            .hash_password(password.as_bytes())
+        let hash = argon2(|a| a.hash_password(password.as_bytes()))
             .map_err(|e| AppError::Internal(format!("Password hashing failed: {}", e)))?;
         Ok(hash.to_string())
     }
@@ -118,9 +126,7 @@ impl User {
     pub fn verify_password(&self, password: &str) -> Result<bool, AppError> {
         let parsed_hash = PasswordHash::new(&self.password_hash)
             .map_err(|e| AppError::Internal(format!("Invalid password hash: {}", e)))?;
-        Ok(Argon2::default()
-            .verify_password(password.as_bytes(), &parsed_hash)
-            .is_ok())
+        Ok(argon2(|a| a.verify_password(password.as_bytes(), &parsed_hash)).is_ok())
     }
 
     /// Spends the same Argon2 verification as [`User::verify_password`] on a
@@ -134,7 +140,7 @@ impl User {
             User::hash_password(&uuid::Uuid::new_v4().to_string()).expect("hash a random value")
         });
         let hash = PasswordHash::new(&DUMMY_HASH).expect("parse our own Argon2 hash");
-        let _ = Argon2::default().verify_password(password.as_bytes(), &hash);
+        let _ = argon2(|a| a.verify_password(password.as_bytes(), &hash));
     }
 
     /// Typed global role.

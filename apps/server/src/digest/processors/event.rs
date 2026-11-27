@@ -263,7 +263,9 @@ impl ErrorProcessor {
             commit_gate: Arc::new(tokio::sync::Semaphore::new(1)),
             budget: Arc::new(tokio::sync::Semaphore::new(budget_kib as usize)),
             budget_kib,
-            queue: Default::default(),
+            queue: crate::ingest::pipeline::DigestQueue::for_pending(
+                config.ingest_max_pending_events,
+            ),
             recovery_wake: tokio::sync::Notify::new(),
             finishers: Arc::new(tokio::sync::Semaphore::new(FINISHERS)),
             runtime: tokio::runtime::Handle::try_current().ok(),

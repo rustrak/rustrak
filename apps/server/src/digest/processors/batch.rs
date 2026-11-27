@@ -939,7 +939,7 @@ async fn upsert_environments(conn: &mut DbConn, rows: &[EnvironmentRow<'_>]) -> 
              first_release = CASE WHEN issue_environments.first_release = '' \
                                   THEN excluded.first_release ELSE issue_environments.first_release END",
     );
-    upsert.build().execute(&mut *conn).await?;
+    upsert.build().persistent(false).execute(&mut *conn).await?;
     Ok(())
 }
 

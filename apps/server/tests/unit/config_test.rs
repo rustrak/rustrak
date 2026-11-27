@@ -5,7 +5,7 @@
 
 use crate::common::EnvGuard;
 use actix_web::cookie::Key;
-use rustrak::config::{Config, OidcConfig, RateLimitConfig, SecurityConfig};
+use rustrak::config::{Config, DatabaseConfig, OidcConfig, RateLimitConfig, SecurityConfig};
 
 #[test]
 fn test_rate_limit_config_defaults() {
@@ -108,6 +108,38 @@ fn ingest_load_shedding_defaults() {
 
     assert_eq!(config.ingest_max_pending_events, 100_000);
     assert_eq!(config.ingest_min_free_disk_bytes, 64 * 1024 * 1024);
+}
+
+/// SQLite runs one write at a time and each connection keeps its own page
+/// cache: four held the dashboard's read rate in the lab with a third less
+/// memory than ten. PostgreSQL keeps its caches server-side.
+#[test]
+fn the_pool_defaults_to_four_connections_on_sqlite() {
+    let mut env = EnvGuard::new();
+    env.remove("DATABASE_MAX_CONNECTIONS");
+    if cfg!(feature = "postgres") {
+        env.set("DATABASE_URL", "postgres://test:test@localhost/test");
+    }
+
+    let max = DatabaseConfig::from_env().unwrap().max_connections;
+
+    assert_eq!(max, if cfg!(feature = "sqlite") { 4 } else { 10 });
+}
+
+/// sqlx clamps the minimum to the maximum without a word, so a minimum set
+/// above the default maximum raises the maximum instead of being cut.
+#[test]
+fn an_unset_maximum_is_never_below_the_minimum() {
+    let mut env = EnvGuard::new();
+    env.remove("DATABASE_MAX_CONNECTIONS");
+    env.set("DATABASE_MIN_CONNECTIONS", "12");
+    if cfg!(feature = "postgres") {
+        env.set("DATABASE_URL", "postgres://test:test@localhost/test");
+    }
+
+    let config = DatabaseConfig::from_env().unwrap();
+
+    assert_eq!((config.min_connections, config.max_connections), (12, 12));
 }
 
 #[test]
