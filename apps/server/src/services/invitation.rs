@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult, FieldErrorCode};
 use crate::models::token::generate_token;
-use crate::models::{CreateInvitation, CreateUserRequest, Invitation, User, UserRole};
+use crate::models::{CreateInvitation, Invitation, User, UserRole};
 use crate::services::UsersService;
 
 /// How long an invitation link stays valid.
@@ -174,10 +174,12 @@ impl InvitationService {
         }
 
         let role = UserRole::from_db(&invitation.role);
-        let req = CreateUserRequest {
-            email: invitation.email.clone(),
-            password: password.to_string(),
-        };
+        // Argon2 off the Actix worker and before the transaction, as OIDC
+        // provisioning does: it waits its turn behind other logins.
+        let password = password.to_string();
+        let password_hash = tokio::task::spawn_blocking(move || User::hash_password(&password))
+            .await
+            .map_err(|e| AppError::Internal(format!("Password hashing task failed: {e}")))??;
 
         // Create the user and consume the invitation atomically: if either step
         // fails the whole thing rolls back, so we never leave a created user with
@@ -186,7 +188,13 @@ impl InvitationService {
         // BEGIN deliberate, see db::begin_write.
         let mut tx = pool.begin().await?;
 
-        let user = UsersService::create_user(&mut *tx, &req, role).await?;
+        let user = UsersService::create_user_with_password_hash(
+            &mut *tx,
+            &invitation.email,
+            &password_hash,
+            role,
+        )
+        .await?;
 
         if let Some(role_id) = invitation.role_id {
             sqlx::query(

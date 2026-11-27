@@ -523,10 +523,15 @@ impl DatabaseConfig {
             env_number(name, default.as_secs()).map(Duration::from_secs)
         };
 
+        let min_connections = env_number("DATABASE_MIN_CONNECTIONS", defaults.min_connections)?;
         Ok(Self {
             url,
-            max_connections: env_number("DATABASE_MAX_CONNECTIONS", defaults.max_connections)?,
-            min_connections: env_number("DATABASE_MIN_CONNECTIONS", defaults.min_connections)?,
+            // sqlx would clamp a larger minimum to the default maximum silently.
+            max_connections: env_number(
+                "DATABASE_MAX_CONNECTIONS",
+                defaults.max_connections.max(min_connections),
+            )?,
+            min_connections,
             acquire_timeout: secs("DATABASE_ACQUIRE_TIMEOUT_SECS", defaults.acquire_timeout)?,
             idle_timeout: secs("DATABASE_IDLE_TIMEOUT_SECS", defaults.idle_timeout)?,
             max_lifetime: secs("DATABASE_MAX_LIFETIME_SECS", defaults.max_lifetime)?,

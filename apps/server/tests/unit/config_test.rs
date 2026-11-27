@@ -126,6 +126,22 @@ fn the_pool_defaults_to_four_connections_on_sqlite() {
     assert_eq!(max, if cfg!(feature = "sqlite") { 4 } else { 10 });
 }
 
+/// sqlx clamps the minimum to the maximum without a word, so a minimum set
+/// above the default maximum raises the maximum instead of being cut.
+#[test]
+fn an_unset_maximum_is_never_below_the_minimum() {
+    let mut env = EnvGuard::new();
+    env.remove("DATABASE_MAX_CONNECTIONS");
+    env.set("DATABASE_MIN_CONNECTIONS", "12");
+    if cfg!(feature = "postgres") {
+        env.set("DATABASE_URL", "postgres://test:test@localhost/test");
+    }
+
+    let config = DatabaseConfig::from_env().unwrap();
+
+    assert_eq!((config.min_connections, config.max_connections), (12, 12));
+}
+
 #[test]
 fn test_rate_limit_config_zero_values() {
     let mut env = EnvGuard::new();

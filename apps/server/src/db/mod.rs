@@ -138,7 +138,8 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<DbPool, sqlx::Error>
     log::info!(
         "Database connection pool established (max: {}, min: {})",
         config.max_connections,
-        config.min_connections
+        // What sqlx uses: it clamps the minimum to the maximum.
+        config.min_connections.min(config.max_connections)
     );
 
     Ok(pool)
