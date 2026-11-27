@@ -9931,6 +9931,18 @@
             }
           },
           {
+            "name": "environment",
+            "in": "query",
+            "description": "Only the logs sent from this environment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "query",
             "in": "query",
             "description": "Only the logs whose message contains this, ignoring case.",
@@ -9984,6 +9996,7 @@
                           "severity_number",
                           "body",
                           "attributes",
+                          "environment",
                           "timestamp",
                           "ingested_at"
                         ],
@@ -9994,6 +10007,13 @@
                           },
                           "body": {
                             "type": "string"
+                          },
+                          "environment": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The `sentry.environment` the SDK sent; None when it sent none."
                           },
                           "id": {
                             "type": "string",
@@ -10116,6 +10136,18 @@
             "name": "trace_id",
             "in": "query",
             "description": "Filter by trace id.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Only the logs sent from this environment.",
             "required": false,
             "schema": {
               "type": [
@@ -22076,6 +22108,7 @@
           "severity_number",
           "body",
           "attributes",
+          "environment",
           "timestamp",
           "ingested_at"
         ],
@@ -22086,6 +22119,13 @@
           },
           "body": {
             "type": "string"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `sentry.environment` the SDK sent; None when it sent none."
           },
           "id": {
             "type": "string",

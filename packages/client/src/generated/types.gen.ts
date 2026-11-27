@@ -1578,6 +1578,10 @@ export type LogResponse = {
         [key: string]: unknown;
     };
     body: string;
+    /**
+     * The `sentry.environment` the SDK sent; None when it sent none.
+     */
+    environment: string | null;
     id: string;
     ingested_at: string;
     level: string;
@@ -8737,6 +8741,10 @@ export type LogsListData = {
          */
         trace_id?: string | null;
         /**
+         * Only the logs sent from this environment.
+         */
+        environment?: string | null;
+        /**
          * Only the logs whose message contains this, ignoring case.
          */
         query?: string | null;
@@ -8774,6 +8782,10 @@ export type LogsListResponses = {
                 [key: string]: unknown;
             };
             body: string;
+            /**
+             * The `sentry.environment` the SDK sent; None when it sent none.
+             */
+            environment: string | null;
             id: string;
             ingested_at: string;
             level: string;
@@ -8811,6 +8823,10 @@ export type LogsVolumeData = {
          * Filter by trace id.
          */
         trace_id?: string | null;
+        /**
+         * Only the logs sent from this environment.
+         */
+        environment?: string | null;
         /**
          * Only the logs whose message contains this, ignoring case.
          */

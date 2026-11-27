@@ -464,6 +464,9 @@ impl IssueService {
              UNION \
              SELECT environment FROM session_counts \
              WHERE project_id = $1 AND environment <> '' \
+             UNION \
+             SELECT environment FROM logs \
+             WHERE project_id = $1 AND environment IS NOT NULL \
              ORDER BY environment",
         )
         .bind(project_id)

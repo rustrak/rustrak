@@ -261,7 +261,6 @@
     "pageOf": "Page {page} of {total}",
     "newer": "Newer logs",
     "older": "Older logs",
-    "back": "Back to the logs",
     "close": "Close",
     "time": "Time",
     "severity": "Severity",
@@ -279,7 +278,12 @@
       "warn": "Warning",
       "error": "Error",
       "fatal": "Fatal"
-    }
+    },
+    "environment": "Environment",
+    "sameEnvironment": "Logs in this environment",
+    "copyJson": "Copy JSON",
+    "message": "Message",
+    "ownAttributes": "custom"
   },
   "issues": {
     "columns": {

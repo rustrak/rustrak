@@ -232,7 +232,7 @@ export async function sendTransaction(
 export async function sendLogs(
   request: APIRequestContext,
   dsn: string,
-  lines: { level: string; body: string }[],
+  lines: { level: string; body: string; environment?: string }[],
 ) {
   const response = await sendEnvelope(request, dsn, [
     [
@@ -242,10 +242,16 @@ export async function sendLogs(
         content_type: 'application/vnd.sentry.items.log+json',
       },
       {
-        items: lines.map((line) => ({
+        items: lines.map(({ environment, ...line }) => ({
           ...line,
           timestamp: Date.now() / 1000,
           trace_id: hex(16),
+          // Where every SDK puts it: a typed attribute.
+          ...(environment && {
+            attributes: {
+              'sentry.environment': { value: environment, type: 'string' },
+            },
+          }),
         })),
       },
     ],

@@ -138,6 +138,9 @@ pub struct LogResponse {
     /// Typed attribute map, as received.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub attributes: serde_json::Value,
+    /// The `sentry.environment` the SDK sent; None when it sent none.
+    #[cfg_attr(feature = "openapi", schema(required))]
+    pub environment: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub ingested_at: DateTime<Utc>,
 }

@@ -32,6 +32,9 @@ pub struct ListLogsQuery {
     /// Filter by trace id.
     pub trace_id: Option<String>,
 
+    /// Only the logs sent from this environment.
+    pub environment: Option<String>,
+
     /// Only the logs whose message contains this, ignoring case.
     pub query: Option<String>,
 
@@ -45,6 +48,7 @@ impl ListLogsQuery {
             level: self.level.clone().filter(|l| !l.is_empty()),
             trace_id: self.trace_id.clone().filter(|t| !t.is_empty()),
             query: self.query.clone(),
+            environment: self.environment.clone().filter(|e| !e.is_empty()),
             period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
         }
     }
@@ -60,6 +64,9 @@ pub struct LogVolumeQuery {
     /// Filter by trace id.
     pub trace_id: Option<String>,
 
+    /// Only the logs sent from this environment.
+    pub environment: Option<String>,
+
     /// Only the logs whose message contains this, ignoring case.
     pub query: Option<String>,
 
@@ -73,6 +80,7 @@ impl LogVolumeQuery {
             level: self.level.clone().filter(|l| !l.is_empty()),
             trace_id: self.trace_id.clone().filter(|t| !t.is_empty()),
             query: self.query.clone(),
+            environment: self.environment.clone().filter(|e| !e.is_empty()),
             period_hours: crate::routes::period::parse_period_hours(self.period.as_deref()),
         }
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchParts, volumeBars } from './log-view';
+import { attributeGroups, matchParts, volumeBars } from './log-view';
 
 describe('volumeBars', () => {
   it('folds fatal into error and trace into debug', () => {
@@ -52,5 +52,40 @@ describe('matchParts', () => {
       { text: 'İ ', match: false },
       { text: 'error', match: true },
     ]);
+  });
+});
+
+describe('attributeGroups', () => {
+  it('groups attributes by namespace, unwrapping typed values', () => {
+    expect(
+      attributeGroups({
+        'sentry.sdk.name': { value: 'sentry.javascript', type: 'string' },
+        'sentry.environment': { value: 'production', type: 'string' },
+        'user.id': { value: 42, type: 'integer' },
+        orderId: { value: 'A-7', type: 'string' },
+        raw: [1, 2],
+      }),
+    ).toEqual([
+      {
+        name: '',
+        attributes: [
+          { key: 'orderId', value: 'A-7' },
+          { key: 'raw', value: '[1,2]' },
+        ],
+      },
+      {
+        name: 'sentry',
+        attributes: [
+          { key: 'sentry.environment', value: 'production' },
+          { key: 'sentry.sdk.name', value: 'sentry.javascript' },
+        ],
+      },
+      { name: 'user', attributes: [{ key: 'user.id', value: '42' }] },
+    ]);
+  });
+
+  it('has no groups without attributes', () => {
+    expect(attributeGroups(null)).toEqual([]);
+    expect(attributeGroups({})).toEqual([]);
   });
 });

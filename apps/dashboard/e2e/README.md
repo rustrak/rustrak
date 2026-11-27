@@ -55,6 +55,7 @@ watching that test, and only that test, go red.
 | A release lists the issues first seen in it | `telemetry` | The release page reading another release |
 | A transaction shows its duration and opens its spans | `telemetry` | Samples filtered away |
 | Logs can be searched by message | `telemetry` | The search ignored |
+| Logs narrowed to one environment stay narrowed after a reload, and a line opens in place with its attributes | `telemetry` | The environment not sent to the API |
 | Resolved feedback leaves the inbox | `telemetry` | Feedback muted instead of resolved |
 | A failed check-in through the page's URL marks the monitor failing | `crons` | A failed run reported as OK |
 | A new-issue alert POSTs to its webhook | `alerts` | An alert saved without its channel |

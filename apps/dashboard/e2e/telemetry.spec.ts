@@ -73,6 +73,42 @@ test('logs can be searched by their message', async ({ page, request }) => {
   await expect(lines).toContainText('payment provider timed out');
 });
 
+test('logs can be narrowed to one environment and a line opens in place', async ({
+  page,
+  request,
+}) => {
+  const project = await createProject(request);
+  await sendLogs(request, project.dsn, [
+    {
+      level: 'error',
+      body: 'payment provider timed out',
+      environment: 'production',
+    },
+    { level: 'info', body: 'cache warmed', environment: 'staging' },
+  ]);
+
+  await page.goto(`/projects/${project.id}/logs`);
+  const lines = page.getByRole('list', { name: 'Log lines' });
+  await expect(lines.getByRole('listitem')).toHaveCount(2);
+
+  await page.getByRole('button', { name: 'Environment' }).click();
+  await page.getByRole('menuitem', { name: 'production' }).click();
+  await expect(lines.getByRole('listitem')).toHaveCount(1);
+  await expect(lines).toContainText('payment provider timed out');
+
+  // Kept in the address, so a reload or a shared link keeps it.
+  await page.reload();
+  await expect(lines.getByRole('listitem')).toHaveCount(1);
+
+  const line = lines.getByRole('listitem');
+  await line
+    .getByRole('button', { name: /payment provider timed out/ })
+    .click();
+  await expect(
+    line.getByRole('definition').getByTitle('production'),
+  ).toBeVisible();
+});
+
 test('resolved feedback leaves the inbox', async ({ page, request }) => {
   const project = await createProject(request);
   await sendFeedback(request, project.dsn, {
