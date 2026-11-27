@@ -684,6 +684,7 @@ impl IssueService {
                 "UPDATE issues SET status = 'resolved', substatus = NULL, status_details = '{{}}' \
                  WHERE status = 'unresolved' AND {} AND id IN (SELECT id FROM issues \
                      WHERE project_id = $1 AND status = 'unresolved' AND issue_category = 'error' \
+                     AND EXISTS (SELECT 1 FROM projects p WHERE p.id = $1 AND p.deleted_at IS NULL) \
                      AND {} AND NOT EXISTS (SELECT 1 FROM issue_activity a \
                          WHERE a.issue_id = issues.id AND a.type = 'set_status' \
                          AND a.data LIKE '%\"status\":\"unresolved\"%' AND {}) \
@@ -713,13 +714,20 @@ impl IssueService {
                     .await?;
                 }
                 tx.commit().await?;
-                // One at a time: a first run over a large backlog must not
-                // start thousands of syncs, each holding a connection.
-                for &id in &ids {
-                    if let Err(error) = github::sync::mirror_status(pool.clone(), id).await {
-                        log::warn!("GitHub status sync failed: {error}");
+                // One background task per batch, syncing its issues one at a
+                // time: a large backlog never starts thousands of syncs, and a
+                // slow GitHub never holds up the next batch or project.
+                let synced = ids.clone();
+                let sync_pool = pool.clone();
+                github::sync::spawn("status sync", async move {
+                    for id in synced {
+                        if let Err(error) = github::sync::mirror_status(sync_pool.clone(), id).await
+                        {
+                            log::warn!("GitHub status sync failed: {error}");
+                        }
                     }
-                }
+                    Ok(())
+                });
                 resolved += ids.len() as u64;
                 if (ids.len() as i64) < batch {
                     break;
