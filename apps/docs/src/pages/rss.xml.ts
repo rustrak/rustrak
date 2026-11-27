@@ -9,8 +9,8 @@ export const GET: APIRoute = async ({ site }) =>
     description:
       'Updates, releases, and engineering notes from the Rustrak project.',
     site: site ?? 'https://rustrak.dev',
-    // The canonical URLs have none.
-    trailingSlash: false,
+    // The canonical URLs end in one: GitHub Pages serves each page as a folder.
+    trailingSlash: true,
     items: (await getPosts()).map((post) => ({
       title: post.data.title,
       description: post.data.description,

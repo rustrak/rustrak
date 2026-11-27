@@ -18,8 +18,10 @@ const pages = Object.keys(import.meta.glob('./**/*.astro'))
   .map((file) => file.slice(1).replace(/(\/index)?\.astro$/, '') || '/');
 
 export const GET: APIRoute = async ({ site }) => {
+  // GitHub Pages serves each page as a folder and 301s `/x` to `/x/`, which is
+  // also the canonical: a `<loc>` without the slash is a redirect Google skips.
   const url = (path: string, lastmod?: string) =>
-    `<url><loc>${new URL(path, site)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}</url>`;
+    `<url><loc>${new URL(path.replace(/\/?$/, '/'), site)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}</url>`;
   const posts = (await getPosts()).map((post) =>
     url(`/blog/${post.id}`, isoDate(post.data.date)),
   );
