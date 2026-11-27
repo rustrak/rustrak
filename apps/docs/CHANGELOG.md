@@ -1,5 +1,13 @@
 # docs
 
+## 0.19.3
+
+### Patch Changes
+
+- [`0cb5660`](https://github.com/rustrak/rustrak/commit/0cb5660691362ed4d2d2edbb67e99770fa368015) Thanks [@AbianS](https://github.com/AbianS)! - Document auto resolve and the logs environment filter, with new demos, and use trailing slashes in internal links, the sitemap and the RSS feed so none of them redirect.
+- Updated dependencies []:
+  - @rustrak/ui@0.35.0
+
 ## 0.19.2
 
 ### Patch Changes
