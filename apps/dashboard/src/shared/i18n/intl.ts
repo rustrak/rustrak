@@ -154,15 +154,16 @@ export function reloadOnUserChange(
 /**
  * The catalogues, one dynamic import each.
  *
- * Five languages, and a reader uses one. Naming them in a literal rather than
+ * Six languages, and a reader uses one. Naming them in a literal rather than
  * interpolating the locale into the specifier is what lets the bundler see
- * five chunks instead of shipping all five to everyone.
+ * six chunks instead of shipping all six to everyone.
  */
 const CATALOGUES: Record<Locale, () => Promise<{ default: Messages }>> = {
   en: () => import('./messages/en.json'),
   es: () => import('./messages/es.json'),
   fr: () => import('./messages/fr.json'),
   ro: () => import('./messages/ro.json'),
+  ja: () => import('./messages/ja.json'),
   zh: () => import('./messages/zh.json'),
 };
 

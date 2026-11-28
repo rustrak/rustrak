@@ -1,7 +1,7 @@
 # Rustrak Dashboard
 
 React 19, TanStack Router in file-based mode, Vite, Tailwind and shadcn/ui,
-`use-intl` for `en`, `zh`, `fr`, `es` and `ro`. Root context: `/CLAUDE.md`.
+`use-intl` for `en`, `zh`, `fr`, `es`, `ro` and `ja`. Root context: `/CLAUDE.md`.
 
 It compiles to static files and **the Rust server hands them out**. There is no
 Node process in production, no second container, and no separate origin. The
@@ -314,7 +314,7 @@ changes, since sign-in stays inside the SPA and boot resolved them for nobody.
 
 - No date or number formatting library. Everything goes through `use-intl`'s
   `useFormatter`, and the option sets are named once in `shared/i18n/config.ts`.
-- A new user-facing sentence goes in **all five** `messages/*.json`.
+- A new user-facing sentence goes in **all six** `messages/*.json`.
   `locale-completeness` and `message-keys` fail the build otherwise.
 
 ## On a phone, and installed
