@@ -102,7 +102,6 @@ export const TABS: NavTab[] = [
           item('configuration/cloudflare-access', 'Cloudflare Access'),
           item('configuration/github', 'GitHub'),
           item('configuration/gitlab', 'GitLab'),
-          item('configuration/mattermost', 'Mattermost'),
         ],
       },
       {

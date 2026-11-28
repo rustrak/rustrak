@@ -95,7 +95,7 @@ OIDC_ISSUER_URL=https://id.example.com
 OIDC_CLIENT_ID=<client-id-from-pocket-id>
 OIDC_CLIENT_SECRET=<client-secret-from-pocket-id>
 OIDC_REDIRECT_URL=https://rustrak.example.com/auth/sso/callback
-OIDC_PROVIDER_NAME=Pocket ID
+OIDC_PROVIDER_NAME="Pocket ID"
 # Your Pocket ID decides who has an account, so let new people in.
 OIDC_AUTO_PROVISION=true
 ```
@@ -372,7 +372,7 @@ line that starts with `SSO browser callback failed:`.
 
 | Log message | Cause | Fix |
 |---|---|---|
-| `SSO provider did not verify the email address` | The provider sent `email_verified: false` | Verify the email at the provider. In Pocket ID: **Users → edit → Mark as verified** |
+| `SSO provider did not verify the email address` | The provider did not send `email_verified: true` | Verify the email at the provider. In Pocket ID: **Users → edit → Mark as verified** |
 | `No Rustrak account is linked to this SSO identity` | Nobody has this email and provisioning is off | Invite the person, or set `OIDC_AUTO_PROVISION=true` |
 | `Rustrak has no owner yet` | The installation has no account and the person is in no `OIDC_ADMIN_GROUPS` group | Create the first owner with `CREATE_SUPERUSER` or the bootstrap file, or sign in first as a member of an admin group |
 | `Email domain is not allowed to use SSO` | The email is outside `OIDC_ALLOWED_DOMAINS` | Add the domain, or use an account at an allowed one |
