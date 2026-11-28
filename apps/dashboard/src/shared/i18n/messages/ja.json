@@ -1,0 +1,3306 @@
+{
+  "locale": {
+    "en": "English",
+    "zh": "简体中文",
+    "fr": "Français",
+    "es": "Español",
+    "ro": "Română",
+    "ja": "日本語",
+    "label": "言語",
+    "storedOnAccount": "アカウントに保存しました。",
+    "saveFailed": "言語を保存できませんでした。",
+    "timeZoneLabel": "タイムゾーン",
+    "timeZonePlaceholder": "タイムゾーンを検索…",
+    "timeZoneNoResults": "タイムゾーンが見つかりません。",
+    "timeZoneHint": "すべての日時はこのタイムゾーンで表示されます。UTC を選択すると、イベントに記録されたとおりに表示されます。",
+    "timeZoneSaveFailed": "タイムゾーンを保存できませんでした。",
+    "clockLabel": "24時間表示",
+    "clockHint": "時刻を 2:30 PM ではなく 14:30 のように表示します。",
+    "clockSaveFailed": "時計設定を保存できませんでした。"
+  },
+  "app": {
+    "title": "Rustrak - エラートラッキングシステム",
+    "description": "Sentry SDK 互換の軽量なセルフホスト型エラートラッキング"
+  },
+  "common": {
+    "reload": "再読み込み",
+    "copyAs": "コピー形式",
+    "clipboardUnavailable": "クリップボードを利用できません",
+    "clipboardUnavailableHint": "内容を選択して手動でコピーするか、HTTPS 経由で Rustrak にアクセスしてください。",
+    "clipboardLabelHint": "{label} を選択して手動でコピーするか、HTTPS 経由で Rustrak にアクセスしてください。",
+    "openSidebar": "サイドバーを開く",
+    "showSidebar": "サイドバーを表示",
+    "closeSidebar": "サイドバーを閉じる",
+    "hideSidebar": "サイドバーを非表示",
+    "close": "閉じる",
+    "showPassword": "パスワードを表示",
+    "hidePassword": "パスワードを非表示",
+    "loading": "読み込み中",
+    "copyLabel": "{label} をコピー",
+    "unfinished": "未完了",
+    "noSpans": "スパンなし",
+    "noSpansHint": "このトレースには描画できるタイミング情報がありません。",
+    "resizeNameColumn": "名前列の幅を変更",
+    "mainNavigation": "メインナビゲーション",
+    "breadcrumb": "パンくずリスト",
+    "notifications": "通知",
+    "collapseSidebar": "サイドバーを折りたたむ",
+    "expandSidebar": "サイドバーを展開",
+    "account": "アカウント: {name}",
+    "openNavigation": "ナビゲーションを開く",
+    "closeNavigation": "ナビゲーションを閉じる"
+  },
+  "theme": {
+    "light": "ライト",
+    "dark": "ダーク",
+    "system": "システム",
+    "label": "テーマ"
+  },
+  "update": {
+    "srAvailable": "Rustrak {version} が利用可能です。",
+    "shapeTitle": "アップデート通知アイコン",
+    "available": "利用可能",
+    "dismiss": "バージョン {version} のアップデート通知を閉じる",
+    "viewChangelog": "変更履歴を表示"
+  },
+  "platforms": {
+    "searchPlaceholder": "すべてのプラットフォームを検索",
+    "searchAria": "プラットフォームを検索",
+    "categoriesAria": "プラットフォームカテゴリ",
+    "noSdkFor": "\"{query}\" 向けの SDK はまだありません",
+    "tryGeneric": "JavaScript、Python、Node などの汎用 SDK を試すか、<other>その他</other> で汎用プロジェクトを作成してください。",
+    "otherPlatform": "その他のプラットフォーム",
+    "otherPlatformDescription": "お使いのプラットフォームが一覧にない場合、または後で選択する場合に使用します。任意の Sentry SDK で動作します。",
+    "matchingCount": "{count} 件の一致するプラットフォーム",
+    "footerCount": "{count} 件のプラットフォーム · 検索ですべてのカテゴリを横断できます",
+    "pickerPlaceholder": "プラットフォームを検索…",
+    "pickerAria": "プラットフォーム",
+    "noResults": "プラットフォームが見つかりません。",
+    "categories": {
+      "popular": "人気",
+      "browser": "ブラウザ",
+      "server": "サーバー",
+      "mobile": "モバイル",
+      "desktop": "デスクトップ",
+      "serverless": "サーバーレス",
+      "gaming": "ゲーム",
+      "all": "すべて"
+    }
+  },
+  "statTile": {
+    "noPriorPeriod": "前期データなし",
+    "noPriorActivity": "前期のアクティビティなし",
+    "vsPrev": "前期比"
+  },
+  "table": {
+    "showingRange": "{total} 件中 {start}-{end} 件を表示",
+    "noResults": "結果なし",
+    "previousPage": "前のページ",
+    "nextPage": "次のページ",
+    "pageOf": "{total} ページ中 {current} ページ",
+    "ofTotal": "全 {total} 件",
+    "firstPage": "最初のページ",
+    "lastPage": "最後のページ",
+    "selectAllPageRows": "このページのすべての行を選択",
+    "selectRow": "行を選択",
+    "expand": "展開",
+    "selected": "{count, plural, other {# 件選択中}}",
+    "clearSelection": "クリア",
+    "selectionToolbar": "選択した行へのアクション",
+    "noMatches": "現在のフィルターに一致するものはありません。",
+    "nothingYet": "まだ何もありません。",
+    "clearFilters": "フィルターをクリア",
+    "actions": "アクション",
+    "rowActions": "行のアクション",
+    "columns": "列",
+    "chooseColumns": "列を選択",
+    "resizeColumn": "列の幅を変更",
+    "filterValues": "フィルター値",
+    "filterValuesPlaceholder": "フィルター値…",
+    "nothingMatches": "一致するものはありません",
+    "contains": "含む…",
+    "filterText": "フィルター文字列",
+    "min": "最小",
+    "max": "最大",
+    "lowestFirst": "低い順",
+    "highestFirst": "高い順",
+    "aToZ": "A から Z",
+    "zToA": "Z から A",
+    "sortBy": "並べ替え",
+    "clearFilter": "フィルターをクリア",
+    "hideColumn": "列を非表示",
+    "range": "{total} 件中 {first}–{last} 件",
+    "rowsPerPage": "{size} 行",
+    "rowsOption": "{size} 行",
+    "filterBy": "フィルター条件",
+    "suggestions": "候補",
+    "filterAndSearch": "key:value でフィルター、または検索…",
+    "addFilter": "フィルターを追加…",
+    "clearAll": "フィルターと検索をクリア",
+    "hintNavigate": "移動",
+    "hintSelect": "選択",
+    "hintClose": "esc で閉じる",
+    "typeValueThen": "値を入力して",
+    "removeFilter": "{name} フィルターを削除",
+    "searchFor": "「{text}」を検索"
+  },
+  "commands": {
+    "overviewDescription": "健全性、ボリューム、最新のイシューを一目で確認できます。",
+    "issuesDescription": "フィンガープリントでグループ化されたエラーと例外。",
+    "releasesDescription": "デプロイと各バージョンの健全性。",
+    "performanceDescription": "トランザクションのタイミングとスパンのウォーターフォール。",
+    "webVitalsDescription": "実際のユーザーに対する各ページの読み込みと応答の速さ。",
+    "agentsDescription": "AI エージェントのトレースとその中のスパン。",
+    "logsDescription": "到着する生のログストリーム。",
+    "generalDescription": "名前、スラッグ、プラットフォーム、危険な操作。",
+    "alertsDescription": "問題が発生したときに発火するルール。",
+    "membersDescription": "このプロジェクトにアクセスできるユーザーとその権限。",
+    "clientKeysDescription": "DSN と SDK セットアップ用スニペット。",
+    "allProjects": "すべてのプロジェクト",
+    "allProjectsDescription": "このインスタンスで表示できるすべてのプロジェクト。",
+    "newProject": "新規プロジェクト",
+    "newProjectDescription": "プラットフォームを選択して作成します。",
+    "apiTokensDescription": "API および SDK 取り込み用の Bearer トークン。",
+    "integrationsDescription": "アラートの配信先。",
+    "teamDescription": "このインスタンスのメンバーと保留中の招待。",
+    "storageDescription": "保持期間とソースマップのクリーンアップ。",
+    "accountDescription": "ご自身のプロフィールとパスワード。",
+    "appearanceDescription": "ライト、ダーク、またはシステム設定に従います。",
+    "aboutDescription": "この Rustrak のバージョン情報。",
+    "noResultsFor": "「{query}」の結果はありません",
+    "resultsHeading": "結果",
+    "projectsHeading": "プロジェクト",
+    "settingsHeading": "設定",
+    "generalBadge": "一般",
+    "settingsBadge": "設定",
+    "noPlatform": "プラットフォームなし",
+    "noPlatformSet": "プラットフォーム未設定",
+    "pages": "ページ",
+    "dialogTitle": "コマンドバー",
+    "dialogDescription": "プロジェクト、ページ、設定を検索し、Enter で開きます。",
+    "searchPlaceholder": "プロジェクト、ページ、設定を検索…",
+    "triggerSearch": "検索",
+    "navigate": "移動",
+    "open": "開く",
+    "close": "閉じる",
+    "hidePages": "ページを非表示",
+    "cronsDescription": "スケジュールされたジョブとその実行結果。",
+    "feedbackDescription": "ユーザーがアプリから報告した内容。",
+    "rolesDescription": "各ロールに許可する操作を定義",
+    "mcpDescription": "MCP 経由で AI アシスタントを接続",
+    "dataDescription": "イベント上限とプロジェクトが保存するデータ",
+    "githubDescription": "GitHub リポジトリを連携",
+    "pluginsDescription": "プラグインをインストールし、実行場所を選択"
+  },
+  "charts": {
+    "errors": "エラー",
+    "warnings": "警告",
+    "info": "情報",
+    "total": "合計",
+    "ofWhichFatal": "うち致命的",
+    "noEvents": "この期間にイベントはありません",
+    "dashedLine": "破線: バケットあたり平均 {count}",
+    "eventCount": "{count} 件のイベント",
+    "bucketDays": "{count}日バケット",
+    "bucketHours": "{count}時間バケット",
+    "bucketMinutes": "{count}分バケット"
+  },
+  "errorScreen": {
+    "brandStatement": "データは安全です",
+    "brandDescription": "何も失われておらず、セッションも維持されています。この画面は Rustrak への接続に関するもので、保存されているデータに関するものではありません。"
+  },
+  "formErrors": {
+    "required": "{subject} は必須です。",
+    "invalid": "{subject} が有効ではありません。",
+    "alreadyExists": "{subject} はすでに使用されています。",
+    "tooShort": "{subject} が短すぎます。",
+    "tooLong": "{subject} が長すぎます。",
+    "incorrect": "{subject} が正しくありません。",
+    "rejected": "この値は拒否されました。",
+    "defaultSubject": "この値"
+  },
+  "error": {
+    "describe": {
+      "networkTimeout": "Rustrak API の応答に時間がかかりすぎました。",
+      "networkUnreachable": "Rustrak API に接続できませんでした。",
+      "serverError": "Rustrak API が応答中に失敗しました。しばらくしてから再試行してください。",
+      "forbidden": "お使いのアカウントにはこの操作が許可されていません。",
+      "rateLimited": "リクエストが多すぎます。{window}再試行してください。",
+      "invalidResponse": "Rustrak API が、このダッシュボードで読み取れないデータを返しました。"
+    },
+    "guidance": {
+      "network": "ログインしたままです。API が復旧したらページを再読み込みしてください。",
+      "rateLimited": "この制限は通常、Rustrak 自体ではなく、Rustrak の前段にあるプロキシによるものです。",
+      "forbidden": "アクセス権があるはずだと思う場合は、管理者にお問い合わせください。",
+      "invalidResponse": "ダッシュボードと API で異なるバージョンが実行されている可能性があります。再読み込みしても解決しません。",
+      "notFound": "サーバーは正常に応答しましたが、そのアドレスには何もありませんでした。"
+    },
+    "headline": {
+      "network": "Rustrak が応答していません",
+      "forbidden": "アクセス権がありません",
+      "rateLimited": "リクエストが多すぎます",
+      "invalidResponse": "このダッシュボードは API を読み取れませんでした",
+      "notFound": "ここには何もありません",
+      "other": "処理に失敗しました"
+    },
+    "retry": {
+      "moments": "しばらくしてから",
+      "seconds": "{count} 秒後に",
+      "minutes": "約 {count} 分後に",
+      "hours": "約 {count} 時間後に"
+    }
+  },
+  "logs": {
+    "emptyValue": "(空)",
+    "volumeFailed": "ボリュームチャートを読み込めませんでした",
+    "lineFailed": "この行を開けませんでした。削除された可能性があります。",
+    "attributes": "属性",
+    "empty": {
+      "title": "この期間内に検索に一致するログはありません"
+    },
+    "lines": "ログ行",
+    "pageOf": "{total} ページ中 {page} ページ",
+    "newer": "新しいログ",
+    "older": "古いログ",
+    "close": "閉じる",
+    "time": "時刻",
+    "severity": "重大度",
+    "trace": "トレース",
+    "span": "スパン",
+    "sameTrace": "このトレースのログ",
+    "level": "レベル",
+    "search": "メッセージを検索、または level: や trace: でフィルター",
+    "volume": "レベル別のログ推移",
+    "count": "{count} 件のログ",
+    "levels": {
+      "trace": "トレース",
+      "debug": "デバッグ",
+      "info": "情報",
+      "warn": "警告",
+      "error": "エラー",
+      "fatal": "致命的"
+    },
+    "environment": "環境",
+    "sameEnvironment": "この環境のログ",
+    "copyJson": "JSON をコピー",
+    "message": "メッセージ",
+    "ownAttributes": "カスタム"
+  },
+  "issues": {
+    "columns": {
+      "issue": "イシュー",
+      "trend": "トレンド",
+      "age": "経過",
+      "events": "イベント",
+      "users": "ユーザー",
+      "lastSeen": "最終確認",
+      "lastSeenShort": "最終確認",
+      "level": "レベル",
+      "assignee": "担当者",
+      "firstSeen": "初回確認"
+    },
+    "actionsTitle": "アクション",
+    "actionsFor": "{title} のアクション",
+    "actions": {
+      "resolve": "解決済みにする",
+      "unresolve": "未解決に戻す",
+      "mute": "ミュート",
+      "unmute": "ミュート解除",
+      "delete": "削除",
+      "archive": "アーカイブ",
+      "unarchive": "アーカイブ解除",
+      "resolveInNextRelease": "次のリリースで解決済みにする",
+      "bookmark": "ブックマーク",
+      "removeBookmark": "ブックマークを削除",
+      "subscribe": "購読",
+      "unsubscribe": "購読解除",
+      "deleteIssue": "イシューを削除",
+      "markSpam": "スパムとしてマーク",
+      "moveToInbox": "受信トレイに移動",
+      "resolveInCurrentRelease": "現在のリリースで解決済みにする",
+      "resolveInAnotherRelease": "別のリリースで解決済みにする…"
+    },
+    "toasts": {
+      "updateFailed": "イシューの更新に失敗しました",
+      "deleteOneFailed": "イシューの削除に失敗しました",
+      "deleteManyFailed": "複数のイシューの削除に失敗しました",
+      "bookmarkFailed": "ブックマークの更新に失敗しました",
+      "subscriptionFailed": "購読の更新に失敗しました",
+      "priorityFailed": "優先度の更新に失敗しました"
+    },
+    "selectedCount": "{count} 件選択中",
+    "clearSelection": "選択をクリア",
+    "empty": {
+      "title": "イシューが見つかりません",
+      "allResolved": "すべてのイシューが解決済みまたはアーカイブ済みです",
+      "noFiltered": "{filter}のイシューはありません"
+    },
+    "filters": {
+      "open": "オープン",
+      "resolved": "解決済み",
+      "muted": "アーカイブ済み",
+      "all": "すべて"
+    },
+    "deleteDialog": {
+      "cancel": "キャンセル",
+      "deleting": "削除中…",
+      "confirm": "削除",
+      "title": "{count, plural, other {# 件のイシューを削除しますか？}}",
+      "description": "{count, plural, other {これにより # 件のイシューと関連するすべてのイベントが完全に削除されます。この操作は元に戻せません。}}"
+    },
+    "statusTitle": "ステータス: {label}",
+    "priorityTitle": "優先度: {label}",
+    "levelTitle": "レベル: {level}",
+    "priority": "優先度",
+    "set": "設定",
+    "moreResolveOptions": "その他の解決オプション",
+    "issueActionsLabel": "イシューのアクション",
+    "activity": {
+      "title": "アクティビティ",
+      "placeholder": "コメントを入力…",
+      "comment": "コメント",
+      "empty": "まだアクティビティはありません。",
+      "commentFailed": "コメントの追加に失敗しました",
+      "statusResolved": "このイシューを解決済みにしました",
+      "statusReopened": "このイシューを再オープンしました",
+      "statusMuted": "このイシューをアーカイブしたか、スパムとしてマークしました",
+      "statusChanged": "ステータスを {status} に変更しました",
+      "priorityChanged": "優先度を {priority} に設定しました",
+      "regression": "リグレッションを検出しました",
+      "firstSeen": "このイシューを初めて確認しました",
+      "resolvedByCommit": "コミット {sha} でこのイシューを解決しました",
+      "closedOnGitHub": "GitHub でリンクされたイシューをクローズしました",
+      "reopenedOnGitHub": "GitHub でリンクされたイシューを再オープンしました",
+      "githubCreated": "GitHub で {ref} を作成しました",
+      "githubLinked": "{ref} をリンクしました",
+      "githubUnlinked": "{ref} のリンクを解除しました",
+      "resolvedInNextRelease": "このイシューを次のリリースで解決済みにしました",
+      "resolvedInRelease": "このイシューを {version} で解決済みにしました",
+      "resolvedAfterRelease": "このイシューを {version} より後のリリースで解決済みにしました",
+      "regressionInRelease": "{version} でリグレッションを検出しました",
+      "resolvedByAge": "アクティビティがないためこのイシューを解決済みにしました",
+      "resolvedByAgeHours": "{count} 時間アクティビティがなかったためこのイシューを解決済みにしました",
+      "resolvedByAgeDays": "{count} 日間アクティビティがなかったためこのイシューを解決済みにしました"
+    },
+    "issueStatus": {
+      "new": "新規",
+      "ongoing": "継続中",
+      "escalating": "エスカレーション中",
+      "regressed": "リグレッション",
+      "archived": "アーカイブ済み",
+      "resolved": "解決済み",
+      "ignored": "無視",
+      "unresolved": "未解決",
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "card": {
+      "usersAffected": "{count} 人のユーザーに影響",
+      "eventCount": "{count} 件のイベント"
+    },
+    "table": {
+      "windows": {
+        "1h": "過去1時間",
+        "24h": "過去24時間",
+        "7d": "過去7日間",
+        "14d": "過去14日間",
+        "30d": "過去30日間"
+      },
+      "levels": {
+        "fatal": "致命的",
+        "error": "エラー",
+        "warning": "警告",
+        "info": "情報"
+      },
+      "fewest": "イベントが少ない順",
+      "most": "イベントが多い順",
+      "lowestPriority": "優先度が低い順",
+      "highestPriority": "優先度が高い順",
+      "me": "自分",
+      "unassigned": "未割り当て",
+      "assigned": "割り当て済み",
+      "oldest": "古い順",
+      "newest": "新しい順",
+      "environment": "環境",
+      "release": "リリース",
+      "assign": "割り当て",
+      "assignToMe": "自分に割り当て",
+      "unassign": "割り当て解除",
+      "copyId": "ID をコピー",
+      "copied": "ID をコピーしました",
+      "count": "{display} 件のイシュー",
+      "views": {
+        "open": "オープン",
+        "resolved": "解決済み",
+        "muted": "アーカイブ済み",
+        "all": "すべて"
+      },
+      "project": "プロジェクト"
+    },
+    "detail": {
+      "linkCopied": "リンクをコピーしました",
+      "copyLink": "リンクをコピー",
+      "status": "ステータス",
+      "firstSeen": "初回確認 {when}",
+      "lastSeen": "最終確認 {when}",
+      "activity30d": "イベント、過去30日間",
+      "activity30dHint": "このイシューにグループ化されたイベント、日別",
+      "noActivity": "過去30日間にイベントはありません",
+      "eventPosition": "{total} 件中 {current} 件目のイベント",
+      "copyEventId": "イベント ID をコピー",
+      "jumpTo": "移動先",
+      "properties": "プロパティ",
+      "tags": "タグ",
+      "code": "コード",
+      "activity": "アクティビティ",
+      "resolvedInNextRelease": "次のリリースで",
+      "resolvedInRelease": "{version} で"
+    },
+    "resolveInRelease": {
+      "title": "リリースで解決済みにする",
+      "description": "このリリース以降のイベントではイシューが再オープンします。それより前のリリースでは再オープンしません。",
+      "label": "リリース",
+      "placeholder": "リリースを選択",
+      "empty": "このプロジェクトにはまだリリースがありません。",
+      "confirm": "解決済みにする",
+      "cancel": "キャンセル",
+      "search": "検索",
+      "searchPlaceholder": "バージョンでフィルター",
+      "loadFailed": "リリースを読み込めませんでした",
+      "noMatch": "一致するリリースがありません。"
+    }
+  },
+  "roles": {
+    "viewer": "閲覧者",
+    "editor": "編集者",
+    "admin": "管理者",
+    "member": "メンバー"
+  },
+  "user": {
+    "header": {
+      "openMenu": "ユーザーメニューを開く",
+      "userMenuFor": "{email} のユーザーメニュー",
+      "settings": "設定",
+      "signingOut": "ログアウト中…",
+      "signOut": "ログアウト"
+    },
+    "invite": {
+      "title": "メンバーを招待",
+      "description": "招待を作成すると、招待リンクがクリップボードにコピーされます。メール配信が設定されている場合、招待メールは新しいメンバーに直接送信されます。設定されていない場合は、リンクをご自身で共有してください。",
+      "emailLabel": "メールアドレス",
+      "roleLabel": "ロール",
+      "roleAria": "招待するロールの選択",
+      "fieldEmail": "メールアドレス",
+      "inviting": "招待中…",
+      "submit": "招待",
+      "sendEmailLabel": "招待をメールで送信",
+      "sendEmailAria": "招待をメールで送信",
+      "sendEmailUnavailable": "招待メールを送信するには、設定 → 連携でメール連携を追加する（または SMTP_HOST を設定する）ことと、DASHBOARD_URL または PUBLIC_URL の設定が必要です",
+      "accessHint": "招待が承認されると付与される権限です。",
+      "noRole": "アクセス権なし",
+      "ownerHint": "他のオーナーの管理を含め、すべてのプロジェクトと設定への無制限のアクセス権です。",
+      "whereLabel": "範囲",
+      "allProjects": "すべてのプロジェクト"
+    },
+    "toast": {
+      "createFailed": "招待の作成に失敗しました",
+      "created": "招待を作成しました",
+      "createdHint": "招待リンクをクリップボードにコピーしました — 新しいメンバーに共有してください。",
+      "copyInviteLink": "招待リンクをコピー: {link}",
+      "updated": "メンバーを更新しました",
+      "updateFailed": "メンバーの更新に失敗しました",
+      "removed": "メンバーを削除しました",
+      "removeFailed": "メンバーの削除に失敗しました",
+      "added": "メンバーを追加しました",
+      "addFailed": "メンバーの追加に失敗しました",
+      "linkCopied": "招待リンクをクリップボードにコピーしました",
+      "copyLink": "招待リンクをコピー",
+      "revoked": "招待を取り消しました",
+      "revokeFailed": "招待の取り消しに失敗しました",
+      "roleUpdated": "ロールを更新しました",
+      "roleUpdateFailed": "ロールの更新に失敗しました",
+      "emailSent": "招待メールを送信しました",
+      "emailSentHint": "招待リンクを {email} に送信中です。",
+      "emailFailed": "招待は作成されましたが、メールの送信に失敗しました",
+      "emailFailedHint": "配信に失敗しました — 招待リンクをコピーしてご自身で共有してください。",
+      "resendSent": "招待メールを再送信しました",
+      "resendSentHint": "新しい招待メールを {email} に送信中です。",
+      "resendFailed": "招待メールの再送信に失敗しました"
+    },
+    "member": {
+      "updatedDescription": "{email} は {role} になりました。"
+    },
+    "members": {
+      "title": "プロジェクトメンバー",
+      "manageDescription": "このプロジェクトにアクセスできるユーザーとそのロールを管理します。",
+      "readOnlyDescription": "このプロジェクトにアクセスできるユーザーです。",
+      "addMember": "メンバーを追加",
+      "empty": "メンバーはまだいません",
+      "save": "保存"
+    },
+    "remove": {
+      "title": "メンバーを削除",
+      "description": "{email} をこのプロジェクトから削除しますか？再び追加されるまでアクセスできなくなります。",
+      "keepsInherited": "{email} のこのプロジェクトでのロールを削除しますか？すべてのプロジェクトで保持しているロールはそのまま残ります。",
+      "removing": "削除中…",
+      "confirm": "削除"
+    },
+    "cancel": "キャンセル",
+    "addMember": {
+      "title": "メンバーを追加",
+      "description": "チームメイトにこのプロジェクトへのアクセス権を付与します。",
+      "userLabel": "ユーザー",
+      "userAria": "追加するユーザーを選択",
+      "roleLabel": "ロール",
+      "teamFailed": "チーム一覧を読み込めませんでした",
+      "noUsers": "利用可能なユーザーはいません",
+      "selectUser": "ユーザーを選択",
+      "roleAria": "新しいメンバーのロール",
+      "submit": "追加",
+      "selectRole": "ロールを選択"
+    },
+    "pending": {
+      "title": "保留中の招待",
+      "description": "まだ承認されていない招待",
+      "empty": "保留中の招待はありません",
+      "expires": "有効期限 {date}",
+      "copyAria": "{email} の招待リンクをコピー",
+      "revokeAria": "{email} の招待を取り消す",
+      "emailSent": "メール送信済み",
+      "emailNotSent": "メール未送信",
+      "resendAria": "{email} に招待メールを再送信",
+      "resend": "招待メールを再送信",
+      "copy": "招待リンクをコピー",
+      "revoke": "招待を取り消す"
+    },
+    "table": {
+      "email": "メールアドレス",
+      "you": "（あなた）",
+      "role": "ロール",
+      "changeRoleAria": "{email} のロールを変更",
+      "actionsAria": "操作",
+      "removeAria": "{email} を削除",
+      "status": "ステータス",
+      "active": "アクティブ",
+      "inactive": "非アクティブ",
+      "lastLoginAt": "最終ログイン {date}",
+      "neverLoggedIn": "ログイン履歴なし",
+      "lastLogin": "最終ログイン",
+      "never": "なし",
+      "changeRole": "ロールを変更"
+    },
+    "membersList": {
+      "empty": "チームメンバーはまだいません",
+      "title": "メンバー",
+      "description": "この Rustrak インスタンスにアクセスできるユーザー"
+    },
+    "removeMember": {
+      "title": "「{email}」を削除しますか？",
+      "description": "このユーザーは完全に削除され、すべてのプロジェクトへのアクセス権を失います。この操作は元に戻せません。"
+    },
+    "roles": {
+      "admin": "オーナー",
+      "member": "メンバー"
+    }
+  },
+  "projects": {
+    "platformRequired": "続行するにはプラットフォームを選択してください",
+    "fields": {
+      "platform": "プラットフォーム",
+      "name": "プロジェクト名",
+      "slug": "スラッグ",
+      "nameTooShort": "名前は {min} 文字以上で入力してください",
+      "nameTooLong": "名前は {max} 文字以内で入力してください",
+      "slugEmpty": "スラッグは空にできません",
+      "slugChars": "小文字の英字、数字、ハイフンを使用してください"
+    },
+    "create": "プロジェクトを作成",
+    "creating": "作成中…",
+    "noPlatformSelected": "プラットフォームが選択されていません",
+    "pickPlatform": "プラットフォームを選択",
+    "dsnNext": "次に DSN とセットアップ用スニペットが表示されます。",
+    "slug": {
+      "edit": "スラッグを編集",
+      "reset": "スラッグを名前に合わせてリセット",
+      "hintAuto": "名前から生成されます。編集すると任意のものを指定できます。",
+      "hintManual": "任意のものを指定できます。使用中のスラッグは使用できません。"
+    },
+    "save": "保存",
+    "toasts": {
+      "createFailed": "プロジェクトの作成に失敗しました",
+      "updateNameFailed": "プロジェクトの更新に失敗しました",
+      "updateSlugFailed": "スラッグの更新に失敗しました",
+      "updatePlatformFailed": "プラットフォームの更新に失敗しました",
+      "deleteProjectFailed": "プロジェクトの削除に失敗しました",
+      "deleteFailed": "削除に失敗しました",
+      "nameUpdated": "プロジェクトを更新しました",
+      "slugUpdated": "スラッグを更新しました",
+      "platformUpdated": "プラットフォームを更新しました",
+      "deleted": "{count} 件のプロジェクトを削除しました"
+    },
+    "projectDetails": "プロジェクトの詳細",
+    "nameTitle": "名前",
+    "nameDescription": "ダッシュボード全体でのこのプロジェクトの表示名です。",
+    "namePlaceholder": "プロジェクト名",
+    "slugDescription": "このプロジェクトの短い識別子です。DSN とダッシュボードのリンクには数値のプロジェクト ID が使われるため、変更してもすでにイベントを送信しているものが壊れることはありません。",
+    "platformDescription": "最初に受信したイベントから検出されます。検出された値が間違っている、または範囲が広すぎる場合は変更してください。",
+    "dangerZone": {
+      "title": "危険な操作",
+      "remove": "プロジェクトを削除",
+      "removeDescription": "このプロジェクトと、そのすべてのイシューとイベントを完全に削除します。この操作は元に戻せません。",
+      "deleteTitle": "「{name}」を削除しますか？",
+      "deleteDescription": "このプロジェクトと、関連するすべてのイシューとイベントが完全に削除されます。この操作は元に戻せません。",
+      "cancel": "キャンセル",
+      "confirm": "削除"
+    },
+    "deleteDialog": {
+      "titleNamed": "「{name}」を削除しますか？",
+      "description": "{subject} と、関連するすべてのイシューとイベントが完全に削除されます。この操作は元に戻せません。",
+      "cancel": "キャンセル",
+      "confirm": "削除",
+      "subject": "{count, plural, other {# 件のプロジェクト}}"
+    },
+    "selectedCount": "{count} 件選択中",
+    "empty": {
+      "title": "プロジェクトはまだありません",
+      "hint": "最初のプロジェクトを作成してエラーの追跡を始めましょう",
+      "noAccessHint": "プロジェクトへのアクセスについてはオーナーにお問い合わせください。",
+      "noMatches": "検索に一致するプロジェクトはありません"
+    },
+    "newProject": "新規プロジェクト",
+    "delete": "削除",
+    "actions": {
+      "delete": "削除"
+    },
+    "columns": {
+      "project": "プロジェクト",
+      "issues": "イシュー",
+      "events24h": "イベント（24時間）",
+      "total": "合計",
+      "issueActivity": "イシューのアクティビティ",
+      "created": "作成日"
+    },
+    "events": "イベント",
+    "fatalCount": "致命的エラー {count} 件",
+    "trendLabel": "{label}、過去24時間",
+    "health": {
+      "critical": "アクティブなイシューあり、致命的エラーが未解決",
+      "rising": "アクティブなイシューあり、新規イシューが前の期間より増加",
+      "quiet": "アクティブなイシューあり、安定"
+    },
+    "navigation": "ナビゲーション",
+    "nav": {
+      "overview": "概要",
+      "issues": "イシュー",
+      "releases": "リリース",
+      "performance": "パフォーマンス",
+      "webVitals": "Web Vitals",
+      "agents": "エージェント",
+      "logs": "ログ",
+      "settings": "設定",
+      "crons": "Crons",
+      "feedback": "ユーザーフィードバック",
+      "groupTriage": "トリアージ",
+      "groupMonitor": "モニター",
+      "alerts": "アラート",
+      "docs": "ドキュメント",
+      "jumpTo": "移動先",
+      "plugins": "プラグイン"
+    },
+    "collapse": {
+      "expand": "展開",
+      "collapse": "折りたたむ"
+    },
+    "switcher": {
+      "projects": "プロジェクト",
+      "fallback": "プロジェクト",
+      "all": "すべてのプロジェクト",
+      "new": "新規プロジェクト",
+      "count": "{count} 件のプロジェクト"
+    },
+    "clientKeys": {
+      "dsn": "DSN",
+      "dsnDescription": "任意の Sentry SDK にこの文字列を指定すると、このプロジェクトにイベントを送信できます。",
+      "copyDsn": "DSN をコピー",
+      "install": "インストール",
+      "installDescription": "プロジェクトに SDK を追加します。",
+      "copyInstallCommand": "インストールコマンドをコピー",
+      "setup": "セットアップ",
+      "exampleJs": "例（JavaScript）",
+      "examplePlatform": "例（{platform}）",
+      "dsnFilled": "DSN は下記にすでに入力されています。",
+      "pointSdk": "このプラットフォームの SDK に上記の DSN を指定してください。",
+      "copied": "コピーしました",
+      "copy": "コピー",
+      "compatLead": "このサーバーはすべての公式 Sentry SDK と互換性があります。詳しくは",
+      "docsPlatform": "{platform} のドキュメント",
+      "docsSentry": "Sentry のドキュメント",
+      "compatFull": "をご覧ください。この例で省略されているオプションを含む完全なセットアップ方法が記載されています。",
+      "compatSteps": "で、このプラットフォームのセットアップ手順をご確認ください。",
+      "commandLabel": "コマンド",
+      "exampleLabel": "例"
+    },
+    "rateLimits": {
+      "title": "イベント上限",
+      "description": "このプロジェクトが保存できるイベント数です。上限を超えたイベントには 429 が返され、SDK はしばらく待ってから再送信します。",
+      "perMinute": "1分あたりのイベント数",
+      "perHour": "1時間あたりのイベント数",
+      "limitDescription": "空欄にするとサーバーの上限が適用されます。ここで指定できる値はサーバーの上限以下に限られ、それ以上にはできません。",
+      "save": "保存",
+      "saved": "上限を保存しました",
+      "saveFailed": "上限の保存に失敗しました",
+      "invalid": "1以上の整数を入力するか、空欄にしてください。",
+      "dropped": "上限により破棄",
+      "droppedDescription": "受け付けられたものの、すでに上限に達していたため保存されなかったイベントです。",
+      "tooHigh": "サーバーの上限（{max, number}）以下の値を入力してください。"
+    },
+    "card": {
+      "newIssues": "新規イシュー",
+      "openIssues": "未解決のイシュー",
+      "stored": "保存済み",
+      "rising": "イシューが増加中",
+      "waiting": "最初のイベントを待機中",
+      "actions": "{name} の操作",
+      "lastDay": "過去24時間"
+    },
+    "summary": {
+      "withFatal": "致命的エラーを含むもの {count} 件",
+      "events24h": "24時間で {display} 件のイベント"
+    },
+    "sidebar": {
+      "title": "サイドバー",
+      "options": "サイドバーのオプション",
+      "sortBy": "並び替え",
+      "sort": {
+        "manual": "手動",
+        "name": "名前",
+        "activity": "アクティビティ"
+      },
+      "projects": "プロジェクト",
+      "shown": "{total} 件中 {shown} 件を表示",
+      "show": "{name} をサイドバーに表示",
+      "drag": "{name} をドラッグ",
+      "saveFailed": "サイドバーの保存に失敗しました"
+    },
+    "autoResolve": {
+      "title": "自動解決",
+      "label": "イベントがない期間",
+      "description": "この期間イベントが発生しなかったイシューを解決済みにします。再び発生した場合は、リグレッションとして再オープンされます。",
+      "off": "オフ",
+      "hours": "{count} 時間",
+      "days": "{count} 日",
+      "saved": "自動解決を保存しました",
+      "saveFailed": "自動解決を保存できませんでした"
+    }
+  },
+  "alerts": {
+    "common": {
+      "name": "名前",
+      "fieldName": "名前",
+      "cancel": "キャンセル",
+      "delete": "削除",
+      "saveChanges": "変更を保存",
+      "test": "テスト"
+    },
+    "validation": {
+      "nameRequired": "名前は必須です",
+      "validHttpUrl": "有効な http/https URL を入力してください",
+      "webhookUrlRequired": "Webhook URL は必須です",
+      "slackWebhookUrl": "有効な Slack Webhook URL（https://hooks.slack.com/...）を入力してください",
+      "validUrl": "有効な URL を入力してください",
+      "botTokenRequired": "Bot トークンは必須です",
+      "botTokenPrefix": "Bot トークンは xoxb- で始まる必要があります",
+      "smtpHostRequired": "SMTP ホストは必須です",
+      "validEmail": "有効なメールアドレスを入力してください",
+      "templateRequired": "テンプレートは必須です",
+      "headerNameRequired": "ヘッダー名は必須です",
+      "headerNameInvalid": "有効な HTTP ヘッダー名ではありません：スペースや :、@ などの記号は使用できません",
+      "headerNameDuplicate": "このヘッダーはすでに設定されています",
+      "cooldownMinutes": "0 以上の整数（分）を入力してください",
+      "minEvents": "1 以上の整数を入力してください"
+    },
+    "routing": {
+      "slackChannelRequired": "「{name}」には Slack チャンネルが必要です",
+      "recipientsRequired": "「{name}」には受信者が必要です",
+      "invalidRecipients": "「{name}」の受信者に無効なメールアドレスが含まれています",
+      "webhookUrlRequired": "「{name}」には Webhook URL が必要です（認証情報で設定するか、オーバーライド URL として指定してください）",
+      "invalidOverrideUrl": "「{name}」のオーバーライド URL は http/https である必要があります",
+      "channelLabel": "チャンネル",
+      "channelHint": "チャンネル名（例：<code>#alerts</code>）またはチャンネル ID（例：<code>C1234567890</code>）",
+      "channelPlaceholder": "#alerts または C1234567890",
+      "recipientsLabel": "受信者",
+      "recipientsHint": "カンマ区切りのメールアドレス",
+      "recipientsPlaceholder": "alerts@example.com, team@example.com",
+      "overrideUrlLabel": "オーバーライド URL",
+      "overrideUrlHint": "認証情報で設定した URL を上書きします",
+      "overrideUrlPlaceholder": "https://svc.io/hook",
+      "optional": "（任意）"
+    },
+    "channelCard": {
+      "botToken": "bot トークン",
+      "disabledHint": "連携で有効にすると、この経路で通知できるようになります。"
+    },
+    "ruleDialog": {
+      "titleNew": "新しいアラートルール",
+      "titleEdit": "アラートルールを編集",
+      "descNew": "アラートをトリガーする条件と送信先を定義します。",
+      "descEdit": "このルールが通知を送信する条件と送信先を更新します。",
+      "name": "ルール名",
+      "namePlaceholder": "例：新しいイシューが発生したらチームに通知",
+      "trigger": "トリガー",
+      "sendTo": "送信先",
+      "create": "ルールを作成",
+      "saveChanges": "変更を保存",
+      "selectAtLeastOne": "連携を少なくとも 1 つ選択してください",
+      "enable": "ルールを有効化",
+      "enableDescription": "保存後すぐにアラートの送信を開始します",
+      "cooldown": "クールダウン",
+      "decreaseCooldown": "クールダウンを {count} 分短縮",
+      "increaseCooldown": "クールダウンを {count} 分延長",
+      "minutesUnit": "分",
+      "noCooldownLimit": "制限なし — 毎回アラートが発火します",
+      "cooldownLimit": "{count, plural, =1 {1 分に最大 1 件のアラート} other {# 分に最大 1 件のアラート}}",
+      "fieldAlertType": "アラートタイプ",
+      "saveFailed": "ルールの保存に失敗しました",
+      "updated": "アラートルールを更新しました",
+      "created": "アラートルールを作成しました",
+      "filters": "フィルター"
+    },
+    "integrationDialog": {
+      "name": "名前",
+      "enabled": "有効",
+      "enabledDescription": "この連携でアラートを受信します"
+    },
+    "webhook": {
+      "titleNew": "Webhook を設定",
+      "titleEdit": "Webhook を編集",
+      "description": "JSON ペイロードを外部 API エンドポイントに POST します。送信先 URL はここで（グローバルなデフォルトとして）指定するか、アラートルールごとにオーバーライドとして指定します。",
+      "namePlaceholder": "例：本番環境のアラート",
+      "urlLabel": "デフォルト URL（任意）",
+      "urlPlaceholder": "https://example.com/webhook",
+      "urlDescription": "空欄のままにすると、アラートルールごとに URL のオーバーライドが必要になります。",
+      "secretLabel": "シークレット（任意）",
+      "secretPlaceholder": "HMAC 署名シークレット",
+      "secretDescription": "HMAC-SHA256 でペイロードに署名するために使用します",
+      "create": "Webhook を作成",
+      "fieldUrl": "URL",
+      "fieldSecret": "シークレット",
+      "saveFailed": "Webhook の保存に失敗しました",
+      "updated": "Webhook を更新しました",
+      "created": "Webhook を作成しました"
+    },
+    "customWebhook": {
+      "titleNew": "カスタム Webhook を設定",
+      "titleEdit": "カスタム Webhook を編集",
+      "description": "自分で作成したメッセージ本文でアラートを送信します。",
+      "namePlaceholder": "例：運用チャットへのブリッジ",
+      "urlLabel": "Webhook URL",
+      "urlPlaceholder": "https://example.com/hooks/incoming",
+      "urlDescription": "任意です。アラートルール側で独自の URL を指定できます。",
+      "templateLabel": "メッセージ本文",
+      "templateDescription": "エンドポイントが想定する JSON を記述してください。フィールドは配置場所を問わず自動でエスケープされます。",
+      "format": "整形",
+      "secretLabel": "署名シークレット",
+      "secretDescription": "任意です。HMAC-SHA256 でリクエストに署名します。",
+      "create": "カスタム Webhook を作成",
+      "fieldTemplate": "テンプレート",
+      "saveFailed": "カスタム Webhook の保存に失敗しました",
+      "updated": "カスタム Webhook を更新しました",
+      "created": "カスタム Webhook を作成しました",
+      "variables": {
+        "issue": {
+          "title": "エラーのタイトル",
+          "short_id": "人間が読めるイシュー ID",
+          "level": "error、warning、info… または未設定",
+          "event_count": "発生した回数",
+          "id": "内部イシュー ID",
+          "first_seen": "最初に検出された日時",
+          "last_seen": "最後に検出された日時"
+        },
+        "issue_url": "Rustrak のイシューへのリンク",
+        "project": {
+          "name": "プロジェクト名",
+          "slug": "プロジェクトのスラッグ",
+          "id": "内部プロジェクト ID"
+        },
+        "alert_type": "このアラートのトリガーとなったもの",
+        "alert_id": "この配信の ID",
+        "triggered_at": "アラートが発火した日時",
+        "actor": "送信者（常に Rustrak）"
+      },
+      "help": "ドキュメントを開く",
+      "startFrom": "開始点",
+      "insertField": "フィールドを挿入",
+      "preview": "プレビュー",
+      "previewSample": "サンプルアラート",
+      "previewIdle": "本文を記述すると、レンダリング結果が表示されます。",
+      "previewRendering": "レンダリング中",
+      "previewOk": "有効な JSON",
+      "previewError": "送信されません",
+      "previewUnavailable": "現在プレビューを利用できません。",
+      "unknownField": "アラートペイロードのフィールドではありません",
+      "presetApplied": "{name} から開始しました",
+      "undo": "元に戻す",
+      "groups": {
+        "issue": "イシュー",
+        "project": "プロジェクト",
+        "alert": "アラート"
+      },
+      "presets": {
+        "minimal": "1 行のテキストとリンク",
+        "slack": "Slack、Mattermost、Rocket.Chat の Incoming Webhook",
+        "discord": "Discord チャンネルの Webhook",
+        "teams": "Teams ワークフロー向け Adaptive Card",
+        "wecom": "WeCom グループボット（プレーンテキスト）",
+        "wecomMarkdown": "WeCom グループボット（Markdown）",
+        "dingtalk": "DingTalk グループボット（プレーンテキスト）",
+        "feishu": "Feishu または Lark グループボット（プレーンテキスト）",
+        "structured": "独自 API 向けの型付きフィールド"
+      },
+      "insertFieldHint": "本文内でフィールドを挿入したい位置をクリックしてください"
+    },
+    "headers": {
+      "label": "ヘッダー（任意）",
+      "nameLabel": "ヘッダー名",
+      "valueLabel": "ヘッダー値",
+      "namePlaceholder": "Authorization",
+      "valuePlaceholder": "Bearer …",
+      "add": "ヘッダーを追加",
+      "remove": "ヘッダーを削除",
+      "description": "すべてのリクエストとともに送信されます。例：エンドポイントが要求する API キー。"
+    },
+    "slack": {
+      "titleNew": "Slack 連携を追加",
+      "titleEdit": "Slack 連携を編集",
+      "description": "Slack の認証情報をここに保存します。送信先チャンネルはアラートルールの作成時に選択します。",
+      "namePlaceholder": "例：チームアラート",
+      "methodLabel": "接続方法",
+      "incomingWebhook": "Incoming Webhook",
+      "botTokenTab": "Bot トークン",
+      "webhookUrlLabel": "Webhook URL",
+      "webhookUrlPlaceholder": "https://hooks.slack.com/services/...",
+      "webhookUrlDescription": "Slack アプリの設定で Incoming Webhook を作成してください。",
+      "tokenLabelSuffix": "（既存の値を保持する場合は空欄）",
+      "tokenPlaceholder": "xoxb-...",
+      "tokenDescription": "Slack アプリの、xoxb- で始まる OAuth Bot トークンです。",
+      "sendTestTitle": "テストを送信",
+      "testChannelPlaceholder": "#alerts",
+      "testChannelHint": "テストメッセージの送信先となる Slack チャンネルを入力してください。",
+      "testWebhookHint": "設定済みの Webhook にテストメッセージを送信します。",
+      "addIntegration": "連携を追加",
+      "fieldWebhookUrl": "Webhook URL",
+      "fieldToken": "Bot トークン",
+      "saveFailed": "Slack 連携の保存に失敗しました",
+      "updated": "Slack 連携を更新しました",
+      "created": "Slack 連携を作成しました"
+    },
+    "email": {
+      "titleNew": "メール（SMTP）を設定",
+      "titleEdit": "メール連携を編集",
+      "description": "SMTP の認証情報をここに保存します。受信者はアラートルールの作成時に指定します。",
+      "namePlaceholder": "例：メールアラート",
+      "hostLabel": "SMTP ホスト",
+      "hostPlaceholder": "smtp.example.com",
+      "portLabel": "ポート",
+      "portPlaceholder": "587",
+      "usernameLabel": "ユーザー名（任意）",
+      "usernamePlaceholder": "username",
+      "passwordLabel": "パスワード（任意）",
+      "passwordPlaceholder": "••••••••",
+      "fromLabel": "送信元アドレス",
+      "fromPlaceholder": "alerts@rustrak.local",
+      "sendTestTitle": "テストを送信",
+      "testRecipientsAria": "テスト受信者",
+      "testRecipientsPlaceholder": "test@example.com",
+      "testHintExisting": "複数のアドレスはカンマで区切ってください。テストでは、上記の未保存の編集内容ではなく、最後に保存した SMTP 設定が使用されます。",
+      "testHintNew": "テストメールを送信するには、まずこの連携を保存してください。",
+      "create": "メール連携を作成",
+      "fieldHost": "SMTP ホスト",
+      "fieldPort": "SMTP ポート",
+      "fieldUsername": "SMTP ユーザー名",
+      "fieldPassword": "SMTP パスワード",
+      "fieldFrom": "送信元アドレス",
+      "saveFailed": "メール連携の保存に失敗しました",
+      "updated": "メール連携を更新しました",
+      "created": "メール連携を作成しました"
+    },
+    "integrations": {
+      "title": "アラート通知",
+      "description": "新しいイシューが検出されたときに、外部サービスへアラートを送信します。",
+      "configuredCount": "{count} 件設定済み",
+      "notConfigured": "未設定",
+      "connected": "接続済み",
+      "disabled": "無効",
+      "configure": "設定",
+      "manage": "管理",
+      "configureAria": "{name} を設定",
+      "testFailed": "テストの送信に失敗しました",
+      "testSent": "テスト通知を送信しました",
+      "testAnswered": "エンドポイントが応答しました",
+      "testFailedResult": "テストに失敗しました",
+      "deleteFailed": "連携の削除に失敗しました",
+      "deleted": "連携を削除しました",
+      "deleteTitle": "連携を削除",
+      "deleteDescription": "「{name}」を削除してもよろしいですか？この操作は元に戻せません。この連携を使用するすべてのアラートが停止します。"
+    },
+    "manage": {
+      "configuredCount": "{count} 件の連携が設定済み",
+      "edit": "編集",
+      "deleteAria": "{name} を削除",
+      "close": "閉じる",
+      "addProvider": "{name} を追加",
+      "more": "{name} のその他の操作"
+    },
+    "providers": {
+      "slack": {
+        "description": "Webhook または Bot トークン経由で Slack チャンネルにアラートを送信します。"
+      },
+      "email": {
+        "description": "SMTP メールで任意の受信者にアラートを送信します。"
+      },
+      "webhook": {
+        "description": "任意の HTTP エンドポイントに JSON ペイロードを POST します。"
+      },
+      "customWebhook": {
+        "description": "エンドポイントが想定する形式で、自分で作成した本文を POST します。"
+      }
+    },
+    "page": {
+      "general": "一般",
+      "connection": "接続",
+      "server": "サーバー",
+      "authentication": "認証",
+      "authenticationDescription": "SMTP サーバーがログインを要求する場合のみ設定してください。",
+      "nameDescription": "アラートルールが送信先を選ぶときに表示される名前です。",
+      "methodDescription": "Webhook は 1 つの固定チャンネルに投稿します。Bot トークンは、Bot が参加している任意のチャンネルに投稿できます。",
+      "portDescription": "通常、STARTTLS は 587、TLS は 465 です。",
+      "fromDescription": "アラートの送信元となるアドレスです。",
+      "testTitle": "テストを送信",
+      "testDescription": "最後に保存した設定でサンプルアラートを送信します。未保存の編集内容は含まれません。",
+      "dangerTitle": "危険な操作",
+      "deleteTitle": "この連携を削除",
+      "deleteDescription": "この連携経由で送信するアラートルールは、ここへの配信を停止します。",
+      "unsaved": "未保存の変更があります",
+      "back": "{name} の連携一覧"
+    },
+    "types": {
+      "new_issue": {
+        "name": "新しいイシュー",
+        "description": "Rustrak がこれまで検出したことのないエラーが現れます。"
+      },
+      "regression": {
+        "name": "リグレッション",
+        "description": "解決したイシューが再び発生します。"
+      },
+      "new_feedback": {
+        "name": "新しいフィードバック",
+        "description": "ユーザーがアプリからフィードバックを送信します。"
+      }
+    },
+    "sentence": {
+      "when": {
+        "new_issue": "<strong>新しいイシュー</strong>が発生したとき",
+        "regression": "<strong>解決済みのイシューが再発</strong>したとき",
+        "new_feedback": "<strong>ユーザーがフィードバックを送信</strong>したとき"
+      },
+      "inEnvironments": "、<strong>{envs}</strong> 環境で",
+      "atLevel": "、レベル <strong>{level}</strong> 以上で",
+      "afterEvents": "、<strong>{count} 件のイベント</strong>に達したら",
+      "notify": "、<strong>{channels}</strong> に通知します",
+      "notifyNobody": "、まだ<strong>誰にも通知しません</strong>",
+      "atMostOnce": {
+        "minute": "（最大 <strong>{count} 分</strong>に 1 回まで）。",
+        "hour": "（最大 <strong>{count} 時間</strong>に 1 回まで）。",
+        "day": "（最大 <strong>{count} 日</strong>に 1 回まで）。"
+      },
+      "everyTime": "（毎回通知します）。"
+    },
+    "editor": {
+      "when": "条件",
+      "environments": "環境",
+      "allEnvironments": "すべて",
+      "level": "レベル",
+      "anyLevel": "すべてのレベル",
+      "levelOrHigher": "{level} 以上",
+      "minEvents": "このイベント数に到達した後",
+      "minEventsHint": "新しいイシューがこの回数発生するまで待機し、単発のエラーをスキップします。",
+      "notify": "通知先",
+      "notifyHint": "チャンネルはすべてのプロジェクトで共有されます。<link>チャンネルを管理</link>。",
+      "noChannels": "チャンネルがまだありません。まず 設定 → 連携 で追加してください。",
+      "frequency": "最大頻度",
+      "frequencyHint": "このアラートが通知できる頻度です。エラーが集中してもアラートは 1 件だけ送信されます。",
+      "every": {
+        "minute": "{count} 分に 1 回",
+        "hour": "{count} 時間に 1 回",
+        "day": "{count} 日に 1 回"
+      },
+      "everyTime": "毎回",
+      "customMinutes": "カスタム（分単位）",
+      "test": "テストを送信",
+      "testSent": "{channel} にテストを送信しました",
+      "testFailed": "{channel} へのテストが失敗しました",
+      "create": "アラートを作成",
+      "name": "名前",
+      "namePlaceholder": "例：本番環境の新しいイシューをメールで通知",
+      "environmentsHint": "発生する必要がある場所です。",
+      "summary": "概要",
+      "newEnvironment": "新しい環境",
+      "addEnvironment": "追加"
+    },
+    "list": {
+      "paused": "一時停止中",
+      "lastTriggered": "最終トリガー：{when}",
+      "neverTriggered": "まだ発火していません",
+      "enabled": "{name} のオン／オフを切り替え",
+      "resumed": "アラートを再開しました",
+      "pausedToast": "アラートを一時停止しました"
+    },
+    "overview": {
+      "metaTitle": "アラート | Rustrak",
+      "ruleMetaTitle": "{name} | アラート | Rustrak",
+      "title": "アラート",
+      "loadFailed": "アラートを読み込めませんでした",
+      "activeCount": "{count, plural, =0 {有効なアラートはありません} other {# 件のアラートが有効}}",
+      "channels": "{count, plural, =0 {チャンネル} other {# 件のチャンネル}}",
+      "noChannelsTitle": "まずチャンネルを追加してください",
+      "noChannelsDescription": "アラートはチャンネル（メール、Slack、Webhook）経由で送信されます。<link>設定 → 連携で追加</link>してから、ここで選択してください。",
+      "active": "有効",
+      "delete": "削除",
+      "deleted": "アラートを削除しました",
+      "deleteFailed": "アラートを削除できませんでした",
+      "deleteTitle": "{name} を削除しますか？",
+      "deleteDescription": "これ以降は何も送信されません。配信履歴は保持されます。",
+      "new": "新しいアラート",
+      "newSummary": "検出対象、通知先、頻度。",
+      "newMetaTitle": "新しいアラート | Rustrak",
+      "edit": "編集",
+      "editTitle": "{name} を編集",
+      "editMetaTitle": "{name} を編集 | アラート | Rustrak",
+      "emptyTitle": "アラートはまだありません",
+      "emptyDescription": "知りたい内容を選んで開始してください。アラートはいくつでも作成できます。例：本番環境の新しいイシューはメールで、すべての新しいイシューは Slack で通知する、といった使い方ができます。",
+      "noRules": "アラートルールはまだありません。",
+      "failedCount": "{count} 件の配信に失敗",
+      "tabRules": "アラート",
+      "tabDeliveries": "配信"
+    },
+    "history": {
+      "title": "配信",
+      "last14": "過去 14 日間",
+      "chart": "1 日あたりの配信数",
+      "empty": "まだ何も送信されていません。",
+      "openIssue": "イシューを開く",
+      "status": {
+        "sent": "送信済み",
+        "failed": "失敗",
+        "pending": "保留中",
+        "skipped": "スキップ済み"
+      },
+      "lastTriggered": "最終トリガー",
+      "chartHint": "1 日あたりの配信数：送信済み、クールダウンでスキップ、失敗",
+      "ruleHint": "このアラートのすべての配信。失敗またはスキップした場合はその理由も表示します",
+      "columns": {
+        "status": "ステータス",
+        "alert": "アラート",
+        "channel": "チャンネル",
+        "detail": "イシューと理由",
+        "when": "日時"
+      },
+      "deletedAlert": "削除済みのアラート"
+    },
+    "starters": {
+      "new_issue": "新しいイシューの通知を受け取る",
+      "regression": "リグレッションの通知を受け取る",
+      "new_feedback": "ユーザーフィードバックの通知を受け取る"
+    },
+    "table": {
+      "alert": "アラート",
+      "when": "条件",
+      "conditions": "条件（満たす場合のみ）",
+      "notifies": "通知先",
+      "frequency": "最大頻度",
+      "lastSent": "最終トリガー",
+      "active": "有効",
+      "afterEvents": "{count} 件のイベントの後"
+    },
+    "detail": {
+      "created": "作成日",
+      "setup": "設定",
+      "channelFailing": "失敗中"
+    }
+  },
+  "events": {
+    "breadcrumbs": {
+      "defaultCategory": "デフォルト",
+      "empty": "ブレッドクラムはありません",
+      "viewMore": "さらに {count} 件を表示"
+    },
+    "clipboardValueHint": "値を選択して手動でコピーするか、HTTPS 経由で Rustrak にアクセスしてください。",
+    "clipboardJsonHint": "JSON を選択して手動でコピーするか、HTTPS 経由で Rustrak にアクセスしてください。",
+    "context": {
+      "empty": "コンテキストデータはありません",
+      "user": "ユーザー",
+      "id": "ID",
+      "email": "メールアドレス",
+      "ipAddress": "IP アドレス",
+      "packages": "パッケージ"
+    },
+    "details": {
+      "yes": "はい",
+      "no": "いいえ",
+      "keyInformation": "主要情報",
+      "eventId": "イベント ID",
+      "issueId": "イシュー ID",
+      "transaction": "トランザクション",
+      "timestamp": "タイムスタンプ",
+      "ingestedAt": "取り込み日時",
+      "level": "レベル",
+      "handled": "捕捉済み",
+      "mechanism": "メカニズム",
+      "logEntry": "ログエントリ",
+      "message": "メッセージ",
+      "formatted": "フォーマット済み",
+      "params": "パラメータ",
+      "deployment": "デプロイメント",
+      "platform": "プラットフォーム",
+      "environment": "環境",
+      "release": "リリース",
+      "serverName": "サーバー名",
+      "sdk": "SDK",
+      "name": "名前",
+      "version": "バージョン",
+      "request": "リクエスト",
+      "method": "メソッド",
+      "url": "URL",
+      "queryString": "クエリ文字列",
+      "headers": "ヘッダー",
+      "extraData": "追加データ"
+    },
+    "highlights": {
+      "handled": "捕捉済み",
+      "level": "レベル",
+      "transaction": "トランザクション",
+      "url": "URL",
+      "environment": "環境",
+      "release": "リリース",
+      "dist": "ビルド",
+      "runtime": "ランタイム",
+      "traceId": "トレースID"
+    },
+    "navigation": {
+      "previousEvent": "前のイベント",
+      "nextEvent": "次のイベント",
+      "position": "{total} 件中 {current} 件目",
+      "first": "最初",
+      "latest": "最新"
+    },
+    "tags": {
+      "emptyTitle": "このイベントにはタグがありません",
+      "emptyHint": "タグは Sentry SDK によってイベントに付与されるメタデータです",
+      "deployment": "デプロイメント",
+      "runtime": "ランタイム",
+      "device": "デバイス / ブラウザ",
+      "user": "ユーザー",
+      "other": "その他のタグ",
+      "attachedCount": "このイベントに付与されたタグ {count} 件"
+    },
+    "rawJson": {
+      "copied": "コピーしました",
+      "copyJson": "JSON をコピー"
+    },
+    "stackTrace": {
+      "empty": "スタックトレースはありません",
+      "emptyForThread": "このスレッドにはスタックトレースがありません",
+      "variables": "変数"
+    },
+    "copy": {
+      "plainText": "プレーンテキスト",
+      "json": "JSON"
+    },
+    "threads": {
+      "threadLabel": "スレッド #{id}",
+      "crashedSuffix": "（クラッシュ）",
+      "thread": "スレッド",
+      "crashed": "クラッシュ",
+      "current": "現在",
+      "main": "メイン"
+    },
+    "openInGitHub": "GitHub で開く"
+  },
+  "releases": {
+    "columns": {
+      "release": "リリース",
+      "adoption": "採用率",
+      "crashFreeSessions": "クラッシュフリー",
+      "crashFreeUsers": "クラッシュフリーユーザー",
+      "sessions": "セッション",
+      "newIssues": "新しいイシュー",
+      "events": "イベント",
+      "lastEvent": "最後のイベント"
+    },
+    "count": "{count} 件のリリース",
+    "released": "リリース済み",
+    "unreleased": "未リリース",
+    "emptyWindow": "リリースはありません",
+    "empty": {
+      "title": "リリースはまだありません",
+      "description": "イベントやセッションと一緒に <code>release</code> を送信するか、CI から sentry-cli で作成すると、各バージョンがここに表示されます。"
+    },
+    "detail": {
+      "copy": "バージョンをコピー",
+      "copied": "バージョンをコピーしました",
+      "created": "作成日時 {when}",
+      "releasedOn": "リリース日時 {when}",
+      "crashFreeSessions": "クラッシュフリーセッション",
+      "crashFreeUsers": "クラッシュフリーユーザー",
+      "adoption": "採用率",
+      "adoptionHint": "期間内の全セッションに対する割合",
+      "sessions": "セッション",
+      "crashedSessions": "{count} 件がクラッシュ",
+      "newIssues": "新しいイシュー",
+      "newIssuesHint": "このリリースで初めて検出",
+      "events": "イベント",
+      "lastEvent": "最後 {when}",
+      "projectAverage": "プロジェクト {rate}",
+      "noSessions": "セッションはありません",
+      "noSessionsHint": "SDK でリリースヘルスを有効にすると、クラッシュしたセッション数を確認できます。",
+      "sessionsPanel": "セッション",
+      "sessionsPanelHint": "期間内の正常なセッションとクラッシュしたセッション",
+      "healthy": "正常",
+      "crashed": "クラッシュ",
+      "noNewIssues": "このリリースに新しいイシューはありません",
+      "viewInIssues": "イシューを表示",
+      "environments": "環境",
+      "sessionsCount": "{count} 件のセッション",
+      "details": "詳細",
+      "version": "バージョン",
+      "package": "パッケージ",
+      "commit": "コミット",
+      "createdAt": "作成日時",
+      "releasedAt": "リリース日時",
+      "notReleased": "未リリース",
+      "firstEvent": "最初のイベント",
+      "lastEventAt": "最後のイベント"
+    },
+    "search": "バージョンを検索…",
+    "environment": "環境"
+  },
+  "transactions": {
+    "measurements": {
+      "lcp": "LCP",
+      "fcp": "FCP",
+      "fid": "FID",
+      "inp": "INP",
+      "ttfb": "TTFB",
+      "cls": "CLS"
+    },
+    "p95": {
+      "barTitle": "{name} — {count} 件のイベント",
+      "empty": "トランザクションデータはまだありません",
+      "failing": "{rate} が失敗"
+    }
+  },
+  "agents": {
+    "columns": {
+      "agents": "エージェント",
+      "duration": "所要時間",
+      "tokens": "トークン",
+      "tools": "ツール",
+      "started": "開始日時",
+      "llmCalls": "LLM",
+      "errors": "エラー"
+    },
+    "unnamedAgent": "（無名のエージェント）",
+    "charts": {
+      "noData": "データはまだありません",
+      "durationTooltip": "平均 {avg} · p95 {p95}",
+      "runs": "エージェント実行",
+      "runsHint": "区間ごとに開始された実行",
+      "duration": "所要時間",
+      "durationHint": "エージェント実行とモデル呼び出しの平均時間と p95",
+      "avg": "平均",
+      "runsOk": "実行",
+      "runsFailed": "失敗"
+    },
+    "empty": {
+      "noSpans": "このトレースにはスパンがありません。"
+    },
+    "spanDetail": {
+      "agentName": "エージェント",
+      "model": "モデル",
+      "toolName": "ツール",
+      "reasoningEffort": "推論の強さ",
+      "conversationId": "会話",
+      "tokens": "トークン",
+      "inputTokens": "入力",
+      "cachedTokens": "キャッシュ済み入力",
+      "outputTokens": "出力",
+      "totalTokens": "合計",
+      "availableTools": "利用可能なツール",
+      "input": "入力",
+      "systemInstructions": "システム指示",
+      "output": "出力",
+      "responseObject": "レスポンスオブジェクト",
+      "requestedToolCalls": "要求されたツール呼び出し",
+      "allAttributes": "すべての属性",
+      "tokenMismatch": "これらの合計は報告された総数と一致しません — SDK の報告に一貫性がない可能性があります。"
+    },
+    "summary": {
+      "agentRuns": "エージェント実行",
+      "llmCalls": "LLM 呼び出し",
+      "toolCalls": "ツール呼び出し",
+      "totalTokens": "トークン",
+      "avgDuration": "平均所要時間",
+      "p95Duration": "P95 所要時間",
+      "errors": "エラー",
+      "avg": "平均 {duration}",
+      "errorRate": "AI スパンの {rate}"
+    },
+    "filters": {
+      "allTime": "全期間",
+      "allEnvironments": "すべての環境",
+      "agent": "エージェント",
+      "model": "モデル",
+      "tool": "ツール",
+      "status": "ステータス",
+      "failing": "失敗中",
+      "search": "agent:、model:、tool:、status: で絞り込み",
+      "environment": "環境",
+      "noEnvironments": "環境はまだありません",
+      "allTimeShort": "すべて",
+      "periods": {
+        "1h": "過去 1 時間",
+        "24h": "過去 24 時間",
+        "7d": "過去 7 日間",
+        "30d": "過去 30 日間"
+      }
+    },
+    "modelsTable": {
+      "empty": "この期間にモデル呼び出しはありません。",
+      "model": "モデル",
+      "requests": "リクエスト",
+      "errors": "エラー",
+      "avg": "平均",
+      "p95": "P95",
+      "input": "入力",
+      "cached": "キャッシュ",
+      "output": "出力",
+      "reasoning": "推論",
+      "title": "モデル",
+      "hint": "モデルごとの呼び出し、失敗、トークン、レイテンシ。行を選択するとそのトレースが開きます"
+    },
+    "toolsTable": {
+      "empty": "この期間にツール呼び出しはありません。",
+      "tool": "ツール",
+      "calls": "呼び出し",
+      "errors": "エラー",
+      "avg": "平均",
+      "p95": "P95",
+      "title": "ツール",
+      "hint": "ツールごとの呼び出し、失敗、レイテンシ。行を選択するとそのトレースが開きます"
+    },
+    "tabs": {
+      "overview": "概要",
+      "traces": "トレース",
+      "conversations": "会話"
+    },
+    "runsCount": "{count} 件のエージェント実行",
+    "errorsCount": "{count} 件の失敗したスパン",
+    "spanCount": "{count} 件のスパン",
+    "table": {
+      "most": "大きい順",
+      "newest": "新しい順",
+      "empty": "これらのフィルターに一致するトレースはありません"
+    },
+    "trace": {
+      "models": "モデル",
+      "waterfallOf": "トレース {traceId} のスパン",
+      "conversation": "会話"
+    },
+    "graph": {
+      "viewLabel": "トレースの表示方法",
+      "waterfall": "ウォーターフォール",
+      "graph": "エージェント",
+      "empty": "このトレースではエージェントは実行されませんでした。",
+      "handoff": "{count} 件のハンドオフ",
+      "then": "次に",
+      "runs": "{count} 件の実行",
+      "models": "モデル",
+      "tools": "ツール"
+    },
+    "conversations": {
+      "title": "会話",
+      "metaTitle": "{conversation} | 会話 | Rustrak",
+      "empty": "この期間に会話はありません。エージェントのスパンに gen_ai.conversation.id を送信すると、そのターンをグループ化できます。",
+      "pageOf": "{total} ページ中 {page} ページ",
+      "newer": "新しい会話",
+      "older": "古い会話",
+      "unnamed": "（無名のエージェント）",
+      "turns": "{count} ターン",
+      "calls": "{count} 件の LLM 呼び出し",
+      "tools": "{count} 件のツール呼び出し",
+      "tokens": "{count} トークン",
+      "errors": "{count} 件の失敗",
+      "turn": "ターン {number}",
+      "openTrace": "トレースを開く",
+      "user": "ユーザー",
+      "assistant": "アシスタント",
+      "noAnswer": "このターンは回答前に失敗しました。",
+      "turnsLabel": "ターン",
+      "tokensLabel": "トークン",
+      "errorsLabel": "エラー",
+      "started": "開始日時"
+    }
+  },
+  "tokens": {
+    "create": {
+      "trigger": "新しいトークン",
+      "createdTitle": "トークンを作成しました",
+      "createdDescription": "今すぐトークンをコピーしてください。再度表示されることはありません。",
+      "copyTokenLabel": "新しいトークンをコピー",
+      "copyAgainHint": "このダイアログを閉じると、トークンを取得できなくなります。",
+      "done": "完了",
+      "title": "API トークンを作成",
+      "description": "プログラムによる API アクセス用の新しいトークンを作成します。",
+      "descriptionLabel": "説明（任意）",
+      "descriptionPlaceholder": "例: CI/CD パイプライン",
+      "descriptionTooLong": "説明は {max} 文字以内で入力してください",
+      "cancel": "キャンセル",
+      "creating": "作成中...",
+      "submit": "トークンを作成",
+      "allPermissions": "自分のすべての権限",
+      "permissionsHint": "割り当てられた権限の範囲内に制限されます。",
+      "projectsHint": "アクセス範囲が自分の権限を超えることはありません。",
+      "expiresLabel": "有効期限（任意）",
+      "expiresHint": "空欄の場合、トークンは期限切れになりません。",
+      "customPermissions": "カスタム権限",
+      "permissionsLabel": "権限",
+      "projectsLabel": "プロジェクト",
+      "allProjects": "認可されたすべてのプロジェクト",
+      "allProjectsHint": "現在および将来アクセスが認可されるすべてのプロジェクトです。",
+      "expiresInPast": "今日以降の日付を選択してください。"
+    },
+    "copyTokenLabel": "トークン {label} をコピー",
+    "deleteTokenLabel": "トークン {label} を削除",
+    "never": "なし",
+    "neverUsed": "未使用",
+    "createdOn": "作成日時 {date}",
+    "usedOn": "使用日時 {time}",
+    "columns": {
+      "token": "トークン",
+      "description": "説明",
+      "created": "作成日時",
+      "lastUsed": "最終使用"
+    },
+    "actionsLabel": "操作",
+    "toasts": {
+      "createFailed": "トークンの作成に失敗しました",
+      "created": "トークンを作成しました",
+      "createdHint": "今すぐトークンをコピーしてください。",
+      "deleted": "トークンを削除しました",
+      "deleteFailed": "トークンの削除に失敗しました",
+      "getFailed": "トークンの取得に失敗しました",
+      "copied": "トークンをクリップボードにコピーしました",
+      "copyTitle": "トークンをコピー"
+    },
+    "empty": {
+      "title": "API トークンはまだありません",
+      "createFirst": "最初のトークンを作成"
+    },
+    "list": {
+      "title": "あなたのトークン",
+      "description": "トークンは API リクエストの認証に使用されます"
+    },
+    "deleteDialog": {
+      "title": "トークンを削除しますか？",
+      "description": "このトークンは完全に削除されます。これを使用しているサービスは直ちにアクセスできなくなります。この操作は元に戻せません。",
+      "cancel": "キャンセル",
+      "confirm": "削除"
+    },
+    "scope": {
+      "allPermissions": "すべてのアカウント権限",
+      "permissions": "{count} 件の権限",
+      "allProjects": "認可されたすべてのプロジェクト",
+      "projects": "{count} 件のプロジェクト",
+      "noExpiry": "有効期限なし",
+      "expired": "期限切れ",
+      "expires": "{date} に期限切れ"
+    }
+  },
+  "storage": {
+    "action": "保持期間を設定",
+    "cancel": "キャンセル",
+    "kind": {
+      "events": "エラー",
+      "transactions": "トランザクション",
+      "logs": "ログ",
+      "sourceMaps": "ソースマップ"
+    },
+    "overview": {
+      "title": "使用中のストレージ",
+      "rows": "{rows} 行",
+      "files": "{count} 件のファイル",
+      "cleaning": "クリーンアップ中: {parts}",
+      "starting": "開始中…",
+      "off": "何も削除されません。すべての種類のデータが永久に保持されます。保持期間を設定すると、自動的に容量を解放できます。",
+      "next": "次回のクリーンアップ {when} · 約 {size} を解放",
+      "scheduling": "次回のクリーンアップをスケジュール中…",
+      "compacting": "データベースを圧縮中…"
+    },
+    "status": {
+      "lastRunFailed": "前回のクリーンアップ {when} が失敗しました: {error}"
+    },
+    "age": {
+      "title": "データの経過期間",
+      "description": "データが記録されてからの経過期間です。斜線部分は次回のクリーンアップで削除されます。",
+      "age": "経過期間",
+      "bucket0": "< 7 日",
+      "bucket1": "7–14 日",
+      "bucket2": "14–30 日",
+      "bucket3": "30–90 日",
+      "bucket4": "90–180 日",
+      "bucket5": "180 日 – 1 年",
+      "bucket6": "> 1 年",
+      "empty": "データはまだありません。",
+      "goes": "次回のクリーンアップで削除されます"
+    },
+    "projects": {
+      "title": "プロジェクト",
+      "search": "プロジェクトを検索",
+      "project": "プロジェクト",
+      "size": "サイズ",
+      "retention": "保持期間",
+      "empty": "プロジェクトはまだありません。",
+      "noMatch": "一致するプロジェクトはありません。",
+      "own": "独自",
+      "general": "共通",
+      "change": "{project} の保持期間を変更"
+    },
+    "keep": {
+      "forever": "永久",
+      "days": "{count} 日"
+    },
+    "dialog": {
+      "title": "保持期間",
+      "description": "すべてのプロジェクトで各種類のデータを保持する期間です。それより古いデータはクリーンアップのたびに削除されます。",
+      "runs": "クリーンアップの実行",
+      "frequency": "頻度",
+      "weekday": "曜日",
+      "hour": "時刻",
+      "at": "時刻",
+      "customProjects": "{count} 件のプロジェクトが独自の保持期間を使用しています。各行から変更できます。",
+      "counting": "削除される内容を集計中…",
+      "impact": "次回のクリーンアップで {parts}（約 {size}）が削除されます。",
+      "noImpact": "削除できるほど古いデータはまだありません。",
+      "save": "保存",
+      "saveAndClean": "保存して今すぐクリーンアップ",
+      "saved": "保持期間を保存しました",
+      "saveFailed": "保持期間を保存できませんでした",
+      "alreadyRunning": "クリーンアップはすでに実行中です。",
+      "confirmTitle": "今すぐ約 {size} を削除しますか？",
+      "confirmDescription": "{parts} と、どのアップロードも使用していないソースマップを完全に削除します。バックグラウンドで実行され、元に戻せません。",
+      "confirmAction": "約 {size} を削除",
+      "kindColumn": "データ",
+      "keepColumn": "保持期間",
+      "foreverHint": "保持期間より古いデータはクリーンアップのたびに削除されます。「永久」を選択すると、その種類は削除されません。",
+      "countFailed": "削除される内容を集計できませんでした。",
+      "retry": "再試行"
+    },
+    "projectDialog": {
+      "title": "{project} の保持期間",
+      "description": "共通の保持期間を使用するか、このプロジェクトのデータを別の期間保持します。",
+      "general": "共通の保持期間を使用",
+      "own": "独自の保持期間",
+      "ownHint": "このプロジェクト専用の別の期間"
+    },
+    "schedule": {
+      "daily": "毎日",
+      "weekly": "毎週"
+    },
+    "toasts": {
+      "cleanupFailed": "クリーンアップに失敗しました",
+      "removed": "{parts} を削除しました",
+      "nothingRemoved": "削除するものはありません",
+      "gcFailed": "未使用のソースマップを削除できませんでした",
+      "compacting": "データベースを圧縮中… {elapsed}",
+      "compacted": "データベースを圧縮しました",
+      "compactionFailed": "圧縮に失敗しました",
+      "compactedFreed": "{size} をディスクに返却しました"
+    },
+    "unit": {
+      "errors": "{count} 件のエラー",
+      "transactions": "{count} 件のトランザクション",
+      "spans": "{count} 件のスパン",
+      "logs": "{count} 件のログ",
+      "emptyIssues": "{count} 件の空のイシュー",
+      "sourceMaps": "{count} 件の未使用のソースマップ",
+      "pluginRows": "{count} 行のプラグインデータ"
+    },
+    "deleteAction": "今すぐデータを削除",
+    "kindHint": {
+      "events": "エラーイベントと、イベントがなくなったイシュー",
+      "transactions": "スパン付きのパフォーマンストレース",
+      "logs": "構造化ログ行"
+    },
+    "delete": {
+      "title": "今すぐデータを削除",
+      "description": "クリーンアップを待たずに、選択したデータを完全に削除します。バックグラウンドで実行され、元に戻せません。",
+      "what": "削除する対象",
+      "olderThan": "次より古い",
+      "in": "対象",
+      "allProjects": "すべてのプロジェクト",
+      "pickOne": "少なくとも 1 種類のデータを選択してください。",
+      "impact": "{parts}（約 {size}）を削除します。",
+      "nothing": "一致するものはありません。削除するものはありません。",
+      "action": "約 {size} を削除",
+      "actionIdle": "削除",
+      "sourceMaps": "未使用のソースマップ",
+      "sourceMapsHint": "どのアップロードからも参照されなくなったファイルです。参照されているものには触れません",
+      "plugin": "{plugin} の履歴"
+    },
+    "compaction": {
+      "title": "このデータベースは以前のバージョンの Rustrak で作成されました",
+      "description": "以前のバージョンで作成されたデータベースは、削除されたデータの容量をディスクに返却しません。保持期間で削除された容量は再利用されますが、ファイルが縮小することはありません。一度圧縮すれば恒久的に解決します。このバージョンで作成されたデータベースには不要です。現在 {size} を解放できます。",
+      "action": "データベースを圧縮",
+      "dialogTitle": "データベースを圧縮しますか？",
+      "dialogDescription": "Rustrak がファイルを一度書き換え、このバージョンで作成されたデータベースと同じ状態にして、{size} を解放します。以降はクリーンアップのたびに容量がディスクに返却され、この通知は表示されなくなります。",
+      "disk": "ディスクに {required} の空き容量が必要です · 利用可能 {free}",
+      "diskUnknown": "ディスクに {required} の空き容量が必要です",
+      "pause": "実行中、データベースは書き込みを受け付けません。エラーは保持され後で処理されますが、その間に到着したログ、トレース、セッションは失われます。",
+      "duration": "データ 1 GB あたり数秒かかります。静かな時間帯に実行してください。",
+      "confirm": "圧縮"
+    },
+    "compactionPostgres": {
+      "title": "削除されたデータの容量をディスクに返却",
+      "description": "PostgreSQL は保持期間で解放された容量をテーブル内で再利用しますが、ディスクに返却することはほとんどありません。クリーンアップ後もデータベースは {size} のままです。圧縮すると各テーブルが書き換えられ、その容量が返却されます。",
+      "action": "テーブルを圧縮",
+      "dialogTitle": "テーブルを圧縮しますか？",
+      "dialogDescription": "Rustrak は VACUUM FULL を使って、保持期間でデータが削除される各テーブルを小さい順に書き換え、削除された行が占めていた容量をディスクに返却します。",
+      "tableSize": "{table} · インデックス {indexes}",
+      "disk": "実行中は PostgreSQL サーバーのディスクに最大のテーブルのサイズ程度、約 {required} の空き容量が必要です。先行書き込みログが同じディスクにある場合は、さらに同程度が必要です。Rustrak からそのディスクは確認できません。事前に確認してください。",
+      "lock": "各テーブルは書き換え中ロックされ、保持する 1 GB あたり数秒かかります。エラーは引き続き受け付けられ、そのテーブルが完了した時点で保存されます。そのテーブルの書き換え中に送信されたトランザクション、スパン、ログは拒否されて失われます（SDK は 10 秒間送信を一時停止します）。また、そのテーブルを表示するページは完了までエラーを表示します。",
+      "duration": "最大のテーブルが最も時間がかかります。静かな時間帯に実行するか、各テーブルを最初と最後に短時間だけロックする pg_repack の使用をご検討ください。"
+    },
+    "plugins": {
+      "title": "プラグイン",
+      "description": "各プラグイン独自のデータです。その履歴（created_at を持つテーブル）は Rustrak と同じクリーンアップで消去されます。",
+      "none": "プラグインはインストールされていません",
+      "size": "{quota} 中 {used}",
+      "history": "{tables} に {rows} 行の履歴",
+      "noHistory": "保持しているものは期限切れになりません",
+      "historyHint": "その履歴: {tables}",
+      "loadFailed": "プラグインのストレージを読み取れませんでした"
+    }
+  },
+  "errors": {
+    "notFound": {
+      "meta": {
+        "title": "見つかりません | Rustrak"
+      },
+      "brandStatement": "ここには何もありません",
+      "brandDescription": "このページに到達するまでに何も失敗していません。サーバーは正常に応答しましたが、このアドレスには何もありませんでした。",
+      "headline": "ページが見つかりません",
+      "description": "このアドレスは、この Rustrak インスタンスのどのページにも一致しません。",
+      "guidance": "Rustrak 内のリンクから来た場合、そのリンク先のプロジェクト、イシュー、イベントはその後に削除された可能性があります。"
+    },
+    "goToProjects": "プロジェクトへ移動",
+    "errorId": "エラー ID: {id}",
+    "tryAgain": "再試行",
+    "global": {
+      "headline": "問題が発生しました",
+      "description": "このページを表示できませんでした。失敗はデータではなくダッシュボード側で発生しており、データは影響を受けていません。",
+      "guidance": "再読み込みしても再発する場合は、下記のエラー ID でログからこの具体的な失敗を特定できます。"
+    },
+    "main": {
+      "headline": "このページを読み込めませんでした",
+      "description": "失敗はデータではなくレンダリング中に発生しました。ダッシュボードのその他の部分には、上部のヘッダーから引き続きアクセスできます。"
+    }
+  },
+  "auth": {
+    "meta": {
+      "title": "ログイン | Rustrak"
+    },
+    "form": {
+      "title": "Rustrak にログイン",
+      "subtitle": "認証情報を入力してプラットフォームにアクセスしてください。",
+      "emailLabel": "メールアドレス",
+      "emailPlaceholder": "name@company.com",
+      "passwordLabel": "パスワード",
+      "passwordPlaceholder": "パスワードを入力",
+      "hidePassword": "パスワードを非表示",
+      "showPassword": "パスワードを表示",
+      "signingIn": "ログイン中…",
+      "login": "ログイン",
+      "continueWithSso": "{provider} で続行",
+      "ssoRedirecting": "リダイレクト中…",
+      "ssoFailure": "シングルサインオンに失敗しました。再試行してください。",
+      "or": "または",
+      "passwordLoginDisabled": "パスワードによるログインは無効です。{provider} を使用して続行してください。",
+      "usePassword": "パスワードでログイン",
+      "passwordLoginDisallowed": "このアカウントではパスワードによるログインが無効です。代わりにシングルサインオンを使用してください。",
+      "invalidCredentials": "メールアドレスまたはパスワードが正しくありません",
+      "failureNetwork": "サーバーに接続できませんでした。接続を確認して再試行してください。",
+      "failureRateLimited": "ログイン試行回数が多すぎます。約 {duration} 待ってから再試行してください。",
+      "failureRateLimitedGeneric": "ログイン試行回数が多すぎます。数分待ってから再試行してください。",
+      "failureUnexpected": "予期しないエラーが発生しました。再試行してください。",
+      "emailInvalid": "有効なメールアドレスを入力してください",
+      "passwordRequired": "パスワードは必須です",
+      "waitSeconds": "{count} 秒",
+      "waitMinutes": "{count} 分",
+      "waitHours": "{count} 時間"
+    },
+    "link": {
+      "metaTitle": "アカウントを連携 | Rustrak",
+      "title": "アカウントを連携",
+      "description": "{email} の Rustrak アカウントがすでにあります。そのパスワードを一度入力すると、{provider} と連携できます。以降は {provider} だけでログインできます。",
+      "emailLabel": "アカウント",
+      "passwordLabel": "パスワード",
+      "passwordPlaceholder": "Rustrak のパスワード",
+      "passwordRequired": "パスワードを入力してください",
+      "submit": "連携してログイン",
+      "submitting": "連携中...",
+      "invalidPassword": "パスワードが正しくありません",
+      "alreadyLinked": "この {provider} アカウントはすでに別の Rustrak アカウントに連携されています。",
+      "failure": "アカウントを連携できませんでした。再試行してください。",
+      "cancel": "別のアカウントを使用",
+      "expiredTitle": "連携するものがありません",
+      "expiredDescription": "このリクエストは期限切れか、すでに完了しています。再度ログインして最初からやり直してください。",
+      "backToLogin": "ログインに戻る"
+    },
+    "footer": {
+      "docs": "ドキュメント"
+    },
+    "panel": {
+      "title": "セルフホスト型のエラー監視。",
+      "subtitle": "Sentry SDK 互換。あなたのインフラ、あなたのデータ。"
+    }
+  },
+  "invite": {
+    "meta": {
+      "title": "招待を承認 | Rustrak"
+    },
+    "form": {
+      "title": "招待を承認",
+      "subtitle": "パスワードを設定してアカウント作成を完了してください。",
+      "emailLabel": "メールアドレス",
+      "passwordLabel": "パスワード",
+      "passwordPlaceholder": "パスワードを選択",
+      "confirmLabel": "パスワードの確認",
+      "confirmPlaceholder": "パスワードを再入力",
+      "creating": "アカウントを作成中...",
+      "accept": "承認して続行",
+      "passwordRequired": "パスワードは必須です",
+      "confirmRequired": "パスワードを確認してください",
+      "passwordsMismatch": "パスワードが一致しません",
+      "createdTitle": "アカウントを作成しました",
+      "createdUseSso": "このインスタンスではパスワードによるログインが無効です。この招待が送信されたメールアドレスで、シングルサインオンを使ってログインしてください。",
+      "goToLogin": "ログインへ移動"
+    },
+    "unavailable": {
+      "brandStatement": "リンクには期限があります",
+      "brandDescription": "招待は一度限りで期限付きのため、承認されるか期限切れになるとリンクは機能しなくなります。ここに到達するまでに何も失敗していません。",
+      "headline": "招待は利用できません",
+      "description": "この招待リンクは無効か、期限切れか、すでに使用されています。",
+      "guidance": "管理者に新しい招待を送信してもらってください。すでに承認済みの場合は、代わりにログインしてください。",
+      "goToLogin": "ログインへ移動"
+    }
+  },
+  "projectPages": {
+    "projectTitle": "{project} | Rustrak",
+    "projectsList": {
+      "meta": {
+        "title": "プロジェクト | Rustrak"
+      },
+      "title": "プロジェクト",
+      "subtitle": "エラートラッキングプロジェクトを管理",
+      "newProject": "新規プロジェクト",
+      "search": "プロジェクトを検索",
+      "sort": {
+        "newest": "新しい順",
+        "recent": "最近のアクティビティ",
+        "oldest": "古い順",
+        "name": "名前"
+      }
+    },
+    "newProject": {
+      "meta": {
+        "title": "新規プロジェクト | Rustrak"
+      },
+      "backToProjects": "プロジェクトに戻る",
+      "title": "新しいプロジェクトを作成",
+      "subtitle": "監視したいプラットフォームを選んでください。作成後すぐに DSN とセットアップ用スニペットが表示されます。"
+    },
+    "overview": {
+      "errorVolume": "時間経過に伴うエラー",
+      "newIssues": "新しいイシュー",
+      "openIssues": "未解決 {count} 件",
+      "crashFreeSessions": "クラッシュフリーセッション",
+      "sessionHealth": "セッションの健全性",
+      "sessionHealthSubtitle": "期間内のクラッシュフリーセッション",
+      "latency": "レイテンシ",
+      "latencySubtitle": "p95 が最も遅いトランザクション（全期間）",
+      "noIssuesYet": "まだイシューはありません",
+      "allEnvironments": "すべての環境",
+      "compare": "比較",
+      "storedEvents": "{count} 件のイベントを保存済み",
+      "kpisFailed": "主要な指標を読み込めませんでした",
+      "errors": "エラー",
+      "crashes": "クラッシュしたセッション",
+      "sessionsCount": "{count} セッション",
+      "noSessions": "まだセッションはありません",
+      "noSessionsHint": "SDK がセッションを送信すると（自動セッショントラッキング）、リリースの健全性が表示されます。",
+      "crashFreeUsers": "クラッシュフリーユーザー",
+      "activeReleases": "{count} 件のリリース",
+      "eventsInWindow": "この期間内のイベント {count} 件",
+      "thisPeriod": "今期",
+      "previousPeriod": "前期",
+      "levelError": "エラー",
+      "levelWarning": "警告",
+      "levelInfo": "情報",
+      "issues": "未解決のイシュー",
+      "issuesDescription": "まず確認すべきもの（全期間）",
+      "issuesRecent": "最新",
+      "issuesNew": "新規",
+      "issuesFrequent": "イベント数順",
+      "viewAllIssues": "すべてのイシューを表示",
+      "issueTrend": "時間経過に伴うイベント",
+      "sessions": "セッション",
+      "errored": "エラー発生",
+      "crashed": "クラッシュ",
+      "allReleases": "すべてのリリース",
+      "noEnvironments": "まだ環境はありません",
+      "noReleases": "まだリリースはありません",
+      "periods": {
+        "24h": "過去 24 時間",
+        "7d": "過去 7 日間",
+        "14d": "過去 14 日間",
+        "30d": "過去 30 日間",
+        "90d": "過去 90 日間",
+        "all": "全期間",
+        "allShort": "すべて"
+      },
+      "environment": "環境",
+      "release": "リリース"
+    },
+    "issues": {
+      "title": "イシュー",
+      "subtitle": "{project} のエラーを原因別にグループ化"
+    },
+    "logs": {
+      "meta": {
+        "title": "ログ | {project} | Rustrak"
+      },
+      "title": "ログ",
+      "emptyTitle": "まだログはありません",
+      "emptyDescription": "SDK から構造化ログ（例: <code>Sentry.logger.info(...)</code>）を送信すると、ここで収集を開始できます。"
+    },
+    "performance": {
+      "meta": {
+        "title": "パフォーマンス | {project} | Rustrak"
+      },
+      "title": "パフォーマンス"
+    },
+    "transaction": {
+      "meta": {
+        "title": "{name} | パフォーマンス | Rustrak",
+        "fallbackTitle": "トランザクション | Rustrak"
+      }
+    },
+    "summary": {
+      "meta": {
+        "title": "{name} | パフォーマンス | Rustrak",
+        "fallbackName": "トランザクション"
+      }
+    },
+    "releases": {
+      "meta": {
+        "title": "リリース | {project} | Rustrak"
+      },
+      "title": "リリース"
+    },
+    "releaseDetail": {
+      "meta": {
+        "title": "{release} | {project} | Rustrak"
+      }
+    },
+    "agents": {
+      "meta": {
+        "title": "エージェント | {project} | Rustrak"
+      },
+      "title": "エージェント",
+      "loadFailed": "エージェントのアクティビティを読み込めませんでした",
+      "emptyTitle": "まだエージェントのアクティビティはありません",
+      "emptyDescription": "OpenTelemetry GenAI セマンティック規約を使用する Sentry SDK で AI エージェントを計測すると、エージェントの実行をキャプチャできるようになります。"
+    },
+    "trace": {
+      "meta": {
+        "title": "{traceId} | エージェント | Rustrak"
+      },
+      "loadFailed": "トレースを読み込めませんでした",
+      "unnamed": "（名前のないエージェント）",
+      "spans": "スパン",
+      "selectSpan": "スパンを選択すると、そのプロンプト、レスポンス、属性が表示されます。",
+      "spanUnavailable": "そのスパンはもう利用できません。"
+    },
+    "event": {
+      "meta": {
+        "noEvents": "イベントなし | {issue} | Rustrak"
+      },
+      "lastSeen": "最終確認",
+      "firstSeen": "初回確認",
+      "inRelease": "リリース <rel>{release}</rel> 内",
+      "events": "イベント",
+      "users": "ユーザー",
+      "eventsTotal": "イベント（合計）",
+      "noEventData": "イベントデータがありません",
+      "tags": "タグ",
+      "noTags": "タグがありません",
+      "inThisIssue": "このイシュー内",
+      "idLabel": "ID:",
+      "jumpTo": "移動先:",
+      "details": "詳細",
+      "sectionHighlights": "ハイライト",
+      "sectionStackTrace": "スタックトレース",
+      "sectionBreadcrumbs": "ブレッドクラム",
+      "sectionContext": "コンテキスト",
+      "sectionDetails": "イベントの詳細",
+      "sectionRawJson": "Raw JSON",
+      "sectionTags": "タグ",
+      "formatPlainText": "プレーンテキスト",
+      "formatJson": "JSON",
+      "noEventsYet": "まだイベントはありません",
+      "noEventsDescription": "このイシューは作成されていますが、まだイベントは記録されていません。アプリケーションがイベントを送信すると、ここに表示されます。",
+      "sectionFeedback": "フィードバック",
+      "sectionUserFeedback": "ユーザーフィードバック",
+      "feedback": {
+        "from": "送信者",
+        "anonymous": "匿名",
+        "email": "メール",
+        "page": "ページ",
+        "viewError": "対象のエラーを表示",
+        "errorNotFound": "そのエラーイベントはまだ届いていないか、削除されています。",
+        "showOlder": "古いものを表示（{count}）",
+        "showOlderFailed": "古いフィードバックを読み込めませんでした。"
+      },
+      "sectionAttachments": "添付ファイル",
+      "attachmentDownload": "ダウンロード",
+      "attachmentsFailed": "添付ファイルを読み込めませんでした",
+      "userFeedbackFailed": "ユーザーフィードバックを読み込めませんでした"
+    },
+    "feedback": {
+      "title": "ユーザーフィードバック",
+      "subtitle": "{project} のユーザーから寄せられた内容",
+      "mailbox": {
+        "inbox": "受信トレイ",
+        "resolved": "解決済み",
+        "spam": "スパム"
+      },
+      "empty": {
+        "title": "ここにフィードバックはありません",
+        "description": "SDK のフィードバックウィジェットまたは captureFeedback で送信されたフィードバックがここに表示されます"
+      },
+      "anonymous": "匿名",
+      "count": "{count} 件のレポート",
+      "pageOf": "{page} / {total} ページ",
+      "previousPage": "前のページ",
+      "nextPage": "次のページ",
+      "attachments": "{count} 件の添付ファイル",
+      "linkedError": "リンクされたエラー",
+      "noLinkedError": "エラーなしで送信されました",
+      "viewError": "対象のエラーを表示",
+      "page": "ページ",
+      "received": "受信日時",
+      "openIssue": "イシューとして開く",
+      "back": "一覧に戻る"
+    },
+    "spanCount": "{count} 件のスパン"
+  },
+  "settings": {
+    "nav": {
+      "groupProject": "プロジェクト",
+      "groupSdkSetup": "SDK セットアップ",
+      "general": "一般",
+      "alerts": "アラート",
+      "members": "メンバー",
+      "clientKeys": "SDK",
+      "apiTokens": "API トークン",
+      "integrations": "連携",
+      "mcp": "AI アシスタント",
+      "team": "メンバー",
+      "storage": "ストレージ",
+      "account": "アカウント",
+      "appearance": "外観",
+      "about": "概要",
+      "openProjectSettingsMenu": "プロジェクト設定メニューを開く",
+      "projectSettingsTitle": "プロジェクト設定",
+      "openSettingsMenu": "設定メニューを開く",
+      "settingsTitle": "設定",
+      "github": "リポジトリ",
+      "products": "プロダクト",
+      "groupAccount": "アカウント",
+      "profile": "プロフィール",
+      "preferences": "環境設定",
+      "instance": "インスタンス",
+      "data": "データ",
+      "roles": "ロール",
+      "plugins": "プラグイン",
+      "groupAccess": "アクセス",
+      "groupConnections": "接続",
+      "groupSystem": "システム",
+      "beta": "ベータ"
+    },
+    "loadProjectFailed": "プロジェクトを読み込めませんでした",
+    "loadProjectsFailed": "プロジェクトを読み込めませんでした",
+    "notAuthorized": "権限がありません",
+    "general": {
+      "meta": {
+        "title": "一般設定 | Rustrak"
+      },
+      "title": "一般設定",
+      "subtitle": "プロジェクトを設定し、連携の詳細を確認できます。"
+    },
+    "clientKeys": {
+      "meta": {
+        "title": "クライアントキー | Rustrak"
+      },
+      "title": "SDK",
+      "subtitle": "アプリケーションをこのプロジェクトに接続します。"
+    },
+    "alerts": {
+      "meta": {
+        "title": "アラート設定 | Rustrak"
+      },
+      "loadFailed": "アラート設定を読み込めませんでした"
+    },
+    "members": {
+      "meta": {
+        "title": "プロジェクトメンバー | Rustrak"
+      }
+    },
+    "tokens": {
+      "meta": {
+        "title": "API トークン | Rustrak"
+      },
+      "title": "API トークン",
+      "subtitle": "プログラムからのアクセス用 API トークンを管理します",
+      "apiReference": "API リファレンス",
+      "apiReferenceDescription": "すべてのエンドポイント、認証、リクエスト例の完全なドキュメント"
+    },
+    "team": {
+      "meta": {
+        "title": "チーム | Rustrak"
+      },
+      "title": "メンバー",
+      "subtitle": "チームメンバーと招待を管理します",
+      "notAuthorizedDescription": "チームへのアクセス権限がありません。オーナーにお問い合わせください。"
+    },
+    "integrations": {
+      "meta": {
+        "title": "連携 | Rustrak"
+      },
+      "title": "連携",
+      "subtitle": "Rustrak をお使いのツールやサービスと連携し、ワークフローを自動化してエラーを把握できます。",
+      "backToAlerts": "アラートに戻る",
+      "backToProjects": "プロジェクトに戻る",
+      "loadFailed": "連携を読み込めませんでした",
+      "githubLoadFailed": "GitHub 接続を読み込めませんでした"
+    },
+    "mcp": {
+      "meta": {
+        "title": "AI アシスタント | Rustrak"
+      },
+      "title": "AI アシスタント",
+      "subtitle": "Claude、ChatGPT、Cursor からエラーの読み取りやトリアージを行えるようにします。",
+      "copy": "コピー",
+      "copied": "コピーしました",
+      "copyLabel": "{label} をコピー",
+      "server": {
+        "title": "MCP サーバー",
+        "description": "下記のエンドポイントで AI アシスタントに応答します。デフォルトはオフで、オフにするとすべてのアシスタントが一度に切断されます。",
+        "adminOnly": "MCP サーバーのオン／オフを切り替える権限がありません。",
+        "on": "オン",
+        "off": "オフ",
+        "toggleLabel": "MCP サーバーのオン／オフを切り替える",
+        "endpoint": "エンドポイント URL",
+        "offNotice": "MCP サーバーはオフです：管理者がオンにするまで、どのアシスタントも接続できません。",
+        "updateFailed": "MCP サーバーを更新できませんでした"
+      },
+      "oauth": {
+        "title": "アカウントでログイン",
+        "recommended": "おすすめ",
+        "description": "アシスタントが Rustrak を開き、あなたがログインして承認します。トークンをコピーしたり更新したりする必要はありません。",
+        "clients": "claude.ai、ChatGPT、Claude Code、Cursor、VS Code で利用できます。",
+        "step1": "上記のエンドポイント URL をコピーします。",
+        "step2": "アシスタントに MCP サーバーまたはカスタムコネクタとして追加します。",
+        "step3": "求められたら Rustrak にログインし、アクセスを承認します。",
+        "note": "あなたと同じ権限で動作します。「接続済みアシスタント」からいつでも切断できます。",
+        "needsPublicUrl": "ログインはオフです：サーバーの PUBLIC_URL に、アシスタントがアクセスするアドレス（例：https://rustrak.example.com）を設定して再起動してください。それまでは API トークンをご利用ください。"
+      },
+      "token": {
+        "title": "API トークン",
+        "description": "クライアントの設定にトークンを入れます。ログインできないクライアント、スクリプト、CI 向けです。",
+        "clients": "HTTP ヘッダーを送信できるあらゆる MCP クライアントで利用できます。",
+        "step1": "次でトークンを作成します：",
+        "createToken": "API トークン",
+        "step2": "下記の設定をクライアントに追加します。",
+        "step3": "YOUR_TOKEN を作成したトークンに置き換えます（VS Code では代わりに入力を求められ、暗号化して保存されます）。",
+        "note": "トークンの所有者と同じ権限で動作します。トークンを取り消すと切断されます。"
+      },
+      "clients": {
+        "web": "claude.ai / ChatGPT",
+        "claudeCode": "Claude Code",
+        "json": "Cursor / その他",
+        "webSteps": "claude.ai では Settings → Connectors → Add custom connector を開きます。ChatGPT ではカスタムコネクタを追加します。エンドポイント URL を貼り付けて保存すると、ここに移動してログインと承認を行います。",
+        "vscode": "VS Code"
+      },
+      "connected": {
+        "title": "接続済みアシスタント",
+        "description": "ログインで承認したアシスタントです。切断すると、そのアクセスは直ちに無効になります。",
+        "empty": "まだアカウントに接続されているアシスタントはありません。",
+        "columns": {
+          "name": "アシスタント",
+          "client": "提供元",
+          "since": "接続日"
+        },
+        "revoke": "切断",
+        "revokeLabel": "{name} を切断",
+        "revokeFailed": "アシスタントを切断できませんでした",
+        "revoked": "{name} を切断しました",
+        "loadFailed": "接続済みアシスタントを読み込めませんでした"
+      },
+      "page": {
+        "offTitle": "MCP サーバーはオフです",
+        "offAdmin": "オンにするとアシスタントを接続できます。",
+        "offMember": "インスタンス管理者にオンにするよう依頼してください。",
+        "enable": "オンにする",
+        "connect": "アシスタントを接続",
+        "webHint": "カスタムコネクタを追加し、上記の URL を貼り付けます。Rustrak にログインして承認します。",
+        "tokenHint": "このサーバーには PUBLIC_URL が設定されていないため、アシスタントは API トークンで接続します。",
+        "help": "仕組み",
+        "helpTitle": "2 つの接続方法",
+        "helpIntro": "両方を同時に使えます：アシスタントが対応している方をご利用ください。",
+        "oauthName": "ログイン",
+        "tokenName": "API トークン",
+        "oauth1": "claude.ai、ChatGPT、Claude Code、Cursor、VS Code",
+        "oauth2": "Rustrak にログインして承認します",
+        "oauth3": "コピーや更新は不要です",
+        "token1": "スクリプト、CI、ログインできないクライアント",
+        "token2": "クライアントにトークンを貼り付けます",
+        "token3": "トークンを取り消すと切断されます",
+        "publicUrl": "ログインには PUBLIC_URL が必要です：このサーバーにアクセスするアドレスです。",
+        "tokenSetup": "トークンでセットアップ"
+      }
+    },
+    "storage": {
+      "meta": {
+        "title": "ストレージ | Rustrak"
+      },
+      "title": "ストレージ",
+      "subtitle": "Rustrak が保持している内容と保持期間を確認できます",
+      "notAuthorizedDescription": "ストレージへのアクセス権限がありません。オーナーにお問い合わせください。",
+      "loadFailed": "ストレージを読み込めませんでした"
+    },
+    "account": {
+      "meta": {
+        "title": "アカウント | Rustrak"
+      },
+      "title": "アカウント",
+      "subtitle": "アカウント情報を管理します",
+      "profile": "プロフィール",
+      "profileDescription": "アカウント情報",
+      "email": "メールアドレス",
+      "role": "ロール",
+      "administrator": "管理者",
+      "regional": "言語と地域",
+      "regionalDescription": "Rustrak の表示方法で、アカウントに保存されます",
+      "password": {
+        "title": "パスワード",
+        "current": "現在のパスワード",
+        "new": "新しいパスワード",
+        "confirm": "新しいパスワード（確認）",
+        "currentRequired": "現在のパスワードを入力してください。",
+        "newRequired": "新しいパスワードを入力してください。",
+        "mismatch": "パスワードが一致しません。",
+        "submit": "パスワードを変更",
+        "submitting": "変更中…",
+        "changed": "パスワードを変更しました",
+        "change": "パスワードを変更",
+        "dialogDescription": "現在のパスワードを入力し、新しいパスワードを 2 回入力してください。",
+        "cancel": "キャンセル",
+        "incorrect": "現在のパスワードが正しくありません。"
+      }
+    },
+    "appearance": {
+      "meta": {
+        "title": "外観 | Rustrak"
+      },
+      "title": "外観",
+      "subtitle": "このデバイスでの Rustrak の見た目をカスタマイズします",
+      "theme": "テーマ",
+      "themeDescription": "お好みのカラースキームを選択します"
+    },
+    "about": {
+      "meta": {
+        "title": "概要 | Rustrak"
+      },
+      "title": "概要",
+      "subtitle": "Rustrak のインストールに関する情報",
+      "cardDescription": "軽量なエラートラッキングシステム",
+      "webviewVersion": "WebView バージョン",
+      "serverVersion": "サーバーバージョン",
+      "notReported": "未報告",
+      "couldNotRead": "読み込めませんでした",
+      "environment": "環境",
+      "serverVersionUnknown": "サーバーが応答するまでバージョンは取得できません（仮の値は表示されません）。",
+      "links": "リンク",
+      "githubRepository": "GitHub リポジトリ",
+      "reportAnIssue": "問題を報告",
+      "sentryDocs": "Sentry SDK ドキュメント"
+    },
+    "products": {
+      "title": "プロダクト",
+      "subtitle": "このプロジェクトが保持する内容と、サイドバーでの表示順です。",
+      "note": "プロダクトをオフにするとサイドバーから削除され、到着したデータの保存が停止します：SDK は送信を続け、Rustrak が破棄します。すでに保存されたデータは保持され、再びオンにすると表示されます。",
+      "alwaysOn": "常にオン",
+      "saved": "保存しました",
+      "saveFailed": "プロダクトを保存できませんでした",
+      "drag": "ドラッグして {name} を並べ替え",
+      "moveUp": "{name} を上へ移動",
+      "moveDown": "{name} を下へ移動",
+      "items": {
+        "issues": "エラーと例外をイシューにグループ化したものです。",
+        "feedback": "ユーザーがフィードバックウィジェットから送信した内容です。",
+        "releases": "セッションに基づくリリースヘルスです。",
+        "performance": "トランザクションとスパンです。",
+        "logs": "SDK からの構造化ログです。",
+        "crons": "スケジュール済みジョブからのチェックインです。",
+        "agents": "AI エージェントのトレース：パフォーマンスデータ内の gen_ai スパンです。"
+      }
+    },
+    "profile": {
+      "title": "プロフィール",
+      "subtitle": "このインスタンスでのあなた自身と、ログイン方法です。"
+    },
+    "preferences": {
+      "title": "環境設定",
+      "subtitle": "Rustrak の表示方法：言語、タイムゾーン、テーマです。",
+      "display": "表示",
+      "theme": "テーマ",
+      "themeDescription": "ライト、ダーク、またはシステムに従います。"
+    },
+    "instance": {
+      "title": "インスタンス",
+      "subtitle": "この Rustrak の実行環境と、適用される制限です。",
+      "version": "バージョン",
+      "limits": "取り込み制限",
+      "limitsDescription": "プロジェクトごとのサーバーの制限です。プロジェクトでは、データ設定でそれより低い制限のみ設定できます。",
+      "unlimited": "制限なし"
+    },
+    "data": {
+      "title": "データ",
+      "subtitle": "このプロジェクトが保持する内容と、受け入れる量です。"
+    },
+    "projectNotAuthorizedDescription": "このプロジェクトのこのセクションへのアクセス権限がありません。オーナーにお問い合わせください。",
+    "workspaceNotAuthorizedDescription": "このセクションへのアクセス権限がありません。オーナーにお問い合わせください。",
+    "plugins": {
+      "meta": {
+        "title": "プラグイン | Rustrak"
+      },
+      "title": "プラグイン",
+      "subtitle": "Rustrak を自分仕様に。必要なものをワンクリックでインストールできます。",
+      "install": "ファイルからインストール",
+      "installing": "インストール中…",
+      "installed": "{name} {version} をインストールしました",
+      "installFailed": "プラグインをインストールできませんでした",
+      "configureFailed": "プラグインを更新できませんでした",
+      "empty": "プラグインはインストールされていません",
+      "emptyHint": ".rtp ファイルからインストールすると、Rustrak にページ、ウィジェット、機能を追加できます。",
+      "active": "有効",
+      "inactive": "無効",
+      "versionBy": "{version} · 作者 {author}",
+      "failed": "プラグイン {plugin} はこの部分を表示できませんでした。",
+      "pageMissing": "このプラグインページは存在しません",
+      "listFailed": "プラグインを読み込めませんでした",
+      "pageMissingHint": "プラグインがインストールされていないか、このプロジェクトで有効でないか、ここにページがありません。",
+      "detail": {
+        "projects": "プロジェクト",
+        "projectsHint": "各プロジェクトでオンにし、プロジェクトを開いてそこでセットアップします：インストールガイドとプロジェクト固有の値です。",
+        "allProjects": "すべてのプロジェクト",
+        "allProjectsHint": "後から作成されるプロジェクトを含む、すべてのプロジェクトです。",
+        "runIn": "{project} で実行",
+        "configuration": "設定",
+        "nothingToConfigure": "このプラグインには設定する項目がありません",
+        "access": "アクセス",
+        "accessHint": "このサーバーでプラグインが行えることです。",
+        "database": "専用データベース",
+        "permissions": "追加される権限",
+        "none": "なし",
+        "yes": "はい",
+        "about": "概要",
+        "danger": "危険な操作",
+        "uninstall": "アンインストール",
+        "uninstallPurge": "アンインストールしてデータを削除",
+        "uninstallHint": "削除しても、データを削除しない限り、再インストール用にデータは保持されます。",
+        "uninstallTitle": "{name} をアンインストールしますか？",
+        "keepConfirm": "ページとルートは直ちに停止します。データは保持されるため、再インストールすると再び利用できます。",
+        "purgeConfirm": "ページ、ルート、すべてのデータが削除されます。この操作は取り消せません。",
+        "cancel": "キャンセル",
+        "uninstalled": "{name} をアンインストールしました",
+        "uninstallFailed": "プラグインをアンインストールできませんでした",
+        "runs": "実行中",
+        "off": "オフ",
+        "defaults": "デフォルト",
+        "defaultsHint": "インスタンス全体向けです。上記のプロジェクト固有の設定が優先されます。",
+        "project": "プロジェクト",
+        "status": "ステータス",
+        "active": "有効",
+        "details": "詳細",
+        "version": "バージョン",
+        "author": "作者",
+        "source": "ソース",
+        "verified": "検証済み",
+        "unverified": "未検証",
+        "runsIn": "実行先",
+        "everyProject": "すべてのプロジェクト",
+        "someProjects": "{total} 件中 {count} 件のプロジェクト",
+        "pages": "ページ",
+        "widgets": "ウィジェット",
+        "repository": "リポジトリ",
+        "openSetup": "セットアップと設定"
+      },
+      "form": {
+        "save": "保存",
+        "saved": "設定を保存しました",
+        "saveFailed": "設定を保存できませんでした",
+        "secretSet": "設定済み。入力すると置き換えられます",
+        "secretNotSet": "未設定",
+        "missing": "プラグインを実行するには、まず {fields} を設定してください。",
+        "reset": "リセット",
+        "loadFailed": "プラグインの設定を読み込めませんでした"
+      },
+      "verified": "✓ レジストリで検証済み",
+      "notVerified": "未検証：手動でアップロードされました",
+      "registryUnavailable": "プラグインレジストリを利用できません",
+      "update": "{from} → {to}",
+      "updateButton": "更新",
+      "installButton": "インストール",
+      "setup": {
+        "title": "{project} の {plugin}",
+        "where": "このプロジェクト内",
+        "runs": "ここで実行",
+        "runsHint": "ページ、ウィジェット、ルートは、実行されているプロジェクトでのみ存在します。",
+        "everywhere": "すべてのプロジェクトでオン：プラグインの設定で変更します。",
+        "install": "セットアップ",
+        "installHint": "このプロジェクトでプラグインが動作するために必要なことです。",
+        "settings": "プロジェクト設定",
+        "settingsHint": "このプロジェクト固有の値です：インスタンスのデフォルトより優先されます。",
+        "offHint": "セットアップするには、このプロジェクトでオンにしてください。"
+      },
+      "registryLoadFailed": "プラグインレジストリを読み込めませんでした",
+      "search": "プラグインを検索",
+      "noMatch": "一致するプラグインがありません",
+      "notInstalled": "未インストール",
+      "updateAvailable": "更新があります",
+      "readmeFailed": "このプラグインの README を読み込めませんでした",
+      "openSettings": "設定",
+      "filter": {
+        "label": "表示",
+        "all": "すべて",
+        "installed": "インストール済み",
+        "available": "利用可能",
+        "updates": "更新"
+      },
+      "local": {
+        "title": "ファイルからプラグインをインストールしますか？",
+        "description": "ファイルからインストールしたプラグインは未検証です：Rustrak では作成者や改変の有無を確認できません。サーバーコードはサンドボックスで実行されますが、信頼できるプラグインのみインストールしてください。",
+        "confirm": "ファイルを選択"
+      }
+    }
+  },
+  "github": {
+    "section": {
+      "title": "開発",
+      "description": "リポジトリ、コミット、Issue トラッカーをエラーにリンクします。"
+    },
+    "save": "保存",
+    "cancel": "キャンセル",
+    "connection": {
+      "description": "リポジトリからの Issue、コミット、コードオーナー",
+      "intro": "Rustrak はこのサーバー用にプライベートな GitHub App を作成します。GitHub で確認を求められた後、アクセスできるリポジトリを選択します。",
+      "organizationLabel": "リポジトリはどこにありますか？個人アカウントの場合は空欄のままにし、組織の場合は組織名を入力してください。GitHub では、アプリはそこにのみインストールできます。",
+      "organizationPlaceholder": "組織（任意）",
+      "connect": "GitHub に接続",
+      "connectFailed": "GitHub のセットアップを開始できませんでした",
+      "app": "アプリ",
+      "accounts": "インストール先",
+      "suspended": "停止中",
+      "install": "リポジトリを選択",
+      "webhooks": "Webhook",
+      "lastWebhook": "最終受信 {when}",
+      "noWebhook": "まだ受信していません",
+      "unreachable": "GitHub が {url} に到達できないため、クローズされた Issue、コメント、コミットは届きません。PUBLIC_URL に GitHub から到達できるアドレスを設定してください。",
+      "disconnect": "GitHub を切断",
+      "disconnectTitle": "GitHub を切断しますか？",
+      "disconnectDescription": "Rustrak からアプリ情報とすべてのプロジェクトのリポジトリ連携設定が削除されます。リンクされたイシューのリンクは残ります。不要になった場合は GitHub 側でもアプリを削除してください。",
+      "disconnectFailed": "GitHub を切断できませんでした",
+      "notInstalled": "インストールされていません"
+    },
+    "repository": {
+      "metaTitle": "GitHub",
+      "subtitle": "このプロジェクトをリポジトリにリンクすると、スタックトレースからコードを開いたり、問題を引き起こしたコミットを見つけたり、Issue を同期したりできます。",
+      "unavailable": "このプロジェクトでは GitHub を利用できません",
+      "goToIntegrations": "連携を開く",
+      "section": "リポジトリ",
+      "repository": "リポジトリ",
+      "repositoryDescription": "このプロジェクトのコードがある場所です。",
+      "noRepositories": "アプリと共有されているリポジトリはありません",
+      "choose": "リポジトリを選択",
+      "openOnGitHub": "GitHub で開く · {branch}",
+      "stackTraces": "スタックトレース",
+      "mappings": "パスマッピング",
+      "mappingsDescription": "スタックトレース内のパスをリポジトリ内のファイルに変換します。例: /app/ → src/。設定がない場合、Rustrak はパスから推測します。",
+      "stackRoot": "スタックトレース内のパス",
+      "sourceRoot": "リポジトリ内のパス",
+      "addMapping": "マッピングを追加",
+      "removeMapping": "マッピングを削除",
+      "issues": "Issue",
+      "autoCreate": "GitHub Issue を自動で作成",
+      "autoCreateDescription": "新しいエラーが下記のフィルターを通過すると、Issue ごとに 1 回だけ GitHub Issue を作成します。",
+      "fixes": "コミットから解決",
+      "fixesDescription": "これで Issue が解決されると記載された、デフォルトブランチ上のコミットです。",
+      "codeowners": "コードオーナー",
+      "codeownersDescription": "リポジトリの CODEOWNERS ファイルから読み取り、各 Issue に表示されます。",
+      "codeownersSync": "同期",
+      "codeownersStatus": "{count} 件のルール · {when}",
+      "codeownersNever": "まだ同期されていません",
+      "codeownersFailed": "CODEOWNERS を同期できませんでした",
+      "danger": "危険な操作",
+      "disconnect": "リポジトリを切断",
+      "disconnectDescription": "このプロジェクトの Issue と GitHub のリンクを停止します。既存のリンクは残ります。",
+      "saveFailed": "リポジトリを保存できませんでした",
+      "autoCreateFilters": "対象のエラー",
+      "autoCreateFiltersDescription": "フィルターがない場合、すべての新しい Issue が作成されます。「最小イベント数」は、Issue がその回数発生するまで待ちます。"
+    },
+    "issue": {
+      "menu": "GitHub アクション",
+      "open": "開く",
+      "closed": "クローズ済み",
+      "create": "GitHub Issue を作成",
+      "link": "既存の Issue をリンク…",
+      "unlink": "#{number} のリンクを解除",
+      "createFailed": "GitHub Issue を作成できませんでした",
+      "linkFailed": "GitHub Issue をリンクできませんでした",
+      "unlinkFailed": "GitHub Issue のリンクを解除できませんでした",
+      "linkTitle": "GitHub Issue をリンク",
+      "linkDescription": "GitHub Issue の URL、またはこのプロジェクトのリポジトリ内の Issue について # を付けた番号（例: #42）を貼り付けてください。",
+      "linkSubmit": "リンク",
+      "createTitle": "GitHub Issue を作成",
+      "createDescription": "最新のイベントと GitHub テンプレートから開始します。作成前に内容を編集できます。",
+      "titleField": "タイトル",
+      "bodyField": "説明",
+      "labelsField": "ラベル（カンマ区切り）",
+      "createSubmit": "Issue を作成",
+      "assigneeField": "担当者（GitHub ユーザー名）"
+    },
+    "code": {
+      "connect": "このプロジェクトを GitHub に接続",
+      "title": "コード",
+      "suspect": "疑わしいコミット",
+      "owners": "オーナー"
+    },
+    "account": {
+      "title": "GitHub ユーザー名",
+      "description": "Rustrak で Issue があなたに割り当てられると、リンクされた GitHub Issue もあなたに割り当てられます。その逆も同様です。",
+      "saved": "GitHub ユーザー名を保存しました",
+      "saveFailed": "GitHub ユーザー名を保存できませんでした"
+    },
+    "setup": {
+      "title": "GitHub をセットアップ",
+      "createTitle": "GitHub App を作成",
+      "createDescription": "GitHub は作成前にアプリを表示します。アプリはあなたのアカウントまたは組織に対してプライベートなままです。",
+      "created": "{slug} として作成されました",
+      "organization": "組織",
+      "organizationHint": "個人アカウントの場合は空欄のままにしてください。アプリは作成された場所にのみインストールできます。",
+      "installTitle": "リポジトリを選択",
+      "installDescription": "アプリをインストールし、Rustrak が読み取りできるリポジトリを選択してください。",
+      "linkTitle": "各プロジェクトをそのリポジトリにリンク",
+      "linkDescription": "各プロジェクトの設定の GitHub で行います。",
+      "featuresTitle": "追加される機能",
+      "active": "有効",
+      "you": "あなた",
+      "features": {
+        "code": "スタックトレース内のコード",
+        "codeDescription": "実行されたコミットで、失敗した行を開きます。",
+        "commits": "疑わしいコミット",
+        "commitsDescription": "Issue 上で、問題を引き起こした可能性が最も高いコミットを表示します。",
+        "issues": "GitHub Issue",
+        "issuesDescription": "Issue を作成またはリンクし、コミットからエラーを解決します。",
+        "owners": "コードオーナー",
+        "ownersDescription": "CODEOWNERS から、失敗したコードの所有者を表示します。"
+      }
+    },
+    "template": {
+      "section": "GitHub Issue テンプレート",
+      "instanceDescription": "すべてのプロジェクトで、Rustrak が作成するすべての GitHub Issue の冒頭に付く内容です。プロジェクトは独自の内容を追加できます。",
+      "projectDescription": "インスタンスのテンプレートに追加されます: ここのラベルはインスタンスのラベルに加わり、ここで設定したタイトルプレフィックスやフッターはインスタンス側の設定を置き換えます。",
+      "labels": "ラベル",
+      "labelsDescription": "カンマ区切りです。まだ存在しないラベルは GitHub が作成します。",
+      "titlePrefix": "タイトルプレフィックス",
+      "titlePrefixDescription": "Issue のタイトルの前に付けます。",
+      "bodyFooter": "説明のフッター",
+      "bodyFooterDescription": "説明の末尾に追加される Markdown です。例: メンションする相手。",
+      "saveFailed": "テンプレートを保存できませんでした"
+    }
+  },
+  "conditions": {
+    "minLevel": "レベル",
+    "anyLevel": "すべてのレベル",
+    "levelOrAbove": "{level} 以上",
+    "minEvents": "最小イベント数",
+    "environments": "環境",
+    "description": "カンマ区切りです。空欄の場合はすべての環境が対象です。"
+  },
+  "crons": {
+    "meta": {
+      "listTitle": "Crons | {project} | Rustrak",
+      "newTitle": "新規モニター | {project} | Rustrak",
+      "editTitle": "{monitor} を編集 | Crons | Rustrak",
+      "detailTitle": "{monitor} | Crons | Rustrak"
+    },
+    "title": "Crons",
+    "newMonitor": "新規モニター",
+    "loadMonitorFailed": "このモニターを読み込めませんでした",
+    "never": "未実行",
+    "columns": {
+      "monitor": "モニター",
+      "schedule": "スケジュール",
+      "lastCheckIn": "前回のチェックイン",
+      "nextCheckIn": "次回予定"
+    },
+    "health": {
+      "failing": "失敗中",
+      "ok": "正常",
+      "waiting": "初回チェックインを待機中",
+      "muted": "ミュート中"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "失敗",
+      "in_progress": "実行中",
+      "missed": "実行漏れ",
+      "timeout": "タイムアウト",
+      "unknown": "不明"
+    },
+    "environmentStatus": {
+      "ok": "正常",
+      "error": "インシデント発生中",
+      "active": "成功した実行を待機中"
+    },
+    "timeline": {
+      "noRuns": "実行なし",
+      "avg": "平均 {duration}",
+      "now": "現在"
+    },
+    "empty": {
+      "title": "スケジュール済みジョブを監視",
+      "description": "Cron ジョブが時間どおりに実行されなかったり、失敗したり、想定より長くかかったりしたときに Rustrak が通知します。ジョブにチェックインを追加してください。モニターは初回実行時に作成されます。",
+      "upsertNote": "この例では my-job モニターに1時間ごとにチェックインし、初回実行時に作成します。スラッグとスケジュールを自分のジョブに合わせて変更してください。",
+      "orManual": "手動で設定しますか？",
+      "manual": "モニターを作成",
+      "steps": {
+        "checkIn": {
+          "title": "チェックインを追加",
+          "description": "スニペットをジョブに貼り付けてください。DSN は入力済みです。"
+        },
+        "run": {
+          "title": "ジョブを実行",
+          "description": "初回チェックイン時に、送信されたスケジュールでモニターが作成されます。"
+        },
+        "alert": {
+          "title": "通知を受け取る",
+          "description": "実行漏れ、失敗、長時間実行があったときに Rustrak が通知します。"
+        }
+      }
+    },
+    "setup": {
+      "copy": "コピー",
+      "copied": "コピーしました"
+    },
+    "guides": {
+      "curl": "cURL",
+      "cli": "Sentry CLI",
+      "python": "Python",
+      "node": "Node.js",
+      "laravel": "Laravel"
+    },
+    "detail": {
+      "environments": "環境",
+      "checkIns": "チェックイン",
+      "instrument": "ジョブにチェックインを設定",
+      "noCheckIns": "チェックインはまだありません",
+      "waitingTitle": "初回チェックインを待機中",
+      "waitingDescription": "実行漏れは、ジョブが少なくとも1回チェックインした後にのみ検出されます。次のいずれかをジョブに追加してください：",
+      "mutedBanner": "このモニターはミュート中です：失敗は記録されますが、イシューは作成されず、アラートも送信されません。",
+      "config": "設定",
+      "schedule": "スケジュール",
+      "rawSchedule": "式",
+      "timezone": "タイムゾーン",
+      "margin": "猶予期間",
+      "maxRuntime": "最大実行時間",
+      "failureThreshold": "イシューを作成する条件",
+      "recoveryThreshold": "イシューを解決する条件",
+      "slug": "スラッグ",
+      "lastCheckIn": "前回のチェックイン",
+      "nextCheckIn": "次回予定",
+      "minutes": "{count, plural, other {# 分}}",
+      "failures": "{count, plural, other {連続 # 回の失敗したチェックイン}}",
+      "successes": "{count, plural, other {連続 # 回の成功したチェックイン}}",
+      "took": "{duration} かかりました",
+      "late": "遅延",
+      "successRate": "成功率",
+      "inWindow": "この期間内の実行のうち",
+      "avgDuration": "平均実行時間",
+      "ofMax": "最大実行時間 {duration}",
+      "duration": "実行時間",
+      "durationHint": "環境ごとの平均実行時間",
+      "created": "作成日時",
+      "timeline": "タイムライン",
+      "timelineHint": "各目盛りはそのスロットで最も悪い実行を示し、すべての環境で同じ軸を使用します",
+      "checkInsHint": "すべての実行（新しい順）",
+      "instrumentHint": "次のいずれかでジョブからチェックインしてください"
+    },
+    "checkInColumns": {
+      "status": "ステータス",
+      "environment": "環境",
+      "started": "開始",
+      "duration": "実行時間",
+      "expected": "予定"
+    },
+    "actions": {
+      "edit": "編集",
+      "more": "その他の操作",
+      "mute": "ミュート",
+      "unmute": "ミュート解除",
+      "muted": "モニターをミュートしました",
+      "unmuted": "モニターのミュートを解除しました",
+      "updateFailed": "モニターを更新できませんでした",
+      "delete": "削除",
+      "deleteTitle": "{monitor} を削除しますか？",
+      "deleteDescription": "チェックインも一緒に削除されます。作成されたイシューは残ります。スケジュールを送信し続けるジョブがある場合、モニターは再作成されます。",
+      "cancel": "キャンセル",
+      "confirmDelete": "モニターを削除",
+      "deleted": "モニターを削除しました",
+      "deleteFailed": "モニターを削除できませんでした"
+    },
+    "form": {
+      "newTitle": "新規モニター",
+      "newDescription": "ジョブを実行すべきタイミングと、遅延や実行時間がどの程度まで許容できるかを Rustrak に伝えてください。",
+      "editTitle": "{monitor} を編集",
+      "editDescription": "新しいスケジュールは次回チェックインから適用されます。ジョブが独自の monitor_config を送信する場合、送信内容で上書きされます。",
+      "sectionMonitor": "モニター",
+      "sectionSchedule": "スケジュール",
+      "sectionTolerance": "許容範囲",
+      "name": "名前",
+      "namePlaceholder": "夜間バックアップ",
+      "slug": "スラッグ",
+      "slugPlaceholder": "nightly-backup",
+      "slugHint": "ジョブがチェックインに使用するスラッグです。空欄の場合は名前から取得されます。",
+      "slugLocked": "ジョブはこのスラッグでチェックインするため、変更できません。",
+      "timezone": "タイムゾーン",
+      "timezonePlaceholder": "ゾーンを検索",
+      "timezoneNoResults": "一致するゾーンがありません",
+      "margin": "猶予期間",
+      "marginHint": "チェックインが遅れて到着しても、実行漏れとみなされない期間です。",
+      "maxRuntime": "最大実行時間",
+      "maxRuntimeHint": "実行中として扱われる最大の期間で、これを超えるとタイムアウトとみなされます。",
+      "failureThreshold": "失敗の許容回数",
+      "failureThresholdHint": "イシューが作成されるまでの、連続した失敗チェックインの回数です。",
+      "recoveryThreshold": "回復の許容回数",
+      "recoveryThresholdHint": "イシューが解決されるまでの、連続した成功チェックインの回数です。",
+      "minutesSuffix": "分",
+      "checkInsSuffix": "チェックイン",
+      "previewNote": "時刻は {timezone} です。各実行は、予定時刻から {margin, plural, other {# 分}} 経過すると実行漏れとみなされます。",
+      "cancel": "キャンセル",
+      "create": "モニターを作成",
+      "save": "変更を保存",
+      "created": "モニターを作成しました",
+      "saved": "モニターを保存しました",
+      "saveFailed": "モニターを保存できませんでした"
+    },
+    "validation": {
+      "nameRequired": "名前は必須です",
+      "slugFormat": "小文字、数字、-、_ を使用してください",
+      "intervalMin": "1以上にしてください",
+      "crontabInvalid": "有効な5フィールドの crontab ではありません",
+      "numberRange": "{min} から {max} の間",
+      "tooLong": "最大 {max} 文字",
+      "timezoneRequired": "タイムゾーンを選択してください"
+    },
+    "noMatch": "この検索に一致するモニターがありません",
+    "late": "遅延",
+    "state": "状態",
+    "search": "モニターを検索、または state: で絞り込み：",
+    "count": "{count} 件のモニター",
+    "failingCount": "{count} 件が失敗",
+    "pageOf": "{total} ページ中 {page} ページ",
+    "newer": "新しいチェックイン",
+    "older": "古いチェックイン",
+    "periods": {
+      "24h": "過去24時間",
+      "7d": "過去7日間",
+      "30d": "過去30日間"
+    },
+    "legend": {
+      "timeout": "タイムアウト（{count} 分を超えています）",
+      "missed": "実行漏れ（{count} 分以内にチェックインがありません）"
+    }
+  },
+  "schedule": {
+    "type": "スケジュールの種類",
+    "crontab": "Crontab",
+    "interval": "間隔",
+    "crontabHint": "5 つのフィールド: 分、時、日、月、曜日です。@daily のようなエイリアスも使えます。",
+    "every": "間隔",
+    "unit": "単位",
+    "intervalHint": "各チェックインから数えます。",
+    "units": {
+      "minute": "{count, plural, other {分}}",
+      "hour": "{count, plural, other {時間}}",
+      "day": "{count, plural, other {日}}",
+      "week": "{count, plural, other {週間}}",
+      "month": "{count, plural, other {か月}}",
+      "year": "{count, plural, other {年}}"
+    },
+    "intervalText": {
+      "minute": "{count, plural, other {# 分}}ごと",
+      "hour": "{count, plural, other {# 時間}}ごと",
+      "day": "{count, plural, other {# 日}}ごと",
+      "week": "{count, plural, other {# 週間}}ごと",
+      "month": "{count, plural, other {# か月}}ごと",
+      "year": "{count, plural, other {# 年}}ごと"
+    },
+    "preview": {
+      "title": "次回の実行",
+      "empty": "有効なスケジュールを入力すると、実行時刻が表示されます。",
+      "failed": "プレビューを読み込めませんでした。",
+      "invalid": "このスケジュールは実行できません。crontab を確認してください。",
+      "timesIn": "時刻は {timezone} です。"
+    }
+  },
+  "oauth": {
+    "meta": {
+      "title": "アクセスを承認 | Rustrak"
+    },
+    "title": "{client} があなたの Rustrak アカウントへのアクセスを求めています",
+    "signedInAs": "{email} としてログイン中",
+    "canDo": "承認すると、次のことができるようになります:",
+    "canRead": "プロジェクトのイシュー、イベント、パフォーマンスデータ、ログを読み取る",
+    "canAct": "あなたの権限でそれらを操作する: 解決、コメント、変更可能な設定の変更",
+    "clientId": "クライアント",
+    "returnsTo": "戻り先",
+    "warning": "そのアシスタントから開始した場合にのみ承認してください。設定 → AI アシスタント（MCP）でいつでも切断できます。",
+    "approve": "承認",
+    "deny": "拒否",
+    "decideFailed": "承認を完了できませんでした",
+    "failedTitle": "このリクエストは完了できません",
+    "failedDescription": "アシスタントが送信した承認リクエストを Rustrak が確認できなかったため、何も共有されませんでした。アシスタントから接続をやり直してください。"
+  },
+  "performance": {
+    "count": "{count} 件のエンドポイント",
+    "search": "エンドポイントを検索…",
+    "environment": "環境",
+    "emptyWindow": "エンドポイントがありません",
+    "empty": {
+      "title": "まだトランザクションはありません",
+      "description": "SDK で <code>tracesSampleRate</code> を設定すると、各エンドポイントにかかる時間が表示されます。"
+    },
+    "columns": {
+      "endpoint": "エンドポイント",
+      "timeSpent": "所要時間",
+      "calls": "呼び出し",
+      "avg": "平均",
+      "failures": "失敗",
+      "lastSeen": "最終確認"
+    },
+    "table": {
+      "most": "多い順"
+    },
+    "detail": {
+      "figures": "指標",
+      "noSamples": "この期間内にサンプルはありません",
+      "latency": "レイテンシ",
+      "latencyHint": "期間内の p50 と p95",
+      "calls": "呼び出し",
+      "callsHint": "実行された回数と失敗した回数",
+      "ok": "OK",
+      "failed": "失敗",
+      "slowest": "最も遅いサンプル",
+      "slowestHint": "開くとそのトレースが表示されます",
+      "callsFigure": "呼び出し",
+      "perMinute": "1 分あたり {rate}",
+      "failures": "失敗",
+      "timeSpent": "所要時間",
+      "totalTime": "合計 {time}",
+      "p50": "p50 {time}",
+      "failedCalls": "{count} 件失敗",
+      "operation": "操作",
+      "environment": "環境",
+      "allEnvironments": "すべて",
+      "average": "平均",
+      "lastSeen": "最終確認",
+      "details": "詳細",
+      "duration": "所要時間",
+      "release": "リリース",
+      "status": "ステータス",
+      "when": "日時"
+    },
+    "transaction": {
+      "unnamed": "（名前なし）",
+      "idCopied": "イベント ID をコピーしました",
+      "copyId": "イベント ID をコピー",
+      "request": "リクエスト",
+      "tags": "タグ",
+      "user": "ユーザー",
+      "trace": "トレース",
+      "spans": "{count} 件のスパン",
+      "traceOf": "{name} のトレース",
+      "noSpans": "このトランザクションはスパンを送信しませんでした",
+      "op": "操作",
+      "description": "説明",
+      "duration": "所要時間",
+      "selfTime": "自己時間",
+      "start": "開始",
+      "status": "ステータス",
+      "spanId": "スパン ID",
+      "missingInstrumentation": "計測が不足しています"
+    }
+  },
+  "access": {
+    "meta": {
+      "title": "ロール | Rustrak"
+    },
+    "title": "ロール",
+    "subtitle": "メンバー全体に一貫した権限を割り当てるための、再利用可能な権限セットです。",
+    "notAuthorized": "権限がありません",
+    "notAuthorizedDescription": "ロールを表示するには、ロールの権限が必要です。",
+    "resource": "リソース",
+    "actions": {
+      "read": "表示",
+      "create": "作成",
+      "update": "編集",
+      "delete": "削除"
+    },
+    "wholeRow": "{resource} に対するすべての操作",
+    "general": "一般",
+    "modules": {
+      "workspace": "ワークスペース",
+      "settings": "設定",
+      "issues": "イシュー",
+      "monitoring": "モニタリング",
+      "releases": "リリース",
+      "alerts": "アラート",
+      "project": "プロジェクト"
+    },
+    "resources": {
+      "projects": "プロジェクト",
+      "users": "ユーザー",
+      "invitations": "招待",
+      "roles": "ロール",
+      "api-tokens": "他のユーザーの API トークン",
+      "integrations": "連携（Slack、Webhook、メール）",
+      "github-app": "GitHub アプリ",
+      "storage": "ストレージと保持期間",
+      "mcp": "AI アシスタント（MCP）",
+      "telemetry": "テレメトリ",
+      "issues": "イシューとイベント",
+      "performance": "パフォーマンスとエージェント",
+      "logs": "ログ",
+      "sessions": "リリースヘルス",
+      "releases": "リリース",
+      "source-maps": "ソースマップとデバッグファイル",
+      "alert-rules": "アラートルール",
+      "monitors": "Cron モニター",
+      "project": "プロジェクト設定",
+      "client-keys": "SDK キー（DSN）",
+      "project-members": "プロジェクトメンバー",
+      "project-github": "リポジトリ連携"
+    },
+    "you": "（あなた）",
+    "owner": "オーナー",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "users": {
+      "meta": "{email} · メンバー",
+      "ownerNote": "オーナーはすべてのプロジェクトと設定に無制限にアクセスできます。ロールは適用されません。",
+      "roleAria": "ロール",
+      "readOnlySelf": "自分の権限は変更できません。",
+      "readOnlyPermission": "権限を変更するには、ユーザーの編集権限が必要です。",
+      "saved": "権限を更新しました",
+      "saveFailed": "権限を更新できませんでした",
+      "accessTitle": "権限",
+      "addAccess": "権限を追加",
+      "removeAccess": "権限を削除",
+      "customize": "カスタマイズ",
+      "customRole": "カスタム権限",
+      "customRoleHint": "このメンバー専用の権限です。以下で設定してください。",
+      "noAccessHint": "このメンバーにはまだロールや権限がありません。",
+      "pickProject": "少なくとも1つのプロジェクトを選択してください。",
+      "customTitle": "カスタム権限",
+      "sectionHint": "このメンバーに割り当てる権限と、その適用範囲を定義します。",
+      "whatLabel": "ロール",
+      "whereLabel": "スコープ",
+      "everywhere": "ワークスペース全体",
+      "pickRole": "ロールを選択",
+      "giveAccess": "権限を付与",
+      "noAccessTitle": "権限が割り当てられていません",
+      "ownerTitle": "無制限のアクセス権"
+    },
+    "roles": {
+      "title": "ロール",
+      "description": "各メンバーのページからロールを割り当てます。",
+      "new": "新規ロール",
+      "newTitle": "新規ロール",
+      "empty": "ロールが定義されていません",
+      "permissionCount": "{count} 件の権限",
+      "name": "名前",
+      "descriptionLabel": "説明",
+      "copyFrom": "権限のコピー元",
+      "fromScratch": "なし（空から開始）",
+      "create": "ロールを作成",
+      "createFailed": "ロールを作成できませんでした",
+      "saved": "ロールを保存しました",
+      "saveFailed": "ロールを保存できませんでした",
+      "delete": "ロールを削除",
+      "deleteTitle": "{name} を削除しますか？",
+      "deleteDescription": "割り当てがないロールのみ削除できます。",
+      "deleted": "ロールを削除しました",
+      "deleteFailed": "ロールを削除できませんでした",
+      "assignedTo": "{count, plural, =0 {未割り当て} other {# 件の割り当て}}",
+      "meta": "{name} | ロール | Rustrak",
+      "descriptionPlaceholder": "このロールの目的と、付与される権限。",
+      "descriptionHint": "このロールが割り当てられる場所に表示されます。",
+      "allProjects": "すべてのプロジェクト",
+      "detailsTitle": "詳細",
+      "allProjectsHint": "将来作成されるプロジェクトも含まれます。",
+      "noProjects": "プロジェクトがありません",
+      "noProjectsYet": "利用可能なプロジェクトがありません。",
+      "projectCount": "{count, plural, other {# 件のプロジェクト}}"
+    },
+    "resourceHelp": {
+      "projects": "新しいプロジェクトを作成します。少なくとも1つのプロジェクト権限が必要で、その権限は作成したプロジェクトにも適用されます。",
+      "users": "メンバーを表示し、権限を管理し、削除します。他のオーナーを管理できるのはオーナーのみです。",
+      "invitations": "リンクまたはメールで招待を送信し、保留中の招待を表示・取り消しします。招待には、自分が持つ権限のみを含められます。",
+      "roles": "ロールを表示、作成、編集、削除します。ロールには、自分が持つ権限のみを含められます。",
+      "api-tokens": "他のメンバーに属する API トークンを表示し、取り消します。メンバーはこの権限なしで自分のトークンを管理できます。",
+      "integrations": "アラートと招待に使用される Slack、Webhook、メール配信です。",
+      "github-app": "スタックトレースとリリースをリポジトリに連携する GitHub アプリです。",
+      "storage": "ディスク使用量とデータ保持：保持期間を設定し、履歴データを削除または圧縮します。",
+      "mcp": "AI アシスタントが Rustrak にアクセスできる MCP サーバーを有効化または無効化します。",
+      "telemetry": "Rustrak が送信する匿名の利用レポートを表示します。",
+      "issues": "エラーとそのイベント：表示、解決、無視、割り当て、統合、削除。",
+      "performance": "トランザクション、スパン、エンドポイント、AI エージェントのトレース。",
+      "logs": "プロジェクトのログストリーム。",
+      "sessions": "リリースヘルス：クラッシュフリーセッションとユーザー。",
+      "releases": "リリース、そのコミットとデプロイ。",
+      "source-maps": "読みやすいスタックトレースを表示するために使用されるソースマップとデバッグファイル。",
+      "alert-rules": "条件が満たされたときに Slack、Webhook、メールで通知を送信するルール。",
+      "monitors": "Cron モニターとそのチェックイン。",
+      "project": "プロジェクト名、プラットフォーム、データ、プロダクト。削除するとプロジェクトとそのデータが完全に削除されます。",
+      "client-keys": "アプリケーションがイベント送信に使用する SDK キー（DSN）。編集権限でローテーションや無効化ができます。",
+      "project-members": "プロジェクトメンバーとそのロール。編集権限でこのプロジェクトのロールを割り当て・削除できます。",
+      "project-github": "このプロジェクトに連携された GitHub リポジトリ。"
+    }
+  },
+  "workspaceIssues": {
+    "title": "イシュー",
+    "subtitle": "すべてのプロジェクト",
+    "allProjects": "すべてのプロジェクト",
+    "errors": "エラー",
+    "feedback": "フィードバック",
+    "allProjectsHint": "読み取り可能なすべてのプロジェクト"
+  },
+  "savedViews": {
+    "trigger": "ビュー",
+    "empty": "保存済みビューはまだありません",
+    "shared": "プロジェクトと共有",
+    "personal": "自分のみ",
+    "unsaved": "未保存の変更",
+    "saveChanges": "「{name}」への変更を保存",
+    "saveAsNew": "新しいビューとして保存",
+    "reset": "変更を破棄",
+    "setMyDefault": "このページをこのビューで開く",
+    "unsetMyDefault": "このビューで開くのをやめる",
+    "setProjectDefault": "プロジェクトのデフォルトにする",
+    "unsetProjectDefault": "プロジェクトのデフォルトをやめる",
+    "delete": "ビューを削除",
+    "deleteTitle": "「{name}」を削除しますか？",
+    "deleteDescription": "共有されている全員もこのビューを利用できなくなります。",
+    "dialogHint": "画面上のフィルター、検索、並び順を保存します。",
+    "name": "名前",
+    "namePlaceholder": "本番環境の致命的なエラー",
+    "nameRequired": "ビューに名前を付けてください",
+    "share": "プロジェクトの全員と共有",
+    "cancel": "キャンセル",
+    "save": "ビューを保存",
+    "saveFailed": "ビューは保存されませんでした",
+    "defaultFailed": "デフォルトは変更されませんでした",
+    "deleteFailed": "ビューは削除されませんでした",
+    "sharedWorkspace": "全員と共有",
+    "shareWorkspace": "ワークスペースの全員と共有",
+    "setWorkspaceDefault": "全員のデフォルトにする",
+    "unsetWorkspaceDefault": "全員のデフォルトをやめる",
+    "loadFailed": "ビューを読み込めませんでした"
+  },
+  "mobile": {
+    "tabs": "タブ",
+    "search": "検索",
+    "more": "その他",
+    "projects": "プロジェクト",
+    "back": "戻る",
+    "switchProject": "プロジェクトを切り替え、現在：{name}",
+    "switchProjectHint": "プロジェクトを切り替え",
+    "chooseProject": "プロジェクトを選択",
+    "workspace": "ワークスペース",
+    "allIssues": "すべてのプロジェクトのイシュー",
+    "install": "アプリをインストール",
+    "installHint": "ホーム画面から Rustrak を全画面で開く",
+    "installIntro": "Safari では共有メニューから Web アプリをインストールします。3回のタップで完了します。",
+    "installStep1": "Safari のツールバーで共有 <share></share> をタップ",
+    "installStep2": "「ホーム画面に追加」を選択",
+    "installStep3": "「追加」をタップ"
+  },
+  "webVitals": {
+    "title": "Web Vitals",
+    "meta": {
+      "title": "Web Vitals · {project}",
+      "pageTitle": "Web Vitals · {page}",
+      "metricTitle": "{vital} · Web Vitals"
+    },
+    "pages": "{count, plural, other {# ページ}}",
+    "score": "パフォーマンススコア",
+    "bands": {
+      "good": "良好",
+      "meh": "改善が必要",
+      "poor": "不良"
+    },
+    "noData": "データなし",
+    "trend": "トレンド",
+    "trendHint": "期間ごとに、良好、改善が必要、不良だったページ読み込みの割合です。",
+    "browser": "ブラウザ",
+    "allBrowsers": "すべてのブラウザ",
+    "noBrowsers": "ブラウザはまだありません",
+    "columns": {
+      "page": "ページ",
+      "opportunity": "改善機会",
+      "score": "スコア",
+      "pageloads": "ページ読み込み"
+    },
+    "emptyWindow": "この期間に Web Vitals はありません",
+    "pageloadsLink": "ページ読み込み",
+    "empty": {
+      "title": "Web Vitals はまだありません",
+      "description": "ブラウザ SDK に <code>browserTracingIntegration()</code> を追加すると、各ページが実際のユーザーに対してどのように読み込まれるかを測定できます。"
+    },
+    "pageSpeedLink": "PageSpeed Insights",
+    "ratings": {
+      "good": "良好",
+      "meh": "改善が必要",
+      "poor": "不良"
+    },
+    "assessment": {
+      "label": "Core Web Vitals の評価",
+      "passed": "合格",
+      "failed": "不合格",
+      "passedHint": "LCP、INP、CLS が75パーセンタイルで良好です。",
+      "failedHint": "{vitals} は75パーセンタイルで良好ではありません。"
+    },
+    "devices": {
+      "device": "デバイス",
+      "all": "すべてのデバイス",
+      "mobile": "モバイル",
+      "desktop": "デスクトップ",
+      "title": "デバイス別",
+      "hint": "スマートフォンとコンピューターでは結果が異なります。",
+      "unknown": "不明"
+    },
+    "detail": {
+      "causes": "原因",
+      "causesHint": "測定対象となった要素で、スコアの損失が最も大きいものが最初に表示されます。",
+      "pages": "最も悪いページ",
+      "pagesHint": "この指標でスコアの損失が最も大きいページです。",
+      "samples": "最も悪い測定値",
+      "samplesHint": "それぞれ、そのページ読み込みのトレースを開きます。",
+      "noTargets": "この期間に SDK から要素が報告されませんでした。",
+      "noTargetsForVital": "FCP と TTFB は単一の要素が原因ではありません：サーバーの応答とレンダリングをブロックするリソースを確認してください。",
+      "noPages": "この期間にこの指標を持つページはありません。",
+      "noSamples": "この期間に測定値はありません。",
+      "times": "{count, plural, other {# 回}}",
+      "device": {
+        "mobile": "モバイル",
+        "desktop": "デスクトップ"
+      },
+      "reading": "読み方",
+      "readingHint": "Core Web Vitals は75パーセンタイルで判定されます。他の値はばらつきを示します。",
+      "measured": "この期間に {count, plural, other {# 件の測定}}。",
+      "howToFix": "改善方法",
+      "howToFixHint": "web.dev に基づく、一般的な改善方法です。",
+      "browsers": "ブラウザ別",
+      "browsersHint": "ブラウザごとに独自のスコア曲線で評価されます。"
+    },
+    "vitals": {
+      "lcp": "Largest Contentful Paint：最大の画像またはテキストブロックの描画が完了した時点です。通常、重い画像、遅いサーバー、レンダリングをブロックする CSS や JavaScript が原因です。",
+      "inp": "Interaction to Next Paint：クリック、タップ、キー入力に対してページが応答するまでの時間です。通常、メインスレッド上の長い JavaScript タスクが原因です。",
+      "cls": "Cumulative Layout Shift：読み込み中にコンテンツがどれだけ移動したかです。通常、寸法のない画像、広告、後から挿入されるコンテンツが原因です。",
+      "fcp": "First Contentful Paint：最初のテキストまたは画像が表示された時点です。通常、サーバーの応答時間とレンダリングをブロックするリソースが原因です。",
+      "ttfb": "Time to First Byte：サーバーが応答を開始するまでの時間です。通常、バックエンド、リダイレクト、キャッシュ不足が原因です。"
+    },
+    "coreTitle": "Core Web Vitals",
+    "otherTitle": "その他の指標",
+    "pagesTitle": "ページ",
+    "noDataFor": "この期間に測定値はありません。",
+    "scoreHint": "パフォーマンススコア：{band}。3つの Core Web Vitals だけでなく、すべての指標を重み付けします。",
+    "trendOf": "{vital} のトレンド",
+    "atP75": "p75 時点",
+    "analyse": "{vital} を分析",
+    "allPages": "すべてのページ",
+    "firstFix": {
+      "label": "まず取り組むべき箇所",
+      "sentence": "<mono>{page}</mono> の {vital} は75パーセンタイルで <value></value> で、スコアへの影響が最も大きいページです。",
+      "cause": " 主な原因は <mono>{cause}</mono> です。",
+      "none": "緊急ではありません：スコアへの影響が最も大きい {count} ページは、すべての指標が良好です。"
+    },
+    "guide": {
+      "more": "web.dev で完全なガイドを読む",
+      "lcp": [
+        "最大の画像をモダンな形式（AVIF、WebP）で、表示サイズに合わせて配信する。",
+        "プリロードするか fetchpriority=\"high\" を指定する。遅延読み込み（lazy-load）は設定しない。",
+        "サーバーの応答時間と、ページ前のリダイレクトを削減する。",
+        "クリティカル CSS をインライン化し、レンダリングをブロックするスクリプトを遅延させる。"
+      ],
+      "inp": [
+        "長い JavaScript タスクを、メインスレッドに譲る小さなタスクに分割する。",
+        "ユーザーの操作中に実行されるサードパーティスクリプトを遅延または削除する。",
+        "イベントハンドラーでは処理を減らす：まず画面を更新し、残りは後で行う。",
+        "操作ごとの大規模な再レンダリングや強制レイアウトを避ける。"
+      ],
+      "cls": [
+        "画像、動画、iframe に width と height、または aspect-ratio を指定する。",
+        "広告、埋め込み、バナーが読み込まれる前にスペースを確保する。",
+        "ユーザーが求めた場合を除き、読んでいるコンテンツの上にコンテンツを挿入しない。",
+        "font-display と一致するフォールバックで Web フォントを読み込む。"
+      ],
+      "fcp": [
+        "サーバーの応答時間（TTFB）を短縮する。",
+        "クリティカル CSS をインライン化し、残りを遅延させる。",
+        "重要でない JavaScript を defer または async にする。",
+        "フォントなど、重要なリソースのオリジンに preconnect する。"
+      ],
+      "ttfb": [
+        "ユーザーに近い CDN で応答をキャッシュする。",
+        "ページ前のリダイレクトチェーンを避ける。",
+        "ページ背後のバックエンド処理とデータベースクエリを高速化する。",
+        "HTML をストリーミングするか、可能な場合は静的に配信する。"
+      ]
+    }
+  }
+}

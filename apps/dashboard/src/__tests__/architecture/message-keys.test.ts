@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import en from '../../shared/i18n/messages/en.json';
 import es from '../../shared/i18n/messages/es.json';
 import fr from '../../shared/i18n/messages/fr.json';
+import ja from '../../shared/i18n/messages/ja.json';
 import ro from '../../shared/i18n/messages/ro.json';
 import zh from '../../shared/i18n/messages/zh.json';
 import { isMessages, isTestFile, withoutComments } from './predicates';
@@ -94,6 +95,7 @@ const OTHER_LOCALES: readonly (readonly [string, Messages])[] = [
   ['fr', fr],
   ['es', es],
   ['ro', ro],
+  ['ja', ja],
 ];
 
 /** A file whose translator calls this rule can judge. */

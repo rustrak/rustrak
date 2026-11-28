@@ -8,7 +8,7 @@
  * reader to any browser.
  */
 
-export const LOCALES = ['en', 'zh', 'fr', 'es', 'ro'] as const;
+export const LOCALES = ['en', 'zh', 'fr', 'es', 'ro', 'ja'] as const;
 
 export type Locale = (typeof LOCALES)[number];
 

@@ -77,6 +77,7 @@ describe('generate', () => {
       'src/messages/zh.json is missing: readers in zh see English',
       'src/messages/fr.json is missing: readers in fr see English',
       'src/messages/ro.json is missing: readers in ro see English',
+      'src/messages/ja.json is missing: readers in ja see English',
       'src/messages/es.json is missing nav.overview (English is shown)',
       'src/messages/en.json has no settings.greeting.label (the key is shown)',
       'src/messages/en.json has no settings.apiKey.label (the key is shown)',

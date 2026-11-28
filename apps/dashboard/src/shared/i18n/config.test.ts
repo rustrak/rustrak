@@ -38,7 +38,7 @@ describe('resolveLocale', () => {
   });
 
   it('skips languages this app has no messages for', () => {
-    expect(resolveLocale(null, ['de', 'ja', 'fr'])).toBe('fr');
+    expect(resolveLocale(null, ['de', 'pt', 'fr'])).toBe('fr');
   });
 
   // The server accepts any well-formed language tag by design — it has no

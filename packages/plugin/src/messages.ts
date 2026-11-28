@@ -11,7 +11,7 @@ import { paths } from './config.ts';
  * apps/dashboard/src/shared/i18n/config.ts): a plugin missing one shows its
  * readers English there.
  */
-export const LOCALES = ['en', 'zh', 'fr', 'es', 'ro'] as const;
+export const LOCALES = ['en', 'zh', 'fr', 'es', 'ro', 'ja'] as const;
 
 /** One warning per language of Rustrak's that `has` lacks. */
 export function missingLocales(
