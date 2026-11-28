@@ -73,11 +73,17 @@ impl SlackNotifier {
             // Shown in push notifications, and the only part screen readers
             // read, so it repeats what the blocks say.
             "text": format!(
-                "{} in {}: {} ({}, {} events) <{}>",
+                "{} in {}: {} ({}, {}{} events) <{}>",
                 alert_type_display,
                 Self::escape_markdown(&payload.project.name),
                 Self::escape_markdown(&payload.issue.title),
                 payload.issue.short_id,
+                payload
+                    .issue
+                    .level
+                    .as_deref()
+                    .map(|level| format!("{}, ", Self::escape_markdown(level)))
+                    .unwrap_or_default(),
                 payload.issue.event_count,
                 payload.issue_url
             ),
@@ -423,6 +429,17 @@ mod tests {
     }
 
     #[test]
+    fn test_text_leaves_out_a_missing_level() {
+        let mut payload = create_test_payload();
+        payload.issue.level = None;
+        let message = SlackNotifier::format_webhook_message(&payload);
+        assert!(message["text"]
+            .as_str()
+            .unwrap()
+            .ends_with("(TEST-1, 5 events) <https://example.com/issues/abc-123>"));
+    }
+
+    #[test]
     fn test_format_webhook_message_structure() {
         let payload = create_test_payload();
         let message = SlackNotifier::format_webhook_message(&payload);
@@ -433,7 +450,7 @@ mod tests {
         assert_eq!(
             message["text"],
             "New Issue in Test Project: TypeError: Cannot read property 'x' of undefined \
-             (TEST-1, 5 events) <https://example.com/issues/abc-123>"
+             (TEST-1, error, 5 events) <https://example.com/issues/abc-123>"
         );
         // Webhook messages must NOT include username/icon/channel — Slack ignores them
         assert!(message.get("username").is_none());
