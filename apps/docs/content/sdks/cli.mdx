@@ -1,0 +1,188 @@
+---
+title: "rustrak CLI"
+description: "The official command-line client for Rustrak: sign in once, then triage issues, read logs and agent traces, and manage projects from a terminal."
+---
+
+# `rustrak` CLI
+
+The `rustrak` CLI is the official command-line client for a Rustrak instance. It
+talks to the same REST API the dashboard does, so everything it shows is what the
+dashboard would show, and everything it changes is visible in the dashboard
+immediately.
+
+It is built for the two places a dashboard is the wrong tool: a terminal, where
+`| jq` and `grep` are how you read data, and a pipeline, where "the slowest
+transactions from the last hour" is a step in a script rather than a page to
+click through.
+
+```bash
+cargo install rustrak-cli
+```
+
+## Sign in once
+
+The server mints API tokens from a **session**, never from a token, so the CLI
+does the same two steps the dashboard's login form does — without a browser:
+
+```bash
+rustrak auth login --url https://rustrak.example.com
+# Email: you@example.com
+# Password:            (not echoed)
+```
+
+Behind that prompt it signs in with your password, keeps the session cookie just
+long enough to mint a long-lived token, and stores only the token. The session is
+discarded; it is never written to disk.
+
+That token is kept in `~/.config/rustrak/config.toml`, readable only by you
+(`0600`). From then on every command is a plain API call.
+
+### SSO, or a token from the dashboard
+
+If your instance signs in through an identity provider, or you would rather mint
+a token yourself, create one in **Settings → API tokens** and hand it to the CLI:
+
+```bash
+rustrak auth login --url https://rustrak.example.com --token <TOKEN>
+```
+
+```bash
+rustrak auth status    # the profile, the instance, and who the token belongs to
+rustrak auth whoami    # the identity, its role, and what it can reach
+```
+
+## CI and scripts
+
+The environment is the whole config, so no file has to exist:
+
+```bash
+export RUSTRAK_URL=https://rustrak.example.com
+export RUSTRAK_TOKEN=$RUSTRAK_API_TOKEN
+
+rustrak issue list --filter open --json | jq -r '.items[] | .short_id'
+```
+
+Flags beat the environment, which beats the config file:
+
+| | Flag | Environment | Config |
+|---|---|---|---|
+| Instance | `--url` | `RUSTRAK_URL` | `profiles.<name>.url` |
+| Token | `--token` | `RUSTRAK_TOKEN` | `profiles.<name>.token` |
+| Profile | `-p, --profile` | `RUSTRAK_PROFILE` | `current` |
+| Project | `--project` | `RUSTRAK_PROJECT` | — |
+
+More than one instance is a profile each:
+
+```bash
+rustrak auth login --url https://staging.example.com --profile-name staging
+rustrak auth login --url https://rustrak.example.com --profile-name prod
+
+rustrak issue list --profile staging
+rustrak config use prod
+```
+
+## Tables in a terminal, JSON in a pipe
+
+A terminal gets a table, because that is what a terminal is for. A pipe gets
+JSON, because a table parsed by `jq` is worthless and a script that redirects the
+output usually wants the data. Either can be forced with `--table` or `--json`.
+
+```bash
+rustrak issue list                       # a table
+rustrak issue list --json                # JSON, whatever stdout is
+rustrak issue list --json | jq .items    # the same
+```
+
+`NO_COLOR` turns colour off, as everywhere else.
+
+Exit codes are the contract a script reads: `0` success, `1` a general failure,
+`2` a usage error, `3` not authenticated, `4` forbidden, `5` not found.
+
+## Your projects
+
+```bash
+rustrak project list
+rustrak project get my-app
+rustrak project dsn my-app                    # just the DSN, to paste into an SDK
+rustrak project stats my-app --period 24h     # errors, new issues, open issues
+rustrak project sessions my-app --period 7d   # crash-free sessions and users
+```
+
+`project use` is not a stored setting; it prints the `export RUSTRAK_PROJECT=…`
+line to put in your shell, so the CLI never writes a file behind your back.
+
+## Triaging issues
+
+Issues are addressed by the `PROJECT-12` short id the dashboard shows, or by
+UUID:
+
+```bash
+rustrak issue list --filter open --sort event-count --limit 10
+rustrak issue list --level fatal --period 24h
+rustrak issue get MYAPP-12
+rustrak issue events MYAPP-12
+rustrak issue event MYAPP-12 latest --raw    # the raw Sentry event
+rustrak issue activity MYAPP-12
+```
+
+Fixing things in bulk is one request, not a loop:
+
+```bash
+rustrak issue resolve MYAPP-12 MYAPP-13 MYAPP-20
+rustrak issue priority high MYAPP-12
+rustrak issue ignore MYAPP-13
+rustrak issue comment MYAPP-12 "Fixed in 1.4.2, waiting on the deploy"
+```
+
+## Logs, traces and performance
+
+```bash
+rustrak log list --level error --period 1h
+rustrak log tail --level error --environment production   # follows, until Ctrl-C
+rustrak log list --trace-id <TRACE_ID>                    # one request's log line
+
+rustrak trace summary --hours 24          # agent runs, LLM calls, tokens
+rustrak trace list --hours 24 --errors    # one row per trace
+rustrak trace models --hours 24           # calls, errors and latency per model
+rustrak trace tools --hours 24            # which tool is failing
+
+rustrak perf stats --period 1h            # p50/p95/p99, ranked by time spent
+rustrak perf list --period 1h --limit 50  # the slowest individual transactions
+```
+
+## Releases, monitors and alerts
+
+```bash
+rustrak release list --period 7d          # crash-free rates and adoption
+rustrak release create 1.4.2 --ref "$GIT_SHA"
+rustrak monitor list                      # cron monitors and their last check-in
+rustrak monitor checkins nightly-backup
+rustrak alert list
+```
+
+## Proving an integration works
+
+`send` posts to the ingest endpoint exactly as an SDK does, so it is the fastest
+way to check a DSN before deploying:
+
+```bash
+rustrak send --dsn 'http://<key>@localhost:8080/1' "Checking the pipeline"
+```
+
+## Anything the commands do not wrap
+
+`api` calls any endpoint the CLI has no command for yet, with the same token and
+the same error handling:
+
+```bash
+rustrak api /api/projects
+rustrak api /api/projects --method post --body '{"name": "my-app"}'
+```
+
+## Shell completion
+
+```bash
+rustrak completion zsh > "${fpath[1]}/_rustrak"    # zsh
+rustrak completion bash > /etc/bash_completion.d/rustrak
+rustrak completion fish > ~/.config/fish/completions/rustrak.fish
+```

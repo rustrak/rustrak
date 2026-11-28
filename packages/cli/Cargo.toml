@@ -1,0 +1,75 @@
+[package]
+name = "rustrak-cli"
+version = "0.35.0"
+edition = "2021"
+rust-version = "1.88"
+authors = ["Rustrak Team"]
+description = "Command-line client for Rustrak: triage issues, read logs and traces, and manage projects from a terminal"
+license = "AGPL-3.0-only"
+repository = "https://github.com/rustrak/rustrak"
+homepage = "https://rustrak.dev"
+documentation = "https://rustrak.dev/sdks/cli"
+keywords = ["rustrak", "sentry", "error-tracking", "observability", "cli"]
+categories = ["command-line-utilities", "development-tools::debugging"]
+
+[[bin]]
+name = "rustrak"
+path = "src/main.rs"
+
+[dependencies]
+# Argument parsing, help and shell completion generation.
+clap = { version = "4.6.9", features = ["derive", "env", "wrap_help"] }
+clap_complete = "4.6.11"
+
+# HTTP. `cookies` keeps the session cookie the login flow sets, which is the
+# only way to mint an API token: `POST /api/tokens` refuses a token caller.
+reqwest = { version = "0.13.5", default-features = false, features = [
+    "rustls",
+    "json",
+    "gzip",
+    "cookies",
+    "query",
+] }
+
+# Async runtime for reqwest and the interactive prompts.
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "signal"] }
+
+# Serialization.
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = { version = "1.2.1", default-features = false, features = ["std", "serde", "parse", "display"] }
+
+# Time formatting for every timestamp the API sends (`date-time`).
+chrono = { version = "0.4.45", features = ["serde"] }
+
+# Config location: the same XDG/Application Support rules the rest of the
+# Rust ecosystem follows, so `rustrak config path` is where a user expects.
+dirs = "6.0.0"
+
+# Password prompts that do not echo, for `rustrak auth login`.
+rpassword = "7.5.4"
+
+# Tables and colour, both off when stdout is not a terminal or NO_COLOR is set.
+comfy-table = "8.0.1"
+owo-colors = "4.4.0"
+
+# Error handling.
+thiserror = "2.0.21"
+
+# Parsing a DSN for `rustrak send`.
+url = "2.5.8"
+
+[dev-dependencies]
+# Drives the built binary the way a user does, so `--help`, exit codes and
+# stdout/stderr stay part of the contract.
+assert_cmd = "2"
+predicates = "3"
+# A real HTTP server for the client tests: no network, no mocks of our own
+# request types.
+wiremock = "0.6.5"
+tempfile = "3.27.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

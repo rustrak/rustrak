@@ -1,0 +1,15 @@
+{
+  "name": "@rustrak/cli",
+  "version": "0.35.0",
+  "private": true,
+  "description": "Command-line client for Rustrak",
+  "scripts": {
+    "build": "cargo build --release",
+    "build:dev": "cargo build",
+    "lint": "cargo clippy --all-targets -- -D warnings",
+    "format": "cargo fmt",
+    "format:check": "cargo fmt -- --check",
+    "test": "cargo test",
+    "clean": "cargo clean"
+  }
+}

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "ci": "pnpm run ci:web && pnpm run ci:rust",
-    "ci:web": "turbo run build test lint format:check check-types doctor generate:check --filter=!@rustrak/server --filter=!@rustrak/benchmarks --filter=!rustrak-plugin-hello",
+    "ci:web": "turbo run build test lint format:check check-types doctor generate:check --filter=!@rustrak/server --filter=!@rustrak/benchmarks --filter=!@rustrak/cli --filter=!rustrak-plugin-hello",
     "ci:rust": "turbo run format:check lint test openapi:check --filter=@rustrak/server --filter=@rustrak/benchmarks",
     "build": "turbo run build",
     "build:dev": "turbo run build:dev",
