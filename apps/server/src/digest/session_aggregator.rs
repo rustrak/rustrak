@@ -160,7 +160,10 @@ impl SessionAggregator {
 
         let mut commit_started = false;
         let result = async {
-            let mut tx = self.pool.begin().await?;
+            // Read-then-write (the projects lookup comes first): IMMEDIATE on
+            // SQLite, or a commit elsewhere fails the upgrade with
+            // SQLITE_BUSY, which busy_timeout does not retry (db::begin_write).
+            let mut tx = crate::db::begin_write(&self.pool).await?;
             // A project deleted since its sessions arrived takes them with it:
             // written, they would fail every flush on its foreign key.
             let mut gone = HashSet::new();
