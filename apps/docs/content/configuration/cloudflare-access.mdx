@@ -1,0 +1,86 @@
+---
+description: "Sign in to self-hosted Rustrak through Cloudflare Access, with an Access for SaaS application as the OpenID Connect provider."
+---
+
+# Cloudflare Access
+
+Cloudflare Access can be Rustrak's OpenID Connect provider through a SaaS
+application. People press **Continue with Cloudflare Access** on the login
+page, pass your Access policy and come back signed in. Everything in
+[Single sign-on](/configuration/sso) applies, with two differences: Access
+does not mark emails as verified, and so existing accounts link with their
+password.
+
+These steps assume Rustrak is served at `https://rustrak.example.com`.
+
+## 1. Create the application in Access
+
+In the Cloudflare dashboard, go to **Zero Trust → Access controls →
+Applications → Create new application**, choose **SaaS application**, name it
+`Rustrak` and choose **OIDC**. Then fill in:
+
+- **Redirect URLs:** `https://rustrak.example.com/auth/sso/callback`, exactly.
+- **Scopes:** `openid`, `email` and `profile`, the three Rustrak asks for.
+- **Access policies:** only the people who should reach Rustrak. Access issues
+  no token to anyone its policy refuses, so they never get as far as Rustrak.
+
+Copy the **Client ID**, the **Client secret** and the **Issuer**:
+
+```text
+https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<client-id>
+```
+
+## 2. Configure Rustrak
+
+```bash
+OIDC_ISSUER_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<client-id>
+OIDC_CLIENT_ID=<client-id>
+OIDC_CLIENT_SECRET=<client-secret>
+OIDC_REDIRECT_URL=https://rustrak.example.com/auth/sso/callback
+OIDC_PROVIDER_NAME="Cloudflare Access"
+# Access does not mark the email as verified.
+OIDC_REQUIRE_EMAIL_VERIFIED=false
+# Your Access policy decides who gets in, so let new people in.
+OIDC_AUTO_PROVISION=true
+OIDC_ALLOWED_DOMAINS=example.com
+```
+
+Leave out `OIDC_REQUIRE_EMAIL_VERIFIED=false` and every login fails, with
+this line in the log:
+
+```text
+SSO browser callback failed: Forbidden: SSO provider did not verify the email address
+```
+
+Turning the check off is reasonable here because your Access policy already
+decides which emails get through. `OIDC_ALLOWED_DOMAINS` keeps a second limit
+on Rustrak's side.
+
+Restart Rustrak. The log says `OpenID Connect SSO enabled (Cloudflare Access)`
+once it has read the issuer.
+
+## Existing accounts link with their password once
+
+Rustrak links an SSO login to an existing account without asking only when
+the provider has verified the email. Access never has, so
+`OIDC_LINK_EXISTING_ACCOUNTS` changes nothing with it. The first time someone
+with an account signs in through Access, Rustrak shows **Link your account**
+and asks for that account's password. After that, Access alone signs them in.
+
+This includes the first owner. There is no way to skip it, so make sure each
+existing account still knows its password before you rely on Access.
+
+People with no account are not asked anything: with `OIDC_AUTO_PROVISION=true`
+Rustrak creates their account as a member who sees nothing until someone gives
+them a [role](/usage/roles). It never creates the first owner this way. On an
+empty installation, create the owner with `CREATE_SUPERUSER` or the
+[bootstrap file](/configuration/bootstrap-file), then link it on its first
+Access login.
+
+## SSO only
+
+`OIDC_DISABLE_PASSWORD_LOGIN=true` hides the password form for everyone. Only
+the first account, the one `CREATE_SUPERUSER` created, can still sign in with
+its password, through **Sign in with a password**, in case Access is down.
+**Link your account** keeps working, so existing accounts can still link. See
+[SSO-only login](/configuration/sso#sso-only-login).

@@ -99,6 +99,7 @@ export const TABS: NavTab[] = [
         title: 'Integrations',
         items: [
           item('configuration/sso', 'Single sign-on'),
+          item('configuration/cloudflare-access', 'Cloudflare Access'),
           item('configuration/github', 'GitHub'),
           item('configuration/gitlab', 'GitLab'),
         ],
