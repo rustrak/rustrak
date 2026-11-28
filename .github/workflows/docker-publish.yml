@@ -331,3 +331,19 @@ jobs:
               echo "$out"; exit 1
             fi
           done
+
+      # The CLI carries the release's number too (it is in the fixed group), so
+      # `rustrak --version` names the server release it is known-compatible
+      # with. It has its own lockfile, so it publishes from its own directory.
+      - name: Publish the CLI crate
+        working-directory: packages/cli
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if out=$(cargo publish --locked 2>&1); then
+            echo "$out"
+          elif grep -q "already exists" <<<"$out"; then
+            echo "rustrak-cli is already published, skipping"
+          else
+            echo "$out"; exit 1
+          fi

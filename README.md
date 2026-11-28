@@ -268,19 +268,22 @@ another app. See the [plugins documentation](https://rustrak.dev/plugins/overvie
 
 ## From code, and from your editor
 
-The REST API has a typed client, and the server has an MCP endpoint built in,
-so an assistant can triage your instance in the same session it is writing the
-fix. Turn it on in **Settings → AI assistants (MCP)** and point Claude, Cursor
-or any MCP client at `https://<your-rustrak>/mcp` with an API token: there is
-nothing to install. See the [MCP guide](https://rustrak.dev/sdks/mcp).
+The REST API has a typed client, a command-line client, and the server has an
+MCP endpoint built in, so an assistant can triage your instance in the same
+session it is writing the fix. Turn it on in **Settings → AI assistants (MCP)**
+and point Claude, Cursor or any MCP client at `https://<your-rustrak>/mcp` with
+an API token: there is nothing to install. See the
+[MCP guide](https://rustrak.dev/sdks/mcp).
 
 ```bash
 npm install @rustrak/client   # the REST API, typed
+cargo install rustrak-cli     # the same API, from a terminal
 ```
 
 | Package | Version | What it is |
 |---|---|---|
 | [`@rustrak/client`](https://www.npmjs.com/package/@rustrak/client) | [![npm](https://img.shields.io/npm/v/@rustrak/client?style=flat-square)](https://www.npmjs.com/package/@rustrak/client) | TypeScript client. Every method returns `Result<T, RustrakError>` and never throws, so a call that can fail says so in its type |
+| [`rustrak-cli`](https://crates.io/crates/rustrak-cli) | [![crates.io](https://img.shields.io/crates/v/rustrak-cli?style=flat-square)](https://crates.io/crates/rustrak-cli) | `rustrak`, the command-line client. `rustrak auth login` once, then triage issues, read logs and traces, and manage projects from a terminal. Tables in a terminal, JSON in a pipe |
 
 The OpenAPI spec is browsable in the [API reference](https://rustrak.dev/api-reference).
 

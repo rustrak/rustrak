@@ -443,6 +443,8 @@ importers:
 
   packages/benchmarks: {}
 
+  packages/cli: {}
+
   packages/client:
     dependencies:
       zod:

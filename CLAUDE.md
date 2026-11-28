@@ -29,6 +29,7 @@ who never installs Node.
 | `apps/docs` | Public website: landing, docs, blog, changelog (Astro) |
 | `packages/ui` | `@rustrak/ui`, the design system. Storybook only for now |
 | `packages/client` | `@rustrak/client`, the TypeScript API client |
+| `packages/cli` | `rustrak-cli`, the command-line client |
 | `packages/test-sentry` | CLI to send test events to a DSN |
 | `packages/benchmarks` | Load and throughput benchmarks |
 

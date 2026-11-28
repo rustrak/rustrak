@@ -161,6 +161,7 @@ export const TABS: NavTab[] = [
             href: '/api-reference',
           },
           item('sdks/client', '@rustrak/client'),
+          item('sdks/cli', 'rustrak CLI'),
         ],
       },
       {

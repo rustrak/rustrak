@@ -49,4 +49,16 @@ fi
 cd "$SDK_DIR" && cargo update --workspace
 cd "$SERVER_DIR/tests/fixtures/hello-plugin" && cargo update -p rustrak-plugin -p rustrak-plugin-macros
 
+# The CLI is a release artifact too: it is in the fixed group, so it carries
+# the same number as the server it talks to, and `rustrak --version` has to
+# answer with the release it shipped in.
+CLI_DIR="$SERVER_DIR/../../packages/cli"
+perl -pi -e "s/^version = \".+\"/version = \"$VERSION\"/" "$CLI_DIR/Cargo.toml"
+if ! grep -Eq "^version = \"$VERSION\"$" "$CLI_DIR/Cargo.toml"; then
+  echo "ERROR: failed to update the CLI's version in $CLI_DIR/Cargo.toml"
+  exit 1
+fi
+perl -pi -e "s/^(\s*\"version\": )\".+\"/\$1\"$VERSION\"/" "$CLI_DIR/package.json"
+cd "$CLI_DIR" && cargo update --workspace
+
 echo "Synced version $VERSION to Cargo.toml"

@@ -127,6 +127,7 @@ jobs:
           cache-workspaces: |
             apps/server -> target
             packages/benchmarks -> target
+            packages/cli -> target
       - *setup-pnpm
       - *setup-node
 
@@ -156,6 +157,18 @@ jobs:
       # its dependencies, so they run here rather than on a fifth runner.
       - name: Lint and test the benchmark crate
         working-directory: packages/benchmarks
+        run: |
+          pnpm run format:check
+          pnpm run lint
+          pnpm run test
+
+      # The CLI is its own crate and lockfile for the same reason: it builds
+      # for anyone who never installs the server's toolchain, and it publishes
+      # to crates.io on its own. Same bar: fmt, clippy, tests. It is kept out of
+      # `ci:web` on purpose: its `build` is a release build with fat LTO, which
+      # no PR check runs.
+      - name: Lint and test the CLI crate
+        working-directory: packages/cli
         run: |
           pnpm run format:check
           pnpm run lint
