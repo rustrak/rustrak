@@ -70,12 +70,16 @@ impl SlackNotifier {
             .join(" ");
 
         json!({
-            // Shown in push notifications, where blocks are not rendered.
+            // Shown in push notifications, and the only part screen readers
+            // read, so it repeats what the blocks say.
             "text": format!(
-                "{} in {}: {}",
+                "{} in {}: {} ({}, {} events) <{}>",
                 alert_type_display,
-                payload.project.name,
-                Self::escape_markdown(&payload.issue.title)
+                Self::escape_markdown(&payload.project.name),
+                Self::escape_markdown(&payload.issue.title),
+                payload.issue.short_id,
+                payload.issue.event_count,
+                payload.issue_url
             ),
             "blocks": [
                 {
@@ -407,15 +411,29 @@ mod tests {
     }
 
     #[test]
+    fn test_text_escapes_a_project_name_that_would_mention_the_channel() {
+        let mut payload = create_test_payload();
+        payload.project.name = "<!channel> & co".to_string();
+        let message = SlackNotifier::format_webhook_message(&payload);
+        let text = message["text"].as_str().unwrap();
+        assert!(
+            text.starts_with("New Issue in &lt;!channel&gt; &amp; co: "),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn test_format_webhook_message_structure() {
         let payload = create_test_payload();
         let message = SlackNotifier::format_webhook_message(&payload);
 
         assert!(message["blocks"].is_array());
-        // Slack shows `text` in push notifications when a message has blocks.
+        // Slack shows `text` in push notifications and screen readers read
+        // only `text`, so it carries everything the blocks say.
         assert_eq!(
             message["text"],
-            "New Issue in Test Project: TypeError: Cannot read property 'x' of undefined"
+            "New Issue in Test Project: TypeError: Cannot read property 'x' of undefined \
+             (TEST-1, 5 events) <https://example.com/issues/abc-123>"
         );
         // Webhook messages must NOT include username/icon/channel — Slack ignores them
         assert!(message.get("username").is_none());

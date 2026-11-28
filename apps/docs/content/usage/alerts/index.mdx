@@ -102,7 +102,7 @@ Mattermost takes alerts through a custom webhook:
 2. In Rustrak, add a **Custom webhook** with that URL and **Start from** *Mattermost*, then save it.
 3. Press **Test** in its **⋯** menu and check the message arrives.
 
-To post somewhere other than the webhook's channel, add `"channel": "town-square"` (the channel's name, not its display name) to the body. Mattermost also honours `"username"` and `"icon_url"` when its admin allows integrations to override them. Mattermost does not render Slack Block Kit, so a body copied from a Slack app needs `text` or `attachments` instead.
+To post somewhere other than the webhook's channel, add `"channel": "town-square"` (the channel's name, not its display name) to the body. This only works when the webhook is not locked to its channel, and only for public channels or private ones the webhook's creator belongs to. Mattermost also honours `"username"` and `"icon_url"` when its admin allows integrations to override them. Mattermost does not render Slack Block Kit, so a body copied from a Slack app needs `text` or `attachments` instead.
 
 A Mattermost server on your own network is a private address, which alerts refuse by default: set [`RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS=on`](/configuration/environment).
 
