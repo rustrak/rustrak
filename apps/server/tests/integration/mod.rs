@@ -9,6 +9,7 @@ mod assembly_worker_test;
 mod auth_test;
 mod auto_resolve_test;
 mod bootstrap_test;
+mod cli_test;
 mod concurrency_test;
 mod crons_ingest_test;
 mod dashboard_test;

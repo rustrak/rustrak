@@ -183,7 +183,7 @@ minisign-verify = "0.3.0"
 [target.'cfg(unix)'.dependencies]
 # statvfs: free disk before a SQLite compaction. Already built for `zip`.
 # prctl: transparent huge pages off (`allocator::tune`).
-nix = { version = "0.32.0", default-features = false, features = ["fs", "process"] }
+nix = { version = "0.32.0", default-features = false, features = ["fs", "process", "term"] }
 
 [dev-dependencies]
 # The crate depends on itself so the integration tests, which are separate

@@ -226,6 +226,29 @@ GET /health        # Liveness
 GET /health/ready  # Readiness
 ```
 
+The image has no shell or curl, so the binary probes itself: `rustrak
+healthcheck` exits 0 when the local server answers `/health/ready` with 200.
+The image already declares it as its `HEALTHCHECK`; in Kubernetes, point the
+probes at the two endpoints instead.
+
+### Admin commands
+
+The same binary runs a few admin commands with the server's own environment.
+With Docker Compose, where `server` is the service:
+
+```bash
+docker compose run --rm server /app/rustrak --version
+docker compose run --rm server /app/rustrak check-config   # report the first config mistake
+docker compose run --rm server /app/rustrak migrate        # the server also migrates at start
+
+# A new owner, or a lost password: --force-update sets it and ends their sessions
+docker compose run --rm -it server /app/rustrak createuser \
+  --email you@example.com --superuser --force-update
+```
+
+`createuser` prompts for the password without echoing it, or reads it from
+stdin when piped. `--password` works too, but stays in your shell history.
+
 ### Restart policy
 
 ```yaml

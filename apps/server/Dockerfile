@@ -71,4 +71,8 @@ ENV RUSTRAK_PLUGINS_DIR=/data/plugins
 VOLUME /data
 EXPOSE 8080
 USER nonroot
+# No shell or curl in distroless: the binary probes /health/ready itself.
+# The start period covers migrations on a large database.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["/app/rustrak", "healthcheck"]
 CMD ["/app/rustrak"]
