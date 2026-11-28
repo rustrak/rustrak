@@ -605,6 +605,8 @@ mod tests {
     const PRESET_SLACK_COMPATIBLE: &str =
         r#"{"text":"*{{ issue.title }}* ({{ issue.short_id }})\n{{ issue_url }}"}"#;
 
+    const PRESET_MATTERMOST: &str = r##"{"attachments":[{"fallback":"{{ issue.title }} ({{ issue.short_id }})","color":"#d24b4e","title":"{{ issue.title }}","title_link":"{{ issue_url }}","text":"{{ project.name }} · {{ issue.short_id }} · {{ issue.event_count }} events"}]}"##;
+
     const PRESET_TEAMS_ADAPTIVE_CARD: &str = r#"{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","text":"{{ issue.title }}","weight":"Bolder","size":"Medium","wrap":true},{"type":"TextBlock","text":"{{ project.name }} · {{ issue.short_id }} · {{ issue.event_count }} events","isSubtle":true,"wrap":true}],"actions":[{"type":"Action.OpenUrl","title":"View issue","url":"{{ issue_url }}"}]}}]}"#;
 
     const PRESET_STRUCTURED: &str = r#"{"source":"rustrak","event":{{ alert_type }},"severity":{{ issue.level }},"title":{{ issue.title }},"url":{{ issue_url }},"occurrences":{{ issue.event_count }},"project":{{ project.slug }}}"#;
@@ -642,6 +644,7 @@ mod tests {
             ("feishu text", PRESET_FEISHU_TEXT),
             ("discord", PRESET_DISCORD),
             ("slack compatible", PRESET_SLACK_COMPATIBLE),
+            ("mattermost", PRESET_MATTERMOST),
             ("teams adaptive card", PRESET_TEAMS_ADAPTIVE_CARD),
             ("structured", PRESET_STRUCTURED),
         ] {

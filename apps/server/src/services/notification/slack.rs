@@ -70,6 +70,13 @@ impl SlackNotifier {
             .join(" ");
 
         json!({
+            // Shown in push notifications, where blocks are not rendered.
+            "text": format!(
+                "{} in {}: {}",
+                alert_type_display,
+                payload.project.name,
+                Self::escape_markdown(&payload.issue.title)
+            ),
             "blocks": [
                 {
                     "type": "header",
@@ -405,6 +412,11 @@ mod tests {
         let message = SlackNotifier::format_webhook_message(&payload);
 
         assert!(message["blocks"].is_array());
+        // Slack shows `text` in push notifications when a message has blocks.
+        assert_eq!(
+            message["text"],
+            "New Issue in Test Project: TypeError: Cannot read property 'x' of undefined"
+        );
         // Webhook messages must NOT include username/icon/channel — Slack ignores them
         assert!(message.get("username").is_none());
         assert!(message.get("icon_emoji").is_none());

@@ -949,6 +949,7 @@
       "presets": {
         "minimal": "O linie de text și un link",
         "slack": "Webhook-uri de intrare Slack, Mattermost sau Rocket.Chat",
+        "mattermost": "Un card Mattermost: titlu, link și culoare",
         "discord": "Un webhook de canal Discord",
         "teams": "Un Adaptive Card pentru un flux Teams",
         "wecom": "Bot de grup WeCom, text simplu",

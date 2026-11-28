@@ -154,6 +154,21 @@ export const TEMPLATE_PRESETS: readonly TemplatePreset[] = [
 }`,
   ),
   preset(
+    'mattermost',
+    'Mattermost',
+    `{
+  "attachments": [
+    {
+      "fallback": "{{ issue.title }} ({{ issue.short_id }})",
+      "color": "#d24b4e",
+      "title": "{{ issue.title }}",
+      "title_link": "{{ issue_url }}",
+      "text": "{{ project.name }} · {{ issue.short_id }} · {{ issue.event_count }} events"
+    }
+  ]
+}`,
+  ),
+  preset(
     'discord',
     'Discord',
     `{
