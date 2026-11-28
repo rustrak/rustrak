@@ -1,0 +1,61 @@
+---
+description: "Use Cloudflare Access as the OpenID Connect provider for a self-hosted Rustrak instance."
+---
+
+# Cloudflare Access (OIDC)
+
+Cloudflare Access can act as Rustrak's OIDC provider through a **SaaS
+application**, which keeps staff sign-in in the same identity plane as the
+rest of a Cloudflare-fronted estate.
+
+## 1. Create the Access application
+
+In Cloudflare Zero Trust, create a **SaaS** application with **OIDC**:
+
+- **Redirect URL:** `https://rustrak.example.com/auth/sso/callback`
+- **Scopes:** `openid`, `email`, `profile`
+- Add an Access policy that allows only the staff emails or identity provider
+  groups you want in Rustrak. This policy is the real boundary: Rustrak never
+  sees anyone Access refuses.
+
+Copy the generated client ID and secret. The issuer is the per-application
+endpoint:
+
+```text
+https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<client-id>
+```
+
+Open `<issuer>/.well-known/openid-configuration` and confirm its `issuer`
+matches that URL exactly.
+
+## 2. Configure Rustrak
+
+```sh
+OIDC_ISSUER_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<client-id>
+OIDC_CLIENT_ID=<client-id>
+OIDC_CLIENT_SECRET=<client-secret>
+OIDC_REDIRECT_URL=https://rustrak.example.com/auth/sso/callback
+OIDC_PROVIDER_NAME=Cloudflare Access
+OIDC_AUTO_PROVISION=true
+OIDC_ALLOWED_DOMAINS=example.com
+# Cloudflare Access does not send email_verified; the Access policy is the
+# trust boundary, so do not require the claim.
+OIDC_REQUIRE_EMAIL_VERIFIED=false
+```
+
+## Expect the first login to ask for the account password
+
+Rustrak links an SSO identity to an existing account without a password only
+when the provider marks the email **verified**. Access omits that claim (which
+is why `OIDC_REQUIRE_EMAIL_VERIFIED=false` is required), so the first SSO login
+for an account that already exists shows **Link your account** and asks for
+that account's password once. After that, Access alone signs the person in.
+
+To avoid the prompt for the first owner, leave `OIDC_LINK_EXISTING_ACCOUNTS`
+off and either:
+
+- sign in once with the `CREATE_SUPERUSER` password and then link, or
+- let `OIDC_AUTO_PROVISION` create a fresh member account and grant it a role.
+
+With `OIDC_DISABLE_PASSWORD_LOGIN=true` the password form is hidden for
+everyone except the first owner, which stays as the documented break-glass.
