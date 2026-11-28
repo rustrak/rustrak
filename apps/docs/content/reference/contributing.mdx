@@ -145,11 +145,12 @@ Dates, numbers and percentages are never formatted by hand. `toLocaleString()` a
 The server needs no change: it accepts any well-formed language tag, so a locale is added entirely in the dashboard.
 
 1. Copy `src/shared/i18n/messages/en.json` to your locale's tag, for example `fr.json`, and translate the values. Keep every key: a missing one renders as the raw key, not as English
-2. Add the tag to `LOCALES` in `src/shared/i18n/config.ts`
-3. Add a loader for the dictionary to `CATALOGUES` in `src/shared/i18n/intl.ts`
-4. Add the dictionary to `OTHER_LOCALES` in `src/__tests__/architecture/message-keys.test.ts`, which holds every locale to the same keys as English
-5. Add the tag to `LOCALES` in `packages/plugin/src/messages.ts`, so plugin authors are warned when it is missing
-6. Run `pnpm test`
+2. Add the language's name, written in that language, under `language` in every dictionary, the new one included: the language selector reads it from there
+3. Add the tag to `LOCALES` in `src/shared/i18n/config.ts`
+4. Add a loader for the dictionary to `CATALOGUES` in `src/shared/i18n/intl.ts`
+5. Add the dictionary to `OTHER_LOCALES` in `src/__tests__/architecture/message-keys.test.ts`, which holds every locale to the same keys as English
+6. Add the tag to `LOCALES` in `packages/plugin/src/messages.ts`, so plugin authors are warned when it is missing
+7. Run `pnpm test`
 
 ## Documentation
 
