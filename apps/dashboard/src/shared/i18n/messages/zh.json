@@ -950,6 +950,7 @@
       "presets": {
         "minimal": "一行文本和一个链接",
         "slack": "Slack、Mattermost、Rocket.Chat 的传入 Webhook",
+        "mattermost": "Mattermost 卡片：标题、链接和颜色",
         "discord": "Discord 频道 Webhook",
         "teams": "Teams 工作流的 Adaptive Card",
         "wecom": "企业微信群机器人，纯文本",

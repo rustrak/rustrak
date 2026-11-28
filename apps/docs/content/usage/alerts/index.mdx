@@ -82,7 +82,7 @@ Reject requests whose timestamp is too old. That bounds how long a captured requ
 
 ### Custom webhook
 
-POSTs a JSON body you write yourself, for an endpoint that expects its own shape: a chat bot, a ticketing system. Write the body under **Message body**: **Start from** loads a known shape (Slack and compatible, Discord, Teams, WeCom, DingTalk, Feishu), **Insert field** adds an alert value at the cursor, and the preview below shows what will be sent.
+POSTs a JSON body you write yourself, for an endpoint that expects its own shape: a chat bot, a ticketing system. Write the body under **Message body**: **Start from** loads a known shape (Slack-compatible, Mattermost, Discord, Teams, WeCom, DingTalk, Feishu), **Insert field** adds an alert value at the cursor, and the preview below shows what will be sent.
 
 ```json
 {
@@ -93,6 +93,18 @@ POSTs a JSON body you write yourself, for an endpoint that expects its own shape
 Values are escaped for wherever you put them, and the body must render to valid JSON, which is checked when you save. The fields, rules and examples are on [Message body template](/usage/alerts/message-body-template). It signs requests the same way as the webhook.
 
 A delivery counts as sent when the endpoint answers 2xx with a readable body; the body is never read for meaning. A 2xx whose body is over 64 KiB, cut off or not UTF-8 counts as failed. Some services answer `200` while refusing the message, so press **Test** after setting one up: it shows exactly what the endpoint answered. A WeCom or DingTalk bot with a custom keyword refuses any message without that keyword, so put the keyword in the body's fixed text.
+
+### Mattermost
+
+Mattermost takes alerts through a custom webhook:
+
+1. In Mattermost, open **Integrations → Incoming Webhooks → Add Incoming Webhook**, choose the channel and copy the URL.
+2. In Rustrak, add a **Custom webhook** with that URL and **Start from** *Mattermost*, then save it.
+3. Press **Test** in its **⋯** menu and check the message arrives.
+
+To post somewhere other than the webhook's channel, add `"channel": "town-square"` (the channel's name, not its display name) to the body. This only works when the webhook is not locked to its channel, and only for public channels or private ones the webhook's creator belongs to. Mattermost also honours `"username"` and `"icon_url"` when its admin allows integrations to override them. Mattermost does not render Slack Block Kit, so a body copied from a Slack app needs `text` or `attachments` instead.
+
+A Mattermost server on your own network is a private address, which alerts refuse by default: set [`RUSTRAK_ALERTS_ALLOW_PRIVATE_NETWORKS=on`](/configuration/environment).
 
 ### Extra headers
 

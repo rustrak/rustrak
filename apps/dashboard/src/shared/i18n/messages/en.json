@@ -950,6 +950,7 @@
       "presets": {
         "minimal": "One line of text and a link",
         "slack": "Slack, Mattermost, Rocket.Chat incoming webhooks",
+        "mattermost": "A Mattermost card: title, link and color",
         "discord": "A Discord channel webhook",
         "teams": "An Adaptive Card for a Teams workflow",
         "wecom": "WeCom group bot, plain text",

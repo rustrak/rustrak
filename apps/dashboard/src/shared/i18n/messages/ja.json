@@ -950,6 +950,7 @@
       "presets": {
         "minimal": "1 行のテキストとリンク",
         "slack": "Slack、Mattermost、Rocket.Chat の Incoming Webhook",
+        "mattermost": "Mattermost のカード：タイトル、リンク、色",
         "discord": "Discord チャンネルの Webhook",
         "teams": "Teams ワークフロー向け Adaptive Card",
         "wecom": "WeCom グループボット（プレーンテキスト）",

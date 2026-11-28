@@ -145,6 +145,22 @@ same way.
 }
 ```
 
+**Mattermost** (an incoming webhook, rendered as a card)
+
+```json
+{
+  "attachments": [
+    {
+      "fallback": "{{ issue.title }} ({{ issue.short_id }})",
+      "color": "#d24b4e",
+      "title": "{{ issue.title }}",
+      "title_link": "{{ issue_url }}",
+      "text": "{{ project.name }} · {{ issue.short_id }} · {{ issue.event_count }} events"
+    }
+  ]
+}
+```
+
 **Discord**
 
 ```json
